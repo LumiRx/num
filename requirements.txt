@@ -1,0 +1,6 @@
+# Root requirements — this file's PRESENCE is what makes Nixpacks (Railway)
+# detect a Python project and provision pip/venv. The real pin list lives with
+# the API code; this just points at it. Don't delete: without a root
+# requirements.txt the build image ships without pip and deploys fail with
+# "pip: command not found".
+-r apps/api/requirements.txt
