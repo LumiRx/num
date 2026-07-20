@@ -26,7 +26,11 @@ class Settings(BaseSettings):
     CLAUDE_MODEL_CHAT: str = "claude-sonnet-4-6"
     CLAUDE_MODEL_FAST: str = "claude-haiku-4-5-20251001"
 
-    # Embeddings
+    # Memory
+    # Recency+confidence recall is the default and needs no embedding vendor.
+    # MEMORY_RECALL_LIMIT caps how many live facts get loaded into the prompt.
+    MEMORY_RECALL_LIMIT: int = 40
+    # Optional pgvector upgrade — set OPENAI_API_KEY to enable semantic recall.
     OPENAI_API_KEY: Optional[str] = None
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536
