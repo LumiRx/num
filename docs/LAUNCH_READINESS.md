@@ -9,6 +9,8 @@ Legend: ✅ shipped · 🟡 stubbed (shape exists, logic incomplete) · 🔴 mis
 
 ## 0. Update log
 
+**2026-07-17 (optimization pass) — see `docs/ops/OPTIMIZATION_NOTES.md`:** pre-traffic audit of the live request path fixed six issues. Two were correctness bugs (**every request blocked the event loop**, serialising all passengers; **the concierge had no in-conversation history**, so follow-ups had no referent), one was a security hole (**Twilio webhooks accepted unsigned POSTs** — this doc previously recorded that wrongly as "Twilio handles"), plus a turn-latency budget (≤3 tool turns, ≤12s) so channel timeouts are unreachable, intent classification moved off the critical path (~0.5s saved per message), and a guaranteed-reply wrapper — **verified: with the DB fully down a Thai user still gets a Thai apology and a 200, not silence.** Memory also no longer needs an embedding vendor (recency+confidence recall; pgvector optional). **95 tests green.**
+
 **2026-07-17 (later) — Deploy-prep sprint:** requirements re-pinned to verified versions (caught missing `python-multipart` — Twilio form webhooks would have 500'd in prod), unused heavy deps dropped, `.python-version` pinned 3.12, app boot-tested end-to-end (all 7 routes), `/healthz/db` keep-alive endpoint added (one uptime pinger now keeps Railway warm AND stops Supabase free-tier auto-pause), root `.env.example` rewritten, and **`docs/ops/DEPLOY_RUNBOOK.md`** created — the half-day click-path: slow approvals first (WA sender, WeChat decision), Supabase Pro, tenant seed SQL, Railway + embed-worker service, Twilio/LINE/WeChat webhooks, pinger + Sentry + Slack, smoke script, done-when checklist. §9 blocker #1 is now runbook-ready.
 
 **2026-07-17 — Full audit + PDPA/consent sprint:**
@@ -31,8 +33,8 @@ Legend: ✅ shipped · 🟡 stubbed (shape exists, logic incomplete) · 🔴 mis
 
 | Channel | Inbound parse | Signature verify | Reply path | Production-ready? |
 |---|---|---|---|---|
-| **WhatsApp (Twilio)** | ✅ | ✅ (Twilio handles) | ✅ TwiML | ✅ Code-ready — Business sender approval is the gate (1–3 days; start now) |
-| **SMS (Twilio)** | ✅ | ✅ | ✅ TwiML | ✅ Yes |
+| **WhatsApp (Twilio)** | ✅ | ✅ **X-Twilio-Signature validated** (fixed 2026-07-17 — was unverified) | ✅ TwiML | ✅ Code-ready — Business sender approval is the gate (1–3 days; start now) |
+| **SMS (Twilio)** | ✅ | ✅ **X-Twilio-Signature validated** | ✅ TwiML | ✅ Yes |
 | **LINE** | ✅ | ✅ HMAC-SHA256 | ✅ Reply token via SDK v3 | ✅ Yes — once Messaging API channel is created |
 | **WeChat Service Account** | ✅ XML parse + events | ✅ SHA-1 (GET + POST) | ✅ Passive XML reply (~5s window) | 🟡 Code-ready — **blocked on Service Account decision** (partner's vs fresh 4–6wk registration). Encrypted/AES mode + 48h push deferred. |
 | **In-car / hotel QR** | ✅ `/qr/{code}` → channel handoff | ✅ acquisition_source binding | n/a | ✅ Yes |

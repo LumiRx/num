@@ -37,6 +37,42 @@ def open_or_get_conversation(user_uuid: str, channel: str) -> str:
     return inserted.data[0]["id"]
 
 
+def recent_turns(conversation_id: str, limit: int = 12) -> list[dict]:
+    """Return the last `limit` messages as Anthropic-shaped turns, oldest first.
+
+    Without this the model sees each message in isolation and "what about
+    tomorrow?" has no referent. Stored memories carry durable facts; this
+    carries the live thread. Best-effort: on failure returns [] and the turn
+    still answers (just without history) rather than erroring.
+    """
+    try:
+        res = (
+            get_supabase()
+            .table("messages")
+            .select("role, content, created_at")
+            .eq("conversation_id", conversation_id)
+            .in_("role", ["user", "assistant"])
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        rows = list(reversed(res.data or []))
+        turns: list[dict] = []
+        for r in rows:
+            role = r.get("role")
+            content = (r.get("content") or "").strip()
+            if role in ("user", "assistant") and content:
+                # Anthropic rejects two consecutive turns with the same role.
+                if turns and turns[-1]["role"] == role:
+                    turns[-1]["content"] = f"{turns[-1]['content']}\n{content}"
+                else:
+                    turns.append({"role": role, "content": content})
+        return turns
+    except Exception as e:
+        log.warning("recent_turns_failed", conversation_id=conversation_id, error=str(e))
+        return []
+
+
 def log_message(
     conversation_id: str,
     user_uuid: str,
@@ -106,3 +142,17 @@ def log_event(
         ).execute()
     except Exception as e:
         log.warning("event_log_failed", error=str(e))
+
+
+def log_events(rows: list[dict]) -> None:
+    """Insert several analytics events in ONE round trip.
+
+    The pipeline emits 3 events per turn; sending them individually added three
+    sequential HTTP hops to every reply. Best-effort, never raises.
+    """
+    if not rows:
+        return
+    try:
+        get_supabase().table("events").insert(rows).execute()
+    except Exception as e:
+        log.warning("events_log_failed", count=len(rows), error=str(e))

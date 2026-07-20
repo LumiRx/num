@@ -10,9 +10,10 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
+from starlette.concurrency import run_in_threadpool
 
 from apps.api.adapters import wechat as wechat_adapter
-from apps.api.services.pipeline import handle_inbound
+from apps.api.services.pipeline import handle_inbound_safe
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -55,7 +56,9 @@ async def wechat_inbound(
     else:
         log.warning("wechat_signature_skipped_unconfigured")
 
-    reply_xml = wechat_adapter.handle_inbound_xml(body, handle_inbound)
+    # The pipeline blocks (Anthropic + Supabase SDKs); keep it off the event
+    # loop so concurrent WeChat users don't queue behind each other.
+    reply_xml = await run_in_threadpool(wechat_adapter.handle_inbound_xml, body, handle_inbound_safe)
     # Passive reply is XML; the "success"/"" sentinels are plain text but WeChat
     # accepts them under the same content type.
     return PlainTextResponse(content=reply_xml, media_type="application/xml")

@@ -8,6 +8,8 @@ return text.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import structlog
 
 from apps.api.schemas.messages import IncomingMessage
@@ -24,6 +26,24 @@ from apps.api.services import (
 )
 
 log = structlog.get_logger()
+
+
+def handle_inbound_safe(msg: IncomingMessage) -> str:
+    """`handle_inbound` with a guaranteed reply — use this from every channel.
+
+    A passenger must never be met with silence. If anything below fails hard
+    (DB unreachable, unexpected shape), we log it and hand back the localized
+    "try again / reply HUMAN" line instead of a 500 the channel would swallow.
+    Language is guessed from the raw inbound text, so the apology still lands in
+    the user's script even when the DB that stores their preference is down.
+    """
+    try:
+        return handle_inbound(msg)
+    except Exception as e:
+        log.exception("pipeline_failed", channel=msg.channel, error=str(e))
+        detected = lang_detect.detect(msg.text or "")
+        lang_code = detected.code if detected.method == "script" else "en"
+        return strings.get("fallback", lang_code)
 
 
 def handle_inbound(msg: IncomingMessage) -> str:
@@ -50,8 +70,45 @@ def handle_inbound(msg: IncomingMessage) -> str:
     conversation_id = persistence.open_or_get_conversation(user_uuid, msg.channel)
 
     scrubbed = pii_scrubber.scrub(msg.text)
-    lang = lang_detect.detect(scrubbed)
-    intent, intent_usage = intent_router.classify_intent(scrubbed)
+    lang = lang_detect.detect(scrubbed)  # deterministic, no network
+
+    # Three independent I/O jobs, run concurrently instead of stacked:
+    #   intent (Haiku, ~0.5s) is analytics-only — it never gated the reply, so
+    #   it has no business adding latency to it;
+    #   history + memory are the two reads the reply actually needs.
+    # History MUST be read before this turn's message is logged, or the current
+    # message would appear twice in the prompt.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        intent_job = pool.submit(intent_router.classify_intent, scrubbed)
+        history_job = pool.submit(persistence.recent_turns, conversation_id)
+        memory_job = pool.submit(memory.lookup, user_uuid, scrubbed, 5)
+
+        history = history_job.result()
+        retrieved = memory_job.result()
+
+        reply, reply_usage = concierge.generate_reply(
+            user,
+            scrubbed,
+            conversation_id=conversation_id,
+            retrieved_memories=[m["fact"] for m in retrieved],
+            history=history,
+        )
+        # Long finished while the reply was generating.
+        intent, intent_usage = intent_job.result()
+
+    log.info(
+        "inbound",
+        user_uuid=user_uuid,
+        intent=intent,
+        lang=lang.code,
+        lang_method=lang.method,
+        history_turns=len(history),
+        memories=len(retrieved),
+    )
+
+    # Keep the user's preferred language current when we're confident it changed.
+    if lang.is_confident and lang.code != (user.get("preferred_lang") or "en"):
+        identity.update_preferred_lang(user_uuid, lang.code)
 
     user_msg_id = persistence.log_message(
         conversation_id,
@@ -61,36 +118,20 @@ def handle_inbound(msg: IncomingMessage) -> str:
         lang=lang.code,
         detected_intent=intent,
     )
-    persistence.log_llm_usage(conversation_id, user_uuid, intent_usage, message_id=user_msg_id)
-    persistence.log_event(
-        user_uuid, "message_in", {"channel": msg.channel, "lang": lang.code}, source=msg.channel
-    )
-    persistence.log_event(user_uuid, "intent_classified", {"intent": intent}, source=msg.channel)
-    log.info(
-        "inbound",
-        user_uuid=user_uuid,
-        intent=intent,
-        lang=lang.code,
-        lang_method=lang.method,
-    )
-
-    # Keep the user's preferred language current when we're confident it changed.
-    if lang.is_confident and lang.code != (user.get("preferred_lang") or "en"):
-        identity.update_preferred_lang(user_uuid, lang.code)
-
-    retrieved = memory.lookup(user_uuid, scrubbed, k=5)
-    reply, reply_usage = concierge.generate_reply(
-        user,
-        scrubbed,
-        conversation_id=conversation_id,
-        retrieved_memories=[m["fact"] for m in retrieved],
-    )
-
     assistant_msg_id = persistence.log_message(
         conversation_id, user_uuid, "assistant", reply, lang=lang.code
     )
+    persistence.log_llm_usage(conversation_id, user_uuid, intent_usage, message_id=user_msg_id)
     persistence.log_llm_usage(conversation_id, user_uuid, reply_usage, message_id=assistant_msg_id)
-    persistence.log_event(user_uuid, "message_out", {"channel": msg.channel}, source=msg.channel)
+    # One insert instead of three sequential ones.
+    persistence.log_events([
+        {"user_uuid": user_uuid, "name": "message_in",
+         "payload": {"channel": msg.channel, "lang": lang.code}, "source": msg.channel},
+        {"user_uuid": user_uuid, "name": "intent_classified",
+         "payload": {"intent": intent}, "source": msg.channel},
+        {"user_uuid": user_uuid, "name": "message_out",
+         "payload": {"channel": msg.channel}, "source": msg.channel},
+    ])
 
     # First contact: append the one-time PDPA disclosure (exact string, never
     # LLM-paraphrased) and audit it. First messages are short, so statistical

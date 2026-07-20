@@ -8,6 +8,7 @@ iterations into a single `Usage` so the pipeline records the true turn cost.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +24,13 @@ log = structlog.get_logger()
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "system_prompt.txt"
 _TEMPLATE: Optional[str] = None
-_MAX_TOOL_TURNS = 5
+# 3 tool turns covers every real flow (search → maybe a second search → answer).
+# 5 was theoretical headroom that only bought worst-case latency.
+_MAX_TOOL_TURNS = 3
+# Wall-clock budget for the whole turn. Twilio abandons a webhook around 15s and
+# WeChat's passive-reply window is ~5s; stopping at 12s means we always return
+# *something* on-channel instead of the user seeing silence.
+_TURN_BUDGET_S = 12.0
 
 
 def _template() -> str:
@@ -50,8 +57,14 @@ def generate_reply(
     user_message: str,
     conversation_id: Optional[str] = None,
     retrieved_memories: Optional[list[str]] = None,
+    history: Optional[list[dict]] = None,
 ) -> tuple[str, Usage]:
-    """Run the tool-use loop. Returns (reply text, summed token Usage). Never raises."""
+    """Run the tool-use loop. Returns (reply text, summed token Usage). Never raises.
+
+    `history` is the prior turns of this conversation (oldest first) so
+    follow-ups like "what about tomorrow?" resolve. Durable cross-session facts
+    arrive separately via `retrieved_memories`.
+    """
     s = get_settings()
     fallback = strings.get("fallback", user.get("preferred_lang"))
     system_prompt = build_system_prompt(user, retrieved_memories)
@@ -61,8 +74,12 @@ def generate_reply(
         conversation_id=conversation_id,
     )
     client = get_anthropic()
-    messages: list[dict] = [{"role": "user", "content": user_message}]
+    messages: list[dict] = [*(history or []), {"role": "user", "content": user_message}]
+    # Anthropic requires the first turn to be "user" and no repeated roles.
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
     total_in = total_out = 0
+    deadline = time.monotonic() + _TURN_BUDGET_S
 
     def _usage() -> Usage:
         return Usage(model=s.CLAUDE_MODEL_CHAT, input_tokens=total_in, output_tokens=total_out, purpose="reply")
@@ -81,6 +98,15 @@ def generate_reply(
             total_out += int(getattr(u, "output_tokens", 0) or 0)
 
             if resp.stop_reason == "tool_use":
+                # Out of time: stop tool-calling and let the model answer with
+                # what it already has rather than risk a channel timeout.
+                if time.monotonic() > deadline:
+                    log.warning("concierge_turn_budget_exceeded", budget_s=_TURN_BUDGET_S)
+                    partial = "".join(
+                        getattr(b, "text", "") for b in resp.content
+                        if getattr(b, "type", None) == "text"
+                    ).strip()
+                    return (partial or fallback), _usage()
                 messages.append({"role": "assistant", "content": resp.content})
                 results = []
                 for block in resp.content:

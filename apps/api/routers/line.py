@@ -1,11 +1,18 @@
-"""LINE inbound webhook."""
+"""LINE inbound webhook.
+
+This route must stay `async def` (it awaits the raw body for HMAC verification),
+so every blocking call underneath — the pipeline and the LINE reply API — is
+pushed to the threadpool with `run_in_threadpool`. Without that, one in-flight
+conversation would occupy the event loop and stall every other passenger.
+"""
 from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, HTTPException, Header, Request
+from starlette.concurrency import run_in_threadpool
 
 from apps.api.adapters import line as line_adapter
-from apps.api.services.pipeline import handle_inbound
+from apps.api.services.pipeline import handle_inbound_safe
 from apps.api.settings import get_settings
 
 router = APIRouter()
@@ -30,8 +37,8 @@ async def line_webhook(request: Request, x_line_signature: str | None = Header(d
         raise HTTPException(status_code=400, detail="invalid JSON")
 
     for msg in line_adapter.parse_events(payload):
-        reply = handle_inbound(msg)
+        reply = await run_in_threadpool(handle_inbound_safe, msg)
         if msg.reply_token:
-            line_adapter.send_reply(msg.reply_token, reply)
+            await run_in_threadpool(line_adapter.send_reply, msg.reply_token, reply)
 
     return {"status": "ok"}

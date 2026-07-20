@@ -175,6 +175,8 @@ def _pipeline_with_stubs(monkeypatch, *, is_new: bool):
     monkeypatch.setattr(pipeline.persistence, "log_message", lambda *a, **k: "m-1")
     monkeypatch.setattr(pipeline.persistence, "log_llm_usage", lambda *a, **k: None)
     monkeypatch.setattr(pipeline.persistence, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(pipeline.persistence, "log_events", lambda *a, **k: None)
+    monkeypatch.setattr(pipeline.persistence, "recent_turns", lambda *a, **k: [])
     monkeypatch.setattr(
         pipeline.intent_router, "classify_intent",
         lambda t: ("TOURIST", types.SimpleNamespace(model="m", input_tokens=1, output_tokens=1, purpose="intent")),
