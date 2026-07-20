@@ -1,0 +1,248 @@
+/* =====================================================================
+   AEROZ — Site-wide mobile hardening + small overlap fixes.
+   Paste between <style>...</style> in:
+   Webflow → Project Settings → Custom Code → Head Code
+   ===================================================================== */
+
+/* --- Always-on safety (also useful on desktop) ---------------------- */
+html, body {
+  overflow-x: hidden;          /* kill horizontal scroll on every page */
+  max-width: 100%;
+}
+
+/* Webflow's default page wrapper is .w-layout-blockcontainer; some
+   sites also use a custom .page-wrapper. Belt-and-braces. */
+.page-wrapper,
+.main-wrapper,
+.w-layout-blockcontainer,
+[class*="container"] {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Make every image and video stay inside its parent. */
+img, video, iframe, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Long unbroken strings (product codes, EPCs, etc.) shouldn't blow out
+   the viewport. */
+h1, h2, h3, h4, h5, p, span, a, li, blockquote {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* iOS safe-area: respect notch + home indicator. */
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* ====================================================================
+   MOBILE-ONLY (≤ 768px)
+   ==================================================================== */
+@media (max-width: 768px) {
+
+  /* Tap targets — every nav, link, and button at least 44 × 44 px. */
+  nav a,
+  header a,
+  .w-nav a,
+  .nav-link,
+  .dropdown-link,
+  .button,
+  .w-button,
+  button {
+    min-height: 44px;
+    line-height: 1.2;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Hero / display headings — never let them be wider than the viewport. */
+  h1, .h1, .heading-style-h1, .display-1 {
+    font-size: clamp(2rem, 8vw, 3.25rem) !important;
+    line-height: 1.1 !important;
+    letter-spacing: -0.01em;
+    padding-right: 8px;
+  }
+
+  h2, .h2, .heading-style-h2 {
+    font-size: clamp(1.6rem, 6vw, 2.4rem) !important;
+    line-height: 1.15 !important;
+  }
+
+  /* Big-number callouts (e.g., "<300ms", "<60 sec", "72 hours") — let
+     them shrink instead of overflowing. */
+  [class*="stat"],
+  [class*="metric"],
+  [class*="number"] {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  /* Two-column desktop layouts → stack on mobile, keep readable padding. */
+  [class*="two-col"],
+  [class*="grid"],
+  [class*="-cols"] {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  /* Sticky pill CTA ("Start an audit") — make sure last content block
+     isn't hidden underneath it. */
+  body {
+    padding-bottom: 96px;  /* room for a typical sticky CTA */
+  }
+
+  /* If the site has a sticky bottom CTA, give it room and clip its hit-box. */
+  [class*="sticky-cta"],
+  [class*="floating-cta"],
+  .start-an-audit,
+  [data-sticky="bottom"] {
+    bottom: max(16px, env(safe-area-inset-bottom)) !important;
+    z-index: 999;
+  }
+
+  /* Audit dropdown — on mobile, hover-only dropdowns are unreachable.
+     Force it to "click-to-toggle" behavior. The JS bundle complements this. */
+  .dropdown:hover .dropdown-list,
+  .w-dropdown-list { /* default Webflow */
+    /* let JS handle .open vs default */
+  }
+  .w-dropdown-list.w--open,
+  .dropdown-list.is-open {
+    position: static !important;
+    box-shadow: none !important;
+    background: rgba(11, 20, 38, 0.96);
+    padding: 8px 0;
+  }
+
+  /* Audit dropdown items — readable, big tap target, no truncation. */
+  .audit-dropdown-link,
+  .w-dropdown-link {
+    display: block !important;
+    padding: 14px 16px !important;
+    white-space: normal !important;
+    font-size: 0.95rem !important;
+    line-height: 1.3 !important;
+    min-height: 44px;
+  }
+
+  /* Footer columns: stack vertically with breathing room. */
+  footer [class*="col"],
+  .footer-cols,
+  .footer-grid {
+    display: block !important;
+    width: 100% !important;
+  }
+  footer a { padding: 8px 0; display: inline-block; }
+
+  /* Form fields on /contact — full width, no zoom on focus. */
+  input, select, textarea {
+    width: 100% !important;
+    font-size: 16px !important;   /* prevents iOS zoom-on-focus */
+    box-sizing: border-box;
+  }
+
+  /* Tables (if any in DSCSA/Battery copy) — scroll inside, don't blow out. */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* Anti-overlap: ensure each section has at least 16px between siblings. */
+  section + section,
+  .section + .section {
+    margin-top: 24px;
+  }
+}
+
+/* ====================================================================
+   NARROW MOBILE (≤ 380px) — small phones
+   ==================================================================== */
+@media (max-width: 380px) {
+  h1, .h1, .heading-style-h1, .display-1 {
+    font-size: clamp(1.75rem, 9vw, 2.25rem) !important;
+  }
+  .button, .w-button, button {
+    padding-left: 14px;
+    padding-right: 14px;
+    font-size: 0.95rem;
+  }
+}
+
+/* ====================================================================
+   "DEAD-END CTA BLOCK" styles — used by the embed in 03_*.html
+   ==================================================================== */
+.aeroz-cta-block {
+  background: linear-gradient(180deg, rgba(15,27,45,0) 0%, rgba(15,27,45,0.6) 100%);
+  border-top: 1px solid rgba(180, 200, 230, 0.12);
+  padding: 64px 24px;
+  margin-top: 64px;
+  color: #E6EEF7;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.aeroz-cta-block__inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.aeroz-cta-block__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #A9CCE3;
+  margin-bottom: 12px;
+}
+.aeroz-cta-block__title {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 12px 0;
+  color: #FFFFFF;
+}
+.aeroz-cta-block__sub {
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #C8D4E2;
+  margin: 0 0 28px 0;
+  max-width: 640px;
+}
+.aeroz-cta-block__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.aeroz-cta-block__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 14px 18px;
+  border-radius: 999px;
+  font-weight: 500;
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: transform 120ms ease, background 120ms ease;
+  text-align: center;
+}
+.aeroz-cta-block__btn--primary {
+  background: #CADCFC;
+  color: #0B1426;
+}
+.aeroz-cta-block__btn--secondary {
+  background: rgba(255,255,255,0.06);
+  color: #E6EEF7;
+  border: 1px solid rgba(202, 220, 252, 0.25);
+}
+.aeroz-cta-block__btn:hover {
+  transform: translateY(-1px);
+}
+@media (max-width: 768px) {
+  .aeroz-cta-block { padding: 48px 16px; margin-top: 40px; }
+  .aeroz-cta-block__grid { grid-template-columns: 1fr; }
+}

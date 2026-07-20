@@ -1,0 +1,33 @@
+# NUM API — production deps, pinned (Railway builds from this file; see railway.json)
+# Verified: boot + full 84-test pass, 2026-07-17. Only what the code imports.
+# (wechatpy dropped — WeChat adapter is stdlib XML. arq/redis/psycopg/jose
+#  removed until a worker/queue actually needs them.)
+
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32   # REQUIRED: Twilio webhooks are form-encoded — boot fails without it
+
+# LLM + embeddings
+anthropic==0.117.0
+openai==2.46.0
+
+# Data
+supabase==2.31.0
+
+# Channels
+twilio==9.10.9
+line-bot-sdk==3.25.0
+
+# Config + logging
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+structlog==26.1.0
+
+# Language detection (Latin-script statistical fallback)
+langdetect==1.0.9
+
+# Observability (init only when SENTRY_DSN is set)
+sentry-sdk[fastapi]==2.66.0
+
+# Test (fine to ship; move to requirements-dev.txt when builds need trimming)
+pytest==8.3.4

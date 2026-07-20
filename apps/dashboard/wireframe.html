@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>NuM — Operator Dashboard (Wireframe)</title>
+<style>
+  /* ---------- NuM design tokens ---------- */
+  :root {
+    --bg-0:        #0A1628;   /* canvas */
+    --bg-1:        #0F1D33;   /* panels */
+    --bg-2:        #11203A;   /* sub-panels */
+    --bg-3:        #162842;   /* hover */
+    --line:        #1E3258;
+    --line-soft:   #16243F;
+    --ink:         #FFFFFF;
+    --ink-1:       #D7E1F2;
+    --ink-2:       #9FB2CE;
+    --ink-3:       #5A6B82;
+    --teal:        #00B5A5;
+    --teal-soft:   rgba(0,181,165,0.12);
+    --sand:        #E9B872;
+    --sand-soft:   rgba(233,184,114,0.14);
+    --coral:       #E36F5A;
+    --coral-soft:  rgba(227,111,90,0.14);
+    --green:       #4ADE80;
+    --green-soft:  rgba(74,222,128,0.14);
+    --display:     "Georgia", "Times New Roman", serif;
+    --body:        -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+    --mono:        "SF Mono", Menlo, Consolas, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg-0); color: var(--ink-1); font-family: var(--body); font-size: 13px; line-height: 1.45; }
+  a { color: var(--teal); text-decoration: none; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+  /* ---------- shell ---------- */
+  .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+
+  /* ---------- sidebar ---------- */
+  .side { background: var(--bg-1); border-right: 1px solid var(--line-soft); padding: 22px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .brand { display:flex; align-items:center; gap:10px; padding: 4px 8px 18px; border-bottom: 1px solid var(--line-soft); margin-bottom: 14px; }
+  .brand .mark { font-family: var(--display); font-style: italic; font-weight: 700; font-size: 24px; color: var(--teal); letter-spacing: 1px; }
+  .brand .sub { font-size: 9px; color: var(--ink-3); letter-spacing: 3px; text-transform: uppercase; }
+  .nav-group { margin-top: 14px; }
+  .nav-label { color: var(--ink-3); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; padding: 6px 8px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; color: var(--ink-2); cursor: pointer; font-size: 13px; user-select: none; }
+  .nav-item:hover { background: var(--bg-2); color: var(--ink); }
+  .nav-item.active { background: var(--teal-soft); color: var(--ink); }
+  .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+  .nav-item .ic { width: 18px; opacity: 0.85; }
+  .nav-item .count { margin-left: auto; font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+  .nav-item .count.live { color: var(--green); }
+  .nav-item .count.alert { color: var(--coral); }
+
+  /* ---------- main ---------- */
+  .main { padding: 0; }
+  .topbar { display:flex; align-items:center; justify-content: space-between; padding: 14px 28px; border-bottom: 1px solid var(--line-soft); background: var(--bg-0); position: sticky; top: 0; z-index: 9; }
+  .topbar .crumbs { color: var(--ink-3); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+  .topbar .title { font-family: var(--display); font-size: 22px; color: var(--ink); margin-top: 4px; }
+  .topbar .right { display:flex; align-items: center; gap: 14px; font-size: 12px; color: var(--ink-2); }
+  .tenant-pill { display:inline-flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; font-size: 11px; color: var(--ink-1); }
+  .tenant-pill .ind { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .who { display:flex; align-items:center; gap:8px; padding: 4px 10px 4px 4px; background: var(--bg-2); border-radius: 16px; }
+  .who .av { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, var(--teal), #146773); display:inline-flex; align-items:center; justify-content:center; font-size: 11px; font-weight: 700; color: #fff; }
+
+  .canvas { padding: 24px 28px 80px; }
+
+  /* ---------- KPI strip ---------- */
+  .kpis { display:grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 22px; }
+  .kpi { background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 10px; padding: 14px 16px; }
+  .kpi .label { font-size: 10px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .kpi .value { font-family: var(--display); font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -0.5px; line-height: 1; }
+  .kpi .delta { font-size: 11px; margin-top: 8px; display:flex; align-items: center; gap: 6px; color: var(--ink-2); }
+  .kpi .delta.up { color: var(--green); }
+  .kpi .delta.down { color: var(--coral); }
+  .kpi .target { font-size: 10px; color: var(--ink-3); margin-top: 4px; }
+
+  /* ---------- panel grid ---------- */
+  .grid { display:grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-bottom: 22px; }
+  .grid.thirds { grid-template-columns: 1fr 1fr 1fr; }
+  .grid.balanced { grid-template-columns: 1fr 1fr; }
+  .panel { background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; }
+  .panel-head { display:flex; align-items:center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--line-soft); }
+  .panel-head .pname { font-family: var(--display); font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: 0.3px; }
+  .panel-head .pname .accent { color: var(--teal); }
+  .panel-head .psub { font-size: 11px; color: var(--ink-3); }
+  .panel-head .tabs { display:flex; gap: 4px; }
+  .panel-head .tab { padding: 4px 9px; font-size: 11px; color: var(--ink-2); border-radius: 4px; cursor: pointer; }
+  .panel-head .tab.on { background: var(--bg-2); color: var(--ink); }
+  .panel-body { padding: 14px 16px; }
+  .panel-foot { padding: 10px 16px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--ink-3); display:flex; justify-content:space-between; }
+
+  /* ---------- conversation stream ---------- */
+  .stream { display:flex; flex-direction: column; gap: 10px; max-height: 380px; overflow-y: auto; padding-right: 4px; }
+  .convo { display:grid; grid-template-columns: 28px 1fr auto; gap: 10px; padding: 10px; border-radius: 8px; background: var(--bg-2); border-left: 3px solid var(--teal); }
+  .convo.alert { border-left-color: var(--coral); }
+  .convo.lead { border-left-color: var(--sand); }
+  .convo .ch { width: 28px; height: 28px; border-radius: 6px; background: var(--bg-3); display:flex; align-items:center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--ink-1); }
+  .convo .ch.wa { background: #1A6E4F; color: #fff; }
+  .convo .ch.wc { background: #1F7A28; color: #fff; }
+  .convo .ch.ln { background: #1E6C00; color: #fff; }
+  .convo .ch.sm { background: #3B4A6B; color: #fff; }
+  .convo .ch.qr { background: #5A4380; color: #fff; }
+  .convo .who-line { font-size: 11px; color: var(--ink-2); display: flex; gap: 8px; align-items: center; }
+  .convo .who-line .lang { font-size: 9px; padding: 1px 5px; background: var(--bg-3); border-radius: 3px; color: var(--ink-1); letter-spacing: 0.5px; }
+  .convo .who-line .stage { font-size: 9px; padding: 1px 5px; background: var(--bg-3); border-radius: 3px; color: var(--ink-2); }
+  .convo .who-line .stage.relo { color: var(--sand); background: var(--sand-soft); }
+  .convo .who-line .stage.repeat { color: var(--teal); background: var(--teal-soft); }
+  .convo .msg { font-size: 13px; color: var(--ink); margin-top: 3px; line-height: 1.35; }
+  .convo .meta { text-align: right; color: var(--ink-3); font-size: 10px; font-family: var(--mono); white-space: nowrap; }
+  .convo .meta .intent { display:block; font-size: 10px; margin-bottom: 4px; padding: 1px 5px; background: var(--bg-3); border-radius: 3px; color: var(--ink-1); letter-spacing: 0.5px; }
+  .convo .meta .intent.whale { color: var(--sand); background: var(--sand-soft); }
+  .convo .meta .intent.support { color: var(--coral); background: var(--coral-soft); }
+
+  /* ---------- whale lead queue ---------- */
+  .leads { width: 100%; border-collapse: collapse; }
+  .leads th { text-align: left; font-size: 10px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); font-weight: 500; }
+  .leads td { padding: 11px 10px; border-bottom: 1px solid var(--line-soft); font-size: 12px; color: var(--ink-1); vertical-align: middle; }
+  .leads tr:hover td { background: var(--bg-2); }
+  .vert-pill { display:inline-block; padding: 2px 7px; border-radius: 3px; font-size: 10px; letter-spacing: 0.5px; }
+  .vert-pill.re { background: var(--sand-soft); color: var(--sand); }
+  .vert-pill.school { background: var(--teal-soft); color: var(--teal); }
+  .vert-pill.relo { background: var(--coral-soft); color: var(--coral); }
+  .vert-pill.visa { background: var(--bg-3); color: var(--ink-1); }
+  .score { font-family: var(--mono); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+  .score.A { color: #0A1628; background: var(--green); }
+  .score.B { color: var(--ink); background: var(--teal); }
+  .score.C { color: var(--ink); background: var(--bg-3); border: 1px solid var(--line); }
+  .sla { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+  .sla.warn { color: var(--sand); }
+  .sla.late { color: var(--coral); font-weight: 600; }
+  .btn { background: var(--teal); color: #0A1628; border: 0; padding: 5px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: 0.3px; }
+  .btn.ghost { background: transparent; color: var(--teal); border: 1px solid var(--teal); }
+
+  /* ---------- channel health ---------- */
+  .channels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .ch-card { background: var(--bg-2); border-radius: 8px; padding: 12px; border: 1px solid var(--line-soft); }
+  .ch-card .top { display:flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ch-card .name { font-size: 12px; font-weight: 700; color: var(--ink); }
+  .ch-card .status { display:flex; align-items:center; gap: 5px; font-size: 10px; color: var(--green); }
+  .ch-card .status .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 var(--green); animation: pulse 1.8s infinite; }
+  .ch-card.warn .name { color: var(--sand); }
+  .ch-card.warn .status { color: var(--sand); }
+  .ch-card.warn .status .pulse { background: var(--sand); }
+  .ch-card.down .name { color: var(--coral); }
+  .ch-card.down .status { color: var(--coral); }
+  .ch-card.down .status .pulse { background: var(--coral); animation: none; }
+  .ch-card .stat { display:flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--ink-3); }
+  .ch-card .stat b { color: var(--ink-1); font-family: var(--mono); font-weight: 500; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  }
+
+  /* ---------- bar / funnel ---------- */
+  .funnel { display:flex; flex-direction: column; gap: 8px; }
+  .funnel-row { display: grid; grid-template-columns: 130px 1fr 70px; align-items: center; gap: 10px; }
+  .funnel-row .lab { font-size: 11px; color: var(--ink-2); }
+  .funnel-row .bar { background: var(--bg-2); height: 22px; border-radius: 4px; position: relative; overflow: hidden; }
+  .funnel-row .fill { height: 100%; background: linear-gradient(90deg, var(--teal), #0A8A7E); border-radius: 4px; }
+  .funnel-row .num { font-family: var(--mono); text-align: right; font-size: 11px; color: var(--ink-1); }
+  .funnel-row .num .pct { color: var(--ink-3); font-size: 10px; }
+
+  /* ---------- language donut (CSS-only) ---------- */
+  .lang-grid { display:grid; grid-template-columns: 160px 1fr; gap: 16px; align-items: center; }
+  .donut {
+    width: 140px; height: 140px; border-radius: 50%;
+    background: conic-gradient(
+      var(--teal)    0      42%,
+      var(--sand)    42%    66%,
+      var(--coral)   66%    79%,
+      #4DD0E1        79%    90%,
+      #B39DDB        90%    100%
+    );
+    display:flex; align-items: center; justify-content: center; position: relative;
+  }
+  .donut::before {
+    content:""; position: absolute; width: 88px; height: 88px; border-radius:50%; background: var(--bg-1);
+  }
+  .donut .ctr { position: relative; text-align: center; }
+  .donut .ctr .big { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--ink); }
+  .donut .ctr .sml { font-size: 10px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; }
+  .lang-list { font-size: 12px; }
+  .lang-list .row { display:grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+  .lang-list .row:last-child { border-bottom: 0; }
+  .lang-list .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .lang-list .conv { color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+
+  /* ---------- merchant grid ---------- */
+  .merch { width: 100%; border-collapse: collapse; }
+  .merch th { text-align: left; font-size: 10px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); font-weight: 500; }
+  .merch td { padding: 10px; border-bottom: 1px solid var(--line-soft); font-size: 12px; color: var(--ink-1); }
+  .merch .mname { font-weight: 700; color: var(--ink); }
+  .merch .cat { font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 1px; }
+  .stale { color: var(--coral); }
+  .fresh { color: var(--green); }
+  .star { color: var(--sand); font-size: 11px; letter-spacing: -2px; }
+
+  /* ---------- AI quality ---------- */
+  .quality { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .qbox { background: var(--bg-2); border-radius: 8px; padding: 14px; }
+  .qbox .h { font-size: 11px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
+  .qbox .v { font-family: var(--display); font-size: 24px; font-weight: 700; color: var(--ink); }
+  .qbox .v.bad { color: var(--coral); }
+  .qbox .v.good { color: var(--green); }
+  .qbox .sub { font-size: 11px; color: var(--ink-2); margin-top: 6px; }
+  .flag-list { font-size: 11px; color: var(--ink-2); }
+  .flag-list .row { display:flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+  .flag-list .row:last-child { border-bottom: 0; }
+
+  /* ---------- revenue / cost ---------- */
+  .rev-grid { display:grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+  .stacked { display:flex; flex-direction: column; gap: 8px; }
+  .stack-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; }
+  .stack-row .lab { font-size: 11px; color: var(--ink-2); }
+  .stack-row .bar { background: var(--bg-2); height: 18px; border-radius: 3px; overflow: hidden; display:flex; }
+  .stack-row .seg { height: 100%; }
+  .stack-row .num { font-size: 11px; color: var(--ink-1); font-family: var(--mono); text-align: right; }
+  .cost-line { display:flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 11px; }
+  .cost-line:last-child { border-bottom: 0; font-weight: 600; color: var(--ink); padding-top: 12px; }
+  .cost-line b { font-family: var(--mono); color: var(--ink-1); }
+
+  /* ---------- PDPA / compliance ---------- */
+  .compliance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .comp-card { background: var(--bg-2); border-radius: 8px; padding: 12px; border-left: 3px solid var(--teal); }
+  .comp-card.warn { border-left-color: var(--sand); }
+  .comp-card.bad { border-left-color: var(--coral); }
+  .comp-card .label { font-size: 10px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; }
+  .comp-card .v { font-family: var(--display); font-size: 22px; color: var(--ink); margin-top: 6px; font-weight: 700; }
+  .comp-card .note { font-size: 11px; color: var(--ink-2); margin-top: 6px; }
+
+  /* ---------- chips ---------- */
+  .chip { display:inline-block; padding: 2px 8px; font-size: 10px; border-radius: 3px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .chip.up { background: var(--green-soft); color: var(--green); }
+  .chip.warn { background: var(--sand-soft); color: var(--sand); }
+  .chip.down { background: var(--coral-soft); color: var(--coral); }
+
+  /* ---------- foot ---------- */
+  .foot { padding: 24px 28px 12px; color: var(--ink-3); font-size: 11px; display:flex; justify-content: space-between; border-top: 1px solid var(--line-soft); margin-top: 32px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============================================================ -->
+  <!--  SIDEBAR                                                     -->
+  <!-- ============================================================ -->
+  <aside class="side">
+    <div class="brand">
+      <div>
+        <div class="mark">NuM</div>
+        <div class="sub">Operator</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Today</div>
+      <div class="nav-item active"><span class="ic">◉</span> Live ops <span class="count live">142</span></div>
+      <div class="nav-item"><span class="ic">▦</span> Pulse · KPIs</div>
+      <div class="nav-item"><span class="ic">↗</span> Funnel</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Pipeline</div>
+      <div class="nav-item"><span class="ic">♦</span> Whale leads <span class="count alert">7</span></div>
+      <div class="nav-item"><span class="ic">▤</span> Bookings <span class="count">38</span></div>
+      <div class="nav-item"><span class="ic">⌥</span> Escalations <span class="count alert">3</span></div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Network</div>
+      <div class="nav-item"><span class="ic">⌂</span> Merchants <span class="count">52</span></div>
+      <div class="nav-item"><span class="ic">⚐</span> Acquisition sources</div>
+      <div class="nav-item"><span class="ic">☷</span> Users</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Quality</div>
+      <div class="nav-item"><span class="ic">⌭</span> AI quality</div>
+      <div class="nav-item"><span class="ic">⌬</span> Channel health</div>
+      <div class="nav-item"><span class="ic">⊕</span> Language QA</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Business</div>
+      <div class="nav-item"><span class="ic">$</span> Revenue + splits</div>
+      <div class="nav-item"><span class="ic">⛁</span> Unit economics</div>
+      <div class="nav-item"><span class="ic">▷</span> Cost monitor</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Trust</div>
+      <div class="nav-item"><span class="ic">⛨</span> PDPA · consent</div>
+      <div class="nav-item"><span class="ic">⌧</span> Audit trail</div>
+      <div class="nav-item"><span class="ic">⌚</span> SLA monitor</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Admin</div>
+      <div class="nav-item"><span class="ic">⌖</span> Tenants <span class="count">3</span></div>
+      <div class="nav-item"><span class="ic">⌗</span> Settings</div>
+    </div>
+  </aside>
+
+  <!-- ============================================================ -->
+  <!--  MAIN                                                        -->
+  <!-- ============================================================ -->
+  <main class="main">
+
+    <!-- topbar -->
+    <div class="topbar">
+      <div>
+        <div class="crumbs">Today  ·  Live ops</div>
+        <div class="title">Phuket AI — Live operations</div>
+      </div>
+      <div class="right">
+        <span class="tenant-pill"><span class="ind"></span> TENANT · Phuket AI (Pilot)</span>
+        <span>Mon 15 Jun · 14:22 ICT</span>
+        <span class="who"><span class="av">D</span> Dre</span>
+      </div>
+    </div>
+
+    <div class="canvas">
+
+      <!-- KPI strip -->
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">Active now</div>
+          <div class="value">142</div>
+          <div class="delta up">▲ 18 vs last hour</div>
+          <div class="target">peak 24h: 211</div>
+        </div>
+        <div class="kpi">
+          <div class="label">QR scans · 24h</div>
+          <div class="value">1,847</div>
+          <div class="delta up">▲ 9.2% vs 7-day avg</div>
+          <div class="target">target: 1,600</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Activation</div>
+          <div class="value">63%</div>
+          <div class="delta up">▲ vs target 60%</div>
+          <div class="target">scan → first message</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg depth</div>
+          <div class="value">8.2</div>
+          <div class="delta up">▲ vs target 6</div>
+          <div class="target">messages per session</div>
+        </div>
+        <div class="kpi">
+          <div class="label">D7 return</div>
+          <div class="value">27%</div>
+          <div class="delta up">▲ vs target 25%</div>
+          <div class="target">across all channels</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Whale leads · 7d</div>
+          <div class="value">34</div>
+          <div class="delta up">▲ vs target 30/mo pace</div>
+          <div class="target">RE 12 · school 9 · relo 8 · visa 5</div>
+        </div>
+      </div>
+
+      <!-- live convos + whale lead queue side-by-side -->
+      <div class="grid">
+
+        <!-- live conversations -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Live conversation stream <span class="accent">●</span></div>
+              <div class="psub">Anonymized · auto-refresh every 8s · scrub-filtered</div>
+            </div>
+            <div class="tabs">
+              <div class="tab on">All</div>
+              <div class="tab">Whale</div>
+              <div class="tab">Support</div>
+              <div class="tab">Booking</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="stream">
+
+              <div class="convo lead">
+                <div class="ch wc">WC</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #a4f2 · car_PHK_021</span>
+                    <span class="lang">ZH-CN</span>
+                    <span class="stage relo">exploring_relocation</span>
+                  </div>
+                  <div class="msg">"我们想看看普吉的国际学校，孩子7岁，可能明年9月入学..."</div>
+                </div>
+                <div class="meta">
+                  <span class="intent whale">WHALE</span>
+                  14:22:08<br>↳ school
+                </div>
+              </div>
+
+              <div class="convo">
+                <div class="ch wa">WA</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #c81d · qr_anantara_lobby</span>
+                    <span class="lang">EN</span>
+                    <span class="stage">tourist</span>
+                  </div>
+                  <div class="msg">"Best veg dinner near Bang Tao tonight, no reservation needed, $$"</div>
+                </div>
+                <div class="meta">
+                  <span class="intent">TOURIST</span>
+                  14:21:54<br>↳ rec
+                </div>
+              </div>
+
+              <div class="convo alert">
+                <div class="ch ln">LN</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #5e3a · car_PHK_014</span>
+                    <span class="lang">JA</span>
+                    <span class="stage repeat">repeat_visitor</span>
+                  </div>
+                  <div class="msg">"前回のドライバーが約束時間に来なかった。返金してください"</div>
+                </div>
+                <div class="meta">
+                  <span class="intent support">SUPPORT</span>
+                  14:21:31<br>↳ escalated
+                </div>
+              </div>
+
+              <div class="convo">
+                <div class="ch wa">WA</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #7b1c · car_PHK_007</span>
+                    <span class="lang">RU</span>
+                    <span class="stage">tourist</span>
+                  </div>
+                  <div class="msg">"Яхта на завтра, 8 человек, с обедом"</div>
+                </div>
+                <div class="meta">
+                  <span class="intent">BOOKING</span>
+                  14:21:02<br>↳ yacht
+                </div>
+              </div>
+
+              <div class="convo lead">
+                <div class="ch wc">WC</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #d9a2 · qr_kata_villa_017</span>
+                    <span class="lang">ZH-CN</span>
+                    <span class="stage relo">resident_prospect</span>
+                  </div>
+                  <div class="msg">"想了解长期租房，3卧带泳池，海景，预算每月8万泰铢以内"</div>
+                </div>
+                <div class="meta">
+                  <span class="intent whale">WHALE</span>
+                  14:20:48<br>↳ RE rental
+                </div>
+              </div>
+
+              <div class="convo">
+                <div class="ch sm">SMS</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #2f8b · car_PHK_003</span>
+                    <span class="lang">TH</span>
+                    <span class="stage">tourist</span>
+                  </div>
+                  <div class="msg">"แท็กซี่ไปสนามบินพรุ่งนี้ 5 โมงเช้า"</div>
+                </div>
+                <div class="meta">
+                  <span class="intent">BOOKING</span>
+                  14:20:11<br>↳ transfer
+                </div>
+              </div>
+
+              <div class="convo">
+                <div class="ch qr">QR</div>
+                <div>
+                  <div class="who-line">
+                    <span>new user · qr_six_senses_lobby</span>
+                    <span class="lang">EN</span>
+                    <span class="stage">tourist</span>
+                  </div>
+                  <div class="msg">"Hi NuM — first time here. Where do I get the best Tom Yum?"</div>
+                </div>
+                <div class="meta">
+                  <span class="intent">TOURIST</span>
+                  14:19:55<br>↳ welcomed
+                </div>
+              </div>
+
+              <div class="convo">
+                <div class="ch ln">LN</div>
+                <div>
+                  <div class="who-line">
+                    <span>user · #ae07 · car_PHK_028</span>
+                    <span class="lang">KO</span>
+                    <span class="stage repeat">repeat_visitor</span>
+                  </div>
+                  <div class="msg">"지난번 그 마사지샵 다시 예약해주세요. 같은 분으로요."</div>
+                </div>
+                <div class="meta">
+                  <span class="intent">BOOKING</span>
+                  14:19:34<br>↳ spa · memory↻
+                </div>
+              </div>
+
+            </div>
+          </div>
+          <div class="panel-foot">
+            <span>Showing 8 of 142 active. Click a row for the full transcript + memory state.</span>
+            <span><a href="#">Open conversation explorer →</a></span>
+          </div>
+        </div>
+
+        <!-- whale lead queue -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Whale leads · queue</div>
+              <div class="psub">High-LTV · SLA 24h to first human contact</div>
+            </div>
+            <div class="tabs">
+              <div class="tab on">Open · 7</div>
+              <div class="tab">All</div>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="leads">
+              <thead>
+                <tr><th>Vert</th><th>Lead</th><th>Score</th><th>Age</th><th>Assigned</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="vert-pill school">SCHOOL</span></td>
+                  <td>#a4f2 · Y7 child · sept-26</td>
+                  <td><span class="score A">A</span></td>
+                  <td><span class="sla">14m</span></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><span class="vert-pill re">RENT</span></td>
+                  <td>#d9a2 · 3BR · ฿80k/mo</td>
+                  <td><span class="score A">A</span></td>
+                  <td><span class="sla">38m</span></td>
+                  <td>K. Nan</td>
+                </tr>
+                <tr>
+                  <td><span class="vert-pill re">BUY</span></td>
+                  <td>#9c1e · villa · ~$1.2M</td>
+                  <td><span class="score A">A</span></td>
+                  <td><span class="sla warn">4h 12m</span></td>
+                  <td>M. Pim</td>
+                </tr>
+                <tr>
+                  <td><span class="vert-pill relo">RELO</span></td>
+                  <td>#7e02 · family of 4 · CN</td>
+                  <td><span class="score B">B</span></td>
+                  <td><span class="sla warn">9h 03m</span></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><span class="vert-pill visa">VISA</span></td>
+                  <td>#3b48 · LTR · solo</td>
+                  <td><span class="score B">B</span></td>
+                  <td><span class="sla warn">11h 41m</span></td>
+                  <td>K. Nan</td>
+                </tr>
+                <tr>
+                  <td><span class="vert-pill school">SCHOOL</span></td>
+                  <td>#01dd · 2 kids · jan-27</td>
+                  <td><span class="score B">B</span></td>
+                  <td><span class="sla late">22h 18m</span></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><span class="vert-pill re">BUY</span></td>
+                  <td>#62a9 · investment</td>
+                  <td><span class="score C">C</span></td>
+                  <td><span class="sla late">26h 02m</span></td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel-foot">
+            <span>2 leads breaching SLA · 3 unassigned</span>
+            <span><a href="#">Assign sweep →</a></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- channel health -->
+      <div class="panel" style="margin-bottom: 22px;">
+        <div class="panel-head">
+          <div>
+            <div class="pname">Channel health</div>
+            <div class="psub">Adapter status · last 60s · error rate · queue depth</div>
+          </div>
+          <div class="tabs"><div class="tab on">Now</div><div class="tab">24h</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="channels">
+
+            <div class="ch-card">
+              <div class="top">
+                <div class="name">WhatsApp · Twilio</div>
+                <div class="status"><span class="pulse"></span>up</div>
+              </div>
+              <div class="stat"><span>last msg</span><b>2s ago</b></div>
+              <div class="stat"><span>convos · 1h</span><b>421</b></div>
+              <div class="stat"><span>err rate</span><b>0.0%</b></div>
+              <div class="stat"><span>p95 reply</span><b>1.4s</b></div>
+            </div>
+
+            <div class="ch-card">
+              <div class="top">
+                <div class="name">WeChat · SA</div>
+                <div class="status"><span class="pulse"></span>up</div>
+              </div>
+              <div class="stat"><span>last msg</span><b>4s ago</b></div>
+              <div class="stat"><span>convos · 1h</span><b>178</b></div>
+              <div class="stat"><span>err rate</span><b>0.2%</b></div>
+              <div class="stat"><span>p95 reply</span><b>1.9s</b></div>
+            </div>
+
+            <div class="ch-card">
+              <div class="top">
+                <div class="name">LINE</div>
+                <div class="status"><span class="pulse"></span>up</div>
+              </div>
+              <div class="stat"><span>last msg</span><b>11s ago</b></div>
+              <div class="stat"><span>convos · 1h</span><b>89</b></div>
+              <div class="stat"><span>err rate</span><b>0.0%</b></div>
+              <div class="stat"><span>p95 reply</span><b>1.3s</b></div>
+            </div>
+
+            <div class="ch-card warn">
+              <div class="top">
+                <div class="name">SMS · Twilio</div>
+                <div class="status"><span class="pulse"></span>degraded</div>
+              </div>
+              <div class="stat"><span>last msg</span><b>1m 8s ago</b></div>
+              <div class="stat"><span>convos · 1h</span><b>12</b></div>
+              <div class="stat"><span>err rate</span><b>4.1%</b></div>
+              <div class="stat"><span>p95 reply</span><b>3.2s</b></div>
+            </div>
+
+            <div class="ch-card">
+              <div class="top">
+                <div class="name">QR · in-car / hotel</div>
+                <div class="status"><span class="pulse"></span>up</div>
+              </div>
+              <div class="stat"><span>last scan</span><b>3s ago</b></div>
+              <div class="stat"><span>scans · 1h</span><b>284</b></div>
+              <div class="stat"><span>active codes</span><b>37/40</b></div>
+              <div class="stat"><span>activation %</span><b>63%</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- funnel + language donut side-by-side -->
+      <div class="grid balanced">
+
+        <!-- Funnel -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Funnel · 7d</div>
+              <div class="psub">QR scan → activated → engaged → converted</div>
+            </div>
+            <div class="tabs"><div class="tab on">7d</div><div class="tab">30d</div><div class="tab">90d</div></div>
+          </div>
+          <div class="panel-body">
+            <div class="funnel">
+              <div class="funnel-row">
+                <div class="lab">QR scans</div>
+                <div class="bar"><div class="fill" style="width:100%"></div></div>
+                <div class="num">12,930 <span class="pct">100%</span></div>
+              </div>
+              <div class="funnel-row">
+                <div class="lab">First message</div>
+                <div class="bar"><div class="fill" style="width:63%"></div></div>
+                <div class="num">8,145 <span class="pct">63%</span></div>
+              </div>
+              <div class="funnel-row">
+                <div class="lab">≥ 6 msgs (engaged)</div>
+                <div class="bar"><div class="fill" style="width:44%"></div></div>
+                <div class="num">5,689 <span class="pct">44%</span></div>
+              </div>
+              <div class="funnel-row">
+                <div class="lab">D7 return</div>
+                <div class="bar"><div class="fill" style="width:27%"></div></div>
+                <div class="num">3,491 <span class="pct">27%</span></div>
+              </div>
+              <div class="funnel-row">
+                <div class="lab">Booking made</div>
+                <div class="bar"><div class="fill" style="width:13%"></div></div>
+                <div class="num">1,680 <span class="pct">13%</span></div>
+              </div>
+              <div class="funnel-row">
+                <div class="lab">Whale lead qualified</div>
+                <div class="bar"><div class="fill" style="width:2.7%; background: linear-gradient(90deg, var(--sand), #c98d4b);"></div></div>
+                <div class="num">349 <span class="pct">2.7%</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel-foot">
+            <span>Biggest drop: engaged → D7 (-39%). Likely: memory bind not working across return-channel switches.</span>
+          </div>
+        </div>
+
+        <!-- language donut -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Language share · 7d</div>
+              <div class="psub">Auto-detected on inbound · 12,930 sessions</div>
+            </div>
+            <div class="tabs"><div class="tab on">All channels</div></div>
+          </div>
+          <div class="panel-body">
+            <div class="lang-grid">
+              <div class="donut">
+                <div class="ctr">
+                  <div class="big">12.9k</div>
+                  <div class="sml">sessions</div>
+                </div>
+              </div>
+              <div class="lang-list">
+                <div class="row"><span class="sw" style="background:var(--teal)"></span><span>English</span><span>42%</span><span class="conv">5,431</span></div>
+                <div class="row"><span class="sw" style="background:var(--sand)"></span><span>Mandarin (ZH-CN)</span><span>24%</span><span class="conv">3,103</span></div>
+                <div class="row"><span class="sw" style="background:var(--coral)"></span><span>Russian</span><span>13%</span><span class="conv">1,681</span></div>
+                <div class="row"><span class="sw" style="background:#4DD0E1"></span><span>Thai</span><span>11%</span><span class="conv">1,422</span></div>
+                <div class="row"><span class="sw" style="background:#B39DDB"></span><span>Other (JA, KO, DE, FR, KR)</span><span>10%</span><span class="conv">1,293</span></div>
+              </div>
+            </div>
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--ink-2); display: flex; justify-content: space-between;">
+              <span>Detector accuracy (human-sampled): <b style="color: var(--ink);">96.4%</b></span>
+              <span>Pending human review: <b style="color: var(--sand);">142</b></span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- AI quality + merchant grid -->
+      <div class="grid balanced">
+
+        <!-- AI quality -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">AI quality · 7d</div>
+              <div class="psub">Sampled human grading · auto-flagged issues</div>
+            </div>
+            <div class="tabs"><div class="tab on">7d</div><div class="tab">30d</div></div>
+          </div>
+          <div class="panel-body">
+            <div class="quality">
+              <div class="qbox">
+                <div class="h">Intent accuracy</div>
+                <div class="v good">94.2%</div>
+                <div class="sub">on 500 human-sampled msgs</div>
+              </div>
+              <div class="qbox">
+                <div class="h">Hallucination flags</div>
+                <div class="v bad">11</div>
+                <div class="sub">7 vendor data drift · 4 prompt edge</div>
+              </div>
+              <div class="qbox">
+                <div class="h">Avg session depth</div>
+                <div class="v good">8.2</div>
+                <div class="sub">vs target 6.0 · trending up</div>
+              </div>
+              <div class="qbox">
+                <div class="h">Escalation rate</div>
+                <div class="v">3.1%</div>
+                <div class="sub">of which: 71% legitimate · 29% noise</div>
+              </div>
+            </div>
+            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-soft);">
+              <div style="font-size: 11px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">Recent flags</div>
+              <div class="flag-list">
+                <div class="row"><span>"recommended Plamona — was closed on Mon"</span><span><span class="chip warn">VENDOR DRIFT</span></span></div>
+                <div class="row"><span>"quoted ฿4,200 for spa — actual ฿4,800"</span><span><span class="chip warn">PRICE STALE</span></span></div>
+                <div class="row"><span>fabricated review for "Sunset Tapas"</span><span><span class="chip down">HALLUCINATION</span></span></div>
+                <div class="row"><span>switched to EN mid-Mandarin convo</span><span><span class="chip warn">LANG SLIP</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Merchant grid -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Merchant performance</div>
+              <div class="psub">Top + at-risk · 52 active vendors</div>
+            </div>
+            <div class="tabs"><div class="tab on">By rev</div><div class="tab">By NPS</div><div class="tab">At risk</div></div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="merch">
+              <thead>
+                <tr><th>Merchant</th><th>Bookings · 7d</th><th>Commission</th><th>NPS</th><th>Data</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><div class="mname">Bang Tao Seafood</div><div class="cat">Restaurant</div></td>
+                  <td>48</td>
+                  <td>฿14,200</td>
+                  <td><span class="star">★★★★★</span> 9.4</td>
+                  <td class="fresh">fresh 2h</td>
+                </tr>
+                <tr>
+                  <td><div class="mname">Anantara Spa</div><div class="cat">SPA</div></td>
+                  <td>31</td>
+                  <td>฿22,750</td>
+                  <td><span class="star">★★★★★</span> 9.2</td>
+                  <td class="fresh">fresh 1d</td>
+                </tr>
+                <tr>
+                  <td><div class="mname">Phuket Yacht Co.</div><div class="cat">Yacht</div></td>
+                  <td>14</td>
+                  <td>฿41,820</td>
+                  <td><span class="star">★★★★</span> 8.7</td>
+                  <td class="fresh">fresh 3d</td>
+                </tr>
+                <tr>
+                  <td><div class="mname">Patong Driver Co-op</div><div class="cat">Transport</div></td>
+                  <td>92</td>
+                  <td>฿9,260</td>
+                  <td><span class="star">★★★★</span> 8.1</td>
+                  <td>fresh 5d</td>
+                </tr>
+                <tr>
+                  <td><div class="mname">Plamona Bistro</div><div class="cat">Restaurant</div></td>
+                  <td>6</td>
+                  <td>฿1,810</td>
+                  <td><span class="star">★★</span> 5.4</td>
+                  <td class="stale">stale 18d</td>
+                </tr>
+                <tr>
+                  <td><div class="mname">Sunset Tapas</div><div class="cat">Restaurant</div></td>
+                  <td>2</td>
+                  <td>฿620</td>
+                  <td><span class="star">★★</span> 4.8</td>
+                  <td class="stale">stale 24d</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel-foot">
+            <span>2 merchants flagged for content refresh · 1 needs photo update</span>
+            <span><a href="#">Open merchant ops →</a></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- revenue + cost monitor -->
+      <div class="grid balanced">
+
+        <!-- Revenue + splits -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Revenue · MTD</div>
+              <div class="psub">Pilot tier · 50/50 bookings · 30/70 whale leads · 40/60 listings</div>
+            </div>
+            <div class="tabs"><div class="tab on">MTD</div><div class="tab">YTD</div></div>
+          </div>
+          <div class="panel-body">
+            <div class="rev-grid">
+              <div class="stacked">
+                <div class="stack-row">
+                  <div class="lab">Bookings</div>
+                  <div class="bar">
+                    <div class="seg" style="background: var(--teal); width: 50%"></div>
+                    <div class="seg" style="background: #4a5e85; width: 50%"></div>
+                  </div>
+                  <div class="num">$4,234</div>
+                </div>
+                <div class="stack-row">
+                  <div class="lab">Whale leads</div>
+                  <div class="bar">
+                    <div class="seg" style="background: var(--teal); width: 30%"></div>
+                    <div class="seg" style="background: #4a5e85; width: 70%"></div>
+                  </div>
+                  <div class="num">$9,000</div>
+                </div>
+                <div class="stack-row">
+                  <div class="lab">Merchant subs</div>
+                  <div class="bar">
+                    <div class="seg" style="background: var(--teal); width: 40%"></div>
+                    <div class="seg" style="background: #4a5e85; width: 60%"></div>
+                  </div>
+                  <div class="num">$2,100</div>
+                </div>
+                <div style="display:flex; gap: 14px; margin-top: 8px; font-size: 10px; color: var(--ink-3); padding-top: 8px; border-top: 1px solid var(--line-soft);">
+                  <span><span class="sw" style="display:inline-block; width: 8px; height: 8px; background: var(--teal); border-radius: 2px;"></span> Lumi</span>
+                  <span><span class="sw" style="display:inline-block; width: 8px; height: 8px; background: #4a5e85; border-radius: 2px;"></span> Phuket AI</span>
+                </div>
+              </div>
+              <div>
+                <div class="cost-line"><span>Gross revenue</span><b>$15,334</b></div>
+                <div class="cost-line"><span>Lumi share</span><b>$5,757</b></div>
+                <div class="cost-line"><span>Phuket AI share</span><b>$9,577</b></div>
+                <div class="cost-line"><span>Lumi COGS (infra+LLM)</span><b>$2,184</b></div>
+                <div class="cost-line"><span>Lumi net · MTD</span><b style="color: var(--green);">$3,573</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cost monitor -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Cost · unit economics</div>
+              <div class="psub">Per active user · MTD · vs pilot budget</div>
+            </div>
+            <div class="tabs"><div class="tab on">Per AU</div><div class="tab">Total</div></div>
+          </div>
+          <div class="panel-body">
+            <div class="cost-line"><span>Claude Sonnet (chat) <span style="color: var(--ink-3); font-size: 10px;">· 71%</span></span><b>$0.34</b></div>
+            <div class="cost-line"><span>Claude Haiku (routing + scrub) <span style="color: var(--ink-3); font-size: 10px;">· 19%</span></span><b>$0.09</b></div>
+            <div class="cost-line"><span>OpenAI embeddings</span><b>$0.02</b></div>
+            <div class="cost-line"><span>Twilio + WeChat + LINE</span><b>$0.18</b></div>
+            <div class="cost-line"><span>Supabase + workers</span><b>$0.05</b></div>
+            <div class="cost-line"><span>Sentry + logs</span><b>$0.03</b></div>
+            <div class="cost-line"><span><b style="color: var(--ink);">COGS per active user</b></span><b style="color: var(--ink);">$0.71</b></div>
+            <div style="margin-top: 12px; font-size: 11px; color: var(--ink-2); padding: 10px; background: var(--bg-2); border-radius: 6px;">
+              <b style="color: var(--ink);">Budget: $0.64</b> · running <span style="color: var(--sand);">+11%</span> over.
+              Driver: Sonnet share crept up because the tool loop landed 9 days ago and is now used in 84% of turns (target was 60%). Consider downshifting whale-lead pre-qual to Haiku before pricing locks at Pro.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PDPA / Compliance row -->
+      <div class="panel" style="margin-bottom: 22px;">
+        <div class="panel-head">
+          <div>
+            <div class="pname">Trust · PDPA · compliance</div>
+            <div class="psub">Consent state · deletion requests · encryption rotation · PII scrubber hits</div>
+          </div>
+          <div class="tabs"><div class="tab on">Live</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="compliance">
+            <div class="comp-card">
+              <div class="label">Consent rate</div>
+              <div class="v">99.4%</div>
+              <div class="note">of first messages produced opt-in. 47 declined → no-store path engaged.</div>
+            </div>
+            <div class="comp-card warn">
+              <div class="label">delete_me requests</div>
+              <div class="v">3</div>
+              <div class="note">in flight · SLA 30 days · oldest opened 6d ago</div>
+            </div>
+            <div class="comp-card">
+              <div class="label">KMS rotation</div>
+              <div class="v">Q2</div>
+              <div class="note">last rotated 38d ago · next due 2026-08-30</div>
+            </div>
+            <div class="comp-card warn">
+              <div class="label">PII scrubber hits · 7d</div>
+              <div class="v">142</div>
+              <div class="note">87 card · 38 passport · 17 Thai ID · 0 escaped</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tenants -->
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="pname">Tenants · ops admin view</div>
+            <div class="psub">Lumi-only · contract tier · MAU · margin · expiry</div>
+          </div>
+        </div>
+        <div class="panel-body" style="padding:0;">
+          <table class="merch">
+            <thead>
+              <tr>
+                <th>Tenant</th><th>Tier</th><th>MAU</th><th>Convos · MTD</th><th>Lumi rev</th><th>Margin</th><th>Contract</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="mname">Phuket AI</div><div class="cat">Phuket · TH</div></td>
+                <td><span class="chip up">Pilot</span></td>
+                <td>8,145</td>
+                <td>48,920</td>
+                <td>$5,757</td>
+                <td style="color: var(--green);">85%</td>
+                <td>Month-to-month</td>
+              </tr>
+              <tr>
+                <td><div class="mname">Phuket InCar Group</div><div class="cat">Phuket · TH · v2</div></td>
+                <td><span class="chip warn">In contract</span></td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>MoU in counsel review</td>
+              </tr>
+              <tr>
+                <td><div class="mname">Bali · prospect</div><div class="cat">Denpasar · ID</div></td>
+                <td><span class="chip">Prospect</span></td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>Initial call 18 Jun</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="foot">
+      <span>NuM · Operator Dashboard wireframe · v0.1 · 2026-06-15</span>
+      <span>Built on Supabase + Next.js + Tailwind · all panels are read-only by default · admin actions gated by RBAC</span>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

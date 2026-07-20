@@ -1,0 +1,132 @@
+{
+  "sellers": [
+    {
+      "sellerId": "sellr_lilly_001",
+      "legalName": "Eli Lilly and Company",
+      "displayName": "Eli Lilly",
+      "industry": "Pharma",
+      "tier": "Manufacturer",
+      "gln": "0860001000017",
+      "country": "US",
+      "primaryContact": {
+        "name": "Compliance Operations",
+        "email": "compliance@lilly.example",
+        "phone": "+1-317-276-2000"
+      },
+      "status": "Active",
+      "notes": "Source manufacturer of Humalog Insulin (Case Study 1)."
+    },
+    {
+      "sellerId": "sellr_healthylife_002",
+      "legalName": "HealthyLife Inc.",
+      "displayName": "HealthyLife Logistics",
+      "industry": "Pharma",
+      "tier": "Distributor / 3PL",
+      "gln": "0860001000024",
+      "country": "US",
+      "primaryContact": {
+        "name": "Ocala DC Operations",
+        "email": "ops.ocala@healthylife.example",
+        "phone": "+1-352-555-0100"
+      },
+      "status": "Active",
+      "notes": "Cold-chain partner moving Lilly product from Ocala DC to FL pharmacies."
+    },
+    {
+      "sellerId": "sellr_global_ordinance_003",
+      "legalName": "Global Ordinance LLC",
+      "displayName": "Global Ordinance",
+      "industry": "Defense",
+      "tier": "Manufacturer / Defense Contractor",
+      "gln": "0860001999999",
+      "country": "US",
+      "primaryContact": {
+        "name": "Assembly Line Compliance",
+        "email": "compliance@globalord.example",
+        "phone": "+1-352-555-0200"
+      },
+      "status": "Active",
+      "notes": "Defense contractor — GO-Eagle Mk II Tactical Drone (Case Study 2)."
+    },
+    {
+      "sellerId": "sellr_vista_outdoor_004",
+      "legalName": "Vista Outdoor Inc.",
+      "displayName": "Vista Outdoor",
+      "industry": "Defense / Munitions",
+      "tier": "Manufacturer",
+      "gln": "0860001444444",
+      "country": "US",
+      "primaryContact": {
+        "name": "Logistics Coordinator",
+        "email": "logistics@vista.example",
+        "phone": "+1-801-555-0300"
+      },
+      "status": "Active",
+      "notes": "DoD lethal-aid contract supplier — 5.56mm NATO M855 Ball (Case Study 3)."
+    },
+    {
+      "sellerId": "sellr_dod_005",
+      "legalName": "U.S. Department of Defense",
+      "displayName": "DoD (Recipient)",
+      "industry": "Defense",
+      "tier": "End Customer",
+      "gln": null,
+      "country": "US",
+      "primaryContact": {
+        "name": "Fort Liberty Logistics Office",
+        "email": "logistics.ft-liberty@army.example",
+        "phone": "+1-910-555-0400"
+      },
+      "status": "Active",
+      "notes": "Receiving party for Vista Outdoor munitions."
+    },
+    {
+      "sellerId": "sellr_saka_wines_006",
+      "legalName": "Saka Wines LLC",
+      "displayName": "Saka",
+      "industry": "Consumer / Cannabis",
+      "tier": "Producer",
+      "gln": "0860001023452",
+      "country": "US",
+      "primaryContact": {
+        "name": "Compliance Lead",
+        "email": "compliance@saka.example",
+        "phone": "+1-415-555-0500"
+      },
+      "status": "Active",
+      "notes": "THC-infused beverage producer (Consumer Authentication example)."
+    },
+    {
+      "sellerId": "sellr_green_earth_007",
+      "legalName": "Green Earth Dispensary Inc.",
+      "displayName": "Green Earth Dispensary",
+      "industry": "Consumer / Cannabis Retail",
+      "tier": "Retailer / Dispensary",
+      "gln": "0860001500011",
+      "country": "US",
+      "primaryContact": {
+        "name": "Dispensary Manager",
+        "email": "manager@greenearth.example",
+        "phone": "+1-323-555-0600"
+      },
+      "status": "Active",
+      "notes": "Licensed Los Angeles dispensary — final point in cannabis chain."
+    },
+    {
+      "sellerId": "sellr_florida_rx_008",
+      "legalName": "Floridian Family Pharmacy",
+      "displayName": "Floridian Family Pharmacy",
+      "industry": "Pharma Retail",
+      "tier": "Dispenser",
+      "gln": "0860001555555",
+      "country": "US",
+      "primaryContact": {
+        "name": "Pharmacist In Charge",
+        "email": "pic@floridianpharmacy.example",
+        "phone": "+1-904-555-0700"
+      },
+      "status": "Active",
+      "notes": "Receiving pharmacy for the Humalog shipment that triggered the seal-breach alert."
+    }
+  ]
+}

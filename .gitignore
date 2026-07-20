@@ -1,0 +1,29 @@
+# venv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/
+
+# build artifacts
+dist/
+build_dist/
+*.log
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/

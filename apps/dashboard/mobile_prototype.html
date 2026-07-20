@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1e">
+<title>NUM — Mobile Console (prototype)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  NUM mobile management prototype — all six roles, EN/TH, dark AEROZ aesthetic.
+  Single file, zero dependencies, in-memory state only.
+  Open on a phone for the real feel; desktop renders a phone frame.
+  Pairs with MOBILE_UI_SPEC.md. Data shapes mirror the live Supabase schema.
+-->
+<style>
+  :root{
+    --bg-0:#0a0f1e;        /* midnight */
+    --bg-1:#101828;        /* card */
+    --bg-2:#182238;        /* raised */
+    --line:#22304d;
+    --line-soft:#1b2740;
+    --ink:#f4f7fd;         /* primary text */
+    --ink-2:#aeb9d2;       /* secondary */
+    --ink-3:#71809f;       /* tertiary */
+    --teal:#2fd4c2;
+    --teal-deep:#128d80;
+    --sand:#e8cf9f;
+    --coral:#ff6f61;
+    --green:#3ddc97;
+    --amber:#ffc466;
+    --wa:#25d366; --ln:#06c755; --wc:#09b83e; --sm:#8a97b5;
+    --r:16px; --r-s:10px;
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+    --tabbar-h:62px;
+    --font:"Inter","Noto Sans Thai","Sukhumvit Set",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html{font-size:16px}
+  body{
+    background:#05080f;color:var(--ink);
+    font-family:var(--font);
+    font-feature-settings:"cv05","cv08";
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    min-height:100vh;display:flex;justify-content:center;align-items:flex-start;
+    line-height:1.5;
+  }
+  /* ---- phone frame on desktop ---- */
+  #phone{width:100%;max-width:430px;min-height:100vh;background:var(--bg-0);position:relative;display:flex;flex-direction:column}
+  @media(min-width:768px){
+    body{padding:28px 0;background:radial-gradient(1200px 600px at 50% -100px,#12203f 0%,#05080f 60%)}
+    #phone{min-height:860px;max-height:92vh;border-radius:44px;border:8px solid #1c2438;box-shadow:0 40px 90px rgba(0,0,0,.6);overflow:hidden}
+  }
+  /* ---- header ---- */
+  header{
+    position:sticky;top:0;z-index:30;background:linear-gradient(180deg,rgba(10,15,30,.98),rgba(10,15,30,.92));
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line-soft);
+    padding:calc(env(safe-area-inset-top) + 12px) var(--s4) var(--s3);
+    display:flex;align-items:center;gap:10px;
+  }
+  .logo{font-weight:800;font-size:19px;letter-spacing:-.02em}
+  .logo em{color:var(--teal);font-style:normal}
+  #roleBtn{
+    display:flex;align-items:center;gap:6px;background:var(--bg-2);border:1px solid var(--line);
+    color:var(--ink);border-radius:999px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;min-height:38px;font-family:var(--font)
+  }
+  #roleBtn .car{color:var(--ink-3);font-size:9px}
+  .hdr-spacer{flex:1}
+  #langBtn{
+    background:none;border:1px solid var(--line);color:var(--ink-2);border-radius:999px;
+    padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;min-height:38px;font-family:var(--font)
+  }
+  #langBtn b{color:var(--teal)}
+  .livedot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(61,220,151,.5);animation:pulse 2s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(61,220,151,0)}}
+  /* ---- main scroll ---- */
+  main{flex:1;overflow-y:auto;padding:var(--s4) var(--s4) calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 24px);scroll-behavior:smooth}
+  .asof{font-size:11px;color:var(--ink-3);text-align:center;margin:var(--s4) 0 var(--s1)}
+  /* ---- bottom tabs ---- */
+  nav{
+    position:absolute;left:0;right:0;bottom:0;z-index:30;height:calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    background:rgba(13,19,38,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line-soft);
+    display:flex;padding:0 var(--s1) env(safe-area-inset-bottom)
+  }
+  nav button{
+    flex:1;background:none;border:none;color:var(--ink-3);font-size:10.5px;font-weight:600;cursor:pointer;font-family:var(--font);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:var(--tabbar-h);position:relative
+  }
+  nav button .ico{font-size:19px;line-height:1;filter:grayscale(.35);opacity:.8}
+  nav button.on{color:var(--teal)}
+  nav button.on .ico{filter:none;opacity:1;transform:translateY(-1px)}
+  nav button.on::after{content:"";position:absolute;top:0;left:26%;right:26%;height:2.5px;border-radius:0 0 3px 3px;background:var(--teal)}
+  /* ---- cards & tiles ---- */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+  .tile{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:var(--r);padding:var(--s4);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .tile .lb{font-size:11px;color:var(--ink-3);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s2)}
+  .tile .v{font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1}
+  .tile .d{font-size:12px;margin-top:var(--s2);font-weight:600}
+  .up{color:var(--green)} .down{color:var(--coral)} .flat{color:var(--ink-3)}
+  .sparkbox{margin-top:var(--s3);height:30px}
+  .sparkbox svg{display:block;width:100%;height:30px}
+  .card{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:var(--r);padding:var(--s4);margin-bottom:var(--s3);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .card.tap{cursor:pointer;transition:background .12s}
+  .card.tap:active{background:var(--bg-2)}
+  .card h3{font-size:14.5px;font-weight:600;margin-bottom:2px;letter-spacing:-.01em}
+  .rowline{display:flex;align-items:center;gap:var(--s2)}
+  .rowline .grow{flex:1;min-width:0}
+  .sub{font-size:13px;color:var(--ink-2);line-height:1.5}
+  .tiny{font-size:11px;color:var(--ink-3)}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";letter-spacing:-.02em;font-weight:700}
+  .sec{margin:var(--s5) 0 var(--s3);display:flex;align-items:baseline;gap:var(--s2)}
+  .sec:first-child{margin-top:var(--s1)}
+  .sec h2{font-size:16px;font-weight:700;letter-spacing:-.02em}
+  .sec .hint{font-size:11.5px;color:var(--ink-3);margin-left:auto}
+  .chart-note{font-size:11.5px;color:var(--ink-3);margin:-4px 0 var(--s3);line-height:1.45}
+  /* ---- chips & badges ---- */
+  .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+  .chip.teal{background:rgba(47,212,194,.14);color:var(--teal)}
+  .chip.sand{background:rgba(232,207,159,.14);color:var(--sand)}
+  .chip.coral{background:rgba(255,111,97,.16);color:var(--coral)}
+  .chip.green{background:rgba(61,220,151,.14);color:var(--green)}
+  .chip.amber{background:rgba(255,196,102,.15);color:var(--amber)}
+  .chip.grey{background:rgba(138,151,181,.15);color:var(--ink-2)}
+  .bdg{display:inline-flex;align-items:center;border-radius:6px;padding:2px 6px;font-size:10px;font-weight:800;letter-spacing:.03em}
+  .b-wa{background:rgba(37,211,102,.15);color:var(--wa)}
+  .b-ln{background:rgba(6,199,85,.15);color:var(--ln)}
+  .b-wc{background:rgba(9,184,62,.15);color:var(--wc)}
+  .b-sm{background:rgba(138,151,181,.18);color:var(--sm)}
+  .b-lang{background:rgba(232,207,159,.13);color:var(--sand)}
+  .score{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+  .score.A{background:rgba(61,220,151,.16);color:var(--green)}
+  .score.B{background:rgba(255,196,102,.16);color:var(--amber)}
+  .score.C{background:rgba(138,151,181,.16);color:var(--ink-2)}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .dot.g{background:var(--green)} .dot.a{background:var(--amber)} .dot.r{background:var(--coral)}
+  /* ---- buttons ---- */
+  .btn{border:none;border-radius:11px;padding:11px 16px;font-size:13.5px;font-weight:700;cursor:pointer;min-height:42px}
+  .btn.primary{background:var(--teal);color:#04211d}
+  .btn.primary:active{background:var(--teal-deep)}
+  .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink-2)}
+  .btn.danger{background:none;border:1px solid rgba(255,111,97,.4);color:var(--coral)}
+  .btn.small{padding:8px 13px;min-height:36px;font-size:12.5px;border-radius:9px}
+  .btn.done{background:rgba(61,220,151,.15);color:var(--green);pointer-events:none}
+  .btnrow{display:flex;gap:8px;margin-top:11px}
+  .btnrow .btn{flex:1}
+  /* ---- viz ---- */
+  .chart{margin:var(--s3) 0 var(--s1)}
+  .chart svg{display:block;width:100%;height:auto}
+  .chart text{font-family:var(--font)}
+  .legend{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s3);margin-top:var(--s3)}
+  .legend .key{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+  .legend .key b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .key i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
+  .donut-wrap{display:flex;align-items:center;gap:var(--s4)}
+  .donut-wrap svg{flex:none}
+  .donut-legend{flex:1;display:flex;flex-direction:column;gap:7px}
+  .donut-legend .key{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2)}
+  .donut-legend .key .pc{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+  .funnel-row{display:flex;align-items:center;gap:var(--s3);margin-bottom:6px}
+  .funnel-row .fl{width:96px;font-size:12px;color:var(--ink-2);flex:none;line-height:1.3}
+  .funnel-row .ftrack{flex:1;height:22px;background:var(--bg-2);border-radius:7px;overflow:hidden}
+  .funnel-row .fbar{height:100%;border-radius:7px;display:flex;align-items:center;justify-content:flex-end;padding-right:7px;min-width:34px}
+  .funnel-row .fbar b{font-size:11.5px;color:#04211d;font-variant-numeric:tabular-nums}
+  .funnel-conv{display:flex;align-items:center;gap:var(--s3);margin:1px 0 5px}
+  .funnel-conv .fl{width:96px;flex:none}
+  .funnel-conv span{font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .meter{height:8px;border-radius:99px;background:var(--bg-2);overflow:hidden;margin-top:var(--s2)}
+  .meter i{display:block;height:100%;border-radius:99px}
+  /* ---- transcript ---- */
+  .msg{max-width:86%;border-radius:14px;padding:10px 13px;font-size:13.5px;line-height:1.5;margin-bottom:var(--s2)}
+  .msg.user{background:var(--bg-2);border:1px solid var(--line)}
+  .msg.ai{background:rgba(47,212,194,.1);border:1px solid rgba(47,212,194,.25);margin-left:auto}
+  .msg .who{font-size:10px;font-weight:800;color:var(--ink-3);margin-bottom:3px;letter-spacing:.06em}
+  .toolcall{font-size:11px;color:var(--sand);background:rgba(232,207,159,.08);border:1px dashed rgba(232,207,159,.3);border-radius:9px;padding:6px 10px;margin:8px auto 8px;width:fit-content}
+  /* ---- sheet ---- */
+  #ovl{position:absolute;inset:0;background:rgba(3,6,14,.6);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+  #ovl.open{opacity:1;pointer-events:auto}
+  #sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:50;max-height:88%;background:var(--bg-1);
+    border-radius:22px 22px 0 0;border:1px solid var(--line);border-bottom:none;
+    transform:translateY(105%);transition:transform .25s cubic-bezier(.3,.9,.3,1);
+    display:flex;flex-direction:column;
+  }
+  #sheet.open{transform:translateY(0)}
+  #sheet .grab{width:44px;height:4px;border-radius:99px;background:var(--line);margin:10px auto 4px;flex:none}
+  #sheetBody{overflow-y:auto;padding:10px 18px calc(24px + env(safe-area-inset-bottom))}
+  #sheetBody h2{font-size:18px;margin:6px 0 2px}
+  /* ---- role sheet rows ---- */
+  .rolerow{display:flex;align-items:center;gap:12px;padding:13px 6px;border-bottom:1px solid var(--line);cursor:pointer}
+  .rolerow:last-child{border-bottom:none}
+  .rolerow .ico{font-size:22px;width:34px;text-align:center}
+  .rolerow.on h3{color:var(--teal)}
+  .rolerow .app{margin-left:auto}
+  /* ---- misc ---- */
+  .empty{padding:26px 14px;text-align:center;color:var(--ink-3);font-size:13px;line-height:1.5}
+  .divider{height:1px;background:var(--line);margin:12px 0}
+  .kvrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;gap:12px}
+  .kvrow:last-child{border-bottom:none}
+  .kvrow .k{color:var(--ink-2)}
+  .kvrow .v{font-weight:600;text-align:right}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .stagebar{display:flex;gap:4px;margin-top:10px}
+  .stagebar i{flex:1;height:6px;border-radius:99px;background:var(--bg-2)}
+  .stagebar i.done{background:var(--teal)}
+  .checkrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .checkrow:last-child{border-bottom:none}
+  .checkrow .t{flex:1;min-width:0}
+  .gradechips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .gradechips .chip{cursor:pointer;padding:8px 13px;font-size:12.5px;border:1px solid transparent}
+  .gradechips .chip.sel{border-color:currentColor}
+  .fade-enter{animation:fadeup .22s ease}
+  @keyframes fadeup{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .toast{
+    position:absolute;bottom:calc(var(--tabbar-h) + 18px);left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--bg-2);border:1px solid var(--line);color:var(--ink);padding:10px 18px;border-radius:999px;
+    font-size:13px;font-weight:600;opacity:0;transition:all .25s;z-index:60;white-space:nowrap
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="phone">
+  <header>
+    <div class="logo">NU<em>M</em></div>
+    <button id="roleBtn" onclick="openRoleSheet()"><span id="roleName">Operator</span><span class="car">▼</span></button>
+    <div class="hdr-spacer"></div>
+    <button id="langBtn" onclick="toggleLang()"><b id="langNow">EN</b>·<span id="langAlt">TH</span></button>
+    <div class="livedot" title="realtime connected"></div>
+  </header>
+  <main id="main"></main>
+  <nav id="tabbar"></nav>
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"><div class="grab"></div><div id="sheetBody"></div></div>
+  <div id="toast" class="toast"></div>
+</div>
+<script>
+"use strict";
+/* ================= i18n ================= */
+const I18N = {
+  en: {
+    roles:{master:"Master",operator:"Operator",executive:"Executive",specialist:"Lead Specialist",merchant:"Merchant",quality:"AI Quality",admin:"Lumi Admin"},
+    roleSub:{master:"Dre — the whole circuit, all controls",operator:"Partner ops — daily driver",executive:"Pilot scorecard & trends",specialist:"My leads, my SLA",merchant:"Kan Eang @ Pier",quality:"Model tuning & review",admin:"All tenants — Lumi only"},
+    switchRole:"Switch role", partnerApp:"Partner app", merchantApp:"Merchant app", lumiApp:"Lumi internal",
+    asof:"Live · updated just now",
+    tabs:{today:"Today",leads:"Leads",channels:"Channels",merchants:"Merchants",more:"More",
+      scorecard:"Scorecard",revenue:"Revenue",pipeline:"Pipeline",health:"Health",digest:"Digest",
+      hot:"Hot",queue:"My Queue",waiting:"Waiting",closed:"Closed",
+      week:"This Week",bookings:"Bookings",listing:"Listing",reviews:"Reviews",asks:"Asks",
+      grade:"Grade",flags:"Flags",accuracy:"Accuracy",prompts:"Prompts",
+      tenants:"Tenants",platform:"Platform",costs:"Costs",pipe:"Pipeline",contracts:"Contracts",
+      flow:"Flow",whales:"Whales",supply:"Supply",traffic:"Traffic",ops:"Ops"},
+    kpi:{active:"Active now",scans:"QR scans today",activation:"Scan → chat",depth:"Msgs / convo",d7:"D7 return",whales:"Whale leads (7d)"},
+    liveStream:"Live conversations", tapView:"tap to view",
+    whaleQueue:"Whale-lead queue", slaHint:"SLA: green <4h · amber <24h · red breached",
+    claim:"Claim", view:"View", handled:"Mark handled", nudge:"Nudge", reply:"Reply", accept:"Accept", decline:"Decline",
+    channelHealth:"Channel health", funnel:"Funnel — 7 days", langShare:"Language share — 7d",
+    merchantPerf:"Merchant performance", trust:"Trust & compliance",
+    consents:"consent notices shown", deletes:"delete requests honored", scrub:"PII scrubber hits",
+    stale:"stale", aging:"aging", fresh:"fresh",
+    gate:"Decision gate — Week 7", weeksLeft:"weeks left", target:"target",
+    revTitle:"Revenue — 4 weeks", revSplit:"Split", lumiShare:"Lumi", partnerShare:"Partner",
+    pipeTitle:"Whale pipeline value", forecast:"Forecast close (30d)",
+    costUser:"Cost / active user", nps:"NPS", d7ret:"D7 return", actv:"Activation",
+    commit:"Open commitments", risks:"Risks",
+    digestTitle:"Monday digest preview", digestSub:"Ships to your inbox Mon 08:00",
+    hotTitle:"Hot — act within SLA", queueTitle:"All my open leads", waitTitle:"Awaiting customer reply", closedTitle:"Closed this month",
+    commission:"commission", scoreboard:"My scoreboard",
+    weekTitle:"This week at", bookingsTitle:"Booking requests", listingTitle:"My listing — as NUM tells guests",
+    reviewsTitle:"Latest reviews", asksTitle:"What guests asked for",
+    askHint:"Anonymized demand routed by NUM — use it to tune your offer",
+    photos:"Photos", hours:"Hours", promo:"Promotion", desc:"Description", edit:"Edit",
+    freshness:"Content freshness", refreshNudge:"Photos are 21 days old — fresh photos get you recommended more.",
+    gradeTitle:"Grading queue", gradeSub:"Sampled conversations — grade intent & reply",
+    intentRight:"Intent correct?", replyGood:"Reply quality", skip:"Skip", submitGrade:"Submit & next",
+    flagsTitle:"Hallucination flags", confirm:"Confirm", dismiss:"Dismiss",
+    accTitle:"Intent accuracy by language", promptsTitle:"Prompt versions",
+    tenantsTitle:"All tenants", platTitle:"Platform health", costsTitle:"Cost ledger — MTD",
+    pipeTitle2:"Tenant onboarding", contractsTitle:"Contract calendar",
+    margin:"margin", mau:"MAU", mtd:"MTD rev",
+    emptyHot:"No hot leads right now — new A-score leads land here within seconds of NUM qualifying them.",
+    lead:"Lead", budget:"Budget", timeline:"Timeline", partySize:"Party", langPref:"Language",
+    memory:"What NUM knows", convo:"Conversation excerpt", statusPipe:"Status", nextTouch:"Suggested next touch",
+    markContacted:"Mark contacted", tapCard:"Tap a card for detail",
+    accepted:"Booking accepted ✓", declined:"Booking declined", claimed:"Lead claimed — it's yours", nudged:"Refresh nudge sent",
+    handledOk:"Marked handled", graded:"Grade saved", flagOk:"Flag confirmed", flagNo:"Flag dismissed", replied:"Reply sent",
+    guests:"guests", tonight:"tonight", value:"est. value",
+    funnelNote:"QR scan → whale-qualified, last 7 days. ↓ = conversion from the stage above; end-to-end",
+    langNote:"Share of conversations by detected language, last 7 days",
+    chatsLbl:"chats · 7d", revNote:"Weekly revenue in ฿ thousands, stacked by stream. 4-week total",
+    costNote:"LLM + channel cost per weekly active user — falling is winning; dashed line is the pilot budget",
+    /* master */
+    flowNote:"Today's circuit, live: traffic → conversations → AI actions → outcomes → money. Tap any alert elsewhere to act.",
+    revToday:"Revenue today", gmvToday:"GMV today", costToday:"AI cost today", marginToday:"Gross margin",
+    stageScans:"QR scans", stageChats:"New chats", stageEngaged:"Engaged (3+ msgs)",
+    aiActions:"AI actions today", actSearch:"Vendor searches", actBook:"Bookings routed", actLead:"Whale leads", actEsc:"Escalations",
+    outcomes:"Outcomes", bookingsConf:"Bookings confirmed", pipeAdded:"Whale pipeline added",
+    supplyPulse:"Supply pulse", vendorsLive:"Vendors live to AI", pendingApr:"Pending approval", staleWarn:"Stale listings",
+    whaleAlert:"SLA BREACH — act now", assign:"Assign", assignedTo:"Assigned",
+    pipelineByStage:"Pipeline by stage", forecast30:"Forecast close · 30d", closedMTD:"Closed this month",
+    pendingTitle:"Approval queue — goes live to the AI when you approve", approve:"Approve", reject:"Reject",
+    liveToAI:"✓ Live to the AI", rejectedT:"Rejected — feedback sent",
+    coverage:"Supply coverage vs demand", covNote:"Can the AI actually serve what users ask for? Bars = live vendors; chip = user demand",
+    dHigh:"high demand", dMed:"medium", dLow:"low",
+    okChip:"OK", lowChip:"THIN", gapChip:"GAP",
+    staleTitle:"Needs refresh", topPerf:"Top performer this week",
+    chMix:"Channel mix — 7d", srcTitle:"Acquisition sources — 7d", srcNote:"Every car and hotel QR, ranked. Conversion = scan → chat",
+    best:"BEST", worst:"CHECK", placement:"2 scans in 7d — check screen placement / QR visibility",
+    sysHealth:"System health", channelCtl:"Channel controls", pause:"Pause", resume:"Resume", pausedChip:"PAUSED",
+    promptLive:"Prompt live", quickActions:"Quick actions",
+    sendDigest:"Send digest now", exportCsv:"Export week (CSV)", pingKeep:"Ping keep-alive",
+    digestSent:"Digest sent to partner + you", exported:"Week exported", pinged:"Keep-alive OK · DB awake",
+    chPaused:"Channel paused — inbound queues, users get retry note", chResumed:"Channel live again",
+    leadAssigned:"Assigned — Slack ping sent",
+    langNames:{th:"Thai",zh:"Chinese",ru:"Russian",en:"English",ko:"Korean",ja:"Japanese",de:"German",fr:"French"}
+  },
+  th: {
+    roles:{master:"มาสเตอร์",operator:"ฝ่ายปฏิบัติการ",executive:"ผู้บริหาร",specialist:"ผู้เชี่ยวชาญลีด",merchant:"ร้านค้า",quality:"คุณภาพ AI",admin:"Lumi แอดมิน"},
+    roleSub:{master:"Dre — ทั้งระบบ ทุกการควบคุม",operator:"งานประจำวันของพาร์ทเนอร์",executive:"สกอร์การ์ดและแนวโน้ม",specialist:"ลีดของฉัน SLA ของฉัน",merchant:"กันเอง แอท เพียร์",quality:"ปรับแต่งและตรวจสอบโมเดล",admin:"ทุก tenant — เฉพาะ Lumi"},
+    switchRole:"สลับบทบาท", partnerApp:"แอปพาร์ทเนอร์", merchantApp:"แอปร้านค้า", lumiApp:"ภายใน Lumi",
+    asof:"สด · อัปเดตเมื่อสักครู่",
+    tabs:{today:"วันนี้",leads:"ลีด",channels:"ช่องทาง",merchants:"ร้านค้า",more:"เพิ่มเติม",
+      scorecard:"สกอร์การ์ด",revenue:"รายได้",pipeline:"ไปป์ไลน์",health:"สุขภาพ",digest:"สรุป",
+      hot:"ด่วน",queue:"คิวของฉัน",waiting:"รอตอบ",closed:"ปิดแล้ว",
+      week:"สัปดาห์นี้",bookings:"การจอง",listing:"ร้านของฉัน",reviews:"รีวิว",asks:"ความต้องการ",
+      grade:"ให้คะแนน",flags:"ธงเตือน",accuracy:"ความแม่นยำ",prompts:"พรอมป์ต",
+      tenants:"Tenants",platform:"แพลตฟอร์ม",costs:"ต้นทุน",pipe:"ไปป์ไลน์",contracts:"สัญญา",
+      flow:"โฟลว์",whales:"ลีดใหญ่",supply:"ซัพพลาย",traffic:"ทราฟฟิก",ops:"ควบคุม"},
+    kpi:{active:"ออนไลน์ตอนนี้",scans:"สแกน QR วันนี้",activation:"สแกน → แชท",depth:"ข้อความ/บทสนทนา",d7:"กลับมาใน 7 วัน",whales:"ลีดใหญ่ (7 วัน)"},
+    liveStream:"บทสนทนาสด", tapView:"แตะเพื่อดู",
+    whaleQueue:"คิวลีดมูลค่าสูง", slaHint:"SLA: เขียว <4 ชม. · ส้ม <24 ชม. · แดง เกินกำหนด",
+    claim:"รับลีด", view:"ดู", handled:"จัดการแล้ว", nudge:"แจ้งเตือน", reply:"ตอบ", accept:"รับ", decline:"ปฏิเสธ",
+    channelHealth:"สุขภาพช่องทาง", funnel:"ฟันเนล — 7 วัน", langShare:"สัดส่วนภาษา — 7 วัน",
+    merchantPerf:"ผลงานร้านค้า", trust:"ความไว้วางใจและการปฏิบัติตาม",
+    consents:"แสดงประกาศความยินยอม", deletes:"คำขอลบข้อมูลที่ดำเนินการ", scrub:"ตรวจพบข้อมูลส่วนตัว",
+    stale:"เก่า", aging:"เริ่มเก่า", fresh:"สดใหม่",
+    gate:"เกตตัดสินใจ — สัปดาห์ที่ 7", weeksLeft:"สัปดาห์ที่เหลือ", target:"เป้าหมาย",
+    revTitle:"รายได้ — 4 สัปดาห์", revSplit:"แบ่งส่วน", lumiShare:"Lumi", partnerShare:"พาร์ทเนอร์",
+    pipeTitle:"มูลค่าไปป์ไลน์ลีดใหญ่", forecast:"คาดการณ์ปิด (30 วัน)",
+    costUser:"ต้นทุน/ผู้ใช้ที่ใช้งาน", nps:"NPS", d7ret:"กลับมาใน 7 วัน", actv:"อัตราเริ่มใช้",
+    commit:"สิ่งที่ค้างส่งมอบ", risks:"ความเสี่ยง",
+    digestTitle:"ตัวอย่างสรุปวันจันทร์", digestSub:"ส่งเข้าอีเมลทุกจันทร์ 08:00",
+    hotTitle:"ด่วน — ทำภายใน SLA", queueTitle:"ลีดที่เปิดอยู่ของฉัน", waitTitle:"รอลูกค้าตอบ", closedTitle:"ปิดเดือนนี้",
+    commission:"ค่าคอมมิชชัน", scoreboard:"สกอร์ของฉัน",
+    weekTitle:"สัปดาห์นี้ที่", bookingsTitle:"คำขอจอง", listingTitle:"ร้านของฉัน — ตามที่ NUM บอกลูกค้า",
+    reviewsTitle:"รีวิวล่าสุด", asksTitle:"ลูกค้าถามหาอะไร",
+    askHint:"ความต้องการ (ไม่ระบุตัวตน) ที่ NUM ส่งมา — ใช้ปรับข้อเสนอของคุณ",
+    photos:"รูปภาพ", hours:"เวลาเปิด", promo:"โปรโมชัน", desc:"คำอธิบาย", edit:"แก้ไข",
+    freshness:"ความสดใหม่ของข้อมูล", refreshNudge:"รูปภาพอายุ 21 วันแล้ว — รูปใหม่ช่วยให้ถูกแนะนำบ่อยขึ้น",
+    gradeTitle:"คิวให้คะแนน", gradeSub:"บทสนทนาสุ่มตัวอย่าง — ให้คะแนน intent และคำตอบ",
+    intentRight:"Intent ถูกต้อง?", replyGood:"คุณภาพคำตอบ", skip:"ข้าม", submitGrade:"บันทึกและถัดไป",
+    flagsTitle:"ธงเตือนการแต่งข้อมูล", confirm:"ยืนยัน", dismiss:"ยกเลิก",
+    accTitle:"ความแม่นยำ intent ตามภาษา", promptsTitle:"เวอร์ชันพรอมป์ต",
+    tenantsTitle:"Tenant ทั้งหมด", platTitle:"สุขภาพแพลตฟอร์ม", costsTitle:"บัญชีต้นทุน — เดือนนี้",
+    pipeTitle2:"การรับ tenant ใหม่", contractsTitle:"ปฏิทินสัญญา",
+    margin:"มาร์จิ้น", mau:"MAU", mtd:"รายได้เดือนนี้",
+    emptyHot:"ยังไม่มีลีดด่วนตอนนี้ — ลีดเกรด A จะเด้งมาที่นี่ทันทีที่ NUM คัดกรองเสร็จ",
+    lead:"ลีด", budget:"งบประมาณ", timeline:"กรอบเวลา", partySize:"จำนวนคน", langPref:"ภาษา",
+    memory:"สิ่งที่ NUM รู้", convo:"ข้อความที่เกี่ยวข้อง", statusPipe:"สถานะ", nextTouch:"ขั้นต่อไปที่แนะนำ",
+    markContacted:"บันทึกว่าติดต่อแล้ว", tapCard:"แตะการ์ดเพื่อดูรายละเอียด",
+    accepted:"รับการจองแล้ว ✓", declined:"ปฏิเสธการจองแล้ว", claimed:"รับลีดแล้ว — เป็นของคุณ", nudged:"ส่งการแจ้งเตือนแล้ว",
+    handledOk:"บันทึกว่าจัดการแล้ว", graded:"บันทึกคะแนนแล้ว", flagOk:"ยืนยันธงแล้ว", flagNo:"ยกเลิกธงแล้ว", replied:"ส่งคำตอบแล้ว",
+    guests:"ท่าน", tonight:"คืนนี้", value:"มูลค่าโดยประมาณ",
+    funnelNote:"สแกน QR → ลีดใหญ่ผ่านคุณสมบัติ ใน 7 วัน · ↓ = อัตราแปลงจากขั้นก่อนหน้า · รวมทั้งหมด",
+    langNote:"สัดส่วนบทสนทนาตามภาษาที่ตรวจพบ ใน 7 วัน",
+    chatsLbl:"แชท · 7 วัน", revNote:"รายได้รายสัปดาห์ (พันบาท) แยกตามช่องทางรายได้ · รวม 4 สัปดาห์",
+    costNote:"ต้นทุน LLM + ช่องทาง ต่อผู้ใช้ที่ใช้งานรายสัปดาห์ — ยิ่งลดยิ่งดี · เส้นประคืองบของไพลอต",
+    /* master */
+    flowNote:"วงจรวันนี้แบบสด: ทราฟฟิก → บทสนทนา → การทำงานของ AI → ผลลัพธ์ → รายได้",
+    revToday:"รายได้วันนี้", gmvToday:"GMV วันนี้", costToday:"ต้นทุน AI วันนี้", marginToday:"กำไรขั้นต้น",
+    stageScans:"สแกน QR", stageChats:"แชทใหม่", stageEngaged:"คุยต่อเนื่อง (3+ ข้อความ)",
+    aiActions:"การทำงานของ AI วันนี้", actSearch:"ค้นหาร้านค้า", actBook:"ส่งการจอง", actLead:"ลีดใหญ่", actEsc:"ส่งต่อเจ้าหน้าที่",
+    outcomes:"ผลลัพธ์", bookingsConf:"การจองยืนยันแล้ว", pipeAdded:"มูลค่าลีดใหญ่เพิ่ม",
+    supplyPulse:"ชีพจรซัพพลาย", vendorsLive:"ร้านค้าที่ AI ใช้ได้", pendingApr:"รออนุมัติ", staleWarn:"ข้อมูลเก่า",
+    whaleAlert:"เกิน SLA — ต้องจัดการทันที", assign:"มอบหมาย", assignedTo:"มอบหมายแล้ว",
+    pipelineByStage:"ไปป์ไลน์ตามขั้น", forecast30:"คาดการณ์ปิด · 30 วัน", closedMTD:"ปิดเดือนนี้",
+    pendingTitle:"คิวอนุมัติ — อนุมัติแล้วจะเข้าสู่ AI ทันที", approve:"อนุมัติ", reject:"ปฏิเสธ",
+    liveToAI:"✓ เข้าสู่ AI แล้ว", rejectedT:"ปฏิเสธแล้ว — ส่งข้อเสนอแนะ",
+    coverage:"ซัพพลายเทียบกับดีมานด์", covNote:"AI ตอบสนองสิ่งที่ผู้ใช้ถามได้จริงไหม? แถบ = ร้านที่ใช้งานได้ · ชิป = ดีมานด์",
+    dHigh:"ดีมานด์สูง", dMed:"ปานกลาง", dLow:"ต่ำ",
+    okChip:"พอ", lowChip:"น้อย", gapChip:"ขาด",
+    staleTitle:"ต้องอัปเดต", topPerf:"ร้านเด่นสัปดาห์นี้",
+    chMix:"สัดส่วนช่องทาง — 7 วัน", srcTitle:"แหล่งที่มา — 7 วัน", srcNote:"QR ทุกคันทุกโรงแรม เรียงตามผลงาน · Conversion = สแกน → แชท",
+    best:"ดีสุด", worst:"ตรวจสอบ", placement:"สแกนแค่ 2 ครั้งใน 7 วัน — ตรวจตำแหน่งจอ/ความชัดของ QR",
+    sysHealth:"สุขภาพระบบ", channelCtl:"ควบคุมช่องทาง", pause:"หยุด", resume:"เปิด", pausedChip:"หยุดอยู่",
+    promptLive:"พรอมป์ตที่ใช้", quickActions:"คำสั่งด่วน",
+    sendDigest:"ส่งสรุปตอนนี้", exportCsv:"ส่งออกสัปดาห์ (CSV)", pingKeep:"ตรวจ keep-alive",
+    digestSent:"ส่งสรุปให้พาร์ทเนอร์ + คุณแล้ว", exported:"ส่งออกแล้ว", pinged:"Keep-alive ปกติ · DB ทำงาน",
+    chPaused:"หยุดช่องทางแล้ว — ข้อความเข้าคิว ผู้ใช้ได้รับแจ้ง", chResumed:"ช่องทางกลับมาทำงาน",
+    leadAssigned:"มอบหมายแล้ว — ส่ง Slack แจ้งเตือน",
+    langNames:{th:"ไทย",zh:"จีน",ru:"รัสเซีย",en:"อังกฤษ",ko:"เกาหลี",ja:"ญี่ปุ่น",de:"เยอรมัน",fr:"ฝรั่งเศส"}
+  }
+};
+
+/* ================= seed data (mirrors live schema shapes) ================= */
+const DATA = {
+  kpis: [
+    {k:"active", v:"38", d:"+9", dir:"up", spark:[3,5,4,6,7,6,9]},
+    {k:"scans", v:"214", d:"+12%", dir:"up", spark:[8,10,9,12,11,13,14]},
+    {k:"activation", v:"41%", d:"+3pt", dir:"up", spark:[5,5,6,6,7,7,8]},
+    {k:"depth", v:"7.2", d:"−0.4", dir:"down", spark:[9,8,9,8,8,7,7]},
+    {k:"d7", v:"23%", d:"+2pt", dir:"up", spark:[4,4,5,5,5,6,6]},
+    {k:"whales", v:"11", d:"+4", dir:"up", spark:[2,1,3,2,4,5,6]},
+  ],
+  stream: [
+    {h:"#a4f2", ch:"WA", lang:"zh", intent:{t:"WHALE",c:"coral"}, last:"预算大概两千万泰铢,想看普吉镇附近的别墅…", time:"now",
+      convo:[{r:"user",t:"我们想在普吉岛买一套别墅,预算大概2000万泰铢"},{r:"tool",t:"create_lead → real_estate · THB 15–25M · this quarter"},{r:"ai",t:"好的!我已经把您的需求转给我们的置业专家,24小时内会联系您。想先看看普吉镇附近的几个项目吗?"}]},
+    {h:"#7c19", ch:"LN", lang:"th", intent:{t:"BOOKING",c:"teal"}, last:"ขอโต๊ะริมน้ำ 4 คน คืนนี้ประมาณ 1 ทุ่ม", time:"1m",
+      convo:[{r:"user",t:"หาร้านอาหารทะเลแถวฉลองให้หน่อย ขอริมน้ำ"},{r:"tool",t:"search_vendors → restaurant · Chalong → 2 results"},{r:"ai",t:"แนะนำ กันเอง แอท เพียร์ ค่ะ ซีฟู้ดริมน้ำ มีตู้กุ้งเป็นๆ วิวท่าเรือสวยมาก อยากให้จองโต๊ะไหมคะ?"},{r:"user",t:"ขอโต๊ะริมน้ำ 4 คน คืนนี้ประมาณ 1 ทุ่ม"}]},
+    {h:"#e83b", ch:"WA", lang:"ru", intent:{t:"TOURIST",c:"grey"}, last:"Где лучший закат на Пхукете? Мы на Карон", time:"3m",
+      convo:[{r:"user",t:"Где лучший закат на Пхукете? Мы на Кароне"},{r:"ai",t:"С Карона ближе всего — мыс Промтеп, 20 минут на такси. Приезжайте к 18:00, закат около 18:40. Хотите, закажу трансфер?"}]},
+    {h:"#22d0", ch:"WC", lang:"zh", intent:{t:"TOURIST",c:"grey"}, last:"有会说中文的泰式按摩店吗?", time:"6m",
+      convo:[{r:"user",t:"有会说中文的泰式按摩店吗?巴东附近"},{r:"tool",t:"search_vendors → spa · Patong → Baan Thai Spa"},{r:"ai",t:"推荐 Baan Thai Spa,员工会说中文,有情侣房,还可以到酒店接您。需要我帮您预约吗?"}]},
+    {h:"#91af", ch:"SM", lang:"en", intent:{t:"SUPPORT",c:"amber"}, last:"The driver hasn't arrived yet, we booked for 14:00", time:"11m",
+      convo:[{r:"user",t:"The driver hasn't arrived yet, we booked for 14:00"},{r:"tool",t:"escalate_to_human → urgency: high"},{r:"ai",t:"I'm sorry — I've alerted our team right now and someone is calling the driver. You'll hear back within minutes."}]},
+  ],
+  leads: [
+    {id:"L-311", vertical:"real_estate", icon:"🏝", label:"Villa purchase", budget:"THB 15–25M", tl:"This quarter", score:"A", sla:{h:2,cls:"g"}, handle:"#a4f2", lang:"zh", party:"Couple + child", status:1, claimed:false,
+      mem:["Family of 3, child age 6 — school proximity matters","Prefers Phuket Town / Cape Yamu side","Second visit to Phuket; owns property in Shenzhen","Wants rental yield if not living full-time"],
+      next:"Send 3 villa options near BCIS with yield numbers — WeChat, in Chinese, before 18:00 today."},
+    {id:"L-309", vertical:"school", icon:"🎓", label:"International school", budget:"<฿600k/yr", tl:"August intake", score:"A", sla:{h:9,cls:"a"}, handle:"#5b77", lang:"ru", party:"Family, kids 7 & 11", status:2, claimed:true,
+      mem:["Moving from Moscow in July","Two kids: 7 (loves football) and 11","Budget под 600k/год за двоих","Also asked about long-stay visas — cross-sell"],
+      next:"They asked for a campus tour — offer HeadStart + BCIS slots this week."},
+    {id:"L-305", vertical:"relocation", icon:"📦", label:"Long-stay relocation", budget:"฿80k/mo", tl:"Next month", score:"B", sla:{h:26,cls:"r"}, handle:"#c202", lang:"en", party:"Remote couple", status:1, claimed:false,
+      mem:["Both work remote (US hours)","Need fiber + quiet — Rawai or Nai Harn","6-month trial before committing"],
+      next:"SLA breached — call now, apologise, send 2 furnished options in Rawai."},
+    {id:"L-301", vertical:"visa", icon:"🛂", label:"LTR visa help", budget:"—", tl:"Exploring", score:"C", sla:{h:3,cls:"g"}, handle:"#98e1", lang:"en", party:"Solo", status:0, claimed:false,
+      mem:["Asked about LTR eligibility thresholds","Software consultant, income likely qualifies"],
+      next:"Send LTR checklist; qualify income band before handing to agent."},
+  ],
+  channels: [
+    {ch:"WhatsApp", code:"WA", p95:"1.9s", mph:142, ok:true, spark:[6,7,6,8,7,8,8]},
+    {ch:"LINE", code:"LN", p95:"2.1s", mph:98, ok:true, spark:[5,5,6,6,7,6,7]},
+    {ch:"WeChat", code:"WC", p95:"2.8s", mph:61, ok:true, spark:[3,4,4,5,4,5,5]},
+    {ch:"SMS", code:"SM", p95:"1.4s", mph:12, ok:true, spark:[2,2,1,2,2,1,2]},
+  ],
+  funnel: [
+    {s:"Scans", v:1490, c:"var(--teal)"},
+    {s:"Chats", v:612, c:"var(--teal-deep)"},
+    {s:"Engaged 3+", v:441, c:"var(--sand)"},
+    {s:"Booking intent", v:158, c:"var(--amber)"},
+    {s:"Whale-qualified", v:23, c:"var(--coral)"},
+  ],
+  langs: [
+    {l:"zh", pct:34, c:"var(--coral)"},{l:"ru", pct:22, c:"var(--sand)"},{l:"en", pct:21, c:"var(--teal)"},
+    {l:"th", pct:12, c:"var(--green)"},{l:"ko", pct:6, c:"var(--amber)"},{l:"de", pct:5, c:"var(--sm)"},
+  ],
+  merchants: [
+    {name:"Kan Eang @ Pier", cat:"🦞 restaurant", b7:23, fresh:"fresh", days:3},
+    {name:"Baan Thai Spa", cat:"💆 spa", b7:17, fresh:"fresh", days:5},
+    {name:"Phang Nga Sea Cave Tour", cat:"🛶 tour", b7:11, fresh:"aging", days:12},
+    {name:"Andaman Transfers", cat:"🚐 transfer", b7:9, fresh:"fresh", days:2},
+    {name:"Old Town Walking Food Tour", cat:"🍜 tour", b7:4, fresh:"stale", days:23},
+  ],
+  trust: {consents:57, deletes:2, scrub:8},
+  /* executive */
+  gate: {weeksLeft:3, rows:[
+    {k:"QR → chat activation", a:"41%", t:"35%", ok:"g"},
+    {k:"D7 return", a:"23%", t:"25%", ok:"a"},
+    {k:"Whale leads / week", a:"11", t:"8", ok:"g"},
+    {k:"Booking conversion", a:"26%", t:"30%", ok:"a"},
+    {k:"Cost / active user", a:"$0.41", t:"<$0.60", ok:"g"},
+    {k:"Avg NPS", a:"64", t:"55", ok:"g"},
+    {k:"Uptime", a:"99.7%", t:"99.5%", ok:"g"},
+  ]},
+  revenue: {weeks:["W1","W2","W3","W4"], series:[
+    {name:"Bookings", c:"var(--teal)", v:[14,19,24,31]},
+    {name:"Whale fees", c:"var(--coral)", v:[0,45,30,75]},
+    {name:"Featured", c:"var(--sand)", v:[0,0,8,12]},
+  ], lumi:"38%", partner:"62%"},
+  pipeline: [
+    {s:"Open", n:9, v:"฿310k", c:"var(--sm)"},
+    {s:"Qualified", n:7, v:"฿520k", c:"var(--sand)"},
+    {s:"In discussion", n:4, v:"฿640k", c:"var(--amber)"},
+    {s:"Closed won", n:3, v:"฿395k", c:"var(--green)"},
+  ],
+  forecast:"฿480k",
+  execHealth: {cost:[
+    {w:"W1",v:0.58},{w:"W2",v:0.49},{w:"W3",v:0.44},{w:"W4",v:0.41}
+  ], nps:64, d7:"23%", act:"41%"},
+  commits: ["Vendor batch #2 (40 → 60 merchants) — Thai team, Fri","WeChat SA decision — partner, this week","Dashboard v1 read-only — Lumi, wk 6"],
+  risks: ["D7 return 2pt under target — memory nudges land wk 6","Chinese payment rails (WeChat Pay) undecided for phase 2"],
+  digest: {head:"Week 4 — trending to gate", lines:["Revenue ฿118k (+31% w/w) · 3 whale closes","1,490 scans · 41% activation · zh share rising","2 SLA breaches (both recovered) · NPS 64","Action: merchant refresh batch + D7 nudge experiment"]},
+  /* merchant (Kan Eang @ Pier vendor view) */
+  merchantWeek: {bookings:23, revenue:"฿84,200", nps:71, deltaB:"+4", deltaR:"+18%"},
+  bookingQueue: [
+    {id:"B-88", who:"Chinese family", pax:5, when:"Tonight 19:00", note:"Window/water table · child seat", value:"฿4,500", state:"pending"},
+    {id:"B-87", who:"Russian couple", pax:2, when:"Tonight 20:30", note:"Anniversary — quiet corner", value:"฿2,800", state:"pending"},
+    {id:"B-86", who:"Thai group", pax:8, when:"Tomorrow 12:30", note:"Business lunch", value:"฿6,200", state:"confirmed"},
+  ],
+  listing: {desc:"Seafood on the water at Chalong pier — live tanks, sunset pier views, Chinese menu, free pickup from Chalong hotels.",
+    hours:"11:00–22:00 daily", promo:"Free Thai dessert with dinner sets (via NUM)", photoDays:21, fields:["photos","hours","promo","desc"]},
+  reviews: [
+    {who:"W. Zhang", stars:5, txt:"活虾很新鲜,海景漂亮,服务员会中文!", when:"2d"},
+    {who:"Elena K.", stars:4, txt:"Прекрасный закат и лобстер. Ждали столик 15 минут.", when:"3d"},
+    {who:"Tom H.", stars:5, txt:"Best crab curry on the island. NUM booked it all.", when:"5d"},
+  ],
+  asks: [
+    {txt:"“ปูผัดผงกะหรี่ยังมีไหม เผ็ดน้อยได้ไหม” — spice-level asks ×6 this wk", chip:"menu"},
+    {txt:"“Can we come by longtail boat?” — pier access ×3", chip:"access"},
+    {txt:"“有素食吗?” — vegetarian menu asks ×5", chip:"menu"},
+    {txt:"Birthday cake / celebration setup ×4", chip:"occasion"},
+  ],
+  /* AI quality */
+  gradeQueue: [
+    {id:"G-1", lang:"th", ch:"LN", intent:"BOOKING", user:"ขอร้านนวดแถวกะตะ เปิดดึกหน่อย", ai:"แนะนำ Baan Thai Spa สาขากะตะค่ะ เปิดถึง 23:00 มีพนักงานพูดไทย/อังกฤษ อยากให้จองคิวไหมคะ?", note:"vendor is Patong-only — possible location error"},
+    {id:"G-2", lang:"zh", ch:"WC", intent:"WHALE", user:"孩子明年上学,普吉有什么国际学校推荐?", ai:"普吉有几所不错的国际学校,比如BCIS和HeadStart。方便说一下预算范围和孩子年龄吗?我可以请教育顾问给您详细对比。", note:"good qualification behavior"},
+    {id:"G-3", lang:"ru", ch:"WA", intent:"TOURIST", user:"Сколько стоит такси из аэропорта в Патонг?", ai:"Примерно 700–900 бат. Могу заказать проверенного водителя от нашего партнёра — фиксированная цена 800 бат. Заказать?", note:""},
+  ],
+  flags: [
+    {id:"F-12", kind:"Fabricated detail", txt:"Claimed 'Michelin-listed' for Old Town Food Tour — not in vendor metadata", lang:"en", sev:"coral"},
+    {id:"F-11", kind:"Stale price", txt:"Quoted ฿1,800 for sea-cave tour; catalogue says ฿2,200 since Jul 1", lang:"zh", sev:"amber"},
+  ],
+  accuracy: [
+    {lang:"th", pct:96},{lang:"zh", pct:93},{lang:"en", pct:97},{lang:"ru", pct:91},{lang:"ko", pct:88},
+  ],
+  prompts: [
+    {v:"v1.4", when:"Jul 12", by:"Dre", note:"Warmer Thai particles (ค่ะ/ครับ tuning) · stricter no-invent rule", kpi:"NPS +3"},
+    {v:"v1.3", when:"Jul 2", by:"Dre", note:"Whale qualification: always ask budget band + timeline", kpi:"Whale conv +18%"},
+    {v:"v1.2", when:"Jun 24", by:"Dre", note:"Shorter replies on WA (2 paragraphs max)", kpi:"Depth +0.8"},
+  ],
+  /* Lumi admin */
+  tenants: [
+    {name:"Phuket InCar Group", tier:"Pilot", mau:"1.2k", mtd:"฿118k", margin:"41%", ok:"g"},
+    {name:"Bali — prospect", tier:"MOU", mau:"—", mtd:"—", margin:"—", ok:"a"},
+  ],
+  platform: [
+    {k:"Anthropic API", ok:"g", note:"p95 1.7s"},
+    {k:"OpenAI embeddings", ok:"g", note:"queue 0"},
+    {k:"Supabase ap-southeast-1", ok:"g", note:"Pro · 12% conn"},
+    {k:"Railway web + worker", ok:"g", note:"2 services"},
+    {k:"Twilio WA sender", ok:"a", note:"approval in review"},
+    {k:"WeChat SA", ok:"a", note:"partner decision pending"},
+  ],
+  costs: {total:"$488", forecast:"$610", rows:[
+    {k:"Sonnet (replies)", v:"$342", pct:70},
+    {k:"Haiku (routing)", v:"$61", pct:13},
+    {k:"Embeddings", v:"$22", pct:5},
+    {k:"Channels (Twilio/LINE)", v:"$63", pct:12},
+  ]},
+  onboard: [
+    {t:"Bali (local partner intro)", stage:"Prospect", age:"6d", owner:"Dre"},
+    {t:"Phuket InCar Group", stage:"Pilot live", age:"wk 4", owner:"Dre"},
+    {t:"Samui operator (inbound)", stage:"First call", age:"2d", owner:"Dre"},
+  ],
+  contracts: [
+    {t:"Phuket InCar pilot MOU", when:"Gate review — Aug 7", kind:"amber"},
+    {t:"Phuket territory exclusivity", when:"Decision at gate", kind:"grey"},
+    {t:"Anthropic usage tier review", when:"Sep 1", kind:"grey"},
+  ],
+};
+
+/* specialist scoreboard */
+const CLOSED = [
+  {v:"🎓 School placement", amt:"฿45k", when:"Jul 9"},
+  {v:"🏝 Condo rental 12mo", amt:"฿38k", when:"Jul 4"},
+  {v:"🛂 LTR visa referral", amt:"฿12k", when:"Jun 30"},
+];
+
+/* ================= master data ================= */
+const MASTER = {
+  today: {rev:"฿9.2k", gmv:"฿41k", cost:"$18.40", margin:"71%"},
+  flow: [
+    {k:"stageScans", v:214, conv:null},
+    {k:"stageChats", v:89, conv:42},
+    {k:"stageEngaged", v:64, conv:72},
+  ],
+  actions: [
+    {k:"actSearch", v:74, ico:"🔎"},
+    {k:"actBook", v:19, ico:"🗓"},
+    {k:"actLead", v:4, ico:"🐋"},
+    {k:"actEsc", v:2, ico:"🙋"},
+  ],
+  outcomes: {bookings:12, gmv:"฿41k", pipe:"฿180k"},
+  supplyPulse: {live:33, pending:2, stale:4},
+  pending: [
+    {name:"Nai Harn Beach Club", cat:"🏖 activity", by:"Thai team · field visit", note:"Photos ✓ hours ✓ contact ✓ — beachfront day club, RU/EN staff", state:"pending"},
+    {name:"Phuket Elite Realty", cat:"🏝 agent", by:"Partner referral", note:"Whale-adjacent — verify license + commission terms before AI refers buyers", state:"pending"},
+  ],
+  coverage: [
+    {cat:"🍜 Restaurants", n:12, demand:"dHigh", status:"okChip", pct:100},
+    {cat:"💆 Spa & wellness", n:6, demand:"dHigh", status:"okChip", pct:75},
+    {cat:"🛶 Tours & activities", n:8, demand:"dMed", status:"okChip", pct:88},
+    {cat:"🚐 Transfers", n:4, demand:"dHigh", status:"lowChip", pct:44},
+    {cat:"🎓 Schools", n:2, demand:"dMed", status:"lowChip", pct:30},
+    {cat:"🏝 RE / relocation agents", n:3, demand:"dHigh", status:"lowChip", pct:38},
+    {cat:"🏥 Medical / dental", n:1, demand:"dMed", status:"gapChip", pct:12},
+  ],
+  chmix: [
+    {l:"WhatsApp", pct:46, c:"var(--wa)"},
+    {l:"LINE", pct:28, c:"var(--ln)"},
+    {l:"WeChat", pct:18, c:"var(--wc)"},
+    {l:"SMS", pct:8, c:"var(--sm)"},
+  ],
+  sources: [
+    {code:"car_PHK_017", where:"Airport ↔ Patong", scans:34, conv:47, bookings:6, tag:"best"},
+    {code:"hotel_KATA_02", where:"Kata Palm lobby", scans:29, conv:44, bookings:5, tag:null},
+    {code:"car_PHK_003", where:"Airport ↔ Kata/Karon", scans:26, conv:38, bookings:4, tag:null},
+    {code:"car_PHK_011", where:"Patong loop", scans:19, conv:31, bookings:2, tag:null},
+    {code:"hotel_CHLG_01", where:"Chalong pier kiosk", scans:11, conv:27, bookings:1, tag:null},
+    {code:"car_PHK_009", where:"Airport ↔ Rawai", scans:2, conv:0, bookings:0, tag:"worst"},
+  ],
+  channels: [
+    {ch:"WhatsApp", code:"WA", paused:false},
+    {ch:"LINE", code:"LN", paused:false},
+    {ch:"WeChat", code:"WC", paused:false},
+    {ch:"SMS", code:"SM", paused:false},
+  ],
+  sys: [
+    {k:"Claude API", ok:"g", note:"p95 1.7s"},
+    {k:"Supabase", ok:"g", note:"keep-alive ✓"},
+    {k:"Railway web + worker", ok:"g", note:"2 services up"},
+    {k:"WA sender approval", ok:"a", note:"in review · d2"},
+  ],
+  assignees: {real_estate:"K. Somchai (RE)", school:"P. Nok (Edu)", relocation:"M. Jay (Relo)", visa:"K. Somchai (RE)", medical:"Dr. A (Med)", legal:"S. Beam (Legal)"},
+};
+
+/* ================= state + roles ================= */
+const S = { role:"master", tab:"flow", lang:"en", gradeIdx:0, gradeSel:{intent:null,quality:null} };
+const ROLES = {
+  master:    {ico:"👑", app:"lumiApp", tabs:[["flow","🔄"],["whales","🐋"],["supply","🏪"],["traffic","📍"],["ops","🎛"]]},
+  operator:  {ico:"🛠", app:"partnerApp", tabs:[["today","📊"],["leads","🐋"],["channels","📡"],["merchants","🏪"],["more","⋯"]]},
+  executive: {ico:"🎯", app:"partnerApp", tabs:[["scorecard","🎯"],["revenue","💰"],["pipeline","🐋"],["health","💚"],["digest","📬"]]},
+  specialist:{ico:"🤝", app:"partnerApp", tabs:[["hot","🔥"],["queue","📋"],["waiting","⏳"],["closed","🏆"]]},
+  merchant:  {ico:"🏪", app:"merchantApp", tabs:[["week","📈"],["bookings","🗓"],["listing","🖼"],["reviews","⭐"],["asks","💬"]]},
+  quality:   {ico:"🧪", app:"lumiApp", tabs:[["grade","🧪"],["flags","🚩"],["accuracy","🎯"],["prompts","🧠"]]},
+  admin:     {ico:"🛰", app:"lumiApp", tabs:[["tenants","🏢"],["platform","🛰"],["costs","💸"],["pipe","🚀"],["contracts","📜"]]},
+};
+const t = (k)=>{ const parts=k.split("."); let cur=I18N[S.lang]; for(const p of parts){cur=cur?.[p]} return cur ?? k; };
+const $ = (id)=>document.getElementById(id);
+const esc = (s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ================= SVG chart engine (no libs — offline-safe) ================= */
+let _uid = 0;
+function svgSpark(a, color="var(--teal)"){
+  const id = "g"+(++_uid), W=100, H=30, m=Math.max(...a), lo=Math.min(...a);
+  const span = (m-lo)||1;
+  const pts = a.map((v,i)=>[ (i/(a.length-1))*W, 26 - ((v-lo)/span)*20 ]);
+  const line = pts.map(p=>p.map(n=>n.toFixed(1)).join(",")).join(" ");
+  const [lx,ly] = pts[pts.length-1];
+  return `<div class="sparkbox"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${color}" stop-opacity=".28"/><stop offset="1" stop-color="${color}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polygon points="0,${H} ${line} ${W},${H}" fill="url(#${id})"/>
+    <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.6" fill="${color}"/>
+  </svg></div>`;
+}
+const spark = (a)=>svgSpark(a);
+
+function svgDonut(parts, centerTop, centerSub){
+  const R=44, C=2*Math.PI*R, size=118, cx=size/2, cy=size/2;
+  let off=0;
+  const segs = parts.map(p=>{
+    const len = p.pct/100*C;
+    const s = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${p.c}" stroke-width="15"
+      stroke-dasharray="${(len-2).toFixed(1)} ${(C-len+2).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"
+      transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt"/>`;
+    off += len;
+    return s;
+  }).join("");
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    ${segs}
+    <text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="21" font-weight="700" fill="var(--ink)" style="font-variant-numeric:tabular-nums">${centerTop}</text>
+    <text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">${centerSub}</text>
+  </svg>`;
+}
+
+function svgStackedBars(labels, series, unit=""){
+  const W=320, H=158, padL=36, padR=6, padT=16, padB=22;
+  const cw=W-padL-padR, ch=H-padT-padB;
+  const totals = labels.map((_,i)=>series.reduce((s,x)=>s+x.v[i],0));
+  const rawMax = Math.max(...totals);
+  const step = rawMax>100?50:rawMax>40?20:10;
+  const yMax = Math.ceil(rawMax/step)*step || 10;
+  const y = v => padT + ch - (v/yMax)*ch;
+  const bw = Math.min(40, cw/labels.length*0.52);
+  const grid = [0,.5,1].map(f=>{const v=yMax*f;return `
+    <line x1="${padL}" x2="${W-padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line-soft)" stroke-width="1" ${f>0?'stroke-dasharray="3 4"':''}/>
+    <text x="${padL-6}" y="${y(v)+3.5}" text-anchor="end" font-size="9.5" fill="var(--ink-3)" style="font-variant-numeric:tabular-nums">${v}${unit}</text>`;}).join("");
+  const bars = labels.map((lb,i)=>{
+    const xC = padL + cw*(i+0.5)/labels.length;
+    let acc=0;
+    const segs = series.map(s=>{
+      const h=(s.v[i]/yMax)*ch, yy=y(acc+s.v[i]); acc+=s.v[i];
+      return s.v[i]>0?`<rect x="${(xC-bw/2).toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1.5,h).toFixed(1)}" rx="3" fill="${s.c}"/>`:"";
+    }).join("");
+    return `${segs}
+      <text x="${xC}" y="${y(totals[i])-5}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${totals[i]}${unit}</text>
+      <text x="${xC}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${lb}</text>`;
+  }).join("");
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}">${grid}${bars}</svg></div>`;
+}
+
+function svgLineTarget(points, target, opts={}){
+  const W=320, H=140, padL=40, padR=14, padT=18, padB=22;
+  const cw=W-padL-padR, ch=H-padT-padB;
+  const vals=points.map(p=>p.v);
+  const yMax=Math.max(target??0, ...vals)*1.2;
+  const y=v=>padT+ch-(v/yMax)*ch, x=i=>padL+cw*(points.length===1?0.5:i/(points.length-1));
+  const fmt=opts.fmt||(v=>v);
+  const id="lg"+(++_uid);
+  const line=points.map((p,i)=>`${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const tgt = target!=null?`
+    <line x1="${padL}" x2="${W-padR}" y1="${y(target)}" y2="${y(target)}" stroke="var(--coral)" stroke-width="1.3" stroke-dasharray="5 4" opacity=".8"/>
+    <text x="${W-padR}" y="${y(target)-5}" text-anchor="end" font-size="9.5" fill="var(--coral)">${opts.targetLabel||("target "+fmt(target))}</text>`:"";
+  const dots=points.map((p,i)=>`
+    <circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3.4" fill="var(--bg-1)" stroke="var(--teal)" stroke-width="2.2"/>
+    <text x="${x(i).toFixed(1)}" y="${y(p.v)-9}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${fmt(p.v)}</text>
+    <text x="${x(i).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${p.w}</text>`).join("");
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--teal)" stop-opacity=".22"/><stop offset="1" stop-color="var(--teal)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polygon points="${x(0).toFixed(1)},${(padT+ch).toFixed(1)} ${line} ${x(points.length-1).toFixed(1)},${(padT+ch).toFixed(1)}" fill="url(#${id})"/>
+    ${tgt}
+    <polyline points="${line}" fill="none" stroke="var(--teal)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}
+  </svg></div>`;
+}
+
+function funnelViz(stages){
+  const first=stages[0].v;
+  return stages.map((f,i)=>{
+    const wpct=Math.max(10, f.v/first*100);
+    const conv = i>0 ? Math.round(f.v/stages[i-1].v*100) : null;
+    return `${i>0?`<div class="funnel-conv"><span class="fl"></span><span>↓ ${conv}%</span></div>`:""}
+      <div class="funnel-row"><span class="fl">${f.s}</span>
+        <div class="ftrack"><div class="fbar" style="width:${wpct}%;background:${f.c}"><b>${f.v.toLocaleString()}</b></div></div>
+      </div>`;
+  }).join("");
+}
+
+/* ================= tiny components ================= */
+const chB = (c)=>({WA:"b-wa",LN:"b-ln",WC:"b-wc",SM:"b-sm"}[c]||"b-sm");
+const chBadge = (c)=>`<span class="bdg ${chB(c)}">${c}</span>`;
+const langBadge = (l)=>`<span class="bdg b-lang">${l.toUpperCase()}</span>`;
+const intentChip = (i)=>`<span class="chip ${i.c}">${i.t}</span>`;
+const scoreChip = (s)=>`<span class="score ${s}">${s}</span>`;
+const slaChip = (sla)=>{const ico=sla.cls==="g"?"🟢":sla.cls==="a"?"🟠":"🔴";return `<span class="chip ${sla.cls==="g"?"green":sla.cls==="a"?"amber":"coral"}">${ico} ${sla.h}h</span>`};
+const freshChip = (f)=>({fresh:`<span class="chip green">● ${t("fresh")}</span>`,aging:`<span class="chip amber">● ${t("aging")}</span>`,stale:`<span class="chip coral">● ${t("stale")}</span>`}[f]);
+const okDot = (o)=>`<span class="dot ${o}"></span>`;
+const sec = (title,hint)=>`<div class="sec"><h2>${title}</h2>${hint?`<span class="hint">${hint}</span>`:""}</div>`;
+const kv = (k,v)=>`<div class="kvrow"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+
+function toast(msg){ const el=$("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove("show"),1900); }
+function openSheet(html){ $("sheetBody").innerHTML=html; $("sheet").classList.add("open"); $("ovl").classList.add("open"); }
+function closeSheet(){ $("sheet").classList.remove("open"); $("ovl").classList.remove("open"); }
+$("sheet").addEventListener("touchstart",e=>{S._y=e.touches[0].clientY});
+$("sheet").addEventListener("touchmove",e=>{ if(e.touches[0].clientY-S._y>70 && $("sheetBody").scrollTop===0) closeSheet(); });
+
+/* ================= screens: OPERATOR ================= */
+function scrOperatorToday(){
+  const tiles = DATA.kpis.map(x=>`<div class="tile"><div class="lb">${t("kpi."+x.k)}</div><div class="v num">${x.v}</div><div class="d ${x.dir}">${x.dir==="up"?"▲":x.dir==="down"?"▼":"■"} ${x.d}</div>${spark(x.spark)}</div>`).join("");
+  const rows = DATA.stream.map((m,i)=>`
+    <div class="card tap" onclick="openConvo(${i})">
+      <div class="rowline">
+        <span class="chip grey">${m.h}</span>${chBadge(m.ch)}${langBadge(m.lang)}
+        <div class="hdr-spacer"></div>${intentChip(m.intent)}<span class="tiny">${m.time}</span>
+      </div>
+      <div class="sub" style="margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.last)}</div>
+    </div>`).join("");
+  return `<div class="grid2">${tiles}</div>${sec(t("liveStream"),t("tapView"))}${rows}<div class="asof">${t("asof")}</div>`;
+}
+function scrOperatorLeads(){
+  const rows = DATA.leads.map((l,i)=>leadCard(l,i,"op")).join("");
+  return `${sec(t("whaleQueue"),"")}<div class="tiny" style="margin:-6px 0 12px">${t("slaHint")}</div>${rows}`;
+}
+function leadCard(l,i,mode){
+  const btn = mode==="spec"
+    ? (l.claimed?`<button class="btn small done">✓ ${t("claim")}</button>`:`<button class="btn small primary" onclick="event.stopPropagation();claimLead(${i})">${t("claim")}</button>`)
+    : `<button class="btn small ghost" onclick="event.stopPropagation();openLead(${i})">${t("view")}</button>`;
+  return `<div class="card tap" onclick="openLead(${i})">
+    <div class="rowline">
+      <span style="font-size:20px">${l.icon}</span>
+      <div class="grow"><h3>${esc(l.label)}</h3><div class="tiny">${l.handle} · ${langBadge(l.lang)} · <span class="num">${esc(l.budget)}</span></div></div>
+      ${scoreChip(l.score)}${slaChip(l.sla)}
+    </div>
+    <div class="rowline" style="margin-top:10px"><span class="chip sand">${esc(l.tl)}</span><div class="hdr-spacer"></div>${btn}</div>
+  </div>`;
+}
+function scrOperatorChannels(){
+  const rows = DATA.channels.map(c=>`
+    <div class="card"><div class="rowline">
+      ${chBadge(c.code)}<div class="grow"><h3>${c.ch}</h3><div class="tiny">p95 ${c.p95} · ${c.mph} msg/h</div></div>
+      ${okDot(c.ok?"g":"r")}
+    </div>${spark(c.spark)}</div>`).join("");
+  return sec(t("channelHealth"),"")+rows;
+}
+function scrOperatorMerchants(){
+  const rows = DATA.merchants.map((m,i)=>`
+    <div class="card"><div class="rowline">
+      <div class="grow"><h3>${esc(m.name)}</h3><div class="tiny">${m.cat} · <span class="num">${m.b7}</span> bookings 7d · ${m.days}d</div></div>
+      ${freshChip(m.fresh)}
+      ${m.fresh!=="fresh"?`<button class="btn small ghost" onclick="toast(t('nudged'))">${t("nudge")}</button>`:""}
+    </div></div>`).join("");
+  return sec(t("merchantPerf"),"")+rows;
+}
+function scrOperatorMore(){
+  const f=DATA.funnel;
+  const overall=Math.round(f[f.length-1].v/f[0].v*1000)/10;
+  const donutParts=DATA.langs.map(l=>({pct:l.pct,c:l.c}));
+  const legend=DATA.langs.map(l=>`<span class="key"><i style="background:${l.c}"></i>${t("langNames."+l.l)}<span class="pc">${l.pct}%</span></span>`).join("");
+  const tr=DATA.trust;
+  return `${sec(t("funnel"),"")}
+    <div class="chart-note">${t("funnelNote")} · ${overall}%</div>
+    <div class="card">${funnelViz(f)}</div>
+    ${sec(t("langShare"),"")}
+    <div class="chart-note">${t("langNote")}</div>
+    <div class="card"><div class="donut-wrap">${svgDonut(donutParts, DATA.funnel[1].v.toLocaleString(), t("chatsLbl"))}<div class="donut-legend">${legend}</div></div></div>
+    ${sec(t("trust"),"")}<div class="card">
+      ${kv(t("consents"),`<span class="num">${tr.consents}</span>`)}
+      ${kv(t("deletes"),`<span class="num">${tr.deletes}</span> <span class="chip green">100%</span>`)}
+      ${kv(t("scrub"),`<span class="num">${tr.scrub}</span>`)}
+    </div>`;
+}
+
+/* ================= screens: EXECUTIVE ================= */
+function scrExecScorecard(){
+  const rows=DATA.gate.rows.map(r=>`
+    <div class="checkrow">${okDot(r.ok)}<div class="t"><b>${esc(r.k)}</b><div class="tiny">${t("target")} ${esc(r.t)}</div></div><span class="num" style="font-size:17px">${esc(r.a)}</span></div>`).join("");
+  return `${sec(t("gate"),`${DATA.gate.weeksLeft} ${t("weeksLeft")}`)}<div class="card">${rows}</div>`;
+}
+function scrExecRevenue(){
+  const R=DATA.revenue;
+  const totalAll=R.weeks.reduce((s,_,i)=>s+R.series.reduce((a,x)=>a+x.v[i],0),0);
+  return `${sec(t("revTitle"),"")}
+    <div class="chart-note">${t("revNote")} · ฿${totalAll}k</div>
+    <div class="card">${svgStackedBars(R.weeks, R.series, "k")}
+    <div class="legend">${R.series.map(sr=>`<span class="key"><i style="background:${sr.c}"></i>${sr.name}</span>`).join("")}</div>
+    <div class="divider"></div>
+    <div class="rowline"><span class="sub">${t("revSplit")}</span><div class="hdr-spacer"></div>
+      <span class="chip teal">${t("lumiShare")} ${R.lumi}</span><span class="chip sand">${t("partnerShare")} ${R.partner}</span></div>
+  </div>`;
+}
+function scrExecPipeline(){
+  const max=Math.max(...DATA.pipeline.map(p=>p.n));
+  const rows=DATA.pipeline.map(p=>`<div class="card"><div class="rowline">
+      <div class="grow"><h3>${p.s}</h3><div class="tiny"><span class="num">${p.n}</span> leads</div></div>
+      <span class="num" style="font-size:19px">${p.v}</span></div>
+    <div class="meter"><i style="width:${p.n/max*100}%;background:${p.c}"></i></div></div>`).join("");
+  return `${sec(t("pipeTitle"),"")}${rows}
+    <div class="card"><div class="rowline"><div class="grow"><h3>${t("forecast")}</h3></div><span class="num" style="font-size:24px;color:var(--green)">${DATA.forecast}</span></div></div>`;
+}
+function scrExecHealth(){
+  const c=DATA.execHealth;
+  return `<div class="grid2">
+      <div class="tile"><div class="lb">${t("nps")}</div><div class="v num">${c.nps}</div><div class="d up">▲ +6</div></div>
+      <div class="tile"><div class="lb">${t("d7ret")}</div><div class="v num">${c.d7}</div><div class="d up">▲ +2pt</div></div>
+      <div class="tile"><div class="lb">${t("actv")}</div><div class="v num">${c.act}</div><div class="d up">▲ +3pt</div></div>
+      <div class="tile"><div class="lb">${t("costUser")}</div><div class="v num">$0.41</div><div class="d up">▼ −30%</div></div>
+    </div>
+    ${sec(t("costUser"),"4w")}
+    <div class="chart-note">${t("costNote")}</div>
+    <div class="card">${svgLineTarget(c.cost, 0.60, {fmt:v=>"$"+v.toFixed(2), targetLabel:t("target")+" $0.60"})}</div>
+    ${sec(t("commit"),"")}<div class="card">${DATA.commits.map(x=>`<div class="checkrow"><span>☑️</span><div class="t sub">${esc(x)}</div></div>`).join("")}</div>
+    ${sec(t("risks"),"")}<div class="card">${DATA.risks.map(x=>`<div class="checkrow"><span>⚠️</span><div class="t sub">${esc(x)}</div></div>`).join("")}</div>`;
+}
+function scrExecDigest(){
+  const d=DATA.digest;
+  return `${sec(t("digestTitle"),"")}<div class="tiny" style="margin:-6px 0 12px">${t("digestSub")}</div>
+    <div class="card"><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">${esc(d.head)}</h3><div class="divider"></div>
+    ${d.lines.map(l=>`<div class="checkrow"><span>▸</span><div class="t sub">${esc(l)}</div></div>`).join("")}</div>`;
+}
+
+/* ================= screens: SPECIALIST ================= */
+function scrSpecHot(){
+  const hot=DATA.leads.filter(l=>l.score==="A"&&l.sla.cls!=="r"&&!l.claimed);
+  if(!hot.length) return `${sec(t("hotTitle"),"")}<div class="card"><div class="empty">${t("emptyHot")}</div></div>`;
+  return sec(t("hotTitle"),"")+hot.map(l=>leadCard(l,DATA.leads.indexOf(l),"spec")).join("");
+}
+function scrSpecQueue(){ return sec(t("queueTitle"),t("tapCard"))+DATA.leads.map((l,i)=>leadCard(l,i,"spec")).join(""); }
+function scrSpecWaiting(){
+  const w=DATA.leads.filter(l=>l.status===2);
+  return sec(t("waitTitle"),"")+ (w.length? w.map(l=>leadCard(l,DATA.leads.indexOf(l),"spec")).join("") : `<div class="card"><div class="empty">—</div></div>`);
+}
+function scrSpecClosed(){
+  const rows=CLOSED.map(c=>`<div class="card"><div class="rowline"><div class="grow"><h3>${esc(c.v)}</h3><div class="tiny">${c.when}</div></div><span class="num" style="font-size:19px;color:var(--green)">${c.amt}</span></div></div>`).join("");
+  return `${sec(t("closedTitle"),t("scoreboard"))}
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="tile"><div class="lb">${t("closedTitle")}</div><div class="v num">3</div><div class="d up">▲ +1</div></div>
+      <div class="tile"><div class="lb">${t("commission")}</div><div class="v num">฿95k</div><div class="d up">▲ +32%</div></div>
+    </div>${rows}`;
+}
+
+/* ================= screens: MERCHANT ================= */
+function scrMercWeek(){
+  const w=DATA.merchantWeek;
+  return `${sec(t("weekTitle")+" Kan Eang @ Pier","")}
+    <div class="grid2">
+      <div class="tile"><div class="lb">${t("tabs.bookings")}</div><div class="v num">${w.bookings}</div><div class="d up">▲ ${w.deltaB}</div></div>
+      <div class="tile"><div class="lb">฿</div><div class="v num" style="font-size:24px">${w.revenue}</div><div class="d up">▲ ${w.deltaR}</div></div>
+    </div>
+    <div class="card" style="margin-top:10px"><div class="rowline"><div class="grow"><h3>${t("nps")}</h3></div><span class="num" style="font-size:26px;color:var(--green)">${w.nps}</span></div></div>
+    <div class="card" style="border-color:rgba(255,196,102,.4)"><div class="rowline"><span>📸</span><div class="t sub">${t("refreshNudge")}</div></div></div>`;
+}
+function scrMercBookings(){
+  const rows=DATA.bookingQueue.map((b,i)=>{
+    const actions = b.state==="pending"
+      ? `<div class="btnrow"><button class="btn primary" onclick="bookAct(${i},true)">${t("accept")}</button><button class="btn danger" onclick="bookAct(${i},false)">${t("decline")}</button></div>`
+      : `<div class="btnrow"><button class="btn done">✓ ${b.state==="confirmed"?t("accepted"):t("declined")}</button></div>`;
+    return `<div class="card"><div class="rowline">
+        <div class="grow"><h3>${esc(b.who)} · ${b.pax} ${t("guests")}</h3><div class="tiny">${esc(b.when)} · ${t("value")} <span class="num">${b.value}</span></div></div>
+        ${chBadge("WA")}</div>
+      <div class="sub" style="margin-top:7px">💬 ${esc(b.note)}</div>${actions}</div>`;
+  }).join("");
+  return sec(t("bookingsTitle"),"")+rows;
+}
+function scrMercListing(){
+  const L=DATA.listing;
+  const frow=(name,val)=>`<div class="kvrow"><span class="k">${name}</span><span class="v" style="max-width:60%">${esc(val)} <a style="color:var(--teal);font-weight:700;cursor:pointer" onclick="toast('${t("edit")} — v3')">${t("edit")}</a></span></div>`;
+  return `${sec(t("listingTitle"),"")}
+    <div class="card" style="border-color:rgba(47,212,194,.35)"><div class="tiny" style="margin-bottom:6px">NUM →</div>
+      <div class="msg ai" style="max-width:100%;margin-left:0">${esc(L.desc)}</div></div>
+    <div class="card">
+      ${frow(t("photos"),L.photoDays+"d old · 5 photos")}
+      ${frow(t("hours"),L.hours)}
+      ${frow(t("promo"),L.promo)}
+    </div>`;
+}
+function scrMercReviews(){
+  const rows=DATA.reviews.map(r=>`<div class="card"><div class="rowline"><div class="grow"><h3>${esc(r.who)} <span style="color:var(--amber)">${"★".repeat(r.stars)}</span></h3><div class="tiny">${r.when}</div></div>
+    <button class="btn small ghost" onclick="toast(t('replied'))">${t("reply")}</button></div>
+    <div class="sub" style="margin-top:7px">${esc(r.txt)}</div></div>`).join("");
+  return sec(t("reviewsTitle"),"")+rows;
+}
+function scrMercAsks(){
+  const rows=DATA.asks.map(a=>`<div class="card"><div class="rowline"><div class="grow sub">${esc(a.txt)}</div><span class="chip teal">${a.chip}</span></div></div>`).join("");
+  return `${sec(t("asksTitle"),"")}<div class="tiny" style="margin:-6px 0 12px">${t("askHint")}</div>${rows}`;
+}
+
+/* ================= screens: AI QUALITY ================= */
+function scrQualGrade(){
+  const g=DATA.gradeQueue[S.gradeIdx % DATA.gradeQueue.length];
+  const chip=(grp,val,label,cls)=>`<span class="chip ${cls} ${S.gradeSel[grp]===val?"sel":""}" onclick="gradeSel('${grp}','${val}')">${label}</span>`;
+  return `${sec(t("gradeTitle"),`${S.gradeIdx % DATA.gradeQueue.length + 1}/${DATA.gradeQueue.length}`)}
+    <div class="tiny" style="margin:-6px 0 12px">${t("gradeSub")}</div>
+    <div class="card fade-enter">
+      <div class="rowline">${chBadge(g.ch)}${langBadge(g.lang)}<span class="chip grey">${g.intent}</span></div>
+      <div class="divider"></div>
+      <div class="msg user"><div class="who">USER</div>${esc(g.user)}</div>
+      <div class="msg ai"><div class="who">NUM</div>${esc(g.ai)}</div>
+      ${g.note?`<div class="toolcall">⚠ ${esc(g.note)}</div>`:""}
+      <div class="sub" style="margin-top:6px;font-weight:700">${t("intentRight")}</div>
+      <div class="gradechips">${chip("intent","yes","✓","green")}${chip("intent","no","✗","coral")}</div>
+      <div class="sub" style="margin-top:12px;font-weight:700">${t("replyGood")}</div>
+      <div class="gradechips">${chip("quality","good","😊","green")}${chip("quality","ok","😐","amber")}${chip("quality","bad","😖","coral")}</div>
+      <div class="btnrow"><button class="btn ghost" onclick="gradeNext(false)">${t("skip")}</button><button class="btn primary" onclick="gradeNext(true)">${t("submitGrade")}</button></div>
+    </div>`;
+}
+function scrQualFlags(){
+  const rows=DATA.flags.map((f,i)=>`<div class="card"><div class="rowline"><span class="chip ${f.sev}">${esc(f.kind)}</span>${langBadge(f.lang)}<div class="hdr-spacer"></div><span class="tiny">${f.id}</span></div>
+    <div class="sub" style="margin:8px 0 2px">${esc(f.txt)}</div>
+    <div class="btnrow"><button class="btn primary" onclick="flagAct(${i},true)">${t("confirm")}</button><button class="btn ghost" onclick="flagAct(${i},false)">${t("dismiss")}</button></div></div>`).join("");
+  return sec(t("flagsTitle"),"")+ (rows||`<div class="card"><div class="empty">🎉</div></div>`);
+}
+function scrQualAccuracy(){
+  const rows=DATA.accuracy.map(a=>`<div class="card"><div class="rowline"><div class="grow"><h3>${t("langNames."+a.lang)}</h3></div><span class="num" style="font-size:19px">${a.pct}%</span></div>
+    <div class="meter"><i style="width:${a.pct}%;background:${a.pct>=95?"var(--green)":a.pct>=90?"var(--amber)":"var(--coral)"}"></i></div></div>`).join("");
+  return sec(t("accTitle"),"")+rows;
+}
+function scrQualPrompts(){
+  const rows=DATA.prompts.map(p=>`<div class="card"><div class="rowline"><span class="chip teal">${p.v}</span><div class="grow tiny">${p.when} · ${p.by}</div><span class="chip green">${p.kpi}</span></div>
+    <div class="sub" style="margin-top:7px">${esc(p.note)}</div></div>`).join("");
+  return sec(t("promptsTitle"),"")+rows;
+}
+
+/* ================= screens: LUMI ADMIN ================= */
+function scrAdmTenants(){
+  const rows=DATA.tenants.map(x=>`<div class="card"><div class="rowline">${okDot(x.ok)}<div class="grow"><h3>${esc(x.name)}</h3><div class="tiny">${t("mau")} ${x.mau} · ${t("mtd")} ${x.mtd} · ${t("margin")} ${x.margin}</div></div><span class="chip sand">${x.tier}</span></div></div>`).join("");
+  return sec(t("tenantsTitle"),"")+rows;
+}
+function scrAdmPlatform(){
+  const rows=DATA.platform.map(x=>`<div class="checkrow">${okDot(x.ok)}<div class="t"><b>${esc(x.k)}</b></div><span class="tiny">${esc(x.note)}</span></div>`).join("");
+  return `${sec(t("platTitle"),"")}<div class="card">${rows}</div>`;
+}
+function scrAdmCosts(){
+  const c=DATA.costs;
+  const rows=c.rows.map(r=>`<div class="card"><div class="rowline"><div class="grow"><h3>${esc(r.k)}</h3></div><span class="num" style="font-size:17px">${r.v}</span></div><div class="meter"><i style="width:${r.pct}%;background:var(--teal)"></i></div></div>`).join("");
+  return `${sec(t("costsTitle"),"")}
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="tile"><div class="lb">MTD</div><div class="v num">${c.total}</div></div>
+      <div class="tile"><div class="lb">Forecast</div><div class="v num">${c.forecast}</div></div>
+    </div>${rows}`;
+}
+function scrAdmPipe(){
+  const rows=DATA.onboard.map(x=>`<div class="card"><div class="rowline"><div class="grow"><h3>${esc(x.t)}</h3><div class="tiny">${x.age} · ${x.owner}</div></div><span class="chip teal">${x.stage}</span></div></div>`).join("");
+  return sec(t("pipeTitle2"),"")+rows;
+}
+function scrAdmContracts(){
+  const rows=DATA.contracts.map(x=>`<div class="card"><div class="rowline"><div class="grow"><h3>${esc(x.t)}</h3></div><span class="chip ${x.kind}">${esc(x.when)}</span></div></div>`).join("");
+  return sec(t("contractsTitle"),"")+rows;
+}
+
+/* ================= screens: MASTER (Dre) ================= */
+function flowStage(label, value, conv, accent){
+  return `${conv!=null?`<div style="display:flex;justify-content:center;margin:2px 0"><span class="chip grey">↓ ${conv}%</span></div>`:""}
+    <div class="card" style="margin-bottom:6px;${accent?`border-color:${accent}`:""}">
+      <div class="rowline"><div class="grow"><h3>${label}</h3></div><span class="num" style="font-size:24px">${typeof value==="number"?value.toLocaleString():value}</span></div>
+    </div>`;
+}
+function scrMasterFlow(){
+  const T=MASTER.today;
+  const head=`<div class="grid2">
+      <div class="tile" style="border-color:rgba(61,220,151,.4)"><div class="lb">${t("revToday")}</div><div class="v num" style="color:var(--green)">${T.rev}</div></div>
+      <div class="tile"><div class="lb">${t("gmvToday")}</div><div class="v num">${T.gmv}</div></div>
+      <div class="tile"><div class="lb">${t("costToday")}</div><div class="v num">${T.cost}</div></div>
+      <div class="tile"><div class="lb">${t("marginToday")}</div><div class="v num">${T.margin}</div></div>
+    </div>`;
+  const stages = MASTER.flow.map(f=>flowStage(t(f.k), f.v, f.conv)).join("");
+  const acts = `<div style="display:flex;justify-content:center;margin:2px 0"><span class="chip teal">⚙ ${t("aiActions")}</span></div>
+    <div class="grid2" style="margin-bottom:6px">${MASTER.actions.map(a=>`
+      <div class="card" style="margin:0"><div class="rowline"><span>${a.ico}</span><div class="grow sub">${t(a.k)}</div><span class="num" style="font-size:19px">${a.v}</span></div></div>`).join("")}</div>`;
+  const O=MASTER.outcomes;
+  const out = `<div style="display:flex;justify-content:center;margin:2px 0"><span class="chip green">${t("outcomes")}</span></div>
+    <div class="card" style="border-color:rgba(61,220,151,.35);margin-bottom:6px">
+      ${kv(t("bookingsConf"),`<span class="num">${O.bookings}</span> · <span class="num">${O.gmv}</span>`)}
+      ${kv(t("pipeAdded"),`<span class="num" style="color:var(--coral)">+${O.pipe}</span>`)}
+      ${kv(t("revToday"),`<span class="num" style="color:var(--green)">${T.rev}</span>`)}
+    </div>`;
+  const SP=MASTER.supplyPulse;
+  const pulse = `${sec(t("supplyPulse"),"")}<div class="card"><div class="rowline" style="justify-content:space-between">
+      <span class="chip green">● ${t("vendorsLive")} <b>&nbsp;${SP.live}</b></span>
+      <span class="chip amber">${t("pendingApr")} <b>&nbsp;${SP.pending}</b></span>
+      <span class="chip coral">${t("staleWarn")} <b>&nbsp;${SP.stale}</b></span>
+    </div></div>`;
+  return `${head}${sec(t("tabs.flow"),"")}<div class="chart-note">${t("flowNote")}</div>${stages}${acts}${out}${pulse}<div class="asof">${t("asof")}</div>`;
+}
+function scrMasterWhales(){
+  const breach=DATA.leads.filter(l=>l.sla.cls==="r");
+  const alert = breach.map(l=>`<div class="card" style="border-color:var(--coral);background:rgba(255,111,97,.06)">
+      <div class="rowline"><span class="chip coral">🔴 ${t("whaleAlert")}</span></div>
+      <div class="rowline" style="margin-top:9px"><span style="font-size:19px">${l.icon}</span>
+        <div class="grow"><h3>${esc(l.label)}</h3><div class="tiny">${l.handle} · <span class="num">${esc(l.budget)}</span> · ${l.sla.h}h</div></div>
+        ${masterAssignBtn(l)}
+      </div></div>`).join("");
+  const max=Math.max(...DATA.pipeline.map(p=>p.n));
+  const pipe=DATA.pipeline.map(p=>`<div class="rowline" style="margin-bottom:9px">
+      <span class="sub" style="width:96px;flex:none">${p.s}</span>
+      <div class="ftrack" style="flex:1;height:20px"><div class="fbar" style="width:${p.n/max*100}%;background:${p.c}"><b>${p.n}</b></div></div>
+      <span class="num" style="width:56px;text-align:right;font-size:13px">${p.v}</span></div>`).join("");
+  const rows=DATA.leads.map((l,i)=>`<div class="card tap" onclick="openLead(${i})">
+      <div class="rowline"><span style="font-size:20px">${l.icon}</span>
+        <div class="grow"><h3>${esc(l.label)}</h3><div class="tiny">${l.handle} · ${langBadge(l.lang)} · <span class="num">${esc(l.budget)}</span></div></div>
+        ${scoreChip(l.score)}${slaChip(l.sla)}</div>
+      <div class="rowline" style="margin-top:10px"><span class="chip sand">${esc(l.tl)}</span><div class="hdr-spacer"></div>${masterAssignBtn(l,i)}</div>
+    </div>`).join("");
+  const closedTotal=`<div class="grid2" style="margin-bottom:12px">
+      <div class="tile"><div class="lb">${t("forecast30")}</div><div class="v num" style="color:var(--green)">${DATA.forecast}</div></div>
+      <div class="tile"><div class="lb">${t("closedMTD")}</div><div class="v num">฿95k</div></div>
+    </div>`;
+  return `${alert}${closedTotal}${sec(t("pipelineByStage"),"")}<div class="card">${pipe}</div>${sec(t("whaleQueue"),t("tapCard"))}${rows}`;
+}
+function masterAssignBtn(l,i){
+  const idx = i!=null? i : DATA.leads.indexOf(l);
+  return l.assigned
+    ? `<span class="chip green">✓ ${t("assignedTo")}: ${l.assigned}</span>`
+    : `<button class="btn small primary" onclick="event.stopPropagation();assignLead(${idx})">${t("assign")}</button>`;
+}
+function scrMasterSupply(){
+  const pend = MASTER.pending.map((p,i)=>{
+    const acts = p.state==="pending"
+      ? `<div class="btnrow"><button class="btn primary" onclick="vendorAct(${i},true)">${t("approve")}</button><button class="btn danger" onclick="vendorAct(${i},false)">${t("reject")}</button></div>`
+      : `<div class="btnrow"><button class="btn done">${p.state==="approved"?t("liveToAI"):t("rejectedT")}</button></div>`;
+    return `<div class="card"><div class="rowline"><div class="grow"><h3>${esc(p.name)}</h3><div class="tiny">${p.cat} · ${esc(p.by)}</div></div></div>
+      <div class="sub" style="margin-top:7px">${esc(p.note)}</div>${acts}</div>`;
+  }).join("");
+  const cov = MASTER.coverage.map(c=>{
+    const cls=c.status==="okChip"?"green":c.status==="lowChip"?"amber":"coral";
+    const barC=c.status==="okChip"?"var(--green)":c.status==="lowChip"?"var(--amber)":"var(--coral)";
+    return `<div class="card" style="margin-bottom:8px"><div class="rowline">
+        <div class="grow"><h3 style="font-size:13.5px">${c.cat}</h3><div class="tiny"><span class="num">${c.n}</span> ${t("vendorsLive").toLowerCase()} · ${t(c.demand)}</div></div>
+        <span class="chip ${cls}">${t(c.status)}</span></div>
+      <div class="meter"><i style="width:${c.pct}%;background:${barC}"></i></div></div>`;
+  }).join("");
+  const stale = DATA.merchants.filter(m=>m.fresh!=="fresh").map(m=>`
+    <div class="card" style="margin-bottom:8px"><div class="rowline">
+      <div class="grow"><h3 style="font-size:13.5px">${esc(m.name)}</h3><div class="tiny">${m.cat} · ${m.days}d</div></div>
+      ${freshChip(m.fresh)}<button class="btn small ghost" onclick="toast(t('nudged'))">${t("nudge")}</button>
+    </div></div>`).join("");
+  return `${sec(t("pendingTitle"),"")}${pend}
+    ${sec(t("coverage"),"")}<div class="chart-note">${t("covNote")}</div>${cov}
+    ${sec(t("staleTitle"),"")}${stale}
+    ${sec(t("topPerf"),"")}<div class="card" style="border-color:rgba(61,220,151,.35)"><div class="rowline">
+      <div class="grow"><h3>Kan Eang @ Pier</h3><div class="tiny">🦞 restaurant · 23 bookings · ฿84k GMV · NPS 71</div></div><span style="font-size:22px">🏆</span></div></div>`;
+}
+function scrMasterTraffic(){
+  const donutParts=MASTER.chmix.map(c=>({pct:c.pct,c:c.c}));
+  const legend=MASTER.chmix.map(c=>`<span class="key"><i style="background:${c.c}"></i>${c.l}<span class="pc">${c.pct}%</span></span>`).join("");
+  const maxS=Math.max(...MASTER.sources.map(s=>s.scans));
+  const rows=MASTER.sources.map(s=>{
+    const tag=s.tag==="best"?`<span class="chip green">★ ${t("best")}</span>`:s.tag==="worst"?`<span class="chip coral">⚠ ${t("worst")}</span>`:"";
+    return `<div class="card" style="margin-bottom:8px${s.tag==="worst"?";border-color:rgba(255,111,97,.4)":""}">
+      <div class="rowline"><div class="grow"><h3 style="font-size:13.5px">${s.code}</h3><div class="tiny">${esc(s.where)}</div></div>${tag}</div>
+      <div class="rowline" style="margin-top:9px;gap:12px">
+        <span class="tiny">${t("stageScans")} <b class="num" style="color:var(--ink)">${s.scans}</b></span>
+        <span class="tiny">conv <b class="num" style="color:var(--ink)">${s.conv}%</b></span>
+        <span class="tiny">${t("tabs.bookings")} <b class="num" style="color:var(--ink)">${s.bookings}</b></span>
+      </div>
+      <div class="meter"><i style="width:${s.scans/maxS*100}%;background:${s.tag==="worst"?"var(--coral)":"var(--teal)"}"></i></div>
+      ${s.tag==="worst"?`<div class="tiny" style="margin-top:7px;color:var(--coral)">${t("placement")}</div>`:""}
+    </div>`;
+  }).join("");
+  return `${sec(t("chMix"),"")}<div class="card"><div class="donut-wrap">${svgDonut(donutParts,"214",t("stageScans"))}<div class="donut-legend">${legend}</div></div></div>
+    ${sec(t("srcTitle"),"")}<div class="chart-note">${t("srcNote")}</div>${rows}`;
+}
+function scrMasterOps(){
+  const sys=MASTER.sys.map(x=>`<div class="checkrow">${okDot(x.ok)}<div class="t"><b>${esc(x.k)}</b></div><span class="tiny">${esc(x.note)}</span></div>`).join("");
+  const ch=MASTER.channels.map((c,i)=>`<div class="checkrow">${chBadge(c.code)}<div class="t"><b>${c.ch}</b></div>
+      ${c.paused?`<span class="chip coral">${t("pausedChip")}</span>`:""}
+      <button class="btn small ${c.paused?"primary":"ghost"}" onclick="chToggle(${i})">${c.paused?t("resume"):t("pause")}</button>
+    </div>`).join("");
+  const model=`<div class="card">
+      ${kv(t("promptLive"),`<span class="chip teal">v1.4</span> <span class="chip green">NPS +3</span>`)}
+      ${kv("Chat",`<span class="chip grey">claude-sonnet-4-6</span>`)}
+      ${kv("Routing",`<span class="chip grey">claude-haiku-4-5</span>`)}
+      ${kv(t("costToday"),`<span class="num">$18.40</span> / $30`)}
+    </div><div class="meter" style="margin:-6px 2px 14px"><i style="width:61%;background:var(--teal)"></i></div>`;
+  const qa=`<div class="btnrow" style="margin-top:4px"><button class="btn primary" onclick="toast(t('digestSent'))">${t("sendDigest")}</button></div>
+    <div class="btnrow"><button class="btn ghost" onclick="toast(t('exported'))">${t("exportCsv")}</button>
+    <button class="btn ghost" onclick="toast(t('pinged'))">${t("pingKeep")}</button></div>`;
+  return `${sec(t("sysHealth"),"")}<div class="card">${sys}</div>
+    ${sec(t("channelCtl"),"")}<div class="card">${ch}</div>
+    ${sec(t("promptLive"),"")}${model}
+    ${sec(t("quickActions"),"")}${qa}`;
+}
+
+/* ================= master actions ================= */
+function assignLead(i){ const l=DATA.leads[i]; l.assigned = MASTER.assignees[l.vertical] || "Team"; toast(t("leadAssigned")); render(); }
+function vendorAct(i,yes){
+  MASTER.pending[i].state = yes?"approved":"rejected";
+  if(yes) MASTER.supplyPulse.live++;
+  MASTER.supplyPulse.pending=Math.max(0,MASTER.supplyPulse.pending-1);
+  toast(yes?t("liveToAI"):t("rejectedT")); render();
+}
+function chToggle(i){ const c=MASTER.channels[i]; c.paused=!c.paused; toast(c.paused?t("chPaused"):t("chResumed")); render(); }
+
+/* ================= detail sheets ================= */
+function openConvo(i){
+  const m=DATA.stream[i];
+  const msgs=m.convo.map(x=> x.r==="tool" ? `<div class="toolcall">⚙ ${esc(x.t)}</div>`
+    : `<div class="msg ${x.r==="user"?"user":"ai"}"><div class="who">${x.r==="user"?"USER":"NUM"}</div>${esc(x.t)}</div>`).join("");
+  openSheet(`<h2>${m.h}</h2><div class="rowline" style="margin:4px 0 12px">${chBadge(m.ch)}${langBadge(m.lang)}${intentChip(m.intent)}</div>${msgs}`);
+}
+function openLead(i){
+  const l=DATA.leads[i];
+  const stages=["new","contacted","qualified","closing"];
+  const bar=`<div class="stagebar">${stages.map((_,k)=>`<i class="${k<=l.status?"done":""}"></i>`).join("")}</div><div class="tiny" style="margin-top:5px">${t("statusPipe")}: ${stages[l.status]}</div>`;
+  openSheet(`<h2>${l.icon} ${esc(l.label)}</h2>
+    <div class="rowline" style="margin:4px 0 10px">${scoreChip(l.score)}${slaChip(l.sla)}${langBadge(l.lang)}<span class="chip grey">${l.handle}</span></div>
+    ${kv(t("budget"),`<span class="num">${esc(l.budget)}</span>`)}
+    ${kv(t("timeline"),esc(l.tl))}
+    ${kv(t("partySize"),esc(l.party))}
+    ${kv(t("langPref"),t("langNames."+l.lang))}
+    ${bar}
+    <div class="sec"><h2>${t("memory")}</h2></div>
+    ${l.mem.map(m=>`<div class="checkrow"><span>🧠</span><div class="t sub">${esc(m)}</div></div>`).join("")}
+    <div class="sec"><h2>${t("nextTouch")}</h2></div>
+    <div class="card" style="border-color:rgba(47,212,194,.35)"><div class="sub">💡 ${esc(l.next)}</div></div>
+    <div class="btnrow">
+      <button class="btn ghost" onclick="closeSheet()">←</button>
+      <button class="btn primary" onclick="leadContacted(${i})">${t("markContacted")}</button>
+    </div>`);
+}
+function openRoleSheet(){
+  const rows=Object.entries(ROLES).map(([id,r])=>`
+    <div class="rolerow ${S.role===id?"on":""}" onclick="setRole('${id}')">
+      <span class="ico">${r.ico}</span>
+      <div><h3>${t("roles."+id)}</h3><div class="tiny">${t("roleSub."+id)}</div></div>
+      <span class="chip ${r.app==="merchantApp"?"sand":r.app==="lumiApp"?"coral":"teal"} app">${t(r.app)}</span>
+    </div>`).join("");
+  openSheet(`<h2>${t("switchRole")}</h2><div style="margin-top:8px">${rows}</div>`);
+}
+
+/* ================= actions ================= */
+function claimLead(i){ DATA.leads[i].claimed=true; toast(t("claimed")); render(); }
+function leadContacted(i){ DATA.leads[i].status=Math.max(DATA.leads[i].status,1); closeSheet(); toast(t("handledOk")); render(); }
+function bookAct(i,yes){ DATA.bookingQueue[i].state=yes?"confirmed":"declined"; toast(yes?t("accepted"):t("declined")); render(); }
+function gradeSel(grp,val){ S.gradeSel[grp]=val; render(); }
+function gradeNext(save){ if(save) toast(t("graded")); S.gradeIdx++; S.gradeSel={intent:null,quality:null}; render(); }
+function flagAct(i,yes){ DATA.flags.splice(i,1); toast(yes?t("flagOk"):t("flagNo")); render(); }
+function setRole(id){ S.role=id; S.tab=ROLES[id].tabs[0][0]; closeSheet(); render(); }
+function setTab(id){ S.tab=id; render(); $("main").scrollTop=0; }
+function toggleLang(){ S.lang = S.lang==="en" ? "th" : "en"; render(); }
+
+/* ================= router + render ================= */
+const SCREENS = {
+  master:{flow:scrMasterFlow,whales:scrMasterWhales,supply:scrMasterSupply,traffic:scrMasterTraffic,ops:scrMasterOps},
+  operator:{today:scrOperatorToday,leads:scrOperatorLeads,channels:scrOperatorChannels,merchants:scrOperatorMerchants,more:scrOperatorMore},
+  executive:{scorecard:scrExecScorecard,revenue:scrExecRevenue,pipeline:scrExecPipeline,health:scrExecHealth,digest:scrExecDigest},
+  specialist:{hot:scrSpecHot,queue:scrSpecQueue,waiting:scrSpecWaiting,closed:scrSpecClosed},
+  merchant:{week:scrMercWeek,bookings:scrMercBookings,listing:scrMercListing,reviews:scrMercReviews,asks:scrMercAsks},
+  quality:{grade:scrQualGrade,flags:scrQualFlags,accuracy:scrQualAccuracy,prompts:scrQualPrompts},
+  admin:{tenants:scrAdmTenants,platform:scrAdmPlatform,costs:scrAdmCosts,pipe:scrAdmPipe,contracts:scrAdmContracts},
+};
+function render(){
+  $("roleName").textContent = t("roles."+S.role);
+  $("langNow").textContent = S.lang.toUpperCase();
+  $("langAlt").textContent = S.lang==="en" ? "TH" : "EN";
+  $("tabbar").innerHTML = ROLES[S.role].tabs.map(([id,ico])=>
+    `<button class="${S.tab===id?"on":""}" onclick="setTab('${id}')"><span class="ico">${ico}</span>${t("tabs."+id)}</button>`).join("");
+  const fn = SCREENS[S.role][S.tab] || (()=> "");
+  $("main").innerHTML = `<div class="fade-enter">${fn()}</div>`;
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+{
+  "caseStudies": [
+    {
+      "caseStudyId": "cs_lilly_cold_chain",
+      "title": "Case Study 1: Cold Chain Security",
+      "client": "Eli Lilly / HealthyLife Logistics",
+      "industry": "Pharma",
+      "assetName": "Humalog Insulin 100U/mL (10mL Vials)",
+      "primaryProductId": "prod_humalog_100umL_001",
+      "primarySellerIds": ["sellr_lilly_001", "sellr_healthylife_002", "sellr_florida_rx_008"],
+      "primaryLocationIds": [
+        "loc_lilly_indianapolis_001",
+        "loc_healthylife_ocala_dc_002",
+        "loc_breach_geo_004",
+        "loc_floridian_pharmacy_003"
+      ],
+      "linkedRecord": "rec_789xyz123abc",
+      "headlineAlertId": "alrt_breach_001",
+      "challenge": "Insulin is temperature-sensitive and a high-value target for tampering. The client needed to ensure integrity from the Ocala Distribution Center to the pharmacy.",
+      "solution": {
+        "tagType": "Dual-Frequency (UHF Pallet / NFC Vial)",
+        "monitoring": "Real-time location + Environmental Sensors",
+        "criticalEvent": "A security seal breach detected during transit"
+      },
+      "outcome": {
+        "instantFlag": "currentStatus flipped to FLAGGED_SECURITY_BREACH the moment the seal broke.",
+        "aiAnalysis": "Authenticity score dropped to 0.0, preventing the pharmacy from accidentally accepting the stock.",
+        "result": "Compromised product was automatically rejected at the destination dock, protecting patient safety."
+      },
+      "thumbnailHint": "insulin vial + syringe over temperature scale"
+    },
+    {
+      "caseStudyId": "cs_global_ord_drone",
+      "title": "Case Study 2: Complex Assembly & Parts Batching",
+      "client": "Global Ordinance (Defense Contractor)",
+      "industry": "Defense",
+      "assetName": "GO-Eagle Mk II Tactical Drone + Component Batch",
+      "primaryProductId": "prod_go_eagle_drone_007",
+      "componentProductIds": ["prod_go_flight_ctrl_008", "prod_go_battery_009", "prod_go_optical_010"],
+      "primarySellerIds": ["sellr_global_ordinance_003"],
+      "primaryLocationIds": ["loc_global_ord_ocala_005", "loc_global_ord_dock_006", "loc_dover_afb_013"],
+      "linkedRecord": "rec_drone_global_ord_001",
+      "challenge": "How do we ensure every part inside a finished military drone is authentic and traceable before it deploys? Component swapping creates mission-critical failure risk.",
+      "solution": {
+        "tagArchitecture": "Aeroz Parent-Child Aggregation Logic",
+        "level1": "NFC Tags on critical components (Battery, Flight Computer, Rotor)",
+        "level2": "UHF/NFC Master Chip on the Drone Chassis",
+        "level3": "Automated batching — one Master scan verifies presence and authenticity of all 20+ subcomponents"
+      },
+      "scenario": [
+        { "time": "08:00", "step": "Technician installs Flight Controller #FC-X1 and Battery #BATT-99" },
+        { "time": "08:05", "step": "Technician scans Master Chassis Tag; system batches parts to Master Record" },
+        { "time": "08:10", "step": "Completeness check confirms all required parts present and authentic" },
+        { "time": "10:00", "step": "Gate scanner reads Master Chip at the loading dock; departure logged" }
+      ],
+      "outcome": {
+        "completenessScore": 100.0,
+        "isCompliant": true,
+        "result": "Total drone-level traceability and one-scan inspection without opening the crate."
+      },
+      "thumbnailHint": "tactical drone exploded view with NFC tags"
+    },
+    {
+      "caseStudyId": "cs_dod_munitions",
+      "title": "Case Study 3: Mission Critical Logistics",
+      "client": "DoD / Vista Outdoor",
+      "industry": "Defense / Munitions",
+      "assetName": "5.56mm NATO M855 Ball Ammunition Crate",
+      "primaryProductId": "prod_nato_m855_011",
+      "primarySellerIds": ["sellr_vista_outdoor_004", "sellr_dod_005"],
+      "primaryLocationIds": ["loc_vista_anoka_007", "loc_fort_liberty_008"],
+      "linkedRecord": "rec_mil_123def",
+      "challenge": "Total asset visibility is required for sensitive munitions. The military needs to prevent theft/loss in transit without manual barcode scanning in austere environments.",
+      "solution": {
+        "tagType": "Ruggedized UHF Passive Tag",
+        "mechanism": "Fixed Reader Infrastructure (Automated Gate Scans)",
+        "criticalEvent": "Automated OBSERVE event at a transit hub confirms secure arrival"
+      },
+      "outcome": {
+        "automatedScan": "OBSERVE triggered by fixed reader, no soldier intervention required.",
+        "sealIntegrity": "sealStatus confirmed still ARMED upon arrival.",
+        "result": "Secure chain of custody for lethal aid with real-time confidence for logistics officers."
+      },
+      "thumbnailHint": "stacked ammunition crates"
+    },
+    {
+      "caseStudyId": "cs_saka_consumer_auth",
+      "title": "Bonus: Consumer Authentication",
+      "client": "Saka Wines / Green Earth Dispensary",
+      "industry": "Consumer / Cannabis",
+      "assetName": "Saka White THC Infused Chardonnay",
+      "primaryProductId": "prod_saka_white_thc_012",
+      "primarySellerIds": ["sellr_saka_wines_006", "sellr_green_earth_007"],
+      "primaryLocationIds": ["loc_saka_napa_009", "loc_green_earth_la_010"],
+      "linkedRecord": "rec_cannabis_456abc",
+      "challenge": "Close the regulatory compliance loop for state-controlled cannabis with consumer-facing proof of authenticity.",
+      "solution": {
+        "tagType": "NFC (factory-locked UID)",
+        "mechanism": "Consumer NFC mobile tap at licensed dispensary",
+        "criticalEvent": "Status auto-flips to 'Sold' on NFC tap with GPS-verified dispensary location"
+      },
+      "outcome": {
+        "stateReporting": "Automated.",
+        "consumerBenefit": "Instant access to Lab Results (COA) on consumer's phone.",
+        "result": "Regulatory certainty + brand authentication in one tap."
+      },
+      "thumbnailHint": "wine bottle with NFC tag, phone hovering"
+    }
+  ]
+}

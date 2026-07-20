@@ -1,0 +1,65 @@
+{
+  "alerts": [
+    {
+      "alertId": "alrt_breach_001",
+      "linkedRecord": "rec_789xyz123abc",
+      "linkedEventId": "evt_humalog_breach_004",
+      "reportType": "Security Alert",
+      "severity": "High",
+      "title": "Container Seal Breached",
+      "subtitle": "Humalog Insulin 100U/mL — HealthyLife Inc. Ocala DC outbound",
+      "details": "Breach detected at geo:30.1578,-82.9989. AI authenticityScore dropped to 0.0. Shipment auto-rejected at destination dock.",
+      "openedAt": "2026-05-26T09:18:00Z",
+      "status": "OPEN",
+      "owner": "Compliance Ops · HealthyLife",
+      "headline": true
+    },
+    {
+      "alertId": "alrt_anomaly_002",
+      "linkedEventId": "evt_mounjaro_anomaly_016",
+      "reportType": "Route Anomaly",
+      "severity": "Medium",
+      "title": "Mounjaro shipment route deviation",
+      "subtitle": "47 miles off planned corridor",
+      "details": "EPC sgtin:0300021495803.SN001 observed off-route. High-diversion-risk SKU. Recommend immediate dispatcher contact.",
+      "openedAt": "2026-05-26T15:05:00Z",
+      "status": "INVESTIGATING",
+      "owner": "Lilly Loss Prevention"
+    },
+    {
+      "alertId": "alrt_temp_003",
+      "reportType": "Temperature Excursion",
+      "severity": "Low",
+      "title": "Brief CRT excursion — Verzenio pallet",
+      "subtitle": "32.8°C reading at Indianapolis DC dock for 11 minutes",
+      "details": "Within Verzenio 15-30°C tolerance band but logged for QA review.",
+      "openedAt": "2026-05-26T03:21:00Z",
+      "status": "AUTO_RESOLVED",
+      "owner": "QA — Lilly"
+    },
+    {
+      "alertId": "alrt_assembly_004",
+      "linkedRecord": "rec_drone_global_ord_001",
+      "reportType": "Assembly Confirmation",
+      "severity": "Info",
+      "title": "GO-Eagle Mk II — Master assembly verified",
+      "subtitle": "All 20+ subcomponents authenticated",
+      "details": "Tech_ID_445 confirmed parent-child aggregation. completenessScore 100.0.",
+      "openedAt": "2025-03-07T08:10:00Z",
+      "status": "CLOSED",
+      "owner": "Global Ordinance Assembly QA"
+    },
+    {
+      "alertId": "alrt_arrival_005",
+      "linkedRecord": "rec_mil_123def",
+      "reportType": "Chain of Custody",
+      "severity": "Info",
+      "title": "5.56mm NATO crate arrived secure — Fort Liberty",
+      "subtitle": "Automated gate scan, seal ARMED",
+      "details": "OBSERVE event at geo:35.1415,-79.0080. No tampering detected.",
+      "openedAt": "2026-05-26T14:22:00Z",
+      "status": "CLOSED",
+      "owner": "Fort Liberty Logistics"
+    }
+  ]
+}

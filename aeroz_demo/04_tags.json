@@ -1,0 +1,206 @@
+{
+  "tags": [
+    {
+      "tagId": "tag_001",
+      "epc": "urn:epc:id:sgtin:0300027510014.SN001",
+      "productId": "prod_humalog_100umL_001",
+      "tagType": "NFC",
+      "frequency": "HF 13.56MHz",
+      "format": "NTAG 424 DNA TT",
+      "tamperFeature": "Tamper Loop",
+      "encodedAt": "factory-locked UID (No-Encode Tech)",
+      "currentStatus": "FLAGGED_SECURITY_BREACH",
+      "linkedRecord": "rec_789xyz123abc",
+      "notes": "The tag at the heart of Case Study 1."
+    },
+    {
+      "tagId": "tag_002",
+      "epc": "urn:epc:id:sgtin:0300027510014.PALLET01",
+      "productId": "prod_humalog_100umL_001",
+      "tagType": "UHF",
+      "frequency": "UHF 860-960MHz",
+      "format": "Monza R6-P",
+      "tamperFeature": null,
+      "currentStatus": "FLAGGED_SECURITY_BREACH",
+      "linkedRecord": "rec_789xyz123abc",
+      "notes": "Pallet-level companion to NFC vial tag."
+    },
+    {
+      "tagId": "tag_003",
+      "epc": "urn:epc:id:sgtin:0300027510014.SN002",
+      "productId": "prod_humalog_100umL_001",
+      "tagType": "NFC",
+      "frequency": "HF 13.56MHz",
+      "format": "NTAG 424 DNA TT",
+      "currentStatus": "AT_REST",
+      "notes": "Sibling inventory item, currently at HealthyLife Ocala DC."
+    },
+    {
+      "tagId": "tag_004",
+      "epc": "urn:epc:id:sgtin:0300021495803.SN001",
+      "productId": "prod_mounjaro_003",
+      "tagType": "NFC",
+      "frequency": "HF 13.56MHz",
+      "format": "NTAG 424 DNA TT",
+      "currentStatus": "IN_TRANSIT",
+      "notes": "High-diversion-risk SKU, watch-listed."
+    },
+    {
+      "tagId": "tag_005",
+      "epc": "urn:epc:id:sgtin:0300021495803.SN002",
+      "productId": "prod_mounjaro_003",
+      "tagType": "NFC",
+      "frequency": "HF 13.56MHz",
+      "currentStatus": "AT_REST"
+    },
+    {
+      "tagId": "tag_006",
+      "epc": "urn:epc:id:sgtin:0300022475805.SN001",
+      "productId": "prod_zepbound_004",
+      "tagType": "NFC",
+      "frequency": "HF 13.56MHz",
+      "currentStatus": "IN_TRANSIT"
+    },
+    {
+      "tagId": "tag_007",
+      "epc": "urn:epc:id:sgtin:0300027724118.SN001",
+      "productId": "prod_taltz_006",
+      "tagType": "NFC",
+      "currentStatus": "AT_PHARMACY"
+    },
+    {
+      "tagId": "tag_008",
+      "epc": "urn:epc:id:sgtin:0300025337136.SN001",
+      "productId": "prod_verzenio_005",
+      "tagType": "UHF",
+      "currentStatus": "AT_REST"
+    },
+    {
+      "tagId": "tag_009",
+      "epc": "urn:epc:id:sgtin:0860001.999999.MASTER01",
+      "productId": "prod_go_eagle_drone_007",
+      "tagType": "UHF+NFC Master",
+      "currentStatus": "ASSEMBLED_VERIFIED",
+      "linkedRecord": "rec_drone_global_ord_001",
+      "childTags": ["tag_010", "tag_011", "tag_012"],
+      "notes": "Master chassis tag for the GO-Eagle Mk II (Case Study 2)."
+    },
+    {
+      "tagId": "tag_010",
+      "epc": "urn:epc:id:sgtin:0860001.FC-X1.SN-FC-8821",
+      "productId": "prod_go_flight_ctrl_008",
+      "tagType": "NFC",
+      "currentStatus": "INSTALLED_VERIFIED",
+      "parentTagId": "tag_009"
+    },
+    {
+      "tagId": "tag_011",
+      "epc": "urn:epc:id:sgtin:0860001.BATT-99.SN-BT-1004",
+      "productId": "prod_go_battery_009",
+      "tagType": "NFC",
+      "currentStatus": "INSTALLED_VERIFIED",
+      "parentTagId": "tag_009"
+    },
+    {
+      "tagId": "tag_012",
+      "epc": "urn:epc:id:sgtin:0860001.OPT-55.SN-OP-3321",
+      "productId": "prod_go_optical_010",
+      "tagType": "NFC",
+      "currentStatus": "INSTALLED_VERIFIED",
+      "parentTagId": "tag_009"
+    },
+    {
+      "tagId": "tag_013",
+      "epc": "urn:epc:id:sgtin:0860001.999999.MASTER02",
+      "productId": "prod_go_eagle_drone_007",
+      "tagType": "UHF+NFC Master",
+      "currentStatus": "AT_ASSEMBLY"
+    },
+    {
+      "tagId": "tag_014",
+      "epc": "urn:epc:id:sgtin:0860001.M855.CRATE-001",
+      "productId": "prod_nato_m855_011",
+      "tagType": "UHF Ruggedized",
+      "currentStatus": "IN_TRANSIT",
+      "linkedRecord": "rec_mil_123def",
+      "sealStatus": "ARMED",
+      "notes": "Live transit — Vista Anoka → Fort Liberty (Case Study 3)."
+    },
+    {
+      "tagId": "tag_015",
+      "epc": "urn:epc:id:sgtin:0860001.M855.CRATE-002",
+      "productId": "prod_nato_m855_011",
+      "tagType": "UHF Ruggedized",
+      "currentStatus": "AT_REST",
+      "sealStatus": "ARMED"
+    },
+    {
+      "tagId": "tag_016",
+      "epc": "urn:epc:id:sgtin:0860001.M855.CRATE-003",
+      "productId": "prod_nato_m855_011",
+      "tagType": "UHF Ruggedized",
+      "currentStatus": "AT_REST",
+      "sealStatus": "ARMED"
+    },
+    {
+      "tagId": "tag_017",
+      "epc": "urn:epc:id:sgtin:0860001.023452.SN201",
+      "productId": "prod_saka_white_thc_012",
+      "tagType": "NFC",
+      "currentStatus": "SOLD",
+      "linkedRecord": "rec_cannabis_456abc",
+      "notes": "Consumer NFC tap completed at Green Earth Dispensary."
+    },
+    {
+      "tagId": "tag_018",
+      "epc": "urn:epc:id:sgtin:0860001.023452.SN202",
+      "productId": "prod_saka_white_thc_012",
+      "tagType": "NFC",
+      "currentStatus": "AT_DISPENSARY"
+    },
+    {
+      "tagId": "tag_019",
+      "epc": "urn:epc:id:sgtin:0860001.023452.SN203",
+      "productId": "prod_saka_white_thc_012",
+      "tagType": "NFC",
+      "currentStatus": "IN_TRANSIT"
+    },
+    {
+      "tagId": "tag_020",
+      "epc": "urn:epc:id:sgtin:0300027510014.SN003",
+      "productId": "prod_humalog_100umL_001",
+      "tagType": "NFC",
+      "currentStatus": "AT_PHARMACY"
+    },
+    {
+      "tagId": "tag_021",
+      "epc": "urn:epc:id:sgtin:0300027510014.SN004",
+      "productId": "prod_humalog_100umL_001",
+      "tagType": "NFC",
+      "currentStatus": "IN_TRANSIT"
+    },
+    {
+      "tagId": "tag_022",
+      "epc": "urn:epc:id:sgtin:0300021433803.SN001",
+      "productId": "prod_trulicity_002",
+      "tagType": "NFC",
+      "currentStatus": "AT_REST"
+    },
+    {
+      "tagId": "tag_023",
+      "epc": "urn:epc:id:sgtin:0300021433803.SN002",
+      "productId": "prod_trulicity_002",
+      "tagType": "NFC",
+      "currentStatus": "IN_TRANSIT"
+    },
+    {
+      "tagId": "tag_024",
+      "epc": "urn:epc:id:sgtin:0860001.M855.CRATE-004",
+      "productId": "prod_nato_m855_011",
+      "tagType": "UHF Ruggedized",
+      "currentStatus": "AT_DESTINATION",
+      "sealStatus": "ARMED",
+      "notes": "Arrived Naval Base Coronado, gate-scanned."
+    }
+  ]
+}

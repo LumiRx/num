@@ -1,0 +1,233 @@
+{
+  "locations": [
+    {
+      "locationId": "loc_lilly_indianapolis_001",
+      "sellerId": "sellr_lilly_001",
+      "name": "Eli Lilly — Indianapolis Manufacturing",
+      "type": "Manufacturing",
+      "industry": "Pharma",
+      "address": {
+        "street": "Lilly Corporate Center",
+        "city": "Indianapolis",
+        "state": "IN",
+        "postalCode": "46225",
+        "country": "US"
+      },
+      "geo": { "lat": 39.7647, "lng": -86.1592 },
+      "capabilities": ["GMP", "Cold-Chain Origination"],
+      "status": "Active"
+    },
+    {
+      "locationId": "loc_healthylife_ocala_dc_002",
+      "sellerId": "sellr_healthylife_002",
+      "name": "HealthyLife Inc. — Ocala DC",
+      "type": "Distribution Center",
+      "industry": "Pharma",
+      "address": {
+        "street": "5400 SW 60th Ave",
+        "city": "Ocala",
+        "state": "FL",
+        "postalCode": "34474",
+        "country": "US"
+      },
+      "geo": { "lat": 29.1872, "lng": -82.1401 },
+      "capabilities": ["Cold-Chain Storage 2-8°C", "Controlled Room Temp 20-25°C", "Dock-to-dock"],
+      "status": "Active",
+      "notes": "Origin point for Humalog shipment in Case Study 1."
+    },
+    {
+      "locationId": "loc_floridian_pharmacy_003",
+      "sellerId": "sellr_florida_rx_008",
+      "name": "Floridian Family Pharmacy — Jacksonville",
+      "type": "Pharmacy / Dispenser",
+      "industry": "Pharma",
+      "address": {
+        "street": "1410 Riverside Ave",
+        "city": "Jacksonville",
+        "state": "FL",
+        "postalCode": "32204",
+        "country": "US"
+      },
+      "geo": { "lat": 30.3225, "lng": -81.6822 },
+      "capabilities": ["Refrigerated Receiving"],
+      "status": "Active",
+      "notes": "Intended destination — shipment was rejected at dock due to seal breach."
+    },
+    {
+      "locationId": "loc_breach_geo_004",
+      "sellerId": "sellr_healthylife_002",
+      "name": "Transit waypoint — Lake City I-75 corridor",
+      "type": "In-Transit Waypoint",
+      "industry": "Pharma",
+      "address": {
+        "city": "Lake City",
+        "state": "FL",
+        "country": "US"
+      },
+      "geo": { "lat": 30.1578, "lng": -82.9989 },
+      "capabilities": [],
+      "status": "Inferred from breach alert",
+      "notes": "Exact GPS reported by AI in the FLAGGED_SECURITY_BREACH event for Humalog rec_789xyz123abc."
+    },
+    {
+      "locationId": "loc_global_ord_ocala_005",
+      "sellerId": "sellr_global_ordinance_003",
+      "name": "Global Ordinance — Ocala FL Assembly",
+      "type": "Assembly Line",
+      "industry": "Defense",
+      "address": {
+        "street": "(restricted)",
+        "city": "Ocala",
+        "state": "FL",
+        "country": "US"
+      },
+      "geo": { "lat": 29.1872, "lng": -82.1401 },
+      "capabilities": ["Component Aggregation", "Master-Chip Programming", "Parent-Child Linking"],
+      "status": "Active",
+      "notes": "Origin of the GO-Eagle Mk II in Case Study 2."
+    },
+    {
+      "locationId": "loc_global_ord_dock_006",
+      "sellerId": "sellr_global_ordinance_003",
+      "name": "Global Ordinance Loading Dock",
+      "type": "Shipping Dock",
+      "industry": "Defense",
+      "address": {
+        "city": "Ocala",
+        "state": "FL",
+        "country": "US"
+      },
+      "geo": { "lat": 29.1860, "lng": -82.1390 },
+      "capabilities": ["UHF Gate Reader", "Outbound Manifest"],
+      "status": "Active",
+      "notes": "Master-Chip OBSERVE event location at 2025-03-07T10:00:00Z."
+    },
+    {
+      "locationId": "loc_vista_anoka_007",
+      "sellerId": "sellr_vista_outdoor_004",
+      "name": "Vista Outdoor — Anoka, MN Munitions Plant",
+      "type": "Manufacturing",
+      "industry": "Defense / Munitions",
+      "address": {
+        "street": "900 Ehlen Dr",
+        "city": "Anoka",
+        "state": "MN",
+        "postalCode": "55303",
+        "country": "US"
+      },
+      "geo": { "lat": 45.1977, "lng": -93.3873 },
+      "capabilities": ["Munitions Manufacturing", "Ruggedized UHF Tagging"],
+      "status": "Active",
+      "notes": "Origin of the 5.56mm NATO M855 Ball crate in Case Study 3."
+    },
+    {
+      "locationId": "loc_fort_liberty_008",
+      "sellerId": "sellr_dod_005",
+      "name": "Fort Liberty Logistics Hub",
+      "type": "Military Logistics Hub",
+      "industry": "Defense",
+      "address": {
+        "street": "Knox St",
+        "city": "Fort Liberty",
+        "state": "NC",
+        "country": "US"
+      },
+      "geo": { "lat": 35.1415, "lng": -79.0080 },
+      "capabilities": ["Fixed UHF Reader Gates", "Automated OBSERVE Events", "Restricted Access"],
+      "status": "Active",
+      "notes": "OBSERVE event for 5.56mm NATO crate at 2025-03-07."
+    },
+    {
+      "locationId": "loc_saka_napa_009",
+      "sellerId": "sellr_saka_wines_006",
+      "name": "Saka — Napa Production Facility",
+      "type": "Manufacturing",
+      "industry": "Consumer / Cannabis",
+      "address": {
+        "city": "Napa",
+        "state": "CA",
+        "postalCode": "94558",
+        "country": "US"
+      },
+      "geo": { "lat": 38.2975, "lng": -122.2869 },
+      "capabilities": ["THC-Infused Beverage Production", "NFC Tagging at Bottling"],
+      "status": "Active"
+    },
+    {
+      "locationId": "loc_green_earth_la_010",
+      "sellerId": "sellr_green_earth_007",
+      "name": "Green Earth Dispensary — Los Angeles",
+      "type": "Retail / Dispensary",
+      "industry": "Consumer / Cannabis",
+      "address": {
+        "city": "Los Angeles",
+        "state": "CA",
+        "country": "US"
+      },
+      "geo": { "lat": 34.0522, "lng": -118.2437 },
+      "capabilities": ["NFC Consumer Authentication", "State Reporting"],
+      "status": "Active",
+      "notes": "Final-mile NFC tap location at geo:34.0522,-118.2437."
+    },
+    {
+      "locationId": "loc_lilly_kinsale_011",
+      "sellerId": "sellr_lilly_001",
+      "name": "Eli Lilly — Kinsale, Ireland API Plant",
+      "type": "Manufacturing (International)",
+      "industry": "Pharma",
+      "address": {
+        "city": "Kinsale",
+        "country": "IE"
+      },
+      "geo": { "lat": 51.7066, "lng": -8.5222 },
+      "capabilities": ["Active Pharmaceutical Ingredient Mfg"],
+      "status": "Active"
+    },
+    {
+      "locationId": "loc_indianapolis_dc_012",
+      "sellerId": "sellr_lilly_001",
+      "name": "Eli Lilly — Indianapolis Distribution Center",
+      "type": "Distribution Center",
+      "industry": "Pharma",
+      "address": {
+        "city": "Indianapolis",
+        "state": "IN",
+        "country": "US"
+      },
+      "geo": { "lat": 39.7684, "lng": -86.1581 },
+      "capabilities": ["Ambient + CRT + 2-8°C Storage", "Outbound Cold-Chain"],
+      "status": "Active"
+    },
+    {
+      "locationId": "loc_dover_afb_013",
+      "sellerId": "sellr_dod_005",
+      "name": "Dover Air Force Base — Aerial Port",
+      "type": "Military Aerial Port",
+      "industry": "Defense",
+      "address": {
+        "city": "Dover",
+        "state": "DE",
+        "country": "US"
+      },
+      "geo": { "lat": 39.1296, "lng": -75.4664 },
+      "capabilities": ["Forward-Deploy Staging", "UHF Gate Reads"],
+      "status": "Active",
+      "notes": "Intermediate hub for international defense shipments."
+    },
+    {
+      "locationId": "loc_naval_yard_la_014",
+      "sellerId": "sellr_dod_005",
+      "name": "Naval Base Coronado",
+      "type": "Military Installation",
+      "industry": "Defense",
+      "address": {
+        "city": "Coronado",
+        "state": "CA",
+        "country": "US"
+      },
+      "geo": { "lat": 32.6779, "lng": -117.1582 },
+      "capabilities": ["Naval Munitions Receiving"],
+      "status": "Active"
+    }
+  ]
+}

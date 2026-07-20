@@ -1,0 +1,1450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NuM — Operator Suite (Functional Prototype)</title>
+<style>
+  /* ============================================================
+   * NuM design tokens — shared by all dashboards
+   * ============================================================ */
+  :root {
+    --bg-0:        #0A1628;
+    --bg-1:        #0F1D33;
+    --bg-2:        #11203A;
+    --bg-3:        #162842;
+    --bg-4:        #1B2F4C;
+    --line:        #1E3258;
+    --line-soft:   #16243F;
+    --ink:         #FFFFFF;
+    --ink-1:       #D7E1F2;
+    --ink-2:       #9FB2CE;
+    --ink-3:       #5A6B82;
+    --teal:        #00B5A5;
+    --teal-bright: #1DD3B0;
+    --teal-soft:   rgba(0,181,165,0.12);
+    --sand:        #E9B872;
+    --sand-soft:   rgba(233,184,114,0.14);
+    --coral:       #E36F5A;
+    --coral-soft:  rgba(227,111,90,0.14);
+    --green:       #4ADE80;
+    --green-soft:  rgba(74,222,128,0.14);
+    --purple:      #A78BFA;
+    --purple-soft: rgba(167,139,250,0.14);
+    --display:     "Georgia", "Times New Roman", serif;
+    --body:        -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+    --mono:        "SF Mono", Menlo, Consolas, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg-0); color: var(--ink-1); font-family: var(--body); font-size: 13px; line-height: 1.45; min-height: 100vh; }
+  a { color: var(--teal-bright); text-decoration: none; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg-1); }
+  button { font-family: var(--body); cursor: pointer; }
+
+  /* ============================================================
+   * Shell
+   * ============================================================ */
+  .shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+
+  /* ---------- Sidebar ---------- */
+  .side { background: var(--bg-1); border-right: 1px solid var(--line-soft); padding: 22px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .brand { display:flex; flex-direction: column; gap: 4px; padding: 4px 8px 18px; border-bottom: 1px solid var(--line-soft); margin-bottom: 14px; }
+  .brand .mark { font-family: var(--display); font-style: italic; font-weight: 700; font-size: 26px; color: var(--teal-bright); letter-spacing: 1px; }
+  .brand .sub { font-size: 9px; color: var(--ink-3); letter-spacing: 3px; text-transform: uppercase; }
+
+  /* Role switcher */
+  .role-switcher { background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 14px; }
+  .role-switcher .h { font-size: 9px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .role-switcher button { display: block; width: 100%; text-align: left; background: transparent; color: var(--ink-2); border: 0; padding: 6px 8px; border-radius: 5px; font-size: 12px; margin-bottom: 2px; transition: all 0.12s; }
+  .role-switcher button:hover { background: var(--bg-3); color: var(--ink); }
+  .role-switcher button.on { background: var(--teal-soft); color: var(--ink); border-left: 2px solid var(--teal-bright); padding-left: 6px; }
+  .role-switcher button .desc { display: block; font-size: 9px; color: var(--ink-3); margin-top: 1px; letter-spacing: 0.3px; }
+
+  .nav-group { margin-top: 12px; }
+  .nav-label { color: var(--ink-3); font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; padding: 6px 8px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; color: var(--ink-2); cursor: pointer; font-size: 12px; user-select: none; transition: all 0.12s; }
+  .nav-item:hover { background: var(--bg-2); color: var(--ink); }
+  .nav-item.active { background: var(--teal-soft); color: var(--ink); }
+  .nav-item .count { margin-left: auto; font-size: 10px; color: var(--ink-3); font-family: var(--mono); }
+  .nav-item .count.live { color: var(--green); }
+  .nav-item .count.alert { color: var(--coral); }
+
+  /* ============================================================
+   * Top bar
+   * ============================================================ */
+  .main { padding: 0; }
+  .topbar { display:flex; align-items:center; justify-content: space-between; padding: 14px 28px; border-bottom: 1px solid var(--line-soft); background: var(--bg-0); position: sticky; top: 0; z-index: 9; }
+  .topbar .crumbs { color: var(--ink-3); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+  .topbar .title { font-family: var(--display); font-size: 22px; color: var(--ink); margin-top: 4px; }
+  .topbar .right { display:flex; align-items: center; gap: 12px; font-size: 12px; color: var(--ink-2); }
+
+  .tenant-pill { display:inline-flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; font-size: 11px; color: var(--ink-1); }
+  .tenant-pill .ind { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  .time-selector { display:inline-flex; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .time-selector button { background: transparent; color: var(--ink-3); border: 0; padding: 5px 10px; font-size: 11px; }
+  .time-selector button.on { background: var(--teal-soft); color: var(--ink); }
+
+  .who { display:flex; align-items:center; gap:8px; padding: 4px 10px 4px 4px; background: var(--bg-2); border-radius: 16px; cursor: pointer; }
+  .who .av { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, var(--teal), #146773); display:inline-flex; align-items:center; justify-content:center; font-size: 11px; font-weight: 700; color: #fff; }
+
+  /* ============================================================
+   * Canvas + panels
+   * ============================================================ */
+  .canvas { padding: 24px 28px 80px; }
+
+  .kpis { display:grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 22px; }
+  .kpi { background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 10px; padding: 14px 16px; }
+  .kpi .label { font-size: 10px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .kpi .value { font-family: var(--display); font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -0.5px; line-height: 1; }
+  .kpi .delta { font-size: 11px; margin-top: 8px; display:flex; align-items: center; gap: 6px; color: var(--ink-2); }
+  .kpi .delta.up { color: var(--green); }
+  .kpi .delta.down { color: var(--coral); }
+  .kpi .target { font-size: 10px; color: var(--ink-3); margin-top: 4px; }
+
+  .grid { display:grid; gap: 18px; margin-bottom: 22px; }
+  .grid.cols-2 { grid-template-columns: 2fr 1fr; }
+  .grid.cols-balanced { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid.cols-1 { grid-template-columns: 1fr; }
+
+  .panel { background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; }
+  .panel-head { display:flex; align-items:center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--line-soft); }
+  .panel-head .pname { font-family: var(--display); font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: 0.3px; }
+  .panel-head .pname .accent { color: var(--teal-bright); }
+  .panel-head .psub { font-size: 11px; color: var(--ink-3); }
+  .panel-head .tabs { display:flex; gap: 4px; }
+  .panel-head .tab { padding: 4px 9px; font-size: 11px; color: var(--ink-2); border-radius: 4px; cursor: pointer; background: transparent; border: 0; }
+  .panel-head .tab.on { background: var(--bg-2); color: var(--ink); }
+  .panel-head .tab:hover:not(.on) { background: var(--bg-2); color: var(--ink-1); }
+  .panel-body { padding: 14px 16px; }
+  .panel-foot { padding: 10px 16px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--ink-3); display:flex; justify-content:space-between; }
+
+  /* ============================================================
+   * Shared atoms — badges, chips, pulses
+   * ============================================================ */
+  .badge { display: inline-block; padding: 2px 7px; font-size: 9px; border-radius: 3px; letter-spacing: 0.7px; font-weight: 700; }
+  .badge.ch-wa { background: #1A6E4F; color: #fff; }
+  .badge.ch-wc { background: #1F7A28; color: #fff; }
+  .badge.ch-ln { background: #1E6C00; color: #fff; }
+  .badge.ch-sm { background: #3B4A6B; color: #fff; }
+  .badge.ch-qr { background: #5A4380; color: #fff; }
+  .badge.ch-web { background: #2C5282; color: #fff; }
+  .badge.lang { background: var(--bg-3); color: var(--ink-1); }
+  .badge.stage { background: var(--bg-3); color: var(--ink-2); }
+  .badge.stage-relo { background: var(--sand-soft); color: var(--sand); }
+  .badge.stage-repeat { background: var(--teal-soft); color: var(--teal-bright); }
+  .badge.intent-tourist { background: var(--bg-3); color: var(--ink-1); }
+  .badge.intent-whale { background: var(--sand-soft); color: var(--sand); }
+  .badge.intent-booking { background: var(--teal-soft); color: var(--teal-bright); }
+  .badge.intent-support { background: var(--coral-soft); color: var(--coral); }
+  .badge.intent-smalltalk { background: var(--purple-soft); color: var(--purple); }
+  .badge.up { background: var(--green-soft); color: var(--green); }
+  .badge.warn { background: var(--sand-soft); color: var(--sand); }
+  .badge.down { background: var(--coral-soft); color: var(--coral); }
+
+  .score { font-family: var(--mono); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+  .score.A { color: #0A1628; background: var(--green); }
+  .score.B { color: var(--ink); background: var(--teal); }
+  .score.C { color: var(--ink); background: var(--bg-3); border: 1px solid var(--line); }
+
+  .sla { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+  .sla.warn { color: var(--sand); }
+  .sla.late { color: var(--coral); font-weight: 600; }
+
+  .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 0 0 var(--green); animation: pulse 1.8s infinite; }
+  .pulse.warn { background: var(--sand); }
+  .pulse.down { background: var(--coral); animation: none; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  }
+
+  .vert-pill { display:inline-block; padding: 2px 7px; border-radius: 3px; font-size: 10px; letter-spacing: 0.5px; font-weight: 600; }
+  .vert-pill.re { background: var(--sand-soft); color: var(--sand); }
+  .vert-pill.school { background: var(--teal-soft); color: var(--teal-bright); }
+  .vert-pill.relo { background: var(--coral-soft); color: var(--coral); }
+  .vert-pill.visa { background: var(--bg-3); color: var(--ink-1); }
+  .vert-pill.medical { background: var(--purple-soft); color: var(--purple); }
+
+  .btn { background: var(--teal-bright); color: #0A1628; border: 0; padding: 6px 12px; border-radius: 5px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer; }
+  .btn:hover { background: var(--teal); }
+  .btn.ghost { background: transparent; color: var(--teal-bright); border: 1px solid var(--teal-bright); }
+  .btn.ghost:hover { background: var(--teal-soft); }
+
+  /* ============================================================
+   * Conversation stream — used across multiple dashboards
+   * ============================================================ */
+  .stream { display:flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+  .convo { display:grid; grid-template-columns: 36px 1fr auto; gap: 10px; padding: 10px; border-radius: 8px; background: var(--bg-2); border-left: 3px solid var(--teal-bright); cursor: pointer; transition: background 0.12s; }
+  .convo:hover { background: var(--bg-3); }
+  .convo.alert { border-left-color: var(--coral); }
+  .convo.lead { border-left-color: var(--sand); }
+  .convo .ch { width: 30px; height: 30px; border-radius: 6px; display:flex; align-items:center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
+  .convo .who-line { font-size: 11px; color: var(--ink-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .convo .msg { font-size: 13px; color: var(--ink); margin-top: 4px; line-height: 1.35; }
+  .convo .meta { text-align: right; color: var(--ink-3); font-size: 10px; font-family: var(--mono); white-space: nowrap; }
+  .convo .meta .intent { display: inline-block; font-size: 9px; margin-bottom: 4px; }
+
+  /* ============================================================
+   * Tables — generalized
+   * ============================================================ */
+  .data-tbl { width: 100%; border-collapse: collapse; }
+  .data-tbl th { text-align: left; font-size: 10px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); font-weight: 500; }
+  .data-tbl td { padding: 11px 10px; border-bottom: 1px solid var(--line-soft); font-size: 12px; color: var(--ink-1); vertical-align: middle; }
+  .data-tbl tr:hover td { background: var(--bg-2); }
+  .data-tbl .strong { color: var(--ink); font-weight: 600; }
+  .data-tbl .num { font-family: var(--mono); }
+
+  /* ============================================================
+   * Funnel
+   * ============================================================ */
+  .funnel { display:flex; flex-direction: column; gap: 8px; }
+  .funnel-row { display: grid; grid-template-columns: 150px 1fr 110px; align-items: center; gap: 10px; }
+  .funnel-row .lab { font-size: 11px; color: var(--ink-2); }
+  .funnel-row .bar { background: var(--bg-2); height: 24px; border-radius: 4px; position: relative; overflow: hidden; }
+  .funnel-row .fill { height: 100%; background: linear-gradient(90deg, var(--teal-bright), var(--teal)); border-radius: 4px; transition: width 0.3s; }
+  .funnel-row .num { font-family: var(--mono); text-align: right; font-size: 11px; color: var(--ink-1); }
+  .funnel-row .num .pct { color: var(--ink-3); font-size: 10px; margin-left: 4px; }
+
+  /* ============================================================
+   * Channel cards
+   * ============================================================ */
+  .channels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .ch-card { background: var(--bg-2); border-radius: 8px; padding: 12px; border: 1px solid var(--line-soft); }
+  .ch-card .top { display:flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ch-card .name { font-size: 12px; font-weight: 700; color: var(--ink); }
+  .ch-card .status { display:flex; align-items:center; gap: 5px; font-size: 10px; color: var(--green); }
+  .ch-card.warn .status { color: var(--sand); }
+  .ch-card.down .status { color: var(--coral); }
+  .ch-card .stat { display:flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--ink-3); }
+  .ch-card .stat b { color: var(--ink-1); font-family: var(--mono); font-weight: 500; }
+
+  /* ============================================================
+   * Charts (simple CSS-only)
+   * ============================================================ */
+  .bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding: 10px 0; }
+  .bar-chart .b { flex: 1; background: linear-gradient(180deg, var(--teal-bright), var(--teal)); border-radius: 3px 3px 0 0; position: relative; min-height: 4px; }
+  .bar-chart .b .v { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--ink-3); font-family: var(--mono); }
+  .bar-chart .b.alt { background: linear-gradient(180deg, var(--sand), #c98d4b); }
+  .bar-labels { display: flex; gap: 4px; padding: 4px 0 0; }
+  .bar-labels span { flex: 1; text-align: center; font-size: 9px; color: var(--ink-3); }
+
+  .line-chart { height: 160px; padding: 10px 0; position: relative; }
+  .line-chart svg { width: 100%; height: 100%; }
+
+  /* ============================================================
+   * Stacked share bar (revenue splits)
+   * ============================================================ */
+  .stack-row { display: grid; grid-template-columns: 130px 1fr 110px; gap: 10px; align-items: center; padding: 5px 0; }
+  .stack-row .lab { font-size: 11px; color: var(--ink-2); }
+  .stack-row .bar { background: var(--bg-2); height: 18px; border-radius: 3px; overflow: hidden; display:flex; }
+  .stack-row .seg { height: 100%; }
+  .stack-row .num { font-size: 11px; color: var(--ink-1); font-family: var(--mono); text-align: right; }
+
+  /* ============================================================
+   * Compliance + tile cards
+   * ============================================================ */
+  .compliance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .comp-card { background: var(--bg-2); border-radius: 8px; padding: 12px; border-left: 3px solid var(--teal); }
+  .comp-card.warn { border-left-color: var(--sand); }
+  .comp-card.bad { border-left-color: var(--coral); }
+  .comp-card .label { font-size: 9px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; }
+  .comp-card .v { font-family: var(--display); font-size: 22px; color: var(--ink); margin-top: 6px; font-weight: 700; }
+  .comp-card .note { font-size: 10px; color: var(--ink-2); margin-top: 6px; }
+
+  /* ============================================================
+   * Lead detail drawer (modal)
+   * ============================================================ */
+  .drawer-back { position: fixed; inset: 0; background: rgba(10,22,40,0.7); backdrop-filter: blur(4px); z-index: 100; display: none; align-items: center; justify-content: center; }
+  .drawer-back.open { display: flex; }
+  .drawer { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 24px; max-width: 720px; width: 90%; max-height: 85vh; overflow-y: auto; }
+  .drawer .x { float: right; background: transparent; color: var(--ink-3); border: 0; font-size: 18px; cursor: pointer; }
+  .drawer h3 { font-family: var(--display); font-size: 20px; color: var(--ink); margin: 0 0 4px 0; }
+  .drawer .meta { font-size: 11px; color: var(--ink-3); margin-bottom: 16px; }
+  .drawer .section { margin-top: 20px; }
+  .drawer .section .h { font-size: 10px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .drawer .transcript { background: var(--bg-2); border-radius: 8px; padding: 14px; font-size: 12px; }
+  .drawer .transcript .turn { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+  .drawer .transcript .turn:last-child { border: 0; margin: 0; padding: 0; }
+  .drawer .transcript .turn .who { font-size: 10px; color: var(--ink-3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .drawer .transcript .turn .body { color: var(--ink); }
+  .drawer .transcript .turn .body.assistant { color: var(--teal-bright); }
+  .drawer .memory { background: var(--bg-2); border-radius: 8px; padding: 14px; font-size: 11px; }
+  .drawer .memory .item { display: flex; gap: 8px; padding: 4px 0; }
+  .drawer .memory .item .tag { color: var(--ink-3); font-family: var(--mono); }
+
+  /* ============================================================
+   * Misc
+   * ============================================================ */
+  .donut { width: 140px; height: 140px; border-radius: 50%; display:flex; align-items: center; justify-content: center; position: relative; }
+  .donut::before { content:""; position: absolute; width: 88px; height: 88px; border-radius:50%; background: var(--bg-1); }
+  .donut .ctr { position: relative; text-align: center; }
+  .donut .ctr .big { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--ink); }
+  .donut .ctr .sml { font-size: 9px; color: var(--ink-3); letter-spacing: 1.5px; text-transform: uppercase; }
+
+  .lang-list .row { display:grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line-soft); font-size: 11px; }
+  .lang-list .row:last-child { border-bottom: 0; }
+  .lang-list .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .lang-list .conv { color: var(--ink-3); font-family: var(--mono); font-size: 10px; }
+
+  .star { color: var(--sand); font-size: 10px; letter-spacing: -2px; }
+
+  .info-banner { background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--teal-bright); border-radius: 6px; padding: 12px 16px; margin-bottom: 22px; font-size: 12px; color: var(--ink-2); }
+  .info-banner b { color: var(--ink); }
+
+  .foot { padding: 24px 28px 12px; color: var(--ink-3); font-size: 11px; display:flex; justify-content: space-between; border-top: 1px solid var(--line-soft); margin-top: 32px; }
+
+  /* Dashboard view hide/show */
+  .view { display: none; }
+  .view.active { display: block; }
+
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ============================================================ -->
+  <!--  SIDEBAR                                                     -->
+  <!-- ============================================================ -->
+  <aside class="side">
+    <div class="brand">
+      <div class="mark">NuM</div>
+      <div class="sub">Operator Suite</div>
+    </div>
+
+    <div class="role-switcher">
+      <div class="h">View as</div>
+      <button id="r-operator" class="on" onclick="switchRole('operator')">Operator
+        <span class="desc">Daily ops · live convos · queues</span></button>
+      <button id="r-executive" onclick="switchRole('executive')">Executive
+        <span class="desc">Trends · revenue · decision gate</span></button>
+      <button id="r-lead" onclick="switchRole('lead')">Lead specialist
+        <span class="desc">My whale leads · status · close</span></button>
+      <button id="r-merchant" onclick="switchRole('merchant')">Merchant portal
+        <span class="desc">My listing · bookings · reviews</span></button>
+      <button id="r-quality" onclick="switchRole('quality')">AI Quality
+        <span class="desc">Grading · flags · prompts</span></button>
+      <button id="r-lumi" onclick="switchRole('lumi')">Lumi admin
+        <span class="desc">All tenants · margin · pipeline</span></button>
+    </div>
+
+    <div id="nav-operator" class="nav-group role-nav">
+      <div class="nav-label">Today</div>
+      <div class="nav-item active">Live ops <span class="count live">142</span></div>
+      <div class="nav-item">Whale leads <span class="count alert">7</span></div>
+      <div class="nav-item">Escalations <span class="count alert">3</span></div>
+      <div class="nav-label">Network</div>
+      <div class="nav-item">Merchants <span class="count">52</span></div>
+      <div class="nav-item">Acquisition</div>
+      <div class="nav-item">Users</div>
+      <div class="nav-label">Quality</div>
+      <div class="nav-item">Channel health</div>
+      <div class="nav-item">Language QA</div>
+      <div class="nav-label">Trust</div>
+      <div class="nav-item">PDPA · consent</div>
+      <div class="nav-item">Audit trail</div>
+    </div>
+
+    <div id="nav-executive" class="nav-group role-nav" style="display:none;">
+      <div class="nav-label">Scorecard</div>
+      <div class="nav-item active">Decision gate</div>
+      <div class="nav-item">Revenue + splits</div>
+      <div class="nav-item">Cost trends</div>
+      <div class="nav-label">Strategy</div>
+      <div class="nav-item">Open commitments</div>
+      <div class="nav-item">Risks watchlist</div>
+      <div class="nav-item">Weekly digest</div>
+    </div>
+
+    <div id="nav-lead" class="nav-group role-nav" style="display:none;">
+      <div class="nav-label">My Work</div>
+      <div class="nav-item active">My queue <span class="count alert">5</span></div>
+      <div class="nav-item">Hot today <span class="count live">2</span></div>
+      <div class="nav-item">Awaiting reply</div>
+      <div class="nav-item">Closed this month <span class="count">3</span></div>
+      <div class="nav-item">Stuck (>14d)</div>
+    </div>
+
+    <div id="nav-merchant" class="nav-group role-nav" style="display:none;">
+      <div class="nav-label">Bang Tao Seafood</div>
+      <div class="nav-item active">This week</div>
+      <div class="nav-item">Bookings <span class="count">12</span></div>
+      <div class="nav-item">My listing</div>
+      <div class="nav-item">Reviews <span class="count">4</span></div>
+      <div class="nav-item">Featured listing</div>
+      <div class="nav-item">Guest insights</div>
+    </div>
+
+    <div id="nav-quality" class="nav-group role-nav" style="display:none;">
+      <div class="nav-label">Grading</div>
+      <div class="nav-item active">Sampling queue <span class="count">18</span></div>
+      <div class="nav-item">Hallucination flags <span class="count alert">7</span></div>
+      <div class="nav-item">Escalation analysis</div>
+      <div class="nav-label">Model</div>
+      <div class="nav-item">Intent accuracy</div>
+      <div class="nav-item">Prompt timeline</div>
+      <div class="nav-item">A/B tests <span class="count">2</span></div>
+      <div class="nav-label">Deep dive</div>
+      <div class="nav-item">Conversation search</div>
+    </div>
+
+    <div id="nav-lumi" class="nav-group role-nav" style="display:none;">
+      <div class="nav-label">Tenants</div>
+      <div class="nav-item active">All tenants <span class="count">3</span></div>
+      <div class="nav-item">Onboarding pipeline <span class="count">4</span></div>
+      <div class="nav-item">Contracts + renewals</div>
+      <div class="nav-label">Platform</div>
+      <div class="nav-item">Cost ledger</div>
+      <div class="nav-item">Provider rate card</div>
+      <div class="nav-item">Health monitor</div>
+    </div>
+  </aside>
+
+  <!-- ============================================================ -->
+  <!--  MAIN                                                        -->
+  <!-- ============================================================ -->
+  <main class="main">
+
+    <!-- Top bar — updates per role via JS -->
+    <div class="topbar">
+      <div>
+        <div class="crumbs" id="tb-crumbs">Today · Live ops</div>
+        <div class="title" id="tb-title">Phuket AI — Live operations</div>
+      </div>
+      <div class="right">
+        <span class="tenant-pill" id="tb-tenant"><span class="ind"></span> PHUKET AI · Pilot</span>
+        <div class="time-selector">
+          <button class="on">24h</button>
+          <button>7d</button>
+          <button>30d</button>
+          <button>QTD</button>
+        </div>
+        <span class="who"><span class="av" id="tb-av">D</span> <span id="tb-who">Dre</span></span>
+      </div>
+    </div>
+
+    <!-- ====================== OPERATOR VIEW ====================== -->
+    <section id="view-operator" class="view active">
+      <div class="canvas">
+
+        <div class="kpis">
+          <div class="kpi">
+            <div class="label">Active now</div>
+            <div class="value">142</div>
+            <div class="delta up">▲ 18 vs last hour</div>
+            <div class="target">peak 24h: 211</div>
+          </div>
+          <div class="kpi">
+            <div class="label">QR scans · 24h</div>
+            <div class="value">1,847</div>
+            <div class="delta up">▲ 9.2% vs 7d avg</div>
+            <div class="target">target: 1,600</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Activation</div>
+            <div class="value">63%</div>
+            <div class="delta up">▲ target 60%</div>
+            <div class="target">scan → 1st msg</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Avg depth</div>
+            <div class="value">8.2</div>
+            <div class="delta up">▲ target 6.0</div>
+            <div class="target">msgs/session</div>
+          </div>
+          <div class="kpi">
+            <div class="label">D7 return</div>
+            <div class="value">27%</div>
+            <div class="delta up">▲ target 25%</div>
+            <div class="target">across channels</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Whale leads · 7d</div>
+            <div class="value">34</div>
+            <div class="delta up">▲ pace 30/mo</div>
+            <div class="target">RE 12 · sch 9 · relo 8 · visa 5</div>
+          </div>
+        </div>
+
+        <div class="grid cols-2">
+
+          <!-- Live conversation stream -->
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="pname">Live conversation stream <span class="accent">●</span></div>
+                <div class="psub">Anonymized · auto-refresh 8s · PII-scrubbed</div>
+              </div>
+              <div class="tabs">
+                <button class="tab on">All</button>
+                <button class="tab">Whale</button>
+                <button class="tab">Support</button>
+                <button class="tab">Booking</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="stream" id="stream-target">
+                <!-- populated by JS -->
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span>Showing 8 of 142 active · click any row for transcript + memory</span>
+              <span><a href="#">Open conversation explorer →</a></span>
+            </div>
+          </div>
+
+          <!-- Whale lead queue -->
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="pname">Whale leads · queue</div>
+                <div class="psub">SLA 24h to first human contact</div>
+              </div>
+              <div class="tabs">
+                <button class="tab on">Open · 7</button>
+                <button class="tab">All</button>
+              </div>
+            </div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>Vert</th><th>Lead</th><th>Score</th><th>Age</th><th>Owner</th></tr></thead>
+                <tbody id="leads-target"><!-- populated by JS --></tbody>
+              </table>
+            </div>
+            <div class="panel-foot">
+              <span>2 leads breaching SLA · 3 unassigned</span>
+              <span><a href="#">Assign sweep →</a></span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Channel health -->
+        <div class="panel" style="margin-bottom: 22px;">
+          <div class="panel-head">
+            <div>
+              <div class="pname">Channel health</div>
+              <div class="psub">Adapter status · last 60s · error rate · queue depth</div>
+            </div>
+            <div class="tabs"><button class="tab on">Now</button><button class="tab">24h</button></div>
+          </div>
+          <div class="panel-body">
+            <div class="channels">
+              <div class="ch-card">
+                <div class="top"><div class="name">WhatsApp · Twilio</div><div class="status"><span class="pulse"></span>up</div></div>
+                <div class="stat"><span>last msg</span><b>2s ago</b></div>
+                <div class="stat"><span>convos · 1h</span><b>421</b></div>
+                <div class="stat"><span>err rate</span><b>0.0%</b></div>
+                <div class="stat"><span>p95 reply</span><b>1.4s</b></div>
+              </div>
+              <div class="ch-card">
+                <div class="top"><div class="name">WeChat · SA</div><div class="status"><span class="pulse"></span>up</div></div>
+                <div class="stat"><span>last msg</span><b>4s ago</b></div>
+                <div class="stat"><span>convos · 1h</span><b>178</b></div>
+                <div class="stat"><span>err rate</span><b>0.2%</b></div>
+                <div class="stat"><span>p95 reply</span><b>1.9s</b></div>
+              </div>
+              <div class="ch-card">
+                <div class="top"><div class="name">LINE</div><div class="status"><span class="pulse"></span>up</div></div>
+                <div class="stat"><span>last msg</span><b>11s ago</b></div>
+                <div class="stat"><span>convos · 1h</span><b>89</b></div>
+                <div class="stat"><span>err rate</span><b>0.0%</b></div>
+                <div class="stat"><span>p95 reply</span><b>1.3s</b></div>
+              </div>
+              <div class="ch-card warn">
+                <div class="top"><div class="name">SMS · Twilio</div><div class="status"><span class="pulse warn"></span>degraded</div></div>
+                <div class="stat"><span>last msg</span><b>1m 8s ago</b></div>
+                <div class="stat"><span>convos · 1h</span><b>12</b></div>
+                <div class="stat"><span>err rate</span><b>4.1%</b></div>
+                <div class="stat"><span>p95 reply</span><b>3.2s</b></div>
+              </div>
+              <div class="ch-card">
+                <div class="top"><div class="name">QR · in-car / hotel</div><div class="status"><span class="pulse"></span>up</div></div>
+                <div class="stat"><span>last scan</span><b>3s ago</b></div>
+                <div class="stat"><span>scans · 1h</span><b>284</b></div>
+                <div class="stat"><span>active codes</span><b>37/40</b></div>
+                <div class="stat"><span>activation %</span><b>63%</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Funnel + Language donut -->
+        <div class="grid cols-balanced">
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Funnel · 7d</div><div class="psub">QR scan → activated → engaged → converted</div></div>
+              <div class="tabs"><button class="tab on">7d</button><button class="tab">30d</button></div>
+            </div>
+            <div class="panel-body">
+              <div class="funnel">
+                <div class="funnel-row"><div class="lab">QR scans</div><div class="bar"><div class="fill" style="width:100%"></div></div><div class="num">12,930 <span class="pct">100%</span></div></div>
+                <div class="funnel-row"><div class="lab">First message</div><div class="bar"><div class="fill" style="width:63%"></div></div><div class="num">8,145 <span class="pct">63%</span></div></div>
+                <div class="funnel-row"><div class="lab">≥ 6 msgs (engaged)</div><div class="bar"><div class="fill" style="width:44%"></div></div><div class="num">5,689 <span class="pct">44%</span></div></div>
+                <div class="funnel-row"><div class="lab">D7 return</div><div class="bar"><div class="fill" style="width:27%"></div></div><div class="num">3,491 <span class="pct">27%</span></div></div>
+                <div class="funnel-row"><div class="lab">Booking made</div><div class="bar"><div class="fill" style="width:13%"></div></div><div class="num">1,680 <span class="pct">13%</span></div></div>
+                <div class="funnel-row"><div class="lab">Whale lead qualified</div><div class="bar"><div class="fill" style="width:2.7%; background: linear-gradient(90deg, var(--sand), #c98d4b);"></div></div><div class="num">349 <span class="pct">2.7%</span></div></div>
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span>Biggest drop: engaged → D7 (-39%). Memory-rebind on channel-switch suspect.</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Language share · 7d</div><div class="psub">Auto-detected · 12,930 sessions</div></div>
+              <div class="tabs"><button class="tab on">All channels</button></div>
+            </div>
+            <div class="panel-body">
+              <div style="display:grid; grid-template-columns: 160px 1fr; gap: 16px; align-items: center;">
+                <div class="donut" style="background: conic-gradient(var(--teal-bright) 0 42%, var(--sand) 42% 66%, var(--coral) 66% 79%, #4DD0E1 79% 90%, var(--purple) 90% 100%);">
+                  <div class="ctr"><div class="big">12.9k</div><div class="sml">sessions</div></div>
+                </div>
+                <div class="lang-list">
+                  <div class="row"><span class="sw" style="background:var(--teal-bright)"></span><span>English</span><span>42%</span><span class="conv">5,431</span></div>
+                  <div class="row"><span class="sw" style="background:var(--sand)"></span><span>Mandarin</span><span>24%</span><span class="conv">3,103</span></div>
+                  <div class="row"><span class="sw" style="background:var(--coral)"></span><span>Russian</span><span>13%</span><span class="conv">1,681</span></div>
+                  <div class="row"><span class="sw" style="background:#4DD0E1"></span><span>Thai</span><span>11%</span><span class="conv">1,422</span></div>
+                  <div class="row"><span class="sw" style="background:var(--purple)"></span><span>JA · KO · DE · FR</span><span>10%</span><span class="conv">1,293</span></div>
+                </div>
+              </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--ink-2); display: flex; justify-content: space-between;">
+                <span>Detector accuracy: <b style="color: var(--ink);">96.4%</b></span>
+                <span>Pending review: <b style="color: var(--sand);">142</b></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trust strip -->
+        <div class="panel">
+          <div class="panel-head">
+            <div><div class="pname">Trust · PDPA · scrubber</div><div class="psub">Consent · deletion · encryption · PII hits</div></div>
+          </div>
+          <div class="panel-body">
+            <div class="compliance">
+              <div class="comp-card"><div class="label">Consent rate</div><div class="v">99.4%</div><div class="note">47 declined → no-store path</div></div>
+              <div class="comp-card warn"><div class="label">delete_me · in flight</div><div class="v">3</div><div class="note">SLA 30d · oldest 6d</div></div>
+              <div class="comp-card"><div class="label">KMS rotation</div><div class="v">Q2</div><div class="note">last 38d ago · next 2026-08-30</div></div>
+              <div class="comp-card warn"><div class="label">PII scrubber · 7d</div><div class="v">142</div><div class="note">87 card · 38 passport · 17 TH ID</div></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ====================== EXECUTIVE VIEW ====================== -->
+    <section id="view-executive" class="view">
+      <div class="canvas">
+
+        <div class="info-banner">
+          <b>Executive view.</b> Same data as Operator. Different lens. This is what you open on Monday morning for a 5-minute glance, or before a board / partnership call.
+        </div>
+
+        <!-- Decision gate scorecard -->
+        <div class="panel" style="margin-bottom: 22px;">
+          <div class="panel-head">
+            <div><div class="pname">Decision gate · scorecard</div><div class="psub">7 KPIs vs pilot targets · 18 days to Week 7 gate</div></div>
+            <div class="tabs"><button class="tab on">Pilot</button></div>
+          </div>
+          <div class="panel-body">
+            <table class="data-tbl">
+              <thead><tr><th>KPI</th><th>Current</th><th>Target</th><th>Status</th><th>Trend (28d)</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">Scan rate per ride</td><td class="num">9.2%</td><td class="num">≥ 8%</td><td><span class="badge up">on track</span></td><td>↗ +1.4pt</td></tr>
+                <tr><td class="strong">Activation rate</td><td class="num">63%</td><td class="num">≥ 60%</td><td><span class="badge up">on track</span></td><td>↗ +3pt</td></tr>
+                <tr><td class="strong">Avg session depth</td><td class="num">8.2</td><td class="num">≥ 6</td><td><span class="badge up">on track</span></td><td>↗ +2.1</td></tr>
+                <tr><td class="strong">D7 return rate</td><td class="num">27%</td><td class="num">≥ 25%</td><td><span class="badge up">on track</span></td><td>↗ +2pt</td></tr>
+                <tr><td class="strong">Booking conversion</td><td class="num">13%</td><td class="num">≥ 12%</td><td><span class="badge up">on track</span></td><td>→ flat</td></tr>
+                <tr><td class="strong">Whale leads qualified</td><td class="num">34</td><td class="num">≥ 30/mo</td><td><span class="badge up">on track</span></td><td>↗ +6</td></tr>
+                <tr><td class="strong">Partner NPS</td><td class="num">8.4</td><td class="num">≥ 8</td><td><span class="badge up">on track</span></td><td>↗ +0.7</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top: 14px; padding: 12px; background: var(--green-soft); border-radius: 6px; font-size: 12px; color: var(--ink-1);">
+              <b style="color: var(--green);">7 of 7 KPIs hitting target.</b> Pro-tier conversion conversation is warranted next week.
+            </div>
+          </div>
+        </div>
+
+        <!-- Revenue + Cost trends -->
+        <div class="grid cols-balanced">
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Revenue · 28d</div><div class="psub">By stream · Lumi / Phuket AI split</div></div>
+            </div>
+            <div class="panel-body">
+              <div class="bar-chart">
+                <div class="b" style="height:48%"><div class="v">$2.1k</div></div>
+                <div class="b" style="height:55%"><div class="v">$2.4k</div></div>
+                <div class="b" style="height:62%"><div class="v">$2.7k</div></div>
+                <div class="b" style="height:70%"><div class="v">$3.1k</div></div>
+                <div class="b" style="height:74%"><div class="v">$3.3k</div></div>
+                <div class="b" style="height:82%"><div class="v">$3.7k</div></div>
+                <div class="b" style="height:88%"><div class="v">$3.9k</div></div>
+                <div class="b" style="height:95%"><div class="v">$4.3k</div></div>
+              </div>
+              <div class="bar-labels"><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span><span>W6</span><span>W7</span><span>W8</span></div>
+              <div style="margin-top: 14px;">
+                <div class="stack-row">
+                  <div class="lab">Bookings</div>
+                  <div class="bar"><div class="seg" style="background: var(--teal-bright); width: 50%"></div><div class="seg" style="background: #4a5e85; width: 50%"></div></div>
+                  <div class="num">$4,234</div>
+                </div>
+                <div class="stack-row">
+                  <div class="lab">Whale leads</div>
+                  <div class="bar"><div class="seg" style="background: var(--teal-bright); width: 30%"></div><div class="seg" style="background: #4a5e85; width: 70%"></div></div>
+                  <div class="num">$9,000</div>
+                </div>
+                <div class="stack-row">
+                  <div class="lab">Merchant subs</div>
+                  <div class="bar"><div class="seg" style="background: var(--teal-bright); width: 40%"></div><div class="seg" style="background: #4a5e85; width: 60%"></div></div>
+                  <div class="num">$2,100</div>
+                </div>
+                <div style="display: flex; gap: 14px; margin-top: 10px; font-size: 10px; color: var(--ink-3); padding-top: 8px; border-top: 1px solid var(--line-soft);">
+                  <span><span style="display:inline-block; width: 8px; height: 8px; background: var(--teal-bright); border-radius: 2px;"></span> Lumi · $5,757</span>
+                  <span><span style="display:inline-block; width: 8px; height: 8px; background: #4a5e85; border-radius: 2px;"></span> Phuket AI · $9,577</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Cost per active user · trend</div><div class="psub">Plotted against $0.64 pilot budget</div></div>
+            </div>
+            <div class="panel-body">
+              <div class="line-chart">
+                <svg viewBox="0 0 400 160" preserveAspectRatio="none">
+                  <line x1="0" y1="80" x2="400" y2="80" stroke="var(--sand)" stroke-dasharray="3,3" stroke-width="1"/>
+                  <text x="395" y="74" font-size="9" fill="var(--sand)" text-anchor="end">budget $0.64</text>
+                  <polyline fill="none" stroke="var(--teal-bright)" stroke-width="2"
+                    points="20,120 70,108 120,98 170,86 220,72 270,66 320,62 370,56"/>
+                  <circle cx="370" cy="56" r="4" fill="var(--teal-bright)"/>
+                  <text x="370" y="46" font-size="10" fill="var(--ink)" text-anchor="middle">$0.71</text>
+                </svg>
+              </div>
+              <div style="margin-top: 10px; padding: 10px; background: var(--bg-2); border-radius: 6px; font-size: 11px; color: var(--ink-2);">
+                <b style="color: var(--sand);">+11% over budget.</b> Driver: Sonnet share crept to 84% of turns (target 60%). Recommendation: downshift whale-lead pre-qual to Haiku.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Commitments + Risks -->
+        <div class="grid cols-balanced" style="margin-top: 22px;">
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Open commitments</div><div class="psub">5 things we owe Phuket AI this week</div></div></div>
+            <div class="panel-body" style="padding: 0;">
+              <table class="data-tbl">
+                <tbody>
+                  <tr><td class="strong">WeChat XML reply path</td><td>by Fri</td><td><span class="badge up">on track</span></td></tr>
+                  <tr><td class="strong">First merchant content batch</td><td>by Wed</td><td><span class="badge up">on track</span></td></tr>
+                  <tr><td class="strong">Tool-use loop in concierge</td><td>by next Tue</td><td><span class="badge warn">tight</span></td></tr>
+                  <tr><td class="strong">PDPA consent string · TH</td><td>this week</td><td><span class="badge up">drafted</span></td></tr>
+                  <tr><td class="strong">Dashboard read-only v1</td><td>by Sat</td><td><span class="badge up">on track</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Risks watchlist</div><div class="psub">3 things to talk about on the partner sync</div></div></div>
+            <div class="panel-body" style="padding: 0;">
+              <table class="data-tbl">
+                <tbody>
+                  <tr><td class="strong">2 vendors with stale content >14d</td><td><span class="badge warn">sand</span></td></tr>
+                  <tr><td class="strong">SMS adapter degraded 4.1% err</td><td><span class="badge down">coral</span></td></tr>
+                  <tr><td class="strong">Tool loop ship date depends on Anthropic API quota lift</td><td><span class="badge warn">sand</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ====================== LEAD SPECIALIST VIEW ====================== -->
+    <section id="view-lead" class="view">
+      <div class="canvas">
+
+        <div class="info-banner">
+          <b>Lead specialist workbench.</b> What a real-estate, schools, or relocation specialist sees when they log in. Their queue. Their conversion. Their leads only.
+        </div>
+
+        <div class="kpis" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="kpi"><div class="label">In my queue</div><div class="value">5</div><div class="delta up">2 hot today</div><div class="target">RE + school verts</div></div>
+          <div class="kpi"><div class="label">Awaiting customer reply</div><div class="value">3</div><div class="delta">oldest 4 days</div><div class="target">after my touch</div></div>
+          <div class="kpi"><div class="label">Closed · MTD</div><div class="value">3</div><div class="delta up">▲ vs 2 last month</div><div class="target">$11,400 commission</div></div>
+          <div class="kpi"><div class="label">SLA hit rate · 30d</div><div class="value">94%</div><div class="delta up">▲ target 90%</div><div class="target">first contact <24h</div></div>
+        </div>
+
+        <!-- My queue + Closed -->
+        <div class="grid cols-2">
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">My queue <span class="accent">●</span></div><div class="psub">RE + School verticals · sorted by score then age</div></div>
+              <div class="tabs"><button class="tab on">Open · 5</button><button class="tab">All</button></div>
+            </div>
+            <div class="panel-body" style="padding: 0;">
+              <table class="data-tbl">
+                <thead><tr><th>Score</th><th>Lead</th><th>Vert</th><th>Detail</th><th>Age</th><th></th></tr></thead>
+                <tbody>
+                  <tr style="cursor: pointer;" onclick="openDrawer('lead-a4f2')">
+                    <td><span class="score A">A</span></td>
+                    <td class="strong">#a4f2</td>
+                    <td><span class="vert-pill school">SCHOOL</span></td>
+                    <td>Y7 child · Sept 2026 intake</td>
+                    <td><span class="sla">14m</span></td>
+                    <td><button class="btn">Open</button></td>
+                  </tr>
+                  <tr style="cursor: pointer;" onclick="openDrawer('lead-d9a2')">
+                    <td><span class="score A">A</span></td>
+                    <td class="strong">#d9a2</td>
+                    <td><span class="vert-pill re">RENT</span></td>
+                    <td>3BR · ฿80k/mo · 6+ mo</td>
+                    <td><span class="sla">38m</span></td>
+                    <td><button class="btn">Open</button></td>
+                  </tr>
+                  <tr style="cursor: pointer;">
+                    <td><span class="score A">A</span></td>
+                    <td class="strong">#9c1e</td>
+                    <td><span class="vert-pill re">BUY</span></td>
+                    <td>Villa · ~$1.2M · sea view</td>
+                    <td><span class="sla warn">4h 12m</span></td>
+                    <td><button class="btn ghost">Open</button></td>
+                  </tr>
+                  <tr style="cursor: pointer;">
+                    <td><span class="score B">B</span></td>
+                    <td class="strong">#01dd</td>
+                    <td><span class="vert-pill school">SCHOOL</span></td>
+                    <td>2 kids · Jan 2027 intake</td>
+                    <td><span class="sla late">22h 18m</span></td>
+                    <td><button class="btn ghost">Open</button></td>
+                  </tr>
+                  <tr style="cursor: pointer;">
+                    <td><span class="score C">C</span></td>
+                    <td class="strong">#62a9</td>
+                    <td><span class="vert-pill re">BUY</span></td>
+                    <td>Investment · no timeline</td>
+                    <td><span class="sla late">26h 02m</span></td>
+                    <td><button class="btn ghost">Open</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-foot">
+              <span>1 SLA breach · 2 A-scores hot</span>
+              <span><a href="#">Filter by vertical →</a></span>
+            </div>
+          </div>
+
+          <!-- Hot today + Awaiting -->
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Hot today</div><div class="psub">A-score · within SLA · pinned</div></div></div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <tbody>
+                  <tr><td><span class="score A">A</span></td><td class="strong">#a4f2 · school</td><td><span class="sla">14m</span></td></tr>
+                  <tr><td><span class="score A">A</span></td><td class="strong">#d9a2 · RE rent</td><td><span class="sla">38m</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-head" style="margin-top: 6px;"><div><div class="pname">Awaiting customer reply</div><div class="psub">After my last touch</div></div></div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <tbody>
+                  <tr><td class="strong">#7e02 · relo</td><td>3d ago</td><td><span class="badge warn">nudge?</span></td></tr>
+                  <tr><td class="strong">#3b48 · visa</td><td>4d ago</td><td><span class="badge warn">nudge?</span></td></tr>
+                  <tr><td class="strong">#11ce · RE</td><td>2d ago</td><td><span class="badge up">on time</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Closed this month -->
+        <div class="panel" style="margin-top: 22px;">
+          <div class="panel-head">
+            <div><div class="pname">Closed this month</div><div class="psub">Personal scoreboard · gross commission earned</div></div>
+            <div class="tabs"><button class="tab on">MTD</button><button class="tab">YTD</button></div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="data-tbl">
+              <thead><tr><th>Lead</th><th>Vertical</th><th>Closed</th><th>Deal size</th><th>Commission</th><th>NuM share</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">#e34c</td><td><span class="vert-pill re">BUY</span></td><td>3 Jun</td><td class="num">$895,000 villa</td><td class="num">$2,685</td><td class="num">$671</td></tr>
+                <tr><td class="strong">#8a02</td><td><span class="vert-pill school">SCHOOL</span></td><td>5 Jun</td><td class="num">1 enrollment, Y9</td><td class="num">$3,500</td><td class="num">$875</td></tr>
+                <tr><td class="strong">#22f1</td><td><span class="vert-pill re">RENT</span></td><td>11 Jun</td><td class="num">฿95k/mo · 12mo</td><td class="num">$1,440</td><td class="num">$432</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ====================== MERCHANT VIEW ====================== -->
+    <section id="view-merchant" class="view">
+      <div class="canvas">
+
+        <div class="info-banner">
+          <b>Merchant portal.</b> What a vendor sees on their own login. Single restaurant / spa / tour view. No cross-vendor data. No tenant-level operations.
+        </div>
+
+        <div class="kpis" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="kpi"><div class="label">Bookings · this week</div><div class="value">12</div><div class="delta up">▲ vs 9 last week</div><div class="target">target: 10</div></div>
+          <div class="kpi"><div class="label">Revenue routed</div><div class="value">฿14.2k</div><div class="delta up">▲ 18%</div><div class="target">commission ฿2.13k</div></div>
+          <div class="kpi"><div class="label">NPS · 30d</div><div class="value">9.4</div><div class="delta up">▲ +0.3</div><div class="target">from 48 reviews</div></div>
+          <div class="kpi"><div class="label">Featured rank</div><div class="value">#2</div><div class="delta up">▲ from #4</div><div class="target">Seafood · Bang Tao</div></div>
+        </div>
+
+        <div class="grid cols-2">
+
+          <!-- Booking queue -->
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Booking queue</div><div class="psub">From NuM · pending → confirmed → completed</div></div>
+              <div class="tabs"><button class="tab on">Today</button><button class="tab">Week</button></div>
+            </div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>When</th><th>Party</th><th>Notes</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td>19:30</td><td>2 adults</td><td>Anniversary, sea-view table</td><td><span class="badge warn">pending</span></td><td><button class="btn">Accept</button></td></tr>
+                  <tr><td>20:00</td><td>4 adults · 1 kid</td><td>Veg-friendly, kid-friendly</td><td><span class="badge up">confirmed</span></td><td>—</td></tr>
+                  <tr><td>20:15</td><td>2 adults</td><td>—</td><td><span class="badge up">confirmed</span></td><td>—</td></tr>
+                  <tr><td>21:00</td><td>6 adults</td><td>Birthday, requested set menu</td><td><span class="badge warn">pending</span></td><td><button class="btn">Accept</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-foot"><span>2 pending · accept before 18:00</span></div>
+          </div>
+
+          <!-- My listing -->
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">My listing</div><div class="psub">Bang Tao Seafood · last updated 2h ago</div></div>
+              <button class="btn">Edit listing</button>
+            </div>
+            <div class="panel-body">
+              <table class="data-tbl">
+                <tbody>
+                  <tr><td style="width: 130px; color: var(--ink-3);">Hours</td><td class="strong">12:00–22:30 · daily</td></tr>
+                  <tr><td style="color: var(--ink-3);">Photos</td><td><span class="badge up">8 uploaded · fresh</span></td></tr>
+                  <tr><td style="color: var(--ink-3);">Promo</td><td>Free Thai dessert with 3+ courses (set to expire 30 Jun)</td></tr>
+                  <tr><td style="color: var(--ink-3);">Segment tags</td><td>kid-friendly · couples · sea-view · halal · veg-options</td></tr>
+                  <tr><td style="color: var(--ink-3);">Commission tier</td><td class="strong">15% standard · featured priority</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Reviews + Guest insights -->
+        <div class="grid cols-balanced" style="margin-top: 22px;">
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Reviews · last 10</div><div class="psub">NuM-routed guests only · reply inline</div></div></div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <tbody>
+                  <tr><td><span class="star">★★★★★</span> 5.0</td><td>"Best curry I've had in Phuket. The staff..."</td><td>2d</td><td><button class="btn ghost">Reply</button></td></tr>
+                  <tr><td><span class="star">★★★★★</span> 5.0</td><td>"Great service, found us a kid-friendly..."</td><td>3d</td><td><button class="btn ghost">Reply</button></td></tr>
+                  <tr><td><span class="star">★★★★</span> 4.0</td><td>"Food great, but slow service..."</td><td>4d</td><td><button class="btn">Reply ↩</button></td></tr>
+                  <tr><td><span class="star">★★★★★</span> 5.0</td><td>"Returned for the second time, even..."</td><td>5d</td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">What guests asked NuM about us</div><div class="psub">Anonymized · last 30 days · ops insight</div></div></div>
+            <div class="panel-body">
+              <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: var(--ink-1); line-height: 1.8;">
+                <li>"Best seafood near Bang Tao with sea view" — <b>11 times</b></li>
+                <li>"Where do locals eat in Bang Tao" — <b>8 times</b></li>
+                <li>"Kid-friendly Thai food" — <b>6 times</b> (you converted 5/6)</li>
+                <li>"Restaurant with halal options near Bang Tao" — <b>4 times</b></li>
+                <li>"Romantic dinner with view, anniversary" — <b>3 times</b></li>
+              </ul>
+              <div style="margin-top: 14px; padding: 10px; background: var(--bg-2); border-radius: 6px; font-size: 11px; color: var(--ink-2);">
+                <b style="color: var(--ink);">Coaching tip:</b> Guests asking for "halal options" don't see it surfaced in your description. Adding "Muslim-friendly menu" to your tags would route 3–5 more matches per week to you.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ====================== AI QUALITY VIEW ====================== -->
+    <section id="view-quality" class="view">
+      <div class="canvas">
+
+        <div class="info-banner">
+          <b>AI Quality Studio.</b> Where Lumi ML (and the partner's technical team) sample conversations, grade outputs, and ship prompt fixes. Lives on a separate subdomain. Allow-listed.
+        </div>
+
+        <div class="kpis" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="kpi"><div class="label">Intent accuracy · 7d</div><div class="value">94.2%</div><div class="delta up">▲ +1.4pt vs prev wk</div><div class="target">500 graded msgs</div></div>
+          <div class="kpi"><div class="label">Hallucination flags</div><div class="value">11</div><div class="delta down">▲ +3 vs prev wk</div><div class="target">7 vendor drift · 4 prompt</div></div>
+          <div class="kpi"><div class="label">Escalation rate</div><div class="value">3.1%</div><div class="delta">→ flat</div><div class="target">71% legitimate</div></div>
+          <div class="kpi"><div class="label">Sampling queue</div><div class="value">18</div><div class="delta">need 50/day</div><div class="target">awaiting human grade</div></div>
+        </div>
+
+        <!-- Sampling + Hallucination flags -->
+        <div class="grid cols-2">
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Sampled grading queue</div><div class="psub">Random sample · grade intent + reply quality</div></div>
+              <div class="tabs"><button class="tab on">Pending · 18</button><button class="tab">Done</button></div>
+            </div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>Lang</th><th>Sample</th><th>NuM intent</th><th>Grade</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td><span class="badge lang">TH</span></td>
+                    <td>"หาร้านอาหารเช้าใกล้กะตะ"</td>
+                    <td><span class="badge intent-tourist">TOURIST</span></td>
+                    <td><button class="btn ghost">✓</button> <button class="btn ghost" style="border-color: var(--coral); color: var(--coral);">✗</button></td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge lang">ZH</span></td>
+                    <td>"想了解长期租房，3卧"</td>
+                    <td><span class="badge intent-whale">WHALE</span></td>
+                    <td><button class="btn ghost">✓</button> <button class="btn ghost" style="border-color: var(--coral); color: var(--coral);">✗</button></td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge lang">EN</span></td>
+                    <td>"Can I get the airport transfer please"</td>
+                    <td><span class="badge intent-booking">BOOKING</span></td>
+                    <td><button class="btn ghost">✓</button> <button class="btn ghost" style="border-color: var(--coral); color: var(--coral);">✗</button></td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge lang">RU</span></td>
+                    <td>"Спасибо, было хорошо"</td>
+                    <td><span class="badge intent-smalltalk">SMALLTALK</span></td>
+                    <td><button class="btn ghost">✓</button> <button class="btn ghost" style="border-color: var(--coral); color: var(--coral);">✗</button></td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge lang">JA</span></td>
+                    <td>"返金してください"</td>
+                    <td><span class="badge intent-support">SUPPORT</span></td>
+                    <td><button class="btn ghost">✓</button> <button class="btn ghost" style="border-color: var(--coral); color: var(--coral);">✗</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-foot"><span>Yesterday: 47 graded · 92% agreement with NuM</span></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><div class="pname">Hallucination flags</div><div class="psub">Auto-flagged · confirm or dismiss</div></div>
+            </div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>Flag</th><th>Reason</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td class="strong">Plamona quoted hours wrong</td><td>vendor drift · stale 18d</td><td><span class="badge warn">vendor</span></td></tr>
+                  <tr><td class="strong">Spa price ฿4,200 vs actual ฿4,800</td><td>price stale</td><td><span class="badge warn">vendor</span></td></tr>
+                  <tr><td class="strong">Sunset Tapas review fabricated</td><td>no source · halluc.</td><td><span class="badge down">prompt</span></td></tr>
+                  <tr><td class="strong">Switched EN mid-ZH convo</td><td>lang slip · ID #d9a2</td><td><span class="badge warn">prompt</span></td></tr>
+                  <tr><td class="strong">"Cheapest yacht in Phuket"</td><td>made up boat name</td><td><span class="badge down">prompt</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Prompt timeline + A/B -->
+        <div class="grid cols-balanced" style="margin-top: 22px;">
+
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Prompt version timeline</div><div class="psub">Every system_prompt change · who · when · KPI delta</div></div></div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>v</th><th>Ship date</th><th>Change</th><th>D7 delta</th><th>Intent acc Δ</th></tr></thead>
+                <tbody>
+                  <tr><td class="strong">v0.7</td><td>14 Jun</td><td>Added kid-friendly tag emphasis</td><td>+1.2pt</td><td>+0.4pt</td></tr>
+                  <tr><td class="strong">v0.6</td><td>9 Jun</td><td>WeChat-window awareness</td><td>+0.8pt</td><td>—</td></tr>
+                  <tr><td class="strong">v0.5</td><td>4 Jun</td><td>Whale-lead trigger language</td><td>+0.3pt</td><td>+1.1pt</td></tr>
+                  <tr><td class="strong">v0.4</td><td>30 May</td><td>Sharper PII refusal</td><td>—</td><td>—</td></tr>
+                  <tr><td class="strong">v0.3</td><td>26 May</td><td>Vendor honesty addendum</td><td>+2.1pt</td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">A/B tests · running</div><div class="psub">2 active · 50/50 split · D7 return as primary</div></div></div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>Test</th><th>Cohort</th><th>D7 ret</th><th>Verdict</th></tr></thead>
+                <tbody>
+                  <tr><td class="strong">Warmer tone</td><td>Control (v0.7)</td><td>26.8%</td><td rowspan="2" style="vertical-align: middle;"><span class="badge up">A wins</span></td></tr>
+                  <tr><td></td><td>A: +empathy preamble</td><td class="num strong" style="color: var(--green);">29.4%</td></tr>
+                  <tr><td class="strong">Concise replies</td><td>Control (v0.7)</td><td>26.8%</td><td rowspan="2" style="vertical-align: middle;"><span class="badge warn">no sig</span></td></tr>
+                  <tr><td></td><td>B: 40% shorter</td><td>26.1%</td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-foot"><span>Ship warmer-tone to 100% next deploy?</span><span><button class="btn">Ship</button></span></div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ====================== LUMI ADMIN VIEW ====================== -->
+    <section id="view-lumi" class="view">
+      <div class="canvas">
+
+        <div class="info-banner">
+          <b>Lumi platform admin.</b> Internal-only. Cross-tenant. The partner never sees this app — anything labeled Lumi-vs-partner, all-tenants, or contract pipeline lives only here.
+        </div>
+
+        <div class="kpis" style="grid-template-columns: repeat(5, 1fr);">
+          <div class="kpi"><div class="label">Live tenants</div><div class="value">1</div><div class="delta">+2 in pipeline</div><div class="target">Phuket AI (pilot)</div></div>
+          <div class="kpi"><div class="label">MTD revenue</div><div class="value">$15.3k</div><div class="delta up">▲ vs $11.2k last mo</div><div class="target">Lumi share $5.8k</div></div>
+          <div class="kpi"><div class="label">MTD margin</div><div class="value">85%</div><div class="delta up">▲ pilot tier</div><div class="target">net $3.6k</div></div>
+          <div class="kpi"><div class="label">Active users (all)</div><div class="value">8,145</div><div class="delta up">▲ 22%</div><div class="target">cross-tenant</div></div>
+          <div class="kpi"><div class="label">LLM spend · MTD</div><div class="value">$1,847</div><div class="delta down">▲ +11% vs budget</div><div class="target">Sonnet 71% · Haiku 19%</div></div>
+        </div>
+
+        <!-- All tenants -->
+        <div class="panel" style="margin-bottom: 22px;">
+          <div class="panel-head">
+            <div><div class="pname">All tenants</div><div class="psub">Tier · MAU · revenue · margin · contract state</div></div>
+            <div class="tabs"><button class="tab on">Live + pipeline</button><button class="tab">Live</button><button class="tab">Archived</button></div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="data-tbl">
+              <thead><tr><th>Tenant</th><th>Region</th><th>Tier</th><th>MAU</th><th>MTD rev</th><th>Lumi net</th><th>Margin</th><th>Contract</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="strong">Phuket AI</td>
+                  <td>Phuket · TH</td>
+                  <td><span class="badge up">Pilot</span></td>
+                  <td class="num">8,145</td>
+                  <td class="num">$15,334</td>
+                  <td class="num strong" style="color: var(--green);">$3,573</td>
+                  <td class="num">85%</td>
+                  <td>Month-to-month</td>
+                </tr>
+                <tr>
+                  <td class="strong">Phuket InCar Group</td>
+                  <td>Phuket · TH · v2</td>
+                  <td><span class="badge warn">In contract</span></td>
+                  <td>—</td><td>—</td><td>—</td><td>—</td>
+                  <td>MoU in counsel review</td>
+                </tr>
+                <tr>
+                  <td class="strong">Bali · prospect</td>
+                  <td>Denpasar · ID</td>
+                  <td><span class="badge">Prospect</span></td>
+                  <td>—</td><td>—</td><td>—</td><td>—</td>
+                  <td>Initial call 18 Jun</td>
+                </tr>
+                <tr>
+                  <td class="strong">Bangkok · prospect</td>
+                  <td>Bangkok · TH</td>
+                  <td><span class="badge">Prospect</span></td>
+                  <td>—</td><td>—</td><td>—</td><td>—</td>
+                  <td>Warm intro pending</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Cost ledger + Pipeline -->
+        <div class="grid cols-balanced">
+
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Cost ledger · MTD</div><div class="psub">By tenant · by provider · vs budget</div></div></div>
+            <div class="panel-body">
+              <table class="data-tbl">
+                <thead><tr><th>Item</th><th>Spend</th><th>Budget</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td class="strong">Anthropic (Sonnet)</td><td class="num">$1,308</td><td class="num">$1,180</td><td><span class="badge warn">+11%</span></td></tr>
+                  <tr><td class="strong">Anthropic (Haiku)</td><td class="num">$359</td><td class="num">$340</td><td><span class="badge up">on</span></td></tr>
+                  <tr><td class="strong">OpenAI (embeddings)</td><td class="num">$58</td><td class="num">$60</td><td><span class="badge up">under</span></td></tr>
+                  <tr><td class="strong">Twilio + WeChat + LINE</td><td class="num">$420</td><td class="num">$450</td><td><span class="badge up">under</span></td></tr>
+                  <tr><td class="strong">Supabase + Vercel</td><td class="num">$122</td><td class="num">$120</td><td><span class="badge up">on</span></td></tr>
+                  <tr><td class="strong">Sentry + Logs</td><td class="num">$78</td><td class="num">$80</td><td><span class="badge up">under</span></td></tr>
+                  <tr><td class="strong">Total</td><td class="num">$2,345</td><td class="num">$2,230</td><td><span class="badge warn">+5%</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><div><div class="pname">Tenant onboarding pipeline</div><div class="psub">Prospect → MOU → Pilot → Pro → Enterprise</div></div></div>
+            <div class="panel-body" style="padding:0;">
+              <table class="data-tbl">
+                <thead><tr><th>Tenant</th><th>Stage</th><th>Stage age</th><th>Owner</th></tr></thead>
+                <tbody>
+                  <tr><td class="strong">Phuket AI</td><td><span class="badge up">Pilot · week 5</span></td><td>32d</td><td>Dre</td></tr>
+                  <tr><td class="strong">Phuket InCar</td><td><span class="badge warn">MOU review</span></td><td>9d</td><td>Dre</td></tr>
+                  <tr><td class="strong">Bali</td><td><span class="badge">Prospect · first call</span></td><td>2d</td><td>Dre</td></tr>
+                  <tr><td class="strong">Bangkok</td><td><span class="badge">Prospect · warm intro</span></td><td>14d</td><td>Dre</td></tr>
+                  <tr><td class="strong">Singapore (internal lead)</td><td><span class="badge">Researching</span></td><td>21d</td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Provider rate card -->
+        <div class="panel" style="margin-top: 22px;">
+          <div class="panel-head"><div><div class="pname">Provider rate card</div><div class="psub">Live Anthropic + OpenAI pricing · drives `costing.py`</div></div></div>
+          <div class="panel-body" style="padding:0;">
+            <table class="data-tbl">
+              <thead><tr><th>Model</th><th>Input ($/M)</th><th>Output ($/M)</th><th>Last verified</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">claude-sonnet-4-6</td><td class="num">$3.00</td><td class="num">$15.00</td><td>17 Jun</td></tr>
+                <tr><td class="strong">claude-haiku-4-5-20251001</td><td class="num">$1.00</td><td class="num">$5.00</td><td>17 Jun</td></tr>
+                <tr><td class="strong">claude-opus-4-8</td><td class="num">$15.00</td><td class="num">$75.00</td><td>17 Jun</td></tr>
+                <tr><td class="strong">text-embedding-3-small</td><td class="num">$0.02</td><td class="num">—</td><td>17 Jun</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <div class="foot">
+      <span>NuM · Operator Suite · prototype v0.2 · 2026-06-17</span>
+      <span>Single-file functional mock · realistic data · click "View as" in the sidebar to switch dashboards</span>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================ -->
+<!--  Lead detail drawer (shared across Operator + Lead views)    -->
+<!-- ============================================================ -->
+<div id="drawer" class="drawer-back" onclick="closeDrawer(event)">
+  <div class="drawer" onclick="event.stopPropagation()">
+    <button class="x" onclick="closeDrawer()">×</button>
+    <div class="meta" id="drawer-meta">Lead #a4f2 · school · WeChat</div>
+    <h3 id="drawer-title">School inquiry — Y7 child, Sept 2026 intake</h3>
+
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <span class="score A">A</span>
+      <span class="vert-pill school">SCHOOL</span>
+      <span class="badge lang">ZH</span>
+      <span class="badge stage-relo">exploring_relocation</span>
+      <span class="sla">14m to first contact</span>
+    </div>
+
+    <div class="section">
+      <div class="h">Customer summary</div>
+      <table class="data-tbl">
+        <tbody>
+          <tr><td style="width: 130px; color: var(--ink-3);">Lifecycle stage</td><td class="strong">exploring_relocation</td></tr>
+          <tr><td style="color: var(--ink-3);">Language</td><td class="strong">Mandarin (ZH-CN)</td></tr>
+          <tr><td style="color: var(--ink-3);">Party</td><td class="strong">2 adults · 1 child (age 7)</td></tr>
+          <tr><td style="color: var(--ink-3);">Origin</td><td class="strong">China · likely Shanghai (based on idiom)</td></tr>
+          <tr><td style="color: var(--ink-3);">Trip type</td><td class="strong">Currently visiting · evaluating long-stay</td></tr>
+          <tr><td style="color: var(--ink-3);">Budget band</td><td class="strong">Premium (not asked yet)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="h">Conversation excerpt — what triggered the lead</div>
+      <div class="transcript">
+        <div class="turn">
+          <div class="who">User · WeChat · 14:22</div>
+          <div class="body">我们想看看普吉的国际学校，孩子7岁，可能明年9月入学。需要英文授课，IB课程优先。</div>
+        </div>
+        <div class="turn">
+          <div class="who">NuM · WeChat · 14:22</div>
+          <div class="body assistant">了解。普吉有3所提供IB课程的国际学校。我可以为您整理一份对比表 — 学费、师生比、转学接受度 — 并安排参观。一位本地教育顾问会在24小时内与您联系。能问一下孩子目前在哪个年级吗？</div>
+        </div>
+        <div class="turn">
+          <div class="who">User · WeChat · 14:24</div>
+          <div class="body">目前在上海一所双语学校，G1。希望IB系统。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="h">Memory NuM has on this user (across all sessions)</div>
+      <div class="memory">
+        <div class="item"><span class="tag">[trip]</span><span>Currently in Phuket, staying at Anantara Layan (memory bound from car_PHK_021 acquisition source)</span></div>
+        <div class="item"><span class="tag">[family]</span><span>Spouse + 7-year-old daughter</span></div>
+        <div class="item"><span class="tag">[origin]</span><span>From China, primary language Mandarin</span></div>
+        <div class="item"><span class="tag">[interest]</span><span>Previously asked about long-term villa rentals (memory from day 4)</span></div>
+        <div class="item"><span class="tag">[diet]</span><span>No allergy noted; mentioned veg preference for daughter</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="h">Status</div>
+      <select style="background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); padding: 8px 12px; border-radius: 5px; font-size: 12px;">
+        <option>new (current)</option><option>contacted</option><option>qualified</option><option>in-discussion</option><option>closed_won</option><option>closed_lost</option>
+      </select>
+      <textarea placeholder="Notes for the next person on this lead..." style="display:block; margin-top: 10px; width: 100%; background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); padding: 8px 12px; border-radius: 5px; font-size: 12px; height: 60px; resize: vertical;"></textarea>
+      <div style="margin-top: 14px; display: flex; gap: 10px;">
+        <button class="btn">Save + advance</button>
+        <button class="btn ghost">Send WhatsApp from my number</button>
+        <button class="btn ghost">Schedule call</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  // Role switcher — toggles dashboard view, sidebar nav, top bar
+  // ============================================================
+  const ROLE_META = {
+    operator:  { crumbs: 'Today · Live ops',           title: 'Phuket AI — Live operations',     tenant: 'PHUKET AI · Pilot',         who: 'Dre',     av: 'D' },
+    executive: { crumbs: 'Scorecard · Decision gate',  title: 'Phuket AI — Executive view',      tenant: 'PHUKET AI · Pilot',         who: 'Dre',     av: 'D' },
+    lead:      { crumbs: 'My work · Queue',            title: 'My whale-lead workbench',         tenant: 'PHUKET AI · Pilot',         who: 'Khun Nan',av: 'N' },
+    merchant:  { crumbs: 'Bang Tao Seafood · Today',   title: 'Bang Tao Seafood — Merchant',     tenant: 'BANG TAO SEAFOOD',          who: 'Owner',   av: 'O' },
+    quality:   { crumbs: 'Grading · Sampling queue',   title: 'NuM AI Quality Studio',           tenant: 'AI QUALITY · all tenants',  who: 'ML',      av: 'M' },
+    lumi:      { crumbs: 'Tenants · All tenants',      title: 'NuM Platform Admin',              tenant: 'LUMI · internal',           who: 'Dre',     av: 'D' }
+  };
+
+  function switchRole(role) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + role).classList.add('active');
+
+    document.querySelectorAll('.role-switcher button').forEach(b => b.classList.remove('on'));
+    document.getElementById('r-' + role).classList.add('on');
+
+    document.querySelectorAll('.role-nav').forEach(n => n.style.display = 'none');
+    document.getElementById('nav-' + role).style.display = '';
+
+    const m = ROLE_META[role];
+    document.getElementById('tb-crumbs').textContent = m.crumbs;
+    document.getElementById('tb-title').textContent  = m.title;
+    document.getElementById('tb-tenant').innerHTML   = '<span class="ind"></span> ' + m.tenant;
+    document.getElementById('tb-who').textContent    = m.who;
+    document.getElementById('tb-av').textContent     = m.av;
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ============================================================
+  // Conversation stream — render
+  // ============================================================
+  const CONVOS = [
+    { ch:'WC', cc:'wc', uid:'#a4f2', src:'car_PHK_021', lang:'ZH', stage:'exploring_relocation', stageCls:'stage-relo', msg:'我们想看看普吉的国际学校，孩子7岁，可能明年9月入学...', intent:'WHALE', intentCls:'whale', time:'14:22:08', tag:'lead', vert:'school' },
+    { ch:'WA', cc:'wa', uid:'#c81d', src:'qr_anantara_lobby', lang:'EN', stage:'tourist', stageCls:'', msg:'Best veg dinner near Bang Tao tonight, no reservation needed, $$', intent:'TOURIST', intentCls:'tourist', time:'14:21:54', tag:'', vert:'rec' },
+    { ch:'LN', cc:'ln', uid:'#5e3a', src:'car_PHK_014', lang:'JA', stage:'repeat_visitor', stageCls:'stage-repeat', msg:'前回のドライバーが約束時間に来なかった。返金してください', intent:'SUPPORT', intentCls:'support', time:'14:21:31', tag:'alert', vert:'escalated' },
+    { ch:'WA', cc:'wa', uid:'#7b1c', src:'car_PHK_007', lang:'RU', stage:'tourist', stageCls:'', msg:'Яхта на завтра, 8 человек, с обедом', intent:'BOOKING', intentCls:'booking', time:'14:21:02', tag:'', vert:'yacht' },
+    { ch:'WC', cc:'wc', uid:'#d9a2', src:'qr_kata_villa_017', lang:'ZH', stage:'resident_prospect', stageCls:'stage-relo', msg:'想了解长期租房，3卧带泳池，海景，预算每月8万泰铢以内', intent:'WHALE', intentCls:'whale', time:'14:20:48', tag:'lead', vert:'RE rental' },
+    { ch:'SMS', cc:'sm', uid:'#2f8b', src:'car_PHK_003', lang:'TH', stage:'tourist', stageCls:'', msg:'แท็กซี่ไปสนามบินพรุ่งนี้ 5 โมงเช้า', intent:'BOOKING', intentCls:'booking', time:'14:20:11', tag:'', vert:'transfer' },
+    { ch:'QR', cc:'qr', uid:'new', src:'qr_six_senses_lobby', lang:'EN', stage:'tourist', stageCls:'', msg:'Hi NuM — first time here. Where do I get the best Tom Yum?', intent:'TOURIST', intentCls:'tourist', time:'14:19:55', tag:'', vert:'welcomed' },
+    { ch:'LN', cc:'ln', uid:'#ae07', src:'car_PHK_028', lang:'KO', stage:'repeat_visitor', stageCls:'stage-repeat', msg:'지난번 그 마사지샵 다시 예약해주세요. 같은 분으로요.', intent:'BOOKING', intentCls:'booking', time:'14:19:34', tag:'', vert:'spa · memory↻' }
+  ];
+
+  function renderStream() {
+    const root = document.getElementById('stream-target');
+    if (!root) return;
+    root.innerHTML = CONVOS.map(c => `
+      <div class="convo ${c.tag}" onclick="alert('Open conversation explorer for ${c.uid} — full transcript + memory state would open here.')">
+        <div class="ch badge ch-${c.cc}">${c.ch}</div>
+        <div>
+          <div class="who-line">
+            <span>user · ${c.uid} · ${c.src}</span>
+            <span class="badge lang">${c.lang}</span>
+            <span class="badge stage ${c.stageCls}">${c.stage}</span>
+          </div>
+          <div class="msg">"${c.msg}"</div>
+        </div>
+        <div class="meta">
+          <div class="badge intent-${c.intentCls}">${c.intent}</div><br>
+          ${c.time}<br>↳ ${c.vert}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ============================================================
+  // Whale lead queue — operator view
+  // ============================================================
+  const LEADS = [
+    { vert:'SCHOOL', vertCls:'school', uid:'#a4f2', detail:'Y7 child · sept-26', score:'A', age:'14m', ageCls:'',     owner:'—'      },
+    { vert:'RENT',   vertCls:'re',     uid:'#d9a2', detail:'3BR · ฿80k/mo',     score:'A', age:'38m', ageCls:'',     owner:'K. Nan' },
+    { vert:'BUY',    vertCls:'re',     uid:'#9c1e', detail:'villa · ~$1.2M',    score:'A', age:'4h 12m', ageCls:'warn', owner:'M. Pim' },
+    { vert:'RELO',   vertCls:'relo',   uid:'#7e02', detail:'family of 4 · CN',  score:'B', age:'9h 03m', ageCls:'warn', owner:'—'      },
+    { vert:'VISA',   vertCls:'visa',   uid:'#3b48', detail:'LTR · solo',        score:'B', age:'11h 41m',ageCls:'warn', owner:'K. Nan' },
+    { vert:'SCHOOL', vertCls:'school', uid:'#01dd', detail:'2 kids · jan-27',   score:'B', age:'22h 18m',ageCls:'late', owner:'—'      },
+    { vert:'BUY',    vertCls:'re',     uid:'#62a9', detail:'investment',        score:'C', age:'26h 02m',ageCls:'late', owner:'—'      }
+  ];
+
+  function renderLeads() {
+    const root = document.getElementById('leads-target');
+    if (!root) return;
+    root.innerHTML = LEADS.map(l => `
+      <tr style="cursor: pointer;" onclick="openDrawer('lead-${l.uid.slice(1)}')">
+        <td><span class="vert-pill ${l.vertCls}">${l.vert}</span></td>
+        <td class="strong">${l.uid} · <span style="color: var(--ink-3); font-weight: 400;">${l.detail}</span></td>
+        <td><span class="score ${l.score}">${l.score}</span></td>
+        <td><span class="sla ${l.ageCls}">${l.age}</span></td>
+        <td>${l.owner}</td>
+      </tr>
+    `).join('');
+  }
+
+  // ============================================================
+  // Drawer (lead detail) — used by operator + lead-specialist views
+  // ============================================================
+  function openDrawer(id) {
+    document.getElementById('drawer').classList.add('open');
+  }
+  function closeDrawer(e) {
+    if (e && e.target !== e.currentTarget && !e.target.classList.contains('x')) return;
+    document.getElementById('drawer').classList.remove('open');
+  }
+
+  // ============================================================
+  // Tabs — generic toggling
+  // ============================================================
+  document.addEventListener('click', e => {
+    if (e.target.matches('.panel-head .tab') || e.target.matches('.time-selector button')) {
+      const siblings = e.target.parentElement.querySelectorAll('button');
+      siblings.forEach(s => s.classList.remove('on'));
+      e.target.classList.add('on');
+    }
+  });
+
+  // ============================================================
+  // Boot
+  // ============================================================
+  renderStream();
+  renderLeads();
+
+  // Tiny touch of life — pretend new messages arrive
+  setInterval(() => {
+    const t = document.querySelector('.kpi:nth-child(1) .value');
+    if (t && document.getElementById('view-operator').classList.contains('active')) {
+      const cur = parseInt(t.textContent, 10);
+      const drift = Math.floor(Math.random() * 5) - 2;
+      t.textContent = Math.max(120, Math.min(170, cur + drift));
+    }
+  }, 4000);
+</script>
+
+</body>
+</html>

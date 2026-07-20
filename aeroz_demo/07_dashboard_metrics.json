@@ -1,0 +1,76 @@
+{
+  "asOf": "2026-05-26T20:00:00Z",
+  "headline": {
+    "responseTimeMs": 187,
+    "uptimePct": 100.0,
+    "integrationsCount": 42,
+    "auditLogCoveragePct": 100.0
+  },
+  "portfolio": {
+    "activeProducts": 12,
+    "activeSellers": 8,
+    "activeLocations": 14,
+    "activeTags": 24,
+    "industries": [
+      { "name": "Pharma", "share": 0.50 },
+      { "name": "Defense", "share": 0.33 },
+      { "name": "Consumer / Cannabis", "share": 0.17 }
+    ]
+  },
+  "events_24h": {
+    "total": 18,
+    "byAction": [
+      { "action": "OBSERVE", "count": 7 },
+      { "action": "SHIP", "count": 3 },
+      { "action": "COMMISSION", "count": 3 },
+      { "action": "AGGREGATE", "count": 1 },
+      { "action": "COMPLETENESS_CHECK", "count": 1 },
+      { "action": "FLAGGED_SECURITY_BREACH", "count": 1 },
+      { "action": "REJECT", "count": 1 },
+      { "action": "CONSUMER_TAP", "count": 1 }
+    ]
+  },
+  "alerts_open": {
+    "high": 1,
+    "medium": 1,
+    "low": 0,
+    "info": 0,
+    "topAlert": {
+      "id": "alrt_breach_001",
+      "title": "Container Seal Breached — Humalog Insulin",
+      "severity": "High",
+      "openedAt": "2026-05-26T09:18:00Z"
+    }
+  },
+  "ai_metrics_24h": {
+    "scansAnalyzed": 1284,
+    "anomaliesDetected": 3,
+    "autoResolved": 1,
+    "humanEscalations": 2,
+    "avgAuthenticityScore": 0.982,
+    "modelLatencyMs": 41
+  },
+  "geo_heatmap_top": [
+    { "label": "Ocala, FL — DC + Assembly", "lat": 29.1872, "lng": -82.1401, "weight": 0.34 },
+    { "label": "Fort Liberty, NC", "lat": 35.1415, "lng": -79.0080, "weight": 0.18 },
+    { "label": "Indianapolis, IN", "lat": 39.7647, "lng": -86.1592, "weight": 0.16 },
+    { "label": "Los Angeles, CA", "lat": 34.0522, "lng": -118.2437, "weight": 0.12 },
+    { "label": "Anoka, MN", "lat": 45.1977, "lng": -93.3873, "weight": 0.10 },
+    { "label": "Lake City, FL (breach)", "lat": 30.1578, "lng": -82.9989, "weight": 0.10 }
+  ],
+  "trends_30d": {
+    "scans_per_day": [421, 438, 503, 612, 588, 642, 701, 698, 712, 745, 756, 798, 812, 841, 867, 890, 915, 932, 951, 988, 1012, 1045, 1098, 1124, 1156, 1198, 1224, 1244, 1268, 1284],
+    "alerts_per_day": [3, 4, 2, 3, 5, 2, 4, 3, 3, 4, 5, 6, 4, 3, 5, 4, 3, 4, 6, 5, 4, 5, 6, 4, 3, 5, 4, 5, 4, 5],
+    "auto_resolve_rate": [0.62, 0.64, 0.67, 0.65, 0.68, 0.70, 0.72, 0.71, 0.73, 0.75, 0.74, 0.76, 0.78, 0.77, 0.79, 0.80, 0.81, 0.82, 0.83, 0.82, 0.84, 0.85, 0.83, 0.85, 0.86, 0.87, 0.86, 0.88, 0.87, 0.89]
+  },
+  "industry_breakdown_value_usd_30d": {
+    "Pharma": 4250000,
+    "Defense": 8920000,
+    "Consumer / Cannabis": 184000
+  },
+  "case_studies_featured": [
+    "cs_lilly_cold_chain",
+    "cs_global_ord_drone",
+    "cs_dod_munitions"
+  ]
+}

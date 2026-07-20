@@ -1,0 +1,191 @@
+{
+  "events": [
+    {
+      "eventId": "evt_humalog_origin_001",
+      "linkedRecord": "rec_789xyz123abc",
+      "tagId": "tag_001",
+      "productId": "prod_humalog_100umL_001",
+      "action": "COMMISSION",
+      "locationId": "loc_lilly_indianapolis_001",
+      "timestamp": "2026-05-24T08:00:00Z",
+      "notes": "EPC commissioned at Lilly Indianapolis. Cold-chain status: nominal (2-8°C)."
+    },
+    {
+      "eventId": "evt_humalog_inbound_dc_002",
+      "linkedRecord": "rec_789xyz123abc",
+      "tagId": "tag_001",
+      "action": "OBSERVE",
+      "locationId": "loc_healthylife_ocala_dc_002",
+      "timestamp": "2026-05-25T11:14:00Z",
+      "sensorReadings": { "temp_c": 4.6, "sealStatus": "INTACT" },
+      "notes": "Arrived HealthyLife Ocala DC inbound dock. UHF gate read clean."
+    },
+    {
+      "eventId": "evt_humalog_outbound_dc_003",
+      "linkedRecord": "rec_789xyz123abc",
+      "tagId": "tag_001",
+      "action": "SHIP",
+      "locationId": "loc_healthylife_ocala_dc_002",
+      "timestamp": "2026-05-26T06:42:00Z",
+      "sensorReadings": { "temp_c": 5.1, "sealStatus": "INTACT" },
+      "notes": "Outbound to Floridian Family Pharmacy Jacksonville. Cold-chain sealed."
+    },
+    {
+      "eventId": "evt_humalog_breach_004",
+      "linkedRecord": "rec_789xyz123abc",
+      "tagId": "tag_001",
+      "action": "FLAGGED_SECURITY_BREACH",
+      "locationId": "loc_breach_geo_004",
+      "timestamp": "2026-05-26T09:18:00Z",
+      "sensorReadings": { "temp_c": 7.9, "sealStatus": "BREACHED", "gps": "geo:30.1578,-82.9989" },
+      "aiAnalysis": {
+        "authenticityScore": 0.0,
+        "isFlagged": true,
+        "reason": "Security seal breach detected during transit."
+      },
+      "alertId": "alrt_breach_001",
+      "notes": "Case Study 1 headline event. Pharmacy auto-rejected the inbound shipment."
+    },
+    {
+      "eventId": "evt_humalog_rejected_005",
+      "linkedRecord": "rec_789xyz123abc",
+      "tagId": "tag_001",
+      "action": "REJECT",
+      "locationId": "loc_floridian_pharmacy_003",
+      "timestamp": "2026-05-26T11:55:00Z",
+      "notes": "Floridian Family Pharmacy refused receipt — authenticity score 0.0."
+    },
+    {
+      "eventId": "evt_drone_aggregate_006",
+      "linkedRecord": "rec_drone_global_ord_001",
+      "tagId": "tag_009",
+      "productId": "prod_go_eagle_drone_007",
+      "action": "AGGREGATE",
+      "locationId": "loc_global_ord_ocala_005",
+      "timestamp": "2025-03-07T08:05:00Z",
+      "aggregatedChildren": ["tag_010", "tag_011", "tag_012"],
+      "notes": "All child components linked to Master Chassis Tag. Batch verified complete."
+    },
+    {
+      "eventId": "evt_drone_completeness_007",
+      "linkedRecord": "rec_drone_global_ord_001",
+      "tagId": "tag_009",
+      "action": "COMPLETENESS_CHECK",
+      "locationId": "loc_global_ord_ocala_005",
+      "timestamp": "2025-03-07T08:10:00Z",
+      "aiAnalysis": { "completenessScore": 100.0, "isCompliant": true, "assemblyTech": "Tech_ID_445" },
+      "notes": "System confirmed all required parts present and authentic."
+    },
+    {
+      "eventId": "evt_drone_ship_008",
+      "linkedRecord": "rec_drone_global_ord_001",
+      "tagId": "tag_009",
+      "action": "OBSERVE",
+      "locationId": "loc_global_ord_dock_006",
+      "timestamp": "2025-03-07T10:00:00Z",
+      "notes": "Master Unit scanned at loading dock. Component inventory inferred successfully."
+    },
+    {
+      "eventId": "evt_m855_commission_009",
+      "linkedRecord": "rec_mil_123def",
+      "tagId": "tag_014",
+      "productId": "prod_nato_m855_011",
+      "action": "COMMISSION",
+      "locationId": "loc_vista_anoka_007",
+      "timestamp": "2026-05-25T07:30:00Z",
+      "sensorReadings": { "sealStatus": "ARMED" }
+    },
+    {
+      "eventId": "evt_m855_ship_010",
+      "linkedRecord": "rec_mil_123def",
+      "tagId": "tag_014",
+      "action": "SHIP",
+      "locationId": "loc_vista_anoka_007",
+      "timestamp": "2026-05-25T13:00:00Z",
+      "sensorReadings": { "sealStatus": "ARMED" }
+    },
+    {
+      "eventId": "evt_m855_transit_obs_011",
+      "linkedRecord": "rec_mil_123def",
+      "tagId": "tag_014",
+      "action": "OBSERVE",
+      "locationId": "loc_fort_liberty_008",
+      "timestamp": "2026-05-26T14:22:00Z",
+      "sensorReadings": { "sealStatus": "ARMED", "gps": "geo:35.1415,-79.0080" },
+      "notes": "Automated gate scan. No tampering detected. Case Study 3 headline event."
+    },
+    {
+      "eventId": "evt_saka_commission_012",
+      "linkedRecord": "rec_cannabis_456abc",
+      "tagId": "tag_017",
+      "productId": "prod_saka_white_thc_012",
+      "action": "COMMISSION",
+      "locationId": "loc_saka_napa_009",
+      "timestamp": "2026-05-20T10:00:00Z"
+    },
+    {
+      "eventId": "evt_saka_dispensary_013",
+      "linkedRecord": "rec_cannabis_456abc",
+      "tagId": "tag_017",
+      "action": "OBSERVE",
+      "locationId": "loc_green_earth_la_010",
+      "timestamp": "2026-05-25T14:11:00Z"
+    },
+    {
+      "eventId": "evt_saka_sold_014",
+      "linkedRecord": "rec_cannabis_456abc",
+      "tagId": "tag_017",
+      "action": "CONSUMER_TAP",
+      "locationId": "loc_green_earth_la_010",
+      "timestamp": "2026-05-26T18:33:00Z",
+      "consumerAuthenticationLog": {
+        "scanMethod": "NFC Mobile Authentication",
+        "gps": "geo:34.0522,-118.2437",
+        "businessName": "Green Earth Dispensary",
+        "authenticationResult": "SUCCESS",
+        "notes": "Consumer verified authenticity."
+      },
+      "notes": "Status: SOLD. State reporting compliance automated."
+    },
+    {
+      "eventId": "evt_mounjaro_outbound_015",
+      "tagId": "tag_004",
+      "productId": "prod_mounjaro_003",
+      "action": "SHIP",
+      "locationId": "loc_indianapolis_dc_012",
+      "timestamp": "2026-05-26T07:00:00Z",
+      "notes": "High-diversion-risk SKU — flagged for enhanced monitoring."
+    },
+    {
+      "eventId": "evt_mounjaro_anomaly_016",
+      "tagId": "tag_004",
+      "action": "ANOMALY",
+      "locationId": "loc_breach_geo_004",
+      "timestamp": "2026-05-26T15:05:00Z",
+      "aiAnalysis": {
+        "anomalyType": "Route Deviation",
+        "severity": "Medium",
+        "reason": "Tag observed 47 miles off planned route corridor."
+      },
+      "alertId": "alrt_anomaly_002"
+    },
+    {
+      "eventId": "evt_m855_arrival_017",
+      "tagId": "tag_024",
+      "action": "OBSERVE",
+      "locationId": "loc_naval_yard_la_014",
+      "timestamp": "2026-05-26T19:18:00Z",
+      "sensorReadings": { "sealStatus": "ARMED" },
+      "notes": "Crate-004 arrived Naval Base Coronado. Gate scan clean."
+    },
+    {
+      "eventId": "evt_drone_obs_dover_018",
+      "tagId": "tag_009",
+      "productId": "prod_go_eagle_drone_007",
+      "action": "OBSERVE",
+      "locationId": "loc_dover_afb_013",
+      "timestamp": "2025-03-08T18:30:00Z",
+      "notes": "Inter-base transit ping at Dover AFB aerial port."
+    }
+  ]
+}
