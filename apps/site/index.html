@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0f1e">
+<title>NUM by 5arz — The AI concierge that turns distribution into revenue</title>
+<meta name="description" content="NUM is 5arz's multilingual AI concierge. It lives in WhatsApp, LINE, WeChat and SMS, remembers every traveler, books local businesses, and surfaces high-value leads — all run from one phone.">
+<meta property="og:title" content="NUM by 5arz">
+<meta property="og:description" content="Your city, one text away. The AI concierge platform for travel markets.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#080c17; --bg-1:#0e1526; --bg-2:#162136; --line:#20304e; --line-soft:#1a2740;
+    --ink:#f4f7fd; --ink-2:#aeb9d2; --ink-3:#6d7c9c;
+    --teal:#2fd4c2; --teal-deep:#128d80; --sand:#e8cf9f; --coral:#ff6f61; --green:#3ddc97; --amber:#ffc466;
+    --wa:#25d366; --ln:#06c755; --wc:#09b83e;
+    --maxw:1120px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg-0);color:var(--ink);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--teal)}
+  h1,h2,h3{letter-spacing:-.03em;line-height:1.1}
+  .num-brand{font-weight:900}
+  .num-brand em{color:var(--teal);font-style:normal}
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;background:rgba(8,12,23,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line-soft)}
+  nav .wrap{display:flex;align-items:center;gap:28px;height:64px}
+  nav .logo{font-weight:900;font-size:19px;letter-spacing:-.02em}
+  nav .logo em{color:var(--teal);font-style:normal}
+  nav .links{display:flex;gap:26px;margin-left:12px}
+  nav .links a{font-size:14px;color:var(--ink-2);font-weight:500;transition:color .15s}
+  nav .links a:hover{color:var(--ink)}
+  nav .spacer{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:11px 20px;font-size:14.5px;font-weight:700;cursor:pointer;border:none;transition:transform .12s,background .15s;font-family:inherit}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--teal);color:#04211d}
+  .btn.primary:hover{background:#54e0d0}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .btn.ghost:hover{border-color:var(--teal);color:var(--teal)}
+  .btn.sm{padding:9px 16px;font-size:13.5px}
+  /* hero */
+  header.hero{position:relative;padding:96px 0 80px;overflow:hidden}
+  header.hero::before{content:"";position:absolute;inset:0;background:
+    radial-gradient(680px 380px at 78% -60px, rgba(47,212,194,.14), transparent 60%),
+    radial-gradient(560px 420px at 8% 120px, rgba(232,207,159,.07), transparent 60%);pointer-events:none}
+  .hero-grid{position:relative;display:grid;grid-template-columns:1.15fr .85fr;gap:52px;align-items:center}
+  .hero h1{font-size:60px;font-weight:900;margin:18px 0 0}
+  .hero .tag{font-size:22px;color:var(--sand);font-weight:600;margin-top:14px}
+  .hero p.lede{font-size:17px;color:var(--ink-2);margin:22px 0 0;max-width:540px}
+  .hero .cta{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+  .hero .trust{display:flex;gap:22px;margin-top:30px;flex-wrap:wrap}
+  .hero .trust .t{font-size:12.5px;color:var(--ink-3)}
+  .hero .trust .t b{display:block;font-size:22px;color:var(--ink);font-weight:800;letter-spacing:-.02em}
+  /* phone mock */
+  .phone{position:relative;width:280px;margin:0 auto;background:var(--bg-1);border:8px solid #1c2438;border-radius:38px;padding:14px 14px 20px;box-shadow:0 40px 90px rgba(0,0,0,.5)}
+  .phone .notch{width:120px;height:5px;background:#2a3550;border-radius:99px;margin:2px auto 14px}
+  .chat .b{max-width:82%;border-radius:14px;padding:9px 12px;font-size:12.5px;line-height:1.5;margin-bottom:9px}
+  .chat .u{background:var(--bg-2);border:1px solid var(--line)}
+  .chat .a{background:rgba(47,212,194,.1);border:1px solid rgba(47,212,194,.25);margin-left:auto}
+  .chat .who{font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--ink-3);margin-bottom:3px}
+  .chat .tool{font-size:10px;color:var(--sand);text-align:center;margin:2px 0 9px;font-style:italic}
+  .badge-row{display:flex;gap:6px;justify-content:center;margin-top:6px}
+  .bdg{font-size:9.5px;font-weight:800;border-radius:6px;padding:2px 7px}
+  .b-wa{background:rgba(37,211,102,.15);color:var(--wa)} .b-ln{background:rgba(6,199,85,.15);color:var(--ln)} .b-wc{background:rgba(9,184,62,.15);color:var(--wc)}
+  /* sections */
+  section{padding:80px 0;position:relative}
+  section.alt{background:var(--bg-1);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+  .sec-head{max-width:660px;margin-bottom:44px}
+  .sec-head h2{font-size:38px;font-weight:800;margin:12px 0 0}
+  .sec-head p{font-size:16.5px;color:var(--ink-2);margin-top:14px}
+  /* circuit */
+  .circuit{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .cstep{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:16px;padding:20px 18px;position:relative}
+  section.alt .cstep{background:var(--bg-2)}
+  .cstep .n{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--teal)}
+  .cstep h3{font-size:16px;font-weight:700;margin:8px 0 6px}
+  .cstep p{font-size:13px;color:var(--ink-2)}
+  .cstep .arw{position:absolute;right:-11px;top:50%;transform:translateY(-50%);color:var(--ink-3);font-size:18px;font-weight:700;z-index:2}
+  /* feature grid */
+  .features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .feat{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:16px;padding:24px;transition:border-color .15s,transform .15s}
+  section.alt .feat{background:var(--bg-2)}
+  .feat:hover{border-color:var(--teal);transform:translateY(-2px)}
+  .feat .ic{width:44px;height:44px;border-radius:12px;background:rgba(47,212,194,.12);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
+  .feat h3{font-size:17px;font-weight:700;margin-bottom:7px}
+  .feat p{font-size:13.5px;color:var(--ink-2)}
+  /* console roles */
+  .roles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .role{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:14px;padding:18px}
+  section.alt .role{background:var(--bg-2)}
+  .role .rn{font-size:15px;font-weight:800;letter-spacing:-.01em}
+  .role .rd{font-size:12.5px;color:var(--ink-2);margin-top:5px}
+  .role.master{border-color:rgba(232,207,159,.4);background:linear-gradient(160deg,rgba(232,207,159,.06),transparent)}
+  .role.master .rn{color:var(--sand)}
+  /* platform layers */
+  .layers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .layer{border:1px solid var(--line-soft);border-radius:18px;padding:28px;background:var(--bg-1)}
+  section.alt .layer{background:var(--bg-2)}
+  .layer .lt{font-size:26px;font-weight:900;letter-spacing:-.02em}
+  .layer .role-lbl{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 14px}
+  .layer p{font-size:14px;color:var(--ink-2)}
+  .layer .status{margin-top:16px;font-size:12px;font-weight:700}
+  /* stat band */
+  .band{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;text-align:center}
+  .band .s .v{font-size:44px;font-weight:900;letter-spacing:-.03em;background:linear-gradient(120deg,var(--teal),var(--sand));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .band .s .l{font-size:13px;color:var(--ink-2);margin-top:4px}
+  /* pilot proof */
+  .proof{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+  .kpi-list{display:flex;flex-direction:column;gap:2px}
+  .kpi{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--line-soft)}
+  .kpi:last-child{border-bottom:none}
+  .kpi .kn{flex:1;font-size:14.5px}
+  .kpi .kt{font-size:16px;font-weight:800;color:var(--teal);font-variant-numeric:tabular-nums}
+  /* markets */
+  .markets{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .market{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:16px;padding:22px}
+  section.alt .market{background:var(--bg-2)}
+  .market .mh{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .market .flag{font-size:26px}
+  .market .mn{font-size:17px;font-weight:800}
+  .market .chip{font-size:10.5px;font-weight:800;border-radius:99px;padding:2px 9px}
+  .chip-live{background:rgba(61,220,151,.15);color:var(--green)}
+  .chip-next{background:rgba(255,196,102,.15);color:var(--amber)}
+  .chip-model{background:rgba(138,151,181,.15);color:var(--ink-2)}
+  .market p{font-size:13px;color:var(--ink-2)}
+  /* cta band */
+  .cta-band{text-align:center;background:linear-gradient(160deg,rgba(47,212,194,.1),rgba(232,207,159,.05));border:1px solid var(--line);border-radius:24px;padding:56px 32px}
+  .cta-band h2{font-size:36px;font-weight:900}
+  .cta-band p{font-size:17px;color:var(--ink-2);margin:14px auto 28px;max-width:520px}
+  .cta-band .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  /* footer */
+  footer{padding:48px 0 40px;border-top:1px solid var(--line-soft)}
+  footer .wrap{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
+  footer .logo{font-weight:900;font-size:18px}
+  footer .logo em{color:var(--teal);font-style:normal}
+  footer .tag{font-size:13px;color:var(--ink-3);margin-top:6px;max-width:280px}
+  footer .fcol h4{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin-bottom:10px}
+  footer .fcol a{display:block;font-size:13.5px;color:var(--ink-2);margin-bottom:7px}
+  footer .fcol a:hover{color:var(--teal)}
+  .fine{margin-top:34px;padding-top:20px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--ink-3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+  /* responsive */
+  @media(max-width:900px){
+    .hero-grid{grid-template-columns:1fr;gap:40px}.hero h1{font-size:42px}
+    .hero .phone{order:-1}
+    .circuit{grid-template-columns:1fr 1fr}.cstep .arw{display:none}
+    .features,.roles,.layers,.markets{grid-template-columns:1fr 1fr}
+    .band{grid-template-columns:1fr 1fr;gap:26px}
+    .proof{grid-template-columns:1fr}
+    nav .links{display:none}
+    .sec-head h2{font-size:30px}
+  }
+  @media(max-width:560px){
+    .features,.roles,.layers,.markets,.band,.circuit{grid-template-columns:1fr}
+    .hero h1{font-size:36px}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a href="#" class="logo">5arz</a>
+    <div class="links">
+      <a href="#platform">Platform</a>
+      <a href="#how">How it works</a>
+      <a href="#console">Console</a>
+      <a href="#pilot">Pilot</a>
+      <a href="#markets">Markets</a>
+    </div>
+    <div class="spacer"></div>
+    <a href="#contact" class="btn primary sm">Request a demo</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">NUM — a 5arz platform</div>
+      <h1 class="num-brand">The AI concierge that turns distribution into <em>revenue</em>.</h1>
+      <div class="tag">The concierge layer your distribution is missing.</div>
+      <p class="lede">NUM lives inside the apps travelers already use — WhatsApp, LINE, WeChat, SMS — answers in their language, remembers them across weeks, books local businesses, and surfaces the high-value leads that actually move the needle. You run the whole operation from your phone.</p>
+      <div class="cta">
+        <a href="#contact" class="btn primary">Request a demo</a>
+        <a href="#how" class="btn ghost">See how it works</a>
+      </div>
+      <div class="trust">
+        <div class="t"><b>4</b> channels, one brain</div>
+        <div class="t"><b>9</b> languages, auto-detected</div>
+        <div class="t"><b>&lt;3s</b> replies, cost-tracked</div>
+      </div>
+    </div>
+    <div class="phone" aria-hidden="true">
+      <div class="notch"></div>
+      <div class="chat">
+        <div class="b u"><div class="who">TRAVELER · 中文</div>我们想在普吉买套别墅,预算 2000 万泰铢</div>
+        <div class="tool">⚙ qualified · routed to a specialist</div>
+        <div class="b a"><div class="who">NUM</div>好的!已把您的需求转给置业顾问,24 小时内联系您。先看看普吉镇附近的项目吗?</div>
+        <div class="b u"><div class="who">TRAVELER · TH</div>คืนนี้หาร้านซีฟู้ดริมน้ำ 4 คน</div>
+        <div class="b a"><div class="who">NUM</div>แนะนำ กันเอง แอท เพียร์ ค่ะ — ริมน้ำ วิวท่าเรือ จองโต๊ะ 1 ทุ่มให้ไหมคะ?</div>
+      </div>
+      <div class="badge-row">
+        <span class="bdg b-wa">WhatsApp</span><span class="bdg b-ln">LINE</span><span class="bdg b-wc">WeChat</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- circuit -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">The full circuit</div>
+      <h2>Demand from your channels, supply from local businesses — NUM matches them and measures the money at every step.</h2>
+    </div>
+    <div class="circuit">
+      <div class="cstep reveal"><div class="n">01 · DEMAND</div><h3>A traveler texts</h3><p>Scans a QR in a car or hotel, opens a chat they already use. No app, no signup.</p><span class="arw">→</span></div>
+      <div class="cstep reveal"><div class="n">02 · UNDERSTAND</div><h3>In their language</h3><p>Language, intent, and identity resolved in one pass — Thai, Chinese, Russian, and more.</p><span class="arw">→</span></div>
+      <div class="cstep reveal"><div class="n">03 · ACT</div><h3>Books, qualifies, escalates</h3><p>Searches your approved catalogue, makes the booking, qualifies high-value leads, and hands off to a human when it should.</p><span class="arw">→</span></div>
+      <div class="cstep reveal"><div class="n">04 · OUTCOMES</div><h3>Bookings & leads</h3><p>Confirmed reservations and high-value leads land with an SLA clock on each.</p><span class="arw">→</span></div>
+      <div class="cstep reveal"><div class="n">05 · REVENUE</div><h3>Everyone's paid</h3><p>Commissions and lead fees tracked and split transparently — both sides see the same numbers.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- feature grid -->
+<section id="platform" class="alt">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">What NUM does</div>
+      <h2>One platform, built end-to-end.</h2>
+      <p>Every capability below is running code today — not a roadmap.</p>
+    </div>
+    <div class="features">
+      <div class="feat reveal"><div class="ic">💬</div><h3>Four channels, one brain</h3><p>WhatsApp, LINE, WeChat, and SMS through a single AI. The same memory and tools everywhere the traveler already is.</p></div>
+      <div class="feat reveal"><div class="ic">🌏</div><h3>Nine languages, auto-detected</h3><p>Replies in the traveler's own language from the first message — Chinese buyers qualify in Chinese, Russians in Russian. No funnel drop at the language barrier.</p></div>
+      <div class="feat reveal"><div class="ic">🧠</div><h3>Persistent memory</h3><p>NUM remembers each person across weeks and channels — diet, family, trip dates, budget. Day 30 knows what day 2 learned. That continuity is the product.</p></div>
+      <div class="feat reveal"><div class="ic">🐋</div><h3>The whale-lead engine</h3><p>Detects high-value intent — property, schools, relocation, long-stay visas — qualifies budget and timeline, and hands a briefed lead to your specialist with an SLA timer.</p></div>
+      <div class="feat reveal"><div class="ic">🏪</div><h3>Merchant self-serve</h3><p>Local businesses manage bookings, hours, photos, and the exact words NUM uses to sell them — from their own phone. Anonymized guest demand comes back as free market research.</p></div>
+      <div class="feat reveal"><div class="ic">🔒</div><h3>Never invents</h3><p>NUM recommends only businesses you've approved. It cannot fabricate a restaurant, a price, or a review. Your network is the product; quality is the moat.</p></div>
+      <div class="feat reveal"><div class="ic">📍</div><h3>Per-vehicle attribution</h3><p>Every car and hotel QR is tracked, so your fleet becomes a measurable media network — you see which routes convert and which need a placement fix.</p></div>
+      <div class="feat reveal"><div class="ic">🛡️</div><h3>Compliant by design</h3><p>PDPA consent shown on first contact, audited; "delete" in any language triggers real data erasure; PII scrubbed before storage. Trust is what makes it bookable.</p></div>
+      <div class="feat reveal"><div class="ic">📊</div><h3>Every message measured</h3><p>Per-conversation cost, language, intent, and outcome logged in real time. Four conversions — scan, chat, action, revenue — on one screen.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- console -->
+<section id="console">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">The management system</div>
+      <h2>One console, seven views — run your whole operation from a phone.</h2>
+      <p>Mobile-first, English ⇄ Thai in one tap. Everyone who touches the business gets exactly the view their job needs.</p>
+    </div>
+    <div class="roles">
+      <div class="role master reveal"><div class="rn">👑 Master</div><div class="rd">The whole circuit and every control — the owner's command view.</div></div>
+      <div class="role reveal"><div class="rn">🛠 Operator</div><div class="rd">Live conversations, the whale queue, channel health — the daily driver.</div></div>
+      <div class="role reveal"><div class="rn">🎯 Executive</div><div class="rd">The pilot KPIs against targets — the weekly decision view.</div></div>
+      <div class="role reveal"><div class="rn">🤝 Specialist</div><div class="rd">My leads, AI-briefed, each on an SLA clock.</div></div>
+      <div class="role reveal"><div class="rn">🏪 Merchant</div><div class="rd">Bookings, listing, reviews — each business self-serves.</div></div>
+      <div class="role reveal"><div class="rn">🧪 AI Quality</div><div class="rd">Grade replies, catch errors, tune the local voice.</div></div>
+      <div class="role reveal"><div class="rn">🛰 Admin</div><div class="rd">All markets, all cost, all margin — the platform view.</div></div>
+      <div class="role reveal" style="display:flex;align-items:center;justify-content:center;border-style:dashed"><a href="#contact" class="btn ghost sm">See it live →</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- platform layers -->
+<section id="layers" class="alt">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Under the hood</div>
+      <h2>Built and operated by 5arz.</h2>
+      <p>One tech company behind the product, with the trust and money layers named for what they do.</p>
+    </div>
+    <div class="layers">
+      <div class="layer reveal">
+        <div class="lt" style="color:var(--teal)">NUM</div>
+        <div class="role-lbl">The product</div>
+        <p>The multilingual AI concierge across every channel, with persistent memory. The traveler never pays.</p>
+        <div class="status" style="color:var(--green)">● Live</div>
+      </div>
+      <div class="layer reveal">
+        <div class="lt" style="color:var(--sand)">5arz Verify</div>
+        <div class="role-lbl">The trust layer</div>
+        <p>Merchant vetting before anything reaches the AI, license checks on high-value verticals, and audited PDPA compliance built in.</p>
+        <div class="status" style="color:var(--green)">● Live</div>
+      </div>
+      <div class="layer reveal">
+        <div class="lt" style="color:var(--green)">5arz PayRails</div>
+        <div class="role-lbl">The money layer</div>
+        <p>Transparent commission ledger and settlement today; in-chat checkout with PromptPay and WeChat Pay on the roadmap.</p>
+        <div class="status" style="color:var(--amber)">◐ Ledger live · checkout next</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- stat band -->
+<section id="status">
+  <div class="wrap">
+    <div class="sec-head reveal" style="text-align:center;margin:0 auto 44px">
+      <div class="eyebrow">Where it stands</div>
+      <h2>Not a pitch deck. A running system.</h2>
+    </div>
+    <div class="band">
+      <div class="s reveal"><div class="v">95</div><div class="l">automated tests passing</div></div>
+      <div class="s reveal"><div class="v">4</div><div class="l">channels wired &amp; live</div></div>
+      <div class="s reveal"><div class="v">9</div><div class="l">languages, auto-detected</div></div>
+      <div class="s reveal"><div class="v">✓</div><div class="l">real data erasure, every language</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- pilot proof -->
+<section id="pilot" class="alt">
+  <div class="wrap">
+    <div class="proof">
+      <div class="reveal">
+        <div class="eyebrow">The Phuket pilot</div>
+        <h2 style="font-size:34px;font-weight:800;margin:12px 0 14px">Built to prove it — seven KPIs, one gate.</h2>
+        <p style="color:var(--ink-2);font-size:15.5px">A distribution partner with 100+ in-car screens and a 100+ hotel network brings the funnel. NUM brings the brain. We measure it together, weekly, and the Week-7 gate is a dashboard — not a debate.</p>
+        <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+          <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:14px 18px"><div style="font-size:24px;font-weight:900;color:var(--sand)">30–40</div><div style="font-size:12.5px;color:var(--ink-2)">vehicles, month one</div></div>
+          <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:14px 18px"><div style="font-size:24px;font-weight:900;color:var(--teal)">≥ 30</div><div style="font-size:12.5px;color:var(--ink-2)">whale leads targeted</div></div>
+          <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:14px 18px"><div style="font-size:24px;font-weight:900;color:var(--green)">4 / 7</div><div style="font-size:12.5px;color:var(--ink-2)">KPIs to pass the gate</div></div>
+        </div>
+      </div>
+      <div class="reveal">
+        <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:18px;padding:26px">
+          <div class="kpi-list">
+            <div class="kpi"><span class="kn">Scan rate per ride</span><span class="kt">≥ 8%</span></div>
+            <div class="kpi"><span class="kn">Activation (scan → first message)</span><span class="kt">≥ 60%</span></div>
+            <div class="kpi"><span class="kn">Avg session depth</span><span class="kt">≥ 6 msgs</span></div>
+            <div class="kpi"><span class="kn">D7 return rate</span><span class="kt">≥ 25%</span></div>
+            <div class="kpi"><span class="kn">Booking conversion</span><span class="kt">≥ 12%</span></div>
+            <div class="kpi"><span class="kn">Qualified whale leads</span><span class="kt">≥ 30</span></div>
+            <div class="kpi"><span class="kn">Onboarded-merchant NPS</span><span class="kt">≥ 8/10</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- markets -->
+<section id="markets">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">The model replicates</div>
+      <h2>Prove one market. Copy the playbook.</h2>
+      <p>Multi-tenant from day one — a new market is a partner, a set of QR codes, and a vendor catalogue, not a rebuild.</p>
+    </div>
+    <div class="markets">
+      <div class="market reveal">
+        <div class="mh"><span class="flag">🇹🇭</span><span class="mn">Phuket</span><span class="chip chip-live">● Pilot</span></div>
+        <p>The wedge. In-car + hotel distribution, Chinese and Russian tourist volume, whale verticals in property, schools, and relocation.</p>
+      </div>
+      <div class="market reveal">
+        <div class="mh"><span class="flag">🇮🇩</span><span class="mn">Bali</span><span class="chip chip-next">◐ Next</span></div>
+        <p>Market #2, already code-ready. WhatsApp-first, so no channel gate — a local partner in motion. Same platform, new tenant.</p>
+      </div>
+      <div class="market reveal">
+        <div class="mh"><span class="flag">🌐</span><span class="mn">Every travel market</span><span class="chip chip-model">The model</span></div>
+        <p>Anywhere tourists text, businesses want them, and a language barrier sits between — the platform ports. One brain, many cities.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- cta -->
+<section id="contact">
+  <div class="wrap">
+    <div class="cta-band reveal">
+      <div class="eyebrow" style="justify-content:center">Partner · Invest · Build</div>
+      <h2>The tech is ready. Let's turn it on together.</h2>
+      <p>Whether you bring distribution, capital, or a market — the fastest way to understand NUM is to hold it in your hand. Ask for the live demo.</p>
+      <div class="cta">
+        <a href="mailto:andre@thatislumi.com?subject=NUM%20by%205arz%20—%20demo%20request" class="btn primary">Request a demo</a>
+        <a href="mailto:andre@thatislumi.com?subject=NUM%20by%205arz%20—%20partnership" class="btn ghost">Talk partnership</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div class="logo">5arz</div>
+      <div class="tag">NUM by 5arz — the AI concierge platform for travel markets. Your city, one text away.</div>
+    </div>
+    <div class="fcol">
+      <h4>Platform</h4>
+      <a href="#platform">What NUM does</a>
+      <a href="#console">The console</a>
+      <a href="#layers">5arz Verify · PayRails</a>
+    </div>
+    <div class="fcol">
+      <h4>Company</h4>
+      <a href="#pilot">The pilot</a>
+      <a href="#markets">Markets</a>
+      <a href="#contact">Contact</a>
+    </div>
+    <div class="fcol">
+      <h4>Get started</h4>
+      <a href="mailto:andre@thatislumi.com?subject=NUM%20demo">Request a demo</a>
+      <a href="mailto:andre@thatislumi.com?subject=NUM%20partnership">Partner with us</a>
+    </div>
+  </div>
+  <div class="wrap fine">
+    <span>© 2026 5arz. All rights reserved.</span>
+    <span>Built for travelers · operated for partners · owned by 5arz.</span>
+  </div>
+</footer>
+
+<script>
+  // scroll reveal
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target);} });
+  },{threshold:.12});
+  document.querySelectorAll(".reveal").forEach((el,i)=>{ el.style.transitionDelay=(i%4*60)+"ms"; io.observe(el); });
+</script>
+</body>
+</html>
