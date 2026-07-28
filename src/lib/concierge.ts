@@ -3,7 +3,7 @@
 // surface (sendChip, openVoice, payBill, buyPack…) is the seam where a real
 // agent backend would slot in later.
 import { store } from './store';
-import type { Booking, Chip, Msg } from './types';
+import type { Booking, Chip, Meeting, Msg } from './types';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
 let voiceT1: ReturnType<typeof setTimeout> | undefined;
@@ -256,4 +256,78 @@ export function permAllow() {
 export function permDeny() {
   store.set({ permOn: false });
   reply([{ who: 'c', text: 'No problem — your photos stay yours. Say the word anytime.' }], null, 600);
+}
+
+// ── NUM AI — the real brain ─────────────────────────────────────────────────
+// Free-typed messages go to the backend in server/index.mjs (Claude Opus 5),
+// which returns a reply plus actions the store applies. Scripted chip flows
+// above remain untouched — the demo still works with the server off.
+
+interface NumAction {
+  type: 'add_booking' | 'update_booking' | 'add_meeting';
+  booking?: Booking;
+  id?: string;
+  patch?: Partial<Booking>;
+  meeting?: Meeting;
+}
+
+interface NumReply {
+  reply: string;
+  card: Msg['card'] | null;
+  chips: Chip[] | null;
+  actions: NumAction[];
+}
+
+function applyAction(a: NumAction) {
+  if (a.type === 'add_booking' && a.booking) addB(a.booking);
+  else if (a.type === 'update_booking' && a.id && a.patch) setB(a.id, a.patch);
+  else if (a.type === 'add_meeting' && a.meeting) {
+    store.set((s) => ({ meetings: [...s.meetings.filter((m) => m.id !== a.meeting!.id), a.meeting!] }));
+  }
+}
+
+/** Send a free-typed message to the real NUM AI backend. */
+export async function askNum(text: string) {
+  push({ who: 'u', text });
+  store.set({ typing: true, chips: [] });
+
+  const s = store.get();
+  const messages = s.msgs.map((m) => ({
+    role: m.who === 'u' ? ('user' as const) : ('assistant' as const),
+    content: m.text + (m.card ? `\n[card: ${m.card.title} · ${m.card.meta} · ${m.card.tag}]` : ''),
+  }));
+  const state = {
+    stars: s.stars,
+    billPaid: s.billPaid,
+    photosOn: s.photosOn,
+    bookings: s.bookings,
+    meetings: s.meetings,
+    memories: s.memories,
+  };
+
+  try {
+    const res = await fetch('/api/num', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, state }),
+    });
+    if (!res.ok) throw new Error('backend ' + res.status);
+    const out: NumReply = await res.json();
+    out.actions?.forEach(applyAction);
+    store.set((prev) => ({
+      typing: false,
+      msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}) }],
+      chips: out.chips ?? defChips(),
+    }));
+  } catch (err) {
+    console.error('[num-ai]', err);
+    store.set((prev) => ({
+      typing: false,
+      msgs: [
+        ...prev.msgs,
+        { who: 'c', text: 'I’m offline right now — my backend isn’t reachable. Start it with `npm run ai` (and set ANTHROPIC_API_KEY). The demo chips below still work.' },
+      ],
+      chips: defChips(),
+    }));
+  }
 }

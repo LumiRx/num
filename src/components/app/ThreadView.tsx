@@ -1,8 +1,8 @@
 // THREAD tab — the conversation: messages, cards, typing dots, chips, input bar.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../lib/store';
 import { tagOf } from '../../lib/derive';
-import { sendChip, openVoice } from '../../lib/concierge';
+import { askNum, sendChip, openVoice } from '../../lib/concierge';
 import type { Msg } from '../../lib/types';
 
 function MsgBubble({ m }: { m: Msg }) {
@@ -37,6 +37,14 @@ export default function ThreadView() {
   // visible (sheets opening, notifications, chips), not just on new messages.
   const { msgs, typing, chips } = useApp((s) => s);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState('');
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text || typing) return;
+    setDraft('');
+    void askNum(text);
+  };
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -73,9 +81,13 @@ export default function ThreadView() {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-          <div style={{ flex: 1, border: '2px solid var(--color-neutral-300)', padding: '10px 12px', fontSize: 13, color: 'var(--color-neutral-500)', background: '#fff' }}>
-            Message Num…
-          </div>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+            placeholder="Message Num…"
+            style={{ flex: 1, border: '2px solid var(--color-neutral-300)', padding: '10px 12px', fontSize: 13, color: 'var(--color-text)', background: '#fff', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
+          />
           <div
             onClick={openVoice}
             className="hov-accent"
