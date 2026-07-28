@@ -1,0 +1,30 @@
+{
+  // NUM partner demo console — assets-only Worker
+  // Deploys public/ as static assets; /console/ serves the demo.
+  "name": "num-console",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./public"
+  },
+  // Instant preview URL (num-console.<account>.workers.dev) — live immediately after deploy
+  "workers_dev": true,
+  // Attaches ONLY the /console* path on itsnum.com — the existing site worker
+  // keeps serving every other path. Requires Zone → Workers Routes: Edit on itsnum.com.
+  "routes": [
+    { "pattern": "itsnum.com/",         "zone_name": "itsnum.com" },
+    // NOTE: "itsnum.com/" matches the bare root ONLY. itsnum.com/?signin=1 does not
+    // match it and falls through to the older site worker, which serves a different
+    // page. Cloudflare rejects "?" inside a route pattern (the API refuses the whole
+    // route set), so there is no route-level fix. Hence /signin below: a real path
+    // is routable, a query flag is not. Never put a "?" in a pattern here.
+    { "pattern": "itsnum.com/signin*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/console*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/privacy*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/terms*",   "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/claim*",   "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/referral*", "zone_name": "itsnum.com" },
+    // Team-only preview of the consumer app prototype. noindex in the HTML,
+    // linked from nowhere public — shared in #num for design review.
+    { "pattern": "itsnum.com/app-preview*", "zone_name": "itsnum.com" }
+  ]
+}

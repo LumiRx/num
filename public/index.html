@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUM — Your personal AI travel concierge</title>
+<meta name="description" content="NUM is the AI concierge that plans your trip in chat, books the best real local places, and unlocks perks — on LINE or WhatsApp, in your language.">
+<base href="https://itsnum.com/">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="index.html"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="start.html">Get the concierge</a><a href="how.html">How it works</a>
+    <a href="perks.html">Perks</a>
+    <a href="business.html">For business</a>
+    <a href="dashboard.html">Dashboard</a>
+    <!-- Real href, not "#": the modal is the fast path when JS has loaded, and /signin/
+         is the page it degrades to. It is also the URL we can put in an email. -->
+    <span id="signin-slot"><a href="/signin/" onclick="openSignin();return false;">Sign in</a></span>
+    <a class="btn pri" href="/claim/" style="padding:10px 18px;font-size:14px">List your business</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">☰</button>
+</div>
+<div class="mobile">
+  <a href="start.html">Get the concierge</a><a href="how.html">How it works</a><a href="perks.html">Perks</a>
+  <a href="business.html">For business</a><a href="dashboard.html">Dashboard</a>
+  <a href="/claim/">List your business</a>
+  <a href="/signin/" id="signin-slot-m" onclick="openSignin();return false;">Sign in</a>
+</div>
+</nav>
+
+<header class="wrap hero">
+  <div class="hero-grid">
+    <div>
+      <span class="pill">✦ Your personal travel concierge</span>
+      <h1 class="h1" style="margin-top:18px">A concierge in your pocket for every&nbsp;trip.</h1>
+      <p class="sub">NUM plans your trip in a simple chat, books the best <b>real, verified</b> local places, and unlocks members-only perks — on LINE or WhatsApp, in your language.</p>
+      <div class="cta">
+        <a class="btn pri lg" href="https://line.me/R/ti/p/@799pyrus">💬 Chat with Num on LINE</a>
+        <a class="btn ghost lg" href="how.html">See how it works</a>
+      </div>
+      <div class="trust">
+        <span><span class="tk">✓</span> No app to download</span>
+        <span><span class="tk">✓</span> Real, verified places</span>
+        <span><span class="tk">✓</span> Any language, 24/7</span>
+      </div>
+    </div>
+    <div class="showcase">
+      <img class="hero-photo" src="assets/hero.jpg" alt="A traveler using the NUM concierge">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="chead"><span class="cav">N</span><div><div class="cname">NUM concierge</div><div class="cverif">● online now</div></div></div>
+          <div class="bub them">Somewhere lovely for dinner tonight? 🌙</div>
+          <div class="bub me">Romantic, near Seminyak</div>
+          <div class="bub card"><div class="cardtop"><b>Keen</b><span class="vch">✓ VERIFIED</span></div>Modern Balinese · candlelit terrace<button class="minibtn">Book a table</button></div>
+          <div class="bub me">Perfect — 2 at 8pm 🙌</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- LIVE ON LINE -->
+<section class="wrap reveal" id="line">
+  <div class="ctaband" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:40px;text-align:left;">
+    <div style="background:#ffffff;border-radius:22px;padding:12px;box-shadow:0 16px 44px rgba(0,0,0,.22);flex:0 0 auto;">
+      <img src="data:image/png;base64,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" alt="Scan to add NUM on LINE — @799pyrus" width="216" height="216" style="display:block;border-radius:12px;">
+    </div>
+    <div style="max-width:440px;">
+      <h2 style="margin:0;">Num is live — try it right now on LINE</h2>
+      <p style="margin:10px 0 18px;">Scan the code or tap the button, say hi, and ask for anything — "best massage near me", "seafood dinner tonight" — in any language. Free, no app beyond LINE.</p>
+      <a class="btn pri lg" href="https://line.me/R/ti/p/@799pyrus">💬 Add Num on LINE</a>
+      <p style="margin-top:12px;opacity:.85;font-size:14px;">LINE ID: <b>@799pyrus</b> &nbsp;·&nbsp; WhatsApp &amp; WeChat coming soon</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- two sides -->
+<section class="wrap reveal">
+  <div class="center" style="max-width:640px;margin:0 auto">
+    <span class="kicker">One platform, two sides</span>
+    <h2 class="h2" style="margin-top:10px">We connect travelers with the best local places — and prove everyone's real.</h2>
+    <p class="lead" style="margin-inline:auto">Visitors get a concierge who actually knows the place. Local businesses get verified, high-intent guests. NUM sits in the middle and makes the match.</p>
+  </div>
+  <div class="connect">
+    <div class="cnode">
+      <span class="pill">For travelers</span>
+      <h3 style="margin-top:12px">Ask for anything</h3>
+      <ul>
+        <li>Dinner, tours, drivers, spas, villas</li>
+        <li>Only real, verified recommendations</li>
+        <li>Booked in chat, in your language</li>
+        <li>Perks &amp; priority at partner places</li>
+      </ul>
+    </div>
+    <div class="chub"><div class="ring">NUM</div><div class="cl">The verified concierge in the middle</div></div>
+    <div class="cnode">
+      <span class="pill amber">For businesses</span>
+      <h3 style="margin-top:12px">Get discovered</h3>
+      <ul>
+        <li>Verified, high-intent guests</li>
+        <li>Bookings &amp; leads to your inbox</li>
+        <li>A live dashboard of everything</li>
+        <li>Free to list — pay only on outcomes</li>
+      </ul>
+    </div>
+  </div>
+  <div class="center" style="margin-top:26px"><a class="btn ghost" href="how.html">See exactly how it works →</a></div>
+</section>
+
+<!-- perks teaser -->
+<section class="wrap reveal">
+  <span class="kicker">Membership perks</span>
+  <h2 class="h2" style="margin-top:10px">A personal concierge comes with a lot of perks.</h2>
+  <div class="grid g4" style="margin-top:26px">
+    <div class="card hov"><div class="ic">🎁</div><h3>Exclusive offers</h3><p>Members-only perks at partner restaurants, spas and stays.</p></div>
+    <div class="card hov"><div class="ic">⚡</div><h3>Priority booking</h3><p>Skip the back-and-forth — your concierge holds the table.</p></div>
+    <div class="card hov"><div class="ic">🧠</div><h3>Remembers you</h3><p>Your tastes, budget and trip — no repeating yourself.</p></div>
+    <div class="card hov"><div class="ic">🛟</div><h3>Help anytime</h3><p>Stuck, lost, or need a hand? A real human is one message away.</p></div>
+  </div>
+  <div class="center" style="margin-top:24px"><a class="btn pri" href="perks.html">See all the perks</a></div>
+</section>
+
+<!-- people -->
+<section class="wrap reveal">
+  <div class="center" style="max-width:620px;margin:0 auto">
+    <span class="kicker">Real travelers</span>
+    <h2 class="h2" style="margin-top:10px">They just wanted a great time.</h2>
+  </div>
+  <div class="people">
+    <img src="assets/p1.jpg" alt=""><img src="assets/p2.jpg" alt=""><img src="assets/p3.jpg" alt="">
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="wrap reveal">
+  <div class="ctaband">
+    <h2>Run a great local place?</h2>
+    <p>Get found by verified, high-intent travelers at the exact moment they're deciding. Free to list, live in days.</p>
+    <a class="btn pri lg" href="/claim">List your business — free</a>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="frow">
+    <div>
+      <a class="brand" href="index.html" style="font-size:18px"><span class="dot"></span>NUM</a>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge — connecting visitors with the best real local places. By 5arz.</p>
+    </div>
+    <div><h4>Product</h4><a href="start.html">Get the concierge</a><a href="how.html">How it works</a><a href="perks.html">Perks</a><a href="business.html">For business</a><a href="dashboard.html">Dashboard</a></div>
+    <div><h4>Get started</h4><a href="/claim">List your business</a><a href="business.html#pricing">Pricing</a><a href="perks.html">The concierge</a></div>
+    <div><h4>Legal</h4><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@5arz.com">info@5arz.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://itsnum.com">itsnum.com</a></div>
+  </div>
+  <div class="fbot"><span>© 2026 NUM · by 5arz</span><span>Verified humans, real places.</span></div>
+</div></footer>
+
+<script src="assets/site.js"></script>
+
+<!-- Google Translate — any language -->
+<style>
+.gtx{position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(255,255,255,.92);border:1.5px solid #DDE0FB;border-radius:999px;padding:7px 14px;box-shadow:0 10px 30px rgba(76,81,161,.20);backdrop-filter:blur(10px)}
+.gtx::before{content:'🌐 '}
+.goog-te-banner-frame{display:none!important}html body{top:0!important}
+.goog-te-gadget{font-size:0!important;color:transparent!important}
+.goog-te-gadget .goog-te-combo{font-size:13px;font-family:inherit;border:0;background:transparent;color:#3A3E5C;outline:none;margin:0}
+.goog-logo-link,.goog-te-gadget img{display:none!important}
+</style>
+<div id="gtx" class="gtx"></div>
+<script>function gtInit(){try{new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'th,en,ru,zh-CN,zh-TW,ja,ko,de,fr,es,it,ar,hi,he,ms,vi',layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'gtx')}catch(e){}}</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=gtInit" defer></script>
+
+<!-- ── Sign in ─────────────────────────────────────────────────────────────
+     Self-contained: own CSS namespace (nsi-), no dependency on assets/site.css.
+     Posts to /api/accounts/login (num-accounts Worker, already live).
+     No password anywhere — a one-time link arrives by email, good for 15 min. -->
+<style>
+.nsi-ov{position:fixed;inset:0;z-index:10000;background:rgba(24,26,48,.55);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:20px}
+.nsi-ov.open{display:flex}
+.nsi-card{background:#fff;border-radius:20px;max-width:420px;width:100%;padding:30px 28px 26px;box-shadow:0 30px 80px rgba(30,33,70,.35);position:relative;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.nsi-x{position:absolute;top:14px;right:16px;border:0;background:transparent;font-size:22px;line-height:1;color:#9AA0C0;cursor:pointer}
+.nsi-x:hover{color:#3A3E5C}
+.nsi-eyebrow{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6366F1}
+.nsi-h{font-size:23px;font-weight:800;color:#1B1E3B;margin:8px 0 6px;letter-spacing:-.02em}
+.nsi-p{font-size:14px;line-height:1.55;color:#5E6485;margin:0 0 18px}
+.nsi-in{width:100%;box-sizing:border-box;border:1.5px solid #DDE0FB;border-radius:12px;padding:13px 15px;font-size:15px;font-family:inherit;color:#1B1E3B;outline:none;transition:border-color .15s}
+.nsi-in:focus{border-color:#6366F1}
+.nsi-btn{width:100%;margin-top:12px;border:0;border-radius:12px;padding:14px;font-size:15px;font-weight:700;font-family:inherit;color:#fff;cursor:pointer;background:linear-gradient(135deg,#6366F1,#8B5CF6);transition:opacity .15s}
+.nsi-btn:hover{opacity:.92}
+.nsi-btn:disabled{opacity:.55;cursor:default}
+.nsi-note{font-size:12.5px;line-height:1.5;color:#8A90AE;margin:14px 0 0;text-align:center}
+.nsi-note a{color:#6366F1;text-decoration:none;font-weight:600}
+.nsi-ok{text-align:center;padding:8px 0 2px}
+.nsi-ok .nsi-tick{font-size:40px;line-height:1}
+.nsi-err{font-size:13px;color:#D14343;margin:10px 0 0;display:none}
+</style>
+<div class="nsi-ov" id="nsi-ov" onclick="if(event.target===this)closeSignin()">
+  <div class="nsi-card" role="dialog" aria-modal="true" aria-label="Sign in to NUM">
+    <button class="nsi-x" onclick="closeSignin()" aria-label="Close">&times;</button>
+
+    <div id="nsi-form">
+      <div class="nsi-eyebrow">NUM account</div>
+      <h3 class="nsi-h">Sign in</h3>
+      <p class="nsi-p">Enter the email your NUM account uses. We'll send a one-time sign-in link — no password to remember.</p>
+      <form onsubmit="submitSignin();return false;">
+        <input class="nsi-in" id="nsi-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required>
+        <button class="nsi-btn" id="nsi-go" type="submit">Send my sign-in link</button>
+      </form>
+      <p class="nsi-err" id="nsi-err">Something went wrong. Please try again in a moment.</p>
+      <p class="nsi-note">Don't have an account yet? <a href="/claim/">Claim your business — free</a></p>
+    </div>
+
+    <div id="nsi-sent" style="display:none">
+      <div class="nsi-ok">
+        <div class="nsi-tick">✉️</div>
+        <h3 class="nsi-h">Check your email</h3>
+        <p class="nsi-p" style="margin-bottom:6px">If that address has NUM access, a sign-in link is on its way. It works once and expires in 15&nbsp;minutes.</p>
+      </div>
+      <p class="nsi-note">Wrong address? <a href="#" onclick="resetSignin();return false;">Try another one</a></p>
+    </div>
+
+  </div>
+</div>
+<script>
+(function(){
+  function $(id){ return document.getElementById(id); }
+
+  window.openSignin = function(){
+    resetSignin();
+    $('nsi-ov').classList.add('open');
+    setTimeout(function(){ var e=$('nsi-email'); if(e) e.focus(); }, 60);
+  };
+  window.closeSignin = function(){ $('nsi-ov').classList.remove('open'); };
+  window.resetSignin = function(){
+    $('nsi-form').style.display=''; $('nsi-sent').style.display='none';
+    $('nsi-err').style.display='none'; var e=$('nsi-email'); if(e) e.value='';
+  };
+
+  window.submitSignin = async function(){
+    var v = ($('nsi-email').value || '').trim();
+    if(!v) return;
+    var btn = $('nsi-go');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    $('nsi-err').style.display='none';
+    try{
+      await fetch('/api/accounts/login', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email: v })
+      });
+      $('nsi-form').style.display='none'; $('nsi-sent').style.display='';
+    }catch(e){
+      $('nsi-err').style.display='';
+    }
+    btn.disabled = false; btn.textContent = 'Send my sign-in link';
+  };
+
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape') closeSignin();
+  });
+
+  // Already signed in? Swap "Sign in" for a way back into the console.
+  (async function(){
+    try{
+      var res = await fetch('/api/accounts/me', { credentials:'same-origin' });
+      var me  = await res.json();
+      if(!me || !me.signed_in) return;
+      var name = (me.display_name || me.email || 'your account');
+      var slot = $('signin-slot');
+      if(slot) slot.innerHTML = '<a href="/console/" title="Signed in as ' + name + '">Console &rarr;</a>';
+      var m = $('signin-slot-m');
+      if(m){ m.textContent = 'Console →'; m.setAttribute('href','/console/'); m.onclick = null; }
+    }catch(e){}
+  })();
+
+  /* In-site convenience only: ?signin=1 opens the box for someone already on this page.
+     Do NOT put itsnum.com/?signin=1 in an email or a QR code — the Cloudflare route
+     "itsnum.com/" matches the bare root and nothing else, so a query string on the root
+     falls through to the older site worker and serves a different page entirely.
+     External links go to /signin/, which is a routed path. */
+  if(/[?&]signin=1/.test(location.search)) window.addEventListener('load', openSignin);
+})();
+</script>
+
+</body>
+</html>

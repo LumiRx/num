@@ -1,0 +1,32 @@
+{
+ "bath": {
+  "ok": true,
+  "enriched": 634,
+  "added": 411,
+  "at": "2026-07-27T22:03:45.911Z"
+ },
+ "manchester": {
+  "ok": true,
+  "enriched": 1350,
+  "added": 7095,
+  "at": "2026-07-27T22:05:11.590Z"
+ },
+ "liverpool": {
+  "ok": true,
+  "enriched": 862,
+  "added": 4622,
+  "at": "2026-07-27T22:05:24.252Z"
+ },
+ "edinburgh": {
+  "ok": true,
+  "enriched": 1961,
+  "added": 1772,
+  "at": "2026-07-27T22:05:33.376Z"
+ },
+ "london": {
+  "ok": true,
+  "enriched": 7908,
+  "added": 32518,
+  "at": "2026-07-27T22:07:46.610Z"
+ }
+}

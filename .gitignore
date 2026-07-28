@@ -1,14 +1,13 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-tsconfig.tsbuildinfo
-
-# Editor/OS
-.DS_Store
-*.local
-
-# Env files — never commit secrets or API keys
+# ── secrets: NEVER commit. Keys live as local dotfiles only. ──
+.resend_key
+.line_secret
+.line_token
+.places_key
+*.key
 .env
 .env.*
+# ── junk / heavy ──
+node_modules/
+.wrangler/
+.DS_Store
+*.log

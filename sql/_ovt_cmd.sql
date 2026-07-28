@@ -1,0 +1,1 @@
+UPDATE destinations SET place_count=3781, live=1, last_ingest_at=datetime('now') WHERE slug='bath';

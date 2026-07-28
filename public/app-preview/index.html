@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="robots" content="noindex,nofollow">
+<title>NUM — app preview v0.4</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   NUM consumer app — v0.3 "crisp"
+   Viv, 28 Jul: unify the color · keep the glass but make it crisp ·
+   a map that works, showing the places · designed buttons, no basic
+   app chrome · our own on-brand icons, no emoji in the UI.
+   System:
+     · ONE accent — the NuM indigo→violet. Cyan appears only as
+       water on the map. Green/amber/rose are status text, never
+       surfaces. Place cards share one ink gradient; a serif initial
+       does the identity work color was doing.
+     · Crisp glass — higher opacity, tighter blur, hairline borders,
+       two-layer close shadows. No fog.
+     · Icons — one hand-drawn 24px stroke set (1.8px, round caps).
+       The only serif letterform is the NuM mark itself.
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --base-a:#F1F3FA; --base-b:#EBEEF8;
+  --ink-1:#191B33; --ink-2:#2A2D4A; --ink-3:#545975; --ink-4:#7E83A0;
+  --ga:#6366F1; --gb:#8B5CF6; --acc:#5B5FEF;
+  --water:#DCEFF6; --green:#0A9B6D; --amber:#C9820D; --rose:#E11D48;
+  --card:rgba(255,255,255,.86); --hair:#E4E7F3; --hair2:#EDEFF7;
+  --sh-1:0 1px 2px rgba(25,27,51,.05); --sh-2:0 8px 20px rgba(66,71,140,.10);
+  --ink-grad:linear-gradient(150deg,#23264A,#33376B);
+  --spring:cubic-bezier(.32,1.25,.35,1);
+  --font:Inter,-apple-system,'SF Pro Text',BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:var(--font);color:var(--ink-1);background:#101228}
+button{font-family:var(--font);border:0;background:none;cursor:pointer;color:inherit}
+.ic{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ── stage / frame ── */
+.stage{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:26px 12px;background:
+  radial-gradient(620px 420px at 18% 8%,rgba(99,102,241,.28),transparent 60%),
+  radial-gradient(600px 480px at 70% 92%,rgba(168,85,247,.18),transparent 60%),#101228}
+.stage-cap{font-size:12.5px;color:#8A90B4;letter-spacing:.05em}
+.stage-cap b{color:#C7CBEE;font-weight:600}
+.phone{position:relative;width:392px;height:812px;border-radius:54px;background:#05060F;padding:10px;
+  box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08),inset 0 0 0 2px #1A1C30}
+.screen{position:relative;width:100%;height:100%;border-radius:44px;overflow:hidden;background:linear-gradient(180deg,var(--base-a),var(--base-b))}
+.notch{position:absolute;top:20px;left:50%;transform:translateX(-50%);width:118px;height:32px;background:#05060F;border-radius:20px;z-index:120}
+@media (max-width:520px){
+  .stage{padding:0;background:#000}
+  .stage-cap,.notch{display:none}
+  .phone{width:100%;height:100vh;height:100dvh;border-radius:0;padding:0;box-shadow:none}
+  .screen{border-radius:0}
+}
+
+/* ── canvas: two quiet washes only ── */
+.app{position:absolute;inset:0;display:flex;flex-direction:column}
+.app::before{content:"";position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(300px 240px at 8% 2%,rgba(99,102,241,.10),transparent 60%),
+  radial-gradient(320px 300px at 96% 88%,rgba(139,92,246,.08),transparent 62%)}
+.statusbar{position:relative;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:16px 26px 2px;font-size:13.5px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.statusbar .sig{font-size:12px}
+.toprow{position:relative;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:10px 22px 6px}
+.toprow h1{font-size:29px;font-weight:800;letter-spacing:-.8px}
+.toprow .sub{font-size:12.5px;color:var(--ink-3);font-weight:500;margin-top:2px;display:flex;align-items:center;gap:3px}
+.sub-chev{width:12px!important;height:12px!important;color:var(--ink-4)}
+.tt-tap{cursor:pointer;transition:transform .15s var(--spring)}
+.tt-tap:active{transform:scale(.97)}
+.toprow-r{display:flex;align-items:center;gap:10px}
+.avatar-ring{position:relative;width:44px;height:44px;border-radius:50%;padding:3px;cursor:pointer;
+  background:conic-gradient(var(--ga) 0 295deg,#E0E3F1 295deg 360deg);transition:transform .18s var(--spring)}
+.avatar-ring:active{transform:scale(.92)}
+.avatar-ring .av{width:100%;height:100%;border-radius:50%;background:linear-gradient(135deg,var(--ga),var(--gb));
+  color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
+
+.screens{position:relative;flex:1;overflow:hidden;z-index:1}
+.scr{position:absolute;inset:0;overflow-y:auto;padding:6px 16px 150px;display:none;scrollbar-width:none}
+.scr::-webkit-scrollbar{display:none}
+.scr.on{display:block;animation:rise .3s var(--spring)}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ── crisp cards ── */
+.card{background:var(--card);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);
+  border:1px solid rgba(255,255,255,.95);outline:1px solid rgba(25,27,51,.05);border-radius:20px;
+  box-shadow:var(--sh-1),var(--sh-2);margin-bottom:12px;overflow:hidden;transition:transform .18s var(--spring)}
+.card.press:active{transform:scale(.985)}
+.kicker{font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-4)}
+
+/* ── designed buttons ── */
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 20px;border-radius:14px;
+  background:linear-gradient(135deg,var(--ga),var(--gb));color:#fff;font-size:14px;font-weight:700;letter-spacing:.01em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 1px 2px rgba(25,27,51,.12),0 6px 14px rgba(99,102,241,.26);
+  transition:transform .12s var(--spring)}
+.btnp:active{transform:scale(.97)}
+.btng{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 14px;border-radius:12px;
+  background:#fff;border:1px solid var(--hair);color:var(--ink-2);font-size:13px;font-weight:700;box-shadow:var(--sh-1);
+  transition:transform .12s var(--spring)}
+.btng:active{transform:scale(.96)}
+.btng .ic{width:16px;height:16px;color:var(--acc)}
+.iconbtn{width:36px;height:36px;border-radius:50%;background:#fff;border:1px solid var(--hair);box-shadow:var(--sh-1);
+  display:flex;align-items:center;justify-content:center;color:var(--ink-3);transition:transform .15s var(--spring)}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn .ic{width:17px;height:17px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.02em;padding:3px 8px;border-radius:100px;border:1px solid transparent}
+.chip.green{background:#EDF8F3;color:var(--green);border-color:#D7EEE3}
+.chip.amber{background:#FBF4E7;color:var(--amber);border-color:#F1E3C8}
+
+/* ══ TODAY ══ */
+.hero{cursor:pointer}
+.h-map{height:96px;position:relative;transition:height .34s var(--spring);overflow:hidden;background:var(--water);border-bottom:1px solid var(--hair2)}
+.hero.open .h-map{height:148px}
+.h-map svg{position:absolute;inset:0;width:100%;height:100%}
+.h-count{position:absolute;top:10px;right:10px;font-size:11.5px;font-weight:800;color:var(--acc);background:rgba(255,255,255,.92);
+  border:1px solid var(--hair);padding:5px 10px;border-radius:100px;box-shadow:var(--sh-1);font-variant-numeric:tabular-nums}
+.h-body{padding:14px 18px 4px}
+.h-top{display:flex;align-items:baseline;gap:12px}
+.h-top>div{flex:1;min-width:0}
+.h-time{font-size:42px;font-weight:800;letter-spacing:-2px;line-height:1;font-variant-numeric:tabular-nums}
+.h-name{font-size:17px;font-weight:800;letter-spacing:-.3px}
+.h-meta{font-size:12.5px;color:var(--ink-3);margin-top:5px}
+.h-conf{font-size:12px;color:var(--ink-4);margin-top:9px}
+.h-conf b{color:var(--green);font-weight:700}
+.h-more{max-height:0;overflow:hidden;transition:max-height .34s ease,opacity .28s ease;opacity:0}
+.hero.open .h-more{max-height:120px;opacity:1}
+.h-acts{display:flex;background:#fff;border:1px solid var(--hair);border-radius:14px;box-shadow:var(--sh-1);margin-top:13px;overflow:hidden}
+.h-act{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 0 9px;font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.02em}
+.h-act+.h-act{border-left:1px solid var(--hair2)}
+.h-act .ic{width:19px;height:19px;color:var(--acc)}
+.h-act:active{background:#F7F8FD}
+.h-hint{text-align:center;padding:6px 0 9px;color:var(--ink-4);transition:transform .3s var(--spring)}
+.h-hint .ic{width:14px;height:14px}
+.hero.open .h-hint{transform:rotate(180deg)}
+
+/* timeline rail */
+.rail{position:relative;margin:18px 6px 0;padding-left:24px}
+.rail::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--hair)}
+.rl-day{position:relative;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin:16px 0 8px}
+.rl-day::before{content:"";position:absolute;left:-23px;top:2px;width:9px;height:9px;border-radius:50%;
+  background:linear-gradient(135deg,var(--ga),var(--gb));box-shadow:0 0 0 2.5px #fff,0 0 0 3.5px var(--hair)}
+.rl-item{position:relative;display:flex;align-items:baseline;gap:12px;padding:8px 0;cursor:pointer;transition:transform .15s var(--spring)}
+.rl-item:active{transform:scale(.985)}
+.rl-item::before{content:"";position:absolute;left:-21px;top:15px;width:6px;height:6px;border-radius:50%;background:#fff;border:1.6px solid #C6CBE4}
+.rl-time{font-size:13.5px;font-weight:800;color:var(--ink-2);min-width:46px;letter-spacing:-.2px;font-variant-numeric:tabular-nums}
+.rl-name{font-size:14.5px;font-weight:700;letter-spacing:-.2px}
+.rl-meta{font-size:12px;color:var(--ink-3);margin-top:2px}
+.ok{color:var(--green);font-weight:700}
+.wait{color:var(--amber);font-weight:700}
+.star{color:var(--amber);font-weight:800}
+.rl-fold{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink-4);padding:10px 0;cursor:pointer}
+.rl-fold .ic{width:14px;height:14px;transition:transform .3s var(--spring)}
+.rl-fold.open .ic{transform:rotate(90deg)}
+.rl-past{max-height:0;overflow:hidden;transition:max-height .4s ease}
+.rl-past.open{max-height:400px}
+
+/* contextual nudge */
+.nudge{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
+.nudge .n-ic{width:40px;height:40px;flex:none;border-radius:12px;background:#F4F0E6;color:var(--amber);
+  display:flex;align-items:center;justify-content:center}
+.nudge .n-ic .ic{width:19px;height:19px}
+.nudge>div{flex:1;min-width:0}
+.nudge b{font-size:13.5px;display:block;letter-spacing:-.1px}
+.nudge span{font-size:12px;color:var(--ink-3)}
+.nudge .n-star{font-size:12.5px;font-weight:800;color:var(--amber);flex:none}
+
+/* ══ PLACES ══ */
+.p-map{height:210px;border-radius:20px;position:relative;margin-bottom:14px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.95);outline:1px solid rgba(25,27,51,.05);box-shadow:var(--sh-1),var(--sh-2);background:var(--water)}
+.p-map svg{position:absolute;inset:0;width:100%;height:100%}
+.mpin{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;cursor:pointer;
+  background:#fff;border:1.5px solid var(--hair);box-shadow:var(--sh-1),0 3px 8px rgba(66,71,140,.18);
+  display:flex;align-items:center;justify-content:center;transition:transform .18s var(--spring);z-index:2}
+.mpin i{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,var(--ga),var(--gb))}
+.mpin.sel{transform:scale(1.35);border-color:#C9CCF4;z-index:3}
+.mpin.been i{background:var(--ink-3)}
+.mlabel{position:absolute;transform:translate(-50%,-140%);background:#191B33;color:#fff;border-radius:11px;
+  padding:7px 11px;font-size:11.5px;font-weight:700;white-space:nowrap;box-shadow:0 6px 16px rgba(16,18,40,.3);z-index:4;
+  transition:all .25s var(--spring);pointer-events:none}
+.mlabel span{display:block;font-size:9.5px;font-weight:600;color:#A9ADD3;margin-top:1px}
+.mlabel::after{content:"";position:absolute;left:50%;bottom:-4px;transform:translateX(-50%) rotate(45deg);width:8px;height:8px;background:#191B33;border-radius:2px}
+.myou{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--acc);border:2.5px solid #fff;
+  box-shadow:0 0 0 4px rgba(91,95,239,.18);z-index:2}
+.mkey{position:absolute;left:10px;bottom:10px;display:flex;gap:10px;font-size:10px;font-weight:700;color:var(--ink-3);
+  background:rgba(255,255,255,.92);border:1px solid var(--hair);padding:5px 10px;border-radius:100px;box-shadow:var(--sh-1)}
+.mkey i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:0}
+.mkey .k1 i{background:linear-gradient(135deg,var(--ga),var(--gb))}
+.mkey .k2 i{background:var(--ink-3)}
+.p-tabs{display:flex;gap:20px;padding:2px 6px 12px}
+.p-tab{font-size:14.5px;font-weight:800;color:var(--ink-4);letter-spacing:-.2px;padding:2px 0;position:relative}
+.p-tab.on{color:var(--ink-1)}
+.p-tab.on::after{content:"";position:absolute;left:0;right:0;bottom:-3px;height:2.5px;border-radius:3px;background:linear-gradient(90deg,var(--ga),var(--gb))}
+/* one ink gradient for every place — the initial does the identity work */
+.pcard{position:relative;height:92px;border-radius:18px;overflow:hidden;margin-bottom:10px;cursor:pointer;
+  background:var(--ink-grad);box-shadow:var(--sh-1),0 8px 20px rgba(30,33,70,.20);transition:transform .16s var(--spring)}
+.pcard:active{transform:scale(.985)}
+.pcard::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,var(--ga),var(--gb))}
+.pcard .init{position:absolute;right:14px;bottom:-26px;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:700;
+  font-size:96px;line-height:1;color:rgba(255,255,255,.07);pointer-events:none}
+.pcard .nm{position:absolute;left:16px;bottom:13px;color:#fff;padding-right:56px}
+.pcard .nm b{font-size:16px;font-weight:800;letter-spacing:-.3px;display:block}
+.pcard .nm span{font-size:11.5px;color:#B7BBDD;font-weight:500;margin-top:2px;display:block}
+.pcard .bm{position:absolute;top:11px;right:11px;width:32px;height:32px;border-radius:50%;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;
+  color:#fff;transition:all .15s var(--spring)}
+.pcard .bm .ic{width:15px;height:15px}
+.pcard .bm:active{transform:scale(.85)}
+.pcard .bm.on{background:linear-gradient(135deg,var(--ga),var(--gb));border-color:transparent}
+.pcard .tag{position:absolute;top:13px;left:16px;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:#D9DBF5;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14);padding:3px 8px;border-radius:100px}
+
+/* ══ DOCK ══ */
+.dock{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;
+  display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:100px;background:rgba(255,255,255,.94);
+  border:1px solid #fff;outline:1px solid rgba(25,27,51,.06);box-shadow:var(--sh-1),0 6px 16px rgba(30,34,90,.12)}
+.d-btn{position:relative;font-size:13.5px;font-weight:700;color:var(--ink-4);padding:11px 17px 13px;border-radius:100px;letter-spacing:-.1px;transition:color .2s}
+.d-btn.on{color:var(--ink-1)}
+.d-btn::after{content:"";position:absolute;left:50%;bottom:6px;transform:translateX(-50%) scale(0);width:4.5px;height:4.5px;border-radius:50%;
+  background:linear-gradient(135deg,var(--ga),var(--gb));transition:transform .25s var(--spring)}
+.d-btn.on::after{transform:translateX(-50%) scale(1)}
+.orb{position:relative;width:54px;height:54px;border-radius:50%;flex:none;
+  background:linear-gradient(135deg,var(--ga),var(--gb) 60%,#A855F7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 10px rgba(99,102,241,.32);
+  display:flex;align-items:center;justify-content:center;transition:transform .2s var(--spring);animation:breathe 3.4s ease-in-out infinite}
+.orb:active{transform:scale(.9)}
+@keyframes breathe{
+  0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 10px rgba(99,102,241,.32),0 0 0 0 rgba(139,92,246,.25)}
+  50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 10px rgba(99,102,241,.36),0 0 0 6px rgba(139,92,246,0)}}
+.orb .nm{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:700;font-size:21px;color:#fff;letter-spacing:-.5px}
+.orb .odot{position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:50%;background:var(--rose);border:2.5px solid #fff;display:none}
+.orb.badged .odot{display:block}
+
+/* ══ CHAT SHEET ══ */
+.scrim{position:absolute;inset:0;background:rgba(16,18,40,.35);z-index:80;opacity:0;pointer-events:none;transition:opacity .25s}
+.scrim.on{opacity:1;pointer-events:auto}
+.csheet{position:absolute;left:0;right:0;bottom:0;top:7%;z-index:90;display:flex;flex-direction:column;
+  background:rgba(250,251,255,.96);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  border-radius:28px 28px 0 0;border-top:1px solid #fff;box-shadow:0 -12px 48px rgba(16,18,40,.26);
+  transform:translateY(106%);visibility:hidden;transition:transform .38s var(--spring),visibility 0s .4s}
+.csheet.on{transform:none;visibility:visible;transition:transform .38s var(--spring)}
+.c-grab{padding:10px 0 2px;display:flex;justify-content:center;cursor:grab;touch-action:none}
+.c-grab i{width:40px;height:5px;border-radius:100px;background:#D9DCEC}
+.c-head{display:flex;align-items:center;gap:10px;padding:6px 18px 10px;border-bottom:1px solid var(--hair2)}
+.logo-mark{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:700;font-size:22px;letter-spacing:-.5px;
+  background:linear-gradient(135deg,#5B5FEF,#A855F7);-webkit-background-clip:text;background-clip:text;color:transparent}
+.c-head .who{flex:1;font-size:11.5px;color:var(--green);font-weight:700}
+.c-head .who i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px}
+.thread{flex:1;overflow-y:auto;padding:10px 16px;scrollbar-width:none}
+.thread::-webkit-scrollbar{display:none}
+.tgap{text-align:center;margin:10px 0}
+.tgap span{font-size:10.5px;font-weight:700;color:var(--ink-4);letter-spacing:.04em}
+.msg{display:flex;margin-bottom:4px}
+.msg.gap{margin-top:13px}
+.msg.me{justify-content:flex-end}
+.msg .col{display:flex;flex-direction:column;max-width:84%}
+.msg.me .col{align-items:flex-end}
+.bub{padding:11px 15px;font-size:14px;line-height:1.5;border-radius:17px}
+.msg.num .bub{background:linear-gradient(135deg,var(--ga),var(--gb));color:#fff;border-bottom-left-radius:5px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 4px 12px rgba(99,102,241,.22)}
+.msg.me .bub{background:#E3E6F5;color:#2A2D4A;border-bottom-right-radius:5px}
+.via{align-self:flex-end;font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  padding:2.5px 7px;border-radius:100px;background:#EDF8F3;border:1px solid #D7EEE3;color:var(--green);margin:4px 2px 0}
+.tcard{background:#fff;border:1px solid var(--hair);border-radius:16px;box-shadow:var(--sh-1),0 6px 16px rgba(66,71,140,.10);
+  margin:6px 0 2px;width:264px;overflow:hidden}
+.tc-pad{padding:13px 15px}
+.tc-title{font-size:14.5px;font-weight:800;letter-spacing:-.2px;display:flex;align-items:center;justify-content:space-between}
+.tc-title .ic{width:15px;height:15px;color:var(--ink-4)}
+.tc-sub{font-size:12px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.tc-band{height:58px;position:relative;background:var(--ink-grad)}
+.tc-band::before{content:"";position:absolute;left:0;right:0;top:0;height:2.5px;background:linear-gradient(90deg,var(--ga),var(--gb))}
+.tc-band .init{position:absolute;right:10px;bottom:-18px;font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:64px;line-height:1;color:rgba(255,255,255,.08)}
+.tc-band .bm{position:absolute;top:9px;right:9px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;color:#fff;transition:all .15s var(--spring)}
+.tc-band .bm .ic{width:14px;height:14px}
+.tc-band .bm.on{background:linear-gradient(135deg,var(--ga),var(--gb));border-color:transparent}
+/* slide to pay */
+.s2p{margin:12px 13px 13px;position:relative;height:50px;border-radius:100px;background:#F1F2F9;border:1px solid var(--hair);overflow:hidden}
+.s2p .s2p-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:var(--ink-3);letter-spacing:.01em;transition:opacity .2s}
+.s2p .fill{position:absolute;left:0;top:0;bottom:0;width:50px;border-radius:100px;background:linear-gradient(90deg,rgba(99,102,241,.14),rgba(139,92,246,.14));pointer-events:none}
+.s2p .thumb{position:absolute;left:3px;top:3px;width:42px;height:42px;border-radius:50%;cursor:grab;touch-action:none;
+  background:linear-gradient(135deg,var(--ga),var(--gb));box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 3px 8px rgba(99,102,241,.34);
+  display:flex;align-items:center;justify-content:center;color:#fff}
+.s2p .thumb .ic{width:17px;height:17px}
+.s2p.done{background:#EDF8F3;border-color:#D7EEE3}
+.s2p.done .s2p-label{color:var(--green);opacity:1}
+.receipt-thumb{width:136px;height:86px;border-radius:14px;background:linear-gradient(165deg,#FBFAF4,#EFEDE2);border:1px solid #E3E1D2;position:relative;overflow:hidden;box-shadow:var(--sh-1)}
+.receipt-thumb::before{content:"";position:absolute;left:13px;right:13px;top:12px;height:4px;background:#D3D0BC;border-radius:3px;
+  box-shadow:0 11px 0 #DEDCCA,0 22px 0 #DEDCCA,0 33px 0 #DEDCCA,0 44px 0 #DEDCCA}
+.starcard{display:flex;align-items:center;gap:11px;background:#fff;border:1px solid var(--hair);border-left:3px solid var(--amber);
+  border-radius:14px;padding:12px 15px;margin:6px 0 2px;box-shadow:var(--sh-1),0 6px 16px rgba(66,71,140,.08);width:264px}
+.starcard .sg{width:36px;height:36px;flex:none;border-radius:50%;background:#FBF4E7;color:var(--amber);display:flex;align-items:center;justify-content:center}
+.starcard .sg .ic{width:17px;height:17px}
+.starcard b{font-size:14.5px;color:var(--amber);display:block}
+.starcard span{font-size:11.5px;color:var(--ink-3)}
+.typing{display:inline-flex;gap:4px;padding:13px 16px;background:linear-gradient(135deg,var(--ga),var(--gb));border-radius:17px 17px 17px 5px}
+.typing i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.85);animation:tp 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes tp{0%,60%,100%{transform:none;opacity:.6}30%{transform:translateY(-4px);opacity:1}}
+.composer{display:flex;align-items:center;gap:8px;padding:10px 14px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--hair2)}
+.composer .plus{width:38px;height:38px;flex:none;border-radius:50%;background:#fff;border:1px solid var(--hair);box-shadow:var(--sh-1);
+  display:flex;align-items:center;justify-content:center;color:var(--ink-3);transition:transform .15s var(--spring)}
+.composer .plus:active{transform:scale(.88)}
+.composer .plus .ic{width:17px;height:17px}
+.composer .field{flex:1;display:flex;align-items:center;background:#fff;border:1px solid var(--hair);border-radius:100px;
+  padding:4px 4px 4px 17px;box-shadow:var(--sh-1)}
+.composer input{flex:1;border:0;outline:0;font-family:var(--font);font-size:14px;color:var(--ink-1);background:none;min-width:0}
+.composer input::placeholder{color:var(--ink-4)}
+.composer .go{width:36px;height:36px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:var(--ink-3);transition:all .2s var(--spring)}
+.composer .go .ic{width:17px;height:17px}
+.composer .go.send{background:linear-gradient(135deg,var(--ga),var(--gb));color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 3px 8px rgba(99,102,241,.3)}
+
+/* ══ PROFILE SHEET ══ */
+.psheet{position:absolute;left:0;right:0;bottom:0;z-index:90;max-height:86%;overflow-y:auto;scrollbar-width:none;
+  background:rgba(250,251,255,.97);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  border-radius:28px 28px 0 0;border-top:1px solid #fff;box-shadow:0 -12px 48px rgba(16,18,40,.26);
+  padding:10px 18px calc(24px + env(safe-area-inset-bottom));
+  transform:translateY(106%);visibility:hidden;transition:transform .38s var(--spring),visibility 0s .4s}
+.psheet.on{transform:none;visibility:visible;transition:transform .38s var(--spring)}
+.psheet::-webkit-scrollbar{display:none}
+.p-grab{width:40px;height:5px;border-radius:100px;background:#D9DCEC;margin:4px auto 16px}
+.p-id{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.p-id .av{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--ga),var(--gb));color:#fff;
+  font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.p-id b{font-size:16.5px;letter-spacing:-.3px;display:block}
+.p-id span{font-size:11.5px;color:var(--ink-3)}
+.p-stars{text-align:center;padding:4px 0 16px}
+.p-bal{font-size:42px;font-weight:800;letter-spacing:-2px;font-variant-numeric:tabular-nums}
+.p-bal i{font-style:normal;color:var(--amber);font-size:28px;vertical-align:5px;margin-left:3px}
+.p-goal{font-size:12px;color:var(--ink-3);margin-top:2px}
+.p-goal b{color:var(--ink-1)}
+.p-card{background:#fff;border:1px solid var(--hair);border-radius:16px;box-shadow:var(--sh-1);margin-bottom:12px;overflow:hidden}
+.p-li{display:flex;align-items:center;gap:11px;padding:11px 15px}
+.p-li+.p-li{border-top:1px solid var(--hair2)}
+.p-li .e{width:32px;height:32px;flex:none;border-radius:10px;background:#F3F4FB;color:var(--acc);display:flex;align-items:center;justify-content:center}
+.p-li .e .ic{width:15px;height:15px}
+.p-li .e.am{background:#FBF4E7;color:var(--amber)}
+.p-li .t{flex:1;font-size:13px;font-weight:700}
+.p-li .t span{display:block;font-size:11px;color:var(--ink-4);font-weight:500;margin-top:1px}
+.p-li .amt{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.amt.plus{color:var(--amber)}.amt.minus{color:var(--ink-4)}
+.p-row{display:flex;align-items:center;gap:12px;width:100%;padding:13px 15px;text-align:left;font-size:13.5px;font-weight:700;color:var(--ink-1)}
+.p-row+.p-row{border-top:1px solid var(--hair2)}
+.p-row .e{width:32px;height:32px;flex:none;border-radius:10px;background:#F3F4FB;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
+.p-row .e .ic{width:15px;height:15px}
+.p-row .v{margin-left:auto;font-size:11.5px;color:var(--ink-4);font-weight:600}
+.p-row.danger{color:var(--rose)}
+.p-row.danger .e{background:#FCEEF1;color:var(--rose)}
+.toggle{width:44px;height:26px;margin-left:auto;border-radius:100px;background:#DDE0F0;position:relative;transition:background .18s;flex:none}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);transition:left .18s}
+.toggle.on{background:var(--green)}
+.toggle.on::after{left:21px}
+.p-out{text-align:center;font-size:12.5px;font-weight:700;color:var(--ink-4);padding:6px 0 2px;width:100%}
+.p-ver{text-align:center;font-size:10px;color:var(--ink-4);padding-top:10px}
+
+/* ══ ADD SHEET ══ */
+.asheet{position:absolute;left:0;right:0;bottom:0;z-index:95;background:rgba(250,251,255,.97);
+  backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  border-radius:28px 28px 0 0;border-top:1px solid #fff;box-shadow:0 -12px 48px rgba(16,18,40,.26);
+  padding:10px 18px calc(20px + env(safe-area-inset-bottom));
+  transform:translateY(106%);visibility:hidden;transition:transform .34s var(--spring),visibility 0s .36s}
+.asheet.on{transform:none;visibility:visible;transition:transform .34s var(--spring)}
+.a-opt{display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;text-align:left}
+.a-opt+.a-opt{border-top:1px solid var(--hair2)}
+.a-opt .e{width:42px;height:42px;flex:none;border-radius:13px;background:#F0F1FC;color:var(--acc);display:flex;align-items:center;justify-content:center}
+.a-opt .e .ic{width:19px;height:19px}
+.a-opt b{font-size:14px;display:block}
+.a-opt span{font-size:11.5px;color:var(--ink-3)}
+.a-opt .st{margin-left:auto;font-size:12.5px;font-weight:800;color:var(--amber);flex:none}
+.a-fine{font-size:10.5px;color:var(--ink-4);text-align:center;padding:10px 8px 0;line-height:1.5}
+
+/* ══ CALENDAR SHEET — the long horizon ══ */
+.calsheet{position:absolute;left:0;right:0;bottom:0;z-index:95;background:rgba(250,251,255,.97);
+  backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  border-radius:28px 28px 0 0;border-top:1px solid #fff;box-shadow:0 -12px 48px rgba(16,18,40,.26);
+  padding:10px 20px calc(20px + env(safe-area-inset-bottom));
+  transform:translateY(106%);visibility:hidden;transition:transform .36s var(--spring),visibility 0s .38s}
+.calsheet.on{transform:none;visibility:visible;transition:transform .36s var(--spring)}
+.cal-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 10px}
+.cal-head b{font-size:17px;font-weight:800;letter-spacing:-.3px}
+.cal-nav{display:flex;gap:8px}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);padding:0 0 6px;text-align:center}
+.cal-dow span{font-size:9.5px;font-weight:800;letter-spacing:.1em;color:var(--ink-4)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:4px}
+.cal-d{position:relative;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font-size:13.5px;font-weight:600;color:var(--ink-2);border-radius:12px;cursor:pointer;font-variant-numeric:tabular-nums;
+  transition:transform .12s var(--spring)}
+.cal-d:active{transform:scale(.9)}
+.cal-d.dim{color:#C4C8DE;pointer-events:none}
+.cal-d.today{box-shadow:inset 0 0 0 1.5px var(--acc)}
+.cal-d.sel{background:linear-gradient(135deg,var(--ga),var(--gb));color:#fff;font-weight:800;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 4px 10px rgba(99,102,241,.3)}
+.cal-d .dots{display:flex;gap:2.5px;height:4px}
+.cal-d .dots i{width:4px;height:4px;border-radius:50%;background:linear-gradient(135deg,var(--ga),var(--gb))}
+.cal-d.sel .dots i{background:#fff}
+.cal-list{border-top:1px solid var(--hair2);margin-top:10px;padding-top:4px;min-height:86px}
+.cal-li{display:flex;align-items:baseline;gap:12px;padding:9px 2px}
+.cal-li+.cal-li{border-top:1px solid var(--hair2)}
+.cal-li .ct{font-size:13px;font-weight:800;min-width:46px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.cal-li .cn{font-size:13.5px;font-weight:700}
+.cal-li .cm{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.cal-empty{font-size:12px;color:var(--ink-4);text-align:center;padding:26px 0}
+.cal-empty b{color:var(--ink-3)}
+
+/* ══ SHARE SHEET — plans are better with people ══ */
+.shsheet{position:absolute;left:0;right:0;bottom:0;z-index:95;background:rgba(250,251,255,.97);
+  backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  border-radius:28px 28px 0 0;border-top:1px solid #fff;box-shadow:0 -12px 48px rgba(16,18,40,.26);
+  padding:10px 20px calc(20px + env(safe-area-inset-bottom));
+  transform:translateY(106%);visibility:hidden;transition:transform .36s var(--spring),visibility 0s .38s}
+.shsheet.on{transform:none;visibility:visible;transition:transform .36s var(--spring)}
+.sh-title{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;letter-spacing:-.3px;padding:2px 0 12px}
+.sh-title .ic{width:19px;height:19px;color:var(--acc)}
+.sh-prev{background:#fff;border:1px solid var(--hair);border-radius:16px;box-shadow:var(--sh-1);overflow:hidden;margin-bottom:12px}
+.sh-prev .sp-top{padding:12px 15px;background:var(--ink-grad);color:#fff;position:relative}
+.sh-prev .sp-top::before{content:"";position:absolute;left:0;right:0;top:0;height:2.5px;background:linear-gradient(90deg,var(--ga),var(--gb))}
+.sh-prev .sp-top b{font-size:14.5px;font-weight:800;letter-spacing:-.2px;display:block}
+.sh-prev .sp-top span{font-size:11.5px;color:#B7BBDD}
+.sh-row{display:flex;align-items:baseline;gap:11px;padding:9px 15px}
+.sh-row+.sh-row{border-top:1px solid var(--hair2)}
+.sh-row .ct{font-size:12px;font-weight:800;min-width:58px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.sh-row .cn{font-size:12.5px;font-weight:700}
+.sh-opt{display:flex;align-items:center;gap:12px;padding:11px 2px;font-size:13.5px;font-weight:700}
+.sh-opt+.sh-opt{border-top:1px solid var(--hair2)}
+.sh-opt .e{width:32px;height:32px;flex:none;border-radius:10px;background:#F3F4FB;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
+.sh-opt .e .ic{width:15px;height:15px}
+.sh-opt small{display:block;font-size:11px;color:var(--ink-4);font-weight:500;margin-top:1px}
+.sh-send{width:100%;margin-top:12px}
+.sh-fine{font-size:10.5px;color:var(--ink-4);text-align:center;padding:10px 8px 0;line-height:1.5}
+
+.toast{position:absolute;left:50%;bottom:108px;transform:translate(-50%,20px);background:#191B33;color:#fff;
+  font-size:12.5px;font-weight:600;padding:11px 17px;border-radius:100px;opacity:0;transition:all .25s;z-index:110;
+  pointer-events:none;white-space:nowrap;box-shadow:0 10px 26px rgba(0,0,0,.3)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<!-- ── the NUM icon set: 24px grid · 1.8 stroke · round caps ── -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 2.8v5.4c0 4.6-3 7.7-7 9.6-4-1.9-7-5-7-9.6V5.8z"/><path d="m9 11.8 2.2 2.2 3.9-4.2"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9.2" y="3.5" width="5.6" height="10.5" rx="2.8"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5.5M6.5 11 12 5.5l5.5 5.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4.5 8.8a2.3 2.3 0 0 1 2.3-2.3h1l1.4-2h5.6l1.4 2h1a2.3 2.3 0 0 1 2.3 2.3v7.4a2.3 2.3 0 0 1-2.3 2.3H6.8a2.3 2.3 0 0 1-2.3-2.3z"/><circle cx="12" cy="12.4" r="3.2"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6.5 3.5h11V20l-1.8-1.2-1.9 1.2-1.8-1.2-1.9 1.2-1.8-1.2-1.8 1.2z"/><path d="M9.2 8.2h5.6M9.2 11.5h5.6M9.2 14.8h3"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.4-6.5-10a6.5 6.5 0 0 1 13 0c0 4.6-6.5 10-6.5 10z"/><circle cx="12" cy="10.8" r="2.3"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.2"/><circle cx="12" cy="12" r="1.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m14.8 9.2-1.7 4-4 1.7 1.7-4z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="m7.4 3.9 2.2-.7 1.6 3.7-1.7 1.4a11.2 11.2 0 0 0 4.2 4.2l1.4-1.7 3.7 1.6-.7 2.2c-.3 1-1.3 1.7-2.3 1.5A14.6 14.6 0 0 1 5.9 6.2c-.2-1 .5-2 1.5-2.3z"/></symbol>
+  <symbol id="i-pass" viewBox="0 0 24 24"><rect x="4.5" y="5.5" width="15" height="13" rx="2.4"/><path d="M4.5 10.3h15M8 14.5h4.5"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.4"/><path d="M4 10.2h16M8.5 3.5v3.5M15.5 3.5v3.5"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5h12l-1.5-2.2v-3.8a4.5 4.5 0 0 0-9 0v3.8z"/><path d="M10.3 19.2a1.8 1.8 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.2 2.4 2.2 13.6 0 16M12 4c-2.2 2.4-2.2 13.6 0 16"/></symbol>
+  <symbol id="i-faceid" viewBox="0 0 24 24"><path d="M4 8V6.4A2.4 2.4 0 0 1 6.4 4H8M16 4h1.6A2.4 2.4 0 0 1 20 6.4V8M20 16v1.6a2.4 2.4 0 0 1-2.4 2.4H16M8 20H6.4A2.4 2.4 0 0 1 4 17.6V16"/><path d="M9 9.4v1.6M15 9.4v1.6M9.3 14.6a3.5 3.5 0 0 0 5.4 0"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 6.5h14M10 6.3V5a1.5 1.5 0 0 1 1.5-1.5h1A1.5 1.5 0 0 1 14 5v1.3M7 6.5l.8 11.9a2 2 0 0 0 2 1.9h4.4a2 2 0 0 0 2-1.9l.8-11.9M10.2 10.2v5.8M13.8 10.2v5.8"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4.5M6 5h11l-2.2 3.5L17 12H6"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5"/></symbol>
+  <symbol id="i-chevr" viewBox="0 0 24 24"><path d="M9.5 6.5 15 12l-5.5 5.5"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M17 21l-5-3.6L7 21V5.4A2.4 2.4 0 0 1 9.4 3h5.2A2.4 2.4 0 0 1 17 5.4z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 4 2.3 4.9 5.2.7-3.8 3.7.9 5.2L12 16l-4.6 2.5.9-5.2-3.8-3.7 5.2-.7z"/></symbol>
+  <symbol id="i-boat" viewBox="0 0 24 24"><path d="M12 4v9.5M12 5.2l5.6 8.3H12M5 16.5h14l-1.7 3H6.7z"/></symbol>
+  <symbol id="i-car" viewBox="0 0 24 24"><path d="M5.5 16V12l1.7-4.1a2 2 0 0 1 1.9-1.4h5.8a2 2 0 0 1 1.9 1.4L18.5 12v4M5.5 12h13"/><circle cx="8.2" cy="16.2" r="1.7"/><circle cx="15.8" cy="16.2" r="1.7"/></symbol>
+  <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M5 20h14M6.8 20v-7.5M12 20v-7.5M17.2 20v-7.5M4.5 12.5h15L12 5.5z"/></symbol>
+  <symbol id="i-spa" viewBox="0 0 24 24"><path d="M12 19c-3.2 0-5.8-2.2-5.8-5.4 2 0 3.7.7 4.9 1.8C10.7 12.6 10.8 9 12 6c1.2 3 1.3 6.6.9 9.4 1.2-1.1 2.9-1.8 4.9-1.8 0 3.2-2.6 5.4-5.8 5.4z"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="m14.5 5.5 4 4L8.2 19.8H4.2v-4zM12.8 7.2l4 4"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 4.5V8h-3.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6.2" cy="12" r="2.5"/><circle cx="17.3" cy="5.8" r="2.5"/><circle cx="17.3" cy="18.2" r="2.5"/><path d="m8.5 10.8 6.5-3.8M8.5 13.2l6.5 3.8"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9.2" cy="8.5" r="3.2"/><path d="M3.8 19.5a5.4 5.4 0 0 1 10.8 0M15.8 5.9a3.2 3.2 0 0 1 0 5.9M20.2 19.5a5.4 5.4 0 0 0-3.7-5.1"/></symbol>
+  <symbol id="i-chevl" viewBox="0 0 24 24"><path d="M14.5 6.5 9 12l5.5 5.5"/></symbol>
+</svg>
+
+<div class="stage">
+  <div class="phone"><div class="notch"></div><div class="screen"><div class="app">
+
+    <div class="statusbar"><span>15:42</span><span class="sig">●●● ⌁ ▮▮▮</span></div>
+
+    <div class="toprow">
+      <div id="toptitle" class="tt-tap" onclick="if(document.getElementById('scr-today').classList.contains('on'))openCal()">
+        <h1>Tonight</h1>
+        <div class="sub">Tue 28 Jul · Phuket <svg class="ic sub-chev"><use href="#i-chevd"/></svg></div>
+      </div>
+      <div class="toprow-r">
+        <button class="iconbtn" id="sharebtn" onclick="openShare()" title="Share your plan"><svg class="ic"><use href="#i-share"/></svg></button>
+        <div class="avatar-ring" onclick="openProfile()" title="You"><div class="av">V</div></div>
+      </div>
+    </div>
+
+    <div class="screens">
+      <!-- ═══ TODAY ═══ -->
+      <section class="scr on" id="scr-today">
+
+        <div class="card hero press" id="hero" onclick="heroToggle(event)">
+          <div class="h-map">
+            <svg viewBox="0 0 360 96" preserveAspectRatio="xMidYMid slice">
+              <rect width="360" height="96" fill="#DCEFF6"/>
+              <path d="M124,-10 C114,10 120,28 130,40 C140,54 138,76 128,106 L370,106 L370,-10 Z" fill="#F7F9FE" stroke="#D8DEF0" stroke-width="1.5"/>
+              <path d="M182,8 C178,38 176,66 180,98" fill="none" stroke="#E8EBF6" stroke-width="3" stroke-linecap="round"/>
+              <path d="M179,52 C166,50 152,48 140,44" fill="none" stroke="#E8EBF6" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M62,76 C88,70 112,58 134,46" fill="none" stroke="#5B5FEF" stroke-width="2.2" stroke-dasharray="1 7" stroke-linecap="round"/>
+              <text x="60" y="34" font-family="Inter,Arial" font-size="8.5" font-weight="700" letter-spacing="2.5" fill="#8FB6C6">ANDAMAN SEA</text>
+              <text x="230" y="80" font-family="Inter,Arial" font-size="7.5" font-weight="700" letter-spacing="2" fill="#B4BAD2">PATONG</text>
+            </svg>
+            <span class="myou" style="left:17%;top:74%"></span>
+            <span class="mpin sel" style="left:39.5%;top:44%"><i></i></span>
+            <span class="h-count" id="count">in 3 h 48 m</span>
+          </div>
+          <div class="h-body">
+            <div class="h-top">
+              <span class="h-time">19:30</span>
+              <div>
+                <div class="h-name">Baan Rim Pa</div>
+                <div class="h-meta">Table for 2 · cliffside · Patong</div>
+              </div>
+            </div>
+            <div class="h-conf"><b>Confirmed ✓</b> · #NUM-4187 · offline ✓ · Wallet ✓</div>
+            <div class="h-more">
+              <div class="h-acts">
+                <span class="h-act" onclick="toast('Opening directions…')"><svg class="ic"><use href="#i-compass"/></svg>Directions</span>
+                <span class="h-act" onclick="toast('Calling Baan Rim Pa…')"><svg class="ic"><use href="#i-phone"/></svg>Call</span>
+                <span class="h-act" onclick="toast('Pass is on your lock screen')"><svg class="ic"><use href="#i-pass"/></svg>Pass</span>
+                <span class="h-act" onclick="toast('Invite sent — lands in their calendar')"><svg class="ic"><use href="#i-share"/></svg>Share</span>
+              </div>
+            </div>
+          </div>
+          <div class="h-hint"><svg class="ic"><use href="#i-chevd"/></svg></div>
+        </div>
+
+        <div class="rail">
+          <div class="rl-day">Tomorrow</div>
+          <div class="rl-item" onclick="toast('Tap opens the booking — nothing else in the way')">
+            <span class="rl-time">07:30</span>
+            <div>
+              <div class="rl-name">Phi Phi Islands · early-bird</div>
+              <div class="rl-meta"><span class="ok">Paid ✓</span> ฿2,400 · pickup Rassada Pier</div>
+            </div>
+          </div>
+          <div class="rl-item" onclick="toast('Saved from chat — want me to book the 5pm?')">
+            <span class="rl-time">17:00</span>
+            <div>
+              <div class="rl-name">Chalong Bay Rum · tasting</div>
+              <div class="rl-meta">idea from your concierge · not booked yet</div>
+            </div>
+          </div>
+
+          <div class="rl-day">Thu 31</div>
+          <div class="rl-item" onclick="toast('I\'ll nudge you when the driver confirms')">
+            <span class="rl-time">14:00</span>
+            <div>
+              <div class="rl-name">Airport transfer · HKT</div>
+              <div class="rl-meta"><span class="wait">Driver confirming…</span> private car</div>
+            </div>
+          </div>
+
+          <div class="rl-day">Thu 14 Aug</div>
+          <div class="rl-item" onclick="openCal()">
+            <span class="rl-time">21:00</span>
+            <div>
+              <div class="rl-name">Full Moon Party · Koh Phangan</div>
+              <div class="rl-meta"><span class="ok">Deposit paid ✓</span> booked 3 weeks ahead · tap for the month</div>
+            </div>
+          </div>
+
+          <div class="rl-fold" id="fold" onclick="foldPast()"><svg class="ic"><use href="#i-chevr"/></svg>Earlier this trip</div>
+          <div class="rl-past" id="past">
+            <div class="rl-item">
+              <span class="rl-time">Sun</span>
+              <div>
+                <div class="rl-name">Big Buddha viewpoint</div>
+                <div class="rl-meta">visited ✓ · <span class="star">+25 ★</span> photo proof</div>
+              </div>
+            </div>
+            <div class="rl-item">
+              <span class="rl-time">Sun</span>
+              <div>
+                <div class="rl-name">Anthony's · dinner</div>
+                <div class="rl-meta">visited ✓ · <span class="star">+10 ★</span> your review is live</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card nudge press" onclick="openAdd()">
+          <span class="n-ic"><svg class="ic"><use href="#i-receipt"/></svg></span>
+          <div><b>Dinner receipt tonight?</b><span>Snap it — I'll do the rest</span></div>
+          <span class="n-star">+15 ★</span>
+        </div>
+      </section>
+
+      <!-- ═══ PLACES — the island itself, with your places pinned on it ═══ -->
+      <section class="scr" id="scr-places">
+
+        <div class="p-map" id="pmap">
+          <svg viewBox="0 0 360 210" preserveAspectRatio="xMidYMid slice">
+            <rect width="360" height="210" fill="#DCEFF6"/>
+            <path d="M170,12 C200,16 235,38 246,62 C254,82 256,104 252,122
+                     C249,132 238,138 232,146 C226,153 232,162 240,166
+                     C244,176 236,190 222,196 C208,201 190,200 178,196
+                     C166,192 158,184 156,174 C154,166 158,160 156,152
+                     C150,146 146,148 144,140 C142,130 148,124 146,116
+                     C140,110 136,104 138,96 C132,88 130,80 136,72
+                     C140,64 146,60 148,52 C150,42 152,32 158,24
+                     C162,16 166,12 170,12 Z"
+                  fill="#FFFFFF" stroke="#D8DEF0" stroke-width="1.5"/>
+            <path d="M196,26 C194,60 192,100 190,130 C189,152 194,172 200,192" fill="none" stroke="#EAEDF7" stroke-width="3" stroke-linecap="round"/>
+            <path d="M191,96 C172,94 156,90 142,86M190,130 C210,134 220,142 228,148" fill="none" stroke="#EAEDF7" stroke-width="2.5" stroke-linecap="round"/>
+            <text x="52" y="120" font-family="Inter,Arial" font-size="8.5" font-weight="700" letter-spacing="2.5" fill="#8FB6C6">ANDAMAN</text>
+            <text x="182" y="46" font-family="Inter,Arial" font-size="7.5" font-weight="700" letter-spacing="2" fill="#B4BAD2">PHUKET</text>
+          </svg>
+          <span class="myou" style="left:40.6%;top:43.8%"></span>
+          <span class="mlabel" id="mlabel" style="left:38.3%;top:40%">Baan Rim Pa<span>booked tonight · 19:30</span></span>
+          <div class="mkey"><span class="k1"><i></i>saved</span><span class="k2"><i></i>been</span></div>
+        </div>
+
+        <div class="p-tabs">
+          <button class="p-tab on" onclick="pTab(this,'saved')">Saved</button>
+          <button class="p-tab" onclick="pTab(this,'been')">Been</button>
+        </div>
+
+        <div id="p-saved">
+          <div class="pcard" onclick="toast('Opens the place — hours, your history, book it')">
+            <span class="init">B</span>
+            <span class="tag">10% partner</span>
+            <button class="bm on" onclick="bmTap(event,this)"><svg class="ic"><use href="#i-bookmark"/></svg></button>
+            <div class="nm"><b>Baan Rim Pa</b><span>Royal Thai · cliffside · been ×3</span></div>
+          </div>
+          <div class="pcard" onclick="toast('Opens the place')">
+            <span class="init">C</span>
+            <button class="bm on" onclick="bmTap(event,this)"><svg class="ic"><use href="#i-bookmark"/></svg></button>
+            <div class="nm"><b>Chalong Bay Rum</b><span>Distillery · saved from chat</span></div>
+          </div>
+          <div class="pcard" onclick="toast('Opens the place')">
+            <span class="init">C</span>
+            <span class="tag">books via NUM</span>
+            <button class="bm on" onclick="bmTap(event,this)"><svg class="ic"><use href="#i-bookmark"/></svg></button>
+            <div class="nm"><b>Catch Beach Club</b><span>Sunset · Bang Tao</span></div>
+          </div>
+          <div class="pcard" onclick="toast('Opens the place')">
+            <span class="init">K</span>
+            <button class="bm on" onclick="bmTap(event,this)"><svg class="ic"><use href="#i-bookmark"/></svg></button>
+            <div class="nm"><b>Kata Rocks</b><span>Infinity bar · sunset</span></div>
+          </div>
+        </div>
+
+        <div id="p-been" style="display:none">
+          <div class="pcard">
+            <span class="init">B</span>
+            <span class="tag">+25 ★ proof</span>
+            <div class="nm"><b>Big Buddha</b><span>Sun 26 Jul · photo proof ✓</span></div>
+          </div>
+          <div class="pcard">
+            <span class="init">A</span>
+            <span class="tag">reviewed</span>
+            <div class="nm"><b>Anthony's</b><span>Sun 26 Jul · +10 ★</span></div>
+          </div>
+          <div class="pcard">
+            <span class="init">L</span>
+            <div class="nm"><b>Laem Sing Beach</b><span>Sat 25 Jul · morning swim</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="dock">
+      <button class="d-btn on" id="db-today" onclick="go('today')">Today</button>
+      <button class="orb" id="orb" onclick="openChat()" title="Your concierge"><span class="nm">N</span><span class="odot"></span></button>
+      <button class="d-btn" id="db-places" onclick="go('places')">Places</button>
+    </div>
+
+    <div class="scrim" id="scrim" onclick="closeAll()"></div>
+    <!-- ═══ CHAT SHEET ═══ -->
+    <div class="csheet" id="csheet">
+      <div class="c-grab" id="cgrab"><i></i></div>
+      <div class="c-head">
+        <span class="logo-mark">NuM</span>
+        <span class="who"><i></i>always on · texts &amp; app, one thread</span>
+        <button class="iconbtn" onclick="toast('Report · block · what the AI sees')" title="Safety"><svg class="ic"><use href="#i-shield"/></svg></button>
+      </div>
+      <div class="thread" id="thread">
+        <div class="tgap"><span>TODAY 19:02</span></div>
+
+        <div class="msg num"><div class="col">
+          <div class="bub">Sawasdee, Viv 🌺 You're near Patong tonight. Dinner, or a wander-and-see night?</div>
+        </div></div>
+
+        <div class="msg me gap"><div class="col">
+          <div class="bub">get me a table for 2 somewhere special, sea view</div>
+        </div></div>
+
+        <div class="msg num gap"><div class="col">
+          <div class="bub">Done — Baan Rim Pa, cliffside over the bay. 19:30, terrace rail.</div>
+          <div class="tcard" onclick="closeAll();go('today');toast('It lives in Today now')">
+            <div class="tc-pad">
+              <div class="tc-title">Baan Rim Pa · 19:30 <svg class="ic"><use href="#i-chevr"/></svg></div>
+              <div class="tc-sub">Confirmed ✓ · table for 2 · in your Today</div>
+            </div>
+          </div>
+        </div></div>
+
+        <div class="msg me gap"><div class="col">
+          <div class="bub">how much is the phi phi tour, can i pay now</div>
+          <span class="via">via text</span>
+        </div></div>
+
+        <div class="msg num gap"><div class="col">
+          <div class="bub">฿2,400 for two, pickup 07:30. Slide when ready — same link works from your texts:</div>
+          <div class="tcard" id="paycard">
+            <div class="tc-pad" style="padding-bottom:2px">
+              <div class="tc-title">Phi Phi · 2 guests</div>
+              <div class="tc-sub" id="paysub">pay.itsnum.com · PromptPay or card</div>
+            </div>
+            <div class="s2p" id="s2p">
+              <div class="fill" id="s2pfill"></div>
+              <div class="s2p-label" id="s2plabel">Slide to pay ฿2,400</div>
+              <div class="thumb" id="s2pthumb"><svg class="ic"><use href="#i-chevr"/></svg></div>
+            </div>
+          </div>
+        </div></div>
+
+        <div class="msg num gap"><div class="col">
+          <div class="bub">After the boat — Chalong Bay Rum does a 5pm tasting. Keep it?</div>
+          <div class="tcard">
+            <div class="tc-band">
+              <span class="init">C</span>
+              <button class="bm" id="bmsave" onclick="saveFromChat(this)"><svg class="ic"><use href="#i-bookmark"/></svg></button>
+            </div>
+            <div class="tc-pad">
+              <div class="tc-title">Chalong Bay Rum</div>
+              <div class="tc-sub">Distillery · ★ 4.8 · 15 min from the pier</div>
+            </div>
+          </div>
+        </div></div>
+
+        <div class="msg me gap"><div class="col">
+          <div class="receipt-thumb"></div>
+        </div></div>
+
+        <div class="msg num"><div class="col">
+          <div class="starcard"><span class="sg"><svg class="ic"><use href="#i-star"/></svg></span><div><b>+15 stars</b><span>Receipt verified · ฿3,150</span></div></div>
+        </div></div>
+      </div>
+
+      <div class="composer">
+        <button class="plus" onclick="openAdd()"><svg class="ic"><use href="#i-plus"/></svg></button>
+        <div class="field">
+          <input id="cinput" placeholder="Just ask…" autocomplete="off">
+          <button class="go" id="gobtn" onclick="goTap()"><svg class="ic"><use href="#i-mic" id="gouse"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PROFILE SHEET ═══ -->
+    <div class="psheet" id="psheet">
+      <div class="p-grab"></div>
+      <div class="p-id">
+        <div class="av">V</div>
+        <div><b>Viv</b><span>+66 •• ••• 8841 · verified ✓ · texts &amp; app in one thread</span></div>
+      </div>
+
+      <div class="p-stars">
+        <div class="p-bal"><span id="tick">0</span><i>★</i></div>
+        <div class="p-goal"><b>55 more</b> to a free dinner at partner venues — tap to spend</div>
+      </div>
+
+      <div class="p-card">
+        <div class="p-li"><span class="e am"><svg class="ic"><use href="#i-receipt"/></svg></span><div class="t">Receipt · Baan Rim Pa<span>Today</span></div><span class="amt plus">+15 ★</span></div>
+        <div class="p-li"><span class="e am"><svg class="ic"><use href="#i-landmark"/></svg></span><div class="t">Visit · Big Buddha<span>Sun 26 Jul</span></div><span class="amt plus">+25 ★</span></div>
+        <div class="p-li"><span class="e"><svg class="ic"><use href="#i-spa"/></svg></span><div class="t">Spent · Oasis Spa<span>Last week</span></div><span class="amt minus">−200 ★</span></div>
+      </div>
+
+      <div class="p-card">
+        <button class="p-row"><span class="e"><svg class="ic"><use href="#i-bell"/></svg></span>Notifications<span class="v">bookings &amp; replies</span></button>
+        <button class="p-row"><span class="e"><svg class="ic"><use href="#i-globe"/></svg></span>Language<span class="v">English · ไทย</span></button>
+        <button class="p-row" onclick="this.querySelector('.toggle').classList.toggle('on')"><span class="e"><svg class="ic"><use href="#i-faceid"/></svg></span>Face ID lock<span class="toggle on"></span></button>
+      </div>
+
+      <div class="p-card">
+        <button class="p-row" onclick="toast('Names our AI partners + exactly what they see')"><span class="e"><svg class="ic"><use href="#i-shield"/></svg></span>Privacy &amp; your data<span class="v">incl. AI</span></button>
+        <button class="p-row" onclick="toast('Straight to a human-reviewed queue')"><span class="e"><svg class="ic"><use href="#i-flag"/></svg></span>Report a problem</button>
+        <button class="p-row danger" onclick="toast('Deletes everything, in-app, no email required')"><span class="e"><svg class="ic"><use href="#i-trash"/></svg></span>Delete my account</button>
+      </div>
+
+      <button class="p-out">Sign out</button>
+      <div class="p-ver">NUM v0.4 · by 5arz · texting +66 ·· works even without the app</div>
+    </div>
+
+    <!-- ═══ CALENDAR SHEET — reservations live weeks out, not just tonight ═══ -->
+    <div class="calsheet" id="calsheet">
+      <div class="p-grab"></div>
+      <div class="cal-head">
+        <b id="calmonth">August 2026</b>
+        <div class="cal-nav">
+          <button class="iconbtn" onclick="calNav(-1)"><svg class="ic"><use href="#i-chevl"/></svg></button>
+          <button class="iconbtn" onclick="calNav(1)"><svg class="ic"><use href="#i-chevr"/></svg></button>
+        </div>
+      </div>
+      <div class="cal-dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+      <div class="cal-grid" id="calgrid"></div>
+      <div class="cal-list" id="callist"></div>
+    </div>
+
+    <!-- ═══ SHARE SHEET — plans are better with people ═══ -->
+    <div class="shsheet" id="shsheet">
+      <div class="p-grab"></div>
+      <div class="sh-title"><svg class="ic"><use href="#i-users"/></svg>Share your plan</div>
+      <div class="sh-prev">
+        <div class="sp-top"><b>Viv's Phuket week</b><span>28 Jul – 14 Aug · 5 bookings · live</span></div>
+        <div class="sh-row"><span class="ct">Tonight</span><span class="cn">Baan Rim Pa · 19:30</span></div>
+        <div class="sh-row"><span class="ct">Tomorrow</span><span class="cn">Phi Phi Islands · 07:30</span></div>
+        <div class="sh-row"><span class="ct">14 Aug</span><span class="cn">Full Moon Party · 21:00</span></div>
+      </div>
+      <div class="sh-opt"><span class="e"><svg class="ic"><use href="#i-sync"/></svg></span><span style="flex:1">Live updates<small>If plans change, their copy changes too</small></span><span class="toggle on" onclick="this.classList.toggle('on')"></span></div>
+      <div class="sh-opt"><span class="e"><svg class="ic"><use href="#i-shield"/></svg></span><span style="flex:1">Hide costs &amp; stars<small>They see where and when — never what you paid</small></span><span class="toggle on" onclick="this.classList.toggle('on')"></span></div>
+      <button class="btnp sh-send" onclick="closeAll();toast('Link copied — works in any browser, no app needed')">Send the link</button>
+      <div class="sh-fine">Friends open it anywhere — no app, no account. They can add it to their calendar, and you can turn the link off any time.</div>
+    </div>
+
+    <!-- ═══ ADD SHEET ═══ -->
+    <div class="asheet" id="asheet">
+      <div class="p-grab"></div>
+      <button class="a-opt" onclick="closeAdd();toast('Camera opens — I\'ll read the receipt')">
+        <span class="e"><svg class="ic"><use href="#i-receipt"/></svg></span><span><b>Snap a receipt</b><span>I verify it and credit you</span></span><span class="st">+15 ★</span>
+      </button>
+      <button class="a-opt" onclick="closeAdd();toast('Camera opens — proof you were there')">
+        <span class="e"><svg class="ic"><use href="#i-camera"/></svg></span><span><b>Photo of the place</b><span>Proves the visit</span></span><span class="st">+10 ★</span>
+      </button>
+      <button class="a-opt" onclick="closeAdd();toast('Pick the venue yourself — no location needed')">
+        <span class="e"><svg class="ic"><use href="#i-target"/></svg></span><span><b>Check in</b><span>Location off? Same stars.</span></span><span class="st">+10 ★</span>
+      </button>
+      <div class="a-fine">Location is optional everywhere in NUM — it only saves you a search.</div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+  </div></div></div>
+  <div class="stage-cap"><b>NUM</b> · v0.4 · tap the date for the month · share icon sends the plan</div>
+</div>
+<script>
+/* All state in memory. No storage APIs. */
+
+/* ── router ── */
+function go(name){
+  document.getElementById('scr-today').classList.toggle('on',name==='today');
+  document.getElementById('scr-places').classList.toggle('on',name==='places');
+  document.getElementById('db-today').classList.toggle('on',name==='today');
+  document.getElementById('db-places').classList.toggle('on',name==='places');
+  document.getElementById('toptitle').innerHTML = name==='today'
+    ? '<h1>Tonight</h1><div class="sub">Tue 28 Jul · Phuket</div>'
+    : '<h1>Places</h1><div class="sub">9 been · 6 saved · one island so far</div>';
+}
+function heroToggle(e){
+  if(e.target.closest('.h-act'))return;
+  document.getElementById('hero').classList.toggle('open');
+}
+function foldPast(){
+  document.getElementById('fold').classList.toggle('open');
+  document.getElementById('past').classList.toggle('open');
+}
+function pTab(btn,which){
+  document.querySelectorAll('.p-tab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('p-saved').style.display = which==='saved'?'':'none';
+  document.getElementById('p-been').style.display  = which==='been' ?'':'none';
+}
+function bmTap(e,el){e.stopPropagation();el.classList.toggle('on')}
+
+/* ── the map: real pins for real places ── */
+var PINS=[
+  {x:38.3,y:40.0,name:'Baan Rim Pa',   meta:'booked tonight · 19:30', kind:'saved'},
+  {x:42.2,y:19.0,name:'Catch Beach Club',meta:'saved · Bang Tao',      kind:'saved'},
+  {x:40.6,y:29.5,name:'Laem Sing Beach', meta:'been · Sat 25 Jul',     kind:'been'},
+  {x:40.6,y:67.6,name:'Kata Rocks',      meta:'saved · sunset bar',    kind:'saved'},
+  {x:43.3,y:74.3,name:"Anthony's",       meta:'been · reviewed +10 ★', kind:'been'},
+  {x:54.4,y:71.4,name:'Big Buddha',      meta:'been · +25 ★ proof',    kind:'been'},
+  {x:62.8,y:71.4,name:'Chalong Bay Rum', meta:'saved from chat',       kind:'saved'}
+];
+(function(){
+  var map=document.getElementById('pmap'),label=document.getElementById('mlabel');
+  PINS.forEach(function(p,i){
+    var el=document.createElement('span');
+    el.className='mpin'+(p.kind==='been'?' been':'')+(i===0?' sel':'');
+    el.style.left=p.x+'%';el.style.top=p.y+'%';
+    el.innerHTML='<i></i>';
+    el.addEventListener('click',function(){
+      map.querySelectorAll('.mpin').forEach(function(m){m.classList.remove('sel')});
+      el.classList.add('sel');
+      label.style.left=p.x+'%';label.style.top=p.y+'%';
+      label.innerHTML=p.name+'<span>'+p.meta+'</span>';
+    });
+    map.appendChild(el);
+  });
+})();
+
+/* ── sheets ── */
+var scrim=document.getElementById('scrim');
+function openChat(){closeAll(true);scrim.classList.add('on');document.getElementById('csheet').classList.add('on');
+  document.getElementById('orb').classList.remove('badged');
+  var t=document.getElementById('thread');setTimeout(function(){t.scrollTop=t.scrollHeight},60)}
+function openProfile(){closeAll(true);scrim.classList.add('on');document.getElementById('psheet').classList.add('on');tickStars()}
+function openAdd(){scrim.classList.add('on');document.getElementById('asheet').classList.add('on')}
+function closeAdd(){document.getElementById('asheet').classList.remove('on');
+  if(!document.getElementById('csheet').classList.contains('on'))scrim.classList.remove('on')}
+function closeAll(keepScrim){
+  ['csheet','psheet','asheet','calsheet','shsheet'].forEach(function(id){document.getElementById(id).classList.remove('on')});
+  if(!keepScrim)scrim.classList.remove('on');
+}
+
+/* ── calendar: the long horizon. Bookings live weeks out. ── */
+var CAL={
+  7:{days:31,first:3,name:'July 2026',items:{
+    26:[{t:'16:10',n:'Big Buddha viewpoint',m:'visited ✓ · +25 ★'},{t:'20:00',n:"Anthony's · dinner",m:'visited ✓ · reviewed'}],
+    28:[{t:'19:30',n:'Baan Rim Pa',m:'table for 2 · confirmed ✓'}],
+    29:[{t:'07:30',n:'Phi Phi Islands · early-bird',m:'paid ✓ ฿2,400'}],
+    31:[{t:'14:00',n:'Airport transfer · HKT',m:'driver confirming…'}]}},
+  8:{days:31,first:6,name:'August 2026',items:{
+    2:[{t:'17:00',n:'Catch Beach Club · sunset',m:'held — confirm by Fri'}],
+    14:[{t:'18:30',n:'Ferry to Koh Phangan',m:'2 seats · paid ✓'},{t:'21:00',n:'Full Moon Party',m:'deposit paid ✓ · booked 3 wks ahead'}],
+    15:[{t:'11:00',n:'Ferry back · Surat Thani',m:'open ticket'}]}}
+};
+var calM=8,calSel=14;
+function calRender(){
+  var M=CAL[calM];document.getElementById('calmonth').textContent=M.name;
+  var g=document.getElementById('calgrid');g.innerHTML='';
+  for(var i=0;i<M.first;i++){var pad=document.createElement('span');g.appendChild(pad)}
+  for(var d=1;d<=M.days;d++){
+    (function(d){
+      var el=document.createElement('div');
+      el.className='cal-d'+(calM===7&&d===28?' today':'')+(d===calSel?' sel':'');
+      var dots='';
+      if(M.items[d])dots='<span class="dots">'+M.items[d].map(function(){return '<i></i>'}).join('')+'</span>';
+      el.innerHTML='<span>'+d+'</span>'+(dots||'<span class="dots"></span>');
+      el.addEventListener('click',function(){calSel=d;calRender()});
+      g.appendChild(el);
+    })(d);
+  }
+  var list=document.getElementById('callist'),its=M.items[calSel];
+  list.innerHTML = its
+    ? its.map(function(it){return '<div class="cal-li"><span class="ct">'+it.t+'</span><div><div class="cn">'+it.n+'</div><div class="cm">'+it.m+'</div></div></div>'}).join('')
+    : '<div class="cal-empty">Nothing on the '+calSel+' — <b>ask me and it\'ll appear here</b></div>';
+}
+function calNav(dir){
+  var next=calM+dir;
+  if(!CAL[next])return;
+  calM=next;calSel=(calM===7?28:14);calRender();
+}
+function openCal(){closeAll(true);scrim.classList.add('on');calM=8;calSel=14;calRender();document.getElementById('calsheet').classList.add('on')}
+function openShare(){closeAll(true);scrim.classList.add('on');document.getElementById('shsheet').classList.add('on')}
+(function(){
+  var sheet=document.getElementById('csheet'),grab=document.getElementById('cgrab'),y0=null;
+  grab.addEventListener('pointerdown',function(e){y0=e.clientY;sheet.style.transition='none';grab.setPointerCapture(e.pointerId)});
+  grab.addEventListener('pointermove',function(e){
+    if(y0===null)return;var dy=Math.max(0,e.clientY-y0);sheet.style.transform='translateY('+dy+'px)'});
+  grab.addEventListener('pointerup',function(e){
+    var dy=Math.max(0,e.clientY-y0);y0=null;sheet.style.transition='';sheet.style.transform='';
+    if(dy>120)closeAll()});
+})();
+
+/* ── live countdown ── */
+(function(){
+  var mins=228;
+  function fmt(){var h=Math.floor(mins/60),m=mins%60;return 'in '+h+' h '+m+' m'}
+  var el=document.getElementById('count');el.textContent=fmt();
+  setInterval(function(){if(mins>1){mins--;el.textContent=fmt()}},60000);
+})();
+
+/* ── composer: mic ⇄ send ── */
+var input=document.getElementById('cinput'),gobtn=document.getElementById('gobtn'),gouse=document.getElementById('gouse');
+input.addEventListener('input',function(){
+  var has=input.value.trim().length>0;
+  gobtn.classList.toggle('send',has);
+  gouse.setAttribute('href',has?'#i-send':'#i-mic');
+});
+input.addEventListener('keydown',function(e){if(e.key==='Enter')goTap()});
+var canned=[
+  "On it — it'll appear in your Today in a moment ✓",
+  "Booked the way you like it. You'll feel the buzz when it's locked.",
+  "Consider it handled 🌺 Anything else while I have them on the line?"
+];var ci=0;
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function goTap(){
+  var txt=input.value.trim();
+  if(!txt){toast('Voice input — just talk to me');return}
+  input.value='';gobtn.classList.remove('send');gouse.setAttribute('href','#i-mic');
+  var t=document.getElementById('thread');
+  t.insertAdjacentHTML('beforeend','<div class="msg me gap"><div class="col"><div class="bub">'+esc(txt)+'</div></div></div>');
+  t.scrollTop=t.scrollHeight;
+  var tp=document.createElement('div');tp.className='msg num gap';
+  tp.innerHTML='<div class="col"><div class="typing"><i></i><i></i><i></i></div></div>';
+  t.appendChild(tp);t.scrollTop=t.scrollHeight;
+  setTimeout(function(){
+    tp.remove();
+    t.insertAdjacentHTML('beforeend','<div class="msg num gap"><div class="col"><div class="bub">'+canned[ci++%canned.length]+'</div></div></div>');
+    t.scrollTop=t.scrollHeight;
+  },1400);
+}
+
+/* ── slide to pay ── */
+(function(){
+  var t=document.getElementById('s2pthumb'),track=document.getElementById('s2p'),
+      fill=document.getElementById('s2pfill'),label=document.getElementById('s2plabel'),
+      x0=null,max=0,done=false;
+  t.addEventListener('pointerdown',function(e){
+    if(done)return;x0=e.clientX;max=track.clientWidth-48;t.style.transition='none';fill.style.transition='none';
+    t.setPointerCapture(e.pointerId)});
+  t.addEventListener('pointermove',function(e){
+    if(x0===null||done)return;var dx=Math.min(max,Math.max(0,e.clientX-x0));
+    t.style.transform='translateX('+dx+'px)';fill.style.width=(dx+48)+'px';
+    label.style.opacity=1-dx/max*1.2});
+  t.addEventListener('pointerup',function(e){
+    if(x0===null||done)return;var dx=Math.min(max,Math.max(0,e.clientX-x0));x0=null;
+    t.style.transition='transform .3s cubic-bezier(.32,1.25,.35,1)';fill.style.transition='width .3s';
+    if(dx>max*.8){
+      done=true;t.style.transform='translateX('+max+'px)';
+      t.innerHTML='<svg class="ic"><use href="#i-check"/></svg>';fill.style.width='100%';
+      track.classList.add('done');label.style.opacity=1;label.textContent='Paid ✓ ฿2,400';
+      document.getElementById('paysub').textContent='ref PP-88214 · receipt in Today · see you 07:30';
+      toast('Paid — your Today is updated');
+    }else{t.style.transform='';fill.style.width='48px';label.style.opacity=1}
+  });
+})();
+
+/* ── save from chat ── */
+function saveFromChat(el){
+  event.stopPropagation();
+  el.classList.add('on');
+  toast('Kept — it\'s waiting in Places');
+}
+
+/* ── star ticker ── */
+var ticked=false;
+function tickStars(){
+  if(ticked)return;ticked=true;
+  var el=document.getElementById('tick'),v=0,target=245,
+      step=function(){v+=Math.max(1,Math.round((target-v)/9));
+        if(v>=target)v=target;el.textContent=v;if(v<target)requestAnimationFrame(step)};
+  requestAnimationFrame(step);
+}
+
+/* ── toast ── */
+var toastTimer;
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('on');
+  clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('on')},2100);
+}
+
+setTimeout(function(){document.getElementById('orb').classList.add('badged')},7000);
+</script>
+</body>
+</html>

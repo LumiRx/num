@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claim your business — NUM by 5arz</title>
+<meta name="description" content="Claim your business on NUM — free, five minutes, from any phone. Travelers are already asking about you.">
+<style>
+:root{--ink:#1B1D36;--mut:#5B5F87;--soft:#8A8FB0;--brand:#5B5FEF;--line:#E5E7F5}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:var(--ink);background:#F4F5FE;line-height:1.6;-webkit-font-smoothing:antialiased}
+.bg{position:fixed;inset:0;z-index:-1;background:
+ radial-gradient(720px 480px at 8% -8%,rgba(99,102,241,.14),transparent 60%),
+ radial-gradient(640px 440px at 96% 4%,rgba(34,211,238,.12),transparent 60%),
+ radial-gradient(720px 520px at 50% 108%,rgba(244,114,182,.10),transparent 60%),#F4F5FE}
+.wrap{max-width:560px;margin:0 auto;padding:0 18px 70px}
+header{display:flex;align-items:center;justify-content:space-between;padding:22px 0 18px}
+.logo{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:26px;color:var(--ink);text-decoration:none}
+.logo small{font-family:-apple-system,'Segoe UI',sans-serif;font-style:normal;font-weight:600;font-size:10.5px;letter-spacing:2px;color:var(--brand);text-transform:uppercase;display:block;margin-top:-2px}
+.card{background:rgba(255,255,255,.75);border:1.5px solid rgba(255,255,255,.9);border-radius:22px;box-shadow:0 18px 50px rgba(76,81,161,.10);backdrop-filter:blur(18px);padding:30px 26px}
+h1{font-size:24px;line-height:1.3;letter-spacing:-.3px}
+.sub{color:var(--mut);font-size:14.5px;margin:10px 0 2px}
+.th{color:var(--soft);font-size:13.5px}
+.perks{font-size:14px;color:#3A3E5C;background:#EEF0FE;border:1px solid #DDE0FB;border-radius:14px;padding:14px 18px;margin:16px 0 4px;line-height:1.9}
+label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin:16px 0 6px}
+input{width:100%;font-size:16px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);outline:none}
+input:focus{border-color:var(--brand)}
+button{width:100%;margin-top:20px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366F1,#8B5CF6);border:0;border-radius:12px;padding:15px;cursor:pointer}
+button:disabled{opacity:.6}
+.err{color:#E11D48;font-size:13.5px;margin-top:10px;min-height:18px}
+.alt{text-align:center;font-size:13.5px;color:var(--soft);margin-top:16px}
+.alt b{color:var(--brand)}
+#done{display:none;text-align:center}
+.big{font-size:44px}
+footer{text-align:center;color:var(--soft);font-size:12px;margin-top:26px}
+footer a{color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="wrap">
+<header>
+  <a class="logo" href="/">NuM<small>by 5arz</small></a>
+</header>
+
+<div class="card">
+  <div id="form">
+    <h1>Claim your business — free</h1>
+    <p class="sub">Travelers on Num are already asking about places like yours. Claiming takes 2 minutes from any phone — no computer needed.</p>
+    <p class="th">เคลมร้านของคุณฟรี ใช้มือถือได้เลย ไม่ต้องใช้คอมพิวเตอร์</p>
+    <div class="perks">
+      ✅ Free — no signup fee, no subscription<br>
+      💬 Guests find you in 9 languages<br>
+      📅 Bookings arrive on your phone<br>
+      💸 Pay 10% only when a booking happens
+    </div>
+    <label>Business name · ชื่อร้าน *</label>
+    <input id="business" placeholder="Kata Serenity Spa">
+    <label>Your name · ชื่อของคุณ</label>
+    <input id="contact" placeholder="Somchai" autocomplete="name">
+    <label>Phone · เบอร์โทร *</label>
+    <input id="phone" placeholder="08x xxx xxxx" inputmode="tel" autocomplete="tel">
+    <label>LINE ID (optional · ถ้ามี)</label>
+    <input id="lineid" placeholder="@yourline">
+    <label>Email (optional · ถ้ามี)</label>
+    <input id="email" placeholder="you@business.com" inputmode="email" autocomplete="email">
+    <button id="go" onclick="submitClaim()">Claim my business · เคลมร้านของฉัน</button>
+    <div class="err" id="err"></div>
+    <div class="alt">Prefer chat? Add <b>@799pyrus</b> on LINE and type <b>CLAIM + your business name</b> · หรือแอด LINE แล้วพิมพ์ CLAIM ตามด้วยชื่อร้าน</div>
+  </div>
+
+  <div id="done">
+    <div class="big">🌺</div>
+    <h1>You're in!</h1>
+    <p class="sub">Our local team will contact you within 1 business day to verify your listing and switch on bookings. Kob khun ka! 🙏</p>
+    <p class="th">ทีมงานจะติดต่อกลับภายใน 1 วันทำการค่ะ</p>
+    <div class="alt" style="margin-top:22px">Fastest replies on LINE: add <b>@799pyrus</b></div>
+  </div>
+</div>
+<footer>NUM by 5arz · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · info@5arz.com</footer>
+</div>
+
+<script>
+const API = 'https://num-ai.thatislumi.workers.dev';
+async function submitClaim(){
+  const v = id => document.getElementById(id).value.trim();
+  const err = document.getElementById('err'); err.textContent = '';
+  if (v('business').length < 2){ err.textContent = 'Please enter your business name · กรอกชื่อร้าน'; return; }
+  if (v('phone').replace(/\D/g,'').length < 8 && !v('email') && !v('lineid')){ err.textContent = 'Add a phone, LINE ID, or email so we can reach you · ใส่ช่องทางติดต่ออย่างน้อยหนึ่งช่องทาง'; return; }
+  const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const r = await fetch(API + '/api/claim', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ business_name: v('business'), contact_name: v('contact'), phone: v('phone'), line_id: v('lineid'), email: v('email') }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error||'failed');
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('done').style.display = 'block';
+    window.scrollTo(0,0);
+  } catch(e){ err.textContent = 'Could not send — please try again, or claim via LINE @799pyrus · ส่งไม่สำเร็จ ลองใหม่หรือแอด LINE'; btn.disabled = false; btn.textContent = 'Claim my business · เคลมร้านของฉัน'; }
+}
+</script>
+
+<!-- Google Translate — any language -->
+<style>
+.gtx{position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(255,255,255,.92);border:1.5px solid #DDE0FB;border-radius:999px;padding:7px 14px;box-shadow:0 10px 30px rgba(76,81,161,.20);backdrop-filter:blur(10px)}
+.gtx::before{content:'🌐 '}
+.goog-te-banner-frame{display:none!important}html body{top:0!important}
+.goog-te-gadget{font-size:0!important;color:transparent!important}
+.goog-te-gadget .goog-te-combo{font-size:13px;font-family:inherit;border:0;background:transparent;color:#3A3E5C;outline:none;margin:0}
+.goog-logo-link,.goog-te-gadget img{display:none!important}
+</style>
+<div id="gtx" class="gtx"></div>
+<script>function gtInit(){try{new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'th,en,ru,zh-CN,zh-TW,ja,ko,de,fr,es,it,ar,hi,he,ms,vi',layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'gtx')}catch(e){}}</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=gtInit" defer></script>
+
+</body>
+</html>

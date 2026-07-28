@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get your referral card — NUM by 5arz</title>
+<meta name="description" content="Earn NUM stars for every traveler you refer. Generate your personal QR card in 30 seconds — free.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+:root{--ink:#1B1D36;--mut:#5B5F87;--soft:#8A8FB0;--brand:#5B5FEF;--line:#E5E7F5}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:var(--ink);background:#F4F5FE;line-height:1.6;-webkit-font-smoothing:antialiased}
+.bg{position:fixed;inset:0;z-index:-1;background:
+ radial-gradient(720px 480px at 8% -8%,rgba(99,102,241,.14),transparent 60%),
+ radial-gradient(640px 440px at 96% 4%,rgba(34,211,238,.12),transparent 60%),
+ radial-gradient(720px 520px at 50% 108%,rgba(244,114,182,.10),transparent 60%),#F4F5FE}
+.wrap{max-width:560px;margin:0 auto;padding:0 18px 70px}
+header{display:flex;align-items:center;justify-content:space-between;padding:22px 0 18px}
+.logo{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:26px;color:var(--ink);text-decoration:none}
+.logo small{font-family:-apple-system,'Segoe UI',sans-serif;font-style:normal;font-weight:600;font-size:10.5px;letter-spacing:2px;color:var(--brand);text-transform:uppercase;display:block;margin-top:-2px}
+.card{background:rgba(255,255,255,.75);border:1.5px solid rgba(255,255,255,.9);border-radius:22px;box-shadow:0 18px 50px rgba(76,81,161,.10);backdrop-filter:blur(18px);padding:30px 26px;text-align:center}
+h1{font-size:24px;line-height:1.3;letter-spacing:-.3px}
+.sub{color:var(--mut);font-size:14.5px;margin:10px 0 4px}
+.th{color:var(--soft);font-size:13.5px}
+label{display:block;text-align:left;font-size:13px;font-weight:600;color:var(--mut);margin:16px 0 6px}
+input{width:100%;font-size:16px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);outline:none}
+input:focus{border-color:var(--brand)}
+button{width:100%;margin-top:20px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366F1,#8B5CF6);border:0;border-radius:12px;padding:15px;cursor:pointer}
+button:disabled{opacity:.6}
+.err{color:#E11D48;font-size:13.5px;margin-top:10px;min-height:18px}
+#result{display:none}
+.qrbox{background:#fff;border-radius:20px;padding:16px;display:inline-block;box-shadow:0 12px 36px rgba(76,81,161,.16);margin-top:18px}
+.qrbox img{width:220px;height:220px;display:block}
+.codechip{display:inline-block;font-weight:800;font-size:20px;color:var(--brand);background:#fff;border:1.5px solid rgba(99,102,241,.3);border-radius:999px;padding:8px 24px;margin-top:16px}
+.steps{text-align:left;font-size:14px;color:#3A3E5C;margin-top:18px;background:#EEF0FE;border:1px solid #DDE0FB;border-radius:14px;padding:14px 18px}
+.printbtn{background:#fff;color:var(--brand);border:1.5px solid rgba(99,102,241,.4)}
+footer{text-align:center;color:var(--soft);font-size:12px;margin-top:26px}
+footer a{color:var(--mut)}
+@media print{ .bg,header,footer,#form,.steps,.printbtn{display:none!important} body{background:#fff} .card{box-shadow:none;border:0} }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="wrap">
+<header>
+  <a class="logo" href="/">NuM<small>by 5arz</small></a>
+</header>
+
+<div class="card">
+  <div id="form">
+    <h1>Earn ⭐ stars for every traveler you bring</h1>
+    <p class="sub">Tuk-tuk driver, guide, hotel staff, or just love Phuket? Get your personal QR card — travelers scan it, you earn stars. Free, 30 seconds.</p>
+    <p class="th">รับดาวทุกครั้งที่นักท่องเที่ยวสแกนการ์ดของคุณ — สมัครฟรี</p>
+    <label>Your name · ชื่อของคุณ</label>
+    <input id="name" placeholder="Somchai" autocomplete="name">
+    <label>Phone number · เบอร์โทร</label>
+    <input id="phone" placeholder="08x xxx xxxx" inputmode="tel" autocomplete="tel">
+    <button id="go" onclick="makeCard()">Create my card · สร้างการ์ดของฉัน</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="result">
+    <h1>Your card is ready! 🎉</h1>
+    <p class="sub">Show it to travelers — when they scan and join Num, you earn ⭐ 10 stars each (more when they book).</p>
+    <div class="qrbox"><img id="qrimg" alt="Your NUM referral QR"></div>
+    <div class="codechip" id="codechip"></div>
+    <div class="steps">
+      <b>Next steps · ขั้นตอนต่อไป</b><br>
+      1. Screenshot or print this card · บันทึกหน้าจอหรือปริ้นการ์ดนี้<br>
+      2. On LINE, add <b>@799pyrus</b> and send: <b>DRIVER <span class="dcode"></span></b> — this links the card to you · แอด LINE แล้วพิมพ์ DRIVER ตามด้วยรหัสของคุณ<br>
+      3. Check your stars anytime by sending: <b>STARS</b>
+    </div>
+    <button class="printbtn" onclick="window.print()">🖨 Print card</button>
+  </div>
+</div>
+<footer>NUM by 5arz · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · info@5arz.com</footer>
+</div>
+
+<script>
+const API = 'https://num-ai.thatislumi.workers.dev';
+async function makeCard(){
+  const name = document.getElementById('name').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const err = document.getElementById('err');
+  err.textContent = '';
+  if (name.length < 2 || phone.replace(/\D/g,'').length < 8){ err.textContent = 'Please enter your name and a valid phone number · กรอกชื่อและเบอร์โทร'; return; }
+  const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await fetch(API + '/api/ref/new', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, phone}) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'failed');
+    const code = j.code;
+    const link = 'https://line.me/R/oaMessage/@799pyrus/?' + encodeURIComponent('REF ' + code);
+    const qr = qrcode(0, 'H'); qr.addData(link); qr.make();
+    document.getElementById('qrimg').src = qr.createDataURL(8, 8);
+    document.getElementById('codechip').textContent = code + (j.existing ? ' (your existing card)' : '');
+    document.querySelectorAll('.dcode').forEach(e => e.textContent = code);
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('result').style.display = 'block';
+  } catch(e){ err.textContent = 'Could not create the card — please try again. · ลองอีกครั้งค่ะ'; }
+  btn.disabled = false; btn.textContent = 'Create my card · สร้างการ์ดของฉัน';
+}
+</script>
+
+<!-- Google Translate — any language -->
+<style>
+.gtx{position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(255,255,255,.92);border:1.5px solid #DDE0FB;border-radius:999px;padding:7px 14px;box-shadow:0 10px 30px rgba(76,81,161,.20);backdrop-filter:blur(10px)}
+.gtx::before{content:'🌐 '}
+.goog-te-banner-frame{display:none!important}html body{top:0!important}
+.goog-te-gadget{font-size:0!important;color:transparent!important}
+.goog-te-gadget .goog-te-combo{font-size:13px;font-family:inherit;border:0;background:transparent;color:#3A3E5C;outline:none;margin:0}
+.goog-logo-link,.goog-te-gadget img{display:none!important}
+</style>
+<div id="gtx" class="gtx"></div>
+<script>function gtInit(){try{new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'th,en,ru,zh-CN,zh-TW,ja,ko,de,fr,es,it,ar,hi,he,ms,vi',layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'gtx')}catch(e){}}</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=gtInit" defer></script>
+
+</body>
+</html>

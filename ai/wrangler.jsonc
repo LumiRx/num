@@ -1,0 +1,13 @@
+{
+  // NUM AI concierge — LINE webhook worker (separate from num-console; console is untouched)
+  "name": "num-ai",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "ai": { "binding": "AI" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+  ],
+  // nightly retention sweep — 20:00 UTC = 03:00 Phuket
+  "triggers": { "crons": ["0 20 * * *"] }
+}

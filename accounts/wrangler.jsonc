@@ -1,0 +1,19 @@
+{
+  // NUM accounts — magic-link sign-in for HQ admins and business partners
+  // (separate Worker from num-console; console keeps serving assets untouched)
+  "name": "num-accounts",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "d1_databases": [
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+  ],
+  // Attaches ONLY /api/accounts* and /api/master* on itsnum.com — every other
+  // path keeps being served by num-console (assets) or whichever worker already
+  // owns it. /api/master rides on this Worker because the admin session check
+  // it needs is implemented here.
+  "routes": [
+    { "pattern": "itsnum.com/api/accounts*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/master*",   "zone_name": "itsnum.com" }
+  ]
+}

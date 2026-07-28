@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — NUM</title>
+<meta name="description" content="Sign in to your NUM business account. No password — we email you a one-time link.">
+<!-- Sign-in is an account page, not a landing page. Keep it out of the index. -->
+<meta name="robots" content="noindex,follow">
+<link rel="canonical" href="https://itsnum.com/signin/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* This page exists because a query string is not routable. "itsnum.com/?signin=1"
+   does not match the Cloudflare route "itsnum.com/" — it falls through to the older
+   site worker and serves the wrong page — and Cloudflare rejects "?" inside a route
+   pattern outright. A path can be routed; a query flag cannot. So every link we put
+   in an email, a QR code or a partner deck points here, at /signin/. */
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
+  background:linear-gradient(150deg,#F6F7FF 0%,#EEF0FF 45%,#F4F1FF 100%);color:#1B1E3B}
+.wrap{width:100%;max-width:440px}
+.brand{display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:22px;text-decoration:none}
+.brand-mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6366F1,#8B5CF6);
+  display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;letter-spacing:-.03em}
+.brand-name{font-size:19px;font-weight:800;letter-spacing:-.02em;color:#1B1E3B}
+.nsi-card{background:#fff;border-radius:20px;padding:32px 30px 26px;box-shadow:0 24px 70px rgba(30,33,70,.14);border:1px solid rgba(99,102,241,.08)}
+.nsi-eyebrow{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6366F1}
+.nsi-h{font-size:24px;font-weight:800;color:#1B1E3B;margin:8px 0 6px;letter-spacing:-.02em}
+.nsi-p{font-size:14px;line-height:1.55;color:#5E6485;margin:0 0 18px}
+.nsi-in{width:100%;border:1.5px solid #DDE0FB;border-radius:12px;padding:13px 15px;font-size:15px;
+  font-family:inherit;color:#1B1E3B;outline:none;transition:border-color .15s}
+.nsi-in:focus{border-color:#6366F1}
+.nsi-btn{width:100%;margin-top:12px;border:0;border-radius:12px;padding:14px;font-size:15px;font-weight:700;
+  font-family:inherit;color:#fff;cursor:pointer;background:linear-gradient(135deg,#6366F1,#8B5CF6);transition:opacity .15s}
+.nsi-btn:hover{opacity:.92}
+.nsi-btn:disabled{opacity:.55;cursor:default}
+.nsi-note{font-size:12.5px;line-height:1.5;color:#8A90AE;margin:14px 0 0;text-align:center}
+.nsi-note a{color:#6366F1;text-decoration:none;font-weight:600}
+.nsi-note a:hover{text-decoration:underline}
+.nsi-err{font-size:13px;color:#D14343;margin:10px 0 0;display:none}
+.nsi-ok{text-align:center;padding:8px 0 2px}
+.nsi-tick{font-size:40px;line-height:1}
+.foot{margin-top:18px;text-align:center;font-size:12.5px;color:#9096B4}
+.foot a{color:#9096B4;text-decoration:none}
+.foot a:hover{color:#6366F1}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="brand" href="/">
+    <span class="brand-mark">N</span>
+    <span class="brand-name">NUM</span>
+  </a>
+
+  <div class="nsi-card">
+    <div id="nsi-form">
+      <div class="nsi-eyebrow">NUM account</div>
+      <h1 class="nsi-h">Sign in</h1>
+      <p class="nsi-p">Enter the email your NUM account uses. We'll send a one-time sign-in link — no password to remember.</p>
+      <form onsubmit="submitSignin();return false;">
+        <input class="nsi-in" id="nsi-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required autofocus>
+        <button class="nsi-btn" id="nsi-go" type="submit">Send my sign-in link</button>
+      </form>
+      <p class="nsi-err" id="nsi-err">Something went wrong. Please try again in a moment.</p>
+      <p class="nsi-note">Don't have an account yet? <a href="/claim/">Claim your business — free</a></p>
+    </div>
+
+    <div id="nsi-sent" style="display:none">
+      <div class="nsi-ok">
+        <div class="nsi-tick">&#9993;&#65039;</div>
+        <h2 class="nsi-h">Check your email</h2>
+        <p class="nsi-p" style="margin-bottom:6px">If that address has NUM access, a sign-in link is on its way. It works once and expires in 15&nbsp;minutes.</p>
+      </div>
+      <p class="nsi-note">Wrong address? <a href="#" onclick="resetSignin();return false;">Try another one</a></p>
+    </div>
+  </div>
+
+  <p class="foot"><a href="/">&larr; Back to itsnum.com</a> &nbsp;&middot;&nbsp; <a href="/privacy/">Privacy</a> &nbsp;&middot;&nbsp; <a href="/terms/">Terms</a></p>
+</div>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id); }
+
+  window.resetSignin = function(){
+    $('nsi-form').style.display=''; $('nsi-sent').style.display='none';
+    $('nsi-err').style.display='none';
+    var e=$('nsi-email'); if(e){ e.value=''; e.focus(); }
+  };
+
+  window.submitSignin = async function(){
+    var v = ($('nsi-email').value || '').trim();
+    if(!v) return;
+    var btn = $('nsi-go');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    $('nsi-err').style.display='none';
+    try{
+      /* Deliberately ignores the response body. The endpoint answers the same way
+         whether or not the address exists, so nobody can use this form to work out
+         which businesses are already on NUM. */
+      await fetch('/api/accounts/login', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email: v })
+      });
+      $('nsi-form').style.display='none'; $('nsi-sent').style.display='';
+    }catch(e){
+      $('nsi-err').style.display='';
+    }
+    btn.disabled = false; btn.textContent = 'Send my sign-in link';
+  };
+
+  /* Already signed in? Don't make them ask for a link they don't need. */
+  (async function(){
+    try{
+      var res = await fetch('/api/accounts/me', { credentials:'same-origin' });
+      var me  = await res.json();
+      if(me && me.signed_in) location.replace('/console/');
+    }catch(e){}
+  })();
+})();
+</script>
+</body>
+</html>

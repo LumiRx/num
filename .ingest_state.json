@@ -1,0 +1,337 @@
+{
+ "lisbon": {
+  "ok": true,
+  "count": 9187,
+  "at": "2026-07-27T21:25:02.276Z"
+ },
+ "london": {
+  "ok": true,
+  "count": 19983,
+  "at": "2026-07-27T21:25:29.888Z"
+ },
+ "edinburgh": {
+  "ok": true,
+  "count": 4550,
+  "at": "2026-07-27T21:25:54.578Z"
+ },
+ "manchester": {
+  "ok": true,
+  "count": 3416,
+  "at": "2026-07-27T21:26:19.247Z"
+ },
+ "liverpool": {
+  "ok": true,
+  "count": 1927,
+  "at": "2026-07-27T21:29:36.927Z"
+ },
+ "bath": {
+  "ok": true,
+  "count": 1119,
+  "at": "2026-07-27T21:29:54.491Z"
+ },
+ "dublin": {
+  "ok": true,
+  "count": 4830,
+  "at": "2026-07-27T21:35:31.088Z"
+ },
+ "paris": {
+  "ok": true,
+  "count": 19991,
+  "at": "2026-07-27T21:36:04.029Z"
+ },
+ "nice": {
+  "ok": true,
+  "count": 3306,
+  "at": "2026-07-27T21:36:22.495Z"
+ },
+ "rome": {
+  "ok": true,
+  "count": 10200,
+  "at": "2026-07-27T21:36:45.853Z"
+ },
+ "venice": {
+  "ok": true,
+  "count": 2167,
+  "at": "2026-07-27T21:42:41.623Z"
+ },
+ "florence": {
+  "ok": true,
+  "count": 4281,
+  "at": "2026-07-27T21:43:06.112Z"
+ },
+ "milan": {
+  "ok": true,
+  "count": 12143,
+  "at": "2026-07-27T21:43:26.071Z"
+ },
+ "barcelona": {
+  "ok": true,
+  "count": 16444,
+  "at": "2026-07-27T21:44:01.331Z"
+ },
+ "madrid": {
+  "ok": true,
+  "count": 16586,
+  "at": "2026-07-27T21:50:59.173Z"
+ },
+ "seville": {
+  "ok": true,
+  "count": 4443,
+  "at": "2026-07-27T21:51:19.578Z"
+ },
+ "porto": {
+  "ok": true,
+  "count": 4797,
+  "at": "2026-07-27T21:51:45.722Z"
+ },
+ "amsterdam": {
+  "ok": true,
+  "count": 8015,
+  "at": "2026-07-27T21:52:13.712Z"
+ },
+ "berlin": {
+  "ok": true,
+  "count": 19351,
+  "at": "2026-07-27T21:53:55.509Z"
+ },
+ "munich": {
+  "ok": true,
+  "count": 8711,
+  "at": "2026-07-27T21:54:21.687Z"
+ },
+ "vienna": {
+  "ok": true,
+  "count": 12619,
+  "at": "2026-07-27T21:56:08.694Z"
+ },
+ "prague": {
+  "ok": true,
+  "count": 9388,
+  "at": "2026-07-27T21:56:32.412Z"
+ },
+ "budapest": {
+  "ok": true,
+  "count": 9401,
+  "at": "2026-07-27T22:00:59.879Z"
+ },
+ "copenhagen": {
+  "ok": true,
+  "count": 6451,
+  "at": "2026-07-27T22:03:31.883Z"
+ },
+ "stockholm": {
+  "ok": true,
+  "count": 6051,
+  "at": "2026-07-27T22:03:53.298Z"
+ },
+ "zurich": {
+  "ok": true,
+  "count": 5978,
+  "at": "2026-07-27T22:06:23.069Z"
+ },
+ "athens": {
+  "ok": true,
+  "count": 10619,
+  "at": "2026-07-27T22:06:46.999Z"
+ },
+ "dubrovnik": {
+  "ok": true,
+  "count": 630,
+  "at": "2026-07-27T22:07:58.858Z"
+ },
+ "reykjavik": {
+  "ok": true,
+  "count": 1316,
+  "at": "2026-07-27T22:08:15.245Z"
+ },
+ "istanbul": {
+  "ok": true,
+  "count": 15714,
+  "at": "2026-07-27T22:08:43.694Z"
+ },
+ "phuket": {
+  "ok": true,
+  "count": 4520,
+  "at": "2026-07-27T22:11:01.319Z"
+ },
+ "bangkok": {
+  "ok": true,
+  "count": 9912,
+  "at": "2026-07-27T22:14:35.229Z"
+ },
+ "chiang-mai": {
+  "ok": true,
+  "count": 5085,
+  "at": "2026-07-27T22:14:53.855Z"
+ },
+ "koh-samui": {
+  "ok": true,
+  "count": 1331,
+  "at": "2026-07-27T22:17:04.451Z"
+ },
+ "krabi": {
+  "ok": true,
+  "count": 936,
+  "at": "2026-07-27T22:17:20.698Z"
+ },
+ "pattaya": {
+  "ok": true,
+  "count": 5539,
+  "at": "2026-07-27T22:18:27.810Z"
+ },
+ "tokyo": {
+  "ok": true,
+  "count": 19979,
+  "at": "2026-07-27T22:22:23.334Z"
+ },
+ "kyoto": {
+  "ok": true,
+  "count": 6367,
+  "at": "2026-07-27T22:26:22.869Z"
+ },
+ "osaka": {
+  "ok": true,
+  "count": 16195,
+  "at": "2026-07-27T22:26:50.884Z"
+ },
+ "seoul": {
+  "ok": true,
+  "count": 19953,
+  "at": "2026-07-27T22:27:14.753Z"
+ },
+ "singapore": {
+  "ok": true,
+  "count": 11276,
+  "at": "2026-07-27T22:27:40.803Z"
+ },
+ "hong-kong": {
+  "ok": true,
+  "count": 7536,
+  "at": "2026-07-27T22:28:04.723Z"
+ },
+ "taipei": {
+  "ok": true,
+  "count": 19986,
+  "at": "2026-07-27T22:31:46.364Z"
+ },
+ "kuala-lumpur": {
+  "ok": true,
+  "count": 7517,
+  "at": "2026-07-27T22:32:06.587Z"
+ },
+ "hanoi": {
+  "ok": true,
+  "count": 5332,
+  "at": "2026-07-27T22:32:40.154Z"
+ },
+ "ho-chi-minh": {
+  "ok": true,
+  "count": 5979,
+  "at": "2026-07-27T22:34:51.821Z"
+ },
+ "da-nang": {
+  "ok": true,
+  "count": 2936,
+  "at": "2026-07-27T22:35:08.108Z"
+ },
+ "siem-reap": {
+  "ok": true,
+  "count": 1344,
+  "at": "2026-07-27T22:35:25.840Z"
+ },
+ "manila": {
+  "ok": true,
+  "count": 17380,
+  "at": "2026-07-27T22:37:50.311Z"
+ },
+ "dubai": {
+  "ok": true,
+  "count": 9685,
+  "at": "2026-07-27T22:40:12.048Z"
+ },
+ "colombo": {
+  "ok": true,
+  "count": 1986,
+  "at": "2026-07-27T22:40:41.069Z"
+ },
+ "goa": {
+  "ok": true,
+  "count": 3532,
+  "at": "2026-07-27T22:42:20.939Z"
+ },
+ "bali": {
+  "ok": true,
+  "count": 10664,
+  "at": "2026-07-27T22:42:50.315Z"
+ },
+ "phi-phi": {
+  "ok": true,
+  "count": 369,
+  "at": "2026-07-27T22:43:07.188Z"
+ },
+ "langkawi": {
+  "ok": true,
+  "count": 771,
+  "at": "2026-07-27T22:43:28.433Z"
+ },
+ "boracay": {
+  "ok": true,
+  "count": 850,
+  "at": "2026-07-27T22:44:37.404Z"
+ },
+ "maldives": {
+  "ok": true,
+  "count": 527,
+  "at": "2026-07-27T22:46:56.297Z"
+ },
+ "mauritius": {
+  "ok": true,
+  "count": 2116,
+  "at": "2026-07-27T22:47:14.585Z"
+ },
+ "santorini": {
+  "ok": true,
+  "count": 1078,
+  "at": "2026-07-27T22:47:30.609Z"
+ },
+ "mykonos": {
+  "ok": true,
+  "count": 381,
+  "at": "2026-07-27T22:47:52.120Z"
+ },
+ "ibiza": {
+  "ok": true,
+  "count": 1481,
+  "at": "2026-07-27T22:50:18.800Z"
+ },
+ "mallorca": {
+  "ok": true,
+  "count": 3413,
+  "at": "2026-07-27T22:51:35.283Z"
+ },
+ "cancun": {
+  "ok": true,
+  "count": 1047,
+  "at": "2026-07-27T22:51:51.007Z"
+ },
+ "tulum": {
+  "ok": true,
+  "count": 560,
+  "at": "2026-07-27T22:56:14.442Z"
+ },
+ "honolulu": {
+  "ok": true,
+  "count": 1747,
+  "at": "2026-07-27T22:58:44.982Z"
+ },
+ "nassau": {
+  "ok": true,
+  "count": 642,
+  "at": "2026-07-27T22:59:55.015Z"
+ },
+ "bridgetown": {
+  "ok": true,
+  "count": 912,
+  "at": "2026-07-27T23:02:08.262Z"
+ }
+}
