@@ -1,0 +1,146 @@
+{
+  "designProjectId": "d7604087-d1cd-4267-92bc-f01cadabe8dd",
+  "designProjectUrl": "https://claude.ai/design/p/d7604087-d1cd-4267-92bc-f01cadabe8dd",
+  "nextAlertId": 1,
+  "designs": [
+    {
+      "id": "screens/concierge",
+      "title": "Concierge app screen (Num v0.8 canonical prototype)",
+      "dir": "screens/concierge",
+      "file": "Concierge.dc.html",
+      "sourcePath": "Concierge.dc.html",
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T10:35:00-07:00",
+          "note": "initial import",
+          "sha256": "83febfdee6d1ce99a81622a722d1a668920e9058911f0c36b7d586eb6c3ba6d0",
+          "bytes": 60783,
+          "lines": 613
+        }
+      ]
+    },
+    {
+      "id": "frames/ios-frame",
+      "title": "iOS 26 device frame starter",
+      "dir": "frames/ios-frame",
+      "file": "ios-frame.jsx",
+      "sourcePath": "ios-frame.jsx",
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T10:35:00-07:00",
+          "note": "initial import",
+          "sha256": "1d94fdac6f890db4e65f1149bc37ddb8ebcd3c9a5ef75900bb35ce4b29b199de",
+          "bytes": 11630,
+          "lines": 249
+        }
+      ]
+    },
+    {
+      "id": "runtime/support",
+      "title": "dc-runtime (support.js)",
+      "dir": "runtime/support",
+      "file": "support.js",
+      "sourcePath": "support.js",
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T10:35:00-07:00",
+          "note": "initial import",
+          "sha256": "eae8be66d3db9ad5eb6e6cefac54537a0942cee7132febbd899d70d89dc99d45",
+          "bytes": 69151,
+          "lines": 1913
+        }
+      ]
+    },
+    {
+      "id": "ds/modernist/styles",
+      "title": "Modernist design system — stylesheet",
+      "dir": "ds/modernist",
+      "file": "styles.css",
+      "sourcePath": "_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/styles.css",
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T10:35:00-07:00",
+          "note": "initial import",
+          "sha256": "d2dd60f524bcae2372b9b672cdfd66f71a4faa55def465fbc61ce7462fb5a93a",
+          "bytes": 10554,
+          "lines": 252
+        }
+      ]
+    },
+    {
+      "id": "ds/modernist/readme",
+      "title": "Modernist design system — usage guide",
+      "dir": "ds/modernist",
+      "file": "readme.md",
+      "sourcePath": "_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/readme.md",
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T10:35:00-07:00",
+          "note": "initial import",
+          "sha256": "4b7a850adf3d5b14b70b0282efc819493209d8352113f1a900083aeefd8f12f9",
+          "bytes": 7376,
+          "lines": 82
+        }
+      ]
+    },
+    {
+      "id": "ds/modernist/bundle",
+      "title": "Modernist design system — JS bundle",
+      "dir": "ds/modernist",
+      "file": "_ds_bundle.js",
+      "sourcePath": "_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/_ds_bundle.js",
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T10:35:00-07:00",
+          "note": "initial import",
+          "sha256": "6138a8418649050c65574c0abd8394e05a58cfb233f29cc3c2502923753a18ca",
+          "bytes": 303,
+          "lines": 12
+        }
+      ]
+    },
+    {
+      "id": "ds/modernist/manifest",
+      "title": "Modernist design system — manifest (reference metadata)",
+      "dir": "ds/modernist",
+      "file": "_ds_manifest.json",
+      "sourcePath": "_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/_ds_manifest.json",
+      "aux": true,
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T12:40:00-07:00",
+          "note": "initial import",
+          "sha256": "3acbed5b4f13bc3acdfd3e9a73ba7a6a1928cb515688e1fa3f697575a990897d",
+          "bytes": 7247,
+          "lines": 1
+        }
+      ]
+    },
+    {
+      "id": "ds/modernist/adherence",
+      "title": "Modernist design system — adherence lint config (reference metadata)",
+      "dir": "ds/modernist",
+      "file": "_adherence.oxlintrc.json",
+      "sourcePath": "_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/_adherence.oxlintrc.json",
+      "aux": true,
+      "versions": [
+        {
+          "v": 1,
+          "importedAt": "2026-07-28T12:40:00-07:00",
+          "note": "initial import",
+          "sha256": "c4546455bbb76b6bd4b9906973164a5db95f7a93421fb82453c2f1a90d89cacb",
+          "bytes": 4003,
+          "lines": 152
+        }
+      ]
+    }
+  ],
+  "alerts": []
+}

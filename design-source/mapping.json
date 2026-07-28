@@ -1,0 +1,40 @@
+{
+  "comment": "Maps each tracked design to the source files that implement it, so a change alert can say exactly what needs review. For screens/concierge, ordered section markers slice the file; a changed slice flags that section's src files.",
+  "sections": {
+    "screens/concierge": [
+      { "name": "canvas-poster", "marker": "NUM — V0.8 · CANONICAL PROTOTYPE", "src": ["src/components/canvas/PrototypeCanvas.tsx"] },
+      { "name": "app-header", "marker": "{{ headerStyle }}", "src": ["src/components/app/ConciergeApp.tsx"] },
+      { "name": "tabs", "marker": "{{ segThreadStyle }}", "src": ["src/components/app/ConciergeApp.tsx"] },
+      { "name": "thread", "marker": "sc-if value=\"{{ isThread }}\"", "src": ["src/components/app/ThreadView.tsx"] },
+      { "name": "plan", "marker": "sc-if value=\"{{ isPlan }}\"", "src": ["src/components/app/PlanView.tsx"] },
+      { "name": "memory", "marker": "sc-if value=\"{{ isMem }}\"", "src": ["src/components/app/MemoryView.tsx"] },
+      { "name": "voice-overlay", "marker": "sc-if value=\"{{ voiceOn }}\"", "src": ["src/components/app/Overlays.tsx"] },
+      { "name": "notification", "marker": "sc-if value=\"{{ notifOn }}\"", "src": ["src/components/app/Overlays.tsx"] },
+      { "name": "calendar-sheet", "marker": "{{ calSheetStyle }}", "src": ["src/components/app/CalendarSheet.tsx", "src/lib/derive.ts"] },
+      { "name": "share-sheet", "marker": "{{ shareSheetStyle }}", "src": ["src/components/app/ShareSheet.tsx"] },
+      { "name": "wallet-sheet", "marker": "{{ walletSheetStyle }}", "src": ["src/components/app/WalletSheet.tsx"] },
+      { "name": "permission-dialog", "marker": "sc-if value=\"{{ permOn }}\"", "src": ["src/components/app/Overlays.tsx"] },
+      { "name": "lock-screen", "marker": "sc-if value=\"{{ showLock }}\"", "src": ["src/components/canvas/LockScreen.tsx"] },
+      { "name": "sidebar-notes", "marker": "WHAT’S NEW IN V0.8", "src": ["src/components/canvas/PrototypeCanvas.tsx"] },
+      { "name": "logic-script", "marker": "data-dc-script", "src": ["src/lib/concierge.ts", "src/lib/data.ts", "src/lib/derive.ts"] }
+    ],
+    "frames/ios-frame": [
+      { "name": "device-frame", "marker": "", "src": ["src/components/device/IOSDevice.tsx"] }
+    ],
+    "ds/modernist/styles": [
+      { "name": "tokens-and-components", "marker": "", "src": ["src/styles/ds.css", "src/styles/app.css"] }
+    ],
+    "ds/modernist/readme": [
+      { "name": "guidance", "marker": "", "src": ["src/styles/ds.css"] }
+    ]
+  },
+  "vendored": [
+    { "designId": "ds/modernist/styles", "to": "src/styles/ds.css", "note": "the app links the vendored copy — re-vendor when the DS stylesheet changes" }
+  ],
+  "noImpact": {
+    "runtime/support": "dc-runtime reference only — the app does not use it",
+    "ds/modernist/bundle": "empty namespace bundle — no app impact",
+    "ds/modernist/manifest": "reference metadata — no app impact",
+    "ds/modernist/adherence": "reference metadata — no app impact"
+  }
+}
