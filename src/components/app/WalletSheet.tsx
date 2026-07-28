@@ -17,7 +17,7 @@ export default function WalletSheet() {
   const txns = useApp((s) => s.txns);
 
   return (
-    <div style={{ ...sheetBase, transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={{ padding: 16, borderBottom: '2px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
           <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>STARS — YOUR BALANCE</div>

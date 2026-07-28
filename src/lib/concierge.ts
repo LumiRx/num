@@ -5,7 +5,6 @@
 import { store } from './store';
 import type { Booking, Chip, Msg } from './types';
 
-let typingTimer: ReturnType<typeof setTimeout> | undefined;
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
 let voiceT1: ReturnType<typeof setTimeout> | undefined;
 let voiceT2: ReturnType<typeof setTimeout> | undefined;
@@ -16,8 +15,9 @@ function push(m: Msg) {
 
 function reply(items: Msg[], chips?: Chip[] | null, delay = 1000) {
   store.set({ typing: true, chips: [] });
-  clearTimeout(typingTimer);
-  typingTimer = setTimeout(() => {
+  // One independent timer per reply, as in the design — overlapping flows
+  // must both deliver; cancelling a pending timer would swallow its messages.
+  setTimeout(() => {
     store.set((s) => ({ typing: false, msgs: [...s.msgs, ...items], chips: chips ?? defChips() }));
   }, delay);
 }
@@ -41,7 +41,13 @@ function setB(id: string, patch: Partial<Booking>) {
 }
 
 function addB(b: Booking) {
-  store.set((s) => ({ bookings: [...s.bookings, b] }));
+  // Upsert by id: scripted flows reuse fixed ids ('dn', 'pp2'), and re-running
+  // a flow must replace its earlier result, not stack a duplicate React key.
+  store.set((s) => ({
+    bookings: s.bookings.some((x) => x.id === b.id)
+      ? s.bookings.map((x) => (x.id === b.id ? b : x))
+      : [...s.bookings, b],
+  }));
 }
 
 function payBill(how: string) {
@@ -176,7 +182,7 @@ export function sendChip(id: string, label: string) {
   } else if (id === 'meetThu' || id === 'meetFri') {
     const thu = id === 'meetThu';
     store.set((s) => ({
-      meetings: [...s.meetings, { id: 'mm', mo: 7, day: thu ? 30 : 31, time: thu ? '15:00' : '09:00', dur: 30, place: 'Video · Num', title: 'Catch-up — Mei', src: 'NUM' as const }],
+      meetings: [...s.meetings.filter((m) => m.id !== 'mm'), { id: 'mm', mo: 7, day: thu ? 30 : 31, time: thu ? '15:00' : '09:00', dur: 30, place: 'Video · Num', title: 'Catch-up — Mei', src: 'NUM' as const }],
     }));
     reply(
       [{

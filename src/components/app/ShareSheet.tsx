@@ -22,7 +22,7 @@ export default function ShareSheet() {
   };
 
   return (
-    <div style={{ ...sheetBase, transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={{ padding: 16, borderBottom: '2px solid var(--color-divider)' }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE PLAN</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 18, marginTop: 6 }}>Viv’s SE Asia loop</div>

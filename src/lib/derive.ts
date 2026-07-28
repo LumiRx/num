@@ -249,7 +249,9 @@ export const sheetBase: CSSProperties = {
   background: 'var(--color-bg)',
   borderTop: '2px solid var(--color-text)',
   zIndex: 60,
-  transition: 'transform .32s cubic-bezier(.32,.72,.29,.99)',
+  // visibility rides the same clock so a closed sheet leaves the
+  // accessibility tree after the slide-out instead of lingering off-screen
+  transition: 'transform .32s cubic-bezier(.32,.72,.29,.99), visibility .32s',
 };
 
 export const segStyle = (on: boolean): CSSProperties => ({

@@ -20,7 +20,7 @@ export default function App() {
   if (standalone) {
     return (
       <div style={{ height: '100dvh', overflow: 'hidden' }}>
-        <ConciergeApp />
+        <ConciergeApp standalone />
       </div>
     );
   }

@@ -17,6 +17,14 @@ npm run dev
 
 Then open the URL Vite prints (usually http://localhost:5173).
 
+Two presentation modes:
+
+- **Prototype canvas** (desktop-width viewport): the poster header, the app in
+  an iPhone frame, the lock screen (Live Activity) beside it, and the v0.8
+  release notes — mirroring the original design canvas.
+- **Standalone app** (viewport narrower than 720px, or append `?app` to the
+  URL): the Num app runs full-bleed as a real app, no frame.
+
 Other scripts:
 
 ```bash
@@ -31,7 +39,10 @@ src/
   components/
     app/          # App screens: ConciergeApp, ThreadView, PlanView,
                   # MemoryView, sheets (Calendar/Share/Wallet), overlays
-    canvas/       # PrototypeCanvas — device frame / presentation wrapper
+    canvas/       # PrototypeCanvas (desktop presentation) + LockScreen
+                  # (the Live Activity lock screen)
+    device/       # IOSDevice — iPhone frame (bezel, dynamic island,
+                  # status bar), ported from design-source/ios-frame.jsx
   lib/
     concierge.ts  # The concierge engine (scripted demo flows) ← AI seam
     store.ts      # App state store + useApp hook

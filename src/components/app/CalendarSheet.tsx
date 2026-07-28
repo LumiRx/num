@@ -41,7 +41,7 @@ export default function CalendarSheet() {
   const sel = selDayInfo(s, events.length);
 
   return (
-    <div style={{ ...sheetBase, height: '80%', display: 'flex', flexDirection: 'column', transform: s.calOpen ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div style={{ ...sheetBase, height: '80%', display: 'flex', flexDirection: 'column', visibility: s.calOpen ? 'visible' : 'hidden', transform: s.calOpen ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '2px solid var(--color-divider)' }}>
         <span onClick={() => store.set({ calM: 0 })} style={{ cursor: 'pointer', padding: '2px 8px', fontWeight: 700, opacity: s.calM === 0 ? 0.25 : 1 }}>←</span>
         <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16 }}>{M.t}</span>

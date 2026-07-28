@@ -10,7 +10,7 @@ import ShareSheet from './ShareSheet';
 import WalletSheet from './WalletSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 
-export default function ConciergeApp({ posterHeader = false }: { posterHeader?: boolean }) {
+export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
@@ -22,7 +22,8 @@ export default function ConciergeApp({ posterHeader = false }: { posterHeader?: 
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', background: 'var(--color-bg)', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
       {/* header */}
       <div style={{ borderBottom: '2px solid var(--color-divider)', background: posterHeader ? 'var(--color-accent)' : 'var(--color-bg)', color: posterHeader ? '#fff' : 'var(--color-text)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '62px 16px 0' }}>
+        {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
           <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>
             NUM <span style={{ fontWeight: 400, opacity: 0.55 }}>· YOUR CONCIERGE</span>
           </div>

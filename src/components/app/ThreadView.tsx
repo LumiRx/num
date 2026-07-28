@@ -32,15 +32,16 @@ function MsgBubble({ m }: { m: Msg }) {
 }
 
 export default function ThreadView() {
-  const msgs = useApp((s) => s.msgs);
-  const typing = useApp((s) => s.typing);
-  const chips = useApp((s) => s.chips);
+  // Whole-state subscription on purpose: the design's componentDidUpdate snaps
+  // the thread to the bottom after EVERY state change while the thread is
+  // visible (sheets opening, notifications, chips), not just on new messages.
+  const { msgs, typing, chips } = useApp((s) => s);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [msgs, typing]);
+  });
 
   return (
     <>
