@@ -1,0 +1,31 @@
+/* App-level styles: keyframes + hover states the prototype expressed via
+   style-hover attributes, plus small chrome the inline styles can't carry. */
+
+@keyframes tdot {
+  0%, 80%, 100% { opacity: .25; }
+  40% { opacity: 1; }
+}
+@keyframes lapulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+@keyframes vbar {
+  0%, 100% { transform: scaleY(.25); }
+  50% { transform: scaleY(1); }
+}
+
+a { color: var(--color-accent-700); }
+a:hover { color: var(--color-accent); }
+
+/* style-hover ports */
+.hov-accent-100:hover { background: var(--color-accent-100) !important; }
+.hov-neutral-100:hover { background: var(--color-neutral-100) !important; }
+.hov-accent:hover { background: var(--color-accent) !important; }
+
+/* Hide scrollbars inside the device frame — the prototype scrolls chrome-free. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

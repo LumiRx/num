@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/styles.css">
+  <script src="_ds/modernist-bb5a477b-bc01-4750-b6cd-75c41bf41b3d/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--color-bg)}
+    a{color:var(--color-accent-700)} a:hover{color:var(--color-accent)}
+    @keyframes tdot{0%,80%,100%{opacity:.25}40%{opacity:1}}
+    @keyframes lapulse{0%,100%{opacity:1}50%{opacity:.55}}
+    @keyframes vbar{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+  </style>
+</helmet>
+<div style="min-height:100vh;padding:44px 48px 64px;font-family:var(--font-body);color:var(--color-text)">
+  <div style="border-bottom:2px solid var(--color-divider);padding-bottom:20px;margin-bottom:36px">
+    <div style="font-size:11px;letter-spacing:.14em;color:var(--color-accent);font-weight:700">NUM — V0.8 · CANONICAL PROTOTYPE</div>
+    <h1 style="font-family:var(--font-heading);font-size:34px;margin:8px 0 10px;line-height:1.05">Num. Three letters — one fewer than Siri.<br>End results only, one question when it matters.</h1>
+    <div style="font-size:13px;color:var(--color-neutral-700);max-width:760px;line-height:1.55">Demo script — ① the morning brief: reshuffled before you woke, one word undoes it. ② “Dinner on Thursday”: two Thursdays, so it asks one question. ③ tap the date, then any day: a visual day timeline — every block labeled with day, time and place. ④ “Set a meeting with Mei”: her Num agent answers, it lands on both calendars. ⑤ tap the mic and just say it. ⑥ the MEMORY tab keeps everything you’ve done — ask “when was that Tokyo omakase?” and it comes straight back. ⑦ run the disruption demo — the lock screen tracks all of it. ⑧ tap ★ in the header for the wallet: top up by Apple Pay, card or a crypto link — then try “Pay my bill — Le Du”: the bill is already assigned, one tap settles it, the receipt files itself. ⑨ “Let Num organize my photos”: a real permission ask, then photos pair to memories by place — and Dan can hold the same memory.</div>
+  </div>
+  <div style="display:flex;gap:56px;align-items:flex-start;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="393px,852px">
+        <div style="height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:var(--color-bg);font-family:var(--font-body)">
+
+          <div style="{{ headerStyle }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:62px 16px 0">
+              <div style="font-size:11px;letter-spacing:.16em;font-weight:700">NUM <span style="font-weight:400;opacity:.55">· YOUR CONCIERGE</span></div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div onClick="{{ openWallet }}" style="cursor:pointer;font-size:10.5px;font-weight:700;letter-spacing:.06em;border:2px solid currentColor;padding:3px 8px" title="Stars wallet">{{ starsLabel }}</div>
+                <div onClick="{{ openShare }}" style="cursor:pointer;padding:4px;display:flex" title="Share plan">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path></svg>
+                </div>
+              </div>
+            </div>
+            <div onClick="{{ openCal }}" style="cursor:pointer;padding:2px 16px 12px">
+              <div style="font-family:var(--font-heading);font-size:21px;font-weight:700;line-height:1.1">Tue 28 Jul · Bangkok <span style="{{ caretStyle }}">▾</span></div>
+              <div style="{{ subheadStyle }}">SE ASIA LOOP · 3 CITIES · {{ nBookings }} BOOKINGS</div>
+            </div>
+          </div>
+
+          <div style="display:flex;border-bottom:2px solid var(--color-divider)">
+            <div onClick="{{ toThread }}" style="{{ segThreadStyle }}">THREAD</div>
+            <div onClick="{{ toPlan }}" style="{{ segPlanStyle }}">PLAN</div>
+            <div onClick="{{ toMem }}" style="{{ segMemStyle }}">MEMORY</div>
+          </div>
+
+          <sc-if value="{{ isThread }}" hint-placeholder-val="{{ true }}">
+            <div ref="{{ scrollRef }}" style="flex:1;overflow-y:auto;padding:16px 0 8px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ dmsgs }}" as="m" hint-placeholder-count="3">
+                <div style="{{ m.row }}">
+                  <div style="{{ m.bubble }}">
+                    <div style="white-space:pre-line">{{ m.text }}</div>
+                    <sc-if value="{{ m.hasCard }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:10px;background:#fff;border:2px solid var(--color-text);padding:10px 12px">
+                        <span style="{{ m.cardTagStyle }}">{{ m.cardTag }}</span>
+                        <div style="font-family:var(--font-heading);font-weight:700;font-size:14px;margin-top:7px">{{ m.cardTitle }}</div>
+                        <div style="font-size:11.5px;color:var(--color-neutral-700);margin-top:3px">{{ m.cardMeta }}</div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:0 16px"><div style="display:inline-flex;gap:5px;background:#fff;border:2px solid var(--color-neutral-300);padding:12px 14px">
+                  <span style="width:6px;height:6px;background:var(--color-text);animation:tdot 1.1s infinite"></span>
+                  <span style="width:6px;height:6px;background:var(--color-text);animation:tdot 1.1s .18s infinite"></span>
+                  <span style="width:6px;height:6px;background:var(--color-text);animation:tdot 1.1s .36s infinite"></span>
+                </div></div>
+              </sc-if>
+            </div>
+            <div style="border-top:2px solid var(--color-divider);padding:10px 16px 12px;background:var(--color-bg)">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                <sc-for list="{{ dchips }}" as="c" hint-placeholder-count="3">
+                  <div onClick="{{ c.tap }}" style="cursor:pointer;font-size:11.5px;font-weight:600;padding:7px 11px;border:2px solid var(--color-text);background:#fff" style-hover="background:var(--color-accent-100)">{{ c.label }}</div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:18px">
+                <div style="flex:1;border:2px solid var(--color-neutral-300);padding:10px 12px;font-size:13px;color:var(--color-neutral-500);background:#fff">Message Num…</div>
+                <div onClick="{{ openVoice }}" style="cursor:pointer;width:41px;border:2px solid var(--color-text);background:var(--color-text);color:#fff;display:flex;align-items:center;justify-content:center" style-hover="background:var(--color-accent)" title="Talk to Num">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="9" y="2" width="6" height="12"></rect><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3"></path></svg>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isPlan }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto;padding-bottom:20px">
+              <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+                <div style="padding:16px 16px 6px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--color-text)">
+                  <span style="font-family:var(--font-heading);font-weight:700;font-size:15px;letter-spacing:.06em">{{ g.name }}</span>
+                  <span style="font-size:10.5px;letter-spacing:.1em;color:var(--color-neutral-600)">{{ g.dates }}</span>
+                </div>
+                <sc-for list="{{ g.items }}" as="b" hint-placeholder-count="2">
+                  <div onClick="{{ b.tap }}" style="cursor:pointer;border-bottom:1px solid var(--color-neutral-300);padding:11px 16px" style-hover="background:var(--color-neutral-100)">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+                      <div style="{{ b.titleStyle }}">{{ b.title }}</div>
+                      <span style="{{ b.tagStyle }}">{{ b.tagLabel }}</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--color-neutral-600);margin-top:3px">{{ b.metaLine }}</div>
+                    <sc-if value="{{ b.exp }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:9px;border-left:2px solid var(--color-accent);padding-left:10px">
+                        <div style="font-size:12px;line-height:1.5;color:var(--color-neutral-800)">{{ b.note }}</div>
+                        <div style="font-size:11px;color:var(--color-neutral-600);margin-top:4px">{{ b.cost }}</div>
+                        <sc-if value="{{ b.hasReceipt }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;letter-spacing:.08em;font-weight:700;color:var(--color-accent-700);margin-top:4px">RECEIPT FILED · {{ b.receipt }}</div></sc-if>
+                        <div style="display:flex;gap:14px;margin-top:9px">
+                          <span onClick="{{ b.askChange }}" style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--color-accent-700);cursor:pointer">ASK TO CHANGE</span>
+                          <span onClick="{{ b.shareOne }}" style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--color-accent-700);cursor:pointer">SHARE</span>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </sc-for>
+              <div style="padding:14px 16px;font-size:11.5px;color:var(--color-neutral-600);line-height:1.5">Nothing to add here — new plans come from the thread. Ask, and it appears.</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isMem }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto;padding-bottom:20px">
+              <div style="padding:14px 16px;border-bottom:2px solid var(--color-divider);font-size:12px;color:var(--color-neutral-700);line-height:1.55">Everything you’ve done, kept quietly — not a cluster, a shelf. Ask the thread — <span style="color:var(--color-accent-700);font-weight:600">“when was that omakase?”</span> — and it comes back.</div>
+              <sc-for list="{{ memGroups }}" as="g" hint-placeholder-count="2">
+                <div style="padding:16px 16px 6px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--color-text)">
+                  <span style="font-family:var(--font-heading);font-weight:700;font-size:15px;letter-spacing:.06em">{{ g.name }}</span>
+                  <span style="font-size:10.5px;letter-spacing:.1em;color:var(--color-neutral-600)">{{ g.dates }}</span>
+                </div>
+                <sc-for list="{{ g.items }}" as="m" hint-placeholder-count="2">
+                  <div onClick="{{ m.tap }}" style="cursor:pointer;border-bottom:1px solid var(--color-neutral-300);padding:10px 16px" style-hover="background:var(--color-neutral-100)">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+                      <div style="font-family:var(--font-heading);font-weight:700;font-size:13px">{{ m.title }}</div>
+                      <span style="{{ m.tagStyle }}">{{ m.tagLabel }}</span>
+                    </div>
+                    <div style="font-size:10.5px;color:var(--color-neutral-600);margin-top:3px">{{ m.metaLine }}</div>
+                    <sc-if value="{{ m.exp }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:8px;border-left:2px solid var(--color-neutral-400);padding-left:10px;font-size:12px;line-height:1.5;color:var(--color-neutral-800)">{{ m.note }}</div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ voiceOn }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeVoice }}" style="position:absolute;inset:0;background:rgba(24,20,18,.93);z-index:80;display:flex;flex-direction:column;justify-content:flex-end;padding:0 22px 70px;color:#fff;cursor:pointer">
+              <div style="font-size:10px;letter-spacing:.18em;color:var(--color-accent-300);font-weight:700">{{ vLabel }}</div>
+              <div style="font-family:var(--font-heading);font-size:23px;font-weight:700;line-height:1.25;margin-top:10px;min-height:64px">{{ vText }}</div>
+              <div style="display:flex;gap:5px;align-items:flex-end;height:30px;margin-top:16px">
+                <sc-for list="{{ vBars }}" as="v" hint-placeholder-count="0"><span style="{{ v.st }}"></span></sc-for>
+              </div>
+              <div style="font-size:10.5px;color:rgba(255,255,255,.45);margin-top:18px;letter-spacing:.08em">TAP ANYWHERE TO DISMISS</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ notifOn }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:8px;left:10px;right:10px;background:var(--color-text);color:#fff;padding:11px 13px;z-index:40;box-shadow:var(--shadow-lg)">
+              <div style="font-size:9.5px;letter-spacing:.14em;color:var(--color-accent-300);font-weight:700">ANDAMAN WAVE FERRIES · NOW</div>
+              <div style="font-size:12.5px;margin-top:4px;line-height:1.4">Service alert: 09:00 Phuket → Phi Phi on 2 Aug is cancelled (weather).</div>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ closeSheets }}" style="{{ backdropStyle }}"></div>
+
+          <div style="{{ calSheetStyle }}">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:2px solid var(--color-divider)">
+              <span onClick="{{ calPrev }}" style="{{ calPrevStyle }}">←</span>
+              <span style="font-family:var(--font-heading);font-weight:700;font-size:16px">{{ calTitle }}</span>
+              <span onClick="{{ calNext }}" style="{{ calNextStyle }}">→</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:10px 12px 2px;font-size:9.5px;letter-spacing:.1em;color:var(--color-neutral-500);text-align:center">
+              <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:4px 12px 10px">
+              <sc-for list="{{ calCells }}" as="d" hint-placeholder-count="35">
+                <div onClick="{{ d.tap }}" style="{{ d.style }}">
+                  <span>{{ d.n }}</span>
+                  <div style="display:flex;gap:2px;height:4px;margin-top:2px;justify-content:center">
+                    <sc-for list="{{ d.dots }}" as="x" hint-placeholder-count="0"><span style="{{ x.st }}"></span></sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="border-top:2px solid var(--color-divider);padding:8px 16px;display:flex;justify-content:space-between;align-items:center;background:#fff">
+              <span style="font-size:9.5px;letter-spacing:.1em;font-weight:700;color:var(--color-neutral-600)">GOOGLE CALENDAR · CONNECTED · 2-WAY</span>
+              <span style="display:flex;gap:10px;align-items:center;font-size:9.5px;letter-spacing:.06em;color:var(--color-neutral-600)"><span style="display:flex;gap:4px;align-items:center"><span style="width:5px;height:5px;background:var(--color-accent)"></span>PLANS</span><span style="display:flex;gap:4px;align-items:center"><span style="width:5px;height:5px;background:var(--color-text)"></span>MEETINGS</span></span>
+            </div>
+            <div style="border-top:2px solid var(--color-divider);flex:1;min-height:0;overflow-y:auto">
+              <div style="padding:12px 16px 2px;display:flex;justify-content:space-between;align-items:baseline">
+                <div style="display:flex;gap:8px;align-items:baseline"><span style="font-family:var(--font-heading);font-weight:700;font-size:15px">{{ selLabel }}</span><span style="font-size:9.5px;letter-spacing:.12em;color:var(--color-accent-700);font-weight:700">{{ selCity }}</span></div>
+                <span style="font-size:9.5px;letter-spacing:.1em;color:var(--color-neutral-500)">{{ selCount }}</span>
+              </div>
+              <sc-if value="{{ selEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:12.5px;line-height:1.55;color:var(--color-neutral-700);padding:10px 16px">{{ selEmptyText }}</div>
+              </sc-if>
+              <sc-if value="{{ selHasTl }}" hint-placeholder-val="{{ false }}">
+                <div style="{{ tlStyle }}">
+                  <sc-for list="{{ tlHours }}" as="h" hint-placeholder-count="0"><div style="{{ h.st }}"><span style="position:absolute;top:-6px;left:0;background:var(--color-bg);padding-right:4px">{{ h.label }}</span></div></sc-for>
+                  <div style="position:absolute;left:34px;right:0;top:0;bottom:0">
+                    <sc-for list="{{ tlEvents }}" as="e" hint-placeholder-count="0">
+                      <div style="{{ e.st }}">
+                        <div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline">
+                          <span style="font-family:var(--font-heading);font-weight:700;font-size:11.5px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.title }}</span>
+                          <span style="{{ e.tagStyle }}">{{ e.tagLabel }}</span>
+                        </div>
+                        <div style="font-size:9.5px;color:var(--color-neutral-600);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.timespan }} · {{ e.place }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="{{ shareSheetStyle }}">
+            <div style="padding:16px;border-bottom:2px solid var(--color-divider)">
+              <div style="font-size:10px;letter-spacing:.14em;color:var(--color-accent);font-weight:700">SHARE PLAN</div>
+              <div style="font-family:var(--font-heading);font-weight:700;font-size:18px;margin-top:6px">Viv’s SE Asia loop</div>
+              <div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">{{ nBookings }} bookings · 3 cities · live</div>
+            </div>
+            <div onClick="{{ togLive }}" style="display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--color-neutral-300);cursor:pointer">
+              <div><div style="font-size:13px;font-weight:600">Live updates</div><div style="font-size:11px;color:var(--color-neutral-600)">Their copy changes when your plans change</div></div>
+              <span style="{{ liveBoxStyle }}">{{ liveMark }}</span>
+            </div>
+            <div onClick="{{ togHide }}" style="display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:2px solid var(--color-divider);cursor:pointer">
+              <div><div style="font-size:13px;font-weight:600">Hide costs &amp; stars</div><div style="font-size:11px;color:var(--color-neutral-600)">They see where and when — never what you paid</div></div>
+              <span style="{{ hideBoxStyle }}">{{ hideMark }}</span>
+            </div>
+            <div style="padding:14px 16px">
+              <sc-if value="{{ linkAlive }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:8px">
+                  <div style="flex:1;border:2px solid var(--color-neutral-300);padding:9px 10px;font-size:11px;color:var(--color-neutral-700);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:#fff">concierge.travel/p/viv-4k2x</div>
+                  <div onClick="{{ copyLink }}" style="cursor:pointer;background:var(--color-accent);color:#fff;font-weight:700;font-size:11px;letter-spacing:.08em;padding:9px 13px;display:flex;align-items:center">{{ copyLabel }}</div>
+                </div>
+                <div onClick="{{ killLink }}" style="margin-top:12px;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--color-neutral-600);cursor:pointer">KILL THIS LINK</div>
+                <div style="margin-top:10px;font-size:10.5px;color:var(--color-neutral-500);line-height:1.5">Opens in any browser. No app, no account — a webcal feed lets it live inside their calendar.</div>
+              </sc-if>
+              <sc-if value="{{ linkKilled }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:12.5px;color:var(--color-neutral-700);line-height:1.5">Link killed — anyone holding it now sees nothing. Ask me in the thread when you want a new one.</div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="{{ walletSheetStyle }}">
+            <div style="padding:16px;border-bottom:2px solid var(--color-divider);display:flex;justify-content:space-between;align-items:flex-end">
+              <div>
+                <div style="font-size:10px;letter-spacing:.14em;color:var(--color-accent);font-weight:700">STARS — YOUR BALANCE</div>
+                <div style="font-family:var(--font-heading);font-weight:700;font-size:30px;line-height:1;margin-top:6px">{{ starsBig }}</div>
+              </div>
+              <div style="font-size:10px;color:var(--color-neutral-600);text-align:right;line-height:1.5">1★ = ฿10 · Num is the payrail<br>friends see plans, never stars</div>
+            </div>
+            <div style="padding:12px 16px;border-bottom:2px solid var(--color-divider)">
+              <div style="font-size:10px;letter-spacing:.12em;font-weight:700;color:var(--color-neutral-600);margin-bottom:8px">TOP UP — INSTANT</div>
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ packs }}" as="p" hint-placeholder-count="3">
+                  <div onClick="{{ p.tap }}" style="flex:1;cursor:pointer;border:2px solid var(--color-text);padding:8px 10px;background:#fff" style-hover="background:var(--color-accent-100)">
+                    <div style="font-family:var(--font-heading);font-weight:700;font-size:14px">{{ p.stars }}</div>
+                    <div style="font-size:9.5px;color:var(--color-neutral-600);margin-top:2px">{{ p.price }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ boughtOn }}" hint-placeholder-val="{{ false }}"><div style="margin-top:8px;font-size:11px;color:var(--color-accent-700);font-weight:600">{{ boughtMsg }}</div></sc-if>
+            </div>
+            <div style="padding:11px 16px;border-bottom:2px solid var(--color-divider);display:flex;gap:14px;font-size:10.5px;color:var(--color-neutral-700)">
+              <span style="font-weight:600"> Apple Pay · on</span><span>Visa ··4242</span><span style="color:var(--color-accent-700);font-weight:600">Crypto — we text a link</span>
+            </div>
+            <div style="padding:12px 16px 18px;max-height:150px;overflow-y:auto">
+              <div style="font-size:10px;letter-spacing:.12em;font-weight:700;color:var(--color-neutral-600);margin-bottom:6px">ACTIVITY &amp; RECEIPTS</div>
+              <sc-for list="{{ txns }}" as="t" hint-placeholder-count="2">
+                <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--color-neutral-200);font-size:11.5px">
+                  <div>{{ t.t }}<div style="font-size:9.5px;color:var(--color-neutral-500);margin-top:1px">{{ t.meta }}</div></div>
+                  <span style="{{ t.amtStyle }}">{{ t.amt }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <sc-if value="{{ permOn }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;background:rgba(24,20,18,.45);z-index:90;display:flex;align-items:center;justify-content:center;padding:0 34px">
+              <div style="background:var(--color-bg);border:2px solid var(--color-text);width:100%">
+                <div style="padding:16px 16px 12px">
+                  <div style="font-family:var(--font-heading);font-weight:700;font-size:14px;line-height:1.35">“Num” would like to access your photos</div>
+                  <div style="font-size:11.5px;color:var(--color-neutral-700);margin-top:6px;line-height:1.5">To pair photos with your reservations by time and place, and file them to your memories. Nothing is shared without your say-so.</div>
+                </div>
+                <div style="display:flex;border-top:2px solid var(--color-text)">
+                  <div onClick="{{ permDeny }}" style="flex:1;padding:11px 14px;font-size:11px;font-weight:700;letter-spacing:.08em;cursor:pointer;color:var(--color-neutral-600)">DON’T ALLOW</div>
+                  <div onClick="{{ permAllow }}" style="flex:1;padding:11px 14px;font-size:11px;font-weight:700;letter-spacing:.08em;cursor:pointer;background:var(--color-accent);color:#fff">ALLOW</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+        </div>
+      </x-import>
+      <div style="font-size:11px;letter-spacing:.1em;color:var(--color-neutral-600)">NUM — ONE THREAD, ONE CALENDAR, ZERO FORMS</div>
+    </div>
+
+    <sc-if value="{{ showLock }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="393px,852px">
+          <div style="height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#111 0%,#1c1a19 60%,#26211f 100%);color:#fff;position:relative">
+            <div style="text-align:center;margin-top:64px">
+              <div style="font-size:15px;font-weight:600;opacity:.85">Tuesday 28 July</div>
+              <div style="font-family:var(--font-heading);font-size:78px;font-weight:700;line-height:1;margin-top:2px">09:41</div>
+            </div>
+            <div style="flex:1"></div>
+            <div style="margin:0 14px 96px;background:#000;padding:14px 16px;border-left:4px solid var(--color-accent)">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:9.5px;letter-spacing:.16em;font-weight:700;color:var(--color-accent-300)">CONCIERGE · LIVE</span>
+                <span style="{{ laTagStyle }}">{{ laTag }}</span>
+              </div>
+              <div style="font-family:var(--font-heading);font-weight:700;font-size:16px;margin-top:8px;line-height:1.25">{{ laTitle }}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.65);margin-top:4px">{{ laMeta }}</div>
+            </div>
+          </div>
+        </x-import>
+        <div style="font-size:11px;letter-spacing:.1em;color:var(--color-neutral-600)">LOCK SCREEN — THE LIVE ACTIVITY TRACKS THE THREAD</div>
+      </div>
+    </sc-if>
+
+    <div style="max-width:300px;padding-top:8px">
+      <div style="border-top:2px solid var(--color-text);padding-top:14px">
+        <div style="font-size:11px;letter-spacing:.14em;font-weight:700;margin-bottom:10px">WHAT’S NEW IN V0.8 — MONEY &amp; MEMORY</div>
+        <div style="font-size:12.5px;line-height:1.65;color:var(--color-neutral-800)">
+          <p style="margin:0 0 10px"><strong>Stars, the payrail.</strong> Buy stars once (Apple Pay, card, or a crypto link we text you) and every booking, ticket and bill settles in one tap — Num takes the transaction, not a form.</p>
+          <p style="margin:0 0 10px"><strong>Pay by text.</strong> The restaurant assigns the bill to you; “pay my bill” settles it from the thread before you stand up. Stars, Apple Pay, or the link — your call.</p>
+          <p style="margin:0 0 10px"><strong>Receipts file themselves.</strong> Every payment lands on the event it belongs to — open the booking, the receipt is there.</p>
+          <p style="margin:0 0 10px"><strong>Photos become memories.</strong> One real permission ask, then photos pair to reservations by time and place. No cluster — they file to the memory shelf.</p>
+          <p style="margin:0"><strong>Shared memories.</strong> Approve once, and Dan holds the same night on his own shelf — his shots can join yours.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1500,&quot;height&quot;:1060},&quot;posterHeader&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;App&quot;},&quot;showLock&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Canvas&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: 'thread', typing: false, notifOn: false, disr: 'none',
+    calOpen: false, calM: 0, selDay: null,
+    shareOpen: false, shLive: true, shHide: true, copied: false, killed: false,
+    expanded: null,
+    voice: 0,
+    stars: 1240, walletOpen: false, permOn: false, photosOn: false, billPaid: false, bought: '',
+    txns: [
+      {id:'t1', t:'Top-up ★1,000', meta:'Apple Pay · 24 Jul', amt:'+★1,000', dir:1},
+      {id:'t2', t:'Full Moon deposit', meta:'★150 · receipt filed · 24 Jul', amt:'−★150', dir:0}
+    ],
+    meetings: [
+      {id:'mtg1', mo:7, day:29, time:'16:00', title:'Investor call — Arta Capital', src:'GCAL', place:'Video · Meet', dur:45},
+      {id:'mtg2', mo:7, day:30, time:'11:30', title:'Portfolio review', src:'GCAL', place:'Video · Meet', dur:45},
+      {id:'mtg3', mo:8, day:6, time:'09:00', title:'Board prep', src:'GCAL', place:'Video · Meet', dur:60}
+    ],
+    memories: [
+      {id:'me1', trip:'TOKYO', date:'Wed 22 Apr', time:'10:00', photos:9, title:'teamLab Planets', place:'Toyosu, Tokyo', note:'Two hours, socks off. You said the water room beat every photo of it.'},
+      {id:'me2', trip:'TOKYO', date:'Thu 23 Apr', time:'19:30', photos:14, title:'Omakase — Sushi Kanda', place:'Akasaka, Tokyo', note:'With Dan. Rated 9/10 — “worth the flight alone”. Standing request available.'},
+      {id:'me3', trip:'TOKYO', date:'Fri 24 Apr', time:'21:00', photos:23, title:'Golden Gai crawl', place:'Shinjuku, Tokyo', note:'Four bars, one karaoke incident.'},
+      {id:'me4', trip:'LISBON', date:'Sat 16 May', time:'20:00', photos:8, title:'Fado night — Tasca do Chico', place:'Bairro Alto, Lisbon', note:'Standing room only. You kept the ticket stub.'},
+      {id:'me5', trip:'LISBON', date:'Sun 17 May', time:'12:30', photos:7, title:'Time Out Market lunch', place:'Cais do Sodré, Lisbon', note:'The custard tarts won. Six boxes came home.'}
+    ],
+    chips: [{id:'bill',label:'Pay my bill — Le Du'},{id:'photos',label:'Let Num organize my photos'},{id:'dinner',label:'Dinner on Thursday'},{id:'meet',label:'Set a meeting with Mei'},{id:'recall',label:'When was that Tokyo omakase?'},{id:'revert',label:'Revert the reshuffle'},{id:'ferry',label:'▸ Disruption demo'}],
+    msgs: [
+      {who:'c', text:'Morning, Viv. Rain over Bangkok until about 14:00, so I’ve reshuffled today: massage pulled up to 11:00, Grand Palace walk moved to Thursday 09:00 when it’s dry. Nothing else touched — say revert if you’d rather I hadn’t.'},
+      {who:'c', text:'One thing needs you: the Bang Tao beach club is a hold, not a booking. Confirm by Friday or I release it.', card:{title:'Beach club — Bang Tao', meta:'Sat 1 Aug · 10:00 · daybed for two', tag:'hold'}}
+    ],
+    bookings: [
+      {id:'d1', mo:7, day:28, time:'19:30', dur:150, place:'Silom, Bangkok', title:'Dinner — Le Du', grp:'BKK', status:'confirmed', note:'Counter seats, tasting menu. Booked under Viv. Table held to 19:45.', cost:'฿4,800 · paid on card'},
+      {id:'m1', mo:7, day:28, time:'11:00', dur:90, place:'Convent Rd, Silom', title:'Thai massage — Ruen Nuad', grp:'BKK', status:'confirmed', note:'Pulled up from 16:00 because of the rain window. 90 minutes.', cost:'฿1,200 · pay there'},
+      {id:'b1', mo:7, day:29, time:'15:00', dur:120, place:'Sathorn pier', title:'Chao Phraya long-tail + Wat Arun', grp:'BKK', status:'confirmed', note:'Private boat, 2 hrs, from Sathorn pier. Bring the good camera.', cost:'฿2,400 · paid'},
+      {id:'g1', mo:7, day:30, time:'09:00', dur:150, place:'Old City, Bangkok', title:'Grand Palace walk', grp:'BKK', status:'confirmed', note:'Moved from Wednesday (rain). Guide: Nok. Dress code applies.', cost:'฿1,800 · paid'},
+      {id:'f1', mo:7, day:31, time:'10:40', dur:85, place:'BKK T2 · gate closes 10:10', title:'Flight BKK → HKT', grp:'BKK', status:'confirmed', note:'TG 2205 · seat 4A · I’ll check you in Thursday night.', cost:'฿3,150 · paid'},
+      {id:'bc', mo:8, day:1, time:'10:00', dur:240, place:'Bang Tao beach, Phuket', title:'Beach club — Bang Tao', grp:'HKT', status:'hold', holdBy:'FRI', note:'Daybed for two held, no card taken yet. Confirm by Friday or I release it.', cost:'฿3,000 min spend'},
+      {id:'pp', mo:8, day:2, time:'09:00', dur:120, place:'Rassada Pier, Phuket', title:'Ferry — Phuket → Phi Phi', grp:'HKT', status:'confirmed', note:'Andaman Wave · Rassada Pier · returns 16:30.', cost:'฿1,900 return'},
+      {id:'mt', mo:8, day:3, time:'18:00', dur:180, place:'Bangla Rd, Patong', title:'Muay Thai — Bangla stadium', grp:'HKT', status:'deposit', note:'Ringside pair. Deposit paid 24 Jul; balance at the door.', cost:'฿2,000 deposit paid'},
+      {id:'f2', mo:8, day:5, time:'09:15', dur:130, place:'HKT · gate 08:45', title:'Flight HKT → SIN', grp:'SIN', status:'confirmed', note:'TR 655 · bags checked through.', cost:'S$168 · paid'},
+      {id:'ng', mo:8, day:7, time:'10:00', dur:210, place:'St Andrew’s Rd, Singapore', title:'National Gallery + hawker crawl', grp:'SIN', status:'confirmed', note:'Gallery at 10, Maxwell Centre for lunch with Mei at 12:30.', cost:'S$40 · paid'},
+      {id:'fm1', mo:8, day:14, time:'13:00', dur:60, place:'Nathon pier, Samui', title:'Ferry — Samui → Haad Rin', grp:'KP', status:'confirmed', note:'Booked either side of the party so you’re never stranded.', cost:'฿600'},
+      {id:'fp', mo:8, day:14, time:'21:00', dur:60, place:'Haad Rin beach', title:'Full Moon Party — Haad Rin', grp:'KP', status:'deposit', note:'Booked 3 weeks out, deposit paid 24 Jul. Reminder ladder set: check-in 7 Aug, day-before 13 Aug, Live Activity 3 hrs out.', cost:'฿1,500 deposit paid'},
+      {id:'fm2', mo:8, day:15, time:'12:00', dur:60, place:'Haad Rin pier', title:'Ferry back — Haad Rin → Samui', grp:'KP', status:'confirmed', note:'Midday boat — you’ll want the sleep.', cost:'฿600'}
+    ]
+  };
+  scrollRef = React.createRef();
+  componentDidUpdate(){ const el=this.scrollRef.current; if(el && this.state.view==='thread') el.scrollTop = el.scrollHeight; }
+  push(m){ this.setState(s=>({msgs:[...s.msgs, m]})); }
+  reply(items, chips, delay){ this.setState({typing:true, chips:[]}); setTimeout(()=>{ this.setState(s=>({typing:false, msgs:[...s.msgs, ...items], chips: chips||this.defChips()})); }, delay||1000); }
+  defChips(){ const c=[]; if(!this.state.billPaid) c.push({id:'bill',label:'Pay my bill — Le Du'}); if(!this.state.photosOn) c.push({id:'photos',label:'Let Num organize my photos'});
+    return [...c, {id:'dinner',label:'Dinner on Thursday'},{id:'meet',label:'Set a meeting with Mei'},{id:'recall',label:'When was that Tokyo omakase?'},{id:'ferry',label:'▸ Disruption demo'}]; }
+  payBill(how){
+    this.setB('d1', {receipt:'#LD-2841 · '+how});
+    this.setState(s=>({billPaid:true, stars: how==='★529'? s.stars-529 : s.stars,
+      txns:[{id:'tx'+Date.now(), t:'Bill — Le Du', meta:how+' · receipt filed · tonight', amt: how==='★529'?'−★529':'−฿5,290', dir:0}, ...s.txns]}));
+  }
+  buyPack(n, price){
+    this.setState(s=>({stars:s.stars+n, bought:'Added ★'+n.toLocaleString()+' — '+price+', done.',
+      txns:[{id:'tx'+Date.now(), t:'Top-up ★'+n.toLocaleString(), meta:price+' · just now', amt:'+★'+n.toLocaleString(), dir:1}, ...s.txns]}));
+    clearTimeout(this._bt); this._bt=setTimeout(()=>this.setState({bought:''}),3200);
+  }
+  openVoice(){ this.setState({voice:1}); this._v1=setTimeout(()=>this.setState({voice:2}),1400); this._v2=setTimeout(()=>{ this.setB('m1',{time:'17:00', note:'Moved to 17:00 by voice — same room, same therapist.'}); this.setState(s=>({voice:3, msgs:[...s.msgs, {who:'u', text:'“Move my massage to five.” — said aloud'},{who:'c', text:'Done — Ruen Nuad moved to 17:00. Same room, same therapist, calendar’s updated.'}]})); },3400); }
+  closeVoice(){ clearTimeout(this._v1); clearTimeout(this._v2); this.setState({voice:0}); }
+  setB(id, patch){ this.setState(s=>({bookings: s.bookings.map(b=> b.id===id? {...b, ...patch}: b)})); }
+  addB(b){ this.setState(s=>({bookings:[...s.bookings, b]})); }
+  chip(id, label){
+    if(id!=='ferry' && label){ this.push({who:'u', text:label}); }
+    if(id==='dinner'){
+      this.reply([{who:'c', text:'Two Thursdays on this trip — you’re in Bangkok on the 30th and Singapore on the 6th. Which one?'}],
+        [{id:'thuBkk',label:'Bangkok · Thu 30'},{id:'thuSin',label:'Singapore · Thu 6'}]);
+    } else if(id==='thuBkk'){
+      this.addB({id:'dn', mo:7, day:30, time:'20:00', dur:150, place:'Old Town, Bangkok', title:'Dinner — Potong', grp:'BKK', status:'hold', holdBy:'NOON WED', note:'Chef’s counter, 5 courses. Held without a card. It’s a 15-min walk from your Grand Palace finish.', cost:'฿6,400 tasting'});
+      this.reply([{who:'c', text:'Held. Potong, chef’s counter, Thursday 20:00 — it sits nicely after your Grand Palace morning. Confirm by noon Wednesday or I let it go.', card:{title:'Dinner — Potong', meta:'Thu 30 Jul · 20:00 · chef’s counter', tag:'hold'}}],
+        [{id:'confirmDn',label:'Confirm it'},{id:'week',label:'What’s my week?'},{id:'ferry',label:'▸ Disruption demo'}], 1300);
+    } else if(id==='thuSin'){
+      this.addB({id:'dn', mo:8, day:6, time:'20:00', dur:150, place:'Dempsey Hill, Singapore', title:'Dinner — Burnt Ends', grp:'SIN', status:'hold', holdBy:'MON', note:'Counter seats. Held via the chef’s office — confirm by Monday.', cost:'S$220 pp'});
+      this.reply([{who:'c', text:'Held. Burnt Ends, counter seats, Thursday 20:00 — you land the day before, so no rush from the airport. Confirm by Monday or I let it go.', card:{title:'Dinner — Burnt Ends', meta:'Thu 6 Aug · 20:00 · counter', tag:'hold'}}],
+        [{id:'confirmDn',label:'Confirm it'},{id:'week',label:'What’s my week?'},{id:'ferry',label:'▸ Disruption demo'}], 1300);
+    } else if(id==='confirmDn'){
+      this.setB('dn', {status:'confirmed', holdBy:null});
+      this.reply([{who:'c', text:'Confirmed — it’s on your plan and the calendar, and the shared view just updated for anyone watching.'}]);
+    } else if(id==='week'){
+      this.reply([{who:'c', text:'Bangkok till Friday, fly to Phuket the 31st, Singapore on the 5th, home the 8th — then back for the Full Moon Party on the 14th, deposit already paid.\n\nTwo things need you: the Bang Tao daybed (confirm by Friday) and nothing else. I’ll start the Full Moon reminder ladder on the 7th.'}]);
+    } else if(id==='revert'){
+      this.setB('m1', {time:'16:00', note:'Back to the original 16:00 slot, as asked.'});
+      this.setB('g1', {day:29, time:'09:00', note:'Back to Wednesday morning, as asked. Umbrella recommended.'});
+      this.reply([{who:'c', text:'Reverted — massage back to 16:00, Grand Palace back to Wednesday morning. The rain is now officially your problem.'}]);
+    } else if(id==='ferry'){
+      this.setState({notifOn:true, disr:'active', chips:[]});
+      setTimeout(()=> this.setState({notifOn:false}), 4200);
+      setTimeout(()=>{ this.setState(s=>({msgs:[...s.msgs,
+        {who:'c', text:'Your Phi Phi ferry on the 2nd just got cancelled — weather. Before you ask: two ways out, both hold your 16:30 return.\n\n① 11:30 ferry, same operator — free move, you lose the quiet morning beach.\n② 09:15 speedboat — +฿1,400, 45 minutes, in before the crowds.'}],
+        chips:[{id:'reFerry',label:'Take the 11:30 ferry'},{id:'reSpeed',label:'09:15 speedboat'}]})); }, 1600);
+    } else if(id==='reFerry'){
+      this.setB('pp', {status:'cancelled'});
+      this.addB({id:'pp2', mo:8, day:2, time:'11:30', dur:120, place:'Rassada Pier, Phuket', title:'Ferry — Phuket → Phi Phi', grp:'HKT', status:'rebooked', note:'Same operator, moved free of charge. Return unchanged at 16:30.', cost:'฿0 change fee'});
+      this.setState({disr:'rebooked', laLine:'Ferry 11:30 · Rassada Pier'});
+      this.reply([{who:'c', text:'Done — you’re on the 11:30, no charge, return unchanged. I told the Phi Phi lunch spot you’ll be 90 minutes later; they’re fine.', card:{title:'Ferry — Phuket → Phi Phi', meta:'Sun 2 Aug · 11:30 · Rassada Pier', tag:'rebooked'}}], null, 1300);
+    } else if(id==='reSpeed'){
+      this.setB('pp', {status:'cancelled'});
+      this.addB({id:'pp2', mo:8, day:2, time:'09:15', dur:45, place:'Rassada VIP jetty', title:'Speedboat — Phuket → Phi Phi', grp:'HKT', status:'rebooked', note:'VIP jetty at Rassada. 45 minutes. Refund on the ferry is already processing.', cost:'+฿1,400 on card'});
+      this.setState({disr:'rebooked', laLine:'Speedboat 09:15 · VIP jetty'});
+      this.reply([{who:'c', text:'Booked the 09:15 speedboat — ฿1,400 on the card, and you’ll beat the ferry crowds by two hours. Ferry refund is processing.', card:{title:'Speedboat — Phuket → Phi Phi', meta:'Sun 2 Aug · 09:15 · Rassada VIP jetty', tag:'rebooked'}}], null, 1300);
+    } else if(id==='meet'){
+      this.reply([{who:'c', text:'Mei’s on Num, so I asked her agent directly — no texting back and forth. You’re both clear Thursday 15:00 or Friday 09:00. Friday you fly at 10:40, so I’d take Thursday. Which?'}],
+        [{id:'meetThu',label:'Thursday 15:00'},{id:'meetFri',label:'Friday 09:00 anyway'}], 1200);
+    } else if(id==='meetThu' || id==='meetFri'){
+      const thu=id==='meetThu';
+      this.setState(s=>({meetings:[...s.meetings, {id:'mm', mo:7, day:thu?30:31, time:thu?'15:00':'09:00', dur:30, place:'Video · Num', title:'Catch-up — Mei', src:'NUM'}]}));
+      this.reply([{who:'c', text: thu
+        ? 'Set — Thursday 15:00, 30 minutes, video link attached. It’s already on Mei’s calendar too: Num keeps both copies in step, so if either of you moves it, everyone moves.'
+        : 'Set — Friday 09:00 with a hard stop at 09:45, because you fly at 10:40 and I’m not risking it. It’s on Mei’s calendar too, and both copies stay in step.',
+        card:{title:'Catch-up — Mei', meta:(thu?'Thu 30 Jul · 15:00':'Fri 31 Jul · 09:00')+' · video · on both calendars', tag:'meeting'}}], null, 1300);
+    } else if(id==='photos'){
+      this.setState({permOn:true, chips:[]});
+    } else if(id==='shareSet'){
+      this.reply([{who:'c', text:'Sent — approval on record. Dan now holds the same memory on his own shelf: same night, his own copy, and his shots can join yours. Nothing else from your library moved.', card:{title:'Sushi Kanda — 14 photos', meta:'Shared with Dan · lives in both memories', tag:'shared'}}]);
+    } else if(id==='bill'){
+      this.reply([{who:'c', text:'Le Du just sent the bill through — it’s already assigned to you, table 6. ฿5,290 with service. How do you want it gone?', card:{title:'Bill — Le Du', meta:'฿5,290 · incl. service · table 6 · tonight', tag:'bill'}}],
+        [{id:'payStars',label:'Pay with Stars — ★529'},{id:'payApple',label:'Apple Pay'},{id:'payLink',label:'Card / crypto link'}], 1100);
+    } else if(id==='payStars'){
+      this.payBill('★529');
+      this.reply([{who:'c', text:'Paid — ★529 off your balance. Receipt’s filed to tonight’s dinner; the table is settled before you stand up.', card:{title:'Dinner — Le Du', meta:'PAID ★529 · receipt #LD-2841', tag:'paid'}}], null, 900);
+    } else if(id==='payApple'){
+      this.payBill('Apple Pay');
+      this.reply([{who:'c', text:'Done with Apple Pay — ฿5,290. Receipt’s filed to the dinner. Next time, stars settle it without the face-scan.', card:{title:'Dinner — Le Du', meta:'PAID · Apple Pay · receipt #LD-2841', tag:'paid'}}], null, 900);
+    } else if(id==='payLink'){
+      this.reply([{who:'c', text:'Link sent by text — card or USDC, either lands on this same bill.'}], [], 900);
+      setTimeout(()=>{ this.payBill('crypto');
+        this.setState(s=>({msgs:[...s.msgs, {who:'c', text:'Paid — the crypto cleared. Receipt’s filed to the dinner.', card:{title:'Dinner — Le Du', meta:'PAID · USDC · receipt #LD-2841', tag:'paid'}}], chips:this.defChips()})); }, 3400);
+    } else if(id==='recall'){
+      this.reply([{who:'c', text:'23 April — Sushi Kanda, Akasaka, with Dan. You rated it 9/10 and said “worth the flight alone”.', card:{title:'Omakase — Sushi Kanda', meta:'Thu 23 Apr · 19:30 · Akasaka, Tokyo', tag:'memory'}}],
+        [{id:'standing',label:'Get me seats next time'},{id:'week',label:'What’s my week?'}], 1200);
+    } else if(id==='standing'){
+      this.reply([{who:'c', text:'Saved as a standing request. The moment a Tokyo trip lands on your calendar, I chase seats before you ask.'}]);
+    } else if(id==='change'){
+      this.reply([{who:'c', text:'Tell me what to change — time, party size, or scrap it. I’ll handle the venue.'}]);
+    }
+  }
+  tagOf(b){
+    const base={fontSize:'8px',letterSpacing:'.08em',fontWeight:700,padding:'2px 5px',whiteSpace:'nowrap',flex:'none'};
+    const map={
+      confirmed:{label:'CONFIRMED', st:{...base,border:'2px solid var(--color-text)',color:'var(--color-text)'}},
+      hold:{label:'HOLD'+(b&&b.holdBy?' · BY '+b.holdBy:''), st:{...base,background:'var(--color-accent)',color:'#fff'}},
+      deposit:{label:'DEPOSIT PAID', st:{...base,background:'var(--color-accent-100)',color:'var(--color-accent-700)',border:'2px solid var(--color-accent-300)'}},
+      rebooked:{label:'REBOOKED', st:{...base,background:'var(--color-text)',color:'#fff'}},
+      cancelled:{label:'CANCELLED', st:{...base,border:'2px solid var(--color-neutral-400)',color:'var(--color-neutral-500)'}},
+      meeting:{label:'MEETING · SYNCED', st:{...base,border:'2px solid var(--color-text)',color:'var(--color-text)',background:'#fff'}},
+      memory:{label:'MEMORY', st:{...base,border:'2px solid var(--color-neutral-400)',color:'var(--color-neutral-600)'}},
+      bill:{label:'BILL · DUE', st:{...base,background:'var(--color-accent)',color:'#fff'}},
+      paid:{label:'PAID', st:{...base,background:'var(--color-text)',color:'#fff'}},
+      shared:{label:'SHARED', st:{...base,background:'var(--color-text)',color:'#fff'}}
+    };
+    return map[(b&&b.status)||b] || map.confirmed;
+  }
+  wd(mo,day){ return new Date(2026, mo-1, day).toLocaleDateString('en-GB',{weekday:'short'}); }
+  renderVals(){
+    const S=this.state, posterHeader=this.props.posterHeader ?? false, showLock=this.props.showLock ?? true;
+    const sortB=(a,b)=> (a.mo-b.mo)||(a.day-b.day)||a.time.localeCompare(b.time);
+    const dec=(b)=>{ const t=this.tagOf(b); return {...b, tagLabel:t.label, tagStyle:t.st,
+      when:this.wd(b.mo,b.day)+' '+b.day+' '+(b.mo===7?'Jul':'Aug')+' · '+b.time, metaLine:this.wd(b.mo,b.day)+' '+b.day+' '+(b.mo===7?'Jul':'Aug')+' · '+b.time+(b.place?' · '+b.place:''), exp:S.expanded===b.id,
+      titleStyle:{fontFamily:'var(--font-heading)',fontWeight:700,fontSize:'13.5px',lineHeight:1.3, textDecoration:b.status==='cancelled'?'line-through':'none', color:b.status==='cancelled'?'var(--color-neutral-500)':'var(--color-text)'},
+      hasReceipt:!!b.receipt, receipt:b.receipt||'',
+      tap:()=>this.setState(s=>({expanded:s.expanded===b.id?null:b.id})),
+      askChange:(e)=>{e.stopPropagation(); this.setState({view:'thread'}); this.push({who:'u', text:'Change '+b.title.replace(/ —.*/,'')}); this.chipDefer('change');},
+      shareOne:(e)=>{e.stopPropagation(); this.setState({shareOpen:true});}
+    };};
+    const groupsDef=[['BANGKOK','JUL 28 – 31','BKK'],['PHUKET','JUL 31 – AUG 5','HKT'],['SINGAPORE','AUG 5 – 8','SIN'],['KOH PHANGAN','AUG 14 – 15 · THE RETURN','KP']];
+    const groups=groupsDef.map(([name,dates,g])=>({name, dates, items:S.bookings.filter(b=>b.grp===g).sort(sortB).map(dec)}));
+    const dmsgs=S.msgs.map((m,i)=>{ const u=m.who==='u'; const ct=m.card? this.tagOf(m.card.tag):null; return {
+      key:i, text:m.text, hasCard:!!m.card, cardTitle:m.card?m.card.title:'', cardMeta:m.card?m.card.meta:'', cardTag:ct?ct.label:'', cardTagStyle:ct?ct.st:{},
+      row:{display:'flex',justifyContent:u?'flex-end':'flex-start',padding:'0 16px'},
+      bubble:{maxWidth:'82%',fontSize:'13px',lineHeight:1.5,padding:'10px 13px', background:u?'var(--color-text)':'#fff', color:u?'#fff':'var(--color-text)', border:u?'none':'2px solid var(--color-neutral-300)'}
+    };});
+    const dchips=S.chips.map(c=>({...c, tap:()=>this.chip(c.id,c.label)}));
+    // calendar
+    const months=[{t:'JULY 2026',mo:7,days:31,lead:2},{t:'AUGUST 2026',mo:8,days:31,lead:5}];
+    const M=months[S.calM];
+    const byDay={}; S.bookings.forEach(b=>{ if(b.status!=='cancelled'){ const k=b.mo+'-'+b.day; byDay[k]=(byDay[k]||0)+1; }});
+    const byMeet={}; (S.meetings||[]).forEach(m=>{ const k=m.mo+'-'+m.day; byMeet[k]=(byMeet[k]||0)+1; });
+    const cells=[];
+    for(let i=0;i<M.lead;i++) cells.push({n:'',dots:[],style:{minHeight:'34px'},tap:()=>{}});
+    for(let d=1;d<=M.days;d++){ const k=M.mo+'-'+d, nb=Math.min(byDay[k]||0,3), nm=Math.min(byMeet[k]||0,2), sel=S.selDay===k, today=(M.mo===7&&d===28), past=(M.mo===7&&d<28);
+      const dot=(c)=>({st:{width:'4px',height:'4px',background:sel?'#fff':c,flex:'none'}});
+      cells.push({n:String(d), dots:[...Array.from({length:nb},()=>dot('var(--color-accent)')),...Array.from({length:nm},()=>dot('var(--color-text)'))],
+        style:{minHeight:'34px',textAlign:'center',fontSize:'11.5px',cursor:'pointer',paddingTop:'5px', background:sel?'var(--color-accent)':'transparent', color:sel?'#fff':(past?'var(--color-neutral-400)':'var(--color-text)'), outline:today&&!sel?'2px solid var(--color-text)':'none', fontWeight:(nb||nm||today)?700:400},
+        tap:()=>this.setState({selDay:k})});
+    }
+    const mtgTag={fontSize:'8px',letterSpacing:'.08em',fontWeight:700,padding:'2px 5px',whiteSpace:'nowrap',flex:'none',border:'2px solid var(--color-text)',color:'var(--color-text)',background:'#fff'};
+    const toMin=t=>{const p=t.split(':');return +p[0]*60 + +p[1];};
+    const fmtM=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+    const tStart=8*60, tEnd=23*60, ppm=0.6;
+    const dayEvs=S.selDay? [
+      ...S.bookings.filter(b=>(b.mo+'-'+b.day)===S.selDay && b.status!=='cancelled').map(b=>({...b, kind:'plan', dur:b.dur||90})),
+      ...(S.meetings||[]).filter(m=>(m.mo+'-'+m.day)===S.selDay).map(m=>({...m, kind:'meet', dur:m.dur||45}))
+    ].sort((a,b)=>a.time.localeCompare(b.time)) : [];
+    let lanes=[];
+    const laid=dayEvs.map(e=>{ const st=Math.max(toMin(e.time),tStart), en=Math.min(st+e.dur,tEnd);
+      let li=lanes.findIndex(x=>x<=st); if(li<0){li=lanes.length;lanes.push(0);} lanes[li]=en;
+      return {...e,_s:st,_e:en,lane:li}; });
+    const nL=Math.max(lanes.length,1), laneW=100/nL;
+    const tlE=laid.map(e=>{ const t=e.kind==='meet'? {label:e.src==='NUM'?'NUM':'GCAL', st:mtgTag} : this.tagOf(e); return {...e,
+      tagLabel:t.label, tagStyle:t.st, timespan:e.time+'–'+fmtM(e._e), place:e.place||'',
+      st:{position:'absolute', left:(e.lane*laneW)+'%', width:'calc('+laneW+'% - 4px)', top:((e._s-tStart)*ppm)+'px', height:Math.max((e._e-e._s)*ppm,34)+'px', background:'#fff', border:'1px solid var(--color-neutral-300)', borderLeft:'3px solid '+(e.kind==='meet'?'var(--color-text)':'var(--color-accent)'), padding:'5px 8px', overflow:'hidden', boxSizing:'border-box'}}; });
+    const tlHours=[]; for(let h=8;h<=22;h+=2) tlHours.push({label:String(h).padStart(2,'0'), st:{position:'absolute',left:0,right:0,top:((h*60-tStart)*ppm)+'px',borderTop:'1px solid var(--color-neutral-200)',fontSize:'9px',color:'var(--color-neutral-500)'}});
+    const tlStyle={position:'relative', height:((tEnd-tStart)*ppm+20)+'px', margin:'8px 16px 20px'};
+    const selParts=S.selDay?S.selDay.split('-'):null;
+    const selLabel=selParts? (this.wd(+selParts[0],+selParts[1])+' '+selParts[1]+' '+(+selParts[0]===7?'JUL':'AUG')).toUpperCase() : 'TAP A DAY';
+    const selPast=selParts && +selParts[0]===7 && +selParts[1]<28;
+    const cityOf=(mo,d)=> mo===7? (d<31?'BANGKOK':'BANGKOK → PHUKET') : (d<5?'PHUKET': d===5?'PHUKET → SINGAPORE': d<=8?'SINGAPORE': (d===14||d===15)?'KOH PHANGAN':'');
+    const selCity=(selParts&&!selPast)? cityOf(+selParts[0],+selParts[1]) : '';
+    const selCount=selParts? (dayEvs.length===1?'1 THING':dayEvs.length+' THINGS') : '';
+    const selEmptyText=selPast? 'Nothing kept from this day — older days live under MEMORY.' : 'Nothing here yet. Ask me and it’ll appear — there’s no booking form, and that’s the point.';
+    const memTag={fontSize:'8px',letterSpacing:'.08em',fontWeight:700,padding:'2px 5px',whiteSpace:'nowrap',flex:'none',border:'2px solid var(--color-neutral-400)',color:'var(--color-neutral-600)'};
+    const memGroups=[['TOKYO','22 – 25 APR 2026'],['LISBON','15 – 18 MAY 2026']].map(([name,dates])=>({name, dates,
+      items:(S.memories||[]).filter(m=>m.trip===name).map(m=>({...m, tagLabel:'MEMORY', tagStyle:memTag, metaLine:m.date+' · '+m.time+' · '+m.place+(S.photosOn&&m.photos? ' · '+m.photos+' photos':''), exp:S.expanded===m.id, tap:()=>this.setState(s=>({expanded:s.expanded===m.id?null:m.id}))}))}));
+    // live activity
+    let la={tag:'TONIGHT', line:'Dinner — Le Du', meta:'19:30 · counter seats · table held to 19:45', pulse:false, red:false};
+    if(S.disr==='active') la={tag:'DISRUPTION', line:'Phi Phi ferry cancelled', meta:'Two rebook options in your thread', pulse:true, red:true};
+    if(S.disr==='rebooked') la={tag:'REBOOKED', line:'Phi Phi — sorted', meta:(S.laLine||'')+' · return 16:30 unchanged', pulse:false, red:false};
+    const sheetBase={position:'absolute',left:0,right:0,bottom:0,background:'var(--color-bg)',borderTop:'2px solid var(--color-text)',zIndex:60,transition:'transform .32s cubic-bezier(.32,.72,.29,.99)'};
+    const seg=(on)=>({flex:1,textAlign:'center',padding:'9px 0',fontSize:'11px',letterSpacing:'.12em',fontWeight:700,cursor:'pointer',background:on?'var(--color-text)':'transparent',color:on?'#fff':'var(--color-neutral-600)'});
+    const box=(on)=>({width:'22px',height:'22px',border:'2px solid var(--color-text)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:700,background:on?'var(--color-text)':'#fff',color:'#fff',flex:'none'});
+    return {
+      showLock, typing:S.typing, notifOn:S.notifOn, dmsgs, dchips, groups,
+      isThread:S.view==='thread', isPlan:S.view==='plan', isMem:S.view==='mem',
+      toThread:()=>this.setState({view:'thread'}), toPlan:()=>this.setState({view:'plan'}), toMem:()=>this.setState({view:'mem'}),
+      segThreadStyle:seg(S.view==='thread'), segPlanStyle:seg(S.view==='plan'), segMemStyle:seg(S.view==='mem'),
+      memGroups,
+      nBookings:S.bookings.filter(b=>b.status!=='cancelled').length,
+      headerStyle:{borderBottom:'2px solid var(--color-divider)', background:posterHeader?'var(--color-accent)':'var(--color-bg)', color:posterHeader?'#fff':'var(--color-text)'},
+      subheadStyle:{fontSize:'10px',letterSpacing:'.14em',marginTop:'3px', color:posterHeader?'rgba(255,255,255,.75)':'var(--color-neutral-600)'},
+      caretStyle:{fontSize:'13px', color:posterHeader?'#fff':'var(--color-accent)'},
+      scrollRef:this.scrollRef,
+      openCal:()=>this.setState({calOpen:true, selDay:S.selDay||'7-28'}), openShare:()=>this.setState({shareOpen:true, copied:false}),
+      closeSheets:()=>this.setState({calOpen:false, shareOpen:false, walletOpen:false}),
+      backdropStyle:{position:'absolute',inset:0,background:'rgba(24,20,18,.4)',zIndex:50, opacity:(S.calOpen||S.shareOpen||S.walletOpen)?1:0, pointerEvents:(S.calOpen||S.shareOpen||S.walletOpen)?'auto':'none', transition:'opacity .3s'},
+      walletSheetStyle:{...sheetBase, transform:S.walletOpen?'translateY(0)':'translateY(105%)'},
+      openWallet:()=>this.setState({walletOpen:true}),
+      starsLabel:'★ '+S.stars.toLocaleString(), starsBig:'★ '+S.stars.toLocaleString(),
+      packs:[{stars:'★500',price:'฿5,000 · Apple Pay',tap:()=>this.buyPack(500,'Apple Pay')},{stars:'★1,000',price:'฿9,900 · Apple Pay',tap:()=>this.buyPack(1000,'Apple Pay')},{stars:'★5,000',price:'฿47,500 · card',tap:()=>this.buyPack(5000,'Visa ··4242')}],
+      boughtOn:!!S.bought, boughtMsg:S.bought,
+      txns:S.txns.map(t=>({...t, amtStyle:{fontWeight:700, whiteSpace:'nowrap', color:t.dir?'var(--color-accent-700)':'var(--color-text)'}})),
+      permOn:S.permOn,
+      permDeny:()=>{ this.setState({permOn:false}); this.reply([{who:'c', text:'No problem — your photos stay yours. Say the word anytime.'}], null, 600); },
+      permAllow:()=>{ this.setState({permOn:false, photosOn:true}); this.reply([{who:'c', text:'Access granted. I matched 61 photos to five memories by when and where they were taken — Sushi Kanda got 14, Golden Gai got 23. They’re filed on the MEMORY shelf, not scattered in a feed.'}],
+        [{id:'shareSet',label:'Send Dan the Sushi Kanda set'},{id:'recall',label:'When was that Tokyo omakase?'},{id:'ferry',label:'▸ Disruption demo'}], 1400); },
+      calSheetStyle:{...sheetBase, height:'80%', display:'flex', flexDirection:'column', transform:S.calOpen?'translateY(0)':'translateY(105%)'},
+      shareSheetStyle:{...sheetBase, transform:S.shareOpen?'translateY(0)':'translateY(105%)'},
+      calTitle:M.t, calCells:cells, selEmpty:!!S.selDay&&tlE.length===0, selLabel, selCity, selCount, selEmptyText, selHasTl:tlE.length>0, tlStyle, tlHours, tlEvents:tlE,
+      calPrev:()=>this.setState({calM:0}), calNext:()=>this.setState({calM:1}),
+      calPrevStyle:{cursor:'pointer',padding:'2px 8px',fontWeight:700, opacity:S.calM===0?.25:1},
+      calNextStyle:{cursor:'pointer',padding:'2px 8px',fontWeight:700, opacity:S.calM===1?.25:1},
+      togLive:()=>this.setState(s=>({shLive:!s.shLive})), togHide:()=>this.setState(s=>({shHide:!s.shHide})),
+      liveBoxStyle:box(S.shLive), hideBoxStyle:box(S.shHide), liveMark:S.shLive?'✓':'', hideMark:S.shHide?'✓':'',
+      linkAlive:!S.killed, linkKilled:S.killed,
+      copyLink:()=>{ try{navigator.clipboard.writeText('https://concierge.travel/p/viv-4k2x');}catch(e){} this.setState({copied:true}); },
+      copyLabel:S.copied?'COPIED':'COPY', killLink:()=>this.setState({killed:true}),
+      voiceOn:S.voice>0, vLabel:['','LISTENING','ON IT…','DONE'][S.voice]||'',
+      vText: S.voice===2?'“Move my massage to five.”': S.voice===3?'Massage moved to 17:00 — calendar updated, nothing else touched.':'',
+      vBars: Array.from({length:5},(_,i)=>({st:{width:'5px',height:'28px',background:S.voice===3?'var(--color-accent-300)':'var(--color-accent)',transformOrigin:'bottom', animation:S.voice===3?'none':('vbar .9s '+(i*0.12)+'s infinite ease-in-out')}})),
+      openVoice:()=>this.openVoice(), closeVoice:()=>this.closeVoice(),
+      laTag:la.tag, laTitle:la.line, laMeta:la.meta,
+      laTagStyle:{fontSize:'9px',letterSpacing:'.1em',fontWeight:700,padding:'3px 6px', background:la.red?'var(--color-accent)':'rgba(255,255,255,.14)', color:'#fff', animation:la.pulse?'lapulse 1.4s infinite':'none'}
+    };
+  }
+  chipDefer(id){ setTimeout(()=>this.chip(id,''),50); }
+}
+</script>
+</body>
+</html>
+
