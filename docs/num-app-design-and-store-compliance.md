@@ -1,8 +1,9 @@
 # NUM App — Design and App Store Compliance
 
-**Status:** design brief, pre-build
+**Status:** SHAPE APPROVED by Viv, 28 Jul 2026 — build is go. Apple Developer account already exists and is approved (check membership page for org-vs-individual and any existing D-U-N-S). Google account recovery pending, then Play Console.
 **Date:** 28 July 2026
 **Owner:** 5arz / NUM
+**Code:** github.com/LumiRx/NUM (private) — this doc lives there as `docs/num-app-design-and-store-compliance.md`; prototype at `public/app-preview/` and live at itsnum.com/app-preview. Team channel: #num (Slack, lumirx).
 **Decision requested:** approve the build shape in §3 and start the D-U-N-S application in §8 this week
 
 ---
@@ -50,6 +51,8 @@ This is not just convenient, it is the cleanest possible shape under the rules:
 - **One rail for both channels.** The SMS-only user pays exactly the same way as the app user. In the app, the same link renders as a rich payment card in the thread and flips to "paid" when the processor webhook fires.
 - **Thailand rails.** Hosted checkout should lead with PromptPay QR, cards second; processor candidates are Opn (Omise), 2C2P, and Stripe Thailand, with LINE Pay where the thread is LINE. Opening the processor account is a 5arz business-identity action.
 
+One point Viv raised that deserves a plain answer: *"can we do bookings through our own rails and not through Apple for countries with strict bylaws?"* — **we do bookings through our own rails in every country, not just strict ones.** There is no country where a booking must route through Apple. 3.1.3(e) doesn't merely allow external payment for physical services, it mandates it — so 5arz rails (paylink → hosted checkout) are the one global payment path, same everywhere, nothing to carve out per jurisdiction.
+
 Two cautions, one per store of trouble:
 
 1. **Never use paylinks to route around IAP for digital goods or subscriptions.** That is the one place Apple still bites, and the US link-out relief from the Epic injunction is exactly what is under Supreme Court review. Bookings are exempt regardless, so stay on that side of the line.
@@ -79,7 +82,7 @@ If "dapp" meant "downloadable app, direct from us" — that is the Android APK p
 
 Direct APK from itsnum.com works today. It degrades hard from **30 September 2026**, when Google's developer verification requirement lands — and the first wave is **Brazil, Indonesia, Singapore and Thailand**. Thailand is our primary GTM market. From that date, installing an unverified developer's APK on a certified Android device in Thailand gets progressively harder.
 
-Play Store, therefore, not APK-as-primary. Keep the APK as a fallback for partner venues and staff devices.
+**The nuance that keeps Viv's "downloadable from the browser" idea alive:** the 30 Sept rule requires a *verified developer*, not Play-exclusivity. Once 5arz is verified (Play Console account + D-U-N-S), our directly-downloaded APK keeps installing normally on Android — inside and outside Thailand. So the browser-download channel survives on Android as long as we register; it dies only if we don't. On iOS there is still no browser-install route for us (EU-only, three gates we fail) — the PWA is the only browser path there, and it's a degraded one. This is a reach question, not a fee question: bookings owe the stores 0% either way, so the App Store costs us nothing and buys us distribution and push.
 
 ### PWA
 
@@ -315,6 +318,15 @@ Repeating this on its own because it is the one decision in this document that i
 
 Stars-for-uploads is currently **explicitly permitted** by Apple 3.2.2(x). Putting stars on a blockchain brings 3.1.5(b) into play, which bars crypto apps from offering currency for completing tasks — turning a permitted loyalty programme into a prohibited one, and taking the app with it. There is no version of a token that earns us more than distribution on iOS is worth.
 
+**The off-chain "exchange" design (Viv, 28 Jul — approved direction):** stars never touch a chain. They are rows in our own D1 ledger, and "exchange" means movement *inside* that ledger:
+
+- **Earn** — receipts, proof-of-visit, reviews. Permitted, already designed.
+- **Redeem** — stars → rewards at partner venues, with 5arz settling with the partner behind the scenes. This is classic closed-loop loyalty and is the safe heart of the system.
+- **Gift between users** — technically trivial on a ledger; deferred, not v1. It adds fraud surface and starts edging toward "stored value" questions.
+- **Convert to cash or crypto — never.** The moment stars are exchangeable for money in either direction, they stop being loyalty points and become a financial instrument: Apple's 3.1.5(b) problem returns without any blockchain, and money-transmission / e-money regulation arrives with it. The line that keeps stars legal everywhere is *one-way in, redeemed out as experiences* — never bought, never cashed.
+
+Thailand-specific caution for the legal pass (§11): stored value spendable at *many third-party merchants* can trigger Bank of Thailand e-money licensing. Our structure avoids this precisely because users can't buy stars and partners are settled by us — keep both properties true as the program grows.
+
 ---
 
 ## 10. What will get us rejected first, and how we pre-empt it
@@ -354,9 +366,10 @@ Stated plainly so nobody builds on sand:
 
 ---
 
-## 12. What I need from you
+## 12. What I need from you — updated 28 Jul evening
 
-1. **Approve the shape**: native iOS + native Android, PWA bridge, Play first, App Store second, four tabs, launch onto Trips.
-2. **Start the D-U-N-S application** — it is free, takes up to 28 days, and is the one thing on the critical path that no amount of engineering effort can compress. I cannot file it; it needs 5arz's business identity.
-3. **Confirm the Apple and Google accounts** get opened as an organisation, not an individual.
-4. Tell me whether to start on the **thread API and phone-verification join** now, since it is the foundation everything else sits on and it is buildable today against the existing backend.
+1. ~~Approve the shape~~ — **DONE.** Shape approved; build is go, starting with the thread API.
+2. **Apple: account already exists and is approved.** Two things to check on the [membership page](https://developer.apple.com/account): (a) is it an *organisation* or *individual* account — individual publishes under a personal name and can be migrated later; (b) if organisation, a **D-U-N-S number already exists** — copy it, because Google verification wants the same number and we skip the 28-day wait entirely.
+3. **Google: recover the login** (accounts.google.com/signin/recovery — this one's yours), then open **Play Console** ($25 one-time, organisation type, using the D-U-N-S from Apple if it exists). This is now the only item on the 30 Sept Thailand critical path.
+4. **Payment processor account** (Opn / 2C2P / Stripe TH) when ready — gates live paylinks, not the build.
+5. Destination priority: rankings now rebuilt across all destinations (17,495 top places, 67 destinations, 9 buckets) — launch-wave ordering is a GTM choice layered on top, not a data blocker.
