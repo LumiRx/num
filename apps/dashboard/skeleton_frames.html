@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUM — Dashboard Skeleton Frames</title>
+<!--
+  Structural wireframe for the three NUM dashboards. Blueprint styling on purpose:
+  we're reviewing LAYOUT, HIERARCHY and DATA ORDER here, not final visuals.
+  Brand-finished UI lives in mobile_prototype.html. Spec: DASHBOARD_SYSTEM.md
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f7f8fa; --ink:#11161f; --ink2:#5a6478; --ink3:#95a0b4;
+    --line:#d3d9e3; --line2:#e6eaf1; --box:#ffffff; --fill:#eef1f6;
+    --accent:#0d9488; --now:#e11d48; --soon:#d97706; --ok:#059669;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+    --f:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5;padding:0 0 60px}
+  /* ---------- chrome ---------- */
+  .topbar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .topbar h1{font-size:15px;font-weight:800;letter-spacing:-.02em}
+  .topbar h1 span{color:var(--accent)}
+  .switch{display:flex;gap:6px;flex-wrap:wrap}
+  .switch button{font-family:var(--f);font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink2);cursor:pointer}
+  .switch button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .legend{margin-left:auto;display:flex;gap:12px;font-size:11px;color:var(--ink3);flex-wrap:wrap}
+  .legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle}
+  .stage{max-width:1240px;margin:22px auto;padding:0 20px}
+  .caption{margin-bottom:14px}
+  .caption h2{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .caption p{font-size:13px;color:var(--ink2);margin-top:4px;max-width:760px}
+  /* ---------- wireframe primitives ---------- */
+  .zone{border:1px solid var(--line);background:var(--box);border-radius:8px;position:relative}
+  .zlabel{position:absolute;top:-8px;left:10px;background:var(--paper);padding:0 6px;font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--ink3);letter-spacing:.04em;text-transform:uppercase}
+  .band{border-left:3px solid var(--line);padding-left:10px;margin-bottom:14px}
+  .band.now{border-color:var(--now)} .band.today{border-color:var(--accent)}
+  .band.trend{border-color:var(--ink3)} .band.record{border-color:var(--line)}
+  .btag{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px;display:block}
+  .band.now .btag{color:var(--now)} .band.today .btag{color:var(--accent)}
+  .ph{background:repeating-linear-gradient(45deg,var(--fill),var(--fill) 6px,#fff 6px,#fff 12px);border:1px dashed var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10.5px;color:var(--ink3);text-align:center;padding:8px}
+  .card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:11px 13px;margin-bottom:8px}
+  .card.alert{border-color:var(--now);background:#fff5f7}
+  .card.warn{border-color:var(--soon);background:#fffaf0}
+  .row{display:flex;align-items:center;gap:9px}
+  .grow{flex:1;min-width:0}
+  .t{font-size:13px;font-weight:600}
+  .s{font-size:11.5px;color:var(--ink2)}
+  .chip{display:inline-flex;align-items:center;font-family:var(--mono);font-size:9.5px;font-weight:600;border-radius:4px;padding:2px 6px;background:var(--fill);color:var(--ink2);border:1px solid var(--line2)}
+  .chip.n{background:#ffe4e9;color:var(--now);border-color:#fbc7d1}
+  .chip.w{background:#fef3c7;color:var(--soon);border-color:#fcdf9b}
+  .chip.g{background:#d1fae5;color:var(--ok);border-color:#a7f0cd}
+  .btn{font-family:var(--f);font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:6px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;white-space:nowrap}
+  .btn.o{background:#fff;color:var(--ink2);border-color:var(--line)}
+  .nums{display:grid;gap:8px}
+  .nums.n4{grid-template-columns:repeat(4,1fr)} .nums.n3{grid-template-columns:repeat(3,1fr)}
+  .num{border:1px solid var(--line);border-radius:7px;padding:9px 11px;background:#fff}
+  .num .v{font-size:20px;font-weight:800;letter-spacing:-.02em}
+  .num .l{font-size:10.5px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .num .d{font-size:10.5px;font-weight:700;color:var(--ok)}
+  /* ---------- annotations ---------- */
+  .note{font-family:var(--mono);font-size:10.5px;color:var(--accent);background:#e8f7f5;border:1px dashed #9ad9d1;border-radius:6px;padding:6px 9px;margin:8px 0}
+  .note::before{content:"▸ ";font-weight:700}
+  /* ---------- Control desktop 3-pane ---------- */
+  .three{display:grid;grid-template-columns:190px 1fr 340px;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;min-height:620px}
+  .rail{background:#fbfcfe;border-right:1px solid var(--line);padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+  .rail .grp{font-family:var(--mono);font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;padding:10px 8px 4px}
+  .rail button{font-family:var(--f);display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:12.5px;font-weight:600;color:var(--ink2);background:none;border:none;padding:8px 9px;border-radius:6px;cursor:pointer}
+  .rail button.on{background:var(--ink);color:#fff}
+  .rail button .ic{width:15px;text-align:center;font-size:12px}
+  .rail .badge{margin-left:auto;font-family:var(--mono);font-size:9px;background:var(--now);color:#fff;border-radius:99px;padding:1px 5px}
+  .rail button.on .badge{background:#fff;color:var(--now)}
+  .rail .foot{margin-top:auto;border-top:1px solid var(--line2);padding-top:8px}
+  .listp{padding:14px;border-right:1px solid var(--line);overflow:auto;max-height:660px}
+  .ctxp{padding:14px;background:#fbfcfe;overflow:auto;max-height:660px}
+  .paneh{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .paneh .ttl{font-size:14px;font-weight:800;letter-spacing:-.01em}
+  .filters{display:flex;gap:5px;margin-bottom:11px;flex-wrap:wrap}
+  .lrow{display:flex;align-items:center;gap:9px;padding:9px 8px;border-radius:6px;border:1px solid transparent;cursor:pointer;font-size:12.5px}
+  .lrow:hover{background:var(--fill)}
+  .lrow.sel{background:#e8f7f5;border-color:var(--accent)}
+  .topb{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);background:#fff;font-size:12px;color:var(--ink2)}
+  /* ---------- phone ---------- */
+  .phones{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+  .phone{width:310px;border:1px solid var(--line);border-radius:22px;background:#fff;overflow:hidden;display:flex;flex-direction:column;min-height:600px;box-shadow:0 4px 20px rgba(17,22,31,.05)}
+  .phead{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;background:#fbfcfe}
+  .phead .pt{font-size:13.5px;font-weight:800;letter-spacing:-.01em}
+  .pbody{flex:1;padding:13px;overflow:auto}
+  .ptabs{display:flex;border-top:1px solid var(--line);background:#fbfcfe}
+  .ptabs button{flex:1;font-family:var(--f);font-size:10.5px;font-weight:700;color:var(--ink3);background:none;border:none;padding:11px 3px;cursor:pointer;border-top:2px solid transparent}
+  .ptabs button.on{color:var(--ink);border-top-color:var(--accent);background:#fff}
+  .ptabs .ic{display:block;font-size:15px;margin-bottom:2px;filter:grayscale(1);opacity:.75}
+  .ptabs button.on .ic{filter:none;opacity:1}
+  .phone-cap{text-align:center;font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-top:9px}
+  @media(max-width:1080px){ .three{grid-template-columns:170px 1fr} .ctxp{display:none} }
+  @media(max-width:760px){ .three{grid-template-columns:1fr} .rail{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line)} .rail .grp,.rail .foot{display:none} .listp{border-right:none} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>NUM <span>·</span> Dashboard Skeleton Frames</h1>
+  <div class="switch">
+    <button id="b-control" class="on" onclick="show('control')">1 · Control (admin)</button>
+    <button id="b-cmobile" onclick="show('cmobile')">1b · Control mobile</button>
+    <button id="b-biz" onclick="show('biz')">2 · Business</button>
+    <button id="b-trip" onclick="show('trip')">3 · My Trip</button>
+  </div>
+  <div class="legend">
+    <span><b style="background:#e11d48"></b>NOW</span>
+    <span><b style="background:#0d9488"></b>TODAY</span>
+    <span><b style="background:#95a0b4"></b>TREND</span>
+    <span><b style="background:#d3d9e3"></b>RECORD</span>
+  </div>
+</div>
+
+<!-- ============ 1 · CONTROL DESKTOP ============ -->
+<div class="stage" id="v-control">
+  <div class="caption">
+    <h2>1 · Control — admin console <span style="font-weight:500;color:var(--ink3);font-size:14px">· desktop-first</span></h2>
+    <p>One console, eight sections, role decides visibility. Three panes: <b>rail</b> (where I am) · <b>list</b> (what's there) · <b>context</b> (the one I picked). Selecting a row fills the context pane — it never navigates, so you keep your place in the queue.</p>
+  </div>
+
+  <div class="three">
+    <!-- rail -->
+    <div class="rail">
+      <div class="grp">Act</div>
+      <button class="on" onclick="sec('command',this)"><span class="ic">⌘</span>Command<span class="badge">3</span></button>
+      <button onclick="sec('convos',this)"><span class="ic">💬</span>Conversations</button>
+      <button onclick="sec('leads',this)"><span class="ic">🐋</span>Leads<span class="badge">1</span></button>
+      <button onclick="sec('supply',this)"><span class="ic">🏪</span>Supply<span class="badge">2</span></button>
+      <div class="grp">Understand</div>
+      <button onclick="sec('traffic',this)"><span class="ic">📍</span>Traffic</button>
+      <button onclick="sec('money',this)"><span class="ic">💰</span>Money</button>
+      <div class="grp">Operate</div>
+      <button onclick="sec('quality',this)"><span class="ic">🧪</span>Quality</button>
+      <button onclick="sec('system',this)"><span class="ic">⚙</span>System</button>
+      <div class="foot">
+        <div class="grp" style="padding-top:0">Lens</div>
+        <div class="ph" style="height:30px;font-size:9.5px">role ▾ Master</div>
+      </div>
+    </div>
+
+    <!-- list -->
+    <div class="listp" id="listp"></div>
+    <!-- context -->
+    <div class="ctxp" id="ctxp"></div>
+  </div>
+
+  <div class="note" style="margin-top:14px">Rail groups by verb — <b>Act</b> (needs a human), <b>Understand</b> (steering), <b>Operate</b> (config). Counts appear only on sections with NOW-band items, so the nav itself becomes the alert system.</div>
+</div>
+
+<!-- ============ 1b · CONTROL MOBILE ============ -->
+<div class="stage" id="v-cmobile" style="display:none">
+  <div class="caption">
+    <h2>1b · Control — mobile companion</h2>
+    <p>Five tabs mapped from the eight sections by role. Context pane becomes a bottom sheet. Heavy work (bulk approve, ledger reconciliation, prompt shipping) stays desktop-only by design — we don't build cramped versions of tasks nobody does on a phone.</p>
+  </div>
+  <div class="phones">
+    <div>
+      <div class="phone">
+        <div class="phead"><span class="pt">NUM Control</span><span class="chip">Master</span><span class="grow"></span><span class="chip g">● live</span></div>
+        <div class="pbody">
+          <div class="band now"><span class="btag">Needs you now</span>
+            <div class="card alert"><div class="row"><span class="chip n">🔴 26h</span><div class="grow"><div class="t">Villa lead · ฿15–25M</div><div class="s">no contact · #a4f2</div></div></div><div style="margin-top:8px"><button class="btn">Assign</button></div></div>
+            <div class="card warn"><div class="row"><span class="chip w">🟠</span><div class="grow"><div class="t">2 merchants awaiting approval</div></div><button class="btn o">Review</button></div></div>
+          </div>
+          <div class="band today"><span class="btag">Today</span>
+            <div class="nums n3">
+              <div class="num"><div class="l">Rev</div><div class="v">฿9.2k</div></div>
+              <div class="num"><div class="l">Book</div><div class="v">12</div></div>
+              <div class="num"><div class="l">Leads</div><div class="v">4</div></div>
+            </div>
+            <div class="ph" style="height:44px;margin-top:8px">circuit strip · scans → chats → engaged → booked</div>
+          </div>
+          <div class="band trend"><span class="btag">Trend ▸ tap to expand</span>
+            <div class="ph" style="height:36px">collapsed by default on mobile</div>
+          </div>
+        </div>
+        <div class="ptabs">
+          <button class="on"><span class="ic">⚡</span>Now</button>
+          <button><span class="ic">🐋</span>Leads</button>
+          <button><span class="ic">🏪</span>Supply</button>
+          <button><span class="ic">📍</span>Traffic</button>
+          <button><span class="ic">⋯</span>More</button>
+        </div>
+      </div>
+      <div class="phone-cap">Master lens · lands on “Now”</div>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="phead"><span class="pt">NUM Control</span><span class="chip">Specialist</span></div>
+        <div class="pbody">
+          <div class="band now"><span class="btag">Breaching SLA</span>
+            <div class="card alert"><div class="row"><span class="chip n">🔴 26h</span><div class="grow"><div class="t">🏝 Villa · ฿15–25M</div><div class="s">this quarter · ZH</div></div></div>
+              <div style="margin-top:8px;display:flex;gap:6px"><button class="btn">Call now</button><button class="btn o">Log touch</button></div></div>
+          </div>
+          <div class="band today"><span class="btag">My queue · 4 open</span>
+            <div class="card"><div class="row"><span class="chip w">🟠 9h</span><div class="grow"><div class="t">🎓 School placement</div><div class="s">Aug intake · RU</div></div></div></div>
+            <div class="card"><div class="row"><span class="chip g">🟢 3h</span><div class="grow"><div class="t">🛂 LTR visa</div><div class="s">exploring · EN</div></div></div></div>
+          </div>
+          <div class="band trend"><span class="btag">Closed this month</span>
+            <div class="ph" style="height:34px">฿95k commission · scoreboard</div>
+          </div>
+        </div>
+        <div class="ptabs">
+          <button class="on"><span class="ic">🔥</span>Hot</button>
+          <button><span class="ic">📋</span>Queue</button>
+          <button><span class="ic">⏳</span>Waiting</button>
+          <button><span class="ic">🏆</span>Closed</button>
+        </div>
+      </div>
+      <div class="phone-cap">Specialist lens · same app, gated view</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2 · BUSINESS ============ -->
+<div class="stage" id="v-biz" style="display:none">
+  <div class="caption">
+    <h2>2 · Business — merchant <span style="font-weight:500;color:var(--ink3);font-size:14px">· phone only</span></h2>
+    <p>Cut from five tabs to three. A restaurant owner opens this mid-service, one-handed. Pending bookings are the only thing that can cost them money today, so nothing outranks them.</p>
+  </div>
+  <div class="phones">
+    <div>
+      <div class="phone">
+        <div class="phead"><span class="pt">Kan Eang @ Pier</span><span class="grow"></span><span class="chip">TH</span></div>
+        <div class="pbody">
+          <div class="band now"><span class="btag">2 booking requests</span>
+            <div class="card alert">
+              <div class="t">Chinese family · 5 guests</div>
+              <div class="s">Tonight 19:00 · window/water · ฿4,500</div>
+              <div style="margin-top:9px;display:flex;gap:6px"><button class="btn" style="flex:1">Accept</button><button class="btn o" style="flex:1">Decline</button></div>
+            </div>
+            <div class="card">
+              <div class="t">Russian couple · 2</div>
+              <div class="s">Tonight 20:30 · anniversary · ฿2,800</div>
+              <div style="margin-top:9px;display:flex;gap:6px"><button class="btn" style="flex:1">Accept</button><button class="btn o" style="flex:1">Decline</button></div>
+            </div>
+          </div>
+          <div class="band today"><span class="btag">Today</span>
+            <div class="nums n3">
+              <div class="num"><div class="l">Books</div><div class="v">12</div></div>
+              <div class="num"><div class="l">Value</div><div class="v">฿41k</div></div>
+              <div class="num"><div class="l">NPS</div><div class="v">71</div></div>
+            </div>
+          </div>
+          <div class="band trend"><span class="btag">This week ▸</span>
+            <div class="ph" style="height:32px">collapsed — weekly cadence, not daily</div>
+          </div>
+        </div>
+        <div class="ptabs">
+          <button class="on"><span class="ic">📥</span>Today</button>
+          <button><span class="ic">🖼</span>Listing</button>
+          <button><span class="ic">💡</span>Insights</button>
+        </div>
+      </div>
+      <div class="phone-cap">Today — open, accept, close (the 90% case)</div>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="phead"><span class="pt">My listing</span><span class="grow"></span><span class="chip g">✓ live to AI</span></div>
+        <div class="pbody">
+          <div class="band today"><span class="btag">How NUM describes you</span>
+            <div class="card" style="border-color:var(--accent);background:#f2fbfa">
+              <div class="s" style="color:var(--ink)">“Seafood on the water at Chalong pier — live tanks, sunset views, Chinese menu, free pickup from Chalong hotels.”</div>
+            </div>
+            <div class="note" style="margin:8px 0 0">Outcome first. Merchants care what the AI <i>says</i> about them — that's what makes them keep photos fresh.</div>
+          </div>
+          <div class="band record" style="margin-top:14px"><span class="btag">Edit</span>
+            <div class="card"><div class="row"><div class="grow"><div class="t">Photos</div><div class="s">5 · 21 days old</div></div><span class="chip w">aging</span></div></div>
+            <div class="card"><div class="row"><div class="grow"><div class="t">Hours</div><div class="s">11:00–22:00 daily</div></div><button class="btn o">Edit</button></div></div>
+            <div class="card"><div class="row"><div class="grow"><div class="t">Promotion</div><div class="s">Free dessert via NUM</div></div><button class="btn o">Edit</button></div></div>
+          </div>
+        </div>
+        <div class="ptabs">
+          <button><span class="ic">📥</span>Today</button>
+          <button class="on"><span class="ic">🖼</span>Listing</button>
+          <button><span class="ic">💡</span>Insights</button>
+        </div>
+      </div>
+      <div class="phone-cap">Listing — preview leads, fields follow</div>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="phead"><span class="pt">Insights</span></div>
+        <div class="pbody">
+          <div class="band today"><span class="btag">Guests asked for</span>
+            <div class="card"><div class="s">“ปูผัดผงกะหรี่ เผ็ดน้อยได้ไหม” — spice level ×6</div></div>
+            <div class="card"><div class="s">“有素食吗?” — vegetarian ×5</div></div>
+            <div class="note" style="margin-top:8px">Free market research, anonymized. The reason merchants come back weekly.</div>
+          </div>
+          <div class="band trend" style="margin-top:14px"><span class="btag">Reviews</span>
+            <div class="card"><div class="row"><div class="grow"><div class="t">W. Zhang ★★★★★</div><div class="s">活虾很新鲜,服务员会中文!</div></div><button class="btn o">Reply</button></div></div>
+          </div>
+        </div>
+        <div class="ptabs">
+          <button><span class="ic">📥</span>Today</button>
+          <button><span class="ic">🖼</span>Listing</button>
+          <button class="on"><span class="ic">💡</span>Insights</button>
+        </div>
+      </div>
+      <div class="phone-cap">Insights — merged Reviews + Asks</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 3 · MY TRIP ============ -->
+<div class="stage" id="v-trip" style="display:none">
+  <div class="caption">
+    <h2>3 · My Trip — traveler <span style="font-weight:500;color:var(--ink3);font-size:14px">· phone, no login</span></h2>
+    <p><b>New surface.</b> A signed link NUM texts you — no account, nothing to install. It doesn't compete with chat; it's the view for when a list beats a conversation. Also our PDPA access surface and the day-3 retention hook.</p>
+  </div>
+  <div class="phones">
+    <div>
+      <div class="phone">
+        <div class="phead"><span class="pt">Your Phuket trip</span><span class="grow"></span><span class="chip">ZH</span></div>
+        <div class="pbody">
+          <div class="band now"><span class="btag">Next up</span>
+            <div class="card alert" style="border-color:var(--accent);background:#f2fbfa">
+              <div class="t">🦞 Kan Eang @ Pier</div>
+              <div class="s">Tonight 19:00 · 4 guests · confirmed</div>
+              <div style="margin-top:9px;display:flex;gap:6px"><button class="btn" style="flex:1">Directions</button><button class="btn o" style="flex:1">Call</button></div>
+            </div>
+          </div>
+          <div class="band today"><span class="btag">Saved for you</span>
+            <div class="card"><div class="row"><div class="grow"><div class="t">💆 Baan Thai Spa</div><div class="s">Patong · ZH/RU staff</div></div><span class="chip">saved</span></div></div>
+            <div class="card"><div class="row"><div class="grow"><div class="t">🛶 Sea cave tour</div><div class="s">Phang Nga · full day</div></div><span class="chip">saved</span></div></div>
+            <div class="note" style="margin-top:8px">Solves “what was that restaurant called?” — the #1 reason a traveler re-opens anything.</div>
+          </div>
+          <div class="band record" style="margin-top:14px"><span class="btag">What NUM remembers</span>
+            <div class="card">
+              <div class="s">· Vegetarian<br>· Traveling with 2 kids (6, 9)<br>· Staying in Kata until Jul 31</div>
+              <div style="margin-top:9px;display:flex;gap:6px"><button class="btn o" style="flex:1">Edit</button><button class="btn o" style="flex:1">Delete all</button></div>
+            </div>
+            <div class="note" style="margin-top:8px">PDPA right-to-access, shipped as a feature. Transparency is the trust builder — and it makes memory <i>correctable</i>, which makes it better.</div>
+          </div>
+          <div class="card" style="margin-top:14px;text-align:center;border-style:dashed"><div class="t" style="color:var(--accent)">💬 Back to chat</div></div>
+        </div>
+      </div>
+      <div class="phone-cap">num.5arz.com/t/{signed-token} · expires with trip</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------- view switching ---------- */
+const VIEWS = ["control","cmobile","biz","trip"];
+function show(v){
+  VIEWS.forEach(x=>{
+    document.getElementById("v-"+x).style.display = (x===v?"block":"none");
+    document.getElementById("b-"+x).classList.toggle("on", x===v);
+  });
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+/* ---------- Control sections: list + context content ---------- */
+const chip=(t,c="")=>`<span class="chip ${c}">${t}</span>`;
+const ph=(h,t)=>`<div class="ph" style="height:${h}px">${t}</div>`;
+
+const SECTIONS = {
+  command:{
+    title:"Command", sub:"what needs me right now",
+    list:`
+      <div class="band now"><span class="btag">Needs you now · 3</span>
+        <div class="card alert"><div class="row">${chip("🔴 26h","n")}<div class="grow"><div class="t">Villa lead · ฿15–25M · no contact</div><div class="s">#a4f2 · WhatsApp · ZH · this quarter</div></div><button class="btn">Assign</button></div></div>
+        <div class="card warn"><div class="row">${chip("🟠","w")}<div class="grow"><div class="t">WeChat replies slow — p95 4.2s</div><div class="s">threshold 3.0s · 18 min</div></div><button class="btn o">Check</button></div></div>
+        <div class="card warn"><div class="row">${chip("🟠","w")}<div class="grow"><div class="t">2 merchants awaiting approval</div><div class="s">blocking AI recommendations</div></div><button class="btn o">Review</button></div></div>
+      </div>
+      <div class="band today"><span class="btag">Today</span>
+        <div class="nums n4">
+          <div class="num"><div class="l">Revenue</div><div class="v">฿9.2k</div><div class="d">▲ 18%</div></div>
+          <div class="num"><div class="l">GMV</div><div class="v">฿41k</div><div class="d">▲ 12%</div></div>
+          <div class="num"><div class="l">AI cost</div><div class="v">$18</div><div class="d">of $30</div></div>
+          <div class="num"><div class="l">Margin</div><div class="v">71%</div><div class="d">▲ 3pt</div></div>
+        </div>
+        ${ph(52,"CIRCUIT STRIP · scans 214 → chats 89 (42%) → engaged 64 (72%) → booked 12 (19%)")}
+      </div>
+      <div class="band today"><span class="btag">Live · newest first</span>
+        <div class="lrow sel" onclick="pick(this)">${chip("#a4f2")}${chip("WA")}${chip("ZH")}${chip("WHALE","n")}<span class="grow s">“我们想买别墅,预算2000万…”</span><span class="s">2m</span></div>
+        <div class="lrow" onclick="pick(this)">${chip("#7c19")}${chip("LN")}${chip("TH")}${chip("BOOK","g")}<span class="grow s">“ขอโต๊ะริมน้ำ 4 คน…”</span><span class="s">3m</span></div>
+        <div class="lrow" onclick="pick(this)">${chip("#e83b")}${chip("WA")}${chip("RU")}${chip("TOUR")}<span class="grow s">“Где лучший закат?”</span><span class="s">6m</span></div>
+      </div>
+      <div class="band trend"><span class="btag">Trend · 7 days</span>${ph(74,"funnel · language mix · cost per active user")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">Villa lead</span>${chip("🔴 26h","n")}</div>
+      <div class="card"><div class="row"><div class="grow"><div class="s">Budget</div><div class="t">THB 15–25M</div></div><div><div class="s">Timeline</div><div class="t">This quarter</div></div></div></div>
+      <div class="btag" style="margin-top:12px">What NUM knows</div>
+      <div class="card"><div class="s">· Family of 3, child age 6 — school proximity matters<br>· Prefers Phuket Town / Cape Yamu<br>· Owns property in Shenzhen<br>· Wants rental yield if not resident</div></div>
+      <div class="btag" style="margin-top:12px">Suggested next touch</div>
+      <div class="card" style="border-color:var(--accent);background:#f2fbfa"><div class="s">Send 3 villas near BCIS with yield numbers — WeChat, in Chinese, before 18:00.</div></div>
+      <div style="margin-top:12px;display:flex;gap:6px"><button class="btn" style="flex:1">Assign to K. Somchai</button><button class="btn o">Transcript</button></div>
+      <div class="note">Context pane = act without leaving the queue.</div>`
+  },
+  convos:{
+    title:"Conversations", sub:"every thread, searchable",
+    list:`
+      <div class="filters">${chip("channel ▾")}${chip("language ▾")}${chip("intent ▾")}${chip("date ▾")}${chip("has escalation","w")}</div>
+      <div class="band today"><span class="btag">Stream · 89 today</span>
+        ${[["#a4f2","WA","ZH","WHALE","n","“别墅 2000万…”","2m"],["#7c19","LN","TH","BOOK","g","“โต๊ะริมน้ำ 4 คน”","3m"],["#e83b","WA","RU","TOUR","","“закат Пхукет”","6m"],["#22d0","WC","ZH","TOUR","","“中文按摩店”","6m"],["#91af","SM","EN","SUPPORT","w","“driver hasn't arrived”","11m"]]
+          .map((r,i)=>`<div class="lrow ${i===0?"sel":""}" onclick="pick(this)">${chip(r[0])}${chip(r[1])}${chip(r[2])}${chip(r[3],r[4])}<span class="grow s">${r[5]}</span><span class="s">${r[6]}</span></div>`).join("")}
+      </div>
+      <div class="band record"><span class="btag">Record</span>${ph(40,"older threads load on scroll · full-text search above")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">#a4f2</span>${chip("WA")}${chip("ZH")}${chip("WHALE","n")}</div>
+      ${ph(150,"TRANSCRIPT<br>user + assistant turns<br>tool calls shown inline")}
+      <div class="btag" style="margin-top:12px">Memory state at this turn</div>
+      ${ph(56,"the facts NUM had when it replied")}
+      <div style="margin-top:12px;display:flex;gap:6px"><button class="btn o">Flag</button><button class="btn o">Escalate</button><button class="btn o">Open user</button></div>`
+  },
+  leads:{
+    title:"Leads", sub:"the whale pipeline",
+    list:`
+      <div class="filters">${chip("board ▾")}${chip("vertical ▾")}${chip("owner ▾")}${chip("SLA ▾")}</div>
+      <div class="band now"><span class="btag">Breaching</span>
+        <div class="card alert"><div class="row">${chip("🔴 26h","n")}<div class="grow"><div class="t">🏝 Villa purchase · ฿15–25M</div><div class="s">unassigned</div></div><button class="btn">Assign</button></div></div>
+      </div>
+      <div class="band today"><span class="btag">Open · by SLA</span>
+        <div class="lrow" onclick="pick(this)">${chip("🟠 9h","w")}<span class="grow"><b>🎓 School</b> · &lt;฿600k/yr · Aug</span>${chip("P. Nok")}</div>
+        <div class="lrow" onclick="pick(this)">${chip("🟢 3h","g")}<span class="grow"><b>🛂 LTR visa</b> · exploring</span>${chip("unassigned")}</div>
+        <div class="lrow" onclick="pick(this)">${chip("🟢 2h","g")}<span class="grow"><b>📦 Relocation</b> · ฿80k/mo</span>${chip("M. Jay")}</div>
+      </div>
+      <div class="band trend"><span class="btag">Pipeline value</span>${ph(56,"open ฿310k · qualified ฿520k · discussion ฿640k · won ฿395k")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">Lead detail</span></div>
+      ${ph(70,"budget · timeline · party · language")}
+      <div class="btag" style="margin-top:12px">Status</div>
+      ${ph(28,"new → contacted → qualified → closing")}
+      <div class="btag" style="margin-top:12px">AI brief + transcript excerpt</div>
+      ${ph(90,"why NUM qualified this")}
+      <div style="margin-top:12px;display:flex;gap:6px"><button class="btn" style="flex:1">Assign</button><button class="btn o">Log touch</button></div>`
+  },
+  supply:{
+    title:"Supply", sub:"merchants + the approval gate",
+    list:`
+      <div class="filters">${chip("all","")} ${chip("pending 2","w")} ${chip("stale 4","w")} ${chip("category ▾")}</div>
+      <div class="band now"><span class="btag">Awaiting approval · gates the AI</span>
+        <div class="card warn"><div class="row"><div class="grow"><div class="t">Nai Harn Beach Club</div><div class="s">🏖 activity · field-verified · photos ✓</div></div><button class="btn">Approve</button><button class="btn o">Reject</button></div></div>
+        <div class="card warn"><div class="row"><div class="grow"><div class="t">Phuket Elite Realty</div><div class="s">🏝 agent · <b>license check required</b></div></div><button class="btn o">Review</button></div></div>
+      </div>
+      <div class="band today"><span class="btag">Live catalogue · 33</span>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>Kan Eang @ Pier</b> · 🦞 restaurant</span>${chip("23 bk")}${chip("fresh","g")}</div>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>Baan Thai Spa</b> · 💆 spa</span>${chip("17 bk")}${chip("fresh","g")}</div>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>Old Town Food Tour</b> · 🍜 tour</span>${chip("4 bk")}${chip("stale 23d","w")}</div>
+      </div>
+      <div class="band trend"><span class="btag">Coverage vs demand</span>${ph(64,"transfers THIN · schools THIN · medical GAP — demand-driven, not guesswork")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">Merchant</span>${chip("pending","w")}</div>
+      ${ph(80,"listing preview — exactly what the AI would say")}
+      <div class="btag" style="margin-top:12px">Verification</div>
+      <div class="card"><div class="s">Photos ✓ · Hours ✓ · Contact ✓ · Commission — · License n/a</div></div>
+      <div style="margin-top:12px;display:flex;gap:6px"><button class="btn" style="flex:1">Approve → live</button><button class="btn o">Reject</button></div>
+      <div class="note">5arz Verify: nothing reaches travelers unvetted.</div>`
+  },
+  traffic:{
+    title:"Traffic", sub:"where users come from",
+    list:`
+      <div class="band today"><span class="btag">Sources · 7 days</span>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>car_PHK_017</b> · Airport ↔ Patong</span>${chip("34 scans")}${chip("47%","g")}${chip("★ best","g")}</div>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>hotel_KATA_02</b> · Kata Palm lobby</span>${chip("29")}${chip("44%","g")}</div>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>car_PHK_003</b> · Airport ↔ Kata</span>${chip("26")}${chip("38%")}</div>
+        <div class="lrow" onclick="pick(this)"><span class="grow"><b>car_PHK_009</b> · Airport ↔ Rawai</span>${chip("2")}${chip("0%","n")}${chip("⚠ check","n")}</div>
+      </div>
+      <div class="band trend"><span class="btag">Channel mix + funnel</span>${ph(70,"WA 46% · LINE 28% · WeChat 18% · SMS 8%")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">car_PHK_009</span>${chip("⚠ check","n")}</div>
+      ${ph(70,"scans → chats → bookings for this source")}
+      <div class="card" style="border-color:var(--now);background:#fff5f7"><div class="s">2 scans in 7 days vs fleet median 26. Screen placement or QR visibility.</div></div>
+      <div style="margin-top:12px"><button class="btn o">Flag for install check</button></div>`
+  },
+  money:{
+    title:"Money", sub:"revenue, splits, ledger",
+    list:`
+      <div class="band today"><span class="btag">This month</span>
+        <div class="nums n4">
+          <div class="num"><div class="l">Revenue</div><div class="v">฿118k</div><div class="d">▲ 31%</div></div>
+          <div class="num"><div class="l">Partner</div><div class="v">฿73k</div><div class="l">62%</div></div>
+          <div class="num"><div class="l">5arz</div><div class="v">฿45k</div><div class="l">38%</div></div>
+          <div class="num"><div class="l">AI cost</div><div class="v">$488</div><div class="d">of $610</div></div>
+        </div>
+        ${ph(74,"revenue by stream — bookings · whale fees · featured listings")}
+      </div>
+      <div class="band record"><span class="btag">Commission ledger</span>
+        <div class="lrow" onclick="pick(this)"><span class="grow">Kan Eang @ Pier · 23 bookings</span>${chip("฿8.4k")}${chip("unsettled","w")}</div>
+        <div class="lrow" onclick="pick(this)"><span class="grow">School placement · closed won</span>${chip("฿45k")}${chip("settled","g")}</div>
+      </div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">Ledger line</span></div>
+      ${ph(90,"which bookings · which vendor · which split")}
+      <div style="margin-top:12px;display:flex;gap:6px"><button class="btn" style="flex:1">Mark settled</button><button class="btn o">Export</button></div>
+      <div class="note">5arz PayRails v0 — ledger + settlement before checkout.</div>`
+  },
+  quality:{
+    title:"Quality", sub:"is the AI right?",
+    list:`
+      <div class="band now"><span class="btag">Flags · confirm or dismiss</span>
+        <div class="card alert"><div class="row">${chip("fabricated","n")}<div class="grow"><div class="t">Claimed “Michelin-listed” — not in vendor data</div></div><button class="btn o">Review</button></div></div>
+      </div>
+      <div class="band today"><span class="btag">Grading queue · sampled</span>
+        <div class="lrow sel" onclick="pick(this)">${chip("TH")}${chip("LINE")}<span class="grow s">“ขอร้านนวดแถวกะตะ”</span>${chip("1/3")}</div>
+        <div class="lrow" onclick="pick(this)">${chip("ZH")}${chip("WC")}<span class="grow s">“国际学校推荐?”</span></div>
+      </div>
+      <div class="band trend"><span class="btag">Accuracy by language</span>${ph(56,"TH 96 · ZH 93 · EN 97 · RU 91 · KO 88")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">Grade this reply</span></div>
+      ${ph(110,"user turn + NUM reply")}
+      <div class="btag" style="margin-top:12px">Intent correct?</div><div style="display:flex;gap:6px">${chip("✓ yes","g")}${chip("✗ no","n")}</div>
+      <div class="btag" style="margin-top:10px">Reply quality</div><div style="display:flex;gap:6px">${chip("😊","g")}${chip("😐","w")}${chip("😖","n")}</div>
+      <div style="margin-top:12px"><button class="btn" style="width:100%">Submit &amp; next</button></div>`
+  },
+  system:{
+    title:"System", sub:"health + controls",
+    list:`
+      <div class="band now"><span class="btag">Degraded</span>
+        <div class="card warn"><div class="row">${chip("🟠","w")}<div class="grow"><div class="t">WhatsApp sender · approval in review</div><div class="s">day 2 of 1–3</div></div></div></div>
+      </div>
+      <div class="band today"><span class="btag">Components</span>
+        <div class="lrow" onclick="pick(this)">${chip("●","g")}<span class="grow">Claude API</span><span class="s">p95 1.7s</span></div>
+        <div class="lrow" onclick="pick(this)">${chip("●","g")}<span class="grow">Supabase</span><span class="s">keep-alive ✓</span></div>
+        <div class="lrow" onclick="pick(this)">${chip("●","g")}<span class="grow">Railway web + worker</span><span class="s">2 up</span></div>
+      </div>
+      <div class="band today"><span class="btag">Channels</span>
+        <div class="lrow"><span class="grow">WhatsApp · LINE · WeChat · SMS</span><button class="btn o">Pause</button></div>
+      </div>
+      <div class="band record"><span class="btag">Prompt + tenants</span>${ph(44,"v1.4 live · NPS +3 · 2 tenants")}</div>`,
+    ctx:`
+      <div class="paneh"><span class="ttl">Component</span></div>
+      ${ph(90,"latency + error history")}
+      <div class="note">Destructive controls (pause channel, ship prompt) are desktop-only.</div>`
+  }
+};
+
+function sec(key, btn){
+  document.querySelectorAll(".rail button").forEach(b=>b.classList.remove("on"));
+  if(btn) btn.classList.add("on");
+  const S = SECTIONS[key];
+  document.getElementById("listp").innerHTML =
+    `<div class="paneh"><span class="ttl">${S.title}</span><span class="s">${S.sub}</span></div>` + S.list;
+  document.getElementById("ctxp").innerHTML = S.ctx;
+}
+function pick(el){
+  const p = el.closest(".listp");
+  if(p) p.querySelectorAll(".lrow").forEach(r=>r.classList.remove("sel"));
+  el.classList.add("sel");
+}
+sec("command", document.querySelector(".rail button"));
+</script>
+</body>
+</html>

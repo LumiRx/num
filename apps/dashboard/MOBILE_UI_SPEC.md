@@ -1,5 +1,7 @@
 # NUM — Mobile-First UI Spec
 
+> **⚠️ Partially superseded (2026-07-22).** The surface map and seven-role tab structure below are replaced by **`DASHBOARD_SYSTEM.md`** — three products (Control · Business · My Trip), admin consolidated into one desktop-first console with role lenses, merchant cut to three tabs, and a new traveler surface. **Still current here:** the thumb rules, component adaptations, EN/TH strategy, contrast and PWA guidance. Skeletons: `skeleton_frames.html`.
+
 **Updated:** 2026-07-17 · **Supersedes** `DASHBOARD_IA.md` §13's "operators sit at desks" line. Field reality: partner staff, lead specialists, and every merchant operate from a phone, LINE-first. Desktop is the enhancement, not the baseline.
 **Pairs with:** `mobile_prototype.html` — open it on an actual phone (or any browser; it renders in a phone frame on desktop). Same roles, same data shapes as `DASHBOARD_IA.md`; this doc defines *how it feels in the hand*.
 

@@ -1,4 +1,6 @@
 # NuM — Dashboard Information Architecture
+
+> **⚠️ Superseded (2026-07-22) by `DASHBOARD_SYSTEM.md`.** The six-dashboard model here fragmented one company's staff across four admin apps. The current design is **three products** — Control (admin, one console, eight sections, role lenses), Business (merchant, three tabs), My Trip (traveler, new) — organized by decision latency rather than data type. This file is retained for the panel-level detail and permission matrix (§9, §11), which remain useful reference.
 ### Every feature mapped to a user role, every dashboard scoped to a job, with the rules for what shares a surface and what doesn't.
 
 **Owner:** Lumi / Dre

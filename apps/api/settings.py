@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # Workers
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # 5arz human verification (Sprint 1 — off by default; see services/sarz_verify.py)
+    SARZ_VERIFY_ENABLED: bool = False
+    SARZ_AGENT_KEY: Optional[str] = None          # arz_live_... NUM's 5arz agent key
+    SARZ_API_URL: str = "https://api.5arz.com"
+    SARZ_VERIFY_URL: str = "https://5arz.com/verify"
+    SARZ_SETTLEMENT_ENABLED: bool = False         # Sprint 3 — mint Agent-Tx-Binding on settle
+
     # Observability
     SENTRY_DSN: Optional[str] = None
 

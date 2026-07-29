@@ -16,11 +16,12 @@ from contextlib import asynccontextmanager
 import structlog
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load .env BEFORE anything reads settings.
 load_dotenv()
 
-from apps.api.routers import healthz, line, qr, twilio, wechat  # noqa: E402
+from apps.api.routers import healthz, line, merchant, qr, twilio, wechat  # noqa: E402
 from apps.api.settings import get_settings  # noqa: E402
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -54,11 +55,24 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="NUM — AI Concierge", lifespan=lifespan)
+
+# CORS — the self-serve business portal (itsnum.com on Cloudflare Pages) calls
+# this API cross-origin. Allow the itsnum domains, their Pages previews, and
+# localhost for dev. Additive; existing same-origin webhooks are unaffected.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://itsnum.com", "https://www.itsnum.com"],
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?itsnum\.com|https://[a-z0-9-]+\.pages\.dev|http://localhost(:\d+)?",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(healthz.router)
 app.include_router(twilio.router)
 app.include_router(line.router)
 app.include_router(wechat.router)
 app.include_router(qr.router)
+app.include_router(merchant.router)
 
 
 if __name__ == "__main__":
