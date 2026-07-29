@@ -9,7 +9,7 @@
 // run_worker_first, only /api/* reaches this Worker. Auth: env.ANTHROPIC_API_KEY
 // (`wrangler secret put ANTHROPIC_API_KEY` in prod, .dev.vars for wrangler dev).
 import Anthropic from '@anthropic-ai/sdk';
-import { PERSONA, REPLY_SCHEMA } from './prompt.mjs';
+import { PERSONA, REPLY_SCHEMA, normalizeReply } from './prompt.mjs';
 
 const MODEL = 'claude-opus-5';
 
@@ -35,7 +35,7 @@ async function askNum(client, messages, state) {
     return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [] };
   }
   const text = response.content.find((b) => b.type === 'text')?.text ?? '';
-  return JSON.parse(text);
+  return normalizeReply(JSON.parse(text));
 }
 
 function json(status, body) {
@@ -63,7 +63,16 @@ export default {
     try {
       const { messages, state } = await request.json();
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-      const result = await askNum(client, messages, state);
+      let result;
+      try {
+        result = await askNum(client, messages, state);
+      } catch (err) {
+        // Grammar compilation is cached once it succeeds but can time out on a
+        // cold schema — one retry usually lands on the warmed cache.
+        if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
+        await new Promise((r) => setTimeout(r, 1500));
+        result = await askNum(client, messages, state);
+      }
       return json(200, result);
     } catch (err) {
       console.error('[num-ai]', err);

@@ -10,7 +10,7 @@
 // browser.
 import http from 'node:http';
 import Anthropic from '@anthropic-ai/sdk';
-import { PERSONA, REPLY_SCHEMA } from '../worker/prompt.mjs';
+import { PERSONA, REPLY_SCHEMA, normalizeReply } from '../worker/prompt.mjs';
 
 const PORT = Number(process.env.NUM_AI_PORT) || 8787;
 const MODEL = 'claude-opus-5';
@@ -33,7 +33,7 @@ async function askNum(messages, state) {
     return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [] };
   }
   const text = response.content.find((b) => b.type === 'text')?.text ?? '';
-  return JSON.parse(text);
+  return normalizeReply(JSON.parse(text));
 }
 
 const server = http.createServer(async (req, res) => {

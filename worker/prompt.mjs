@@ -58,88 +58,45 @@ export const REPLY_SCHEMA = {
         },
       ],
     },
+    // Actions carry a JSON-encoded payload string instead of nested typed
+    // objects: Anthropic's structured-output grammar compiler times out on
+    // schemas with many-key strict objects ("Grammar compilation timed out"),
+    // and a string field costs the grammar nothing. normalizeReply() below
+    // parses payloads server-side, so the frontend contract is unchanged.
     actions: {
       type: 'array',
+      description: 'Plan mutations to apply, in order. Each action is {type, payload} where payload is a JSON-encoded string.',
       items: {
-        anyOf: [
-          {
-            type: 'object',
-            additionalProperties: false,
-            required: ['type', 'booking'],
-            properties: {
-              type: { const: 'add_booking' },
-              booking: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['id', 'mo', 'day', 'time', 'dur', 'place', 'title', 'grp', 'status', 'note', 'cost'],
-                properties: {
-                  id: { type: 'string' },
-                  mo: { type: 'integer' },
-                  day: { type: 'integer' },
-                  time: { type: 'string' },
-                  dur: { type: 'integer' },
-                  place: { type: 'string' },
-                  title: { type: 'string' },
-                  grp: { enum: ['BKK', 'HKT', 'SIN', 'KP'] },
-                  status: { enum: ['confirmed', 'hold', 'deposit', 'rebooked', 'cancelled'] },
-                  holdBy: { anyOf: [{ type: 'null' }, { type: 'string' }] },
-                  note: { type: 'string' },
-                  cost: { type: 'string' },
-                },
-              },
-            },
+        type: 'object',
+        additionalProperties: false,
+        required: ['type', 'payload'],
+        properties: {
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting'] },
+          payload: {
+            type: 'string',
+            description:
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is 7 or 8, time "HH:MM", dur in minutes, grp one of BKK|HKT|SIN|KP, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise.',
           },
-          {
-            type: 'object',
-            additionalProperties: false,
-            required: ['type', 'id', 'patch'],
-            properties: {
-              type: { const: 'update_booking' },
-              id: { type: 'string' },
-              patch: {
-                type: 'object',
-                additionalProperties: false,
-                properties: {
-                  mo: { type: 'integer' },
-                  day: { type: 'integer' },
-                  time: { type: 'string' },
-                  dur: { type: 'integer' },
-                  place: { type: 'string' },
-                  title: { type: 'string' },
-                  status: { enum: ['confirmed', 'hold', 'deposit', 'rebooked', 'cancelled'] },
-                  holdBy: { anyOf: [{ type: 'null' }, { type: 'string' }] },
-                  note: { type: 'string' },
-                  cost: { type: 'string' },
-                  receipt: { type: 'string' },
-                },
-              },
-            },
-          },
-          {
-            type: 'object',
-            additionalProperties: false,
-            required: ['type', 'meeting'],
-            properties: {
-              type: { const: 'add_meeting' },
-              meeting: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['id', 'mo', 'day', 'time', 'dur', 'title', 'src', 'place'],
-                properties: {
-                  id: { type: 'string' },
-                  mo: { type: 'integer' },
-                  day: { type: 'integer' },
-                  time: { type: 'string' },
-                  dur: { type: 'integer' },
-                  title: { type: 'string' },
-                  src: { enum: ['GCAL', 'NUM'] },
-                  place: { type: 'string' },
-                },
-              },
-            },
-          },
-        ],
+        },
       },
     },
   },
 };
+
+// Map the wire shape ({type, payload}) back to the frontend contract
+// ({type, booking} / {type, id, patch} / {type, meeting}). Malformed payloads
+// are dropped rather than failing the whole reply.
+export function normalizeReply(out) {
+  const actions = [];
+  for (const a of out.actions ?? []) {
+    try {
+      const p = JSON.parse(a.payload);
+      if (a.type === 'add_booking') actions.push({ type: a.type, booking: p });
+      else if (a.type === 'update_booking') actions.push({ type: a.type, id: p.id, patch: p.patch ?? p });
+      else if (a.type === 'add_meeting') actions.push({ type: a.type, meeting: p });
+    } catch {
+      // skip malformed payloads
+    }
+  }
+  return { ...out, actions };
+}
