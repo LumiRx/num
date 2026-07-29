@@ -6,6 +6,7 @@
 *.key
 .env
 .env.*
+.dev.vars
 # ── junk / heavy ──
 node_modules/
 .wrangler/

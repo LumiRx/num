@@ -1,6 +1,7 @@
 // Share sheet — live-updates and hide-costs toggles, the share link with
 // copy/kill, and the killed state.
 import { store, useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import { sheetBase, checkboxStyle } from '../../lib/derive';
 import { SHARE_LINK } from '../../lib/data';
 
@@ -29,7 +30,8 @@ export default function ShareSheet() {
         <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 2 }}>{nBookings} bookings · 3 cities · live</div>
       </div>
       <div
-        onClick={() => store.set((s) => ({ shLive: !s.shLive }))}
+        {...pressable(() => store.set((s) => ({ shLive: !s.shLive })), 'checkbox')}
+        aria-checked={shLive}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-300)', cursor: 'pointer' }}
       >
         <div>
@@ -39,7 +41,8 @@ export default function ShareSheet() {
         <span style={checkboxStyle(shLive)}>{shLive ? '✓' : ''}</span>
       </div>
       <div
-        onClick={() => store.set((s) => ({ shHide: !s.shHide }))}
+        {...pressable(() => store.set((s) => ({ shHide: !s.shHide })), 'checkbox')}
+        aria-checked={shHide}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '2px solid var(--color-divider)', cursor: 'pointer' }}
       >
         <div>
@@ -56,14 +59,14 @@ export default function ShareSheet() {
                 concierge.travel/p/viv-4k2x
               </div>
               <div
-                onClick={copyLink}
+                {...pressable(copyLink)}
                 style={{ cursor: 'pointer', background: 'var(--color-accent)', color: '#fff', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '9px 13px', display: 'flex', alignItems: 'center' }}
               >
                 {copied ? 'COPIED' : 'COPY'}
               </div>
             </div>
             <div
-              onClick={() => store.set({ killed: true })}
+              {...pressable(() => store.set({ killed: true }))}
               style={{ marginTop: 12, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-neutral-600)', cursor: 'pointer' }}
             >
               KILL THIS LINK

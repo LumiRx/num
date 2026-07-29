@@ -1,6 +1,9 @@
 // The Num app screen — header, tab bar, views, sheets and overlays.
 // Composition and z-layering match Concierge.dc.html exactly.
+import type { KeyboardEvent } from 'react';
 import { store, useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
+import { closeVoice } from '../../lib/concierge';
 import { segStyle } from '../../lib/derive';
 import ThreadView from './ThreadView';
 import PlanView from './PlanView';
@@ -18,8 +21,17 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
 
   const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false });
 
+  // Escape dismisses sheets and the voice overlay — the keyboard counterpart
+  // of tapping the backdrop. The permission dialog still needs an explicit choice.
+  const onEscape = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    const s = store.get();
+    if (s.calOpen || s.shareOpen || s.walletOpen) closeSheets();
+    if (s.voice) closeVoice();
+  };
+
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', background: 'var(--color-bg)', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
+    <div onKeyDown={onEscape} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', background: 'var(--color-bg)', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
       {/* header */}
       <div style={{ borderBottom: '2px solid var(--color-divider)', background: posterHeader ? 'var(--color-accent)' : 'var(--color-bg)', color: posterHeader ? '#fff' : 'var(--color-text)' }}>
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
@@ -29,14 +41,15 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div
-              onClick={() => store.set({ walletOpen: true })}
+              {...pressable(() => store.set({ walletOpen: true }))}
+              aria-label="Stars wallet"
               style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', border: '2px solid currentColor', padding: '3px 8px' }}
               title="Stars wallet"
             >
               ★ {stars.toLocaleString()}
             </div>
-            <div onClick={() => store.set({ shareOpen: true, copied: false })} style={{ cursor: 'pointer', padding: 4, display: 'flex' }} title="Share plan">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <div {...pressable(() => store.set({ shareOpen: true, copied: false }))} aria-label="Share plan" style={{ cursor: 'pointer', padding: 4, display: 'flex' }} title="Share plan">
+              <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
                 <circle cx="18" cy="5" r="3" />
                 <circle cx="6" cy="12" r="3" />
                 <circle cx="18" cy="19" r="3" />
@@ -45,7 +58,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             </div>
           </div>
         </div>
-        <div onClick={() => store.set((s) => ({ calOpen: true, selDay: s.selDay || '7-28' }))} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
+        <div {...pressable(() => store.set((s) => ({ calOpen: true, selDay: s.selDay || '7-28' })))} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: 21, fontWeight: 700, lineHeight: 1.1 }}>
             Tue 28 Jul · Bangkok <span style={{ fontSize: 13, color: posterHeader ? '#fff' : 'var(--color-accent)' }}>▾</span>
           </div>
@@ -56,10 +69,10 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       </div>
 
       {/* tab bar */}
-      <div style={{ display: 'flex', borderBottom: '2px solid var(--color-divider)' }}>
-        <div onClick={() => store.set({ view: 'thread' })} style={segStyle(view === 'thread')}>THREAD</div>
-        <div onClick={() => store.set({ view: 'plan' })} style={segStyle(view === 'plan')}>PLAN</div>
-        <div onClick={() => store.set({ view: 'mem' })} style={segStyle(view === 'mem')}>MEMORY</div>
+      <div role="tablist" style={{ display: 'flex', borderBottom: '2px solid var(--color-divider)' }}>
+        <div {...pressable(() => store.set({ view: 'thread' }), 'tab')} aria-selected={view === 'thread'} style={segStyle(view === 'thread')}>THREAD</div>
+        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}>PLAN</div>
+        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}>MEMORY</div>
       </div>
 
       {view === 'thread' && <ThreadView />}
@@ -69,8 +82,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <VoiceOverlay />
       <NotifBanner />
 
-      {/* sheet backdrop */}
+      {/* sheet backdrop — mouse convenience only; keyboard users close sheets with Escape (root onKeyDown) */}
       <div
+        aria-hidden="true"
         onClick={closeSheets}
         style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.4)', zIndex: 50, opacity: sheetOpen ? 1 : 0, pointerEvents: sheetOpen ? 'auto' : 'none', transition: 'opacity .3s' }}
       />

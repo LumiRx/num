@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Num mark — Modernist: flat #201e1d square, geometric white N, #ec3013 accent. -->
+  <rect width="512" height="512" fill="#201e1d"/>
+  <!-- N: two verticals + diagonal, drawn as plain geometry (no webfont). -->
+  <rect x="120" y="120" width="72" height="272" fill="#ffffff"/>
+  <rect x="320" y="120" width="72" height="272" fill="#ffffff"/>
+  <path d="M120 120 L192 120 L392 392 L320 392 Z" fill="#ffffff"/>
+  <!-- Accent square, flush bottom-right corner. -->
+  <rect x="440" y="440" width="72" height="72" fill="#ec3013"/>
+</svg>

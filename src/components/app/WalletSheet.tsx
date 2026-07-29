@@ -1,6 +1,7 @@
 // Stars wallet sheet — balance, instant top-up packs, payment methods,
 // and the activity/receipts ledger.
 import { useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import { sheetBase } from '../../lib/derive';
 import { buyPack } from '../../lib/concierge';
 
@@ -33,7 +34,7 @@ export default function WalletSheet() {
           {PACKS.map((p) => (
             <div
               key={p.stars}
-              onClick={() => buyPack(p.n, p.via)}
+              {...pressable(() => buyPack(p.n, p.via))}
               className="hov-accent-100"
               style={{ flex: 1, cursor: 'pointer', border: '2px solid var(--color-text)', padding: '8px 10px', background: '#fff' }}
             >

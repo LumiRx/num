@@ -1,6 +1,7 @@
 // Calendar sheet — month grid with plan/meeting dots, the Google Calendar
 // footer, and the selected day's visual timeline (lane-packed blocks).
 import { store, useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import {
   MONTHS, calendarCells, dayTimeline, timelineHours, timelineHeight, selDayInfo, sheetBase,
 } from '../../lib/derive';
@@ -14,7 +15,7 @@ function DayCell({ d }: { d: CalCell }) {
   ];
   return (
     <div
-      onClick={() => store.set({ selDay: d.dayKey })}
+      {...pressable(() => store.set({ selDay: d.dayKey }))}
       style={{
         minHeight: 34, textAlign: 'center', fontSize: 11.5, cursor: 'pointer', paddingTop: 5,
         background: d.sel ? 'var(--color-accent)' : 'transparent',
@@ -43,9 +44,9 @@ export default function CalendarSheet() {
   return (
     <div style={{ ...sheetBase, height: '80%', display: 'flex', flexDirection: 'column', visibility: s.calOpen ? 'visible' : 'hidden', transform: s.calOpen ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '2px solid var(--color-divider)' }}>
-        <span onClick={() => store.set({ calM: 0 })} style={{ cursor: 'pointer', padding: '2px 8px', fontWeight: 700, opacity: s.calM === 0 ? 0.25 : 1 }}>←</span>
+        <span {...pressable(() => store.set({ calM: 0 }))} aria-label="Previous month" style={{ cursor: 'pointer', padding: '2px 8px', fontWeight: 700, opacity: s.calM === 0 ? 0.25 : 1 }}>←</span>
         <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16 }}>{M.t}</span>
-        <span onClick={() => store.set({ calM: 1 })} style={{ cursor: 'pointer', padding: '2px 8px', fontWeight: 700, opacity: s.calM === 1 ? 0.25 : 1 }}>→</span>
+        <span {...pressable(() => store.set({ calM: 1 }))} aria-label="Next month" style={{ cursor: 'pointer', padding: '2px 8px', fontWeight: 700, opacity: s.calM === 1 ? 0.25 : 1 }}>→</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', padding: '10px 12px 2px', fontSize: 9.5, letterSpacing: '.1em', color: 'var(--color-neutral-500)', textAlign: 'center' }}>
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}

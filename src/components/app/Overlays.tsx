@@ -1,6 +1,7 @@
 // Full-screen overlays: the ferry-disruption push banner, the photos
 // permission dialog, and the voice interaction layer.
 import { useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import { closeVoice, permAllow, permDeny } from '../../lib/concierge';
 
 export function NotifBanner() {
@@ -19,7 +20,7 @@ export function PermissionDialog() {
   if (!on) return null;
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.45)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 34px' }}>
-      <div style={{ background: 'var(--color-bg)', border: '2px solid var(--color-text)', width: '100%' }}>
+      <div role="dialog" aria-modal="true" style={{ background: 'var(--color-bg)', border: '2px solid var(--color-text)', width: '100%' }}>
         <div style={{ padding: '16px 16px 12px' }}>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>“Num” would like to access your photos</div>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-700)', marginTop: 6, lineHeight: 1.5 }}>
@@ -27,10 +28,10 @@ export function PermissionDialog() {
           </div>
         </div>
         <div style={{ display: 'flex', borderTop: '2px solid var(--color-text)' }}>
-          <div onClick={permDeny} style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', color: 'var(--color-neutral-600)' }}>
+          <div {...pressable(permDeny)} style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', color: 'var(--color-neutral-600)' }}>
             DON’T ALLOW
           </div>
-          <div onClick={permAllow} style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', background: 'var(--color-accent)', color: '#fff' }}>
+          <div {...pressable(permAllow)} style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', background: 'var(--color-accent)', color: '#fff' }}>
             ALLOW
           </div>
         </div>
@@ -46,7 +47,8 @@ export function VoiceOverlay() {
   const text = voice === 2 ? '“Move my massage to five.”' : voice === 3 ? 'Massage moved to 17:00 — calendar updated, nothing else touched.' : '';
   return (
     <div
-      onClick={closeVoice}
+      {...pressable(closeVoice)}
+      aria-label="Dismiss voice"
       style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.93)', zIndex: 80, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 22px 70px', color: '#fff', cursor: 'pointer' }}
     >
       <div style={{ fontSize: 10, letterSpacing: '.18em', color: 'var(--color-accent-300)', fontWeight: 700 }}>{label}</div>

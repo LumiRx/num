@@ -52,3 +52,9 @@ How it works:
   store, so the PLAN tab and calendar update in real time from what Num books.
 - The API key lives only in the server process — never in the browser. If the
   backend is unreachable, the thread shows a graceful offline message.
+
+### Deploy
+
+The app + AI backend ship as one Worker (`num-app`): static `dist/` plus `POST /api/num`.
+See [DEPLOY.md](DEPLOY.md) for the copy-paste runbook — build, deploy, secret, verify, rollback.
+(The partner console is a separate worker; that's [LAUNCH_RUNBOOK.md](LAUNCH_RUNBOOK.md).)

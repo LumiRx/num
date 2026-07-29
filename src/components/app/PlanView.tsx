@@ -1,6 +1,7 @@
 // PLAN tab — bookings grouped by city, expandable rows with note, cost,
 // receipt, and the ASK TO CHANGE / SHARE actions.
 import { store, useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import { tagOf, bookingMetaLine } from '../../lib/derive';
 import { askToChange } from '../../lib/concierge';
 import { PLAN_GROUPS } from '../../lib/data';
@@ -14,7 +15,8 @@ function BookingRow({ b }: { b: Booking }) {
   const cancelled = b.status === 'cancelled';
   return (
     <div
-      onClick={() => store.set((s) => ({ expanded: s.expanded === b.id ? null : b.id }))}
+      {...pressable(() => store.set((s) => ({ expanded: s.expanded === b.id ? null : b.id })))}
+      aria-expanded={exp}
       className="hov-neutral-100"
       style={{ cursor: 'pointer', borderBottom: '1px solid var(--color-neutral-300)', padding: '11px 16px' }}
     >
@@ -42,13 +44,13 @@ function BookingRow({ b }: { b: Booking }) {
           )}
           <div style={{ display: 'flex', gap: 14, marginTop: 9 }}>
             <span
-              onClick={(e) => { e.stopPropagation(); askToChange(b.title); }}
+              {...pressable((e) => { e.stopPropagation(); askToChange(b.title); })}
               style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer' }}
             >
               ASK TO CHANGE
             </span>
             <span
-              onClick={(e) => { e.stopPropagation(); store.set({ shareOpen: true }); }}
+              {...pressable((e) => { e.stopPropagation(); store.set({ shareOpen: true }); })}
               style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer' }}
             >
               SHARE

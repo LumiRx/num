@@ -1,6 +1,7 @@
 // THREAD tab — the conversation: messages, cards, typing dots, chips, input bar.
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import { tagOf } from '../../lib/derive';
 import { askNum, sendChip, openVoice } from '../../lib/concierge';
 import type { Msg } from '../../lib/types';
@@ -72,7 +73,7 @@ export default function ThreadView() {
           {chips.map((c) => (
             <div
               key={c.id}
-              onClick={() => sendChip(c.id, c.label)}
+              {...pressable(() => sendChip(c.id, c.label))}
               className="hov-accent-100"
               style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '7px 11px', border: '2px solid var(--color-text)', background: '#fff' }}
             >
@@ -89,12 +90,13 @@ export default function ThreadView() {
             style={{ flex: 1, border: '2px solid var(--color-neutral-300)', padding: '10px 12px', fontSize: 13, color: 'var(--color-text)', background: '#fff', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
           />
           <div
-            onClick={openVoice}
+            {...pressable(openVoice)}
+            aria-label="Talk to Num"
             className="hov-accent"
             style={{ cursor: 'pointer', width: 41, border: '2px solid var(--color-text)', background: 'var(--color-text)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Talk to Num"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
               <rect x="9" y="2" width="6" height="12" />
               <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3" />
             </svg>

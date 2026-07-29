@@ -1,0 +1,23 @@
+{
+  // NUM consumer app — SPA (dist/) + AI API (/api/num) in one Worker.
+  // NOTE: the root wrangler.jsonc is the separate partner console Worker
+  // ("num-console") — deploy this file with `wrangler deploy --config wrangler.app.jsonc`.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "num-app",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-07-01",
+  // @anthropic-ai/sdk's credential-chain modules import node:fs / node:path.
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    // Unmatched paths fall back to index.html so client-side routing works.
+    "not_found_handling": "single-page-application",
+    // Only /api/* reaches the Worker; everything else is served as a static asset.
+    "run_worker_first": ["/api/*"]
+  },
+  // Instant preview URL (num-app.<account>.workers.dev) — live immediately after deploy
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  }
+}

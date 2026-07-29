@@ -1,5 +1,6 @@
 // MEMORY tab — the shelf of past trips; rows expand to show the kept note.
 import { store, useApp } from '../../lib/store';
+import { pressable } from '../../lib/a11y';
 import { memTag } from '../../lib/derive';
 import { MEMORY_GROUPS } from '../../lib/data';
 import type { MemoryItem } from '../../lib/types';
@@ -10,7 +11,8 @@ function MemoryRow({ m }: { m: MemoryItem }) {
   const metaLine = m.date + ' · ' + m.time + ' · ' + m.place + (photosOn && m.photos ? ' · ' + m.photos + ' photos' : '');
   return (
     <div
-      onClick={() => store.set((s) => ({ expanded: s.expanded === m.id ? null : m.id }))}
+      {...pressable(() => store.set((s) => ({ expanded: s.expanded === m.id ? null : m.id })))}
+      aria-expanded={exp}
       className="hov-neutral-100"
       style={{ cursor: 'pointer', borderBottom: '1px solid var(--color-neutral-300)', padding: '10px 16px' }}
     >
