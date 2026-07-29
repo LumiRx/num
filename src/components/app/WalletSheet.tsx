@@ -1,7 +1,8 @@
 // Stars wallet sheet — balance, instant top-up packs, payment methods,
 // and the activity/receipts ledger.
+import { useRef } from 'react';
 import { useApp } from '../../lib/store';
-import { pressable } from '../../lib/a11y';
+import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase } from '../../lib/derive';
 import { buyPack } from '../../lib/concierge';
 
@@ -16,9 +17,11 @@ export default function WalletSheet() {
   const stars = useApp((s) => s.stars);
   const bought = useApp((s) => s.bought);
   const txns = useApp((s) => s.txns);
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, ref);
 
   return (
-    <div style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div ref={ref} style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={{ padding: 16, borderBottom: '2px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
           <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>STARS — YOUR BALANCE</div>

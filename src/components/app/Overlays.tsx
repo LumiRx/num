@@ -1,7 +1,8 @@
 // Full-screen overlays: the ferry-disruption push banner, the photos
 // permission dialog, and the voice interaction layer.
+import { useRef } from 'react';
 import { useApp } from '../../lib/store';
-import { pressable } from '../../lib/a11y';
+import { pressable, useDialogFocus } from '../../lib/a11y';
 import { closeVoice, permAllow, permDeny } from '../../lib/concierge';
 
 export function NotifBanner() {
@@ -17,10 +18,12 @@ export function NotifBanner() {
 
 export function PermissionDialog() {
   const on = useApp((s) => s.permOn);
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(on, ref);
   if (!on) return null;
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.45)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 34px' }}>
-      <div role="dialog" aria-modal="true" style={{ background: 'var(--color-bg)', border: '2px solid var(--color-text)', width: '100%' }}>
+      <div ref={ref} role="dialog" aria-modal="true" style={{ background: 'var(--color-bg)', border: '2px solid var(--color-text)', width: '100%' }}>
         <div style={{ padding: '16px 16px 12px' }}>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>“Num” would like to access your photos</div>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-700)', marginTop: 6, lineHeight: 1.5 }}>
@@ -42,11 +45,14 @@ export function PermissionDialog() {
 
 export function VoiceOverlay() {
   const voice = useApp((s) => s.voice);
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(voice !== 0, ref);
   if (voice === 0) return null;
   const label = ['', 'LISTENING', 'ON IT…', 'DONE'][voice] || '';
   const text = voice === 2 ? '“Move my massage to five.”' : voice === 3 ? 'Massage moved to 17:00 — calendar updated, nothing else touched.' : '';
   return (
     <div
+      ref={ref}
       {...pressable(closeVoice)}
       aria-label="Dismiss voice"
       style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.93)', zIndex: 80, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 22px 70px', color: '#fff', cursor: 'pointer' }}

@@ -1,7 +1,8 @@
 // Share sheet — live-updates and hide-costs toggles, the share link with
 // copy/kill, and the killed state.
+import { useRef } from 'react';
 import { store, useApp } from '../../lib/store';
-import { pressable } from '../../lib/a11y';
+import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, checkboxStyle } from '../../lib/derive';
 import { SHARE_LINK } from '../../lib/data';
 
@@ -12,6 +13,8 @@ export default function ShareSheet() {
   const copied = useApp((s) => s.copied);
   const killed = useApp((s) => s.killed);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, ref);
 
   const copyLink = () => {
     try {
@@ -23,7 +26,7 @@ export default function ShareSheet() {
   };
 
   return (
-    <div style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div ref={ref} style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={{ padding: 16, borderBottom: '2px solid var(--color-divider)' }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE PLAN</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 18, marginTop: 6 }}>Viv’s SE Asia loop</div>
