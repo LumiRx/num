@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1e">
+<title>NUM for Business — Edinburgh</title>
+<!--
+  NUM Business dashboard — production design, merchant-facing.
+  Phone-first: a licensee opens this mid-service, one-handed.
+
+  Two modes, because both signed Edinburgh businesses are covered:
+    · hospitality — BOOKING-led (tables tonight)
+    · tours       — CAPACITY-led (seats on departures)
+  Toggle in the header switches the whole data model, not just labels.
+
+  Charts are real SVG computed from the data below — never AI-generated images.
+  Brand imagery (the hero) is Higgsfield-generated: assets/edinburgh_hero.webp
+  Spec: DASHBOARD_SYSTEM.md · Offering: docs/BUSINESS_OFFERING.md
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0a0f1e; --bg-1:#101828; --bg-2:#182238;
+    --line:#22304d; --line-soft:#1a2740;
+    --ink:#f4f7fd; --ink-2:#aeb9d2; --ink-3:#71809f;
+    --teal:#2fd4c2; --teal-deep:#128d80; --sand:#e8cf9f;
+    --coral:#ff6f61; --green:#3ddc97; --amber:#ffc466;
+    --r:16px; --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px;
+    --tab-h:64px;
+    --f:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    background:#05080f;color:var(--ink);font-family:var(--f);line-height:1.5;
+    -webkit-font-smoothing:antialiased;font-feature-settings:"cv05","cv08";
+    display:flex;justify-content:center;align-items:flex-start;min-height:100vh;
+  }
+  #phone{width:100%;max-width:440px;min-height:100vh;background:var(--bg-0);position:relative;display:flex;flex-direction:column}
+  @media(min-width:768px){
+    body{padding:28px 0;background:radial-gradient(1100px 560px at 50% -80px,#12203f,#05080f 62%)}
+    #phone{min-height:880px;max-height:94vh;border-radius:42px;border:8px solid #1c2438;box-shadow:0 40px 90px rgba(0,0,0,.6);overflow:hidden}
+  }
+  /* ── header with brand imagery ── */
+  header{position:relative;flex:none;border-bottom:1px solid var(--line-soft);overflow:hidden}
+  header .art{position:absolute;inset:0;background-image:url("assets/edinburgh_hero.webp");background-size:cover;background-position:right center;opacity:.85}
+  header .scrim{position:absolute;inset:0;background:linear-gradient(90deg,var(--bg-0) 18%,rgba(10,15,30,.72) 55%,rgba(10,15,30,.25))}
+  header .inner{position:relative;padding:calc(env(safe-area-inset-top) + 16px) var(--s4) var(--s4)}
+  .biz-row{display:flex;align-items:center;gap:var(--s2)}
+  .biz{font-size:17px;font-weight:800;letter-spacing:-.02em}
+  .loc{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+  .hdr-sp{flex:1}
+  .live{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--green);background:rgba(61,220,151,.13);border:1px solid rgba(61,220,151,.3);border-radius:99px;padding:3px 9px}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--green);animation:p 2s infinite}
+  @keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+  .modes{display:flex;gap:5px;margin-top:var(--s3)}
+  .modes button{flex:1;font-family:var(--f);font-size:11.5px;font-weight:700;padding:7px 6px;border-radius:9px;cursor:pointer;
+    background:rgba(24,34,56,.75);border:1px solid var(--line);color:var(--ink-2);backdrop-filter:blur(6px)}
+  .modes button.on{background:var(--teal);border-color:var(--teal);color:#04211d}
+  /* ── scroll ── */
+  main{flex:1;overflow-y:auto;padding:var(--s4) var(--s4) calc(var(--tab-h) + env(safe-area-inset-bottom) + 24px)}
+  /* ── bands (decision latency) ── */
+  .band{margin-bottom:var(--s5)}
+  .btag{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:var(--s3)}
+  .btag.now{color:var(--coral)}
+  .btag .cnt{background:var(--coral);color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;letter-spacing:0}
+  /* ── cards ── */
+  .card{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:var(--r);padding:var(--s4);margin-bottom:var(--s3);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .card.urgent{border-color:rgba(255,111,97,.45);background:linear-gradient(160deg,rgba(255,111,97,.07),var(--bg-1))}
+  .card.good{border-color:rgba(61,220,151,.35);background:linear-gradient(160deg,rgba(61,220,151,.06),var(--bg-1))}
+  .card.brand{border-color:rgba(47,212,194,.35);background:linear-gradient(160deg,rgba(47,212,194,.07),var(--bg-1))}
+  .row{display:flex;align-items:center;gap:var(--s2)}
+  .grow{flex:1;min-width:0}
+  h3{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .sub{font-size:12.5px;color:var(--ink-2)}
+  .tiny{font-size:11px;color:var(--ink-3)}
+  .num{font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-weight:700}
+  /* ── chips ── */
+  .chip{display:inline-flex;align-items:center;gap:4px;border-radius:99px;padding:3px 9px;font-size:10.5px;font-weight:700;white-space:nowrap}
+  .c-teal{background:rgba(47,212,194,.14);color:var(--teal)}
+  .c-sand{background:rgba(232,207,159,.15);color:var(--sand)}
+  .c-coral{background:rgba(255,111,97,.16);color:var(--coral)}
+  .c-green{background:rgba(61,220,151,.15);color:var(--green)}
+  .c-amber{background:rgba(255,196,102,.15);color:var(--amber)}
+  .c-grey{background:rgba(138,151,181,.15);color:var(--ink-2)}
+  /* ── buttons ── */
+  .btn{border:none;border-radius:11px;padding:12px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--f);min-height:44px}
+  .btn.primary{background:var(--teal);color:#04211d}
+  .btn.primary:active{background:var(--teal-deep)}
+  .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink-2)}
+  .btn.danger{background:none;border:1px solid rgba(255,111,97,.4);color:var(--coral)}
+  .btn.done{background:rgba(61,220,151,.15);color:var(--green);pointer-events:none}
+  .btn.sm{padding:8px 13px;min-height:36px;font-size:12.5px;border-radius:9px}
+  .btnrow{display:flex;gap:var(--s2);margin-top:var(--s3)}
+  .btnrow .btn{flex:1}
+  /* ── stat grid ── */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s3)}
+  .stat{background:var(--bg-1);border:1px solid var(--line-soft);border-radius:14px;padding:var(--s3) var(--s4)}
+  .stat .l{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+  .stat .v{font-size:24px;font-weight:800;letter-spacing:-.03em;margin-top:3px;line-height:1}
+  .stat .d{font-size:11px;font-weight:700;margin-top:4px}
+  .up{color:var(--green)} .down{color:var(--coral)} .flat{color:var(--ink-3)}
+  /* ── charts ── */
+  .chart{margin-top:var(--s3)}
+  .chart svg{display:block;width:100%;height:auto}
+  .chart text{font-family:var(--f)}
+  .note{font-size:11.5px;color:var(--ink-3);margin-top:var(--s2);line-height:1.45}
+  .legend{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s3);margin-top:var(--s3)}
+  .key{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2)}
+  .key i{width:9px;height:9px;border-radius:3px}
+  .meter{height:8px;border-radius:99px;background:var(--bg-2);overflow:hidden;margin-top:var(--s2)}
+  .meter i{display:block;height:100%;border-radius:99px}
+  /* ── tabs ── */
+  nav{position:absolute;left:0;right:0;bottom:0;height:calc(var(--tab-h) + env(safe-area-inset-bottom));
+    background:rgba(13,19,38,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line-soft);
+    display:flex;padding:0 var(--s1) env(safe-area-inset-bottom)}
+  nav button{flex:1;background:none;border:none;color:var(--ink-3);font-size:10.5px;font-weight:600;cursor:pointer;font-family:var(--f);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:var(--tab-h);position:relative}
+  nav button .ic{font-size:19px;line-height:1;filter:grayscale(.4);opacity:.8}
+  nav button.on{color:var(--teal)}
+  nav button.on .ic{filter:none;opacity:1}
+  nav button.on::after{content:"";position:absolute;top:0;left:28%;right:28%;height:2.5px;border-radius:0 0 3px 3px;background:var(--teal)}
+  nav .badge{position:absolute;top:9px;right:50%;transform:translateX(20px);background:var(--coral);color:#fff;font-size:9px;font-weight:800;border-radius:99px;padding:1px 5px}
+  /* ── misc ── */
+  .kv{display:flex;justify-content:space-between;gap:var(--s3);padding:11px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--ink-2)}
+  .kv .v{font-weight:600;text-align:right}
+  .quote{background:rgba(47,212,194,.08);border:1px solid rgba(47,212,194,.25);border-radius:12px;padding:var(--s3) var(--s4);font-size:13.5px;line-height:1.55}
+  .empty{padding:26px 14px;text-align:center;color:var(--ink-3);font-size:13px;line-height:1.55}
+  .fade{animation:f .25s ease}
+  @keyframes f{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .toast{position:absolute;bottom:calc(var(--tab-h) + 18px);left:50%;transform:translateX(-50%) translateY(18px);
+    background:var(--bg-2);border:1px solid var(--line);padding:11px 18px;border-radius:99px;font-size:13px;font-weight:600;
+    opacity:0;transition:all .25s;z-index:60;white-space:nowrap;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="phone">
+
+  <header>
+    <div class="art"></div><div class="scrim"></div>
+    <div class="inner">
+      <div class="biz-row">
+        <div class="grow">
+          <div class="biz" id="bizName">The Bothy Kitchen</div>
+          <div class="loc" id="bizLoc">Grassmarket, Edinburgh</div>
+        </div>
+        <span class="live"><i></i>LIVE</span>
+      </div>
+      <div class="modes">
+        <button id="m-hosp" class="on" onclick="setMode('hosp')">🍽 Hospitality</button>
+        <button id="m-tour" onclick="setMode('tour')">🎟 Tours &amp; activities</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main"></main>
+
+  <nav id="tabs"></nav>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ════════ data — two business models ════════ */
+const DATA = {
+  hosp: {
+    name:"The Bothy Kitchen", loc:"Grassmarket, Edinburgh",
+    today:{ bookings:9, covers:31, value:1240, accept:92 },
+    pending:[
+      {id:"b1", who:"Spanish couple", pax:2, when:"Tonight 19:30", note:"Window table if possible — anniversary", value:96, state:"pending"},
+      {id:"b2", who:"Family, 2 kids", pax:4, when:"Tonight 18:00", note:"One vegetarian, one gluten-free", value:148, state:"pending"},
+      {id:"b3", who:"Solo traveller", pax:1, when:"Tomorrow 12:30", note:"Asked for a bar seat", value:28, state:"pending"},
+    ],
+    week:[ {d:"Mon",v:6},{d:"Tue",v:4},{d:"Wed",v:8},{d:"Thu",v:11},{d:"Fri",v:17},{d:"Sat",v:21},{d:"Sun",v:9} ],
+    revenue:[ {w:"W1",v:820},{w:"W2",v:1140},{w:"W3",v:1310},{w:"W4",v:1680} ],
+    dead:[ {slot:"Tue 17:00–19:00", filled:38},{slot:"Wed 17:00–19:00", filled:52},{slot:"Sun 20:00–21:30", filled:24} ],
+    asks:[ {t:"Vegetarian / vegan mains", n:14, tag:"menu"},
+           {t:"Gluten-free options", n:9, tag:"menu"},
+           {t:"Table before 18:00 (pre-theatre)", n:11, tag:"timing"},
+           {t:"Dog-friendly seating", n:6, tag:"space"} ],
+    reviews:[ {who:"Marta L.", stars:5, txt:"Booked through NUM in one message. Best haggis I've had.", when:"2d"},
+              {who:"Tom R.", stars:4, txt:"Lovely food, tight room. Worth it for the pre-theatre slot.", when:"4d"} ],
+    listing:{ desc:"Modern Scottish small plates on the Grassmarket — open kitchen, local produce, pre-theatre menu until 18:30. Two minutes from the Castle.",
+              hours:"Tue–Sun 12:00–22:00 · closed Mon", promo:"Free dram with pre-theatre menu (via NUM)", photoDays:6 }
+  },
+  tour: {
+    name:"Old Town Ghost Walks", loc:"Royal Mile, Edinburgh",
+    today:{ bookings:14, seats:22, value:476, accept:96 },
+    pending:[
+      {id:"t1", who:"Group booking", pax:6, when:"Thu 19:00 departure", note:"Corporate group — asked about private option", value:204, state:"pending"},
+      {id:"t2", who:"German family", pax:4, when:"Fri 20:30 departure", note:"Kids aged 9 and 12 — is it too scary?", value:136, state:"pending"},
+    ],
+    departures:[
+      {when:"Tonight 19:00", cap:20, sold:18},
+      {when:"Tonight 20:30", cap:20, sold:11},
+      {when:"Thu 19:00", cap:20, sold:14},
+      {when:"Thu 20:30", cap:20, sold:6},
+      {when:"Fri 19:00", cap:20, sold:19},
+    ],
+    week:[ {d:"Mon",v:9},{d:"Tue",v:7},{d:"Wed",v:12},{d:"Thu",v:14},{d:"Fri",v:22},{d:"Sat",v:26},{d:"Sun",v:15} ],
+    revenue:[ {w:"W1",v:1180},{w:"W2",v:1440},{w:"W3",v:1620},{w:"W4",v:2130} ],
+    asks:[ {t:"Is it suitable for children?", n:18, tag:"suitability"},
+           {t:"Wheelchair / step-free route", n:7, tag:"access"},
+           {t:"Earlier departure (before dark)", n:12, tag:"timing"},
+           {t:"Private group bookings", n:8, tag:"product"} ],
+    reviews:[ {who:"Ana P.", stars:5, txt:"Guide was brilliant. Booked 20 minutes before it started.", when:"1d"},
+              {who:"Chris M.", stars:5, txt:"Genuinely creepy in the vaults. Kids loved it.", when:"3d"} ],
+    listing:{ desc:"90-minute guided ghost walk through the Old Town closes and vaults. Small groups, costumed guides, departs from the Mercat Cross nightly.",
+              hours:"Nightly 19:00 &amp; 20:30 · year-round", promo:"Kids go free with 2 adults (via NUM)", photoDays:19 }
+  }
+};
+
+const S = { mode:"hosp", tab:"today" };
+const D = () => DATA[S.mode];
+const $ = id => document.getElementById(id);
+const gbp = n => "£" + (n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/,"") + "k" : n);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),1900); }
+
+/* ════════ SVG charts — computed from data, never images ════════ */
+let uid = 0;
+
+function barChart(rows, {key="d", val="v", unit="", accentLast=true} = {}){
+  const W=320,H=132,padL=6,padR=6,padT=20,padB=22;
+  const cw=W-padL-padR, ch=H-padT-padB;
+  const max=Math.max(...rows.map(r=>r[val]))||1;
+  const bw=Math.min(30, cw/rows.length*0.6);
+  const bars=rows.map((r,i)=>{
+    const x=padL+cw*(i+0.5)/rows.length;
+    const h=Math.max(2,(r[val]/max)*ch), y=padT+ch-h;
+    const peak=accentLast && r[val]===max;
+    return `<rect x="${(x-bw/2).toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4"
+              fill="${peak?"var(--teal)":"var(--teal-deep)"}" opacity="${peak?1:.62}"/>
+            <text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700"
+              fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${r[val]}${unit}</text>
+            <text x="${x.toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${r[key]}</text>`;
+  }).join("");
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}">${bars}</svg></div>`;
+}
+
+function lineChart(rows, {key="w", val="v", fmt=(v=>v)} = {}){
+  const W=320,H=140,padL=40,padR=14,padT=20,padB=22;
+  const cw=W-padL-padR, ch=H-padT-padB;
+  const vals=rows.map(r=>r[val]); const max=Math.max(...vals)*1.18||1;
+  const y=v=>padT+ch-(v/max)*ch, x=i=>padL+cw*(rows.length===1?0.5:i/(rows.length-1));
+  const id="g"+(++uid);
+  const pts=rows.map((r,i)=>`${x(i).toFixed(1)},${y(r[val]).toFixed(1)}`).join(" ");
+  const grid=[0,.5,1].map(f=>{const v=max*f;return `
+    <line x1="${padL}" x2="${W-padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line-soft)" stroke-width="1" ${f>0?'stroke-dasharray="3 4"':''}/>
+    <text x="${padL-6}" y="${y(v)+3.5}" text-anchor="end" font-size="9.5" fill="var(--ink-3)" style="font-variant-numeric:tabular-nums">${fmt(Math.round(v))}</text>`}).join("");
+  const dots=rows.map((r,i)=>`
+    <circle cx="${x(i).toFixed(1)}" cy="${y(r[val]).toFixed(1)}" r="3.4" fill="var(--bg-1)" stroke="var(--teal)" stroke-width="2.2"/>
+    <text x="${x(i).toFixed(1)}" y="${(y(r[val])-10).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${fmt(r[val])}</text>
+    <text x="${x(i).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${r[key]}</text>`).join("");
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--teal)" stop-opacity=".24"/><stop offset="1" stop-color="var(--teal)" stop-opacity="0"/>
+    </linearGradient></defs>
+    ${grid}
+    <polygon points="${x(0).toFixed(1)},${(padT+ch).toFixed(1)} ${pts} ${x(rows.length-1).toFixed(1)},${(padT+ch).toFixed(1)}" fill="url(#${id})"/>
+    <polyline points="${pts}" fill="none" stroke="var(--teal)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}
+  </svg></div>`;
+}
+
+/* capacity chart — tours only. Shows sold vs empty per departure. */
+function capacityChart(deps){
+  return deps.map(d=>{
+    const pct=Math.round(d.sold/d.cap*100);
+    const left=d.cap-d.sold;
+    const col = pct>=90?"var(--green)" : pct>=60?"var(--teal)" : "var(--amber)";
+    return `<div style="margin-bottom:12px">
+      <div class="row" style="margin-bottom:5px">
+        <span class="sub grow">${esc(d.when)}</span>
+        <span class="tiny num" style="color:var(--ink)">${d.sold}/${d.cap}</span>
+        ${left>0?`<span class="chip ${left>=8?"c-amber":"c-grey"}">${left} left</span>`:`<span class="chip c-green">full</span>`}
+      </div>
+      <div class="meter"><i style="width:${pct}%;background:${col}"></i></div>
+    </div>`;
+  }).join("");
+}
+
+/* ════════ screens ════════ */
+function scrToday(){
+  const d=D(), t=d.today;
+  const pend=d.pending.filter(p=>p.state==="pending");
+
+  const pendCards = d.pending.map((p,i)=>{
+    if(p.state!=="pending"){
+      return `<div class="card"><div class="row"><div class="grow"><h3>${esc(p.who)}</h3><div class="tiny">${esc(p.when)}</div></div>
+        <span class="chip ${p.state==="accepted"?"c-green":"c-grey"}">${p.state==="accepted"?"✓ Accepted":"Declined"}</span></div></div>`;
+    }
+    return `<div class="card urgent">
+      <div class="row"><div class="grow"><h3>${esc(p.who)} · ${p.pax} ${S.mode==="tour"?"seats":"covers"}</h3>
+        <div class="sub">${esc(p.when)}</div></div>
+        <span class="chip c-sand num">${gbp(p.value)}</span></div>
+      <div class="sub" style="margin-top:9px">💬 ${esc(p.note)}</div>
+      <div class="btnrow">
+        <button class="btn primary" onclick="act(${i},true)">Accept</button>
+        <button class="btn danger" onclick="act(${i},false)">Decline</button>
+      </div></div>`;
+  }).join("");
+
+  const secondStat = S.mode==="tour"
+    ? `<div class="stat"><div class="l">Seats</div><div class="v num">${t.seats}</div><div class="d up">▲ 8</div></div>`
+    : `<div class="stat"><div class="l">Covers</div><div class="v num">${t.covers}</div><div class="d up">▲ 12%</div></div>`;
+
+  const capBlock = S.mode==="tour" ? `
+    <div class="band">
+      <div class="btag">Upcoming departures</div>
+      <div class="card">${capacityChart(d.departures)}
+        <div class="note">Thursday 20:30 has 14 seats unsold — that's ${gbp(14*34)} you lose at departure. Tell NUM and it will steer people there.</div>
+      </div>
+    </div>` : `
+    <div class="band">
+      <div class="btag">Quiet windows NUM is filling</div>
+      <div class="card">
+        ${d.dead.map(s=>`<div style="margin-bottom:12px">
+          <div class="row" style="margin-bottom:5px"><span class="sub grow">${esc(s.slot)}</span>
+          <span class="tiny num" style="color:var(--ink)">${s.filled}% filled</span></div>
+          <div class="meter"><i style="width:${s.filled}%;background:${s.filled>=50?"var(--teal)":"var(--amber)"}"></i></div>
+        </div>`).join("")}
+        <div class="note">These are the slots you told us to prioritise. Wednesday is improving; Sunday late still needs work.</div>
+      </div>
+    </div>`;
+
+  return `
+    ${pend.length ? `<div class="band">
+      <div class="btag now">Needs you now <span class="cnt">${pend.length}</span></div>
+      ${pendCards}
+    </div>` : `<div class="band"><div class="btag">Requests</div>
+      <div class="card"><div class="empty">All caught up.<br>New requests land here the moment a guest asks NUM.</div></div></div>`}
+
+    <div class="band">
+      <div class="btag">Today</div>
+      <div class="stats">
+        <div class="stat"><div class="l">Bookings</div><div class="v num">${t.bookings}</div><div class="d up">▲ 3</div></div>
+        ${secondStat}
+        <div class="stat"><div class="l">Value</div><div class="v num">${gbp(t.value)}</div><div class="d up">▲ 18%</div></div>
+      </div>
+    </div>
+
+    ${capBlock}
+
+    <div class="band">
+      <div class="btag">This week</div>
+      <div class="card">
+        <div class="row"><h3 class="grow">Bookings by day</h3><span class="chip c-teal">via NUM</span></div>
+        ${barChart(d.week)}
+        <div class="note">Saturday is your peak. Midweek is where NUM has the most room to help.</div>
+      </div>
+    </div>`;
+}
+
+function scrListing(){
+  const d=D(), L=d.listing;
+  const fresh = L.photoDays<=7 ? ["c-green","fresh"] : L.photoDays<=21 ? ["c-amber","ageing"] : ["c-coral","stale"];
+  return `
+    <div class="band">
+      <div class="btag">How NUM describes you</div>
+      <div class="card brand">
+        <div class="tiny" style="margin-bottom:7px">NUM says →</div>
+        <div class="quote">${esc(L.desc)}</div>
+        <div class="btnrow"><button class="btn ghost" onclick="toast('Editor — v3')">Edit description</button></div>
+      </div>
+      <div class="note">This is the exact wording guests hear. Change it any time — NUM can only say what you approve here.</div>
+    </div>
+
+    <div class="band">
+      <div class="btag">Details</div>
+      <div class="card">
+        <div class="kv"><span class="k">Photos</span><span class="v">5 · ${L.photoDays}d old <span class="chip ${fresh[0]}">${fresh[1]}</span></span></div>
+        <div class="kv"><span class="k">Hours</span><span class="v">${L.hours}</span></div>
+        <div class="kv"><span class="k">Promotion</span><span class="v">${esc(L.promo)}</span></div>
+        <div class="kv"><span class="k">Commission</span><span class="v">10% on completed</span></div>
+      </div>
+      ${L.photoDays>14?`<div class="card" style="border-color:rgba(255,196,102,.4)">
+        <div class="row"><span style="font-size:18px">📸</span><div class="grow sub">Your photos are ${L.photoDays} days old. Fresh photos get recommended more often — two minutes on your phone is enough.</div></div>
+        <div class="btnrow"><button class="btn primary" onclick="toast('Upload — v3')">Add photos</button></div>
+      </div>`:""}
+    </div>
+
+    <div class="band">
+      <div class="btag">Verification</div>
+      <div class="card good">
+        <div class="row"><span style="font-size:18px">✓</span><div class="grow"><h3>Verified by 5arz</h3>
+        <div class="sub">Approved ${S.mode==="tour"?"12":"18"} days ago · guests see a verified badge</div></div></div>
+      </div>
+    </div>`;
+}
+
+function scrInsights(){
+  const d=D();
+  const maxAsk=Math.max(...d.asks.map(a=>a.n));
+  return `
+    <div class="band">
+      <div class="btag">Revenue via NUM</div>
+      <div class="card">
+        <div class="row"><h3 class="grow">Last 4 weeks</h3><span class="chip c-green num">+${Math.round((d.revenue[3].v/d.revenue[0].v-1)*100)}%</span></div>
+        ${lineChart(d.revenue,{fmt:v=>"£"+(v>=1000?(v/1000).toFixed(1)+"k":v)})}
+        <div class="note">Booking value NUM sourced, before commission. Growing week on week.</div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="btag">What guests asked for</div>
+      ${d.asks.map(a=>`<div class="card" style="margin-bottom:8px">
+        <div class="row"><div class="grow"><h3 style="font-size:13.5px">${esc(a.t)}</h3></div>
+          <span class="chip c-grey">${a.tag}</span><span class="tiny num" style="color:var(--ink)">×${a.n}</span></div>
+        <div class="meter"><i style="width:${a.n/maxAsk*100}%;background:var(--sand)"></i></div>
+      </div>`).join("")}
+      <div class="note">Anonymised demand from NUM conversations that mentioned you or your category. Free market research — the top item is what you're turning away.</div>
+    </div>
+
+    <div class="band">
+      <div class="btag">Reviews</div>
+      ${d.reviews.map(r=>`<div class="card">
+        <div class="row"><div class="grow"><h3>${esc(r.who)} <span style="color:var(--amber)">${"★".repeat(r.stars)}</span></h3>
+          <div class="tiny">${r.when} ago</div></div>
+          <button class="btn ghost sm" onclick="toast('Reply sent')">Reply</button></div>
+        <div class="sub" style="margin-top:8px">${esc(r.txt)}</div>
+      </div>`).join("")}
+    </div>`;
+}
+
+/* ════════ actions + render ════════ */
+function act(i, yes){
+  D().pending[i].state = yes ? "accepted" : "declined";
+  toast(yes ? "Booking accepted ✓" : "Declined — guest told politely");
+  render();
+}
+function setMode(m){ S.mode=m; S.tab="today"; render(); $("main").scrollTop=0; }
+function setTab(t){ S.tab=t; render(); $("main").scrollTop=0; }
+
+const TABS=[["today","📥","Today"],["listing","🖼","Listing"],["insights","💡","Insights"]];
+const SCREENS={today:scrToday, listing:scrListing, insights:scrInsights};
+
+function render(){
+  const d=D();
+  $("bizName").textContent=d.name;
+  $("bizLoc").textContent=d.loc;
+  $("m-hosp").classList.toggle("on", S.mode==="hosp");
+  $("m-tour").classList.toggle("on", S.mode==="tour");
+  const pend=d.pending.filter(p=>p.state==="pending").length;
+  $("tabs").innerHTML=TABS.map(([id,ic,label])=>
+    `<button class="${S.tab===id?"on":""}" onclick="setTab('${id}')">
+       <span class="ic">${ic}</span>${label}
+       ${id==="today"&&pend?`<span class="badge">${pend}</span>`:""}
+     </button>`).join("");
+  $("main").innerHTML=`<div class="fade">${SCREENS[S.tab]()}</div>`;
+}
+render();
+</script>
+</body>
+</html>
