@@ -25,6 +25,21 @@ Your privacy policy is genuinely good — PDPA-aware, well-written, better than 
 
 ---
 
+## 🚀 Fastest path — two files, two publishes
+
+If you only read one section, read this. These two files are complete and verified — no fragments to place, no sections to renumber:
+
+| File | What to do |
+|---|---|
+| **`privacy_REPLACE_FROM_SECTION_5.html`** | On `/privacy`, delete everything from the "5 · The business directory" heading down to (not including) the Thai summary — paste this in its place. New §5 SMS is included and §6–§12 are already renumbered. Update the "Effective" date. |
+| **`sms_page_COMPLETE.html`** | Publish as-is at **`itsnum.com/sms`**. Point the form at your real endpoint, and make the server store phone + consent text + timestamp + IP. |
+
+Then update the campaign with the §4 description below, change the opt-in URL to `/sms`, and resubmit.
+
+*(The two smaller files — `privacy_sms_section.html` and `optin_consent_block.html` — are the same content as isolated fragments if you'd rather integrate by hand.)*
+
+---
+
 ## 2 · Fix #1 — Add this section to the privacy policy
 
 **Paste-ready HTML:** `privacy_sms_section.html` (matches your existing page structure — drop it in as a new §, ideally numbered **§5** right after "When we share information", then renumber the rest).
