@@ -333,5 +333,55 @@
   "ok": true,
   "count": 912,
   "at": "2026-07-27T23:02:08.262Z"
+ },
+ "abu-dhabi": {
+  "ok": true,
+  "count": 4574,
+  "at": "2026-07-30T18:42:34.764Z"
+ },
+ "sharjah": {
+  "ok": true,
+  "count": 6408,
+  "at": "2026-07-30T18:42:54.246Z"
+ },
+ "ajman": {
+  "ok": true,
+  "count": 1986,
+  "at": "2026-07-30T18:43:13.256Z"
+ },
+ "ras-al-khaimah": {
+  "ok": true,
+  "count": 206,
+  "at": "2026-07-30T18:43:29.174Z"
+ },
+ "fujairah": {
+  "ok": true,
+  "count": 326,
+  "at": "2026-07-30T18:46:47.627Z"
+ },
+ "al-ain": {
+  "ok": true,
+  "count": 649,
+  "at": "2026-07-30T18:47:05.584Z"
+ },
+ "los-angeles": {
+  "ok": true,
+  "count": 11869,
+  "at": "2026-07-30T18:47:54.263Z"
+ },
+ "orange-county": {
+  "ok": true,
+  "count": 7375,
+  "at": "2026-07-30T18:48:38.958Z"
+ },
+ "miami": {
+  "ok": true,
+  "count": 3139,
+  "at": "2026-07-30T18:49:01.591Z"
+ },
+ "new-york": {
+  "ok": true,
+  "count": 19992,
+  "at": "2026-07-30T18:51:10.123Z"
  }
 }

@@ -48,7 +48,9 @@ body {
 .app-shell {
   position: relative;
   width: 100%;
-  height: 100dvh;
+  /* --vvh tracks visualViewport.height (set in App.tsx) so the on-screen
+     keyboard shrinks the shell instead of hiding the input. */
+  height: var(--vvh, 100dvh);
   overflow: hidden;
 }
 @media (min-width: 520px) {

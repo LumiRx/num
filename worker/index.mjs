@@ -14,18 +14,23 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
+import { pickLane, smallReply, guardReply } from './router.mjs';
 
 const MODEL = 'claude-opus-5';
 
-async function askNum(client, messages, state, grounding) {
+const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
+
+async function askNum(client, messages, state, grounding, profile, extraSystem) {
+  const system = [
+    { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: contextBlock({ place: grounding.place, partners: grounding.partners, guide: grounding.guide, profile }) },
+    { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
+  ];
+  if (extraSystem) system.push({ type: 'text', text: extraSystem });
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
-    system: [
-      { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: contextBlock({ place: grounding.place, partners: grounding.partners, guide: grounding.guide }) },
-      { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
-    ],
+    system,
     output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
     messages,
   });
@@ -127,16 +132,57 @@ export default {
       const lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
       const grounding = await groundRequest(env, { userText: lastUser, statedPlace: parsed.place, cf: request.cf });
 
+      // Profile + trip state carry long-term context now, so the model only
+      // needs the recent turns.
+      const history = parsed.messages.slice(-14);
+      const profile = parsed.state?.profile ?? {};
+
+      // Small lane: chit-chat goes to Workers AI, no Claude call at all. Any
+      // wobble — HANDOFF, null, or a guard failure — falls through to the big
+      // lane rather than to a worse answer.
+      const lane = pickLane(lastUser, parsed.state ?? {});
+      if (lane === 'small') {
+        const small = await smallReply(env, history, profile, grounding.place?.name ?? null);
+        if (small && !/\bHANDOFF\b/.test(small)) {
+          const guard = guardReply(small);
+          if (guard.ok) {
+            return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: grounding.place?.name ?? null });
+          }
+        }
+      }
+
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-      let result;
-      try {
-        result = await askNum(client, parsed.messages, parsed.state, grounding);
-      } catch (err) {
-        // Grammar compilation is cached once it succeeds but can time out on a
-        // cold schema — one retry usually lands on the warmed cache.
-        if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
-        await new Promise((r) => setTimeout(r, 1500));
-        result = await askNum(client, parsed.messages, parsed.state, grounding);
+      const callNum = async (extraSystem) => {
+        try {
+          return await askNum(client, history, parsed.state, grounding, profile, extraSystem);
+        } catch (err) {
+          // Grammar compilation is cached once it succeeds but can time out on a
+          // cold schema — one retry usually lands on the warmed cache.
+          if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
+          await new Promise((r) => setTimeout(r, 1500));
+          return askNum(client, history, parsed.state, grounding, profile, extraSystem);
+        }
+      };
+
+      let result = await callNum();
+      // Output guard: never let leaked JSON scaffolding reach the user. One
+      // corrective retry, then salvage, then the safe fallback.
+      const guard = guardReply(result.reply);
+      if (guard.ok) {
+        result = { ...result, reply: guard.cleaned };
+      } else {
+        const retry = await callNum(
+          'Your previous output leaked JSON structure into the reply field. The reply field must contain ONLY clean conversational prose.',
+        );
+        const retryGuard = guardReply(retry.reply);
+        if (retryGuard.ok) {
+          result = { ...retry, reply: retryGuard.cleaned };
+        } else {
+          const cleaned = retryGuard.cleaned ?? guard.cleaned;
+          result = cleaned
+            ? { ...retry, reply: cleaned }
+            : { reply: FALLBACK_REPLY, card: null, chips: null, actions: [] };
+        }
       }
       // Capability gaps go to the team dashboard without delaying the reply.
       ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));

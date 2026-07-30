@@ -90,6 +90,8 @@ export interface AppState {
   place: string | null;
   /** First-run onboarding completed (a place is known or demo entered). */
   onboarded: boolean;
+  /** Facts Num has learned about the traveller ('remember' actions). */
+  profile: Record<string, string>;
 
   calOpen: boolean;
   calM: 0 | 1; // month index: 0 = Jul 2026, 1 = Aug 2026

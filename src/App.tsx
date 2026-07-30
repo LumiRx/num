@@ -23,6 +23,23 @@ export default function App() {
   const standalone = useStandalone();
   const showCanvas = new URLSearchParams(window.location.search).has('canvas');
 
+  // Installed-app keyboard fix: the on-screen keyboard shrinks the visual
+  // viewport but not 100dvh, hiding the input. Track the real height in --vvh
+  // so the shell resizes with the keyboard.
+  useEffect(() => {
+    if (!standalone) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const set = () => document.documentElement.style.setProperty('--vvh', vv.height + 'px');
+    set();
+    vv.addEventListener('resize', set);
+    vv.addEventListener('scroll', set);
+    return () => {
+      vv.removeEventListener('resize', set);
+      vv.removeEventListener('scroll', set);
+    };
+  }, [standalone]);
+
   if (showCanvas) return <PrototypeCanvas />;
   if (standalone) {
     // The shell auto-sizes: full screen on a phone, a framed phone-width

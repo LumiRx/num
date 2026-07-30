@@ -121,6 +121,14 @@ export function sendChip(id: string, label: string) {
     return;
   }
 
+  // Live AI mode: chips come from the AI's replies with arbitrary ids, so the
+  // scripted branch chain below can't answer them — route through the brain.
+  if (!store.get().demo) {
+    if (!label || store.get().typing) return;
+    void askNum(label);
+    return;
+  }
+
   if (id !== 'ferry' && label) push({ who: 'u', text: label });
 
   if (id === 'dinner') {
@@ -281,11 +289,13 @@ export function permDeny() {
 // above remain untouched — the demo still works with the server off.
 
 interface NumAction {
-  type: 'add_booking' | 'update_booking' | 'add_meeting';
+  type: 'add_booking' | 'update_booking' | 'add_meeting' | 'remember';
   booking?: Booking;
   id?: string;
   patch?: Partial<Booking>;
   meeting?: Meeting;
+  key?: string;
+  value?: string;
 }
 
 interface NumReply {
@@ -302,11 +312,28 @@ function applyAction(a: NumAction) {
   else if (a.type === 'update_booking' && a.id && a.patch) setB(a.id, a.patch);
   else if (a.type === 'add_meeting' && a.meeting) {
     store.set((s) => ({ meetings: [...s.meetings.filter((m) => m.id !== a.meeting!.id), a.meeting!] }));
+  } else if (a.type === 'remember' && a.key && a.value) {
+    store.set((s) => ({ profile: { ...s.profile, [a.key!]: a.value! } }));
   }
+}
+
+/**
+ * Last line of defense against structured-output artifacts leaking into a
+ * concierge bubble: strip leading/trailing JSON-ish fragments ("reply:",
+ * ", chips: null…") and python-style {'role': …} history blocks.
+ */
+export function cleanText(t: string): string {
+  let out = t.replace(/^[^A-Za-z]*(?:reply|chips|actions|card)['"]?\s*:\s*(?:null|\[\]|\{)?[^A-Za-z]*/, '');
+  const tail = /(?:,\s*)?['"]?(?:chips|actions|card|role)['"]?\s*:\s*/.exec(out);
+  if (tail && tail.index > 0) out = out.slice(0, tail.index);
+  out = out.replace(/\{\s*['"]role['"][\s\S]*?(?:\}|$)/g, '');
+  return out.replace(/[^\S\n]{2,}/g, ' ').trim();
 }
 
 /** Send a free-typed message to the real NUM AI backend. */
 export async function askNum(text: string) {
+  // A reply is already in flight — a double-tap must not double-send.
+  if (store.get().typing) return;
   push({ who: 'u', text });
   store.set({ typing: true, chips: [] });
 
@@ -322,6 +349,10 @@ export async function askNum(text: string) {
     bookings: s.bookings,
     meetings: s.meetings,
     memories: s.memories,
+    profile: s.profile,
+    // The server's lane router only trusts the cheap model once onboarding
+    // settled a place — without this field it always pays for the big lane.
+    onboarded: s.onboarded,
   };
 
   try {

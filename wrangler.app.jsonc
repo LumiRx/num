@@ -20,6 +20,9 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
   ],
+  // Workers AI — the small lane (worker/router.mjs) answers chit-chat with a
+  // fast open model instead of spending a Claude call.
+  "ai": { "binding": "AI" },
   // Per-IP rate limit for /api/num. Counters live in Cloudflare's infra, so
   // they survive isolate churn — the in-worker Map alone does not (see
   // worker/guard.mjs). namespace_id is a per-Worker identifier, not a secret.

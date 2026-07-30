@@ -78,6 +78,20 @@ export const DESTINATIONS = [
   { slug:'honolulu',    name:'Honolulu',      country:'US', region:'Islands',tz:'Pacific/Honolulu', lat:21.307, lng:-157.858,bbox:[21.24,-157.90,21.36,-157.76] },
   { slug:'nassau',      name:'Nassau',        country:'BS', region:'Islands',tz:'America/Nassau',   lat:25.060, lng:-77.345,bbox:[25.00,-77.45,25.12,-77.25] },
   { slug:'bridgetown',  name:'Barbados',      country:'BB', region:'Islands',tz:'America/Barbados', lat:13.098, lng:-59.617,bbox:[13.03,-59.68,13.20,-59.53] },
+
+  // ─── UAE (dubai already live above) ─────────────────────────────
+  { slug:'abu-dhabi',   name:'Abu Dhabi',     country:'AE', region:'Asia',   tz:'Asia/Dubai',       lat:24.453, lng:54.377, bbox:[24.28,54.28,24.55,54.65] },
+  { slug:'sharjah',     name:'Sharjah',       country:'AE', region:'Asia',   tz:'Asia/Dubai',       lat:25.346, lng:55.421, bbox:[25.27,55.35,25.42,55.52] },
+  { slug:'ajman',       name:'Ajman',         country:'AE', region:'Asia',   tz:'Asia/Dubai',       lat:25.405, lng:55.513, bbox:[25.36,55.43,25.46,55.56] },
+  { slug:'ras-al-khaimah', name:'Ras Al Khaimah', country:'AE', region:'Asia', tz:'Asia/Dubai',    lat:25.800, lng:55.976, bbox:[25.65,55.85,25.90,56.10] },
+  { slug:'fujairah',    name:'Fujairah',      country:'AE', region:'Asia',   tz:'Asia/Dubai',       lat:25.123, lng:56.337, bbox:[25.05,56.24,25.22,56.38] },
+  { slug:'al-ain',      name:'Al Ain',        country:'AE', region:'Asia',   tz:'Asia/Dubai',       lat:24.208, lng:55.745, bbox:[24.10,55.60,24.30,55.85] },
+
+  // ─── US metros ──────────────────────────────────────────────────
+  { slug:'los-angeles', name:'Los Angeles',   country:'US', region:'Americas', tz:'America/Los_Angeles', lat:34.052, lng:-118.244, bbox:[33.92,-118.52,34.17,-118.13] },
+  { slug:'orange-county', name:'Orange County', country:'US', region:'Americas', tz:'America/Los_Angeles', lat:33.717, lng:-117.831, bbox:[33.53,-118.05,33.92,-117.65] },
+  { slug:'miami',       name:'Miami',         country:'US', region:'Americas', tz:'America/New_York', lat:25.762, lng:-80.192, bbox:[25.69,-80.32,25.87,-80.11] },
+  { slug:'new-york',    name:'New York',      country:'US', region:'Americas', tz:'America/New_York', lat:40.713, lng:-74.006, bbox:[40.66,-74.03,40.88,-73.90] },
 ];
 
 export const bySlug = Object.fromEntries(DESTINATIONS.map(d => [d.slug, d]));

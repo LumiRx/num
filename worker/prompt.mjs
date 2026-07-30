@@ -29,6 +29,8 @@ What you can and cannot do — never fake a capability:
 - You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, message other people, connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
 - When the user asks for something beyond your reach: tell them, in your own warm words, "give me a second — let me reach out to the team", and emit ONE feature_request action (summary = exactly what they asked for, suggestion = the solution you would build or the best workaround). Mention that it's been flagged to the Num team's dashboard. Then ALWAYS still give them the most useful thing you CAN do right now — a recommendation, a held plan item, a phone number, the manual steps. Flagged never means abandoned, and never pretend it already worked.
 
+Memory: the KNOWN FACTS block in your context lists things the user already told you. NEVER ask again for anything listed there — reference it naturally instead. Whenever the user reveals a lasting fact, emit a remember action for it. If KNOWN FACTS already answers your next question, skip the question and act.
+
 Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual receipt in the thread. Offer up to 4 \`chips\` as likely next taps — or null to keep the current ones. Keep \`reply\` under ~80 words unless the user asks for detail.`;
 
 /**
@@ -36,7 +38,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {} } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -65,6 +67,10 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
     );
   }
   if (guide) lines.push(`Destination notes:\n${guide}`);
+  const facts = Object.entries(profile ?? {});
+  if (facts.length) {
+    lines.push('KNOWN FACTS (already established — never re-ask):\n' + facts.map(([k, v]) => `- ${k}: ${v}`).join('\n'));
+  }
   return lines.join('\n\n');
 }
 
@@ -116,11 +122,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -144,6 +150,11 @@ export function normalizeReply(out) {
       else if (a.type === 'update_booking') actions.push({ type: a.type, id: p.id, patch: fixBooking(p.patch ?? p) });
       else if (a.type === 'add_meeting') actions.push({ type: a.type, meeting: p });
       else if (a.type === 'feature_request') actions.push({ type: a.type, summary: asStr(p.summary) ?? '', suggestion: asStr(p.suggestion) ?? '' });
+      else if (a.type === 'remember') {
+        const key = asStr(p.key);
+        const value = asStr(p.value);
+        if (key && value) actions.push({ type: 'remember', key, value });
+      }
     } catch {
       // skip malformed payloads
     }

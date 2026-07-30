@@ -81,6 +81,9 @@ export const MicIcon = (p?: IconProps) =>
     p,
   );
 
+export const SendIcon = (p?: IconProps) =>
+  icon(<path d="M12 19V5M5 12l7-7 7 7" />, p);
+
 export const CheckIcon = (p?: IconProps) => icon(<path d="M20 6 9 17l-5-5" />, p);
 
 export const XIcon = (p?: IconProps) => icon(<path d="M18 6 6 18M6 6l12 12" />, p);
