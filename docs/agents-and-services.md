@@ -116,7 +116,17 @@ and a non-host is refused on read, invite and edit alike.
 - **A changed reservation now alerts the group** — `pushBookingUpdateToPlan()`
   matches the plan item and re-emits it, so the friends' Nums narrate the move.
 - **THREAD is a floating dot**, bottom-right, over every screen, with an unread
-  badge. Tabs are now DASH / PLAN / MEMORY.
+  badge. Tabs are DASH / PLAN / MEMORY — three, on purpose.
+- **YOU is in the header, not the tab bar.** It is a place you visit
+  occasionally, not one of the three things the app is for, so it lives as an
+  avatar next to the wallet and opens as a full overlay. Every block on it
+  collapses — fifteen fields and eight colour tiles open at once is a wall, and
+  a wall is a screen people close. Each row says what it holds ("2 of 5 filled
+  in", "Ember — tap to change") and opens only when asked.
+- **A new plan starts on PLAN and nowhere else.** The old header button was a
+  second entry point to the same thing, which is how people end up with two
+  half-built plans. DASH's group card now navigates to PLAN rather than opening
+  the sheet itself.
 - **DASH** — next up, a fortnight strip, trip check, group, events, wallet, and
   the connections switches (contacts, photos, calendar, crypto, email, texts):
   each off by default, each saying what it buys, granted at the moment of use.

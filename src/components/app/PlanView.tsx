@@ -114,31 +114,50 @@ function groupsFor(demo: boolean, bookings: Booking[]) {
     .sort((a, b) => a.items[0].mo - b.items[0].mo || a.items[0].day - b.items[0].day);
 }
 
-/** The group-plan strip: who's in it, how much is still just an idea, and the
- *  way in. Shown even with zero bookings — a plan doesn't need one. */
+/**
+ * The group-plan strip, and the ONLY place a new plan starts. It lives here
+ * rather than in the header because "start a plan" is a thing you do while
+ * looking at the plan, and a second entry point elsewhere is how people end up
+ * with two half-built plans.
+ */
 function PartyStrip() {
   const plan = useApp((s) => s.plans.find((p) => p.id === s.planId) ?? null);
+  const plans = useApp((s) => s.plans);
   const members = useApp((s) => s.planMembers.length);
   const items = useApp((s) => s.planItems);
   const ideas = items.filter((i) => i.status === 'idea' || i.status === 'proposed').length;
   return (
-    <div
-      {...pressable(() => store.set({ partyOpen: true }))}
-      className="glass lift"
-      style={{ cursor: 'pointer', margin: '12px 12px 4px', borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
-    >
-      <div style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-        <UsersIcon size={17} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{plan ? plan.title : 'Plan it with friends'}</div>
-        <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
-          {plan
-            ? `${members || 1} in · ${ideas} ${ideas === 1 ? 'idea' : 'ideas'} · ${items.length - ideas} booked`
-            : 'Start one with no dates and no bookings — add those together later'}
+    <div className="glass lift" style={{ margin: '12px 12px 4px', borderRadius: 'var(--r-lg)', padding: 12 }}>
+      <div
+        {...pressable(() => store.set({ partyOpen: true }))}
+        style={{ cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
+      >
+        <div style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+          <UsersIcon size={17} />
         </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{plan ? plan.title : 'Plan it with friends'}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
+            {plan
+              ? `${members || 1} in · ${ideas} ${ideas === 1 ? 'idea' : 'ideas'} · ${items.length - ideas} booked`
+              : plans.length
+                ? `${plans.length} plan${plans.length === 1 ? '' : 's'} — open one, or start another`
+                : 'No dates and no bookings needed — add those together later'}
+          </div>
+        </div>
+        <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
-      <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
+      <div
+        {...pressable(() => store.set({ planId: null, partyOpen: true }))}
+        className="press"
+        style={{
+          cursor: 'pointer', marginTop: 11, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
+          fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '11px 14px', textAlign: 'center',
+          boxShadow: '0 4px 14px rgba(236,48,19,.28)',
+        }}
+      >
+        + NEW PLAN
+      </div>
     </div>
   );
 }

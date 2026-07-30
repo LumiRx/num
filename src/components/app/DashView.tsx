@@ -230,9 +230,10 @@ export default function DashView() {
       <CalendarStrip />
       <TripCheck />
 
-      {/* the group, and the guest list */}
+      {/* The group. Starting a plan happens on PLAN and nowhere else — two
+          entry points to the same thing is how people end up with two plans. */}
       <div
-        {...pressable(() => store.set({ partyOpen: true }))}
+        {...pressable(() => store.set({ view: 'plan' }))}
         className="glass lift"
         style={{ ...card, cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
       >
@@ -243,7 +244,7 @@ export default function DashView() {
           <div style={kicker}>GROUP</div>
           <div style={{ ...h, marginTop: 3 }}>{plan ? plan.title : 'Plan it with friends'}</div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>
-            {plan ? `${partySize || 1} in · everything syncs both ways` : 'No dates or bookings needed to start'}
+            {plan ? `${partySize || 1} in · everything syncs both ways` : 'Start one on the PLAN tab — no dates or bookings needed'}
           </div>
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />

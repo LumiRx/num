@@ -13,7 +13,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { saveProfile, uploadAvatar } from '../../lib/profile';
 import { REACTIONS } from '../../lib/prefs';
-import { CameraIcon, CheckIcon, ChevronRightIcon, PaletteIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
+import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
 import { THEMES, setTheme } from '../../lib/themes';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
@@ -42,16 +42,50 @@ const TASTE_FIELDS: Array<[string, string, string, string]> = [
   ['notes', 'Anything else', 'the things a good concierge would remember', 'goes straight into what Num knows about you'],
 ];
 
-function Section({ title, fields, values, onChange }: {
+/**
+ * Everything on this screen collapses. Fifteen fields and eight colour tiles
+ * open at once is a wall, and a wall is a screen people close — so each block
+ * states what it is, how much is in it, and opens only when asked for.
+ */
+function Collapsible({ title, summary, defaultOpen = false, children }: {
   title: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="glass" style={card}>
+      <div
+        {...pressable(() => setOpen((v) => !v))}
+        aria-expanded={open}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={kicker}>{title}</div>
+          {summary && <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 3, lineHeight: 1.45 }}>{summary}</div>}
+        </div>
+        <ChevronRightIcon
+          size={15}
+          style={{ color: 'var(--ink-40)', flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }}
+        />
+      </div>
+      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+    </div>
+  );
+}
+
+function Section({ title, summary, fields, values, onChange }: {
+  title: string;
+  summary: string;
   fields: Array<[string, string, string, string]>;
   values: Record<string, string>;
   onChange: (k: string, v: string) => void;
 }) {
+  const filled = fields.filter(([k]) => (values[k] ?? '').trim()).length;
   return (
-    <div className="glass" style={card}>
-      <div style={kicker}>{title}</div>
-      <div style={{ marginTop: 10, display: 'grid', gap: 12 }}>
+    <Collapsible title={title} summary={filled ? `${filled} of ${fields.length} filled in` : summary}>
+      <div style={{ display: 'grid', gap: 12 }}>
         {fields.map(([key, label, placeholder, why]) => (
           <div key={key}>
             <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -60,7 +94,7 @@ function Section({ title, fields, values, onChange }: {
           </div>
         ))}
       </div>
-    </div>
+    </Collapsible>
   );
 }
 
@@ -69,6 +103,10 @@ export default function ProfileView() {
   const profile = useApp((s) => s.profile);
   const style = useApp((s) => s.style);
   const friends = useApp((s) => s.friends.filter((f) => f.state === 'active').length);
+  // MUST stay above the `!me` early return below: a hook called conditionally
+  // changes the hook count the moment an account appears mid-session, which is
+  // React error #310 and a blank screen.
+  const reactionCount = Object.keys(useApp((s) => s.reactions)).length;
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [values, setValues] = useState<Record<string, string>>({});
@@ -129,8 +167,6 @@ export default function ProfileView() {
     }
   };
 
-  const reactionCount = Object.keys(useApp((s) => s.reactions)).length;
-
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 110 }}>
       {/* identity */}
@@ -177,10 +213,9 @@ export default function ProfileView() {
         </div>
       </div>
 
-      <div className="glass" style={card}>
-        <div style={kicker}>NAME ON THE ACCOUNT</div>
+      <Collapsible title="NAME ON THE ACCOUNT" summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
         <input
-          style={{ ...field, marginTop: 8, opacity: me.name_locked ? 0.6 : 1 }}
+          style={{ ...field, opacity: me.name_locked ? 0.6 : 1 }}
           value={name}
           disabled={me.name_locked}
           onChange={(e) => { setName(e.target.value); setSaved(false); }}
@@ -191,16 +226,18 @@ export default function ProfileView() {
             ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask Num and we’ll sort it.'
             : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
         </div>
-      </div>
+      </Collapsible>
 
       <ThemePicker />
 
-      <Section title="HOW YOU TRAVEL" fields={TRAVEL_FIELDS} values={values} onChange={change} />
-      <Section title="SO NUM GETS YOU RIGHT" fields={TASTE_FIELDS} values={values} onChange={change} />
+      <Section title="HOW YOU TRAVEL" summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
+      <Section title="SO NUM GETS YOU RIGHT" summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
 
       {/* what Num has worked out on its own */}
-      <div className="glass" style={card}>
-        <div style={kicker}>WHAT NUM HAS PICKED UP</div>
+      <Collapsible
+        title="WHAT NUM HAS PICKED UP"
+        summary={reactionCount ? `${reactionCount} reaction${reactionCount === 1 ? '' : 's'} so far` : 'Nothing learned yet'}
+      >
         {reactionCount === 0 && !Object.keys(style).length ? (
           <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
             Nothing yet. React to Num’s suggestions with {REACTIONS.map((r) => r.emoji).join(' ')} and it learns what to send you and what to drop.
@@ -222,7 +259,7 @@ export default function ProfileView() {
             </div>
           </div>
         )}
-      </div>
+      </Collapsible>
 
       {/* business tools, only if they have one */}
       <div
@@ -261,13 +298,10 @@ export default function ProfileView() {
  */
 function ThemePicker() {
   const current = useApp((s) => s.theme);
+  const name = THEMES.find((t) => t.id === current)?.name ?? 'Ember';
   return (
-    <div className="glass" style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <PaletteIcon size={13} style={{ color: 'var(--color-accent)' }} />
-        <div style={kicker}>COLOUR</div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+    <Collapsible title="COLOUR" summary={`${name} — tap to change`}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {THEMES.map((t) => {
           const on = current === t.id;
           return (
@@ -293,7 +327,7 @@ function ThemePicker() {
           );
         })}
       </div>
-    </div>
+    </Collapsible>
   );
 }
 

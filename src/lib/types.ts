@@ -1,6 +1,6 @@
 // Domain model for Num — ported from the Concierge.dc.html prototype state.
 
-export type View = 'dash' | 'thread' | 'plan' | 'mem' | 'you';
+export type View = 'dash' | 'thread' | 'plan' | 'mem';
 
 export type CityGroup = 'BKK' | 'HKT' | 'SIN' | 'KP';
 
@@ -275,6 +275,8 @@ export interface AppState {
   theme: ThemeId;
   /** The owner console, open only for a claimed business. */
   businessOpen: boolean;
+  /** YOU lives in the header now, not the tab bar — it opens as an overlay. */
+  profileOpen: boolean;
 
   /** Learned response preferences, and the reactions they came from. */
   style: StyleProfile;

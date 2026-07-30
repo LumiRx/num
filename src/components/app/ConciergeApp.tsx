@@ -7,7 +7,7 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
-import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, UsersIcon, XIcon, LayoutIcon, UserIcon } from '../../lib/icons';
+import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
 import ThreadView from './ThreadView';
 import DashView from './DashView';
@@ -32,6 +32,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
   const threadOpen = useApp((s) => s.threadOpen);
+  const profileOpen = useApp((s) => s.profileOpen);
+  const me = useApp((s) => s.me);
   const unread = useApp((s) => s.unread);
   const typing = useApp((s) => s.typing);
 
@@ -101,6 +103,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     if (e.key !== 'Escape') return;
     const s = store.get();
     if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen) closeSheets();
+    else if (s.profileOpen) store.set({ profileOpen: false });
     else if (s.threadOpen) store.set({ threadOpen: false });
     if (s.voice) closeVoice();
   };
@@ -151,14 +154,24 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             >
               <StarIcon size={13} /> {stars.toLocaleString()}
             </div>
+            {/* YOU sits here rather than in the tab bar: it is a place you visit
+                occasionally, not one of the three things the app is for. */}
             <div
-              {...pressable(() => store.set({ partyOpen: true }))}
-              aria-label="Group plan"
+              {...pressable(() => store.set({ profileOpen: true }))}
+              aria-label="Your profile"
               className="glass press"
-              style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
-              title="Group plan"
+              style={{
+                cursor: 'pointer', width: 32, height: 32, borderRadius: 999, position: 'relative',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                background: me?.avatar ? `center/cover url(${me.avatar})` : undefined,
+              }}
+              title="Your profile"
             >
-              <UsersIcon size={15} />
+              {!me?.avatar && (me?.name ? (
+                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 13 }}>{me.name[0].toUpperCase()}</span>
+              ) : (
+                <UserIcon size={15} />
+              ))}
               {party > 1 && (
                 <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {party}
@@ -193,7 +206,6 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />DASH</div>
         <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />PLAN</div>
         <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />MEMORY</div>
-        <div {...pressable(() => store.set({ view: 'you' }), 'tab')} aria-selected={view === 'you'} style={segStyle(view === 'you')}><UserIcon size={13} />YOU</div>
       </div>
 
       {/* views float above the aurora ground; wrapper mirrors the root's flex column */}
@@ -201,7 +213,6 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         {view === 'dash' && <DashView />}
         {view === 'plan' && <PlanView />}
         {view === 'mem' && <MemoryView />}
-        {view === 'you' && <ProfileView />}
       </div>
 
       {/* The thread, as a sheet over whatever you were looking at. It keeps the
@@ -238,8 +249,39 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         {threadOpen && <ThreadView />}
       </div>
 
+      {/* YOU — a full overlay, because it is a long form and a sheet would
+          spend half the screen on the sheet's own chrome. */}
+      <div
+        role="dialog"
+        aria-label="Your profile"
+        aria-hidden={!profileOpen}
+        style={{
+          position: 'absolute', inset: 0, zIndex: 46, display: 'flex', flexDirection: 'column',
+          background: 'var(--color-bg, #faf7f4)',
+          visibility: profileOpen ? 'visible' : 'hidden',
+          transform: profileOpen ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform .34s cubic-bezier(.32,.72,.29,.99), visibility .34s',
+        }}
+      >
+        <div className="aurora-layer" aria-hidden="true" />
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 12px) 16px 6px' }}>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
+            YOU <span style={{ fontWeight: 400, opacity: 0.5 }}>· WHAT NUM KNOWS</span>
+          </div>
+          <div
+            {...pressable(() => store.set({ profileOpen: false }))}
+            aria-label="Close profile"
+            className="glass press"
+            style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <XIcon size={15} />
+          </div>
+        </div>
+        {profileOpen && <ProfileView />}
+      </div>
+
       {/* the dot */}
-      {!threadOpen && (
+      {!threadOpen && !profileOpen && (
         <div
           {...pressable(() => store.set({ threadOpen: true, unread: 0 }))}
           aria-label={unread ? `Open thread, ${unread} new` : 'Open thread'}
