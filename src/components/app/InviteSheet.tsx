@@ -63,6 +63,10 @@ export default function InviteSheet() {
       const out = await signUp(name.trim(), phone.trim() || undefined);
       // Honest about what actually happened to the number.
       setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
+      // Cold first run: they came to try the app, not to invite someone. Get
+      // out of the way — Num picks the conversation up in the thread. When an
+      // invite IS in flight, stay put and carry straight on to it.
+      if (!sending) store.set({ inviteOpen: null, threadOpen: true });
     } catch (err) {
       setAccountNote(err instanceof Error ? err.message : 'That didn’t go through.');
     } finally {
@@ -93,6 +97,9 @@ export default function InviteSheet() {
     }
   };
 
+  // "Sending" means there is an actual invite in flight — a named person or a
+  // plan to join. A cold first open is neither.
+  const sending = !!(draft.name || draft.phone || draft.planId);
   const minted = draft.minted;
   const steps = minted ? (isIOS() ? minted.install_steps.ios : minted.install_steps.android) : [];
 
@@ -115,16 +122,22 @@ export default function InviteSheet() {
       {/* 1 — you need an account before you can invite anyone. */}
       {!me ? (
         <div style={{ padding: 16 }}>
-          <div style={label}>YOUR NUM ACCOUNT</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Who am I sending this as?</div>
+          {/* First run and "I'm about to invite someone" are different moments
+              and deserve different words — nothing is being sent on a cold open. */}
+          <div style={label}>{sending ? 'YOUR NUM ACCOUNT' : 'WELCOME TO NUM'}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
+            {sending ? 'Who am I sending this as?' : 'First — who am I talking to?'}
+          </div>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 3, lineHeight: 1.5 }}>
-            Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.
+            {sending
+              ? 'Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.'
+              : 'Your name so I know what to call you, and your mobile so friends can reach you through Num and I can tell you if a booking moves. Never shown to anyone you haven’t connected with.'}
           </div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
             <input style={field} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
             <input style={field} placeholder="Mobile number (+country code)" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <div {...pressable(doSignUp)} style={{ ...primary, opacity: busy || !name.trim() ? 0.6 : 1 }}>
-              {busy ? 'ONE SEC…' : 'CREATE MY ACCOUNT'}
+              {busy ? 'ONE SEC…' : sending ? 'CREATE MY ACCOUNT' : 'THAT’S ME — LET’S GO'}
             </div>
           </div>
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}

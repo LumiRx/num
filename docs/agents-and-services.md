@@ -1,0 +1,137 @@
+# Specialist agents, services, taste, and the dash
+
+Code: `worker/specialists.mjs`, `worker/services.mjs`, `worker/events.mjs`,
+`src/lib/prefs.ts`, `src/lib/services.ts`, `src/lib/events.ts`,
+`src/components/app/DashView.tsx`, `src/components/app/EventSheet.tsx`.
+
+## An agent per service
+
+A specialist is **not** a second model call — that would double the latency and
+the bill for nothing. It is a short brief appended to the system prompt when the
+request is clearly in that domain (`pickSpecialist`, first match wins, ordered
+so `table` doesn't swallow "order dinner to my hotel").
+
+| Agent | Knows |
+|---|---|
+| `ride` | The answer is a time, not a car. Works back from the flight, adds local traffic, names the pickup *point*, flags surge and airport zones, picks the right product for bags/party size |
+| `food` | Recommends the dish, not just the restaurant. What travels (fried holds, tempura doesn't), realistic door-to-door time, which kitchens are open this late, hotel rider rules |
+| `table` | Matches the room to the occasion. States party size, time, and what the table *is*. Knows the city's rhythm — where 19:00 is early, where Sunday is dark |
+| `nightlife` | Door times, table minimums, dress codes, group ratio — and the walkable second option when the queue is unbearable |
+| `wellness` | Asks the outcome, not the treatment. Modality and length matched to jet lag / back / disappearing for an hour |
+| `crypto` | **No live prices, ever. No buy/sell calls, ever.** Useful for which rails work in this country and settling a Num bill |
+| `meetings` | Protects the day, not just the slot. One time with a hard stop, and squares it with the other person's Num |
+| `hiring` | Turns a wish into a scope with an honest local rate band (5arz) |
+| `events` | People first, venue second. One link that answers everything and chases the silent |
+| `trip` | Gaps, collisions, transfers, expiring holds, entry admin — ranked, most urgent first |
+
+`VOICE` sits above the cache breakpoint on every request: decide don't survey,
+one question then act, concrete over effusive, no fawning.
+
+### Verified live
+
+- *"car to Suvarnabhumi, 6am flight, two big bags"* → **Grab XL**, pickup 03:30,
+  worked back from the flight, named the lobby door. Grab first because Thailand.
+- *"order dinner to my hotel"* in Dubai at 02:33 local → noticed the hour, picked
+  a kitchen still firing, chose dishes that survive the trip, **talabat** first.
+- *"car to LAX in an hour"* → warned about the 110/105 at 16:30 and the surge
+  window, **Uber** deep link with the dropoff prefilled.
+- *"what's bitcoin at, should I buy more ETH?"* → refused both, honestly, and
+  pointed at their own exchange.
+
+## Services: connected vs hand-off
+
+`worker/services.mjs` maps ~35 countries to the providers people there actually
+use, best first — Uber in LA, Grab in Bangkok, Careem in Dubai, Bolt in Lisbon,
+iFood in São Paulo. Four kinds: `ride`, `food`, `table`, `wellness`.
+
+> **Num holds no commercial accounts with these companies.** `ADAPTERS` is empty
+> on purpose, `connected()` returns false everywhere, and the prompt forbids the
+> words "booked" / "on its way" for a hand-off. An empty adapter registry is the
+> *mechanism* that stops Num claiming a car it cannot call.
+
+So every fulfilment today is a **hand-off**: the model emits a `service` action,
+the server resolves the providers from the user's country and attaches the deep
+links (the model never names a provider or writes a URL — it can't invent one
+that way), and the app shows a tray of one-tap buttons prefilled with the
+destination. The tray says so out loud: *"Opens in your own app with the
+destination already filled in — Num can't place it for you yet."*
+
+To connect one for real, add an entry to `ADAPTERS` with `{kind, ready(env),
+order(env, req)}` and the same code path starts fulfilling instead of handing
+off. Nothing else changes.
+
+## Taste — learned, not configured
+
+`src/lib/prefs.ts`. Two signals:
+
+1. **Emoji reactions** under Num's suggestions — 😍 more like this, 👍 good,
+   😐 not quite, 👎 never again, 🥱 too long. A rating with no typing, so people
+   actually give it. 👎 puts the subject on a `rejected` list the model is told
+   not to offer again; 🥱 alone sets `length: short` and `pace: fast`.
+2. **Behaviour** — message length, whether they say "do it" or "what else".
+
+The result is a small `style` object sent up with each turn (raw message lengths
+stay on the device) and turned into a short instruction block by `styleBlock()`.
+
+Same question, measured live:
+
+| | Reply |
+|---|---|
+| No style learned | 418 chars, one pick **plus** an alternative and an offer |
+| `length: short, decisiveness: one, loved: [Le Du], rejected: [Gaggan]` | 336 chars, one pick, no alternatives, and it chose Nusara — *same team as Le Du* |
+
+## Trip check
+
+Arithmetic on the user's own plan is done **on-device** (`tripCheck()`): clashes,
+tight gaps, transfers, expiring holds, empty days, multi-city hops. The findings
+go up as facts and the model does what it's good at — ranking them and saying
+them well. A language model should not be trusted to subtract times unaided.
+
+Surfaced on the dash (collapsed: "1 thing to look at") and by asking.
+
+## Events and RSVP by text
+
+**The guest never installs anything.** They get one text with one link; the link
+is a server-rendered page at `/e/:slug?g=<token>` with where, when, dress code,
+a Maps link and three buttons. The token arrived on their phone — same proof
+model as every other invite in Num.
+
+The host gets the dashboard an event site would charge for: coming / maybe /
+can't / silent, headcount including plus-ones, who opened it and went quiet, and
+a one-tap nudge for the silent ones — sent from the host's own number.
+
+Verified live: 3 guests invited, page renders with details and RSVP buttons, yes
++2 counted as 3 heads, decline recorded, guest phones masked in the dashboard,
+and a non-host is refused on read, invite and edit alike.
+
+## Everything else in this pass
+
+- **First run asks for a name and number.** Every fresh device, not just invited
+  ones — a demo that ends with an anonymous device is one we can't follow up on.
+  Num acknowledges by name and carries straight on to "where are you?".
+- **Share to text** — `shareNative()` opens the real OS share sheet (AirDrop,
+  Messages, WhatsApp, Signal, whatever they use) with a clipboard fallback, and
+  `smsLink()` gets the iOS `&body=` / Android `?body=` split right, which
+  silently drops the message when you get it wrong.
+- **A changed reservation now alerts the group** — `pushBookingUpdateToPlan()`
+  matches the plan item and re-emits it, so the friends' Nums narrate the move.
+- **THREAD is a floating dot**, bottom-right, over every screen, with an unread
+  badge. Tabs are now DASH / PLAN / MEMORY.
+- **DASH** — next up, a fortnight strip, trip check, group, events, wallet, and
+  the connections switches (contacts, photos, calendar, crypto, email, texts):
+  each off by default, each saying what it buys, granted at the moment of use.
+- **Lane router fixed** — "run a trip check" is short and verbless, so it used to
+  route to the cheap model and come back with "what would you like to do?".
+  `NEEDS_THE_BRAIN` now forces the big lane for trip checks, invites, events,
+  services and crypto. 12/12 routing cases pass.
+
+## Not built yet
+
+| Thing | Needs |
+|---|---|
+| Real ride/food ordering | Commercial accounts + API credentials per provider — a business decision |
+| Live crypto prices on the dash | A price feed; the agent refuses to guess until there is one |
+| Email / texts / calendar ingestion | OAuth apps (Google, Microsoft) and a mail parser; the switches record intent today |
+| Contacts on iOS | No Web API exists; Chrome/Android uses the picker, elsewhere is manual |
+| Push when a friend's Num books | Web Push keys + notification worker; today it lands on next foreground sync |
+| Business-side event dashboard | The host dashboard is per-member; hanging it off a claimed `business_id` is a small step from here (`num_events.business_id` already exists) |

@@ -25,6 +25,8 @@ You act on the plan through \`actions\`:
 - invite: the user wants to bring a specific person in ("send an invite to Dre", "add my sister"). Emit it with whatever you have — a name is enough. The app resolves the name against their contacts and asks them to confirm the right person before anything is sent; you never send it yourself, so say you've lined it up for them to fire off, not that it's gone.
 - plan_create: the user wants to plan something WITH other people ("plan a weekend with the guys", "start a plan for Rio"). A plan needs no dates and no reservations — say so, because that is the point: friends can build it together first and book later.
 - plan_add: drop an item into the open group plan. Leave status "idea" unless it is genuinely reserved.
+- service: hand the user straight into the app that fulfils this — a car, delivery, a table, a massage. Read the SERVICES block below for what is CONNECTED (you can complete it) versus HAND-OFF (you cannot; the app opens the right provider prefilled, one tap). Emit at most one per turn, and only for the thing they actually asked for.
+- create_event: they are hosting something with a guest list. Creates the event and a single RSVP link their friends answer by text — no app needed on their side.
 - Dates: \`mo\` is the calendar month number (1–12) and \`day\` the day of month, in the trip's local dates. Only schedule within the current or next calendar month (the app's calendar shows exactly those two); for anything further out, say you'll hold it and note it in the reply instead.
 
 What you can and cannot do — never fake a capability:
@@ -44,7 +46,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [] } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -82,6 +84,17 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
   const facts = Object.entries(profile ?? {});
   if (facts.length) {
     lines.push('KNOWN FACTS (already established — never re-ask):\n' + facts.map(([k, v]) => `- ${k}: ${v}`).join('\n'));
+  }
+  if (services) lines.push(services);
+  if (style) lines.push(style);
+  if (party?.title) {
+    lines.push(
+      `SHARED PLAN IN PROGRESS: "${party.title}" with ${party.members ?? 1} ${party.members === 1 ? 'person' : 'people'}. ` +
+        'Anything you book or add here reaches every member’s Num within the minute, so speak as if the group is listening — and when something firms up, say that the others have been told.',
+    );
+  }
+  if (trip?.length) {
+    lines.push('TRIP CHECK (computed from their actual plan — use these facts, do not re-derive them):\n' + trip.map((t) => `- ${t}`).join('\n'));
   }
   return lines.join('\n\n');
 }
@@ -134,11 +147,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note} — kind is one of ride|food|table|wellness, `to` is the destination address for a ride, `query` is the venue or dish to search, note is the one line the app shows on the button. For create_event: {title, day, time, place, address, dress, note} — day is an ISO date, time "HH:MM"; everything but title is optional. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -164,6 +177,21 @@ export function normalizeReply(out) {
       else if (a.type === 'invite') actions.push({ type: a.type, name: asStr(p.name) ?? '', phone: asStr(p.phone) ?? null });
       else if (a.type === 'plan_create') actions.push({ type: a.type, title: asStr(p.title) ?? 'Our plan', dest: asStr(p.dest) ?? null, starts_on: asStr(p.starts_on) ?? null });
       else if (a.type === 'plan_add') actions.push({ type: a.type, item: p });
+      else if (a.type === 'service') {
+        const kind = ['ride', 'food', 'table', 'wellness'].includes(p.kind) ? p.kind : null;
+        if (kind) actions.push({ type: a.type, kind, query: asStr(p.query) ?? null, to: asStr(p.to) ?? null, note: asStr(p.note) ?? null });
+      } else if (a.type === 'create_event') {
+        actions.push({
+          type: a.type,
+          title: asStr(p.title) ?? 'Our event',
+          day: asStr(p.day) ?? null,
+          time: asStr(p.time) ?? null,
+          place: asStr(p.place) ?? null,
+          address: asStr(p.address) ?? null,
+          dress: asStr(p.dress) ?? null,
+          note: asStr(p.note) ?? null,
+        });
+      }
       else if (a.type === 'feature_request') actions.push({ type: a.type, summary: asStr(p.summary) ?? '', suggestion: asStr(p.suggestion) ?? '' });
       else if (a.type === 'remember') {
         const key = asStr(p.key);

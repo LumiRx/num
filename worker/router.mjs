@@ -17,6 +17,12 @@
 const HAS_DIGIT_OR_DATE = /\d|tomorrow|tonight|monday|next week|am|pm/i;
 const ACTION_VERB = /book|order|get me|reserve|hold|cancel|change|move|pay|hire|meeting|table|car|flight|hotel|transfer|club/i;
 const PLACE_QUESTION = /where|recommend|best|near/i;
+// Short, verbless, digitless — and yet every one of these needs the full brain
+// and the trip state. "run a trip check" used to route small and come back with
+// a generic "what would you like to do?", which is the worst possible answer to
+// someone asking whether their trip is in order.
+const NEEDS_THE_BRAIN =
+  /trip check|check my trip|am i ready|what needs me|anything i should know|invite|rsvp|event|guest list|group plan|plan with|massage|spa|ride|taxi|uber|grab|lyft|bolt|careem|delivery|deliver|eat|hungry|crypto|bitcoin|wallet|what'?s new|whats new/i;
 
 /**
  * Which model answers this message. 'small' ONLY when the message is short,
@@ -31,6 +37,7 @@ export function pickLane(text, state = {}) {
   if (HAS_DIGIT_OR_DATE.test(s)) return 'big';
   if (ACTION_VERB.test(s)) return 'big';
   if (PLACE_QUESTION.test(s)) return 'big';
+  if (NEEDS_THE_BRAIN.test(s)) return 'big';
   return 'small';
 }
 

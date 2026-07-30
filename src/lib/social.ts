@@ -50,20 +50,30 @@ export function bootSocial(): void {
     void refreshFriends();
     void refreshPlans();
     void syncPlan();
-  } else if (token || ref) {
-    // Arrived from a friend's invite but has no account: say so up front rather
-    // than silently dropping the referral.
-    store.set((s) => ({
-      msgs: [
-        ...s.msgs,
-        {
-          who: 'c',
-          text: 'You came in on a friend’s invite — nice. Tell me your name and mobile number and I’ll connect you two, so our two Nums can trade reservations, addresses and photos without either of you retyping anything.',
-        },
-      ],
-      chips: [{ id: 'signup', label: 'Set up my Num account' }],
-    }));
+    return;
   }
+
+  // No account on this device. EVERY first open asks for a name and a number —
+  // not just invited ones. Without them Num has no way to connect this person
+  // to anybody, and a demo that ends with an anonymous device is a demo we
+  // cannot follow up on.
+  store.set((s) => ({
+    msgs: [
+      ...s.msgs,
+      {
+        who: 'c',
+        text: token || ref
+          ? 'You came in on a friend’s invite — nice. Give me your name and mobile number and I’ll connect you two, so our two Nums can trade reservations, addresses and photos without either of you retyping anything.'
+          : 'One thing before we start: what should I call you, and what’s your mobile number? The number is how friends reach you through Num and how I get back to you if a booking moves — nothing else, and never shown to anyone you haven’t connected with.',
+      },
+    ],
+    chips: [{ id: 'signup', label: 'Add my name & number' }],
+  }));
+  // Put the form in front of them rather than hoping they tap the chip. It
+  // lands after the first paint so the app is visibly there behind it.
+  setTimeout(() => {
+    if (!store.get().me && !store.get().inviteOpen) store.set({ threadOpen: true, inviteOpen: {} });
+  }, 900);
 }
 
 // ── identity ───────────────────────────────────────────────────────────────
@@ -85,9 +95,21 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
     method: 'POST',
     body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place }),
   });
-  // The "set up my account" prompt has done its job — leave it up and it
+  // The "add my name & number" prompt has done its job — leave it up and it
   // reads as if nothing happened.
-  store.set((s) => ({ me: out.me, chips: s.chips.filter((c) => c.id !== 'signup') }));
+  store.set((s) => ({
+    me: out.me,
+    chips: s.chips.filter((c) => c.id !== 'signup'),
+    msgs: [
+      ...s.msgs,
+      {
+        who: 'c' as const,
+        text: `Got it, ${out.me.name ?? 'you'} — you’re on Num.${
+          out.me.phone ? ' Your number’s saved, so friends can find you and I can reach you if anything moves.' : ''
+        } Now: where in the world are you, and where are you headed?`,
+      },
+    ],
+  }));
 
   // Attribute the referral that brought them in, then accept the invite that
   // carried it — that second call is what makes the friendship mutual.
@@ -409,6 +431,38 @@ export async function pushBookingToPlan(b: Booking): Promise<void> {
     note: b.note,
     photo: b.photo,
   }).catch(() => null);
+}
+
+/**
+ * A shared reservation that CHANGED. The plan item is matched by title, since
+ * that is what both sides carry, and the event feed does the telling — a
+ * friend who was never told the dinner moved is the failure this prevents.
+ */
+export async function pushBookingUpdateToPlan(bookingId: string): Promise<void> {
+  const { me, planId, bookings, planItems } = store.get();
+  if (!me || !planId) return;
+  const b = bookings.find((x) => x.id === bookingId);
+  if (!b) return;
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const item = planItems.find((i) => norm(i.title) === norm(b.title));
+  if (!item) return void pushBookingToPlan(b);
+  const day = `2026-${String(b.mo).padStart(2, '0')}-${String(b.day).padStart(2, '0')}`;
+  await api('/plan/item', {
+    method: 'POST',
+    body: JSON.stringify({
+      me: me.id,
+      plan_id: planId,
+      id: item.id,
+      day,
+      time: b.time,
+      place: b.place,
+      address: b.place,
+      note: b.note,
+      cost: b.cost,
+      status: b.status === 'confirmed' ? 'confirmed' : b.status === 'cancelled' ? 'cancelled' : b.status === 'hold' ? 'held' : 'proposed',
+    }),
+  }).catch(() => null);
+  await syncPlan();
 }
 
 /** Poll while the app is in the foreground; stop when it is backgrounded. */

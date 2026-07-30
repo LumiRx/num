@@ -7,13 +7,15 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
-import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
+import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, UsersIcon, XIcon, LayoutIcon } from '../../lib/icons';
 import ThreadView from './ThreadView';
+import DashView from './DashView';
 import PlanView from './PlanView';
 import MemoryView from './MemoryView';
 import CalendarSheet from './CalendarSheet';
 import ShareSheet from './ShareSheet';
 import WalletSheet from './WalletSheet';
+import EventSheet from './EventSheet';
 import InviteSheet from './InviteSheet';
 import PartySheet from './PartySheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
@@ -22,10 +24,13 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || !!s.inviteOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || !!s.inviteOpen);
   const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
+  const threadOpen = useApp((s) => s.threadOpen);
+  const unread = useApp((s) => s.unread);
+  const typing = useApp((s) => s.typing);
 
   // Demo: the scripted date/loop. Real: today anywhere on Earth, plus wherever
   // the user told Num they are — or the ask, until they have.
@@ -37,9 +42,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, inviteOpen: null });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, inviteOpen: null });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || !!s.inviteOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || !!s.inviteOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
@@ -70,7 +75,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, inviteOpen: null });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, inviteOpen: null });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -85,7 +90,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.inviteOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.inviteOpen) closeSheets();
+    else if (s.threadOpen) store.set({ threadOpen: false });
     if (s.voice) closeVoice();
   };
 
@@ -171,18 +177,83 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       </div>
 
       {/* tab bar — floating glass segmented control */}
+      {/* THREAD left the tab bar — it is the floating dot now, reachable from
+          every screen instead of being one of three equal places to be. */}
       <div role="tablist" className="glass" style={{ display: 'flex', margin: '10px 10px 2px', borderRadius: 999, padding: 4, position: 'relative', zIndex: 2 }}>
-        <div {...pressable(() => store.set({ view: 'thread' }), 'tab')} aria-selected={view === 'thread'} style={segStyle(view === 'thread')}><MessageIcon size={13} />THREAD</div>
+        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />DASH</div>
         <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />PLAN</div>
         <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />MEMORY</div>
       </div>
 
       {/* views float above the aurora ground; wrapper mirrors the root's flex column */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
-        {view === 'thread' && <ThreadView />}
+        {view === 'dash' && <DashView />}
         {view === 'plan' && <PlanView />}
         {view === 'mem' && <MemoryView />}
       </div>
+
+      {/* The thread, as a sheet over whatever you were looking at. It keeps the
+          conversation one tap from everywhere instead of a place you navigate
+          to and lose your place from. */}
+      <div
+        role="dialog"
+        aria-label="Thread with Num"
+        aria-hidden={!threadOpen}
+        style={{
+          position: 'absolute', inset: 0, zIndex: 45, display: 'flex', flexDirection: 'column',
+          background: 'var(--color-bg, #faf7f4)',
+          visibility: threadOpen ? 'visible' : 'hidden',
+          transform: threadOpen ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform .34s cubic-bezier(.32,.72,.29,.99), visibility .34s',
+        }}
+      >
+        <div className="aurora-layer" aria-hidden="true" />
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px 6px' }}>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
+            THREAD <span style={{ fontWeight: 400, opacity: 0.5 }}>· ASK NUM ANYTHING</span>
+          </div>
+          <div
+            {...pressable(() => store.set({ threadOpen: false }))}
+            aria-label="Close thread"
+            className="glass press"
+            style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <XIcon size={15} />
+          </div>
+        </div>
+        {/* Mounted only while open: the thread auto-scrolls on every state
+            change, and doing that behind a closed overlay is wasted work. */}
+        {threadOpen && <ThreadView />}
+      </div>
+
+      {/* the dot */}
+      {!threadOpen && (
+        <div
+          {...pressable(() => store.set({ threadOpen: true, unread: 0 }))}
+          aria-label={unread ? `Open thread, ${unread} new` : 'Open thread'}
+          className="press"
+          style={{
+            position: 'absolute', right: 16, bottom: 'max(env(safe-area-inset-bottom), 16px)', zIndex: 40,
+            width: 56, height: 56, borderRadius: 999, cursor: 'pointer',
+            background: 'var(--grad-accent)', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(236,48,19,.38)',
+          }}
+        >
+          <MessageIcon size={22} />
+          {(unread > 0 || typing) && (
+            <span
+              style={{
+                position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 999,
+                background: '#fff', color: 'var(--color-accent)', fontSize: 10, fontWeight: 800,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,.18)',
+              }}
+            >
+              {typing ? '…' : unread}
+            </span>
+          )}
+        </div>
+      )}
 
       <VoiceOverlay />
       <NotifBanner />
@@ -196,6 +267,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
 
       <CalendarSheet />
       <PartySheet />
+      <EventSheet />
       <InviteSheet />
       <ShareSheet />
       <WalletSheet />

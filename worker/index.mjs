@@ -16,17 +16,38 @@ import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.
 import { groundRequest } from './grounding.mjs';
 import { pickLane, smallReply, guardReply } from './router.mjs';
 import { handleSocialSafe } from './social.mjs';
+import { handleEvents, handleEventPage } from './events.mjs';
+import { servicesBlock, optionsFor } from './services.mjs';
+import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
 const MODEL = 'claude-opus-5';
 
 const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
 
-async function askNum(client, messages, state, grounding, profile, extraSystem) {
+async function askNum(client, messages, state, grounding, profile, extraSystem, env, userText) {
+  // PERSONA + VOICE are identical on every request, so they sit above the
+  // cache breakpoint. Everything below it changes per turn.
+  const specialist = pickSpecialist(userText ?? '');
   const system = [
-    { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: contextBlock({ place: grounding.place, partners: grounding.partners, guide: grounding.guide, profile, buzz: grounding.buzz }) },
+    { type: 'text', text: PERSONA + '\n\n' + VOICE, cache_control: { type: 'ephemeral' } },
+    {
+      type: 'text',
+      text: contextBlock({
+        place: grounding.place,
+        partners: grounding.partners,
+        guide: grounding.guide,
+        profile,
+        buzz: grounding.buzz,
+        services: servicesBlock(grounding.place, env ?? {}),
+        style: styleBlock(state?.style),
+        party: state?.party,
+        trip: state?.tripCheck,
+      }),
+    },
     { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
   ];
+  const brief = specialistBrief(specialist);
+  if (brief) system.push({ type: 'text', text: brief });
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
   const response = await client.messages.create({
     model: MODEL,
@@ -139,6 +160,26 @@ async function attachPhoto(env, result, grounding) {
   return result;
 }
 
+/**
+ * A `service` action names a kind ('ride', 'food'…); the app needs the actual
+ * providers to open. Resolving it here — not in the model — is deliberate: the
+ * model cannot name a provider that doesn't operate in this country, and
+ * cannot hand out a URL it invented.
+ */
+function attachServiceOptions(env, result, grounding) {
+  const actions = (result.actions ?? []).map((a) => {
+    if (a.type !== 'service') return a;
+    const place = grounding.place ?? {};
+    const { mode, options } = optionsFor(
+      a.kind,
+      { country: place.country_code || place.country, city: place.name, to: a.to, q: a.query },
+      env,
+    );
+    return { ...a, mode, options };
+  });
+  return { ...result, actions };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -154,6 +195,17 @@ export default {
     }
     // Identity, invites, friend links and shared plans. Separate surface from
     // the AI endpoint: no model call, no Anthropic key, its own rate profile.
+    // The guest-facing RSVP page. Public, server-rendered, no app required —
+    // that is the whole point of inviting people by text.
+    if (url.pathname.startsWith('/e/')) {
+      return await handleEventPage(request, env, url.pathname.slice(3).split('/')[0], url.origin);
+    }
+    if (url.pathname.startsWith('/api/events')) {
+      const res = await handleEvents(request, env, url.pathname.slice('/api/events'.length) || '/', url.origin);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/social')) {
       const res = await handleSocialSafe(request, env, url.pathname.slice('/api/social'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -224,13 +276,13 @@ export default {
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       const callNum = async (extraSystem) => {
         try {
-          return await askNum(client, history, parsed.state, grounding, profile, extraSystem);
+          return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser);
         } catch (err) {
           // Grammar compilation is cached once it succeeds but can time out on a
           // cold schema — one retry usually lands on the warmed cache.
           if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
           await new Promise((r) => setTimeout(r, 1500));
-          return askNum(client, history, parsed.state, grounding, profile, extraSystem);
+          return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser);
         }
       };
 
@@ -259,7 +311,8 @@ export default {
       // Tell the app where Num thinks the user is (drives the header) —
       // computed server-side, never by the model.
       const withPhoto = await attachPhoto(env, result, grounding);
-      return json(200, { ...withPhoto, place: grounding.place ? grounding.place.name : null });
+      const withServices = attachServiceOptions(env, withPhoto, grounding);
+      return json(200, { ...withServices, place: grounding.place ? grounding.place.name : null });
     } catch (err) {
       console.error('[num-ai]', err);
       const status = err?.status === 401 ? 401 : err?.status === 429 ? 429 : 500;

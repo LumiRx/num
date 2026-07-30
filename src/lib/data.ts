@@ -68,7 +68,7 @@ export const SHARE_LINK = 'https://concierge.travel/p/viv-4k2x';
 /** Everything both modes share at boot. */
 function baseState() {
   return {
-    view: 'thread' as const,
+    view: 'dash' as const,
     typing: false,
     notifOn: false,
     disr: 'none' as const,
@@ -86,6 +86,17 @@ function baseState() {
     walletOpen: false,
     permOn: false,
     bought: '',
+    style: {},
+    reactions: {},
+    handoff: null,
+    connections: { contacts: false, photos: false, calendar: false, crypto: false, email: false, texts: false },
+    events: [],
+    eventId: null,
+    eventOpen: false,
+    // The app opens ON the thread — it is still the product. Closing it drops
+    // you to the dash, and the floating dot brings it back from anywhere.
+    threadOpen: true,
+    unread: 0,
     me: null,
     friends: [],
     contacts: [],
@@ -153,7 +164,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, ...keep } = s;
+    inviteOpen, partyOpen, eventOpen, threadOpen, unread, handoff, ...keep } = s;
   return keep;
 }
 

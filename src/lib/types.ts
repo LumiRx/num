@@ -1,6 +1,6 @@
 // Domain model for Num — ported from the Concierge.dc.html prototype state.
 
-export type View = 'thread' | 'plan' | 'mem';
+export type View = 'dash' | 'thread' | 'plan' | 'mem';
 
 export type CityGroup = 'BKK' | 'HKT' | 'SIN' | 'KP';
 
@@ -82,6 +82,80 @@ export type Disruption = 'none' | 'active' | 'rebooked';
 
 /** 0 = off, 1 = listening, 2 = heard/on it, 3 = done */
 export type VoicePhase = 0 | 1 | 2 | 3;
+
+// ── Taste: how this user likes to be talked to, learned as they talk ────────
+
+export type Reaction = 'love' | 'like' | 'meh' | 'no' | 'long';
+
+export interface StyleProfile {
+  length?: 'short' | 'long';
+  decisiveness?: 'one' | 'options';
+  emoji?: 'yes' | 'no';
+  pace?: 'fast';
+  /** Suggestions they reacted well / badly to — fed back to the model. */
+  loved?: string[];
+  rejected?: string[];
+  /** Recent message lengths; kept on-device only, never sent up. */
+  lengths?: number[];
+}
+
+/** One provider Num can hand the user into, resolved server-side by country. */
+export interface ServiceOption {
+  id: string;
+  name: string;
+  url: string;
+  app?: string | null;
+  note?: string | null;
+  connected?: boolean;
+}
+
+export interface ServiceHandoff {
+  kind: 'ride' | 'food' | 'table' | 'wellness';
+  /** 'connected' = Num completes it; 'handoff' = one tap into their own app. */
+  mode: 'connected' | 'handoff';
+  note?: string | null;
+  to?: string | null;
+  query?: string | null;
+  options: ServiceOption[];
+}
+
+// ── Events: invite by text, RSVP with no app on the other side ──────────────
+
+export interface NumEvent {
+  id: string;
+  title: string;
+  day?: string | null;
+  time?: string | null;
+  place?: string | null;
+  address?: string | null;
+  dress?: string | null;
+  note?: string | null;
+  slug?: string | null;
+  url?: string;
+  invited?: number;
+  yes?: number;
+}
+
+export interface EventGuest {
+  token: string;
+  name: string | null;
+  phone: string | null;
+  rsvp: 'pending' | 'yes' | 'no' | 'maybe';
+  plus_ones: number;
+  message?: string | null;
+  opened_at?: string | null;
+  replied_at?: string | null;
+}
+
+/** Outside data the user has chosen to plug in. Off until they say otherwise. */
+export interface Connections {
+  contacts: boolean;
+  photos: boolean;
+  calendar: boolean;
+  crypto: boolean;
+  email: boolean;
+  texts: boolean;
+}
 
 // ── Social layer: identity, friends, and plans a group builds together ──────
 
@@ -188,6 +262,24 @@ export interface AppState {
   photosOn: boolean;
   billPaid: boolean;
   bought: string;
+
+  /** Learned response preferences, and the reactions they came from. */
+  style: StyleProfile;
+  reactions: Record<number, Reaction>;
+  /** The last service hand-off Num offered, shown as tappable providers. */
+  handoff: ServiceHandoff | null;
+  /** Outside data sources the user has switched on. */
+  connections: Connections;
+
+  /** Events this member hosts, and the one open in the dashboard. */
+  events: NumEvent[];
+  eventId: string | null;
+  eventOpen: boolean;
+
+  /** THREAD is an overlay now, reached from the floating dot. */
+  threadOpen: boolean;
+  /** Concierge messages arrived while the thread was closed. */
+  unread: number;
 
   /** This device's Num account. Null until they give a name and number. */
   me: Member | null;

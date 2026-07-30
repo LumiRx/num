@@ -4,7 +4,11 @@
 // agent backend would slot in later.
 import { store } from './store';
 import { demoState } from './data';
-import { addPlanItem, createPlan, pushBookingToPlan, startInvite, syncPlan } from './social';
+import { addPlanItem, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
+import { offerService } from './services';
+import { createEvent } from './events';
+import { observeUserMessage, styleForRequest, tripCheck } from './prefs';
+import type { ServiceHandoff } from './types';
 import type { Booking, Chip, Meeting, Msg } from './types';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
@@ -134,6 +138,10 @@ export function sendChip(id: string, label: string) {
   }
   if (id === 'party') {
     store.set({ partyOpen: true });
+    return;
+  }
+  if (id === 'event') {
+    store.set({ eventOpen: true });
     return;
   }
 
@@ -305,7 +313,7 @@ export function permDeny() {
 // above remain untouched — the demo still works with the server off.
 
 interface NumAction {
-  type: 'add_booking' | 'update_booking' | 'add_meeting' | 'remember' | 'invite' | 'plan_create' | 'plan_add';
+  type: 'add_booking' | 'update_booking' | 'add_meeting' | 'remember' | 'invite' | 'plan_create' | 'plan_add' | 'service' | 'create_event';
   booking?: Booking;
   id?: string;
   patch?: Partial<Booking>;
@@ -321,6 +329,19 @@ interface NumAction {
   starts_on?: string | null;
   /** plan_add */
   item?: Record<string, string | null>;
+  /** service — options are resolved server-side from the user's country */
+  kind?: ServiceHandoff['kind'];
+  query?: string | null;
+  to?: string | null;
+  note?: string | null;
+  mode?: 'connected' | 'handoff';
+  options?: ServiceHandoff['options'];
+  /** create_event */
+  day?: string | null;
+  time?: string | null;
+  place?: string | null;
+  address?: string | null;
+  dress?: string | null;
 }
 
 interface NumReply {
@@ -338,7 +359,12 @@ function applyAction(a: NumAction) {
     // If a group plan is open, the other members' Nums hear about it too —
     // that is the whole promise of connecting two accounts.
     void pushBookingToPlan(a.booking);
-  } else if (a.type === 'update_booking' && a.id && a.patch) setB(a.id, a.patch);
+  } else if (a.type === 'update_booking' && a.id && a.patch) {
+    setB(a.id, a.patch);
+    // A change to a shared reservation is exactly what the others need to hear
+    // about — a moved dinner nobody was told about is worse than no dinner.
+    void pushBookingUpdateToPlan(a.id);
+  }
   else if (a.type === 'add_meeting' && a.meeting) {
     store.set((s) => ({ meetings: [...s.meetings.filter((m) => m.id !== a.meeting!.id), a.meeting!] }));
   } else if (a.type === 'remember' && a.key && a.value) {
@@ -360,6 +386,18 @@ function applyAction(a: NumAction) {
       place: a.item.place ?? null,
       note: a.item.note ?? null,
     }).then(() => syncPlan());
+  } else if (a.type === 'service' && a.kind && a.options?.length) {
+    offerService({ kind: a.kind, mode: a.mode ?? 'handoff', note: a.note, to: a.to, query: a.query, options: a.options });
+  } else if (a.type === 'create_event' && a.title) {
+    void createEvent({
+      title: a.title,
+      day: a.day ?? null,
+      time: a.time ?? null,
+      place: a.place ?? null,
+      address: a.address ?? null,
+      dress: a.dress ?? null,
+      note: a.note ?? null,
+    });
   }
 }
 
@@ -380,8 +418,10 @@ export function cleanText(t: string): string {
 export async function askNum(text: string) {
   // A reply is already in flight — a double-tap must not double-send.
   if (store.get().typing) return;
+  observeUserMessage(text);
   push({ who: 'u', text });
-  store.set({ typing: true, chips: [] });
+  // A new question retires the last provider tray — it belonged to the old one.
+  store.set({ typing: true, chips: [], handoff: null });
 
   const s = store.get();
   const messages = s.msgs.map((m) => ({
@@ -399,6 +439,13 @@ export async function askNum(text: string) {
     // The server's lane router only trusts the cheap model once onboarding
     // settled a place — without this field it always pays for the big lane.
     onboarded: s.onboarded,
+    // How they like to be answered, learned from their own reactions.
+    style: styleForRequest(s),
+    // The group listening in, if there is one.
+    ...(s.planId ? { party: { title: s.plans.find((p) => p.id === s.planId)?.title, members: s.planMembers.length || 1 } } : {}),
+    // Clashes and expiring holds are arithmetic — we do them, the model
+    // decides which ones matter and how to say it.
+    ...(/trip check|am i ready|check my trip|what needs me/i.test(text) ? { tripCheck: tripCheck(s) } : {}),
   };
 
   try {
@@ -425,6 +472,8 @@ export async function askNum(text: string) {
     }
     store.set((prev) => ({
       typing: false,
+      // Unread only counts while the thread is closed — the dot carries it.
+      unread: prev.threadOpen ? 0 : prev.unread + 1,
       msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}) }],
       chips: out.chips ?? defChips(),
       // The server resolves location against the shared destination database;

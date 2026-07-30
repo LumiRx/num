@@ -84,6 +84,15 @@ export const MicIcon = (p?: IconProps) =>
 export const SendIcon = (p?: IconProps) =>
   icon(<path d="M12 19V5M5 12l7-7 7 7" />, p);
 
+export const LayoutIcon = (p?: IconProps) =>
+  icon(
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M9 21V9" />
+    </>,
+    p,
+  );
+
 export const UsersIcon = (p?: IconProps) =>
   icon(
     <>
