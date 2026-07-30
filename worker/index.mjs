@@ -37,8 +37,43 @@ async function askNum(client, messages, state, grounding) {
   return normalizeReply(JSON.parse(text));
 }
 
+/**
+ * "Notify the dashboard": persist every capability gap Num flags into the
+ * shared num-db (same D1 the LINE brain and partner console read), so the
+ * team sees what users are asking for that the product can't do yet.
+ * Fail-soft: a logging failure must never break the user's reply.
+ */
+async function logFeatureRequests(env, result, userAsk, place) {
+  const flagged = (result.actions ?? []).filter((a) => a.type === 'feature_request');
+  if (!flagged.length || !env.DB) return;
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS feature_requests (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         ts TEXT NOT NULL,
+         place TEXT,
+         asked TEXT,
+         summary TEXT,
+         suggestion TEXT,
+         status TEXT NOT NULL DEFAULT 'new'
+       )`,
+    ).run();
+    const ins = env.DB.prepare(
+      'INSERT INTO feature_requests (ts, place, asked, summary, suggestion) VALUES (?1, ?2, ?3, ?4, ?5)',
+    );
+    await env.DB.batch(
+      flagged.map((f) =>
+        ins.bind(new Date().toISOString(), place ?? null, (userAsk ?? '').slice(0, 500), f.summary.slice(0, 500), f.suggestion.slice(0, 800)),
+      ),
+    );
+    console.log('[feature-request]', ...flagged.map((f) => f.summary));
+  } catch (err) {
+    console.warn('[feature-request] failed to log:', err?.message ?? err);
+  }
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const cors = corsHeaders(request, url.origin);
     const json = (status, body, extra) =>
@@ -103,6 +138,8 @@ export default {
         await new Promise((r) => setTimeout(r, 1500));
         result = await askNum(client, parsed.messages, parsed.state, grounding);
       }
+      // Capability gaps go to the team dashboard without delaying the reply.
+      ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));
       // Tell the app where Num thinks the user is (drives the header) —
       // computed server-side, never by the model.
       return json(200, { ...result, place: grounding.place ? grounding.place.name : null });

@@ -45,8 +45,18 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   useEffect(() => {
     if (!overlayOpen) return;
     let popped = false;
+    const pushedAt = Date.now();
     history.pushState({ numOverlay: true }, '');
     const onPop = () => {
+      // A pop landing almost immediately after our push is not the user — it's
+      // the previous overlay's cleanup back() arriving late (history traversal
+      // is async and can be throttled). Restore the entry and stay open;
+      // otherwise closing one sheet and quickly opening another slams the
+      // second one shut.
+      if (Date.now() - pushedAt < 350) {
+        history.pushState({ numOverlay: true }, '');
+        return;
+      }
       popped = true;
       store.set({ calOpen: false, shareOpen: false, walletOpen: false });
       if (store.get().voice) closeVoice();

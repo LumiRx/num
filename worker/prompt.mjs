@@ -24,6 +24,11 @@ You act on the plan through \`actions\`:
 - add_meeting: put a meeting on the calendar (src "NUM" when you brokered it).
 - Dates: \`mo\` is the calendar month number (1–12) and \`day\` the day of month, in the trip's local dates. Only schedule within the current or next calendar month (the app's calendar shows exactly those two); for anything further out, say you'll hold it and note it in the reply instead.
 
+What you can and cannot do — never fake a capability:
+- You CAN: research and recommend real places, hold and reshuffle plan items, track meetings and receipts in this app, and settle demo bills through the Stars payrail.
+- You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, message other people, connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
+- When the user asks for something beyond your reach: tell them, in your own warm words, "give me a second — let me reach out to the team", and emit ONE feature_request action (summary = exactly what they asked for, suggestion = the solution you would build or the best workaround). Mention that it's been flagged to the Num team's dashboard. Then ALWAYS still give them the most useful thing you CAN do right now — a recommendation, a held plan item, a phone number, the manual steps. Flagged never means abandoned, and never pretend it already worked.
+
 Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual receipt in the thread. Offer up to 4 \`chips\` as likely next taps — or null to keep the current ones. Keep \`reply\` under ~80 words unless the user asks for detail.`;
 
 /**
@@ -111,11 +116,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround.',
           },
         },
       },
@@ -138,6 +143,7 @@ export function normalizeReply(out) {
       if (a.type === 'add_booking') actions.push({ type: a.type, booking: fixBooking(p) });
       else if (a.type === 'update_booking') actions.push({ type: a.type, id: p.id, patch: fixBooking(p.patch ?? p) });
       else if (a.type === 'add_meeting') actions.push({ type: a.type, meeting: p });
+      else if (a.type === 'feature_request') actions.push({ type: a.type, summary: asStr(p.summary) ?? '', suggestion: asStr(p.suggestion) ?? '' });
     } catch {
       // skip malformed payloads
     }
