@@ -63,6 +63,13 @@ change.
 
 ## Referrals, invites and student ambassadors
 
+The consumer side of this — signing up with a number, inviting a friend by name
+in chat, and the group plans two connected Nums keep in step — lives in
+[friends-and-plans.md](friends-and-plans.md). It writes the same
+`num_referral_codes` / `num_invite_links` ledger described below, so invites
+sent from the app show up in these stats with no extra plumbing.
+
+
 - `POST /ref/code` — mints a friendly code (no O/0/I/1) for a member,
   ambassador, university or business. Fraud caps are set at creation
   (`max_conversions`, `max_reward_total_cs`) because an uncapped code is an
@@ -88,7 +95,6 @@ change.
 |---|---|
 | SMS codes + direct invite sends | Twilio (or MessageBird) account + sender ID per country |
 | Claim UI in the app | A "Claim your business" surface + the referral dashboard screen |
-| Contacts import | Web Contact Picker works on Chrome/Android only; iOS Safari has no API — plan is picker where available, paste/manual elsewhere |
 | Calendar | `.ics` download and Google Calendar template links work with no OAuth; two-way sync needs Google/Microsoft OAuth apps |
 | Reward payout | Stars ledger already exists (`stars_ledger`, `num_wallet_*`) — wire `reward_status: granted` to it |
 | Owner notification on contested claims | Needs the owner's contact channel + a notification worker |

@@ -83,6 +83,75 @@ export type Disruption = 'none' | 'active' | 'rebooked';
 /** 0 = off, 1 = listening, 2 = heard/on it, 3 = done */
 export type VoicePhase = 0 | 1 | 2 | 3;
 
+// ── Social layer: identity, friends, and plans a group builds together ──────
+
+export interface Member {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  phone_verified: boolean;
+  ref: string | null;
+}
+
+export interface Friend {
+  id: string | null;
+  name: string;
+  /** 'pending' until they open the invite on their own device. */
+  state: 'pending' | 'active' | 'declined';
+  direction: 'sent' | 'received';
+  token?: string;
+  plan_id?: string | null;
+}
+
+/** An item can exist as a pure idea — that is what lets friends plan first. */
+export type PlanItemStatus = 'idea' | 'proposed' | 'held' | 'confirmed' | 'cancelled';
+
+export interface PlanItem {
+  id: string;
+  plan_id: string;
+  kind: 'idea' | 'booking' | 'note' | 'photo' | 'bill';
+  title: string;
+  place?: string | null;
+  address?: string | null;
+  day?: string | null;
+  time?: string | null;
+  status: PlanItemStatus;
+  cost?: string | null;
+  note?: string | null;
+  photo?: string | null;
+  by_id?: string | null;
+  by_name?: string | null;
+}
+
+export interface PartyPlan {
+  id: string;
+  title: string;
+  dest?: string | null;
+  owner_id: string;
+  starts_on?: string | null;
+  state: 'planning' | 'booked' | 'done' | 'archived';
+  join_code?: string | null;
+  members?: number;
+  items?: number;
+}
+
+/** Open state for the invite sheet — what Num is about to send, and to whom. */
+export interface InviteDraft {
+  name?: string;
+  phone?: string;
+  planId?: string | null;
+  /** Candidates to disambiguate "send invite to dre" before anything is sent. */
+  candidates?: Array<{ name: string; phone?: string }>;
+  minted?: {
+    token: string;
+    link: string;
+    message: string;
+    sms_url: string;
+    whatsapp_url: string;
+    install_steps: { ios: string[]; android: string[] };
+  };
+}
+
 export interface AppState {
   view: View;
   typing: boolean;
@@ -119,6 +188,26 @@ export interface AppState {
   photosOn: boolean;
   billPaid: boolean;
   bought: string;
+
+  /** This device's Num account. Null until they give a name and number. */
+  me: Member | null;
+  /** Mutual connections — only 'active' ones share anything. */
+  friends: Friend[];
+  /** People this user has named, so "invite dre" resolves without contacts. */
+  contacts: Array<{ name: string; phone?: string }>;
+  /** Plans this member belongs to, and the one currently open. */
+  plans: PartyPlan[];
+  planId: string | null;
+  planItems: PlanItem[];
+  planMembers: Array<{ member_id: string; name: string | null; role: string }>;
+  /** Last plan event narrated into the thread — the AI-to-AI read cursor. */
+  planCursor: number;
+  /** Referral that brought this user in, and the invite token to accept. */
+  refCode: string | null;
+  inviteToken: string | null;
+
+  inviteOpen: InviteDraft | null;
+  partyOpen: boolean;
 
   txns: Txn[];
   meetings: Meeting[];

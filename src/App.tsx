@@ -23,20 +23,51 @@ export default function App() {
   const standalone = useStandalone();
   const showCanvas = new URLSearchParams(window.location.search).has('canvas');
 
-  // Installed-app keyboard fix: the on-screen keyboard shrinks the visual
-  // viewport but not 100dvh, hiding the input. Track the real height in --vvh
-  // so the shell resizes with the keyboard.
+  // Installed-app keyboard handling. The naive version — writing
+  // visualViewport.height into --vvh on every resize AND scroll — makes the
+  // shell chase the keyboard's open/close animation frame by frame, which is
+  // the visible glitch when you hit Send and the keyboard drops.
+  //
+  // So: two stable states only. Keyboard up => pin the shell to the measured
+  // visible height (one value, held). Keyboard down => hand it straight back
+  // to 100dvh, a value the browser owns and animates itself. Intermediate
+  // frames are ignored, and 'scroll' is not listened to at all (it fires
+  // constantly while the keyboard animates and carries no size information).
   useEffect(() => {
     if (!standalone) return;
     const vv = window.visualViewport;
     if (!vv) return;
-    const set = () => document.documentElement.style.setProperty('--vvh', vv.height + 'px');
-    set();
-    vv.addEventListener('resize', set);
-    vv.addEventListener('scroll', set);
+    const root = document.documentElement;
+    const KEYBOARD_MIN = 120; // smaller gaps are browser chrome, not a keyboard
+    let pinned = -1;
+    let raf = 0;
+
+    const apply = () => {
+      raf = 0;
+      const visible = Math.round(vv.height);
+      const gap = Math.round(window.innerHeight) - visible;
+      if (gap > KEYBOARD_MIN) {
+        // Only write when the pinned height actually changes, so an animating
+        // keyboard doesn't produce a style write (and a relayout) per frame.
+        if (Math.abs(visible - pinned) > 2) {
+          pinned = visible;
+          root.style.setProperty('--vvh', `${visible}px`);
+        }
+      } else if (pinned !== -1) {
+        pinned = -1;
+        root.style.setProperty('--vvh', '100dvh');
+      }
+    };
+    const onResize = () => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+
+    root.style.setProperty('--vvh', '100dvh');
+    vv.addEventListener('resize', onResize);
     return () => {
-      vv.removeEventListener('resize', set);
-      vv.removeEventListener('scroll', set);
+      cancelAnimationFrame(raf);
+      vv.removeEventListener('resize', onResize);
+      root.style.removeProperty('--vvh');
     };
   }, [standalone]);
 

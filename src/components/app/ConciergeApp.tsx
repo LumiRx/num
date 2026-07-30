@@ -1,25 +1,29 @@
 // The Num app screen — header, tab bar, views, sheets and overlays.
 // Composition and z-layering match Concierge.dc.html exactly.
 import { useEffect } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, UIEvent } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
-import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon } from '../../lib/icons';
+import { bootSocial, startPlanSync } from '../../lib/social';
+import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
 import ThreadView from './ThreadView';
 import PlanView from './PlanView';
 import MemoryView from './MemoryView';
 import CalendarSheet from './CalendarSheet';
 import ShareSheet from './ShareSheet';
 import WalletSheet from './WalletSheet';
+import InviteSheet from './InviteSheet';
+import PartySheet from './PartySheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || !!s.inviteOpen);
+  const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
 
@@ -33,9 +37,17 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, inviteOpen: null });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || !!s.inviteOpen || s.voice > 0);
+
+  // Pick up a referral/invite off the launch URL, then keep the shared plan in
+  // step while the app is in the foreground — that polling loop is how the
+  // other members' agents reach this one.
+  useEffect(() => {
+    bootSocial();
+    return startPlanSync();
+  }, []);
 
   // The system back button/gesture must close what's open, never quit the
   // app: opening an overlay pushes one history entry; popping it (Android
@@ -58,7 +70,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, inviteOpen: null });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -73,12 +85,26 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.inviteOpen) closeSheets();
     if (s.voice) closeVoice();
   };
 
+  // The app frame must never scroll. It is overflow:hidden, but a browser will
+  // still scroll a hidden container programmatically to reveal a focused
+  // element — focusing a field in a sheet that is mid-slide shoved the entire
+  // UI up by ~370px and left a black band where the app used to be. Snapping
+  // back on scroll covers every path into it: taps, keyboard focus, autofill,
+  // find-in-page. (Our own focus() calls already pass preventScroll.)
+  const holdFrame = (e: UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollTop || el.scrollLeft) {
+      el.scrollTop = 0;
+      el.scrollLeft = 0;
+    }
+  };
+
   return (
-    <div onKeyDown={onEscape} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
+    <div onKeyDown={onEscape} onScroll={holdFrame} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
       {/* living ground — aurora blobs drift behind all content */}
       <div className="aurora-layer" aria-hidden="true" />
       {/* header — floating glass panel */}
@@ -108,6 +134,20 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
               title="Stars wallet"
             >
               <StarIcon size={13} /> {stars.toLocaleString()}
+            </div>
+            <div
+              {...pressable(() => store.set({ partyOpen: true }))}
+              aria-label="Group plan"
+              className="glass press"
+              style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+              title="Group plan"
+            >
+              <UsersIcon size={15} />
+              {party > 1 && (
+                <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {party}
+                </span>
+              )}
             </div>
             <div
               {...pressable(() => store.set({ shareOpen: true, copied: false }))}
@@ -155,6 +195,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       />
 
       <CalendarSheet />
+      <PartySheet />
+      <InviteSheet />
       <ShareSheet />
       <WalletSheet />
       <PermissionDialog />

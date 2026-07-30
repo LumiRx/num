@@ -15,6 +15,7 @@ import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mj
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
 import { pickLane, smallReply, guardReply } from './router.mjs';
+import { handleSocialSafe } from './social.mjs';
 
 const MODEL = 'claude-opus-5';
 
@@ -149,8 +150,16 @@ export default {
       });
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'POST, OPTIONS' } });
+      return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
     }
+    // Identity, invites, friend links and shared plans. Separate surface from
+    // the AI endpoint: no model call, no Anthropic key, its own rate profile.
+    if (url.pathname.startsWith('/api/social')) {
+      const res = await handleSocialSafe(request, env, url.pathname.slice('/api/social'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (request.method !== 'POST' || url.pathname !== '/api/num') {
       return new Response('not found', { status: 404 });
     }

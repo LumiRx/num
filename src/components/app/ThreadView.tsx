@@ -57,6 +57,8 @@ const DISCOVER: Array<[emoji: string, label: string, prompt: string]> = [
   ['₿', 'Check crypto', 'What are bitcoin and ethereum at right now?'],
   ['🤝', 'Meet Num users', 'Set up a meeting with another Num user'],
   ['🛠️', 'Hire help · 5arz', 'I need to hire someone for a small job through 5arz'],
+  ['💌', 'Invite a friend', 'Send an invite to a friend so we can plan together'],
+  ['🧳', 'Plan with friends', 'Start a group plan I can build with my friends'],
 ];
 
 export default function ThreadView() {
@@ -95,9 +97,13 @@ export default function ThreadView() {
           </div>
         )}
       </div>
-      <div className="glass-bar" style={{ padding: '10px 14px 14px' }}>
+      {/* Hard-set composer height: a fixed discover row + fixed chip row +
+          fixed input row, so the bar is the same height whether you are typing,
+          sending, or dismissing the keyboard. Bottom padding clears the home
+          indicator without an extra margin that shifts on rotation. */}
+      <div className="glass-bar" style={{ padding: '10px 14px max(env(safe-area-inset-bottom), 14px)', flex: 'none' }}>
         {!demo && (
-          <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 2px 8px' }}>
+          <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 42, alignItems: 'center', padding: '0 2px' }}>
             {DISCOVER.map(([emoji, label, prompt]) => (
               <div
                 key={label}
@@ -111,26 +117,34 @@ export default function ThreadView() {
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        {/* One fixed-height scrolling row, never a wrapping block. Wrapping made
+            the bar 1–3 rows tall depending on how many chips the reply carried,
+            so sending (which clears the chips) resized the whole composer and
+            the thread jumped under it. Height is reserved even when empty. */}
+        <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 46, alignItems: 'center', padding: '0 2px' }}>
           {chips.map((c) => (
             <div
               key={c.id}
               {...pressable(() => sendChip(c.id, c.label))}
               className="glass lift"
-              style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '8px 13px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 6, ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
+              style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '8px 13px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 6, flex: 'none', whiteSpace: 'nowrap', ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
             >
               <SparklesIcon size={12} style={{ color: 'var(--color-accent)' }} />
               {c.label}
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+        {/* Fixed 44px row: the send/mic swap and the input's own growth can
+            never change the composer's height. */}
+        <div style={{ display: 'flex', gap: 8, height: 44, alignItems: 'center' }}>
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
             placeholder="Message Num…"
-            style={{ flex: 1, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '11px 16px', fontSize: 13, color: 'var(--color-text)', background: 'rgba(255,255,255,.7)', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
+            /* 16px: iOS zooms the page in on focus for anything smaller, and
+               that zoom is itself a viewport resize — i.e. a second glitch. */
+            style={{ flex: 1, height: 44, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '0 16px', fontSize: 16, color: 'var(--color-text)', background: 'rgba(255,255,255,.7)', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
           />
           {draft.trim() ? (
             <div

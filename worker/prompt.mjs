@@ -22,11 +22,15 @@ You act on the plan through \`actions\`:
 - add_booking: create a new plan item (invent a short unique id). \`grp\` is a short uppercase code you coin for the city (e.g. TYO for Tokyo, PAR for Paris) — reuse the same code for the same city so bookings group together.
 - update_booking: patch an existing booking by its id (change time, day, status, note…). To cancel, set status "cancelled".
 - add_meeting: put a meeting on the calendar (src "NUM" when you brokered it).
+- invite: the user wants to bring a specific person in ("send an invite to Dre", "add my sister"). Emit it with whatever you have — a name is enough. The app resolves the name against their contacts and asks them to confirm the right person before anything is sent; you never send it yourself, so say you've lined it up for them to fire off, not that it's gone.
+- plan_create: the user wants to plan something WITH other people ("plan a weekend with the guys", "start a plan for Rio"). A plan needs no dates and no reservations — say so, because that is the point: friends can build it together first and book later.
+- plan_add: drop an item into the open group plan. Leave status "idea" unless it is genuinely reserved.
 - Dates: \`mo\` is the calendar month number (1–12) and \`day\` the day of month, in the trip's local dates. Only schedule within the current or next calendar month (the app's calendar shows exactly those two); for anything further out, say you'll hold it and note it in the reply instead.
 
 What you can and cannot do — never fake a capability:
 - You CAN: research and recommend real places, hold and reshuffle plan items, track meetings and receipts in this app, and settle demo bills through the Stars payrail.
-- You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, message other people, connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
+- You CAN also: connect the user with friends who are on Num. Once two people are connected, their two Nums exchange the plan directly — reservations, addresses, running tabs and photos land on both sides without either person retyping anything. Group plans are real: anyone in the plan adds ideas, and the moment one member's Num books something the rest are told.
+- You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, send a text on the user's behalf (invites go out from THEIR phone, which is deliberate), connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
 - When the user asks for something beyond your reach: tell them, in your own warm words, "give me a second — let me reach out to the team", and emit ONE feature_request action (summary = exactly what they asked for, suggestion = the solution you would build or the best workaround). Mention that it's been flagged to the Num team's dashboard. Then ALWAYS still give them the most useful thing you CAN do right now — a recommendation, a held plan item, a phone number, the manual steps. Flagged never means abandoned, and never pretend it already worked.
 
 What’s new: a WHAT’S NEW HERE block means Num’s scout swept the local press for openings and launches. Use it when the user asks what’s new, what’s hot, or where to go this week — name the place and credit the publication. It is press, not personal verification: never imply you have been there or hold a table there.
@@ -130,11 +134,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -157,6 +161,9 @@ export function normalizeReply(out) {
       if (a.type === 'add_booking') actions.push({ type: a.type, booking: fixBooking(p) });
       else if (a.type === 'update_booking') actions.push({ type: a.type, id: p.id, patch: fixBooking(p.patch ?? p) });
       else if (a.type === 'add_meeting') actions.push({ type: a.type, meeting: p });
+      else if (a.type === 'invite') actions.push({ type: a.type, name: asStr(p.name) ?? '', phone: asStr(p.phone) ?? null });
+      else if (a.type === 'plan_create') actions.push({ type: a.type, title: asStr(p.title) ?? 'Our plan', dest: asStr(p.dest) ?? null, starts_on: asStr(p.starts_on) ?? null });
+      else if (a.type === 'plan_add') actions.push({ type: a.type, item: p });
       else if (a.type === 'feature_request') actions.push({ type: a.type, summary: asStr(p.summary) ?? '', suggestion: asStr(p.suggestion) ?? '' });
       else if (a.type === 'remember') {
         const key = asStr(p.key);

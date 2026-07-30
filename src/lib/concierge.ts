@@ -4,6 +4,7 @@
 // agent backend would slot in later.
 import { store } from './store';
 import { demoState } from './data';
+import { addPlanItem, createPlan, pushBookingToPlan, startInvite, syncPlan } from './social';
 import type { Booking, Chip, Meeting, Msg } from './types';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
@@ -118,6 +119,21 @@ export function sendChip(id: string, label: string) {
         ...demo.msgs,
       ],
     });
+    return;
+  }
+
+  // Account + invite chips are handled on the device, not by the model: they
+  // open a sheet rather than costing a turn.
+  if (id === 'signup') {
+    store.set({ inviteOpen: {} });
+    return;
+  }
+  if (id === 'invite') {
+    startInvite({});
+    return;
+  }
+  if (id === 'party') {
+    store.set({ partyOpen: true });
     return;
   }
 
@@ -289,13 +305,22 @@ export function permDeny() {
 // above remain untouched — the demo still works with the server off.
 
 interface NumAction {
-  type: 'add_booking' | 'update_booking' | 'add_meeting' | 'remember';
+  type: 'add_booking' | 'update_booking' | 'add_meeting' | 'remember' | 'invite' | 'plan_create' | 'plan_add';
   booking?: Booking;
   id?: string;
   patch?: Partial<Booking>;
   meeting?: Meeting;
   key?: string;
   value?: string;
+  /** invite */
+  name?: string;
+  phone?: string | null;
+  /** plan_create */
+  title?: string;
+  dest?: string | null;
+  starts_on?: string | null;
+  /** plan_add */
+  item?: Record<string, string | null>;
 }
 
 interface NumReply {
@@ -308,12 +333,33 @@ interface NumReply {
 }
 
 function applyAction(a: NumAction) {
-  if (a.type === 'add_booking' && a.booking) addB(a.booking);
-  else if (a.type === 'update_booking' && a.id && a.patch) setB(a.id, a.patch);
+  if (a.type === 'add_booking' && a.booking) {
+    addB(a.booking);
+    // If a group plan is open, the other members' Nums hear about it too —
+    // that is the whole promise of connecting two accounts.
+    void pushBookingToPlan(a.booking);
+  } else if (a.type === 'update_booking' && a.id && a.patch) setB(a.id, a.patch);
   else if (a.type === 'add_meeting' && a.meeting) {
     store.set((s) => ({ meetings: [...s.meetings.filter((m) => m.id !== a.meeting!.id), a.meeting!] }));
   } else if (a.type === 'remember' && a.key && a.value) {
     store.set((s) => ({ profile: { ...s.profile, [a.key!]: a.value! } }));
+  } else if (a.type === 'invite') {
+    // Never sent silently: the sheet confirms WHO before anything goes out.
+    startInvite({ name: a.name, phone: a.phone ?? undefined });
+  } else if (a.type === 'plan_create' && a.title) {
+    void createPlan(a.title, a.dest, a.starts_on).then((plan) => {
+      if (plan) store.set({ partyOpen: true });
+    });
+  } else if (a.type === 'plan_add' && a.item?.title) {
+    void addPlanItem({
+      title: String(a.item.title),
+      kind: 'idea',
+      status: (a.item.status as 'idea' | 'proposed' | 'held' | 'confirmed') ?? 'idea',
+      day: a.item.day ?? null,
+      time: a.item.time ?? null,
+      place: a.item.place ?? null,
+      note: a.item.note ?? null,
+    }).then(() => syncPlan());
   }
 }
 

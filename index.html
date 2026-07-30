@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- interactive-widget: on browsers that support it the keyboard resizes the
+         layout viewport natively, so 100dvh is already correct and the JS below
+         never has to intervene. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="description" content="Num — your concierge. One thread, one calendar, zero forms." />
     <!-- Matches the aurora's top colour so the status bar blends into the app -->
     <meta name="theme-color" content="#faf7f4" />

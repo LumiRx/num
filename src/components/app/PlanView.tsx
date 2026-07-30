@@ -6,6 +6,7 @@ import { tagOf, bookingMetaLine, monthName } from '../../lib/derive';
 import { askToChange } from '../../lib/concierge';
 import { PLAN_GROUPS } from '../../lib/data';
 import { Scene } from '../../lib/scenes';
+import { ChevronRightIcon, UsersIcon } from '../../lib/icons';
 import type { Booking } from '../../lib/types';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
@@ -113,12 +114,42 @@ function groupsFor(demo: boolean, bookings: Booking[]) {
     .sort((a, b) => a.items[0].mo - b.items[0].mo || a.items[0].day - b.items[0].day);
 }
 
+/** The group-plan strip: who's in it, how much is still just an idea, and the
+ *  way in. Shown even with zero bookings — a plan doesn't need one. */
+function PartyStrip() {
+  const plan = useApp((s) => s.plans.find((p) => p.id === s.planId) ?? null);
+  const members = useApp((s) => s.planMembers.length);
+  const items = useApp((s) => s.planItems);
+  const ideas = items.filter((i) => i.status === 'idea' || i.status === 'proposed').length;
+  return (
+    <div
+      {...pressable(() => store.set({ partyOpen: true }))}
+      className="glass lift"
+      style={{ cursor: 'pointer', margin: '12px 12px 4px', borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
+    >
+      <div style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+        <UsersIcon size={17} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{plan ? plan.title : 'Plan it with friends'}</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
+          {plan
+            ? `${members || 1} in · ${ideas} ${ideas === 1 ? 'idea' : 'ideas'} · ${items.length - ideas} booked`
+            : 'Start one with no dates and no bookings — add those together later'}
+        </div>
+      </div>
+      <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
+    </div>
+  );
+}
+
 export default function PlanView() {
   const bookings = useApp((s) => s.bookings);
   const demo = useApp((s) => s.demo);
   const groups = groupsFor(demo, bookings);
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
+      {!demo && <PartyStrip />}
       {groups.map(({ key, name, dates, items }) => (
         <div key={key}>
           <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

@@ -86,6 +86,18 @@ function baseState() {
     walletOpen: false,
     permOn: false,
     bought: '',
+    me: null,
+    friends: [],
+    contacts: [],
+    plans: [],
+    planId: null,
+    planItems: [],
+    planMembers: [],
+    planCursor: 0,
+    refCode: null,
+    inviteToken: null,
+    inviteOpen: null,
+    partyOpen: false,
   };
 }
 
@@ -140,7 +152,8 @@ const STORAGE_KEY = 'num-trip-v1';
 
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
-  const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied, ...keep } = s;
+  const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
+    inviteOpen, partyOpen, ...keep } = s;
   return keep;
 }
 
