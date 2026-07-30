@@ -35,7 +35,8 @@ const MEM_MODEL = '@cf/meta/llama-3.1-8b-instruct';   // small fast model that m
  */
 export const SYSTEM = (place, guest, timeStr, guide, sig = {}) => {
   const city = `${place.dest.name}${place.dest.country ? ', ' + place.dest.country : ''}`;
-  const where = place.label ? `${place.label} (in ${place.dest.name})`
+  const where = place.unsupported ? place.unsupported
+    : place.label ? `${place.label} (in ${place.dest.name})`
     : place.precise ? `${place.dest.name} — you know their exact position, so "near me" means walking distance`
     : place.dest.name;
   const partners = place.rows.length
@@ -65,9 +66,26 @@ TRAVEL PSYCHOLOGY (read the guest's emotional state and meet them there):
   const empathyLine = psychBlock
     ? '' : `- If something has gone wrong for the guest, open with one warm sentence acknowledging it, then give exactly ONE clear next step — never a menu of options to someone who is already stressed.\n`;
 
-  return `You are Num, the personal AI travel concierge by 5arz — trained in the tradition of the world's great concierges (Les Clefs d'Or: "service through friendship"). Guests message you on LINE while travelling.
+  /* The guest has told us they are somewhere we don't cover. This block has to
+     outrank two rules further down that otherwise produce exactly the wrong
+     reply: "NEVER a flat no" pushes the model to offer something regardless,
+     and "if the partner list is empty, say you're still adding partners in
+     <city>" names the WRONG city. Left alone, those two turned "I'm in Los
+     Angeles" into a Phuket restaurant recommendation. */
+  const outOfArea = place.unsupported ? `
+⚠️ THE GUEST IS IN ${String(place.unsupported).toUpperCase()} — A PLACE NUM DOES NOT COVER YET.
+This overrides every other rule below, including "never say no" and anything about ${place.dest.name}.
+- The guest is the only authority on where they are. They said ${place.unsupported}; that is where they are. NEVER tell them they are somewhere else, and never say anything like "I think there might be some confusion."
+- You have NO verified partners in ${place.unsupported}. Say that plainly and warmly, in one sentence.
+- Do NOT name a single business. Not from ${place.dest.name}, not from memory, not from anywhere. A recommendation in the wrong city is worse than no recommendation.
+- Do NOT change the subject to travel packages, holidays, or visiting ${place.dest.name}. They asked for help where they are; pitching them a trip instead is a dodge and reads as broken.
+- What you CAN offer: remember them for when they're somewhere we cover, or help plan if THEY bring up a trip. General public knowledge about ${place.unsupported} is fine — no opening hours, prices, or specific venues.
+- Good: "I'm not set up in ${place.unsupported} yet, so I'd only be guessing — and I won't do that to you. Want me to note where you're based for when we get there?"
+` : '';
 
-GUEST IS IN: ${city}
+  return `You are Num, the personal AI travel concierge by 5arz — trained in the tradition of the world's great concierges (Les Clefs d'Or: "service through friendship"). Guests message you on LINE while travelling.
+${outOfArea}
+GUEST IS IN: ${place.unsupported || city}${place.unsupported ? ' — NOT a place NUM covers (see the warning above)' : ''}
 LOCAL TIME THERE: ${timeStr}
 RECOMMENDATIONS CENTRED ON: ${where}
 GUEST: ${guest?.display_name ? `name: ${guest.display_name}` : 'name unknown'}${guest?.prefs ? ` · has previously asked about: ${guest.prefs}` : ' · first conversation'}
@@ -194,14 +212,21 @@ async function askSmall(env, userText, guest, cf, decision, started){
 async function askFull(env, userText, guest, cf, decision, escalated){
   const started = Date.now();
   const loc = await resolveLocation(env, { text: userText, guest, cf });
-  const { rows } = await nearbyPlaces(env, loc, userText, 8);
+  // The guest told us they're somewhere we don't cover. Every partner we hold
+  // is in the wrong city, so we offer none — recommending a Phuket restaurant
+  // to a guest in Los Angeles is worse than admitting we can't help there.
+  const { rows } = loc.unsupported ? { rows: [] } : await nearbyPlaces(env, loc, userText, 8);
   const place = { ...loc, rows };
   // If D1 gave us nothing at all in our first market, fall back to the bundled list.
-  if (!place.rows.length && place.dest.slug === 'phuket') {
+  // Never when unsupported — this fallback is what put a Phuket restaurant in
+  // front of a guest in Los Angeles.
+  if (!place.unsupported && !place.rows.length && place.dest.slug === 'phuket') {
     place.rows = BIZ.filter(b => /restaurant|attraction|spa|massage|tour/i.test(b.category||''))
       .sort((a,b)=>(b.reviews||0)-(a.reviews||0)).slice(0,8);
   }
-  const guide = await destinationGuide(env, place.dest.slug);
+  // Same reasoning: a Phuket city guide is noise at best and misleading at
+  // worst when the guest is telling us they're in Los Angeles.
+  const guide = place.unsupported ? null : await destinationGuide(env, place.dest.slug);
   // productAsk lives here rather than in the router: which goods we can point a
   // guest at is a fact about NUM's partners, not about language.
   const sig = { ...(decision.signals || {}), product: productAsk(userText) };
@@ -287,6 +312,12 @@ async function saveLocation(env, uid, lat, lng){
 async function noteDest(env, uid, slug){
   try { if (uid && uid !== 'unknown' && slug) await env.DB.prepare('UPDATE users SET last_dest=?1 WHERE line_user_id=?2').bind(slug, uid).run(); }
   catch(e){ console.log('noteDest', String(e)); }
+}
+
+/** Forget a stored destination once we know the guest has left our coverage. */
+async function clearDest(env, uid){
+  try { if (uid && uid !== 'unknown') await env.DB.prepare('UPDATE users SET last_dest=NULL WHERE line_user_id=?1').bind(uid).run(); }
+  catch(e){ console.log('clearDest', String(e)); }
 }
 
 const MEM_SYS = `You maintain a compact JSON "guest brain" for a travel concierge. Given the current brain and the latest exchange, return the UPDATED brain as JSON only.
@@ -415,6 +446,10 @@ async function handleEvents(env, events){
           if (d) out += `\n\n🛍️ NUM deal: ${d.name} — ${d.discount||'special price'} with code ${d.promo_code||'NUM'} at ${d.partner}${d.link ? ' → '+d.link : ''}`;
         }
         if (place?.source === 'named') await noteDest(env, uid, place.dest.slug);   // they told us where they are
+        // They've told us they're somewhere we don't cover, so a stored
+        // last_dest is now stale — and a stale last_dest is sticky: it silently
+        // re-anchors every later message to a city the guest already left.
+        else if (place?.unsupported) await clearDest(env, uid);
         /* "thanks" teaches us nothing about this guest, and updateMemory is
            itself a model call — running the brain on a template reply would
            spend back more than the free tier just saved. */

@@ -141,10 +141,66 @@ async function areaCenter(env, destSlug, text) {
   } catch (e) { console.log('areaCenter', String(e)); return null; }
 }
 
+/* Words that follow "in" without naming a place. Without this guard,
+   "I'm in a hurry" and "we're in the mood for Thai" would both be read as
+   the guest declaring an unsupported city. */
+const NOT_A_PLACE = new Set([
+  'a', 'an', 'the', 'my', 'our', 'your', 'his', 'her', 'their', 'this', 'that',
+  'need', 'love', 'search', 'trouble', 'hurry', 'mood', 'fact', 'general',
+  'town', 'time', 'order', 'charge', 'case', 'advance', 'total', 'front',
+  'back', 'here', 'there', 'bed', 'transit', 'town.', 'touch', 'person',
+  'about', 'between', 'and', 'or', 'it', 'one', 'two', 'three', 'some', 'any',
+  'good', 'bad', 'love,', 'terms', 'return', 'exchange', 'other', 'another',
+]);
+
+/**
+ * A place the guest states outright that they are in — covered by us or not.
+ *
+ * This exists because of a real failure: a guest in Los Angeles was told
+ * "you're actually in Phuket" and handed a Phuket restaurant. `destNamedIn`
+ * only recognises cities we cover, so an unsupported city looked identical to
+ * the guest saying nothing at all, and resolution fell through to the Phuket
+ * default. The guest is the only authority on where the guest is, so we have
+ * to be able to hear a city we don't serve.
+ */
+export function statedPlace(text) {
+  const m = /\b(?:i'?m|i am|we'?re|we are|currently|presently|staying|based|arrived|landed|flying|travell?ing|visiting)\b[^.!?,;]{0,14}?\bin\s+([a-z][a-z'’.-]*(?:[ -][a-z][a-z'’.-]*){0,2})/i
+    .exec(text || '');
+  if (!m) return null;
+  // The capture takes up to three words, so trailing filler rides along:
+  // "los angeles right now" arrives as "los angeles right". Strip repeatedly,
+  // not once, or multi-word tails survive.
+  let raw = m[1].trim();
+  let prev;
+  do {
+    prev = raw;
+    raw = raw.replace(/[\s,]+(right|now|today|tonight|tomorrow|currently|at|for|until|till|this|next|and|but|so|with|on|the|a|an)$/i, '').trim();
+  } while (raw !== prev);
+  if (raw.length < 3) return null;
+  if (NOT_A_PLACE.has(raw.toLowerCase().split(/[ -]/)[0])) return null;
+  return raw;
+}
+
+/** Is this string a neighbourhood we already hold places in? */
+async function isKnownArea(env, s) {
+  try {
+    const r = await env.DB
+      .prepare('SELECT 1 FROM places WHERE area LIKE ?1 COLLATE NOCASE LIMIT 1')
+      .bind(s).first();
+    return !!r;
+  } catch (e) { console.log('isKnownArea', String(e)); return false; }
+}
+
 /**
  * Where should recommendations be centred?
  * Priority: a place the guest named  >  where they actually are  >  where they
  * were last  >  Phuket (our first market).
+ *
+ * When the guest states a city we do NOT cover, resolution stops and
+ * `unsupported` is set. `dest` still carries a value so timezone and query
+ * plumbing downstream keep working, but callers MUST check `unsupported`
+ * before offering anything local — that field means "we are not where the
+ * guest is."
  */
 export async function resolveLocation(env, { text, guest, cf }) {
   const out = { dest: null, lat: null, lng: null, label: null, precise: false, source: 'default' };
@@ -153,6 +209,12 @@ export async function resolveLocation(env, { text, guest, cf }) {
   if (!dests.length) return { ...out, dest: { slug: 'phuket', name: 'Phuket', country: 'TH', tz: 'Asia/Bangkok', lat: 7.953, lng: 98.338 } };
 
   const named = destNamedIn(text, dests);
+
+  // A place the guest stated that we don't cover as a destination. Guarded by
+  // an area lookup first: "I'm staying in Patong" names a neighbourhood, not an
+  // unsupported city, and areaCenter below handles those properly.
+  let stated = named ? null : statedPlace(text);
+  if (stated && await isKnownArea(env, stated)) stated = null;
 
   // Coordinates we trust: a location the guest shared on LINE in the last day,
   // else the coarse city-level position Cloudflare attaches to a web request.
@@ -174,6 +236,14 @@ export async function resolveLocation(env, { text, guest, cf }) {
   } else if (nearest && nearest.km < 120) {
     out.dest = nearest.d; out.lat = coords.lat; out.lng = coords.lng;
     out.precise = coords.precise; out.source = coords.source;
+  } else if (stated) {
+    // The guest named somewhere, and it matched no destination we cover.
+    // Believe them and stop here. Falling through to `last_dest` was the bug
+    // that made a Phuket guest permanently a Phuket guest: once last_dest was
+    // set, every later message resolved back to it no matter what they said.
+    out.unsupported = stated;
+    out.source = 'unsupported';
+    out.dest = dests.find(d => d.slug === guest?.last_dest) || dests.find(d => d.slug === 'phuket') || dests[0];
   } else if (guest?.last_dest) {
     out.dest = dests.find(d => d.slug === guest.last_dest) || null;
     if (out.dest) out.source = 'last_seen';
