@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # Multi-tenancy
     DEFAULT_PARTNER_TENANT_ID: Optional[str] = None
 
+    # Where NUM has verified vendors. Injected into the system prompt as
+    # {{service_area}}. This describes OUR coverage — never an assumption about
+    # where the guest is. Per-tenant override comes from partner_tenants.region
+    # when present; this is the fallback.
+    SERVICE_AREA: str = "Edinburgh, Scotland"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -42,11 +42,16 @@ def _template() -> str:
 
 def build_system_prompt(user: dict, retrieved_memories: Optional[list[str]] = None) -> str:
     mem_block = "\n".join(f"- {m}" for m in (retrieved_memories or [])) or "(no stored memories yet)"
+    # Service area = where WE have vendors. Per-tenant value wins; otherwise the
+    # configured default. Never phrased as "the guest is here" — the prompt is
+    # explicit that only the guest can say where the guest is.
+    service_area = user.get("service_area") or get_settings().SERVICE_AREA
     return (
         _template()
         .replace('{{user_display_name or "this guest"}}', "this guest")
         .replace("{{user_uuid}}", str(user.get("user_uuid", "")))
         .replace("{{user.preferred_lang}}", user.get("preferred_lang") or "en")
+        .replace("{{service_area}}", service_area)
         .replace("{{retrieved_memories_block}}", mem_block)
         .replace("{{current_trip_block_if_any}}", "(none)")
     )
