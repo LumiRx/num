@@ -1,0 +1,19 @@
+{
+  // NUM claim + referrals — business listing claim with real ownership
+  // verification, plus the invite/referral ledger (members, students,
+  // ambassadors). Reads and writes the shared num-db.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "num-claim",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "d1_databases": [
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+  ],
+  "observability": { "enabled": true }
+  // Secrets (wrangler secret put …):
+  //   ADMIN_KEY       — required for /admin/*
+  //   RESEND_API_KEY  — email codes (already used by num-accounts)
+  //   TWILIO_SID / TWILIO_TOKEN / TWILIO_FROM — SMS codes; until these exist,
+  //   an SMS claim falls back to manual review instead of pretending to send.
+}

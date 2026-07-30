@@ -17,3 +17,4 @@ dist/
 *.tsbuildinfo
 out/
 .scout_key
+.claim_admin_key
