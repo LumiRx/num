@@ -11,10 +11,13 @@ import structlog
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
-from apps.api.schemas.messages import IncomingMessage
+from apps.api.schemas.messages import IncomingMessage, MediaItem
 from apps.api.settings import get_settings
 
 log = structlog.get_logger()
+
+# A guest sending 30 photos shouldn't be able to make us fetch 30 files.
+_MAX_MEDIA_PER_MESSAGE = 10
 
 
 def verify_request(request, params: dict) -> bool:
@@ -45,14 +48,50 @@ def verify_request(request, params: dict) -> bool:
         return False
 
 
-def parse_sms(from_: str, body: str) -> IncomingMessage:
-    return IncomingMessage(channel="sms", handle=from_, text=body)
+def parse_media(form: dict) -> list[MediaItem]:
+    """Extract attachments from a Twilio webhook form.
+
+    Twilio posts `NumMedia` plus indexed `MediaUrl{n}` / `MediaContentType{n}`
+    pairs. Those URLs are temporary and require HTTP Basic auth with the
+    account SID + auth token — they are NOT publicly fetchable, so
+    services.media re-hosts the bytes before anything else touches them.
+
+    Defensive: a malformed or oversized media block yields fewer items rather
+    than raising. A photo failing to parse must never cost the user their reply.
+    """
+    try:
+        n = int(form.get("NumMedia") or 0)
+    except (TypeError, ValueError):
+        return []
+    if n <= 0:
+        return []
+
+    items: list[MediaItem] = []
+    for i in range(min(n, _MAX_MEDIA_PER_MESSAGE)):
+        url = (form.get(f"MediaUrl{i}") or "").strip()
+        ctype = (form.get(f"MediaContentType{i}") or "").strip()
+        if not url or not ctype:
+            continue
+        items.append(MediaItem(url=url, content_type=ctype, provider_sid=url.rsplit("/", 1)[-1] or None))
+    if n > _MAX_MEDIA_PER_MESSAGE:
+        log.warning("twilio_media_truncated", received=n, kept=_MAX_MEDIA_PER_MESSAGE)
+    return items
 
 
-def parse_whatsapp(from_: str, body: str) -> IncomingMessage:
+def parse_sms(from_: str, body: str, form: dict | None = None) -> IncomingMessage:
+    return IncomingMessage(
+        channel="sms", handle=from_, text=body,
+        media=parse_media(form or {}),
+    )
+
+
+def parse_whatsapp(from_: str, body: str, form: dict | None = None) -> IncomingMessage:
     # Twilio prefixes WhatsApp handles as `whatsapp:+1...` — keep the raw form,
     # the identity service treats it as an opaque handle keyed per channel.
-    return IncomingMessage(channel="whatsapp", handle=from_, text=body)
+    return IncomingMessage(
+        channel="whatsapp", handle=from_, text=body,
+        media=parse_media(form or {}),
+    )
 
 
 def twiml_reply(text: str) -> str:

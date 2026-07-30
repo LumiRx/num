@@ -18,6 +18,7 @@ from apps.api.services import (
     identity,
     intent_router,
     lang_detect,
+    media,
     memory,
     persistence,
     pii_scrubber,
@@ -118,6 +119,20 @@ def handle_inbound(msg: IncomingMessage) -> str:
         lang=lang.code,
         detected_intent=intent,
     )
+
+    # Photos sent in chat (car condition records, a menu, a receipt). Stored
+    # out-of-band so a failed upload never costs the user their reply — the
+    # message is already logged above and the answer is already composed.
+    if msg.has_media:
+        try:
+            stored = media.store_media(
+                msg.media, user_uuid,
+                message_id=user_msg_id, conversation_id=conversation_id,
+            )
+            if stored:
+                log.info("media_attached", count=len(stored), user_uuid=user_uuid)
+        except Exception as e:  # belt and braces — store_media already swallows
+            log.warning("media_pipeline_failed", error=str(e))
     assistant_msg_id = persistence.log_message(
         conversation_id, user_uuid, "assistant", reply, lang=lang.code
     )

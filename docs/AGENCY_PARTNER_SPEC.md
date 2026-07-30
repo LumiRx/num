@@ -98,27 +98,39 @@ Their dashboard gets a **Clients** tab:
 ### The genuinely good part
 This is real inventory in a category travelers constantly ask for, and the VIN/mileage instinct is **exactly right** — it's verification, which is our whole quality moat. A car with a VIN, mileage and real photos is a verifiable asset, unlike a listing someone typed.
 
-### The part that needs a boundary
+### The boundary — confirmed with the partner
 
-Vehicle rental is a **different risk class** from booking a restaurant table. If a table booking goes wrong, someone eats late. If a car rental goes wrong, someone is in a crash in an uninsured vehicle and the lawyers ask who arranged it.
+**They handle the full booking paperwork, insurance and contracts on their end. NUM is the reservation system.** That's a clean, well-established split — the same shape as OpenTable taking a table booking without cooking the food, or Booking.com reserving a room it doesn't own.
 
-**So the boundary is:** NUM is a **discovery and referral layer**. NUM shows the vehicle and hands the traveler to the party who holds the rental contract, the insurance, and the liability. NUM never becomes the rental principal.
-
-| NUM does | NUM does **not** do |
+| NUM does | The agency does |
 |---|---|
-| Show available vehicles matching a request | Take rental payment |
-| Show verified specs, photos, location, price | Hold the rental agreement |
-| Hand off to the agency/owner to complete | Verify driver licences |
-| Track the referral for commission | Carry insurance or liability |
+| Show available vehicles matching a request | Hold the rental agreement |
+| Take the **reservation** (dates, vehicle, guest) | Confirm or decline it |
+| Pass the request to the agency instantly | Carry the insurance |
+| Keep the photo + condition record | Verify driver licences |
+| Track commission on completed rentals | **Take the payment** |
 
-**Required from the agency before a single vehicle goes live** — this protects them as much as us:
-1. Written confirmation each vehicle is **insured for rental/hire** use (private insurance does not cover it)
+This is enforced in the data, not just in the contract. `vehicle_reservations` has a check constraint that makes `payment_handled_by = 'num'` **impossible to write** — the boundary is structural, so it can't drift as the product grows.
+
+**Still required before a vehicle goes live** — protects them as much as us:
+1. Written confirmation each vehicle is **insured for hire** use (private policies don't cover it)
 2. Owner consent to list
-3. Who holds the rental agreement (the agency, presumably)
-4. Confirmation they handle driver verification and licence checks
-5. Their own T&Cs for the rental itself
+3. Who holds the rental agreement
+4. Confirmation they do driver verification and licence checks
 
-If they can't produce #1, the vehicle doesn't list. That's not caution for its own sake — an uninsured hire is a criminal matter in the UK.
+Requirement 1 is gated in the database: a vehicle **cannot** reach `approved` without `insured_for_hire = true` — the trigger raises an exception. Not caution for its own sake; an uninsured hire is a criminal matter in the UK.
+
+### Photos in chat — the condition record ✅ built
+
+They can send car photos straight into the WhatsApp conversation and NUM keeps them as a timestamped record. This is genuinely useful: pre- and post-rental condition photos are standard practice in vehicle hire, and doing it in the chat the owner is already in beats any app you could ask them to install.
+
+**How it works now (shipped this session):**
+- Photos sent on WhatsApp/SMS arrive as media on the message
+- NUM fetches the bytes from Twilio (their URLs expire and are auth-gated — useless as a record), validates them, and re-hosts them in our own storage
+- Each photo is recorded against the conversation, and can be tagged to a vehicle as `listing`, `condition`, or `damage`
+- Condition photos are **append-only** — their whole value is being contemporaneous, so nothing overwrites them
+
+**Security worth knowing about, since this accepts files from the internet:** we validate the actual magic bytes rather than trusting the declared content type, so a file claiming to be a JPEG that isn't gets rejected. Storage keys are UUID-generated, never derived from anything the sender controls. Images only — 8 MB ceiling, 10 photos per message. And if a photo fails to store, the guest still gets their reply; losing a photo is annoying, losing the answer is a broken product. All of that is covered by tests.
 
 ### Data we collect per vehicle
 
@@ -164,7 +176,11 @@ Suggested framing, short enough to paste into a message:
 >
 > **Your clients** — we'll build you a client roster in your own dashboard with one-tap invite links and live activation tracking. The invites go out under *your* name, through your existing channels, so your clients see it as a perk from you. That's both what the rules require (consent can't be transferred between companies) and honestly what gets VIP clients to actually respond. You'll see who activated, who's using it, and what they've booked — never their private conversations.
 >
-> **The cars** — genuinely strong idea, and the VIN + mileage instinct is right; that's what lets us mark them verified. NUM will surface available vehicles to travelers in the area and hand them straight to you to close. To switch it on we need written confirmation each vehicle is insured for hire use, plus who holds the rental agreement. Send that and we'll build it.
+> **The cars** — works exactly as you described: you keep the paperwork, insurance and payment, we're the reservation system. A traveler asks, NUM shows the car, takes the booking request, and it lands with you to confirm. The VIN + mileage instinct is right — that's what lets us mark a vehicle verified.
+>
+> **Photos in chat are already built.** Your people can send car photos straight into the WhatsApp thread and we keep them as a timestamped condition record — pre- and post-rental, tagged to the vehicle. No app to install.
+>
+> To switch vehicles on we just need written confirmation each one is insured for hire use, and who holds the rental agreement. Send that and we'll list them.
 
 ---
 
