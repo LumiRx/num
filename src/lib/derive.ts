@@ -8,11 +8,13 @@ export interface Tag {
   st: CSSProperties;
 }
 
+// Liquid Num: soft rounded pills, tinted per status — lively but quiet.
 const tagBase: CSSProperties = {
-  fontSize: 8,
-  letterSpacing: '.08em',
+  fontSize: 8.5,
+  letterSpacing: '.07em',
   fontWeight: 700,
-  padding: '2px 5px',
+  padding: '3px 8px',
+  borderRadius: 999,
   whiteSpace: 'nowrap',
   flex: 'none',
 };
@@ -21,31 +23,32 @@ export function tagOf(b: Booking | TagKind): Tag {
   const status: TagKind = typeof b === 'string' ? b : b.status;
   const holdBy = typeof b === 'string' ? undefined : b.holdBy;
   const map: Record<TagKind, Tag> = {
-    confirmed: { label: 'CONFIRMED', st: { ...tagBase, border: '2px solid var(--color-text)', color: 'var(--color-text)' } },
-    hold: { label: 'HOLD' + (holdBy ? ' · BY ' + holdBy : ''), st: { ...tagBase, background: 'var(--color-accent)', color: '#fff' } },
-    deposit: { label: 'DEPOSIT PAID', st: { ...tagBase, background: 'var(--color-accent-100)', color: 'var(--color-accent-700)', border: '2px solid var(--color-accent-300)' } },
-    rebooked: { label: 'REBOOKED', st: { ...tagBase, background: 'var(--color-text)', color: '#fff' } },
-    cancelled: { label: 'CANCELLED', st: { ...tagBase, border: '2px solid var(--color-neutral-400)', color: 'var(--color-neutral-500)' } },
-    meeting: { label: 'MEETING · SYNCED', st: { ...tagBase, border: '2px solid var(--color-text)', color: 'var(--color-text)', background: '#fff' } },
-    memory: { label: 'MEMORY', st: { ...tagBase, border: '2px solid var(--color-neutral-400)', color: 'var(--color-neutral-600)' } },
-    bill: { label: 'BILL · DUE', st: { ...tagBase, background: 'var(--color-accent)', color: '#fff' } },
-    paid: { label: 'PAID', st: { ...tagBase, background: 'var(--color-text)', color: '#fff' } },
-    shared: { label: 'SHARED', st: { ...tagBase, background: 'var(--color-text)', color: '#fff' } },
+    confirmed: { label: 'CONFIRMED', st: { ...tagBase, background: 'rgba(56,161,105,.14)', color: '#1f7a48', border: '1px solid rgba(56,161,105,.25)' } },
+    hold: { label: 'HOLD' + (holdBy ? ' · BY ' + holdBy : ''), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
+    deposit: { label: 'DEPOSIT PAID', st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
+    rebooked: { label: 'REBOOKED', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
+    cancelled: { label: 'CANCELLED', st: { ...tagBase, background: 'var(--ink-08)', color: 'var(--ink-40)' } },
+    meeting: { label: 'MEETING · SYNCED', st: { ...tagBase, background: 'rgba(71,85,105,.12)', color: '#3b4a5f', border: '1px solid rgba(71,85,105,.22)' } },
+    memory: { label: 'MEMORY', st: { ...tagBase, background: 'rgba(161,140,209,.16)', color: '#6b4fa8', border: '1px solid rgba(161,140,209,.3)' } },
+    bill: { label: 'BILL · DUE', st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
+    paid: { label: 'PAID', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
+    shared: { label: 'SHARED', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
   };
   return map[status] ?? map.confirmed;
 }
 
 export const mtgTag: CSSProperties = {
   ...tagBase,
-  border: '2px solid var(--color-text)',
-  color: 'var(--color-text)',
-  background: '#fff',
+  background: 'rgba(71,85,105,.12)',
+  color: '#3b4a5f',
+  border: '1px solid rgba(71,85,105,.22)',
 };
 
 export const memTag: CSSProperties = {
   ...tagBase,
-  border: '2px solid var(--color-neutral-400)',
-  color: 'var(--color-neutral-600)',
+  background: 'rgba(161,140,209,.16)',
+  color: '#6b4fa8',
+  border: '1px solid rgba(161,140,209,.3)',
 };
 
 /** Weekday short name for a 2026 date, e.g. wd(7, 28) === 'Tue'. */
@@ -241,41 +244,59 @@ export function liveActivity(s: AppState): LiveActivity {
 
 // ── Shared sheet/segment styles ─────────────────────────────────────────────
 
+// Sheets rise as rounded glass panels; pair with className="glass-strong".
 export const sheetBase: CSSProperties = {
   position: 'absolute',
-  left: 0,
-  right: 0,
+  left: 6,
+  right: 6,
   bottom: 0,
-  background: 'var(--color-bg)',
-  borderTop: '2px solid var(--color-text)',
+  borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
+  overflow: 'hidden',
   zIndex: 60,
   // visibility rides the same clock so a closed sheet leaves the
   // accessibility tree after the slide-out instead of lingering off-screen
-  transition: 'transform .32s cubic-bezier(.32,.72,.29,.99), visibility .32s',
+  transition: 'transform .38s cubic-bezier(.32,.72,.29,.99), visibility .38s',
+};
+
+/** The drag-handle grabber every sheet shows at its top. */
+export const grabberStyle: CSSProperties = {
+  width: 40,
+  height: 4.5,
+  borderRadius: 999,
+  background: 'var(--ink-12)',
+  margin: '8px auto 2px',
+  flex: 'none',
 };
 
 export const segStyle = (on: boolean): CSSProperties => ({
   flex: 1,
-  textAlign: 'center',
-  padding: '9px 0',
-  fontSize: 11,
-  letterSpacing: '.12em',
-  fontWeight: 700,
-  cursor: 'pointer',
-  background: on ? 'var(--color-text)' : 'transparent',
-  color: on ? '#fff' : 'var(--color-neutral-600)',
-});
-
-export const checkboxStyle = (on: boolean): CSSProperties => ({
-  width: 22,
-  height: 22,
-  border: '2px solid var(--color-text)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: 12,
+  gap: 6,
+  padding: '8px 0',
+  fontSize: 10.5,
+  letterSpacing: '.1em',
   fontWeight: 700,
-  background: on ? 'var(--color-text)' : '#fff',
+  cursor: 'pointer',
+  borderRadius: 999,
+  background: on ? 'var(--grad-accent)' : 'transparent',
+  color: on ? '#fff' : 'var(--ink-60)',
+  boxShadow: on ? '0 3px 12px rgba(236,48,19,.3)' : 'none',
+  transition: 'background .25s ease, color .25s ease, box-shadow .25s ease',
+});
+
+export const checkboxStyle = (on: boolean): CSSProperties => ({
+  width: 24,
+  height: 24,
+  borderRadius: 8,
+  border: on ? 'none' : '1.5px solid var(--ink-12)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: on ? 'var(--grad-accent)' : 'rgba(255,255,255,.7)',
   color: '#fff',
   flex: 'none',
+  boxShadow: on ? '0 2px 8px rgba(236,48,19,.3)' : 'none',
+  transition: 'background .2s ease, box-shadow .2s ease',
 });

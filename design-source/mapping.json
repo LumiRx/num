@@ -1,5 +1,5 @@
 {
-  "comment": "Maps each tracked design to the source files that implement it, so a change alert can say exactly what needs review. For screens/concierge, ordered section markers slice the file; a changed slice flags that section's src files.",
+  "comment": "Maps each tracked design to the source files that implement it, so a change alert can say exactly what needs review. For screens/concierge, ordered section markers slice the file; a changed slice flags that section's src files. NOTE (v2, 2026-07-28): the app's THEME intentionally diverged from Modernist — the 'Liquid Num' glassmorphic layer lives in src/styles/glass.css (+ restyled components); structural/behavioral design changes still map below, but visual-only upstream changes should be reviewed against the v2 language, not copied verbatim.",
   "sections": {
     "screens/concierge": [
       { "name": "canvas-poster", "marker": "NUM — V0.8 · CANONICAL PROTOTYPE", "src": ["src/components/canvas/PrototypeCanvas.tsx"] },

@@ -8,16 +8,13 @@
 // Static assets are served by the assets config in wrangler.app.jsonc; with
 // run_worker_first, only /api/* reaches this Worker. Auth: env.ANTHROPIC_API_KEY
 // (`wrangler secret put ANTHROPIC_API_KEY` in prod, .dev.vars for wrangler dev).
+// The endpoint is public, so worker/guard.mjs rate-limits and validates every
+// request before we spend a token — see DEPLOY.md § Launch hardening.
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, normalizeReply } from './prompt.mjs';
+import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 
 const MODEL = 'claude-opus-5';
-
-// Same permissive CORS the Node server sets — same-origin in prod, harmless.
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
 
 async function askNum(client, messages, state) {
   const response = await client.messages.create({
@@ -38,45 +35,71 @@ async function askNum(client, messages, state) {
   return normalizeReply(JSON.parse(text));
 }
 
-function json(status, body) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
-  });
-}
-
 export default {
   async fetch(request, env) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-    }
-
     const url = new URL(request.url);
+    const cors = corsHeaders(request, url.origin);
+    const json = (status, body, extra) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json', ...cors, ...extra },
+      });
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'POST, OPTIONS' } });
+    }
     if (request.method !== 'POST' || url.pathname !== '/api/num') {
       return new Response('not found', { status: 404 });
+    }
+
+    // Cheapest rejections first: size, then rate, then key, then shape.
+    const declaredSize = Number(request.headers.get('Content-Length') ?? 0);
+    if (declaredSize > LIMITS.maxBodyBytes) {
+      return json(413, { error: 'request body too large' });
+    }
+
+    const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const limit = await enforceRateLimit(env, ip);
+    if (!limit.ok) {
+      return json(
+        429,
+        { error: limit.scope === 'ip' ? 'Too many requests — give me a moment.' : 'Num is busy right now — try again shortly.' },
+        { 'Retry-After': String(limit.retryAfter) },
+      );
     }
 
     if (!env.ANTHROPIC_API_KEY) {
       return json(401, { error: 'ANTHROPIC_API_KEY not configured' });
     }
 
+    let body;
     try {
-      const { messages, state } = await request.json();
+      const text = await request.text();
+      if (text.length > LIMITS.maxBodyBytes) return json(413, { error: 'request body too large' });
+      body = JSON.parse(text);
+    } catch {
+      return json(400, { error: 'invalid JSON body' });
+    }
+
+    const parsed = validatePayload(body);
+    if (!parsed.ok) return json(parsed.status, { error: parsed.error });
+
+    try {
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       let result;
       try {
-        result = await askNum(client, messages, state);
+        result = await askNum(client, parsed.messages, parsed.state);
       } catch (err) {
         // Grammar compilation is cached once it succeeds but can time out on a
         // cold schema — one retry usually lands on the warmed cache.
         if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
         await new Promise((r) => setTimeout(r, 1500));
-        result = await askNum(client, messages, state);
+        result = await askNum(client, parsed.messages, parsed.state);
       }
       return json(200, result);
     } catch (err) {
       console.error('[num-ai]', err);
-      const status = err?.status === 401 ? 401 : 500;
+      const status = err?.status === 401 ? 401 : err?.status === 429 ? 429 : 500;
       return json(status, { error: err?.message ?? 'unknown error' });
     }
   },

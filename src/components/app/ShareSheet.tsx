@@ -3,7 +3,8 @@
 import { useRef } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
-import { sheetBase, checkboxStyle } from '../../lib/derive';
+import { sheetBase, checkboxStyle, grabberStyle } from '../../lib/derive';
+import { CheckIcon, CopyIcon } from '../../lib/icons';
 import { SHARE_LINK } from '../../lib/data';
 
 export default function ShareSheet() {
@@ -26,51 +27,54 @@ export default function ShareSheet() {
   };
 
   return (
-    <div ref={ref} style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
-      <div style={{ padding: 16, borderBottom: '2px solid var(--color-divider)' }}>
+    <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+      <div style={grabberStyle} />
+      <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)' }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE PLAN</div>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 18, marginTop: 6 }}>Viv’s SE Asia loop</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Viv’s SE Asia loop</div>
         <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 2 }}>{nBookings} bookings · 3 cities · live</div>
       </div>
       <div
         {...pressable(() => store.set((s) => ({ shLive: !s.shLive })), 'checkbox')}
         aria-checked={shLive}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-300)', cursor: 'pointer' }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--ink-08)', cursor: 'pointer' }}
       >
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Live updates</div>
           <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>Their copy changes when your plans change</div>
         </div>
-        <span style={checkboxStyle(shLive)}>{shLive ? '✓' : ''}</span>
+        <span style={checkboxStyle(shLive)}>{shLive ? <CheckIcon size={14} /> : null}</span>
       </div>
       <div
         {...pressable(() => store.set((s) => ({ shHide: !s.shHide })), 'checkbox')}
         aria-checked={shHide}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '2px solid var(--color-divider)', cursor: 'pointer' }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--ink-08)', cursor: 'pointer' }}
       >
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Hide costs & stars</div>
           <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>They see where and when — never what you paid</div>
         </div>
-        <span style={checkboxStyle(shHide)}>{shHide ? '✓' : ''}</span>
+        <span style={checkboxStyle(shHide)}>{shHide ? <CheckIcon size={14} /> : null}</span>
       </div>
       <div style={{ padding: '14px 16px' }}>
         {!killed ? (
           <>
             <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1, border: '2px solid var(--color-neutral-300)', padding: '9px 10px', fontSize: 11, color: 'var(--color-neutral-700)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: '#fff' }}>
+              <div style={{ flex: 1, borderRadius: 999, border: '1px solid var(--ink-12)', padding: '9px 14px', fontSize: 11, color: 'var(--color-neutral-700)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: 'rgba(255,255,255,.7)' }}>
                 concierge.travel/p/viv-4k2x
               </div>
               <div
                 {...pressable(copyLink)}
-                style={{ cursor: 'pointer', background: 'var(--color-accent)', color: '#fff', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '9px 13px', display: 'flex', alignItems: 'center' }}
+                className="press"
+                style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', boxShadow: '0 3px 10px rgba(236,48,19,.3)', color: '#fff', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '9px 13px', display: 'flex', gap: 6, alignItems: 'center' }}
               >
+                <CopyIcon size={13} />
                 {copied ? 'COPIED' : 'COPY'}
               </div>
             </div>
             <div
               {...pressable(() => store.set({ killed: true }))}
-              style={{ marginTop: 12, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-neutral-600)', cursor: 'pointer' }}
+              style={{ marginTop: 12, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer' }}
             >
               KILL THIS LINK
             </div>

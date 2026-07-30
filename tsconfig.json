@@ -12,7 +12,9 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "useDefineForClassFields": true
+    "useDefineForClassFields": true,
+    // import.meta.env (Vite) — used to register the service worker in prod only
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

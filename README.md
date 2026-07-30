@@ -28,9 +28,26 @@ its Claude-powered backend:
 
 ```bash
 npm install
-npm run dev     # prototype — desktop canvas, or ?app / narrow viewport for standalone
+npm run dev     # desktop → launch stage; ?app / narrow → the app; ?canvas → pitch canvas
 npm run build   # type-check + production build
 ```
+
+**Three views** (see [src/App.tsx](src/App.tsx)):
+
+| URL / viewport | What you get |
+|---|---|
+| phone-sized, or `?app` | the Num app full-bleed (installable PWA) |
+| desktop | launch stage — the real app in a phone frame on the aurora ground |
+| `?canvas` | the internal prototype canvas: poster, demo script, v0.8 release notes |
+
+**Visual language — "Liquid Num" (v2).** The imported Modernist design system
+(flat, zero-radius, 2px rules) is still vendored at `src/styles/ds.css` for its
+tokens and type, but the app's own look is layered on top in
+[src/styles/glass.css](src/styles/glass.css): fine glassmorphic surfaces over a
+slow-drifting aurora ground, rounded radii, warm accent gradients, soft status
+pills. Icons are inline in [src/lib/icons.tsx](src/lib/icons.tsx) and every
+booking/memory gets a procedural gradient thumbnail from
+[src/lib/scenes.tsx](src/lib/scenes.tsx) — no image assets, no dependencies.
 
 Free-typed messages in the thread go to a real AI backend
 ([server/index.mjs](server/index.mjs), Claude Opus 5 via the Anthropic

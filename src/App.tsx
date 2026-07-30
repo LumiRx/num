@@ -1,7 +1,11 @@
-// Mode switch: the desktop canvas shows the full prototype presentation;
-// a phone-sized viewport (or ?app) runs the Num app full-bleed as a real app.
+// What a visitor gets:
+//   phone-sized viewport (or ?app) → the Num app, full-bleed
+//   desktop                        → the app in a phone frame on the launch stage
+//   ?canvas                        → the internal prototype canvas (pitch artifact:
+//                                    poster, demo script, v0.8 release notes)
 import { useEffect, useState } from 'react';
 import PrototypeCanvas from './components/canvas/PrototypeCanvas';
+import LaunchStage from './components/canvas/LaunchStage';
 import ConciergeApp from './components/app/ConciergeApp';
 
 function useStandalone(): boolean {
@@ -17,6 +21,9 @@ function useStandalone(): boolean {
 
 export default function App() {
   const standalone = useStandalone();
+  const showCanvas = new URLSearchParams(window.location.search).has('canvas');
+
+  if (showCanvas) return <PrototypeCanvas />;
   if (standalone) {
     return (
       <div style={{ height: '100dvh', overflow: 'hidden' }}>
@@ -24,5 +31,5 @@ export default function App() {
       </div>
     );
   }
-  return <PrototypeCanvas />;
+  return <LaunchStage />;
 }

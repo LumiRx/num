@@ -5,6 +5,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { segStyle } from '../../lib/derive';
+import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon } from '../../lib/icons';
 import ThreadView from './ThreadView';
 import PlanView from './PlanView';
 import MemoryView from './MemoryView';
@@ -31,9 +32,22 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   };
 
   return (
-    <div onKeyDown={onEscape} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', background: 'var(--color-bg)', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
-      {/* header */}
-      <div style={{ borderBottom: '2px solid var(--color-divider)', background: posterHeader ? 'var(--color-accent)' : 'var(--color-bg)', color: posterHeader ? '#fff' : 'var(--color-text)' }}>
+    <div onKeyDown={onEscape} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
+      {/* living ground — aurora blobs drift behind all content */}
+      <div className="aurora-layer" aria-hidden="true" />
+      {/* header — floating glass panel */}
+      <div
+        className="glass"
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          margin: '0 8px',
+          borderRadius: '0 0 var(--r-lg) var(--r-lg)',
+          borderTop: 'none',
+          background: posterHeader ? 'var(--grad-accent)' : undefined,
+          color: posterHeader ? '#fff' : 'var(--ink)',
+        }}
+      >
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
           <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>
@@ -43,24 +57,26 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             <div
               {...pressable(() => store.set({ walletOpen: true }))}
               aria-label="Stars wallet"
-              style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', border: '2px solid currentColor', padding: '3px 8px' }}
+              className="glass press"
+              style={{ cursor: 'pointer', borderRadius: 999, padding: '5px 10px', display: 'flex', gap: 5, alignItems: 'center', fontWeight: 700, fontSize: 11 }}
               title="Stars wallet"
             >
-              ★ {stars.toLocaleString()}
+              <StarIcon size={13} /> {stars.toLocaleString()}
             </div>
-            <div {...pressable(() => store.set({ shareOpen: true, copied: false }))} aria-label="Share plan" style={{ cursor: 'pointer', padding: 4, display: 'flex' }} title="Share plan">
-              <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
-              </svg>
+            <div
+              {...pressable(() => store.set({ shareOpen: true, copied: false }))}
+              aria-label="Share plan"
+              className="glass press"
+              style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Share plan"
+            >
+              <ShareIcon size={15} />
             </div>
           </div>
         </div>
         <div {...pressable(() => store.set((s) => ({ calOpen: true, selDay: s.selDay || '7-28' })))} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: 21, fontWeight: 700, lineHeight: 1.1 }}>
-            Tue 28 Jul · Bangkok <span style={{ fontSize: 13, color: posterHeader ? '#fff' : 'var(--color-accent)' }}>▾</span>
+            Tue 28 Jul · Bangkok <ChevronDownIcon size={15} style={{ color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
           </div>
           <div style={{ fontSize: 10, letterSpacing: '.14em', marginTop: 3, color: posterHeader ? 'rgba(255,255,255,.75)' : 'var(--color-neutral-600)' }}>
             SE ASIA LOOP · 3 CITIES · {nBookings} BOOKINGS
@@ -68,16 +84,19 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         </div>
       </div>
 
-      {/* tab bar */}
-      <div role="tablist" style={{ display: 'flex', borderBottom: '2px solid var(--color-divider)' }}>
-        <div {...pressable(() => store.set({ view: 'thread' }), 'tab')} aria-selected={view === 'thread'} style={segStyle(view === 'thread')}>THREAD</div>
-        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}>PLAN</div>
-        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}>MEMORY</div>
+      {/* tab bar — floating glass segmented control */}
+      <div role="tablist" className="glass" style={{ display: 'flex', margin: '10px 10px 2px', borderRadius: 999, padding: 4, position: 'relative', zIndex: 2 }}>
+        <div {...pressable(() => store.set({ view: 'thread' }), 'tab')} aria-selected={view === 'thread'} style={segStyle(view === 'thread')}><MessageIcon size={13} />THREAD</div>
+        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />PLAN</div>
+        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />MEMORY</div>
       </div>
 
-      {view === 'thread' && <ThreadView />}
-      {view === 'plan' && <PlanView />}
-      {view === 'mem' && <MemoryView />}
+      {/* views float above the aurora ground; wrapper mirrors the root's flex column */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
+        {view === 'thread' && <ThreadView />}
+        {view === 'plan' && <PlanView />}
+        {view === 'mem' && <MemoryView />}
+      </div>
 
       <VoiceOverlay />
       <NotifBanner />
@@ -86,7 +105,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <div
         aria-hidden="true"
         onClick={closeSheets}
-        style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.4)', zIndex: 50, opacity: sheetOpen ? 1 : 0, pointerEvents: sheetOpen ? 'auto' : 'none', transition: 'opacity .3s' }}
+        style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.35)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', zIndex: 50, opacity: sheetOpen ? 1 : 0, pointerEvents: sheetOpen ? 'auto' : 'none', transition: 'opacity .3s' }}
       />
 
       <CalendarSheet />

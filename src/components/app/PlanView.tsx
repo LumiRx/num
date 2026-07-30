@@ -5,6 +5,7 @@ import { pressable } from '../../lib/a11y';
 import { tagOf, bookingMetaLine } from '../../lib/derive';
 import { askToChange } from '../../lib/concierge';
 import { PLAN_GROUPS } from '../../lib/data';
+import { Scene } from '../../lib/scenes';
 import type { Booking } from '../../lib/types';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
@@ -17,41 +18,53 @@ function BookingRow({ b }: { b: Booking }) {
     <div
       {...pressable(() => store.set((s) => ({ expanded: s.expanded === b.id ? null : b.id })))}
       aria-expanded={exp}
-      className="hov-neutral-100"
-      style={{ cursor: 'pointer', borderBottom: '1px solid var(--color-neutral-300)', padding: '11px 16px' }}
+      className="glass lift msg-in"
+      style={{ cursor: 'pointer', margin: '6px 12px', borderRadius: 'var(--r-lg)', padding: 12 }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-        <div
-          style={{
-            fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, lineHeight: 1.3,
-            textDecoration: cancelled ? 'line-through' : 'none',
-            color: cancelled ? 'var(--color-neutral-500)' : 'var(--color-text)',
-          }}
-        >
-          {b.title}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <Scene title={b.title} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, lineHeight: 1.3,
+              textDecoration: cancelled ? 'line-through' : 'none',
+              color: cancelled ? 'var(--ink-40)' : 'var(--ink)',
+            }}
+          >
+            {b.title}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>{bookingMetaLine(b)}</div>
         </div>
         <span style={tag.st}>{tag.label}</span>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--color-neutral-600)', marginTop: 3 }}>{bookingMetaLine(b)}</div>
       {exp && (
-        <div style={{ marginTop: 9, borderLeft: '2px solid var(--color-accent)', paddingLeft: 10 }}>
-          <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--color-neutral-800)' }}>{b.note}</div>
-          <div style={{ fontSize: 11, color: 'var(--color-neutral-600)', marginTop: 4 }}>{b.cost}</div>
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ink-08)' }}>
+          <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>{b.note}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 4 }}>{b.cost}</div>
           {b.receipt && (
             <div style={{ fontSize: 10, letterSpacing: '.08em', fontWeight: 700, color: 'var(--color-accent-700)', marginTop: 4 }}>
               RECEIPT FILED · {b.receipt}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 14, marginTop: 9 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <span
               {...pressable((e) => { e.stopPropagation(); askToChange(b.title); })}
-              style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer' }}
+              className="press"
+              style={{
+                padding: '6px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+                background: 'var(--grad-accent)', color: '#fff', cursor: 'pointer',
+                boxShadow: '0 3px 12px rgba(236,48,19,.3)',
+              }}
             >
               ASK TO CHANGE
             </span>
             <span
               {...pressable((e) => { e.stopPropagation(); store.set({ shareOpen: true }); })}
-              style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer' }}
+              className="press"
+              style={{
+                padding: '6px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+                background: 'rgba(255,255,255,.7)', border: '1px solid var(--ink-12)', color: 'var(--ink)', cursor: 'pointer',
+              }}
             >
               SHARE
             </span>
@@ -68,16 +81,19 @@ export default function PlanView() {
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
       {PLAN_GROUPS.map(([name, dates, grp]) => (
         <div key={grp}>
-          <div style={{ padding: '16px 16px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: '2px solid var(--color-text)' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 15, letterSpacing: '.06em' }}>{name}</span>
-            <span style={{ fontSize: 10.5, letterSpacing: '.1em', color: 'var(--color-neutral-600)' }}>{dates}</span>
+          <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.05em' }}>
+              {name}
+              <span style={{ display: 'block', width: 28, height: 3, borderRadius: 999, background: 'var(--grad-accent)', marginTop: 3 }} />
+            </span>
+            <span style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--ink-60)' }}>{dates}</span>
           </div>
           {bookings.filter((b) => b.grp === grp).sort(sortB).map((b) => (
             <BookingRow key={b.id} b={b} />
           ))}
         </div>
       ))}
-      <div style={{ padding: '14px 16px', fontSize: 11.5, color: 'var(--color-neutral-600)', lineHeight: 1.5 }}>
+      <div style={{ padding: '12px 20px 16px', fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.5, textAlign: 'center' }}>
         Nothing to add here — new plans come from the thread. Ask, and it appears.
       </div>
     </div>

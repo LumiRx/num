@@ -4,27 +4,40 @@ import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { tagOf } from '../../lib/derive';
 import { askNum, sendChip, openVoice } from '../../lib/concierge';
+import { MicIcon, SparklesIcon } from '../../lib/icons';
+import { Scene } from '../../lib/scenes';
 import type { Msg } from '../../lib/types';
 
 function MsgBubble({ m }: { m: Msg }) {
   const u = m.who === 'u';
   const ct = m.card ? tagOf(m.card.tag) : null;
   return (
-    <div style={{ display: 'flex', justifyContent: u ? 'flex-end' : 'flex-start', padding: '0 16px' }}>
+    <div className="msg-in" style={{ display: 'flex', justifyContent: u ? 'flex-end' : 'flex-start', padding: '0 16px' }}>
       <div
+        className={u ? undefined : 'glass'}
         style={{
           maxWidth: '82%', fontSize: 13, lineHeight: 1.5, padding: '10px 13px',
-          background: u ? 'var(--color-text)' : '#fff',
-          color: u ? '#fff' : 'var(--color-text)',
-          border: u ? 'none' : '2px solid var(--color-neutral-300)',
+          borderRadius: 18,
+          ...(u
+            ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(236,48,19,.25)' }
+            : { borderBottomLeftRadius: 6, color: 'var(--ink)' }),
         }}
       >
         <div style={{ whiteSpace: 'pre-line' }}>{m.text}</div>
         {m.card && ct && (
-          <div style={{ marginTop: 10, background: '#fff', border: '2px solid var(--color-text)', padding: '10px 12px' }}>
+          <div
+            style={{
+              marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+              background: 'rgba(255,255,255,.85)', border: '1px solid var(--ink-08)',
+              borderRadius: 'var(--r-md)', boxShadow: '0 4px 12px rgba(32,30,29,.08)', color: 'var(--ink)',
+            }}
+          >
+            <Scene title={m.card.title} size={42} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{m.card.title}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>{m.card.meta}</div>
+            </div>
             <span style={ct.st}>{ct.label}</span>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, marginTop: 7 }}>{m.card.title}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--color-neutral-700)', marginTop: 3 }}>{m.card.meta}</div>
           </div>
         )}
       </div>
@@ -59,24 +72,25 @@ export default function ThreadView() {
           <MsgBubble key={i} m={m} />
         ))}
         {typing && (
-          <div style={{ padding: '0 16px' }}>
-            <div style={{ display: 'inline-flex', gap: 5, background: '#fff', border: '2px solid var(--color-neutral-300)', padding: '12px 14px' }}>
+          <div className="msg-in" style={{ padding: '0 16px' }}>
+            <div className="glass" style={{ display: 'inline-flex', gap: 5, borderRadius: 999, padding: '10px 14px' }}>
               {[0, 0.18, 0.36].map((d) => (
-                <span key={d} style={{ width: 6, height: 6, background: 'var(--color-text)', animation: `tdot 1.1s ${d}s infinite` }} />
+                <span key={d} style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-text)', animation: `tdot 1.1s ${d}s infinite` }} />
               ))}
             </div>
           </div>
         )}
       </div>
-      <div style={{ borderTop: '2px solid var(--color-divider)', padding: '10px 16px 12px', background: 'var(--color-bg)' }}>
+      <div className="glass-bar" style={{ padding: '10px 14px 14px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           {chips.map((c) => (
             <div
               key={c.id}
               {...pressable(() => sendChip(c.id, c.label))}
-              className="hov-accent-100"
-              style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '7px 11px', border: '2px solid var(--color-text)', background: '#fff' }}
+              className="glass lift"
+              style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '8px 13px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 6 }}
             >
+              <SparklesIcon size={12} style={{ color: 'var(--color-accent)' }} />
               {c.label}
             </div>
           ))}
@@ -87,19 +101,16 @@ export default function ThreadView() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
             placeholder="Message Num…"
-            style={{ flex: 1, border: '2px solid var(--color-neutral-300)', padding: '10px 12px', fontSize: 13, color: 'var(--color-text)', background: '#fff', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
+            style={{ flex: 1, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '11px 16px', fontSize: 13, color: 'var(--color-text)', background: 'rgba(255,255,255,.7)', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
           />
           <div
             {...pressable(openVoice)}
             aria-label="Talk to Num"
-            className="hov-accent"
-            style={{ cursor: 'pointer', width: 41, border: '2px solid var(--color-text)', background: 'var(--color-text)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            className="press"
+            style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.35)', flex: 'none' }}
             title="Talk to Num"
           >
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-              <rect x="9" y="2" width="6" height="12" />
-              <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3" />
-            </svg>
+            <MicIcon size={17} />
           </div>
         </div>
       </div>

@@ -1,0 +1,140 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Liquid Num — the v2 visual language.
+   Layered ON TOP of ds.css (which stays vendored/untouched): rounded glass
+   surfaces over a living aurora ground, Num's ink + signal-red identity kept.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+
+  --ink: #201e1d;
+  --ink-60: rgba(32, 30, 29, 0.6);
+  --ink-40: rgba(32, 30, 29, 0.4);
+  --ink-12: rgba(32, 30, 29, 0.12);
+  --ink-08: rgba(32, 30, 29, 0.08);
+
+  /* Signal red stays the brand voice — now with a warm gradient form */
+  --grad-accent: linear-gradient(135deg, #ff7a45 0%, #ec3013 58%, #d81f5a 115%);
+  --grad-ink: linear-gradient(135deg, #33302e 0%, #201e1d 100%);
+
+  /* Fine glass — light */
+  --glass-bg: rgba(255, 255, 255, 0.52);
+  --glass-strong: rgba(255, 255, 255, 0.74);
+  --glass-border: rgba(255, 255, 255, 0.66);
+  --glass-shadow: 0 8px 32px rgba(32, 30, 29, 0.1), 0 2px 8px rgba(32, 30, 29, 0.05);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 -1px 0 rgba(255, 255, 255, 0.2);
+
+  /* Fine glass — dark (lock screen, voice overlay) */
+  --glass-dark-bg: rgba(28, 26, 25, 0.58);
+  --glass-dark-border: rgba(255, 255, 255, 0.14);
+  --glass-dark-shine: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* — glass surfaces — */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px) saturate(1.7);
+  -webkit-backdrop-filter: blur(18px) saturate(1.7);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-shine);
+}
+.glass-strong {
+  background: var(--glass-strong);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-shine);
+}
+.glass-dark {
+  background: var(--glass-dark-bg);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--glass-dark-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), var(--glass-dark-shine);
+}
+/* Bare blur for docked bars that must blend into content edges */
+.glass-bar {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  border-top: 1px solid var(--glass-border);
+  box-shadow: 0 -8px 24px rgba(32, 30, 29, 0.05);
+}
+
+/* — the living ground: aurora blobs drifting behind all content — */
+.aurora-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(180deg, #faf7f4 0%, #f6f1ee 100%);
+}
+.aurora-layer::before,
+.aurora-layer::after {
+  content: '';
+  position: absolute;
+  width: 70%;
+  padding-top: 70%;
+  border-radius: 50%;
+  filter: blur(48px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.aurora-layer::before {
+  background: radial-gradient(circle at 35% 35%, #ffd8c2 0%, #ffc2cf 55%, transparent 72%);
+  top: -18%;
+  left: -12%;
+  animation: aurora-a 34s ease-in-out infinite alternate;
+}
+.aurora-layer::after {
+  background: radial-gradient(circle at 60% 45%, #cfe4ff 0%, #e4d4ff 55%, transparent 72%);
+  bottom: -22%;
+  right: -16%;
+  animation: aurora-b 41s ease-in-out infinite alternate;
+}
+@keyframes aurora-a {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(14%, 20%) scale(1.15); }
+  100% { transform: translate(4%, 38%) scale(0.95); }
+}
+@keyframes aurora-b {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-16%, -14%) scale(1.12); }
+  100% { transform: translate(-6%, -30%) scale(1.02); }
+}
+/* Dark aurora for the lock screen */
+.aurora-dark {
+  background: linear-gradient(180deg, #100f0e 0%, #1c1815 60%, #241d1a 100%);
+}
+.aurora-dark::before {
+  background: radial-gradient(circle at 40% 40%, rgba(236, 48, 19, 0.35) 0%, rgba(216, 31, 90, 0.22) 55%, transparent 72%);
+  opacity: 0.5;
+}
+.aurora-dark::after {
+  background: radial-gradient(circle at 55% 50%, rgba(64, 90, 255, 0.28) 0%, rgba(120, 60, 200, 0.18) 55%, transparent 72%);
+  opacity: 0.45;
+}
+
+/* — motion — */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.msg-in { animation: msg-in 0.28s cubic-bezier(0.21, 0.9, 0.35, 1) both; }
+
+.lift { transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.lift:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(32, 30, 29, 0.14), var(--glass-shine); }
+.lift:active { transform: translateY(0) scale(0.98); }
+
+.press { transition: transform 0.15s ease, filter 0.15s ease; }
+.press:hover { filter: brightness(1.06); }
+.press:active { transform: scale(0.96); }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-layer::before,
+  .aurora-layer::after { animation: none !important; }
+}

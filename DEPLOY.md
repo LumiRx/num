@@ -109,3 +109,59 @@ workers.dev is the preview. When it's time for a real address:
 The Workers free tier (100k requests/day) comfortably covers the static app and the
 API endpoint. The only real spend is Anthropic tokens: each free-typed message is one
 Claude call; the scripted demo chips cost nothing. No key set = no spend possible.
+
+---
+
+## Launch hardening
+
+`POST /api/num` is **public and unauthenticated** — the app has no login, so anyone
+who finds the URL can spend our Anthropic budget. [worker/guard.mjs](worker/guard.mjs)
+runs before any token is spent:
+
+| Guard | Limit | Rejects with |
+|---|---|---|
+| Per-IP rate limit | 12 requests / 60s | `429` + `Retry-After` |
+| Isolate-wide ceiling | 240 requests / 60s | `429` + `Retry-After` |
+| Body size | 128 KB | `413` |
+| Thread length | 40 messages | `400` |
+| Per-message / total text | 8k / 60k chars | `400` |
+| Trip-state size | 64 KB | `400` |
+| CORS | same-origin (+ localhost) only | header omitted, so cross-site JS can't read replies |
+
+Requests are also normalized to `{role, content}` before reaching Claude, so extra
+client-supplied fields are dropped rather than forwarded.
+
+**Know the limitation:** the limiter lives in module scope, so it is *per isolate* —
+Cloudflare may run several per colo and recycle them. It reliably stops one client
+looping the endpoint; it is not an exact global quota. Tighten `LIMITS` in
+`worker/guard.mjs` to trade capacity for safety.
+
+Before opening it to real traffic, add one hard control:
+
+- **Cloudflare Rate Limiting binding** — exact, distributed counting.
+- **Turnstile** — invisible bot check in front of `/api/num` (see the `turnstile-spin` skill).
+- **Real auth** — the honest fix once accounts exist; the AI seam is already server-side.
+- **Anthropic spend cap** — set a monthly budget limit in the Anthropic Console. Do this
+  regardless of the above: it is the only ceiling that cannot be bypassed.
+
+## Go-live checklist
+
+```bash
+cd ~/num-concierge
+npm run design:check                                            # design snapshots intact
+npm run build                                                   # tsc + vite must pass
+npx wrangler@latest deploy --dry-run --config wrangler.app.jsonc
+npx wrangler@latest deploy --config wrangler.app.jsonc
+```
+
+Then confirm, against the live URL:
+
+- [ ] `/` returns 200 `text/html`; app renders with the glass theme
+- [ ] `/manifest.webmanifest` returns 200 `application/manifest+json` (installable)
+- [ ] A deep path (e.g. `/plan`) returns the app, not a 404 (SPA fallback)
+- [ ] `POST /api/num` returns 200 with a `reply` (or a clean 401 if no key is set)
+- [ ] 13+ rapid API calls start returning `429` (rate limit is live)
+- [ ] Demo chips work with the AI key **removed** — scripted flows must never depend on the backend
+- [ ] Phone check: installed to home screen, safe-area padding correct, no horizontal scroll
+- [ ] Anthropic Console: monthly spend limit set
+- [ ] `npx wrangler tail --config wrangler.app.jsonc` is clean during a smoke run
