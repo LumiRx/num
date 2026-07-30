@@ -22,7 +22,9 @@ export interface Booking {
   holdBy?: string | null; // e.g. 'FRI' — deadline label while status === 'hold'
   note: string;
   cost: string;
-  receipt?: string; // set once a receipt is filed, e.g. '#LD-2841 · ★529'
+  receipt?: string;
+  /** Venue photo carried over from the reply card, so the PLAN shelf shows it too. */
+  photo?: string; // set once a receipt is filed, e.g. '#LD-2841 · ★529'
 }
 
 export interface Meeting {
@@ -51,6 +53,10 @@ export interface CardRef {
   title: string;
   meta: string;
   tag: TagKind;
+  /** Real venue photo, attached server-side from the places directory. */
+  photo?: string;
+  photoAttr?: string | null;
+  photoLicense?: string | null;
 }
 
 export interface Msg {

@@ -1,6 +1,7 @@
 // Procedural imagery — every booking/memory gets a lively gradient "scene"
 // thumbnail with a category icon, inferred from its title/place. Self-contained
 // (no image assets), consistent, and colorful without shouting.
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   CameraIcon,
@@ -52,8 +53,11 @@ export function sceneFor(title: string, kind?: 'memory' | 'meeting'): SceneDef {
 }
 
 /** Rounded gradient thumbnail with the category icon — the app's "imagery". */
-export function Scene({ title, kind, size = 42, style }: { title: string; kind?: 'memory' | 'meeting'; size?: number; style?: CSSProperties }) {
+export function Scene({ title, kind, size = 42, style, photo }: { title: string; kind?: 'memory' | 'meeting'; size?: number; style?: CSSProperties; photo?: string }) {
   const s = sceneFor(title, kind);
+  // A real photo when the directory has one; the gradient stays as the frame
+  // beneath it, so a broken/slow image degrades to the icon rather than a hole.
+  const [failed, setFailed] = useState(false);
   return (
     <div
       aria-hidden="true"
@@ -67,11 +71,25 @@ export function Scene({ title, kind, size = 42, style }: { title: string; kind?:
         justifyContent: 'center',
         color: '#fff',
         flex: 'none',
+        overflow: 'hidden',
         boxShadow: '0 3px 10px rgba(32,30,29,.18), inset 0 1px 0 rgba(255,255,255,.35)',
         ...style,
       }}
     >
-      <s.Icon size={Math.round(size * 0.5)} strokeWidth={2.1} />
+      {photo && !failed ? (
+        <img
+          src={photo}
+          alt=""
+          decoding="async"
+          // No loading="lazy": these are 42px thumbnails always at or near the
+          // viewport, and inside the auto-scrolled thread the lazy heuristic
+          // could leave them permanently unloaded.
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', display: 'block' }}
+        />
+      ) : (
+        <s.Icon size={Math.round(size * 0.5)} strokeWidth={2.1} />
+      )}
     </div>
   );
 }

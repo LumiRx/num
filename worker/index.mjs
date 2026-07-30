@@ -23,7 +23,7 @@ const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll ta
 async function askNum(client, messages, state, grounding, profile, extraSystem) {
   const system = [
     { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: contextBlock({ place: grounding.place, partners: grounding.partners, guide: grounding.guide, profile }) },
+    { type: 'text', text: contextBlock({ place: grounding.place, partners: grounding.partners, guide: grounding.guide, profile, buzz: grounding.buzz }) },
     { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
   ];
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
@@ -75,6 +75,67 @@ async function logFeatureRequests(env, result, userAsk, place) {
   } catch (err) {
     console.warn('[feature-request] failed to log:', err?.message ?? err);
   }
+}
+
+/**
+ * Photos are attached SERVER-side by matching the model's card title against
+ * the grounded partner list — the model never emits a URL, so it can never
+ * invent one. Attribution rides along because CC images require it.
+ */
+async function attachPhoto(env, result, grounding) {
+  const card = result?.card;
+  if (!card?.title) return result;
+  // Fold accents before comparing: the directory stores 'ARCH Café' while the
+  // model writes 'ARCH Cafe', and SQL LIKE cannot bridge that.
+  const norm = (v) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  const title = norm(card.title);
+  if (!title) return result;
+
+  const withPhoto = (hit) => ({
+    ...result,
+    card: { ...card, photo: hit.photo_url, photoAttr: hit.photo_attr ?? null, photoLicense: hit.photo_license ?? null },
+  });
+
+  // 1. The partners already in context — free, no extra query.
+  const near = (grounding.partners ?? []).find((p) => {
+    const n = norm(p.name);
+    return p.photo_url && n.length > 3 && (title.includes(n) || n.includes(title));
+  });
+  if (near) return withPhoto(near);
+
+  // 2. Otherwise ask the directory directly: the model names venues outside
+  //    the top-6 nearby set constantly, and those deserve their photo too.
+  const slug = grounding.place?.slug;
+  if (!env.DB || !slug) return result;
+  try {
+    // Strip the leading "Dinner — " / "Coffee — " label the model prefixes.
+    // The model writes "Coffee — ARCH Cafe": drop the leading label, then use
+    // the longest word as a cheap SQL prefilter and settle it in JS.
+    const core = String(card.title).split(/[—–|,]/).pop().replace(/^\s*\w+\s+(?:at|@)\s+/i, '').trim();
+    const words = (core.match(/[\p{L}\p{N}]{3,}/gu) ?? []).sort((a, b) => b.length - a.length);
+    if (!words.length) return result;
+    const { results } = await env.DB.prepare(
+      `SELECT name, photo_url, photo_attr, photo_license FROM places
+        WHERE dest = ?1 AND photo_url IS NOT NULL AND name LIKE ?2
+        ORDER BY (rating IS NULL), rating DESC LIMIT 25`,
+    )
+      .bind(slug, `%${words[0]}%`)
+      .all();
+    const coreN = norm(core);
+    const hit = (results ?? []).find((r) => {
+      const n = norm(r.name);
+      return n.length > 3 && (title.includes(n) || coreN.includes(n) || n.includes(coreN));
+    });
+    if (hit) return withPhoto(hit);
+  } catch (err) {
+    console.warn('[photo] lookup failed:', err?.message ?? err);
+  }
+  return result;
 }
 
 export default {
@@ -188,7 +249,8 @@ export default {
       ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));
       // Tell the app where Num thinks the user is (drives the header) —
       // computed server-side, never by the model.
-      return json(200, { ...result, place: grounding.place ? grounding.place.name : null });
+      const withPhoto = await attachPhoto(env, result, grounding);
+      return json(200, { ...withPhoto, place: grounding.place ? grounding.place.name : null });
     } catch (err) {
       console.error('[num-ai]', err);
       const status = err?.status === 401 ? 401 : err?.status === 429 ? 429 : 500;

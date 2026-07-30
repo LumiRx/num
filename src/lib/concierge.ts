@@ -364,6 +364,19 @@ export async function askNum(text: string) {
     if (!res.ok) throw new Error('backend ' + res.status);
     const out: NumReply = await res.json();
     out.actions?.forEach(applyAction);
+    // The card's photo belongs to the booking it describes — match by title so
+    // the PLAN shelf shows the same picture the chat card did.
+    if (out.card?.photo) {
+      const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cardN = norm(out.card.title);
+      store.set((s2) => ({
+        bookings: s2.bookings.map((b) => {
+          if (b.photo) return b;
+          const bn = norm(b.title);
+          return bn.length > 3 && (cardN.includes(bn) || bn.includes(cardN)) ? { ...b, photo: out.card!.photo } : b;
+        }),
+      }));
+    }
     store.set((prev) => ({
       typing: false,
       msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}) }],

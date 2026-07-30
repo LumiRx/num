@@ -23,7 +23,7 @@ function BookingRow({ b }: { b: Booking }) {
       style={{ cursor: 'pointer', margin: '6px 12px', borderRadius: 'var(--r-lg)', padding: 12 }}
     >
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <Scene title={b.title} />
+        <Scene title={b.title} photo={b.photo} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{

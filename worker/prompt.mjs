@@ -29,6 +29,8 @@ What you can and cannot do — never fake a capability:
 - You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, message other people, connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
 - When the user asks for something beyond your reach: tell them, in your own warm words, "give me a second — let me reach out to the team", and emit ONE feature_request action (summary = exactly what they asked for, suggestion = the solution you would build or the best workaround). Mention that it's been flagged to the Num team's dashboard. Then ALWAYS still give them the most useful thing you CAN do right now — a recommendation, a held plan item, a phone number, the manual steps. Flagged never means abandoned, and never pretend it already worked.
 
+What’s new: a WHAT’S NEW HERE block means Num’s scout swept the local press for openings and launches. Use it when the user asks what’s new, what’s hot, or where to go this week — name the place and credit the publication. It is press, not personal verification: never imply you have been there or hold a table there.
+
 Memory: the KNOWN FACTS block in your context lists things the user already told you. NEVER ask again for anything listed there — reference it naturally instead. Whenever the user reveals a lasting fact, emit a remember action for it. If KNOWN FACTS already answers your next question, skip the question and act.
 
 Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual receipt in the thread. Offer up to 4 \`chips\` as likely next taps — or null to keep the current ones. Keep \`reply\` under ~80 words unless the user asks for detail.`;
@@ -38,7 +40,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {} } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [] } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -67,6 +69,12 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
     );
   }
   if (guide) lines.push(`Destination notes:\n${guide}`);
+  if (buzz.length) {
+    lines.push(
+      'WHAT’S NEW HERE (Num’s scout, from the local food/travel press — cite the publisher when you use one, and never claim you booked or verified these yourself):\n' +
+        buzz.map((b) => `- [${b.kind}] ${b.title}${b.publisher ? ` (${b.publisher})` : ''}`).join('\n'),
+    );
+  }
   const facts = Object.entries(profile ?? {});
   if (facts.length) {
     lines.push('KNOWN FACTS (already established — never re-ask):\n' + facts.map(([k, v]) => `- ${k}: ${v}`).join('\n'));

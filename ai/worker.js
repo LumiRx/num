@@ -499,6 +499,16 @@ export default {
       await env.DB.prepare(`UPDATE users SET last_lat=NULL, last_lng=NULL, last_loc_at=NULL
         WHERE last_loc_at IS NOT NULL AND last_loc_at < datetime('now','-30 days')`).run();
     } catch(e){ console.log('purge', String(e)); }
+
+    // Scout sweep rides this cron: the account is at the Workers free-plan
+    // limit of 5 cron triggers, so num-scout has none of its own. Wrapped so a
+    // scout failure can never affect the retention purge above.
+    try {
+      if (env.SCOUT_KEY) {
+        const r = await fetch(`https://num-scout.thatislumi.workers.dev/sweep?key=${encodeURIComponent(env.SCOUT_KEY)}`, { method: 'POST' });
+        console.log('scout sweep', r.status, (await r.text()).slice(0, 200));
+      }
+    } catch(e){ console.log('scout', String(e)); }
   },
   async fetch(req, env, ctx){
     const url = new URL(req.url);

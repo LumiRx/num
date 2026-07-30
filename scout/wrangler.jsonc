@@ -1,0 +1,19 @@
+{
+  // NUM Scout — the always-on "what's new" agent. Sweeps free RSS (city food
+  // press + Google News) for openings and launches in every live destination
+  // and writes them to the shared num-db `buzz` table, which the app, the LINE
+  // brain and WhatsApp all read.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "num-scout",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "d1_databases": [
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+  ],
+  // NOTE: no cron here — the account is at the Workers free-plan limit of 5
+  // cron triggers. The sweep is invoked by num-ai's existing nightly cron
+  // (see ai/worker.js scheduled handler) via POST /sweep, and can be run by
+  // hand any time. Move it back to a native cron after a plan upgrade.
+  "observability": { "enabled": true }
+}

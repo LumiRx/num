@@ -191,7 +191,7 @@ export async function resolveLocation(env, { text, guest, cf }) {
 
 // ---------------------------------------------------------------- retrieval
 
-const SELECT_COLS = 'name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status';
+const SELECT_COLS = 'name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license';
 
 /**
  * Ranking blends quality and distance rather than sorting on either alone —

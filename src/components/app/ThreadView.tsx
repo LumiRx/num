@@ -27,17 +27,19 @@ function MsgBubble({ m }: { m: Msg }) {
         {m.card && ct && (
           <div
             style={{
-              marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+              marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 11, padding: 10,
               background: 'rgba(255,255,255,.85)', border: '1px solid var(--ink-08)',
               borderRadius: 'var(--r-md)', boxShadow: '0 4px 12px rgba(32,30,29,.08)', color: 'var(--ink)',
             }}
           >
-            <Scene title={m.card.title} size={42} />
+            {/* A real venue photo earns more room than the icon fallback does. */}
+            <Scene title={m.card.title} size={m.card.photo ? 58 : 42} photo={m.card.photo} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{m.card.title}</div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{m.card.title}</div>
               <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>{m.card.meta}</div>
+              {/* The status pill sits under the text so it never squeezes the title. */}
+              <span style={{ ...ct.st, display: 'inline-flex', marginTop: 7 }}>{ct.label}</span>
             </div>
-            <span style={ct.st}>{ct.label}</span>
           </div>
         )}
       </div>
