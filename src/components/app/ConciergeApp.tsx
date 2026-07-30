@@ -1,5 +1,6 @@
 // The Num app screen — header, tab bar, views, sheets and overlays.
 // Composition and z-layering match Concierge.dc.html exactly.
+import { useEffect } from 'react';
 import type { KeyboardEvent } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
@@ -33,6 +34,29 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
   const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false });
+
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.voice > 0);
+
+  // The system back button/gesture must close what's open, never quit the
+  // app: opening an overlay pushes one history entry; popping it (Android
+  // back, iOS edge-swipe, browser back) closes the overlay. If the overlay
+  // is closed some other way (X, backdrop, Escape), the entry is consumed
+  // silently so the next back-press behaves normally.
+  useEffect(() => {
+    if (!overlayOpen) return;
+    let popped = false;
+    history.pushState({ numOverlay: true }, '');
+    const onPop = () => {
+      popped = true;
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false });
+      if (store.get().voice) closeVoice();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (!popped && history.state?.numOverlay) history.back();
+    };
+  }, [overlayOpen]);
 
   // Escape dismisses sheets and the voice overlay — the keyboard counterpart
   // of tapping the backdrop. The permission dialog still needs an explicit choice.

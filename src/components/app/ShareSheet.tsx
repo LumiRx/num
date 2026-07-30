@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, checkboxStyle, grabberStyle } from '../../lib/derive';
-import { CheckIcon, CopyIcon } from '../../lib/icons';
+import { CheckIcon, CopyIcon, XIcon } from '../../lib/icons';
 import { SHARE_LINK } from '../../lib/data';
 
 export default function ShareSheet() {
@@ -26,9 +26,18 @@ export default function ShareSheet() {
     store.set({ copied: true });
   };
 
+  const close = () => store.set({ shareOpen: false });
   return (
     <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={grabberStyle} />
+      <div
+        {...pressable(close)}
+        aria-label="Close"
+        className="glass press"
+        style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
+      >
+        <XIcon size={15} />
+      </div>
       <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)' }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE PLAN</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Viv’s SE Asia loop</div>

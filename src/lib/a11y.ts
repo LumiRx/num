@@ -23,13 +23,13 @@ export function useDialogFocus(open: boolean, ref: RefObject<HTMLElement>) {
       const el = ref.current;
       if (!el) return;
       const first = el.matches('[tabindex="0"]') ? el : el.querySelector<HTMLElement>('[tabindex="0"], input');
-      first?.focus();
+      first?.focus({ preventScroll: true });
       if (document.activeElement !== first) raf = requestAnimationFrame(tryFocus);
     };
     raf = requestAnimationFrame(tryFocus);
     return () => {
       cancelAnimationFrame(raf);
-      if (invoker.current?.isConnected) invoker.current.focus();
+      if (invoker.current?.isConnected) invoker.current.focus({ preventScroll: true });
       invoker.current = null;
     };
   }, [open, ref]);

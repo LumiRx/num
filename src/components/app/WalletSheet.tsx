@@ -1,10 +1,10 @@
 // Stars wallet sheet — balance, instant top-up packs, payment methods,
 // and the activity/receipts ledger.
 import { useRef } from 'react';
-import { useApp } from '../../lib/store';
+import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
-import { StarIcon, WalletIcon } from '../../lib/icons';
+import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack } from '../../lib/concierge';
 
 const PACKS: Array<{ stars: string; price: string; n: number; via: string }> = [
@@ -21,9 +21,18 @@ export default function WalletSheet() {
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
 
+  const close = () => store.set({ walletOpen: false });
   return (
     <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={grabberStyle} />
+      <div
+        {...pressable(close)}
+        aria-label="Close"
+        className="glass press"
+        style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
+      >
+        <XIcon size={15} />
+      </div>
       <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
           <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>STARS — YOUR BALANCE</div>

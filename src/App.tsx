@@ -25,9 +25,13 @@ export default function App() {
 
   if (showCanvas) return <PrototypeCanvas />;
   if (standalone) {
+    // The shell auto-sizes: full screen on a phone, a framed phone-width
+    // column on anything wider — the app never sprawls past its borders.
     return (
-      <div style={{ height: '100dvh', overflow: 'hidden' }}>
-        <ConciergeApp standalone />
+      <div className="app-shell-stage">
+        <div className="app-shell">
+          <ConciergeApp standalone />
+        </div>
       </div>
     );
   }

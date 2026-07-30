@@ -7,7 +7,7 @@ import {
   monthsFor, calendarCells, dayTimeline, timelineHours, timelineHeight, selDayInfo, sheetBase, grabberStyle,
 } from '../../lib/derive';
 import type { CalCell } from '../../lib/derive';
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from '../../lib/icons';
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from '../../lib/icons';
 
 function DayCell({ d }: { d: CalCell }) {
   if (!d.dayKey) return <div style={{ minHeight: 34 }} />;
@@ -53,11 +53,20 @@ export default function CalendarSheet() {
   const sel = selDayInfo(s, events.length);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(s.calOpen, ref);
+  const close = () => store.set({ calOpen: false });
 
   return (
     <div ref={ref} className="glass-strong" style={{ ...sheetBase, height: '80%', display: 'flex', flexDirection: 'column', visibility: s.calOpen ? 'visible' : 'hidden', transform: s.calOpen ? 'translateY(0)' : 'translateY(105%)' }}>
       <div style={grabberStyle} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 12px', borderBottom: '1px solid var(--ink-08)' }}>
+      <div
+        {...pressable(close)}
+        aria-label="Close"
+        className="glass press"
+        style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
+      >
+        <XIcon size={15} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 50px 12px', borderBottom: '1px solid var(--ink-08)' }}>
         <span {...pressable(() => store.set({ calM: 0 }))} aria-label="Previous month" className="glass press" style={{ width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: s.calM === 0 ? 0.25 : 1 }}><ChevronLeftIcon size={16} /></span>
         <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16 }}>{M.t}</span>
         <span {...pressable(() => store.set({ calM: 1 }))} aria-label="Next month" className="glass press" style={{ width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: s.calM === 1 ? 0.25 : 1 }}><ChevronRightIcon size={16} /></span>
