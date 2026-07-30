@@ -146,8 +146,19 @@ export function validatePayload(raw) {
     return { ok: false, status: 400, error: 'state payload too large' };
   }
 
+  // Optional: the user's stated location from onboarding ("Tokyo", "Paris…").
+  const { place } = raw;
+  if (place !== undefined && place !== null && (typeof place !== 'string' || place.length > 120)) {
+    return { ok: false, status: 400, error: 'place must be a string of at most 120 characters' };
+  }
+
   // Only the fields the model needs — drops anything unexpected a client sends.
-  return { ok: true, messages: messages.map((m) => ({ role: m.role, content: m.content })), state: state ?? {} };
+  return {
+    ok: true,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    state: state ?? {},
+    place: typeof place === 'string' && place.trim() ? place.trim() : null,
+  };
 }
 
 /**

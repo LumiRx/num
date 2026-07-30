@@ -10,7 +10,7 @@
 // browser.
 import http from 'node:http';
 import Anthropic from '@anthropic-ai/sdk';
-import { PERSONA, REPLY_SCHEMA, normalizeReply } from '../worker/prompt.mjs';
+import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from '../worker/prompt.mjs';
 
 const PORT = Number(process.env.NUM_AI_PORT) || 8787;
 const MODEL = 'claude-opus-5';
@@ -23,6 +23,8 @@ async function askNum(messages, state) {
     max_tokens: 4096,
     system: [
       { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
+      // Local dev has no D1 binding — no partner grounding, date/location only.
+      { type: 'text', text: contextBlock({}) },
       { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
     ],
     output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },

@@ -4,7 +4,7 @@ import type { KeyboardEvent } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
-import { segStyle } from '../../lib/derive';
+import { monthsFor, segStyle } from '../../lib/derive';
 import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon } from '../../lib/icons';
 import ThreadView from './ThreadView';
 import PlanView from './PlanView';
@@ -19,6 +19,18 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
   const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen);
+  const demo = useApp((s) => s.demo);
+  const place = useApp((s) => s.place);
+
+  // Demo: the scripted date/loop. Real: today anywhere on Earth, plus wherever
+  // the user told Num they are — or the ask, until they have.
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const title = demo ? 'Tue 28 Jul · Bangkok' : place ? `${today} · ${place}` : `${today} · Where to?`;
+  const subhead = demo
+    ? `SE ASIA LOOP · 3 CITIES · ${nBookings} BOOKINGS`
+    : place
+      ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
+      : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
   const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false });
 
@@ -74,12 +86,12 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             </div>
           </div>
         </div>
-        <div {...pressable(() => store.set((s) => ({ calOpen: true, selDay: s.selDay || '7-28' })))} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
+        <div {...pressable(() => store.set((s) => { const M = monthsFor(s.demo)[0]; return { calOpen: true, selDay: s.selDay || `${M.mo}-${M.todayDay ?? 1}` }; }))} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: 21, fontWeight: 700, lineHeight: 1.1 }}>
-            Tue 28 Jul · Bangkok <ChevronDownIcon size={15} style={{ color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
+            {title} <ChevronDownIcon size={15} style={{ color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
           </div>
           <div style={{ fontSize: 10, letterSpacing: '.14em', marginTop: 3, color: posterHeader ? 'rgba(255,255,255,.75)' : 'var(--color-neutral-600)' }}>
-            SE ASIA LOOP · 3 CITIES · {nBookings} BOOKINGS
+            {subhead}
           </div>
         </div>
       </div>

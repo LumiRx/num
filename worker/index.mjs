@@ -11,17 +11,19 @@
 // The endpoint is public, so worker/guard.mjs rate-limits and validates every
 // request before we spend a token — see DEPLOY.md § Launch hardening.
 import Anthropic from '@anthropic-ai/sdk';
-import { PERSONA, REPLY_SCHEMA, normalizeReply } from './prompt.mjs';
+import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
+import { groundRequest } from './grounding.mjs';
 
 const MODEL = 'claude-opus-5';
 
-async function askNum(client, messages, state) {
+async function askNum(client, messages, state, grounding) {
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
     system: [
       { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: contextBlock({ place: grounding.place, partners: grounding.partners, guide: grounding.guide }) },
       { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
     ],
     output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
@@ -85,18 +87,25 @@ export default {
     if (!parsed.ok) return json(parsed.status, { error: parsed.error });
 
     try {
+      // Same brain as the texts: resolve the user's location and pull
+      // verified partners from the shared num-db before Claude answers.
+      const lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+      const grounding = await groundRequest(env, { userText: lastUser, statedPlace: parsed.place, cf: request.cf });
+
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       let result;
       try {
-        result = await askNum(client, parsed.messages, parsed.state);
+        result = await askNum(client, parsed.messages, parsed.state, grounding);
       } catch (err) {
         // Grammar compilation is cached once it succeeds but can time out on a
         // cold schema — one retry usually lands on the warmed cache.
         if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
         await new Promise((r) => setTimeout(r, 1500));
-        result = await askNum(client, parsed.messages, parsed.state);
+        result = await askNum(client, parsed.messages, parsed.state, grounding);
       }
-      return json(200, result);
+      // Tell the app where Num thinks the user is (drives the header) —
+      // computed server-side, never by the model.
+      return json(200, { ...result, place: grounding.place ? grounding.place.name : null });
     } catch (err) {
       console.error('[num-ai]', err);
       const status = err?.status === 401 ? 401 : err?.status === 429 ? 429 : 500;

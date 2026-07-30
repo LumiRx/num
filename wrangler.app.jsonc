@@ -15,6 +15,11 @@
     // Only /api/* reaches the Worker; everything else is served as a static asset.
     "run_worker_first": ["/api/*"]
   },
+  // Same brain as the texts: the num-ai LINE concierge's database (67 live
+  // destinations, 500k+ ranked places). The app only reads; num-ai owns writes.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+  ],
   // Per-IP rate limit for /api/num. Counters live in Cloudflare's infra, so
   // they survive isolate churn — the in-worker Map alone does not (see
   // worker/guard.mjs). namespace_id is a per-Worker identifier, not a secret.

@@ -51,17 +51,31 @@ export const memTag: CSSProperties = {
   border: '1px solid rgba(161,140,209,.3)',
 };
 
-/** Weekday short name for a 2026 date, e.g. wd(7, 28) === 'Tue'. */
-export function wd(mo: number, day: number): string {
-  return new Date(2026, mo - 1, day).toLocaleDateString('en-GB', { weekday: 'short' });
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_LONG = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+
+/** The demo trip lives in a fixed Jul/Aug 2026; real trips live in the actual
+ *  current + next month, anywhere in the world. */
+const DEMO_YEAR = 2026;
+
+function yearFor(demo: boolean, mo: number): number {
+  if (demo) return DEMO_YEAR;
+  const now = new Date();
+  // mo is current or next calendar month; December wraps into next January.
+  return now.getMonth() === 11 && mo === 1 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+/** Weekday short name, demo-aware ('Tue' for demo 7/28). */
+export function wd(demo: boolean, mo: number, day: number): string {
+  return new Date(yearFor(demo, mo), mo - 1, day).toLocaleDateString('en-GB', { weekday: 'short' });
 }
 
 export function monthName(mo: number): string {
-  return mo === 7 ? 'Jul' : 'Aug';
+  return MONTH_SHORT[mo - 1] ?? '';
 }
 
-export function bookingMetaLine(b: Booking): string {
-  return wd(b.mo, b.day) + ' ' + b.day + ' ' + monthName(b.mo) + ' · ' + b.time + (b.place ? ' · ' + b.place : '');
+export function bookingMetaLine(demo: boolean, b: Booking): string {
+  return wd(demo, b.mo, b.day) + ' ' + b.day + ' ' + monthName(b.mo) + ' · ' + b.time + (b.place ? ' · ' + b.place : '');
 }
 
 // ── Calendar ────────────────────────────────────────────────────────────────
@@ -71,12 +85,29 @@ export interface MonthDef {
   mo: number;
   days: number;
   lead: number; // blank cells before day 1 (Monday-first grid)
+  todayDay: number | null;
 }
 
-export const MONTHS: MonthDef[] = [
-  { t: 'JULY 2026', mo: 7, days: 31, lead: 2 },
-  { t: 'AUGUST 2026', mo: 8, days: 31, lead: 5 },
-];
+function monthDef(y: number, mo: number, todayDay: number | null): MonthDef {
+  return {
+    t: `${MONTH_LONG[mo - 1]} ${y}`,
+    mo,
+    days: new Date(y, mo, 0).getDate(),
+    lead: (new Date(y, mo - 1, 1).getDay() + 6) % 7,
+    todayDay,
+  };
+}
+
+/** The two months the calendar shows. Demo: the scripted Jul/Aug 2026 with
+ *  "today" pinned to the 28th. Real: the user's actual current + next month. */
+export function monthsFor(demo: boolean): MonthDef[] {
+  if (demo) return [monthDef(DEMO_YEAR, 7, 28), monthDef(DEMO_YEAR, 8, null)];
+  const now = new Date();
+  const y = now.getFullYear();
+  const mo = now.getMonth() + 1;
+  const next = mo === 12 ? monthDef(y + 1, 1, null) : monthDef(y, mo + 1, null);
+  return [monthDef(y, mo, now.getDate()), next];
+}
 
 export interface CalCell {
   key: string;
@@ -90,7 +121,7 @@ export interface CalCell {
 }
 
 export function calendarCells(s: AppState): CalCell[] {
-  const M = MONTHS[s.calM];
+  const M = monthsFor(s.demo)[s.calM];
   const byDay: Record<string, number> = {};
   s.bookings.forEach((b) => {
     if (b.status !== 'cancelled') {
@@ -116,8 +147,8 @@ export function calendarCells(s: AppState): CalCell[] {
       planDots: Math.min(byDay[k] || 0, 3),
       meetDots: Math.min(byMeet[k] || 0, 2),
       sel: s.selDay === k,
-      today: M.mo === 7 && d === 28,
-      past: M.mo === 7 && d < 28,
+      today: M.todayDay !== null && d === M.todayDay,
+      past: M.todayDay !== null && d < M.todayDay,
     });
   }
   return cells;
@@ -207,8 +238,11 @@ export const timelineHeight = (TL_END - TL_START) * TL_PPM + 20;
 
 export function selDayInfo(s: AppState, eventCount: number) {
   const parts = s.selDay ? s.selDay.split('-') : null;
-  const selPast = !!parts && +parts[0] === 7 && +parts[1] < 28;
-  const cityOf = (mo: number, d: number) =>
+  const months = monthsFor(s.demo);
+  const cur = months[0];
+  const selPast = !!parts && cur.todayDay !== null && +parts[0] === cur.mo && +parts[1] < cur.todayDay;
+  // The demo trip's scripted itinerary; a real trip shows the user's place.
+  const demoCityOf = (mo: number, d: number) =>
     mo === 7
       ? d < 31 ? 'BANGKOK' : 'BANGKOK → PHUKET'
       : d < 5 ? 'PHUKET'
@@ -216,9 +250,12 @@ export function selDayInfo(s: AppState, eventCount: number) {
       : d <= 8 ? 'SINGAPORE'
       : d === 14 || d === 15 ? 'KOH PHANGAN'
       : '';
+  const city = !parts || selPast ? '' : s.demo ? demoCityOf(+parts[0], +parts[1]) : (s.place ?? '').toUpperCase();
   return {
-    label: parts ? (wd(+parts[0], +parts[1]) + ' ' + parts[1] + ' ' + (+parts[0] === 7 ? 'JUL' : 'AUG')).toUpperCase() : 'TAP A DAY',
-    city: parts && !selPast ? cityOf(+parts[0], +parts[1]) : '',
+    label: parts
+      ? (wd(s.demo, +parts[0], +parts[1]) + ' ' + parts[1] + ' ' + monthName(+parts[0])).toUpperCase()
+      : 'TAP A DAY',
+    city,
     count: parts ? (eventCount === 1 ? '1 THING' : eventCount + ' THINGS') : '',
     emptyText: selPast
       ? 'Nothing kept from this day — older days live under MEMORY.'
@@ -239,7 +276,14 @@ export interface LiveActivity {
 export function liveActivity(s: AppState): LiveActivity {
   if (s.disr === 'active') return { tag: 'DISRUPTION', line: 'Phi Phi ferry cancelled', meta: 'Two rebook options in your thread', pulse: true, red: true };
   if (s.disr === 'rebooked') return { tag: 'REBOOKED', line: 'Phi Phi — sorted', meta: (s.laLine || '') + ' · return 16:30 unchanged', pulse: false, red: false };
-  return { tag: 'TONIGHT', line: 'Dinner — Le Du', meta: '19:30 · counter seats · table held to 19:45', pulse: false, red: false };
+  if (s.demo) return { tag: 'TONIGHT', line: 'Dinner — Le Du', meta: '19:30 · counter seats · table held to 19:45', pulse: false, red: false };
+  // Real trip: surface the next upcoming booking, or a quiet idle card.
+  const next = [...s.bookings]
+    .filter((b) => b.status !== 'cancelled')
+    .sort((a, b) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time))[0];
+  return next
+    ? { tag: 'NEXT UP', line: next.title, meta: `${wd(false, next.mo, next.day)} ${next.day} ${monthName(next.mo)} · ${next.time}${next.place ? ' · ' + next.place : ''}`, pulse: false, red: false }
+    : { tag: 'READY', line: 'Num is watching your trip', meta: 'Nothing needs you right now', pulse: false, red: false };
 }
 
 // ── Shared sheet/segment styles ─────────────────────────────────────────────

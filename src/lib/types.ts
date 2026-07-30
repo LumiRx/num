@@ -84,6 +84,13 @@ export interface AppState {
   disr: Disruption;
   laLine: string;
 
+  /** True when running the scripted Viv/SE-Asia demo trip. */
+  demo: boolean;
+  /** Where the user told Num they are (null until onboarding answers it). */
+  place: string | null;
+  /** First-run onboarding completed (a place is known or demo entered). */
+  onboarded: boolean;
+
   calOpen: boolean;
   calM: 0 | 1; // month index: 0 = Jul 2026, 1 = Aug 2026
   selDay: string | null; // 'mo-day', e.g. '7-28'

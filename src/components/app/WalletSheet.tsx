@@ -8,9 +8,9 @@ import { StarIcon, WalletIcon } from '../../lib/icons';
 import { buyPack } from '../../lib/concierge';
 
 const PACKS: Array<{ stars: string; price: string; n: number; via: string }> = [
-  { stars: '★500', price: '฿5,000 · Apple Pay', n: 500, via: 'Apple Pay' },
-  { stars: '★1,000', price: '฿9,900 · Apple Pay', n: 1000, via: 'Apple Pay' },
-  { stars: '★5,000', price: '฿47,500 · card', n: 5000, via: 'Visa ··4242' },
+  { stars: '★500', price: '$150 · Apple Pay', n: 500, via: 'Apple Pay' },
+  { stars: '★1,000', price: '$295 · Apple Pay', n: 1000, via: 'Apple Pay' },
+  { stars: '★5,000', price: '$1,425 · card', n: 5000, via: 'Visa ··4242' },
 ];
 
 export default function WalletSheet() {
@@ -33,7 +33,7 @@ export default function WalletSheet() {
           </div>
         </div>
         <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', textAlign: 'right', lineHeight: 1.5 }}>
-          1★ = ฿10 · Num is the payrail<br />friends see plans, never stars
+          1★ ≈ $0.30 · Num is the payrail<br />friends see plans, never stars
         </div>
       </div>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ink-08)' }}>

@@ -65,15 +65,16 @@ export const MEMORY_GROUPS: Array<[name: MemoryItem['trip'], dates: string]> = [
 
 export const SHARE_LINK = 'https://concierge.travel/p/viv-4k2x';
 
-export function initialState(): AppState {
+/** Everything both modes share at boot. */
+function baseState() {
   return {
-    view: 'thread',
+    view: 'thread' as const,
     typing: false,
     notifOn: false,
-    disr: 'none',
+    disr: 'none' as const,
     laLine: '',
     calOpen: false,
-    calM: 0,
+    calM: 0 as const,
     selDay: null,
     shareOpen: false,
     shLive: true,
@@ -81,13 +82,23 @@ export function initialState(): AppState {
     copied: false,
     killed: false,
     expanded: null,
-    voice: 0,
-    stars: 1240,
+    voice: 0 as const,
     walletOpen: false,
     permOn: false,
+    bought: '',
+  };
+}
+
+/** The scripted Viv / SE-Asia demo trip — reachable via the demo chip. */
+export function demoState(): AppState {
+  return {
+    ...baseState(),
+    demo: true,
+    place: 'Bangkok',
+    onboarded: true,
+    stars: 1240,
     photosOn: false,
     billPaid: false,
-    bought: '',
     txns: seedTxns,
     meetings: seedMeetings,
     memories: seedMemories,
@@ -95,4 +106,63 @@ export function initialState(): AppState {
     msgs: seedMsgs,
     bookings: seedBookings,
   };
+}
+
+/** A brand-new user, anywhere in the world: Num asks before assuming. */
+export function freshState(): AppState {
+  return {
+    ...baseState(),
+    demo: false,
+    place: null,
+    onboarded: false,
+    stars: 100, // welcome stars — enough to feel the payrail, not enough to matter
+    photosOn: false,
+    billPaid: false,
+    txns: [{ id: 't0', t: 'Welcome stars ★100', meta: 'on the house', amt: '+★100', dir: 1 }],
+    meetings: [],
+    memories: [],
+    chips: [{ id: 'demo', label: '▸ Show me a live demo trip' }],
+    msgs: [
+      {
+        who: 'c',
+        text: 'Welcome — I’m Num. Three letters, one job: your whole trip, handled from this one thread.\n\nTwo quick things so I never guess: where in the world are you right now, and where are you headed?',
+      },
+    ],
+    bookings: [],
+  };
+}
+
+// ── persistence — a traveller's trip survives closing the app ──────────────
+
+const STORAGE_KEY = 'num-trip-v1';
+
+/** Fields worth keeping across launches (UI transients stay out). */
+export function persistable(s: AppState) {
+  const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied, ...keep } = s;
+  return keep;
+}
+
+export function saveState(s: AppState): void {
+  // The demo is a showroom, not the user's data — never persist it.
+  if (s.demo) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable(s)));
+  } catch {
+    // Storage full or blocked (private mode) — the session still works.
+  }
+}
+
+export function initialState(): AppState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved && typeof saved === 'object' && Array.isArray(saved.msgs)) {
+        return { ...freshState(), ...saved, demo: false };
+      }
+    }
+  } catch {
+    // Corrupt or unavailable storage — start clean.
+  }
+  return freshState();
 }

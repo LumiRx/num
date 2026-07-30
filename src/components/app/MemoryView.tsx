@@ -45,12 +45,18 @@ function MemoryRow({ m }: { m: MemoryItem }) {
 
 export default function MemoryView() {
   const memories = useApp((s) => s.memories);
+  const demo = useApp((s) => s.demo);
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
       <div className="glass" style={{ margin: '10px 12px 4px', borderRadius: 'var(--r-md)', padding: '12px 14px', fontSize: 12, color: 'var(--ink)', lineHeight: 1.55 }}>
         Everything you’ve done, kept quietly — not a cluster, a shelf. Ask the thread —{' '}
         <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>“when was that omakase?”</span> — and it comes back.
       </div>
+      {!demo && memories.length === 0 && (
+        <div className="glass" style={{ margin: '10px 12px', borderRadius: 'var(--r-md)', padding: '14px 16px', fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>
+          Your shelf is empty — it fills itself as you travel. Every dinner, boat and night out files here quietly, ready to come back the moment you ask.
+        </div>
+      )}
       {MEMORY_GROUPS.map(([name, dates]) => (
         <div key={name}>
           <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

@@ -3,6 +3,7 @@
 // surface (sendChip, openVoice, payBill, buyPack…) is the seam where a real
 // agent backend would slot in later.
 import { store } from './store';
+import { demoState } from './data';
 import type { Booking, Chip, Meeting, Msg } from './types';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
@@ -24,6 +25,9 @@ function reply(items: Msg[], chips?: Chip[] | null, delay = 1000) {
 
 function defChips(): Chip[] {
   const s = store.get();
+  // The scripted flows are the DEMO trip. A real traveller's chips come from
+  // the AI's replies; between turns we offer nothing rather than Viv's script.
+  if (!s.demo) return [];
   const c: Chip[] = [];
   if (!s.billPaid) c.push({ id: 'bill', label: 'Pay my bill — Le Du' });
   if (!s.photosOn) c.push({ id: 'photos', label: 'Let Num organize my photos' });
@@ -104,6 +108,19 @@ export function askToChange(title: string) {
 }
 
 export function sendChip(id: string, label: string) {
+  // Enter the showroom: swap the whole state for Viv's scripted SE-Asia trip.
+  if (id === 'demo') {
+    const demo = demoState();
+    store.replace({
+      ...demo,
+      msgs: [
+        { who: 'c', text: 'Stepping into the demo — this is Viv, mid-way through an SE-Asia loop, so you can see a full trip in flight. Try the chips below; your own thread is untouched and one refresh brings it back.' },
+        ...demo.msgs,
+      ],
+    });
+    return;
+  }
+
   if (id !== 'ferry' && label) push({ who: 'u', text: label });
 
   if (id === 'dinner') {
@@ -276,6 +293,8 @@ interface NumReply {
   card: Msg['card'] | null;
   chips: Chip[] | null;
   actions: NumAction[];
+  /** Where the server resolved the user to be (drives the header). */
+  place?: string | null;
 }
 
 function applyAction(a: NumAction) {
@@ -309,7 +328,7 @@ export async function askNum(text: string) {
     const res = await fetch('/api/num', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, state }),
+      body: JSON.stringify({ messages, state, place: s.place }),
     });
     if (!res.ok) throw new Error('backend ' + res.status);
     const out: NumReply = await res.json();
@@ -318,6 +337,9 @@ export async function askNum(text: string) {
       typing: false,
       msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}) }],
       chips: out.chips ?? defChips(),
+      // The server resolves location against the shared destination database;
+      // once it knows where we are, the header follows and onboarding is done.
+      ...(out.place ? { place: out.place, onboarded: true } : {}),
     }));
   } catch (err) {
     console.error('[num-ai]', err);
@@ -325,7 +347,7 @@ export async function askNum(text: string) {
       typing: false,
       msgs: [
         ...prev.msgs,
-        { who: 'c', text: 'I’m offline right now — my backend isn’t reachable. Start it with `npm run ai` (and set ANTHROPIC_API_KEY). The demo chips below still work.' },
+        { who: 'c', text: 'I can’t reach my brain right now — check your connection and try again in a moment.' },
       ],
       chips: defChips(),
     }));

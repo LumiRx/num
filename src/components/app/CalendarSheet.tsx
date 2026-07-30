@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import {
-  MONTHS, calendarCells, dayTimeline, timelineHours, timelineHeight, selDayInfo, sheetBase, grabberStyle,
+  monthsFor, calendarCells, dayTimeline, timelineHours, timelineHeight, selDayInfo, sheetBase, grabberStyle,
 } from '../../lib/derive';
 import type { CalCell } from '../../lib/derive';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from '../../lib/icons';
@@ -47,7 +47,7 @@ function DayCell({ d }: { d: CalCell }) {
 
 export default function CalendarSheet() {
   const s = useApp((x) => x);
-  const M = MONTHS[s.calM];
+  const M = monthsFor(s.demo)[s.calM];
   const cells = calendarCells(s);
   const events = dayTimeline(s);
   const sel = selDayInfo(s, events.length);
