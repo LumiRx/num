@@ -77,7 +77,7 @@ export default function CalendarSheet() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, padding: '4px 12px 10px' }}>
         {cells.map((d) => <DayCell key={d.key} d={d} />)}
       </div>
-      <div style={{ borderTop: '1px solid var(--ink-08)', borderBottom: '1px solid var(--ink-08)', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,.55)' }}>
+      <div style={{ borderTop: '1px solid var(--ink-08)', borderBottom: '1px solid var(--ink-08)', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--field-bg)' }}>
         <span style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 9.5, letterSpacing: '.1em', fontWeight: 700, color: 'var(--color-neutral-600)' }}><CalendarIcon size={12} />GOOGLE CALENDAR · CONNECTED · 2-WAY</span>
         <span style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 9.5, letterSpacing: '.06em', color: 'var(--color-neutral-600)' }}>
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-accent)' }} />PLANS</span>

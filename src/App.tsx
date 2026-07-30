@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import PrototypeCanvas from './components/canvas/PrototypeCanvas';
 import LaunchStage from './components/canvas/LaunchStage';
 import ConciergeApp from './components/app/ConciergeApp';
+import AdminView from './components/app/AdminView';
 
 function useStandalone(): boolean {
   const forced = new URLSearchParams(window.location.search).has('app');
@@ -70,6 +71,11 @@ export default function App() {
       root.style.removeProperty('--vvh');
     };
   }, [standalone]);
+
+  // The operator console. No link points here; the key is verified server-side
+  // on every request, so the URL is routing, not authorisation.
+  const adminKey = new URLSearchParams(window.location.search).get('admin');
+  if (adminKey) return <AdminView adminKey={adminKey} />;
 
   if (showCanvas) return <PrototypeCanvas />;
   if (standalone) {

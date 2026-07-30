@@ -64,10 +64,65 @@ const BY_COUNTRY = {
   TR: { ride: ['uber', 'bitaksi'], food: ['yemeksepeti', 'getir'], table: ['thefork'], wellness: ['fresha'] },
 };
 
+/**
+ * Travel is not a per-country market the way a taxi is — the same three
+ * metasearch engines cover the planet, and the airline you want is the one you
+ * hold status with. So flights and hotels come from one global set, ordered
+ * comparison-first: the honest answer to "find me the best price" is to put the
+ * same search into the engines that actually compare, not to guess a winner.
+ */
+const TRAVEL = {
+  flight: ['googleflights', 'skyscanner', 'kayak'],
+  hotel: ['booking', 'googlehotels', 'agoda', 'expedia'],
+  rail: ['trainline', 'omio'],
+};
+
+/** Loyalty programmes worth knowing about — used to bias a recommendation. */
+export const AIRLINES = {
+  delta: { name: 'Delta', url: 'https://www.delta.com/', alliance: 'SkyTeam' },
+  united: { name: 'United', url: 'https://www.united.com/', alliance: 'Star Alliance' },
+  american: { name: 'American', url: 'https://www.aa.com/', alliance: 'oneworld' },
+  emirates: { name: 'Emirates', url: 'https://www.emirates.com/', alliance: null },
+  qatar: { name: 'Qatar Airways', url: 'https://www.qatarairways.com/', alliance: 'oneworld' },
+  singapore: { name: 'Singapore Airlines', url: 'https://www.singaporeair.com/', alliance: 'Star Alliance' },
+  ba: { name: 'British Airways', url: 'https://www.britishairways.com/', alliance: 'oneworld' },
+  lufthansa: { name: 'Lufthansa', url: 'https://www.lufthansa.com/', alliance: 'Star Alliance' },
+  airfrance: { name: 'Air France', url: 'https://www.airfrance.com/', alliance: 'SkyTeam' },
+  klm: { name: 'KLM', url: 'https://www.klm.com/', alliance: 'SkyTeam' },
+  etihad: { name: 'Etihad', url: 'https://www.etihad.com/', alliance: null },
+  turkish: { name: 'Turkish Airlines', url: 'https://www.turkishairlines.com/', alliance: 'Star Alliance' },
+  cathay: { name: 'Cathay Pacific', url: 'https://www.cathaypacific.com/', alliance: 'oneworld' },
+  ana: { name: 'ANA', url: 'https://www.ana.co.jp/', alliance: 'Star Alliance' },
+  jal: { name: 'JAL', url: 'https://www.jal.co.jp/', alliance: 'oneworld' },
+  thai: { name: 'Thai Airways', url: 'https://www.thaiairways.com/', alliance: 'Star Alliance' },
+  qantas: { name: 'Qantas', url: 'https://www.qantas.com/', alliance: 'oneworld' },
+  jetblue: { name: 'JetBlue', url: 'https://www.jetblue.com/', alliance: null },
+  southwest: { name: 'Southwest', url: 'https://www.southwest.com/', alliance: null },
+  ryanair: { name: 'Ryanair', url: 'https://www.ryanair.com/', alliance: null },
+  easyjet: { name: 'easyJet', url: 'https://www.easyjet.com/', alliance: null },
+  airasia: { name: 'AirAsia', url: 'https://www.airasia.com/', alliance: null },
+  indigo: { name: 'IndiGo', url: 'https://www.goindigo.in/', alliance: null },
+};
+
+export const HOTEL_GROUPS = {
+  marriott: { name: 'Marriott Bonvoy', url: 'https://www.marriott.com/' },
+  hilton: { name: 'Hilton Honors', url: 'https://www.hilton.com/' },
+  hyatt: { name: 'World of Hyatt', url: 'https://www.hyatt.com/' },
+  ihg: { name: 'IHG One Rewards', url: 'https://www.ihg.com/' },
+  accor: { name: 'ALL — Accor', url: 'https://all.accor.com/' },
+  wyndham: { name: 'Wyndham Rewards', url: 'https://www.wyndhamhotels.com/' },
+  shangrila: { name: 'Shangri-La Circle', url: 'https://www.shangri-la.com/' },
+  fourseasons: { name: 'Four Seasons', url: 'https://www.fourseasons.com/' },
+  aman: { name: 'Aman', url: 'https://www.aman.com/' },
+  airbnb: { name: 'Airbnb', url: 'https://www.airbnb.com/' },
+};
+
 /** Sensible worldwide default when the country isn't mapped. */
 const FALLBACK = { ride: ['uber', 'bolt'], food: ['ubereats'], table: ['opentable', 'thefork'], wellness: ['fresha'] };
 
 const enc = encodeURIComponent;
+/** Skyscanner wants YYMMDD; everyone else takes ISO. */
+const ymd = (iso) => (iso ? String(iso).slice(2).replace(/-/g, '') : '');
 
 /**
  * Every provider Num can name. `link(ctx)` builds the deepest link that works
@@ -154,6 +209,46 @@ const PROVIDERS = {
   dineout: { name: 'Dineout', kind: 'table', link: () => 'https://www.dineout.co.in/' },
   dineplan: { name: 'Dineplan', kind: 'table', link: () => 'https://www.dineplan.com/' },
 
+  // ── travel: compare first, then book direct if they hold status ─────────
+  googleflights: {
+    name: 'Google Flights',
+    kind: 'flight',
+    note: 'best overall price view',
+    link: (c) =>
+      `https://www.google.com/travel/flights?q=${enc(
+        `Flights from ${c.from ?? ''} to ${c.to ?? ''}${c.depart ? ` on ${c.depart}` : ''}${c.ret ? ` returning ${c.ret}` : ''}`.trim(),
+      )}`,
+  },
+  skyscanner: {
+    name: 'Skyscanner',
+    kind: 'flight',
+    note: 'whole-month view',
+    link: (c) =>
+      c.fromCode && c.toCode
+        ? `https://www.skyscanner.net/transport/flights/${c.fromCode.toLowerCase()}/${c.toCode.toLowerCase()}/${ymd(c.depart)}/${c.ret ? ymd(c.ret) + '/' : ''}`
+        : 'https://www.skyscanner.net/',
+  },
+  kayak: {
+    name: 'Kayak',
+    kind: 'flight',
+    link: (c) =>
+      c.fromCode && c.toCode
+        ? `https://www.kayak.com/flights/${c.fromCode.toUpperCase()}-${c.toCode.toUpperCase()}/${c.depart ?? ''}${c.ret ? '/' + c.ret : ''}`
+        : 'https://www.kayak.com/flights',
+  },
+  booking: {
+    name: 'Booking.com',
+    kind: 'hotel',
+    note: 'widest inventory',
+    link: (c) =>
+      `https://www.booking.com/searchresults.html?ss=${enc(c.q ?? c.city ?? '')}${c.checkin ? `&checkin=${c.checkin}` : ''}${c.checkout ? `&checkout=${c.checkout}` : ''}${c.adults ? `&group_adults=${c.adults}` : ''}`,
+  },
+  googlehotels: { name: 'Google Hotels', kind: 'hotel', note: 'price across every site at once', link: (c) => `https://www.google.com/travel/search?q=${enc((c.q ?? c.city ?? '') + ' hotels')}` },
+  agoda: { name: 'Agoda', kind: 'hotel', note: 'strongest in Asia', link: (c) => `https://www.agoda.com/search?q=${enc(c.q ?? c.city ?? '')}` },
+  expedia: { name: 'Expedia', kind: 'hotel', link: (c) => `https://www.expedia.com/Hotel-Search?destination=${enc(c.q ?? c.city ?? '')}${c.checkin ? `&startDate=${c.checkin}` : ''}${c.checkout ? `&endDate=${c.checkout}` : ''}` },
+  trainline: { name: 'Trainline', kind: 'rail', link: () => 'https://www.thetrainline.com/' },
+  omio: { name: 'Omio', kind: 'rail', note: 'train, bus and flight in one search', link: () => 'https://www.omio.com/' },
+
   // ── wellness ────────────────────────────────────────────────────────────
   fresha: { name: 'Fresha', kind: 'wellness', link: (c) => `https://www.fresha.com/search?q=${enc(c.q ?? 'massage')}` },
   treatwell: { name: 'Treatwell', kind: 'wellness', link: () => 'https://www.treatwell.co.uk/' },
@@ -184,9 +279,11 @@ export const anyConnected = (env, kind) =>
  * The options Num should offer for a request, best first.
  * Returns `{ mode: 'connected' | 'handoff', options: [{id, name, url, note}] }`.
  */
-export function optionsFor(kind, { country, city, to, toLat, toLng, q, covers } = {}, env = {}) {
-  const set = (BY_COUNTRY[String(country || '').toUpperCase()] ?? FALLBACK)[kind] ?? FALLBACK[kind] ?? [];
-  const ctx = { to, toLat, toLng, q, covers, city };
+export function optionsFor(kind, ctxIn = {}, env = {}) {
+  const { country, city, to, toLat, toLng, q, covers } = ctxIn;
+  const set =
+    TRAVEL[kind] ?? (BY_COUNTRY[String(country || '').toUpperCase()] ?? FALLBACK)[kind] ?? FALLBACK[kind] ?? [];
+  const ctx = { ...ctxIn, to, toLat, toLng, q, covers, city };
   const options = set
     .map((id) => {
       const p = PROVIDERS[id];
@@ -212,6 +309,8 @@ export function servicesBlock(place, env = {}) {
     ['food', 'delivery'],
     ['table', 'a restaurant table'],
     ['wellness', 'massage & spa'],
+    ['flight', 'flights'],
+    ['hotel', 'hotels'],
   ];
   const lines = kinds.map(([kind, label]) => {
     const { mode, options } = optionsFor(kind, { country, city: place?.name }, env);
@@ -221,6 +320,11 @@ export function servicesBlock(place, env = {}) {
   return (
     'SERVICES AVAILABLE HERE (ranked by what people actually use in this country):\n' +
     lines.join('\n') +
+    '\n\nFLIGHTS & HOTELS: you cannot see live fares, so never state a price as current and never claim a fare is the ' +
+    'cheapest. Say the band people actually pay on that route, then put the SAME search into the comparison engines via a ' +
+    'service action with kind flight or hotel (fill from/to/fromCode/toCode/depart/ret, or city/checkin/checkout). If the ' +
+    'KNOWN FACTS carry an airline status or hotel programme, weigh it openly and say why — status on the route is often ' +
+    'worth more than the cheapest fare, and sometimes it plainly is not. ' +
     '\n\nHAND-OFF rule: Num has no account with these companies yet, so you CANNOT place the order yourself. ' +
     'Do not say "booked", "on its way", or "ordered" for a hand-off. Instead: pick the ONE best provider for this exact ' +
     'request, say why it is the right one here, and emit the matching action (order_ride / order_food) — the app opens it ' +

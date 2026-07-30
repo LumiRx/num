@@ -43,14 +43,35 @@ export function pickLane(text, state = {}) {
 
 export const SMALL_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
+/**
+ * The cheap model agrees to the ban list and then writes "how can I help you
+ * today?" anyway. Asking a 70B model nicely is not a control; this is. Any
+ * small-lane reply matching these falls through to the real brain, which costs
+ * a few cents and keeps Num sounding like Num.
+ */
+const SWITCHBOARD =
+  /how (?:can|may) i (?:help|assist)|here to (?:help|assist)|let me know if|feel free to|what'?s up\??$|is there anything (?:else )?i can/i;
+
 function smallSystem(profile = {}, place = null) {
   const facts = [];
   if (place) facts.push(`current place: ${place}`);
   for (const [k, v] of Object.entries(profile ?? {})) facts.push(`${k}: ${v}`);
+  // The cheap lane still has to sound like Num — a user cannot tell which model
+  // answered, and "Welcome to Bangkok, how can I help you today?" reads like a
+  // hotel switchboard, not the assistant they met a minute ago.
   return (
-    'You are Num, a warm, brisk personal concierge. Reply in under 50 words of plain prose. ' +
+    'You are Num — a personal assistant who genuinely enjoys this job. Warm, easy, never formal, never corporate.\n' +
+    'Reply in ONE short sentence, under 25 words, the way a friend texts back. Then stop.\n' +
+    'BANNED, never write these: "How can I help you today", "How may I assist", "What\'s up", "Let me know if", ' +
+    '"I am here to help", "Feel free to". They read like a switchboard, not a person.\n' +
+    'Do not ask a generic question. Either acknowledge warmly and stop, or offer ONE specific thing.\n' +
+    'Examples of the right register:\n' +
+    '  user: thanks!            you: Any time.\n' +
+    '  user: nice one           you: Glad that landed.\n' +
+    '  user: hey                you: Hey — I\'m here whenever you need something sorted.\n' +
+    '  user: ok cool            you: Consider it noted.\n' +
     'NEVER output JSON, brackets, or role labels. ' +
-    'If the user wants a booking, a recommendation, or anything requiring action, reply exactly "HANDOFF".' +
+    'If the user wants a booking, a recommendation, a suggestion, or anything requiring action or knowledge, reply exactly "HANDOFF".' +
     (facts.length ? '\nKnown facts:\n' + facts.map((f) => `- ${f}`).join('\n') : '')
   );
 }
@@ -59,6 +80,9 @@ function smallSystem(profile = {}, place = null) {
  * Small-lane answer via Workers AI. Returns the reply string, or null on any
  * failure — the caller falls through to the big lane, never to an error.
  */
+/** True when a small-lane reply is corporate filler and must not be sent. */
+export const soundsLikeASwitchboard = (t) => SWITCHBOARD.test(String(t ?? ''));
+
 export async function smallReply(env, messages, profile, place) {
   if (!env?.AI?.run) return null;
   try {

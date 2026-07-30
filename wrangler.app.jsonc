@@ -36,6 +36,9 @@
     }
   ],
   // Instant preview URL (num-app.<account>.workers.dev) — live immediately after deploy
+  // The concierge model. Opus is the default in code; set it here to flip the
+  // latency/cost trade without a code change (e.g. "claude-sonnet-5").
+  // "vars": { "NUM_MODEL": "claude-sonnet-5" },
   "workers_dev": true,
   "observability": {
     "enabled": true

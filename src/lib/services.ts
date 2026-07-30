@@ -43,6 +43,11 @@ export const KIND_LABEL: Record<ServiceHandoff['kind'], string> = {
   food: 'Order it',
   table: 'Book the table',
   wellness: 'Book it',
+  // Travel is a price comparison, not a purchase — the label has to say so, or
+  // a tap feels like it should have booked something.
+  flight: 'Compare the fares',
+  hotel: 'Compare the rooms',
+  rail: 'Compare the trains',
 };
 
 // ── sharing ────────────────────────────────────────────────────────────────

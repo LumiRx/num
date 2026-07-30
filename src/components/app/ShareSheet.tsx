@@ -69,7 +69,7 @@ export default function ShareSheet() {
         {!killed ? (
           <>
             <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1, borderRadius: 999, border: '1px solid var(--ink-12)', padding: '9px 14px', fontSize: 11, color: 'var(--color-neutral-700)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: 'rgba(255,255,255,.7)' }}>
+              <div style={{ flex: 1, borderRadius: 999, border: '1px solid var(--ink-12)', padding: '9px 14px', fontSize: 11, color: 'var(--color-neutral-700)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: 'var(--field-bg)' }}>
                 concierge.travel/p/viv-4k2x
               </div>
               <div

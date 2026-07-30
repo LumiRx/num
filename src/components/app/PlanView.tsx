@@ -65,7 +65,7 @@ function BookingRow({ b }: { b: Booking }) {
               className="press"
               style={{
                 padding: '6px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
-                background: 'rgba(255,255,255,.7)', border: '1px solid var(--ink-12)', color: 'var(--ink)', cursor: 'pointer',
+                background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)', cursor: 'pointer',
               }}
             >
               SHARE

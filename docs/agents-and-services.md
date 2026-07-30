@@ -135,3 +135,71 @@ and a non-host is refused on read, invite and edit alike.
 | Contacts on iOS | No Web API exists; Chrome/Android uses the picker, elsewhere is manual |
 | Push when a friend's Num books | Web Push keys + notification worker; today it lands on next foreground sync |
 | Business-side event dashboard | The host dashboard is per-member; hanging it off a claimed `business_id` is a small step from here (`num_events.business_id` already exists) |
+
+---
+
+## Travel: flights, hotels, rail
+
+Added as three more `service` kinds. Travel is not a per-country market the way
+a taxi is — the same metasearch engines cover the planet — so these come from
+one global set, ordered comparison-first, with the search **prefilled**:
+
+```
+flight  Google Flights → Skyscanner → Kayak
+        …/travel/flights?q=Flights from Bangkok to Singapore on 2026-08-05 returning 2026-08-09
+        …/transport/flights/bkk/sin/260805/260809/
+        …/flights/BKK-SIN/2026-08-05/2026-08-09
+hotel   Booking.com → Google Hotels → Agoda → Expedia   (city + checkin/checkout + adults)
+rail    Trainline → Omio
+```
+
+The model fills `from/to/fromCode/toCode/depart/ret` or `city/checkin/checkout`
+and the server builds the URLs — it never writes one itself.
+
+**On "find them the best price":** we cannot see live fares and we do not
+pretend to. The prompt forbids stating a price as current or calling a fare the
+cheapest. What Num does instead is say the band people actually pay on that
+route and put the identical search into the engines that *do* compare, in one
+tap. If the profile carries an airline status or hotel programme, it weighs that
+openly — status on a route is often worth more than the cheapest fare, and
+sometimes plainly is not.
+
+`AIRLINES` and `HOTEL_GROUPS` list the programmes worth recognising (23 carriers
+with alliances, 10 hotel groups) so "I'm Delta Platinum" changes the answer.
+
+## The voice, rewritten
+
+The first version optimised for brevity — "decide, don't survey", no
+pleasantries — and read as clipped and machine-like. Rewritten against butler
+etiquette, executive-assistant speaking practice and travel-advisor guidance:
+
+- **Never a bare yes or no.** A short useful phrase instead — "Consider it
+  done", "That one's tricky, here's what I'd do".
+- **Never contradict flatly.** Fold it in: *"As you know, the ferry stops at
+  six — so I've put you on the 17:20."*
+- **Present alternatives, don't refuse.** Lead with what you *can* do.
+- **Warm, not servile.** No "Certainly!", no "I'd be delighted to assist", no
+  "Does that make sense?", no switchboard openers.
+- **Plain words.** No FIT, no DMC, no inventory. Nobody needs a glossary.
+- Reply shape: acknowledge → the answer with the reason → what's done → an open
+  door.
+
+The cheap lane got the same treatment, and a **code-level guard**: any
+small-lane reply matching `/how can i help|here to help|let me know if|what's
+up/` is discarded and the turn falls through to Claude. Asking a 70B model
+nicely not to say "how can I help you today?" is not a control — this is.
+
+## Profile, themes, dashboards
+
+- **YOU tab** — picture (square-cropped to 160px *on the device*, so a 4MB
+  phone photo never hits the wire), name, number with verification state, then
+  travel facts (status, seat, home airport) and taste facts (dietary,
+  allergies, budget, the kind of night they want). Everything typed here lands
+  in the same KNOWN FACTS the model reads, and every field says what it buys.
+  **The name locks once the number is verified** — it is what a friend sees
+  next to a proved number, so changing it goes through support.
+- **8 themes** — Ember (house), Bloom, Midnight, Neon, Mono, Heritage, Forest,
+  Plain. A theme is a `data-theme` attribute and token overrides; no component
+  knows themes exist. `--field-bg` was added because raised surfaces were
+  hardcoded white and became white boxes floating on black.
+- **Dashboards** — see [launch-readiness.md](launch-readiness.md).

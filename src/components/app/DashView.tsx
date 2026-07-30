@@ -96,7 +96,7 @@ function CalendarStrip() {
               {...pressable(() => store.set({ calOpen: true, selDay: `${d.getMonth() + 1}-${d.getDate()}` }))}
               style={{
                 cursor: 'pointer', flex: 'none', width: 38, textAlign: 'center', padding: '7px 0', borderRadius: 12,
-                background: n ? 'var(--grad-accent)' : 'rgba(255,255,255,.6)',
+                background: n ? 'var(--grad-accent)' : 'var(--field-bg)',
                 color: n ? '#fff' : 'var(--ink-60)',
                 border: '1px solid ' + (n ? 'transparent' : 'var(--ink-08)'),
               }}
@@ -189,7 +189,7 @@ function ConnectionsCard() {
               aria-checked={on}
               style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}
             >
-              <span style={{ width: 26, height: 26, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: on ? 'var(--grad-accent)' : 'rgba(255,255,255,.7)', color: on ? '#fff' : 'var(--ink-60)', border: on ? 'none' : '1px solid var(--ink-08)' }}>
+              <span style={{ width: 26, height: 26, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: on ? 'var(--grad-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink-60)', border: on ? 'none' : '1px solid var(--ink-08)' }}>
                 {c.icon}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -254,7 +254,7 @@ export default function DashView() {
         className="glass lift"
         style={{ ...card, cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
       >
-        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'rgba(255,255,255,.7)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -274,7 +274,7 @@ export default function DashView() {
         className="glass lift"
         style={{ ...card, cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
       >
-        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'rgba(255,255,255,.7)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <StarIcon size={15} style={{ color: 'var(--color-accent)' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>

@@ -1,0 +1,225 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Themes. One palette = one `[data-theme]` block on <html>, overriding the
+   same handful of tokens every component already reads. No component knows a
+   theme exists, which is why adding one is a paste rather than a refactor.
+
+   Each theme must set, at minimum:
+     --color-accent / --color-accent-700   the signal colour
+     --grad-accent                          gradient form of it
+     --ink*                                 text and hairlines
+     --color-text / --color-neutral-*       body copy ramp
+     --glass-*                              the surface material
+     --aurora-*                             the living ground behind everything
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Raised surfaces inside glass — inputs, tiles, pills. One token so a dark
+     theme does not end up with white boxes floating on black. */
+  --field-bg: rgba(255, 255, 255, 0.75);
+  --field-border: var(--ink-12);
+
+  /* Ember is the default and lives in ds.css/glass.css; these vars just give
+     the aurora a themeable hook. */
+  --aurora-base: linear-gradient(180deg, #faf7f4 0%, #f6f1ee 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #ffd8c2 0%, #ffc2cf 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #cfe4ff 0%, #e4d4ff 55%, transparent 72%);
+  --aurora-opacity: 0.55;
+  --shell-bg: #14100e;
+}
+
+/* ── Bloom — soft rose and lilac. The other half of "popular". ───────────── */
+[data-theme='bloom'] {
+  --color-accent: #d6337a;
+  --color-accent-700: #a2185a;
+  --color-accent-2: #e07aa8;
+  --grad-accent: linear-gradient(135deg, #ff8fb8 0%, #d6337a 58%, #8e44ad 115%);
+  --aurora-base: linear-gradient(180deg, #fdf6fa 0%, #f8eef5 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #ffd4e6 0%, #f3c7ff 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #d9e2ff 0%, #f0d1ff 55%, transparent 72%);
+  --shell-bg: #1a1015;
+}
+
+/* ── Midnight — dark mode, the most-asked-for layout everywhere. ─────────── */
+[data-theme='midnight'] {
+  --field-bg: rgba(255, 255, 255, 0.07);
+  --color-bg: #14161c;
+  --color-surface: #1b1e26;
+  --color-text: #e9e9ee;
+  --color-accent: #ff7a45;
+  --color-accent-700: #ff9c72;
+  --color-neutral-500: #8d90a0;
+  --color-neutral-600: #a1a4b3;
+  --color-neutral-700: #c2c4cf;
+  --grad-accent: linear-gradient(135deg, #ff9c72 0%, #ff5f3d 58%, #e0356b 115%);
+  --ink: #e9e9ee;
+  --ink-60: rgba(233, 233, 238, 0.62);
+  --ink-40: rgba(233, 233, 238, 0.4);
+  --ink-12: rgba(233, 233, 238, 0.14);
+  --ink-08: rgba(233, 233, 238, 0.09);
+  --glass-bg: rgba(38, 41, 51, 0.6);
+  --glass-strong: rgba(30, 33, 42, 0.86);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+  --aurora-base: linear-gradient(180deg, #14161c 0%, #191c24 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #4a2f5c 0%, #2c3a63 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #1f4a52 0%, #3a2a4d 55%, transparent 72%);
+  --aurora-opacity: 0.7;
+  --shell-bg: #0a0b0f;
+}
+
+/* ── Neon — futuristic. Cyan and violet on near-black. ───────────────────── */
+[data-theme='neon'] {
+  --field-bg: rgba(0, 229, 255, 0.07);
+  --color-bg: #07080f;
+  --color-surface: #0d1020;
+  --color-text: #e6f7ff;
+  --color-accent: #00e5ff;
+  --color-accent-700: #6df0ff;
+  --color-neutral-500: #7c86a8;
+  --color-neutral-600: #99a3c4;
+  --color-neutral-700: #c3cbe6;
+  --grad-accent: linear-gradient(135deg, #00e5ff 0%, #5b8cff 52%, #b14bff 115%);
+  --ink: #e6f7ff;
+  --ink-60: rgba(230, 247, 255, 0.62);
+  --ink-40: rgba(230, 247, 255, 0.4);
+  --ink-12: rgba(0, 229, 255, 0.2);
+  --ink-08: rgba(0, 229, 255, 0.12);
+  --glass-bg: rgba(16, 22, 46, 0.58);
+  --glass-strong: rgba(11, 15, 34, 0.88);
+  --glass-border: rgba(0, 229, 255, 0.22);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 229, 255, 0.1);
+  --glass-shine: inset 0 1px 0 rgba(0, 229, 255, 0.18), inset 0 -1px 0 rgba(177, 75, 255, 0.08);
+  --aurora-base: linear-gradient(180deg, #07080f 0%, #0b0f22 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #00e5ff 0%, #0b4d9e 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #b14bff 0%, #2a1a6b 55%, transparent 72%);
+  --aurora-opacity: 0.38;
+  --shell-bg: #04050a;
+}
+
+/* ── Heritage — old school. Oxblood, brass and cream, like a members' club. ─ */
+[data-theme='heritage'] {
+  --color-bg: #f6f1e6;
+  --color-surface: #efe7d8;
+  --color-text: #2a2016;
+  --color-accent: #8c2f23;
+  --color-accent-700: #6b1f16;
+  --color-accent-2: #b5893f;
+  --grad-accent: linear-gradient(135deg, #b5893f 0%, #8c2f23 58%, #5e1a13 115%);
+  --color-neutral-500: #9a8c76;
+  --color-neutral-600: #7d6f5b;
+  --color-neutral-700: #5f5344;
+  --ink: #2a2016;
+  --ink-60: rgba(42, 32, 22, 0.62);
+  --ink-40: rgba(42, 32, 22, 0.42);
+  --ink-12: rgba(42, 32, 22, 0.14);
+  --ink-08: rgba(42, 32, 22, 0.09);
+  --glass-bg: rgba(255, 252, 245, 0.56);
+  --glass-strong: rgba(255, 252, 245, 0.8);
+  --glass-border: rgba(181, 137, 63, 0.3);
+  --aurora-base: linear-gradient(180deg, #f6f1e6 0%, #eee5d4 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #e8d6ad 0%, #d9bb8a 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #cfd8c2 0%, #e3d2b6 55%, transparent 72%);
+  --aurora-opacity: 0.5;
+  --shell-bg: #1d160f;
+}
+
+/* ── Plain — no colour opinion at all. Greyscale with one blue. ──────────── */
+[data-theme='plain'] {
+  --color-bg: #f5f5f6;
+  --color-surface: #ececee;
+  --color-text: #1c1c1e;
+  --color-accent: #2563eb;
+  --color-accent-700: #1d4ed8;
+  --color-accent-2: #60a5fa;
+  --grad-accent: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  --color-neutral-500: #8e8e93;
+  --color-neutral-600: #6e6e73;
+  --color-neutral-700: #48484a;
+  --ink: #1c1c1e;
+  --ink-60: rgba(28, 28, 30, 0.6);
+  --ink-40: rgba(28, 28, 30, 0.4);
+  --ink-12: rgba(28, 28, 30, 0.12);
+  --ink-08: rgba(28, 28, 30, 0.07);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-strong: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(28, 28, 30, 0.08);
+  --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --aurora-base: linear-gradient(180deg, #f5f5f6 0%, #ededf0 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #e3e8f5 0%, #dfe3ea 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #e8eaee 0%, #dde4f2 55%, transparent 72%);
+  --aurora-opacity: 0.6;
+  --shell-bg: #101012;
+}
+
+/* ── Forest — deep green and brass. Calm, classic, reads well outdoors. ──── */
+[data-theme='forest'] {
+  --color-bg: #f2f5f1;
+  --color-surface: #e7ece5;
+  --color-text: #1b2a20;
+  --color-accent: #1f7a4d;
+  --color-accent-700: #14603a;
+  --color-accent-2: #c9a227;
+  --grad-accent: linear-gradient(135deg, #45b07a 0%, #1f7a4d 58%, #0f5238 115%);
+  --color-neutral-500: #869089;
+  --color-neutral-600: #6a746d;
+  --color-neutral-700: #4c554f;
+  --ink: #1b2a20;
+  --ink-60: rgba(27, 42, 32, 0.62);
+  --ink-40: rgba(27, 42, 32, 0.4);
+  --ink-12: rgba(27, 42, 32, 0.13);
+  --ink-08: rgba(27, 42, 32, 0.08);
+  --glass-bg: rgba(253, 255, 252, 0.56);
+  --glass-strong: rgba(253, 255, 252, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.62);
+  --aurora-base: linear-gradient(180deg, #f2f5f1 0%, #e9efe8 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #cfe8d4 0%, #b9dcc6 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #eae3c0 0%, #d5e6cf 55%, transparent 72%);
+  --shell-bg: #0f1a13;
+}
+
+/* ── Mono — the futuristic-minimal one. Near-white, one hairline, no blur. ── */
+[data-theme='mono'] {
+  --color-bg: #ffffff;
+  --color-surface: #fafafa;
+  --color-text: #0a0a0a;
+  --color-accent: #0a0a0a;
+  --color-accent-700: #000000;
+  --color-accent-2: #525252;
+  --grad-accent: linear-gradient(135deg, #3f3f46 0%, #0a0a0a 100%);
+  --color-neutral-500: #a1a1aa;
+  --color-neutral-600: #71717a;
+  --color-neutral-700: #3f3f46;
+  --ink: #0a0a0a;
+  --ink-60: rgba(10, 10, 10, 0.58);
+  --ink-40: rgba(10, 10, 10, 0.38);
+  --ink-12: rgba(10, 10, 10, 0.1);
+  --ink-08: rgba(10, 10, 10, 0.06);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-strong: rgba(255, 255, 255, 0.96);
+  --glass-border: rgba(10, 10, 10, 0.09);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
+  --glass-shine: none;
+  --aurora-base: linear-gradient(180deg, #ffffff 0%, #f4f4f5 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #f4f4f5 0%, #e4e4e7 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #fafafa 0%, #e8e8ea 55%, transparent 72%);
+  --aurora-opacity: 0.75;
+  --shell-bg: #09090b;
+}
+
+/* Wire the tokens into the two surfaces that were hard-coded. */
+html,
+body {
+  background: var(--shell-bg);
+}
+.aurora-layer {
+  background: var(--aurora-base);
+}
+.aurora-layer::before {
+  background: var(--aurora-a);
+  opacity: var(--aurora-opacity);
+}
+.aurora-layer::after {
+  background: var(--aurora-b);
+  opacity: var(--aurora-opacity);
+}

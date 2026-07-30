@@ -16,7 +16,7 @@ import { shareNative } from '../../lib/services';
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
   width: '100%', height: 44, borderRadius: 12, border: '1px solid var(--ink-12)', padding: '0 14px',
-  fontSize: 16, background: 'rgba(255,255,255,.75)', outline: 'none', fontFamily: 'var(--font-body)', color: 'var(--color-text)',
+  fontSize: 16, background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-body)', color: 'var(--color-text)',
 };
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
@@ -229,7 +229,7 @@ export default function EventSheet() {
               </div>
             ) : (
               <div style={{ marginTop: 8 }}>
-                <div style={{ padding: 11, borderRadius: 'var(--r-md)', background: 'rgba(255,255,255,.8)', border: '1px solid var(--ink-08)', fontSize: 12, lineHeight: 1.5 }}>
+                <div style={{ padding: 11, borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', fontSize: 12, lineHeight: 1.5 }}>
                   {minted.message}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

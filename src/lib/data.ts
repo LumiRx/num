@@ -86,6 +86,8 @@ function baseState() {
     walletOpen: false,
     permOn: false,
     bought: '',
+    theme: 'ember' as const,
+    businessOpen: false,
     style: {},
     reactions: {},
     handoff: null,
@@ -164,7 +166,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, threadOpen, unread, handoff, ...keep } = s;
+    inviteOpen, partyOpen, eventOpen, businessOpen, threadOpen, unread, handoff, ...keep } = s;
   return keep;
 }
 

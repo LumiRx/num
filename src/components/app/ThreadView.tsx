@@ -32,7 +32,7 @@ function Reactions({ index, subject }: { index: number; subject: string }) {
             className="press"
             style={{
               cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '5px 7px', borderRadius: 999,
-              background: on ? 'var(--grad-accent)' : 'rgba(255,255,255,.6)',
+              background: on ? 'var(--grad-accent)' : 'var(--field-bg)',
               border: '1px solid ' + (on ? 'transparent' : 'var(--ink-08)'),
               filter: chosen && !on ? 'grayscale(1) opacity(.45)' : 'none',
               transition: 'filter .2s, background .2s',
@@ -111,7 +111,7 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
           <div
             style={{
               marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 11, padding: 10,
-              background: 'rgba(255,255,255,.85)', border: '1px solid var(--ink-08)',
+              background: 'var(--field-bg)', border: '1px solid var(--ink-08)',
               borderRadius: 'var(--r-md)', boxShadow: '0 4px 12px rgba(32,30,29,.08)', color: 'var(--ink)',
             }}
           >
@@ -242,7 +242,7 @@ export default function ThreadView() {
             placeholder="Message Num…"
             /* 16px: iOS zooms the page in on focus for anything smaller, and
                that zoom is itself a viewport resize — i.e. a second glitch. */
-            style={{ flex: 1, height: 44, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '0 16px', fontSize: 16, color: 'var(--color-text)', background: 'rgba(255,255,255,.7)', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
+            style={{ flex: 1, height: 44, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '0 16px', fontSize: 16, color: 'var(--color-text)', background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
           />
           {draft.trim() ? (
             <div

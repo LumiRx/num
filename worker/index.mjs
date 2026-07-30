@@ -14,13 +14,18 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
-import { pickLane, smallReply, guardReply } from './router.mjs';
+import { pickLane, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
 import { handleSocialSafe } from './social.mjs';
 import { handleEvents, handleEventPage } from './events.mjs';
+import { handleConsole, logUsage } from './console.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
-const MODEL = 'claude-opus-5';
+// Opus by default — it is the concierge and the concierge is the product.
+// Overridable without a code change (`wrangler secret put NUM_MODEL`, or a var)
+// because the latency/cost trade against Sonnet is a business call, not a
+// technical one, and it should be flippable in a minute.
+const DEFAULT_MODEL = 'claude-opus-5';
 
 const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
 
@@ -50,18 +55,24 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   if (brief) system.push({ type: 'text', text: brief });
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
   const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 4096,
+    model: env?.NUM_MODEL || DEFAULT_MODEL,
+    // 4096 was ~3x what a real turn needs and let the model ramble into the
+    // action payloads — measured p50 was 950 output tokens for a 115-token
+    // reply, which is both the biggest slice of the bill AND the reason a
+    // reply took 15s. Output tokens are generated serially: fewer is faster.
+    max_tokens: 1400,
     system,
     output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
     messages,
   });
 
   if (response.stop_reason === 'refusal') {
-    return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [] };
+    return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
   }
   const text = response.content.find((b) => b.type === 'text')?.text ?? '';
-  return normalizeReply(JSON.parse(text));
+  // usage rides back with the reply so the caller can bill it to a day. Real
+  // counts, not an estimate — this is what the admin dashboard reports.
+  return { ...normalizeReply(JSON.parse(text)), _usage: response.usage, _specialist: specialist };
 }
 
 /**
@@ -172,7 +183,20 @@ function attachServiceOptions(env, result, grounding) {
     const place = grounding.place ?? {};
     const { mode, options } = optionsFor(
       a.kind,
-      { country: place.country_code || place.country, city: place.name, to: a.to, q: a.query },
+      {
+        country: place.country_code || place.country,
+        city: a.city || place.name,
+        to: a.to,
+        q: a.query,
+        from: a.from,
+        fromCode: a.fromCode,
+        toCode: a.toCode,
+        depart: a.depart,
+        ret: a.ret,
+        checkin: a.checkin,
+        checkout: a.checkout,
+        adults: a.adults,
+      },
       env,
     );
     return { ...a, mode, options };
@@ -206,7 +230,21 @@ export default {
       return res;
     }
 
+    if (url.pathname.startsWith('/api/business') || url.pathname.startsWith('/api/admin')) {
+      const res = await handleConsole(request, env, url.pathname.slice('/api'.length));
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/social')) {
+      // Writes here create rows and mint invite links, so they need the same
+      // per-IP ceiling the AI endpoint has. Reads (friends, plans, the sync
+      // poll) stay free — every app in the foreground makes one a minute, and
+      // throttling those would break the product to stop nothing.
+      if (request.method === 'POST') {
+        const socialLimit = await enforceRateLimit(env, request.headers.get('CF-Connecting-IP') ?? 'unknown');
+        if (!socialLimit.ok) return json(429, { error: 'Too many requests — give me a moment.' }, { 'Retry-After': String(socialLimit.retryAfter) });
+      }
       const res = await handleSocialSafe(request, env, url.pathname.slice('/api/social'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
@@ -265,9 +303,13 @@ export default {
       const lane = pickLane(lastUser, parsed.state ?? {});
       if (lane === 'small') {
         const small = await smallReply(env, history, profile, grounding.place?.name ?? null);
-        if (small && !/\bHANDOFF\b/.test(small)) {
+        // HANDOFF, or switchboard filler, both mean: this one deserves Claude.
+        if (small && !/\bHANDOFF\b/.test(small) && !soundsLikeASwitchboard(small)) {
           const guard = guardReply(small);
           if (guard.ok) {
+            // The cheap lane is the reason the bill stays sane; count how often
+            // it actually fires so that claim can be checked, not assumed.
+            ctx.waitUntil(logUsage(env, { lane: 'small', model: 'workers-ai', place: grounding.place?.name ?? null, usage: null, ms: null }));
             return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: grounding.place?.name ?? null });
           }
         }
@@ -286,7 +328,18 @@ export default {
         }
       };
 
+      const startedAt = Date.now();
       let result = await callNum();
+      ctx.waitUntil(
+        logUsage(env, {
+          lane: 'big',
+          model: env.NUM_MODEL || DEFAULT_MODEL,
+          specialist: result._specialist ?? null,
+          place: grounding.place?.name ?? null,
+          usage: result._usage,
+          ms: Date.now() - startedAt,
+        }),
+      );
       // Output guard: never let leaked JSON scaffolding reach the user. One
       // corrective retry, then salvage, then the safe fallback.
       const guard = guardReply(result.reply);
@@ -312,7 +365,11 @@ export default {
       // computed server-side, never by the model.
       const withPhoto = await attachPhoto(env, result, grounding);
       const withServices = attachServiceOptions(env, withPhoto, grounding);
-      return json(200, { ...withServices, place: grounding.place ? grounding.place.name : null });
+      // Internals never leave the Worker.
+      const { _usage, _specialist, ...clean } = withServices;
+      void _usage;
+      void _specialist;
+      return json(200, { ...clean, place: grounding.place ? grounding.place.name : null });
     } catch (err) {
       console.error('[num-ai]', err);
       const status = err?.status === 401 ? 401 : err?.status === 429 ? 429 : 500;

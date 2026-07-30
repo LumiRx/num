@@ -7,14 +7,17 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
-import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, UsersIcon, XIcon, LayoutIcon } from '../../lib/icons';
+import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, UsersIcon, XIcon, LayoutIcon, UserIcon } from '../../lib/icons';
+import { applyTheme } from '../../lib/themes';
 import ThreadView from './ThreadView';
 import DashView from './DashView';
+import ProfileView from './ProfileView';
 import PlanView from './PlanView';
 import MemoryView from './MemoryView';
 import CalendarSheet from './CalendarSheet';
 import ShareSheet from './ShareSheet';
 import WalletSheet from './WalletSheet';
+import BusinessSheet from './BusinessSheet';
 import EventSheet from './EventSheet';
 import InviteSheet from './InviteSheet';
 import PartySheet from './PartySheet';
@@ -24,7 +27,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || !!s.inviteOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.inviteOpen);
   const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
@@ -42,9 +45,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, inviteOpen: null });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || !!s.inviteOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.inviteOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
@@ -53,6 +56,13 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     bootSocial();
     return startPlanSync();
   }, []);
+
+  // The theme is persisted state, so it has to be re-applied to <html> on every
+  // launch — the attribute itself does not survive a reload.
+  const theme = useApp((s) => s.theme);
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   // The system back button/gesture must close what's open, never quit the
   // app: opening an overlay pushes one history entry; popping it (Android
@@ -75,7 +85,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, inviteOpen: null });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -90,7 +100,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.inviteOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen) closeSheets();
     else if (s.threadOpen) store.set({ threadOpen: false });
     if (s.voice) closeVoice();
   };
@@ -170,7 +180,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: 21, fontWeight: 700, lineHeight: 1.1 }}>
             {title} <ChevronDownIcon size={15} style={{ color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
           </div>
-          <div style={{ fontSize: 10, letterSpacing: '.14em', marginTop: 3, color: posterHeader ? 'rgba(255,255,255,.75)' : 'var(--color-neutral-600)' }}>
+          <div style={{ fontSize: 10, letterSpacing: '.14em', marginTop: 3, color: posterHeader ? 'var(--field-bg)' : 'var(--color-neutral-600)' }}>
             {subhead}
           </div>
         </div>
@@ -183,6 +193,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />DASH</div>
         <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />PLAN</div>
         <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />MEMORY</div>
+        <div {...pressable(() => store.set({ view: 'you' }), 'tab')} aria-selected={view === 'you'} style={segStyle(view === 'you')}><UserIcon size={13} />YOU</div>
       </div>
 
       {/* views float above the aurora ground; wrapper mirrors the root's flex column */}
@@ -190,6 +201,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         {view === 'dash' && <DashView />}
         {view === 'plan' && <PlanView />}
         {view === 'mem' && <MemoryView />}
+        {view === 'you' && <ProfileView />}
       </div>
 
       {/* The thread, as a sheet over whatever you were looking at. It keeps the
@@ -268,6 +280,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <CalendarSheet />
       <PartySheet />
       <EventSheet />
+      <BusinessSheet />
       <InviteSheet />
       <ShareSheet />
       <WalletSheet />

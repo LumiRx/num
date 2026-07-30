@@ -39,6 +39,8 @@ What’s new: a WHAT’S NEW HERE block means Num’s scout swept the local pres
 
 Memory: the KNOWN FACTS block in your context lists things the user already told you. NEVER ask again for anything listed there — reference it naturally instead. Whenever the user reveals a lasting fact, emit a remember action for it. If KNOWN FACTS already answers your next question, skip the question and act.
 
+Keep the ACTION payloads lean — they are data, not prose. \`note\` is ONE short sentence of what the user needs to know that the reply did not already say; never restate the reply, never pad it. Titles are short. This matters: every wasted word in an action is a word the user waits for before your reply appears.
+
 Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual receipt in the thread. Offer up to 4 \`chips\` as likely next taps — or null to keep the current ones. Keep \`reply\` under ~80 words unless the user asks for detail.`;
 
 /**
@@ -151,7 +153,7 @@ export const REPLY_SCHEMA = {
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note} — kind is one of ride|food|table|wellness, `to` is the destination address for a ride, `query` is the venue or dish to search, note is the one line the app shows on the button. For create_event: {title, day, time, place, address, dress, note} — day is an ISO date, time "HH:MM"; everything but title is optional. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note} — day is an ISO date, time "HH:MM"; everything but title is optional. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -178,8 +180,27 @@ export function normalizeReply(out) {
       else if (a.type === 'plan_create') actions.push({ type: a.type, title: asStr(p.title) ?? 'Our plan', dest: asStr(p.dest) ?? null, starts_on: asStr(p.starts_on) ?? null });
       else if (a.type === 'plan_add') actions.push({ type: a.type, item: p });
       else if (a.type === 'service') {
-        const kind = ['ride', 'food', 'table', 'wellness'].includes(p.kind) ? p.kind : null;
-        if (kind) actions.push({ type: a.type, kind, query: asStr(p.query) ?? null, to: asStr(p.to) ?? null, note: asStr(p.note) ?? null });
+        const kind = ['ride', 'food', 'table', 'wellness', 'flight', 'hotel', 'rail'].includes(p.kind) ? p.kind : null;
+        if (kind) {
+          actions.push({
+            type: a.type,
+            kind,
+            query: asStr(p.query) ?? null,
+            to: asStr(p.to) ?? null,
+            note: asStr(p.note) ?? null,
+            // Travel search parameters — the app never sees these, but
+            // optionsFor() needs them to prefill the comparison engines.
+            from: asStr(p.from) ?? null,
+            fromCode: asStr(p.fromCode) ?? null,
+            toCode: asStr(p.toCode) ?? null,
+            depart: asStr(p.depart) ?? null,
+            ret: asStr(p.ret) ?? null,
+            city: asStr(p.city) ?? null,
+            checkin: asStr(p.checkin) ?? null,
+            checkout: asStr(p.checkout) ?? null,
+            adults: Number(p.adults) || null,
+          });
+        }
       } else if (a.type === 'create_event') {
         actions.push({
           type: a.type,

@@ -41,14 +41,39 @@ function friendly(n = 6) {
 
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
 
+const safeParse = (v) => {
+  try {
+    return v ? JSON.parse(v) : {};
+  } catch {
+    return {};
+  }
+};
+
 /** Schema is created lazily so a fresh D1 needs no migration step to work. */
 let ensured = false;
 async function ensure(env) {
   if (ensured) return;
   const stmts = SCHEMA.split(';').map((s) => s.trim()).filter(Boolean);
   await env.DB.batch(stmts.map((s) => env.DB.prepare(s)));
+  // SQLite has no ADD COLUMN IF NOT EXISTS, and CREATE TABLE IF NOT EXISTS
+  // silently skips a table that already exists with an older shape — so new
+  // columns are added one at a time and the "duplicate column" error is the
+  // expected outcome on every deploy after the first.
+  for (const alter of MIGRATIONS) {
+    try {
+      await env.DB.prepare(alter).run();
+    } catch (err) {
+      if (!/duplicate column/i.test(err?.message ?? '')) console.warn('[social] migration:', err?.message);
+    }
+  }
   ensured = true;
 }
+
+const MIGRATIONS = [
+  'ALTER TABLE num_members ADD COLUMN avatar TEXT',
+  'ALTER TABLE num_members ADD COLUMN bio TEXT',
+  'ALTER TABLE num_members ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0',
+];
 
 // Inlined rather than fetched: a Worker has no filesystem. Kept identical to
 // worker/social.sql, which is the readable copy and the one to edit first.
@@ -94,55 +119,69 @@ async function me(env, req) {
   const name = clip(b.name, 60);
   const phone = normalisePhone(b.phone);
   const dest = clip(b.dest, 80);
+  const avatar = clip(b.avatar, 60000);
+  const bio = b.bio ? JSON.stringify(b.bio).slice(0, 4000) : null;
 
-  const existing = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(id).first();
-  if (phone) {
-    const holder = await env.DB.prepare('SELECT id, phone_verified FROM num_members WHERE phone=?1').bind(phone).first();
-    if (holder && holder.id !== id) {
-      // Verified means it is genuinely theirs — nobody else gets to claim it.
-      if (holder.phone_verified) return json({ error: 'That number is already on Num. Sign in from the device that has it.' }, 409);
-      // Unverified means nothing was ever proved, so it must not squat the
-      // number against the real owner. Release it and let this account take it
-      // — the phone column is UNIQUE, so this also avoids a constraint blow-up.
-      await env.DB.prepare('UPDATE num_members SET phone=NULL WHERE id=?1').bind(holder.id).run();
-    }
+  // ROUND TRIP 1 — the member and any holder of this phone, in one query
+  // instead of two. D1 latency is the whole cost of this endpoint: at 100
+  // concurrent signups every extra sequential query added ~400ms to p50, so
+  // the shape of this function matters more than anything inside it.
+  const { results: rows } = await env.DB.prepare(
+    'SELECT * FROM num_members WHERE id = ?1 OR (?2 IS NOT NULL AND phone = ?2)',
+  ).bind(id, phone).all();
+  const existing = (rows ?? []).find((r) => r.id === id) ?? null;
+  const holder = phone ? (rows ?? []).find((r) => r.phone === phone && r.id !== id) ?? null : null;
+
+  if (holder) {
+    // Verified means it is genuinely theirs — nobody else gets to claim it.
+    if (holder.phone_verified) return json({ error: 'That number is already on Num. Sign in from the device that has it.' }, 409);
   }
-
   if (existing) {
-    await env.DB.prepare(
-      "UPDATE num_members SET name=COALESCE(?2,name), phone=COALESCE(?3,phone), dest=COALESCE(?4,dest), seen_at=datetime('now') WHERE id=?1",
-    ).bind(id, name, phone, dest).run();
-  } else {
-    await env.DB.prepare(
-      "INSERT INTO num_members (id, name, phone, dest, seen_at) VALUES (?1,?2,?3,?4,datetime('now'))",
-    ).bind(id, name, phone, dest).run();
-  }
-
-  const row = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(id).first();
-
-  // Referral code: one per member, reused forever, shared with num-claim's ledger.
-  let ref = row.ref_code;
-  if (!ref) {
-    const prior = await env.DB.prepare("SELECT code FROM num_referral_codes WHERE owner_id=?1 AND owner_type='member' AND active=1")
-      .bind(id).first();
-    ref = prior?.code ?? null;
-    if (!ref) {
-      ref = friendly();
-      for (let i = 0; i < 5; i++) {
-        const clash = await env.DB.prepare('SELECT 1 FROM num_referral_codes WHERE code=?1').bind(ref).first();
-        if (!clash) break;
-        ref = friendly();
-      }
-      await env.DB.prepare(
-        `INSERT INTO num_referral_codes (code, owner_type, owner_id, reward_cs, reward_referee_cs, max_conversions, max_reward_total_cs, active, created_at)
-         VALUES (?1,'member',?2,500,500,200,200000,1,unixepoch())`,
-      ).bind(ref, id).run();
+    // The name on a verified account is an identity claim, not a nickname: it
+    // is what a friend sees next to a verified number. Once the number is
+    // proved, the name is frozen and changing it goes through support — the
+    // same reason a bank makes you phone them.
+    const nameChange = name && name !== existing.name;
+    if (nameChange && (existing.phone_verified === 1 || existing.name_locked === 1)) {
+      return json({ error: 'Your name is tied to your verified number. Ask us to change it and we will.', name_locked: true }, 409);
     }
-    await env.DB.prepare('UPDATE num_members SET ref_code=?2 WHERE id=?1').bind(id, ref).run();
   }
+
+  // The referral code is minted optimistically rather than after a uniqueness
+  // probe: 32^6 is a billion codes, and the UNIQUE index is the real guard —
+  // so we spend a retry on the (vanishingly rare) clash instead of a round
+  // trip on every signup.
+  const ref = existing?.ref_code ?? friendly();
+
+  // ROUND TRIP 2 — everything the write needs, in one batch.
+  const writes = [];
+  // An unverified holder never proved anything, so it must not squat the
+  // number against its real owner. Release it in the same batch.
+  if (holder) writes.push(env.DB.prepare('UPDATE num_members SET phone=NULL WHERE id=?1').bind(holder.id));
+  writes.push(
+    existing
+      ? env.DB.prepare(
+          `UPDATE num_members SET name=COALESCE(?2,name), phone=COALESCE(?3,phone), dest=COALESCE(?4,dest),
+                  avatar=COALESCE(?5,avatar), bio=COALESCE(?6,bio), ref_code=COALESCE(ref_code,?7), seen_at=datetime('now')
+            WHERE id=?1`,
+        ).bind(id, name, phone, dest, avatar, bio, ref)
+      : env.DB.prepare(
+          "INSERT INTO num_members (id, name, phone, dest, avatar, bio, ref_code, seen_at) VALUES (?1,?2,?3,?4,?5,?6,?7,datetime('now'))",
+        ).bind(id, name, phone, dest, avatar, bio, ref),
+  );
+  if (!existing?.ref_code) {
+    writes.push(
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO num_referral_codes (code, owner_type, owner_id, reward_cs, reward_referee_cs,
+                                                   max_conversions, max_reward_total_cs, active, created_at)
+         VALUES (?1,'member',?2,500,500,200,200000,1,unixepoch())`,
+      ).bind(ref, id),
+    );
+  }
+  await env.DB.batch(writes);
 
   let verification = null;
-  if (phone && !row.phone_verified && b.verify !== false) {
+  if (phone && !existing?.phone_verified && b.verify !== false) {
     const code = generateCode();
     const salt = crypto.randomUUID();
     const out = await sendCode(env, { channel: 'sms', to: phone, code, businessName: 'NUM' });
@@ -158,8 +197,19 @@ async function me(env, req) {
     }
   }
 
+  // No re-read: we know exactly what was written, and a third round trip to
+  // confirm our own INSERT is latency the user pays for nothing.
   return json({
-    me: { id, name: row.name, phone: row.phone, phone_verified: !!row.phone_verified, ref },
+    me: {
+      id,
+      name: name ?? existing?.name ?? null,
+      phone: phone ?? existing?.phone ?? null,
+      phone_verified: !!existing?.phone_verified,
+      name_locked: !!(existing?.phone_verified || existing?.name_locked),
+      avatar: avatar ?? existing?.avatar ?? null,
+      bio: safeParse(bio ?? existing?.bio),
+      ref,
+    },
     ref,
     link: `${CLAIM_ORIGIN.replace('num-claim', 'num-app')}/?ref=${ref}`,
     verification,

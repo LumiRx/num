@@ -1,6 +1,6 @@
 // Domain model for Num — ported from the Concierge.dc.html prototype state.
 
-export type View = 'dash' | 'thread' | 'plan' | 'mem';
+export type View = 'dash' | 'thread' | 'plan' | 'mem' | 'you';
 
 export type CityGroup = 'BKK' | 'HKT' | 'SIN' | 'KP';
 
@@ -87,6 +87,8 @@ export type VoicePhase = 0 | 1 | 2 | 3;
 
 export type Reaction = 'love' | 'like' | 'meh' | 'no' | 'long';
 
+export type ThemeId = 'ember' | 'bloom' | 'midnight' | 'neon' | 'mono' | 'heritage' | 'forest' | 'plain';
+
 export interface StyleProfile {
   length?: 'short' | 'long';
   decisiveness?: 'one' | 'options';
@@ -110,7 +112,7 @@ export interface ServiceOption {
 }
 
 export interface ServiceHandoff {
-  kind: 'ride' | 'food' | 'table' | 'wellness';
+  kind: 'ride' | 'food' | 'table' | 'wellness' | 'flight' | 'hotel' | 'rail';
   /** 'connected' = Num completes it; 'handoff' = one tap into their own app. */
   mode: 'connected' | 'handoff';
   note?: string | null;
@@ -164,6 +166,12 @@ export interface Member {
   name: string | null;
   phone: string | null;
   phone_verified: boolean;
+  /** True once the number is proved — the name is then part of the identity. */
+  name_locked?: boolean;
+  /** Small square data URL, resized on-device before it ever leaves. */
+  avatar?: string | null;
+  /** Free-form facts the traveller chose to share so Num knows them. */
+  bio?: Record<string, string>;
   ref: string | null;
 }
 
@@ -262,6 +270,11 @@ export interface AppState {
   photosOn: boolean;
   billPaid: boolean;
   bought: string;
+
+  /** Chosen colour layout — just a data-theme attribute on <html>. */
+  theme: ThemeId;
+  /** The owner console, open only for a claimed business. */
+  businessOpen: boolean;
 
   /** Learned response preferences, and the reactions they came from. */
   style: StyleProfile;

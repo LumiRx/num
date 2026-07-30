@@ -4,6 +4,8 @@ import App from './App';
 import './styles/ds.css';
 import './styles/app.css';
 import './styles/glass.css';
+// Loaded last: a theme is nothing but token overrides on top of everything else.
+import './styles/themes.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

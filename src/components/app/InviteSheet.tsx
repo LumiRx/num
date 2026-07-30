@@ -12,7 +12,7 @@ const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.
 
 const field: React.CSSProperties = {
   width: '100%', height: 44, borderRadius: 12, border: '1px solid var(--ink-12)',
-  padding: '0 14px', fontSize: 16, background: 'rgba(255,255,255,.75)', outline: 'none',
+  padding: '0 14px', fontSize: 16, background: 'var(--field-bg)', outline: 'none',
   fontFamily: 'var(--font-body)', color: 'var(--color-text)',
 };
 const primary: React.CSSProperties = {
@@ -218,7 +218,7 @@ export default function InviteSheet() {
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
                 {draft.name ? `${draft.name}’s invite is ready` : 'Your invite is ready'}
               </div>
-              <div style={{ marginTop: 10, padding: 12, borderRadius: 'var(--r-md)', background: 'rgba(255,255,255,.8)', border: '1px solid var(--ink-08)', fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>
                 {minted.message}
               </div>
 
@@ -245,7 +245,7 @@ export default function InviteSheet() {
               </div>
 
               {/* The part people actually forget: keeping it on the home screen. */}
-              <div style={{ marginTop: 16, padding: 13, borderRadius: 'var(--r-md)', background: 'rgba(255,255,255,.65)', border: '1px solid var(--ink-08)' }}>
+              <div style={{ marginTop: 16, padding: 13, borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)' }}>
                 <div style={{ ...label, color: 'var(--ink-60)' }}>WHAT THEY’LL DO — {isIOS() ? 'IPHONE' : 'ANDROID'}</div>
                 <ol style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 11.5, lineHeight: 1.7, color: 'var(--color-neutral-700)' }}>
                   {steps.map((s) => (
