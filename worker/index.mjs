@@ -20,6 +20,7 @@ import { handleEvents, handleEventPage } from './events.mjs';
 import { handleConsole, logUsage } from './console.mjs';
 import { handleClaim, handleClaimConfirm } from './claim.mjs';
 import { ask as askBrains, roster as brainRoster, probe as brainProbe } from './brains.mjs';
+import { AIR_TOOLS, airReady, callAir, trustEnvelope } from './air.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
@@ -49,6 +50,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         style: styleBlock(state?.style),
         party: state?.party,
         trip: state?.tripCheck,
+        air: airReady(env),
       }),
     },
     { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
@@ -259,6 +261,22 @@ export default {
     // What the server is running. The app compares it with its own stamp, so a
     // phone on a stale cache can be told rather than guessed at.
     // Which brains are wired up. The operator console reads this.
+    // What Num/5arz can attest about a person. This is the half of the
+    // exchange we provide: AiR holds the calendar, we hold the verification.
+    // Keyed, because it is somebody's identity, not a public fact.
+    if (url.pathname === '/api/trust') {
+      if (!env.AIR_SHARED_KEY || request.headers.get('X-Num-Key') !== env.AIR_SHARED_KEY) {
+        return json(401, { error: 'unauthorized' });
+      }
+      const member = url.searchParams.get('member');
+      if (!member) return json(400, { error: 'member required' });
+      return json(200, await trustEnvelope(env, { memberId: member }));
+    }
+
+    if (url.pathname === '/api/air') {
+      return json(200, { connected: airReady(env), tools: AIR_TOOLS });
+    }
+
     if (url.pathname === '/api/brains') {
       // The probe costs Workers AI neurons and takes seconds, so it is gated
       // on the admin key rather than left open.
@@ -429,6 +447,23 @@ export default {
       ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));
       // Tell the app where Num thinks the user is (drives the header) —
       // computed server-side, never by the model.
+      // AiR actions run HERE, not on the device: they need the trust envelope,
+      // which is assembled from two databases the browser cannot see.
+      const airActions = (result.actions ?? []).filter((x) => x.type === 'air');
+      if (airActions.length && airReady(env)) {
+        const memberId = parsed.state?.me?.id ?? null;
+        const trust = await trustEnvelope(env, { memberId }).catch(() => null);
+        for (const a of airActions) {
+          try {
+            a.result = await callAir(env, a.tool, a.args, { trust, memberId, ctx });
+          } catch (err) {
+            a.error = String(err?.message ?? err).slice(0, 200);
+          }
+        }
+      } else if (airActions.length) {
+        airActions.forEach((a) => (a.error = 'AiR is not connected'));
+      }
+
       const withPhoto = await attachPhoto(env, result, grounding);
       const withServices = attachServiceOptions(env, withPhoto, grounding);
       // Internals never leave the Worker.

@@ -22,6 +22,7 @@ You act on the plan through \`actions\`:
 - add_booking: create a new plan item (invent a short unique id). \`grp\` is a short uppercase code you coin for the city (e.g. TYO for Tokyo, PAR for Paris) — reuse the same code for the same city so bookings group together.
 - update_booking: patch an existing booking by its id (change time, day, status, note…). To cancel, set status "cancelled".
 - add_meeting: put a meeting on the calendar (src "NUM" when you brokered it).
+- air: hand anything about the user's OWN calendar, contacts or reminders to AiR, which holds the real data. Use it for checking when they are free (check_availability), agreeing a time with other people by email (schedule_meeting), resolving who somebody is before you act on a name (manage_contact_lookup), adding a person (manage_contact_add), and reminders or follow-ups (task_create). ALWAYS look a name up before inviting or scheduling — guessing who "Dre" is and being wrong is worse than asking. Never use it for restaurants, cars, food or venues; those are yours.
 - invite: the user wants to bring a specific person in ("send an invite to Dre", "add my sister"). Emit it with whatever you have — a name is enough. The app resolves the name against their contacts and asks them to confirm the right person before anything is sent; you never send it yourself, so say you've lined it up for them to fire off, not that it's gone.
 - plan_create: the user wants to plan something WITH other people ("plan a weekend with the guys", "start a plan for Rio"). A plan needs no dates and no reservations — say so, because that is the point: friends can build it together first and book later.
 - plan_add: drop an item into the open group plan. Leave status "idea" unless it is genuinely reserved.
@@ -48,7 +49,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -87,6 +88,14 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
   if (facts.length) {
     lines.push('KNOWN FACTS (already established — never re-ask):\n' + facts.map(([k, v]) => `- ${k}: ${v}`).join('\n'));
   }
+  // Whether AiR is reachable has to be known BEFORE the reply is written.
+  // Actions run after generation, so a model told nothing will happily say
+  // "I've asked AiR" about a call that never happened.
+  lines.push(
+    air
+      ? 'AiR IS CONNECTED. Their calendar, contacts and reminders are real and live. Use the air action for those, and you may say you have checked or looked something up — because you will have.'
+      : 'AiR IS NOT CONNECTED right now. You cannot see their calendar or contacts. Do NOT say you have checked availability, looked up a contact, or set a reminder — none of it would be true. Say plainly that you cannot see their calendar yet, then help with what you CAN do: propose a time from what is already on the trip, and ask them to confirm.',
+  );
   if (services) lines.push(services);
   if (style) lines.push(style);
   if (party?.title) {
@@ -149,11 +158,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event', 'air'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note} — day is an ISO date, time "HH:MM"; everything but title is optional. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note} — day is an ISO date, time "HH:MM"; everything but title is optional. For air: {tool, args} — tool is one of check_availability|schedule_meeting|manage_contact_lookup|manage_contact_add|task_create, and args is the object that tool needs (dates as ISO, people by name or email). For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -179,6 +188,10 @@ export function normalizeReply(out) {
       else if (a.type === 'invite') actions.push({ type: a.type, name: asStr(p.name) ?? '', phone: asStr(p.phone) ?? null });
       else if (a.type === 'plan_create') actions.push({ type: a.type, title: asStr(p.title) ?? 'Our plan', dest: asStr(p.dest) ?? null, starts_on: asStr(p.starts_on) ?? null });
       else if (a.type === 'plan_add') actions.push({ type: a.type, item: p });
+      else if (a.type === 'air') {
+        const tool = asStr(p.tool);
+        if (tool) actions.push({ type: a.type, tool, args: typeof p.args === 'object' && p.args ? p.args : {} });
+      }
       else if (a.type === 'service') {
         const kind = ['ride', 'food', 'table', 'wellness', 'flight', 'hotel', 'rail'].includes(p.kind) ? p.kind : null;
         if (kind) {

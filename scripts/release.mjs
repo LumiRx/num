@@ -107,18 +107,27 @@ switch (cmd) {
       }
       console.log(`\n── sending all traffic to ${staged.version} (${staged.id})\n`);
       sh(`npx wrangler versions deploy ${staged.id}@100% --yes ${CONFIG}`);
-      // Confirm against the running Worker rather than trusting the exit code.
-      // "Deployed" and "serving" are not the same claim.
-      try {
-        const live = JSON.parse(cap(`curl -s https://app.itsnum.com/api/version`));
-        if (live.version !== staged.version) {
-          console.error(`\n✘ deploy reported success but production is serving ${live.version}, not ${staged.version}.\n`);
-          process.exit(1);
+      // Confirm against the running Worker rather than trusting the exit code —
+      // "deployed" and "serving" are not the same claim. A new version takes a
+      // few seconds to reach every edge, so this polls instead of asking once;
+      // a check that cries wolf on every deploy is a check people learn to
+      // ignore.
+      let serving = null;
+      for (let i = 0; i < 10; i++) {
+        try {
+          serving = JSON.parse(cap('curl -s --max-time 10 https://app.itsnum.com/api/version')).version;
+          if (serving === staged.version) break;
+        } catch {
+          /* edge still swapping — try again */
         }
-        console.log(`  verified: production is serving ${live.version}`);
-      } catch {
-        console.warn('  (could not verify against production — check manually)');
+        execSync('sleep 3');
       }
+      if (serving !== staged.version) {
+        console.error(`\n✘ deploy reported success but production is still serving ${serving ?? 'an unknown version'}, not ${staged.version}.`);
+        console.error('  Check `npm run release` and roll back if this is wrong.\n');
+        process.exit(1);
+      }
+      console.log(`  verified: production is serving ${serving}`);
     } else {
       console.log(`\n── ${pct}% of traffic to the newest version, the rest stays put\n`);
       console.log('  wrangler will ask which two versions to split between.\n');

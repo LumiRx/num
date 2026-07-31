@@ -20,7 +20,11 @@
   // Same brain as the texts: the num-ai LINE concierge's database (67 live
   // destinations, 500k+ ranked places). The app only reads; num-ai owns writes.
   "d1_databases": [
-    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" },
+    // Read-only in practice: the app reads verification (verified_at, UHA,
+    // verified_sessions) to build the trust envelope it hands AiR. The payout
+    // desk owns every write to this database.
+    { "binding": "LEDGER", "database_name": "5arz-ledger", "database_id": "479dfff2-cd26-49b0-ae54-84d4a41b99aa" }
   ],
   // Workers AI — the small lane (worker/router.mjs) answers chit-chat with a
   // fast open model instead of spending a Claude call.
