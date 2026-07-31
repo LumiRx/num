@@ -287,6 +287,9 @@ export interface AppState {
   billPaid: boolean;
   bought: string;
 
+  /** Notifications are on for this device. */
+  pushOn: boolean;
+
   /** Chosen colour layout — just a data-theme attribute on <html>. */
   theme: ThemeId;
   /** The owner console, open only for a claimed business. */

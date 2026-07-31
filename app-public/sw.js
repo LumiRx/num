@@ -9,7 +9,7 @@
 //   /api/*        → never touched; Num's replies must always be live
 //
 // Bump CACHE to force every client to drop the old shell.
-const CACHE = 'num-shell-v3';
+const CACHE = 'num-shell-v4';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -78,4 +78,82 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(cacheFirst(request));
+});
+
+
+// ── push ────────────────────────────────────────────────────────────────────
+//
+// The push itself carries NO payload. It is a wake-up; the content is fetched
+// here, at display time, so a notification about a table that has since been
+// released corrects itself instead of lying on the lock screen.
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(
+    (async () => {
+      let me = null;
+      try {
+        // The member id lives in the app's persisted state; the worker has no
+        // localStorage, so it asks an open client, and falls back to the cache
+        // if every tab is closed.
+        const clientList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+        for (const c of clientList) {
+          const got = await new Promise((resolve) => {
+            const ch = new MessageChannel();
+            ch.port1.onmessage = (e) => resolve(e.data?.me ?? null);
+            c.postMessage({ type: 'num-who' }, [ch.port2]);
+            setTimeout(() => resolve(null), 400);
+          });
+          if (got) { me = got; break; }
+        }
+        if (!me) {
+          const cached = await caches.match('/__num_me');
+          if (cached) me = (await cached.text()) || null;
+        }
+        if (!me) {
+          await self.registration.showNotification('Num', { body: 'Something needs you — open Num.', tag: 'num-generic', icon: '/icon-192.png' });
+          return;
+        }
+
+        const res = await fetch(`/api/push/pending?me=${encodeURIComponent(me)}`, { cache: 'no-store' });
+        const { notifications = [] } = await res.json();
+        if (!notifications.length) return;
+
+        await Promise.all(
+          notifications.map((n) =>
+            self.registration.showNotification(n.title, {
+              body: n.body || '',
+              // `tag` collapses: a second update about the same thing replaces
+              // the first rather than stacking four alerts about one table.
+              tag: n.tag || n.kind,
+              renotify: true,
+              icon: '/icon-192.png',
+              badge: '/icon-192.png',
+              data: { url: n.url || '/?app', id: n.id },
+            }),
+          ),
+        );
+      } catch (err) {
+        await self.registration.showNotification('Num', { body: 'Something needs you — open Num.', tag: 'num-generic', icon: '/icon-192.png' });
+      }
+    })(),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/?app';
+  event.waitUntil(
+    (async () => {
+      // Focus an open Num rather than opening a second copy of the app.
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const c of all) {
+        if (c.url.includes(self.location.origin)) {
+          await c.focus();
+          c.postMessage({ type: 'num-open', url: target });
+          return;
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
 });

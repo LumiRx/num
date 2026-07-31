@@ -16,6 +16,7 @@
 //      same row becomes the booking when it firms up, so nobody has to wait
 //      for a confirmation to start planning together.
 import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode } from '../claim/verify.mjs';
+import { notify } from './push.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
@@ -102,6 +103,36 @@ async function event(env, planId, by, kind, summary, payload) {
     'INSERT INTO num_plan_events (plan_id, by_id, by_name, kind, summary, payload) VALUES (?1,?2,?3,?4,?5,?6)',
   ).bind(planId, by?.id ?? null, by?.name ?? null, kind, summary.slice(0, 300), payload ? JSON.stringify(payload) : null).run();
   await env.DB.prepare("UPDATE num_plans SET updated_at=datetime('now') WHERE id=?1").bind(planId).run();
+
+  // The group hears about it on their phones, not the next time they happen to
+  // open the app. This is the whole point of a shared plan: a booking is only
+  // useful to the other five people if it reaches them.
+  //
+  // 'joined' is deliberately excluded — nobody needs a buzz because somebody
+  // accepted an invite they already knew about.
+  if (kind === 'joined') return;
+  try {
+    const plan = await env.DB.prepare('SELECT title FROM num_plans WHERE id=?1').bind(planId).first();
+    const { results: members } = await env.DB.prepare(
+      'SELECT member_id FROM num_plan_members WHERE plan_id=?1 AND member_id <> ?2',
+    ).bind(planId, by?.id ?? '').all();
+    await Promise.all(
+      (members ?? []).map((m) =>
+        notify(env, {
+          memberId: m.member_id,
+          kind: 'plan',
+          title: plan?.title ?? 'Your plan',
+          body: summary,
+          url: '/?app',
+          // One tag per plan: three changes in a minute collapse into the
+          // latest instead of stacking three buzzes for one dinner.
+          tag: `plan:${planId}`,
+        }),
+      ),
+    );
+  } catch (err) {
+    console.warn('[plan-notify]', err?.message ?? err);
+  }
 }
 
 /** Every plan endpoint runs through this — membership is the authorisation. */

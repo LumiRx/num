@@ -267,7 +267,17 @@ const PROVIDERS = {
  * To connect one, add `{ id: { kind, ready: (env) => !!env.X_KEY, order: async (env, req) => ({...}) } }`
  * and the same code path starts fulfilling instead of handing off.
  */
-export const ADAPTERS = {};
+export const ADAPTERS = {
+  // DoorDash Drive: a courier between two addresses. The first rail that is
+  // genuinely connected, so `connected()` finally returns true for something
+  // and the prompt's HAND-OFF language stops applying to it.
+  doordash_drive: {
+    kind: 'courier',
+    label: 'DoorDash Drive',
+    ready: (env) => !!(env.DOORDASH_DEVELOPER_ID && env.DOORDASH_KEY_ID && env.DOORDASH_SIGNING_SECRET),
+    needs: 'DOORDASH_DEVELOPER_ID + DOORDASH_KEY_ID + DOORDASH_SIGNING_SECRET',
+  },
+};
 
 export const connected = (env, id) => !!ADAPTERS[id]?.ready?.(env);
 

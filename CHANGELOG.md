@@ -2,6 +2,24 @@
 
 Every version that has been live, newest first.
 
+## 0.8.11 — 2026-07-31 03:17 UTC
+
+DoorDash Drive adapter — courier dispatch between two addresses
+
+- commit `15ccd68`
+
+## 0.8.10 — 2026-07-31 03:16 UTC
+
+Set the VAPID contact so push is actually enabled
+
+- commit `15ccd68`
+
+## 0.8.9 — 2026-07-31 03:15 UTC
+
+Push notifications: payload-free wake-ups, content fetched at display time, group plan changes reach every phone
+
+- commit `15ccd68`
+
 ## 0.8.8 — 2026-07-31 03:03 UTC
 
 AiR demoted to backup: Num's plan stays authoritative, AiR does contacts, cross-party scheduling and SMS reminders

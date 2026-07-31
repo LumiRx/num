@@ -21,6 +21,8 @@ import { handleConsole, logUsage } from './console.mjs';
 import { handleClaim, handleClaimConfirm } from './claim.mjs';
 import { ask as askBrains, roster as brainRoster, probe as brainProbe } from './brains.mjs';
 import { AIR_TOOLS, airReady, callAir, trustEnvelope } from './air.mjs';
+import { handlePush, notify, pushReady } from './push.mjs';
+import { driveReady, handleDrive } from './doordash.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
@@ -299,6 +301,18 @@ export default {
 
     if (url.pathname.startsWith('/api/business') || url.pathname.startsWith('/api/admin')) {
       const res = await handleConsole(request, env, url.pathname.slice('/api'.length));
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/drive')) {
+      const res = await handleDrive(request, env, url.pathname.slice('/api/drive'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/push')) {
+      const res = await handlePush(request, env, url.pathname.slice('/api/push'.length) || '/', ctx);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

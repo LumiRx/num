@@ -7,6 +7,7 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
+import { serveIdentityToWorker } from '../../lib/push';
 import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
 import ThreadView from './ThreadView';
@@ -57,6 +58,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   // other members' agents reach this one.
   useEffect(() => {
     bootSocial();
+    // A push wakes the service worker, which has no localStorage — it asks the
+    // page who is signed in, and this answers.
+    serveIdentityToWorker();
     return startPlanSync();
   }, []);
 

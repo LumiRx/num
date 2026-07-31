@@ -40,6 +40,10 @@
     }
   ],
   // Instant preview URL (num-app.<account>.workers.dev) — live immediately after deploy
+  // Push services require a contact address for abuse reports. Not a secret —
+  // it is sent in the clear on every push — so it lives here where it can be
+  // changed without a secret rotation.
+  "vars": { "VAPID_SUBJECT": "mailto:hello@itsnum.com" },
   // The concierge model. Opus is the default in code; set it here to flip the
   // latency/cost trade without a code change (e.g. "claude-sonnet-5").
   // "vars": { "NUM_MODEL": "claude-sonnet-5" },
