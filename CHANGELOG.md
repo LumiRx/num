@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.8 — 2026-07-31 03:03 UTC
+
+AiR demoted to backup: Num's plan stays authoritative, AiR does contacts, cross-party scheduling and SMS reminders
+
+- commit `ae53269`
+
 ## 0.8.7 — 2026-07-31 02:52 UTC
 
 Tell the model whether AiR is reachable before it writes, so it cannot claim a call it never made

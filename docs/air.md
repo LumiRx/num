@@ -47,6 +47,42 @@ moment one field is wrong, nobody believes the rest.
 - `account` — Num's own signals. `phone_unique` is true because one number means
   one account, enforced at write time (`worker/social.mjs`).
 
+## AiR is the BACKUP, not the source of truth
+
+Num's own plan is authoritative for what is booked and when. AiR is consulted
+only for what Num genuinely cannot see:
+
+| Use AiR for | Never use AiR for |
+|---|---|
+| Resolving who a person is (`manage_contact_lookup`) | Availability that the trip state already answers |
+| Adding a contact | Restaurants, cars, food, venues — only Num can book those |
+| A second opinion on availability | Anything that would contradict Num's plan |
+| Agreeing a time with **other people** by email | |
+| Reminders that must fire later (`task_create`) | |
+
+Verified: asked "am I free Thursday afternoon?" with a lunch on the trip, Num
+answered from its own plan — *"Thursday the 6th you've got lunch at Le Du in
+Silom from 14:00… you'd be free from four onwards"* — and called AiR not at all.
+
+## Can AiR give us a US number for inbound texts? No.
+
+Checked against the live tool schemas, not the marketing:
+
+- **Outbound only, and only to the account owner.** `task_create` takes
+  `remind_channel: sms | call | email | none`, which alerts *the user* at
+  `due_at`. That is a genuine notification channel we did not have — an SMS or
+  a **phone call** for "leave in 15 minutes" — but it reaches the AiR account
+  holder, nobody else.
+- **No inbound.** There is no messaging tool, no number provisioning, no
+  webhook, nothing that accepts a message from a stranger. `run_air_agent`
+  explicitly "drafts and holds for you to confirm inside AiR".
+
+For US users to text Num, we need our own number: Twilio, Telnyx, Bandwidth or
+Sinch, plus **A2P 10DLC registration** (a US carrier requirement — brand and
+campaign vetting, roughly a week, and unregistered traffic gets filtered). The
+same Twilio credentials would switch on SMS claim codes and phone verification,
+which are already written and waiting.
+
 ## Turning it on
 
 ```bash
