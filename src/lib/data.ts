@@ -116,6 +116,12 @@ function baseState() {
     // you to the dash, and the floating dot brings it back from anywhere.
     threadOpen: true,
     unread: 0,
+    dmOpen: false,
+    dmWith: null,
+    dmThread: [],
+    dmInbox: [],
+    dmError: null,
+    dmPending: null,
     me: null,
     friends: [],
     contacts: [],
@@ -187,7 +193,11 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft, ...keep } = s;
+    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    // Conversations are server truth. A thread restored from localStorage
+    // would show messages that may since have been read somewhere else, and
+    // unread badges that no longer exist.
+    dmOpen, dmWith, dmThread, dmInbox, dmError, dmPending, ...keep } = s;
   // The transcript is the only field that grows without limit, and it is the
   // one that used to push the whole save over quota.
   return { ...keep, msgs: keep.msgs.slice(-MAX_PERSISTED_MSGS) };

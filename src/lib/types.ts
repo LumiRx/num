@@ -2,6 +2,7 @@
 import type { TabState } from './tabs';
 import type { Errand } from './errands';
 import type { FlightOffer, FlightQuery } from './flights';
+import type { DmMessage, DmPeer } from './dm';
 
 export type View = 'dash' | 'thread' | 'plan' | 'mem';
 
@@ -145,6 +146,10 @@ export interface EventGuest {
   token: string;
   name: string | null;
   phone: string | null;
+  /** Set when the guest is on Num — their agent was asked, not their phone. */
+  member_id?: string | null;
+  /** 'agent' — delivered into their Num. 'link' — the host sends a link. */
+  via?: 'agent' | 'link';
   rsvp: 'pending' | 'yes' | 'no' | 'maybe';
   plus_ones: number;
   message?: string | null;
@@ -156,7 +161,12 @@ export interface EventGuest {
 export interface InboxRequests {
   connects: Array<{ id: string; a_id: string; plan_id: string | null; from_name: string | null; from_avatar: string | null; plan_title: string | null; created_at: string }>;
   plans: Array<{ id: string; title: string; dest: string | null; members: number; open_items: number; latest: string | null }>;
-  events: Array<{ token: string; event_id: string; title: string; day: string | null; time: string | null; place: string | null; host_name: string | null }>;
+  events: Array<{
+    token: string; event_id: string; title: string; day: string | null; time: string | null;
+    place: string | null; host_name: string | null;
+    /** 'agent' — their Num asked yours. 'link' — a link was sent to you. */
+    via: 'agent' | 'link';
+  }>;
 }
 
 /**
@@ -341,6 +351,22 @@ export interface AppState {
   threadOpen: boolean;
   /** Concierge messages arrived while the thread was closed. */
   unread: number;
+
+  // ── messages with other members ──────────────────────────────────────────
+  // All four are server truth and none of them are persisted: a stale thread
+  // restored from localStorage would show messages that may since have been
+  // read on another device.
+
+  /** The messages surface is open (the people list, or one conversation). */
+  dmOpen: boolean;
+  /** The person whose conversation is on screen, or null for the list. */
+  dmWith: { id: string; name: string | null } | null;
+  dmThread: DmMessage[];
+  /** Everyone with something unread — one badge per person. */
+  dmInbox: DmPeer[];
+  dmError: string | null;
+  /** A `?dm=` deep link that landed before this device had an account. */
+  dmPending: string | null;
 
   /** This device's Num account. Null until they give a name and number. */
   me: Member | null;

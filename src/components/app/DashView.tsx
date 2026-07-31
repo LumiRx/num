@@ -115,6 +115,14 @@ function RequestsWidget() {
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
             {[e.day, e.time, e.place].filter(Boolean).join(' · ') || 'details to come'}
           </div>
+          {/* Where the question came from. An invite that arrived with nobody
+              texting you is a surprising thing, and saying so once is cheaper
+              than leaving people to wonder how it got here. */}
+          {e.via === 'agent' && (
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 3 }}>
+              Their Num asked yours — answer here or in your messages.
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
             <Btn label="GOING" primary onClick={() => void act('event', e.token, 'accept')} />
             <Btn label="MAYBE" onClick={() => void act('event', e.token, 'propose')} />

@@ -7,9 +7,10 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
+import { bootDm, closeDmThread, refreshDmInbox, startDmSync } from '../../lib/dm';
 import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
-import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon } from '../../lib/icons';
+import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon, UsersIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
 import ThreadView from './ThreadView';
 import DashView from './DashView';
@@ -26,6 +27,7 @@ import TabSheet from './TabSheet';
 import ErrandSheet from './ErrandSheet';
 import InviteSheet from './InviteSheet';
 import PartySheet from './PartySheet';
+import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
@@ -38,9 +40,13 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const place = useApp((s) => s.place);
   const threadOpen = useApp((s) => s.threadOpen);
   const profileOpen = useApp((s) => s.profileOpen);
+  const dmOpen = useApp((s) => s.dmOpen);
   const me = useApp((s) => s.me);
   const unread = useApp((s) => s.unread);
   const typing = useApp((s) => s.typing);
+  // One number across every conversation — the header badge answers "does
+  // anybody want me", and the per-person counts live inside.
+  const dmUnread = useApp((s) => s.dmInbox.reduce((n, p) => n + p.unread, 0));
 
   // Demo: the scripted date/loop. Real: today anywhere on Earth, plus wherever
   // the user told Num they are — or the ask, until they have.
@@ -60,12 +66,21 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   // step while the app is in the foreground — that polling loop is how the
   // other members' agents reach this one.
   useEffect(() => {
+    // Before bootSocial: it strips the query string once it has read its own
+    // params, so a `?dm=` arriving alongside a referral would be lost.
+    bootDm();
     bootSocial();
     void restoreTab();
+    void refreshDmInbox();
     // A push wakes the service worker, which has no localStorage — it asks the
     // page who is signed in, and this answers.
     serveIdentityToWorker();
-    return startPlanSync();
+    const stopPlan = startPlanSync();
+    const stopDm = startDmSync();
+    return () => {
+      stopPlan();
+      stopDm();
+    };
   }, []);
 
   // The theme is persisted state, so it has to be re-applied to <html> on every
@@ -112,6 +127,10 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     if (e.key !== 'Escape') return;
     const s = store.get();
     if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.tabOpen || s.errandsOpen) closeSheets();
+    // Messages are two levels deep: Escape backs out of the conversation
+    // first, and only closes the surface once you are on the people list.
+    else if (s.dmWith) closeDmThread();
+    else if (s.dmOpen) store.set({ dmOpen: false });
     else if (s.profileOpen) store.set({ profileOpen: false });
     else if (s.threadOpen) store.set({ threadOpen: false });
     if (s.voice) closeVoice();
@@ -163,6 +182,27 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             >
               <StarIcon size={13} /> {stars.toLocaleString()}
             </div>
+            {/* Messages sit beside YOU, not in the tab bar and not behind the
+                dot. The dot is Num; this is other people, and conflating the
+                two would make "who am I talking to" a question. Hidden until
+                there is an account, since there is nobody to message without
+                one. */}
+            {me && (
+              <div
+                {...pressable(() => store.set({ dmOpen: true, dmWith: null, dmThread: [] }))}
+                aria-label={dmUnread ? `Messages, ${dmUnread} new` : 'Messages'}
+                className="glass press"
+                style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Messages"
+              >
+                <UsersIcon size={15} />
+                {dmUnread > 0 && (
+                  <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {dmUnread}
+                  </span>
+                )}
+              </div>
+            )}
             {/* YOU sits here rather than in the tab bar: it is a place you visit
                 occasionally, not one of the three things the app is for. */}
             <div
@@ -289,8 +329,10 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         {profileOpen && <ProfileView />}
       </div>
 
+      <DmSheet />
+
       {/* the dot */}
-      {!threadOpen && !profileOpen && (
+      {!threadOpen && !profileOpen && !dmOpen && (
         <div
           {...pressable(() => store.set({ threadOpen: true, unread: 0 }))}
           aria-label={unread ? `Open thread, ${unread} new` : 'Open thread'}

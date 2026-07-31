@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS num_dms (
   to_id TEXT NOT NULL,
   body TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'text',
+  ref TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   delivered_at TEXT,
   read_at TEXT
@@ -56,6 +57,11 @@ let ready = false;
 async function ensure(env) {
   if (ready) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // The table shipped without `ref`, so the CREATE above only adds it on a
+  // fresh database. Kept OUT of the batch on purpose: this throws every time
+  // after the first, and one statement erroring inside a batch takes the whole
+  // batch — which is precisely how the rowid index broke every route here.
+  await env.DB.prepare('ALTER TABLE num_dms ADD COLUMN ref TEXT').run().catch(() => {});
   ready = true;
 }
 
@@ -126,6 +132,48 @@ async function send(env, req, ctx) {
   return json({ ok: true, id, at: new Date().toISOString() });
 }
 
+/**
+ * Drop a message into a thread on another module's behalf.
+ *
+ * This is how an event invite becomes a card you can answer where it arrived,
+ * rather than a notification that sends you looking for a dashboard. Callers
+ * outside this file get the connection check for free — that rule holds no
+ * matter which feature is doing the sending, including the ones whose own
+ * permission model is looser than the messaging one.
+ *
+ * Failure is deliberately soft. The DM is the nice surface; the durable copy
+ * of an invite is its guest row, and an invite must not fail to exist because
+ * a courtesy message could not be written.
+ */
+export async function postDm(env, { from, to, body, kind = 'text', ref = null, title, ctx }) {
+  if (!env.DB || !from || !to || from === to || !body) return null;
+  try {
+    await ensure(env);
+    if (!(await connected(env, from, to))) return null;
+
+    const id = uid();
+    await env.DB.prepare('INSERT INTO num_dms (id, from_id, to_id, body, kind, ref) VALUES (?1,?2,?3,?4,?5,?6)')
+      .bind(id, from, to, clip(body, 2000), clip(kind, 16) || 'text', clip(ref, 80)).run();
+
+    // Same collapsing tag as a typed message: an invite and the chat it
+    // arrives in are one conversation, and two lock-screen entries for one
+    // person is the thing the tag exists to prevent.
+    await notify(env, {
+      memberId: to,
+      kind: 'dm',
+      title: title || 'A friend',
+      body: clip(body, 2000),
+      url: `/?dm=${encodeURIComponent(from)}`,
+      tag: `dm:${from}`,
+      ctx,
+    }).catch(() => null);
+    return id;
+  } catch (err) {
+    console.warn('[dm] postDm', err?.message ?? err);
+    return null;
+  }
+}
+
 /** The thread with one person, newest last so it renders straight down. */
 async function thread(env, url) {
   const me = clip(url.searchParams.get('me'), 40);
@@ -133,7 +181,7 @@ async function thread(env, url) {
   if (!me || !withId) return json({ error: 'me and with are required' }, 400);
 
   const { results } = await env.DB.prepare(
-    `SELECT id, from_id, to_id, body, kind, created_at, read_at FROM num_dms
+    `SELECT id, from_id, to_id, body, kind, ref, created_at, read_at FROM num_dms
       WHERE (from_id=?1 AND to_id=?2) OR (from_id=?2 AND to_id=?1)
       ORDER BY rowid DESC LIMIT 50`,
   ).bind(me, withId).all();
@@ -143,7 +191,14 @@ async function thread(env, url) {
   await env.DB.prepare("UPDATE num_dms SET read_at=datetime('now') WHERE to_id=?1 AND from_id=?2 AND read_at IS NULL")
     .bind(me, withId).run().catch(() => {});
 
-  return json({ messages: (results ?? []).reverse() });
+  // `ref` on an event card is the invite token — the guest's own credential to
+  // answer with. The host sees the card in their copy of the thread but never
+  // the token, so a host cannot RSVP "yes" on behalf of someone who never saw
+  // the question. (`/reply` re-checks ownership regardless; this just keeps
+  // the secret out of a response that had no business carrying it.)
+  const messages = (results ?? []).reverse().map((m) => (m.to_id === me ? m : { ...m, ref: null }));
+
+  return json({ messages });
 }
 
 /** Everyone with something unread, so the app can show one badge per person. */

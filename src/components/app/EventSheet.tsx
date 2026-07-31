@@ -40,6 +40,7 @@ export default function EventSheet() {
   const me = useApp((s) => s.me);
   const events = useApp((s) => s.events);
   const eventId = useApp((s) => s.eventId);
+  const friends = useApp((s) => s.friends);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
 
@@ -53,6 +54,7 @@ export default function EventSheet() {
   const [dash, setDash] = useState<EventDashboard | null>(null);
   const [minted, setMinted] = useState<GuestInvite | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   // The dashboard is server truth — RSVPs arrive from other people's phones,
@@ -93,8 +95,11 @@ export default function EventSheet() {
     if (!eventId || (!guest.trim() && !guestPhone.trim())) return;
     setBusy(true);
     try {
-      const [inv] = await inviteGuests(eventId, [{ name: guest.trim(), phone: guestPhone.trim() }]);
-      setMinted(inv ?? null);
+      const out = await inviteGuests(eventId, [{ name: guest.trim(), phone: guestPhone.trim() }]);
+      // A name that turned out to be a member was asked, not linked — say so
+      // rather than showing an empty share sheet and looking broken.
+      setMinted(out.invites[0] ?? null);
+      setNote(out.asked[0]?.line ?? out.blocked[0]?.message ?? null);
       setGuest('');
       setGuestPhone('');
       void eventDashboard(eventId).then(setDash);
@@ -105,7 +110,40 @@ export default function EventSheet() {
     }
   };
 
+  /**
+   * Ask a friend who is already on Num.
+   *
+   * No name to type, no number to find, nothing to send: the invite goes
+   * straight into the conversation with them as a card they can answer. The
+   * member id is passed explicitly, so this never has to guess which Sam.
+   */
+  const askFriend = async (id: string, name: string) => {
+    if (!eventId || asking) return;
+    setAsking(id);
+    setNote(null);
+    try {
+      const out = await inviteGuests(eventId, [{ member_id: id, name }]);
+      const asked = out.asked[0];
+      const blocked = out.blocked[0];
+      setNote(
+        asked?.already
+          ? `${name} already has it — their Num is still waiting on an answer.`
+          : (asked?.line ?? blocked?.message ?? `Asked ${name}.`),
+      );
+      void eventDashboard(eventId).then(setDash);
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'Couldn’t ask them.');
+    } finally {
+      setAsking(null);
+    }
+  };
+
   const chase = dash ? chaseText(dash.event, dash.guests, dash.url) : null;
+
+  // The two halves of a guest list. Friends on Num can be asked directly;
+  // everyone else still needs a link, and that has not changed.
+  const onNum = friends.filter((f) => f.state === 'active' && f.id && f.name);
+  const invited = new Map((dash?.guests ?? []).filter((g) => g.member_id).map((g) => [g.member_id!, g.rsvp]));
 
   return (
     <div
@@ -219,13 +257,56 @@ export default function EventSheet() {
           {/* invite one more */}
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
             <div style={{ ...label, color: 'var(--ink-60)' }}>INVITE SOMEONE</div>
+
+            {/* Friends on Num first. One tap and their agent has the question —
+                no name to type, no number to look up, nothing to send. The
+                already-answered are shown but not tappable, so a host cannot
+                nag someone who has already said yes. */}
+            {!!onNum.length && (
+              <div style={{ marginTop: 9 }}>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginBottom: 7 }}>
+                  Already on Num — one tap and their Num asks them.
+                </div>
+                <div className="no-scrollbar" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 2 }}>
+                  {onNum.map((f) => {
+                    const already = invited.get(f.id!);
+                    const done = already && already !== 'pending';
+                    return (
+                      <div
+                        key={f.id}
+                        {...(done ? {} : pressable(() => void askFriend(f.id!, f.name)))}
+                        className={done ? 'glass' : 'glass press'}
+                        style={{
+                          cursor: done ? 'default' : 'pointer', flex: 'none', borderRadius: 999,
+                          padding: '8px 13px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+                          display: 'flex', gap: 6, alignItems: 'center',
+                          opacity: asking === f.id ? 0.55 : done ? 0.65 : 1,
+                        }}
+                      >
+                        {done && <CheckIcon size={11} style={{ color: 'var(--color-accent)' }} />}
+                        {f.name}
+                        {already === 'pending' && <span style={{ fontWeight: 500, color: 'var(--ink-40)' }}>· asked</span>}
+                        {already === 'yes' && <span style={{ fontWeight: 500, color: 'var(--ink-40)' }}>· in</span>}
+                        {already === 'no' && <span style={{ fontWeight: 500, color: 'var(--ink-40)' }}>· can’t</span>}
+                        {already === 'maybe' && <span style={{ fontWeight: 500, color: 'var(--ink-40)' }}>· maybe</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {!minted ? (
-              <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+              <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                {!!onNum.length && (
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>Anyone else — they get a link, no app needed.</div>
+                )}
                 <input style={field} placeholder="Their name" value={guest} onChange={(e) => setGuest(e.target.value)} />
                 <input style={field} placeholder="Their mobile (optional)" inputMode="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} />
                 <div {...pressable(doInvite)} style={{ ...primary, opacity: busy ? 0.6 : 1 }}>
                   {busy ? 'ONE SEC…' : 'CREATE THEIR INVITE'}
                 </div>
+                {note && <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.5 }}>{note}</div>}
               </div>
             ) : (
               <div style={{ marginTop: 8 }}>

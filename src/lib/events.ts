@@ -131,15 +131,33 @@ export interface GuestInvite {
   share: { title: string; text: string; url: string };
 }
 
-/** Mint invite links. Nothing is sent from our side — the host sends them. */
-export async function inviteGuests(eventId: string, guests: Array<{ name?: string; phone?: string }>): Promise<GuestInvite[]> {
+/**
+ * Invite people. One endpoint, two outcomes, decided by who each guest is.
+ *
+ * A guest we can identify as a member is ASKED — their Num gets the question
+ * as a card in the thread with the host, and there is nothing for the host to
+ * send. Anyone else comes back in `invites` as a link the host sends from
+ * their own phone, exactly as before.
+ *
+ * The full dispatch is returned rather than just the links, because "I asked
+ * Dre and their Num will tell me" and "here is a link to text Sam" are two
+ * different things to say to a host, and only the caller knows how to say them.
+ */
+export async function inviteGuests(
+  eventId: string,
+  guests: Array<{ name?: string; phone?: string; member_id?: string }>,
+): Promise<InviteDispatch> {
   const me = store.get().me;
-  if (!me) return [];
-  const out = await api<{ invites: GuestInvite[] }>('/invite', {
+  const empty: InviteDispatch = {
+    invites: [], asked: [], blocked: [], ambiguous: [],
+    summary: { sent: 0, to_send: 0, blocked: 0, needs_confirming: 0 },
+  };
+  if (!me) return empty;
+  const out = await api<InviteDispatch>('/invite', {
     method: 'POST',
     body: JSON.stringify({ me: me.id, event_id: eventId, guests }),
   });
-  return out.invites;
+  return { ...empty, ...out };
 }
 
 /**

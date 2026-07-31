@@ -7,6 +7,7 @@
 import { store } from './store';
 import { refreshRequests } from './requests';
 import { refreshStars } from './stars';
+import { resumeDm } from './dm';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
@@ -166,6 +167,9 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
   if (inviteToken) await acceptInvite(inviteToken);
   const { connectTo } = store.get();
   if (connectTo) await connectByCode(connectTo);
+  // A `?dm=` link that landed before this device had an account — now it does,
+  // so open the conversation they were sent here for.
+  resumeDm();
   return out;
 }
 

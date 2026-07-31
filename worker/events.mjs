@@ -28,6 +28,9 @@
 import { uid, normalisePhone, maskPhone } from '../claim/verify.mjs';
 import { notify } from './push.mjs';
 import { canInvite, ensurePermissions } from './permissions.mjs';
+// One-way: dm.mjs knows nothing about events. The invite rides the messaging
+// thread so the question can be answered where it was asked.
+import { postDm } from './dm.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -193,7 +196,10 @@ const fold = (s) => String(s ?? '').trim().toLowerCase();
  */
 async function resolveInvitee(env, meId, g) {
   const memberId = clip(g.member_id, 40);
-  if (memberId) return { kind: 'member', member_id: memberId, name: clip(g.name, 60) };
+  // A number passed alongside an id is carried through, because it is one the
+  // CALLER already had — which is what makes the text fallback legitimate when
+  // that member's Num declines. It is never read off the member's account.
+  if (memberId) return { kind: 'member', member_id: memberId, name: clip(g.name, 60), phone: normalisePhone(g.phone) ?? null };
 
   const phone = normalisePhone(g.phone);
   if (phone) {
@@ -231,8 +237,11 @@ async function resolveInvitee(env, meId, g) {
  *   · On Num → delivered straight into their Num, subject to their invite
  *     policy. Their agent asks them; the answer comes back here.
  *
- * The host is never told which path a given guest took unless they look: from
- * the dashboard it is one guest list either way, which is the point.
+ * The reply keeps the two apart — `invites` is what the host still has to send,
+ * `asked` is what has already gone — because those are two different sentences
+ * for the host's agent to say, and conflating them is how a host thinks they
+ * have told six people when they have told three. On the dashboard afterwards
+ * it is one guest list either way, which is the point.
  */
 async function inviteGuest(env, req, origin) {
   const b = await readBody(req);
@@ -271,11 +280,30 @@ async function dispatchInvites(env, { event: e, meId, guests, origin, ua = '' })
       continue;
     }
 
+    let fallback = null;
     if (who.kind === 'member') {
       const delivered = await deliverToAgent(env, { event: e, hostId: meId, hostName, to: who });
-      if (delivered.ok) asked.push(delivered.invite);
-      else blocked.push(delivered.blocked);
-      continue;
+      if (delivered.ok) {
+        asked.push(delivered.invite);
+        continue;
+      }
+      // Refused — but a refusal on the AGENT channel is not a ban on the host.
+      //
+      // If the caller supplied the number themselves, the host already had it
+      // and could always have texted this person; a policy about whose Num may
+      // be interrupted must not quietly take that away, or the feature makes
+      // the app worse at the thing it could already do. So it falls back to
+      // the link path: the host sends it from their own phone, same as before
+      // any of this existed.
+      //
+      // Only a phone the CALLER passed in. The number on a member's account is
+      // never handed back to a host who did not already know it — that would
+      // turn "invite by member id" into a phone-number lookup.
+      if (!who.phone) {
+        blocked.push(delivered.blocked);
+        continue;
+      }
+      fallback = delivered.blocked;
     }
 
     // ── the link path, unchanged ──
@@ -298,6 +326,11 @@ async function dispatchInvites(env, { event: e, meId, guests, origin, ua = '' })
       sms_url: `sms:${phone ?? ''}${/iphone|ipad|mac/i.test(ua) ? '&' : '?'}body=${encodeURIComponent(message)}`,
       whatsapp_url: `https://wa.me/${phone ? phone.replace(/\D/g, '') : ''}?text=${encodeURIComponent(message)}`,
       share: { title: e.title, text: message, url },
+      // Set when their Num would not take it and this is the way round. The
+      // host's agent needs it to say the true thing — "her Num only takes
+      // invites from people she's connected to, so text her instead" — rather
+      // than presenting a text as the plan all along.
+      ...(fallback ? { fell_back: { reason: fallback.reason, message: fallback.message } } : {}),
     });
   }
 
@@ -346,11 +379,28 @@ async function deliverToAgent(env, { event: e, hostId, hostName, to }) {
      VALUES (?1,?2,?3,?4,?5,?6,'agent',datetime('now'))`,
   ).bind(t, e.id, name, to.phone ?? null, to.member_id, hostId).run();
 
+  // Put the question INTO the conversation with the host, as a card carrying
+  // the guest's own token. That is what makes it answerable where it landed:
+  // the invite arrives in the thread you already have with that person, and
+  // yes/no goes back without either side opening a dashboard.
+  //
+  // Only possible between connected members. An invite from someone whose
+  // policy is 'public' but who is not a friend has no thread to land in, and
+  // falls through to the plain notification below.
+  const carded = await postDm(env, {
+    from: hostId,
+    to: to.member_id,
+    body: `${askLine(e, hostName)} Want in?`,
+    kind: 'event',
+    ref: t,
+    title: hostName,
+  });
+
   // Their phone buzzes now; their Num asks them the moment they look. The
   // inbox row above is the durable half — push is best-effort by design, and
   // an invite that only exists as a notification is an invite that is lost the
   // first time a phone is face down.
-  await notify(env, {
+  if (!carded) await notify(env, {
     memberId: to.member_id,
     kind: 'invite',
     title: e.title,
@@ -395,7 +445,10 @@ async function eventDashboard(env, url, origin) {
   if (e.host_id !== me) return json({ error: 'not your event' }, 403);
 
   const { results: guests } = await env.DB.prepare(
-    'SELECT token, name, phone, rsvp, plus_ones, message, via, opened_at, delivered_at, replied_at FROM num_event_guests WHERE event_id=?1 ORDER BY replied_at IS NULL, replied_at DESC',
+    // `member_id` is here so the host's own invite picker can grey out the
+    // friends it has already asked. It is only ever the host's guest list, and
+    // they are the one who put every id on it.
+    'SELECT token, name, phone, member_id, rsvp, plus_ones, message, via, opened_at, delivered_at, replied_at FROM num_event_guests WHERE event_id=?1 ORDER BY replied_at IS NULL, replied_at DESC',
   ).bind(e.id).all();
 
   const list = (guests ?? []).map((g) => ({ ...g, phone: maskPhone(g.phone) }));
@@ -497,9 +550,25 @@ export async function answerEventInvite(env, { guest, rsvp: answer, plusOnes, na
         ? `${who} can’t make it.`
         : `${who} is a maybe.`;
 
+  // The answer goes back where the question came from. A guest who was asked
+  // in a conversation and answers in a dashboard has left the conversation
+  // half-finished — the host sees "Dre is in" under the invite card they sent,
+  // in the same thread, which is what makes it feel like two people talking
+  // rather than two people filing forms.
+  const joiner = memberId ?? guest.member_id ?? null;
+  const answered = joiner
+    ? await postDm(env, {
+        from: joiner,
+        to: e.host_id,
+        body: `${line}${message ? ` “${message}”` : ''}`,
+        title: who,
+      })
+    : null;
+
   // The host hears it on their phone. A host who has to keep reopening a
   // dashboard to find out whether anyone is coming does not have an agent.
-  await notify(env, {
+  // Skipped when the answer already went as a message — that push has fired.
+  if (!answered) await notify(env, {
     memberId: e.host_id,
     kind: 'rsvp',
     title: e.title,
@@ -510,15 +579,14 @@ export async function answerEventInvite(env, { guest, rsvp: answer, plusOnes, na
 
   // Tied to a group plan? Then it is everyone's news, not just the host's.
   if (e.plan_id) {
-    const joinerId = memberId ?? guest.member_id ?? null;
     // Saying yes is this member's half of consent, so they join the plan they
     // just agreed to be part of — the same rule an accepted connection invite
     // follows. Saying no or maybe joins nothing.
-    if (rsvpValue === 'yes' && joinerId) {
+    if (rsvpValue === 'yes' && joiner) {
       await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
-        .bind(e.plan_id, joinerId, who).run().catch(() => {});
+        .bind(e.plan_id, joiner, who).run().catch(() => {});
     }
-    await narrateToPlan(env, e.plan_id, { id: joinerId, name: who }, 'rsvp', `${line} — ${e.title}`).catch(() => {});
+    await narrateToPlan(env, e.plan_id, { id: joiner, name: who }, 'rsvp', `${line} — ${e.title}`).catch(() => {});
   }
 
   return { ok: true, rsvp: rsvpValue, line, event: { id: e.id, title: e.title, plan_id: e.plan_id ?? null } };

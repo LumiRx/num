@@ -5,6 +5,7 @@
 // the wrong moment and the answer is no, permanently. So Num never asks on
 // launch — it asks when there is something worth being told about.
 import { store } from './store';
+import { openDm } from './dm';
 
 // Not a secret: the browser needs it to encrypt the subscription to us.
 const VAPID_PUBLIC = 'BGfIJ2Yj82iiRSVBUi97G8nmxi9WT6uWxgqApr0EqEzrhiu0FSnD7hnnONE0qHgO72cvIwb3JaqDfSAOJs3St1U';
@@ -113,8 +114,13 @@ export function serveIdentityToWorker(): void {
       event.ports?.[0]?.postMessage({ me: store.get().me?.id ?? null });
     }
     if (data?.type === 'num-open') {
-      // A tapped notification should land on the thing it was about.
-      store.set({ threadOpen: true });
+      // A tapped notification should land on the thing it was about. A message
+      // from a friend carries `?dm=<their id>` and opens THAT conversation —
+      // dropping someone into the Num thread instead is the app answering a
+      // different question from the one the notification asked.
+      const dm = new URL(data.url ?? '/', location.origin).searchParams.get('dm');
+      if (dm) openDm(dm);
+      else store.set({ threadOpen: true });
     }
   });
 }
