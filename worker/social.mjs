@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS num_plan_items (id TEXT PRIMARY KEY, plan_id TEXT NOT
 CREATE INDEX IF NOT EXISTS idx_num_plan_items_plan ON num_plan_items(plan_id);
 CREATE TABLE IF NOT EXISTS num_plan_events (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id TEXT NOT NULL, ts TEXT NOT NULL DEFAULT (datetime('now')), by_id TEXT, by_name TEXT, kind TEXT NOT NULL, summary TEXT NOT NULL, payload TEXT);
 CREATE INDEX IF NOT EXISTS idx_num_plan_events_plan ON num_plan_events(plan_id, id);
+CREATE TABLE IF NOT EXISTS num_star_balances (member_id TEXT PRIMARY KEY, stars INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS num_star_moves (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, delta INTEGER NOT NULL, kind TEXT NOT NULL, note TEXT, counterparty TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_num_star_moves_member ON num_star_moves(member_id);
 `;
 
 async function event(env, planId, by, kind, summary, payload) {
@@ -366,6 +369,119 @@ async function friends(env, url) {
       plan_id: r.plan_id,
     })),
   });
+}
+
+// ── Stars: the ledger ─────────────────────────────────────────────────────
+//
+// Balances live on the server, not the device. That is not a preference: a
+// balance a phone can edit is not a balance, and the moment two people can pay
+// each other the client stops being allowed an opinion about who has what.
+//
+// Stars are an in-app credit, not money and not a currency. Every movement is
+// double-entered into num_star_moves so a balance can always be reconstructed
+// from the log rather than trusted on its own.
+
+const WELCOME_STARS = 100;
+
+/** Credit a new member their welcome balance exactly once. */
+async function ensureBalance(env, memberId) {
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, ?2)').bind(memberId, WELCOME_STARS),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO num_star_moves (id, member_id, delta, kind, note) VALUES (?1,?2,?3,'welcome','Welcome to Num')",
+    ).bind(`welcome_${memberId}`, memberId, WELCOME_STARS),
+  ]);
+}
+
+/**
+ * Who is behind a code — the display name and nothing else. A payment
+ * confirmation that says "pay them" is not a confirmation, and this is the
+ * minimum a payer needs to check they are paying the right person. No phone,
+ * no email, no id beyond the one they already scanned.
+ */
+async function who(env, url) {
+  const id = clip(url.searchParams.get('id'), 40);
+  if (!id) return json({ error: 'id required' }, 400);
+  const row = await env.DB.prepare('SELECT id, name, avatar, phone_verified FROM num_members WHERE id=?1').bind(id).first();
+  if (!row) return json({ error: 'no one on Num has that code' }, 404);
+  return json({ id: row.id, name: row.name, avatar: row.avatar ?? null, verified: !!row.phone_verified });
+}
+
+async function stars(env, url) {
+  const meId = url.searchParams.get('me');
+  if (!meId) return json({ error: 'me required' }, 400);
+  await ensureBalance(env, meId);
+  const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(meId).first();
+  const { results: moves } = await env.DB.prepare(
+    `SELECT m.id, m.delta, m.kind, m.note, m.counterparty, m.created_at, p.name AS other_name
+       FROM num_star_moves m LEFT JOIN num_members p ON p.id = m.counterparty
+      WHERE m.member_id=?1 ORDER BY m.rowid DESC LIMIT 25`,
+  ).bind(meId).all();
+  return json({ balance: row?.stars ?? 0, moves: moves ?? [] });
+}
+
+/**
+ * Move Stars from one member to another.
+ *
+ * The debit is a CONDITIONAL update — `WHERE stars >= amount` — and we check
+ * how many rows it changed. That is what makes a double-tap or a race safe:
+ * two concurrent payments cannot both pass the check, because the second one
+ * updates zero rows. `idem` makes a retried request a no-op rather than a
+ * second payment, which matters when someone scans a QR on a bad connection.
+ */
+async function pay(env, req) {
+  const b = await readBody(req);
+  const from = clip(b.me, 40);
+  const to = clip(b.to, 40);
+  const amount = Math.floor(Number(b.amount));
+  const note = clip(b.note, 140);
+  const idem = clip(b.idem, 80) || crypto.randomUUID();
+
+  if (!from || !to) return json({ error: 'me and to are required' }, 400);
+  if (from === to) return json({ error: 'That’s your own code.' }, 400);
+  if (!Number.isFinite(amount) || amount <= 0) return json({ error: 'Amount has to be a positive number of Stars.' }, 400);
+  if (amount > 100_000) return json({ error: 'That’s over the per-payment limit.' }, 400);
+
+  const payee = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(to).first();
+  if (!payee) return json({ error: 'That code doesn’t match anyone on Num.' }, 404);
+  const payer = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(from).first();
+  if (!payer) return json({ error: 'sign up first' }, 404);
+
+  // Already done? Return the same answer rather than paying twice.
+  const seen = await env.DB.prepare('SELECT id FROM num_star_moves WHERE id=?1').bind(`${idem}:out`).first();
+  if (seen) {
+    const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(from).first();
+    return json({ ok: true, already: true, balance: row?.stars ?? 0, to: payee.name });
+  }
+
+  await ensureBalance(env, from);
+  await ensureBalance(env, to);
+
+  const debit = await env.DB.prepare('UPDATE num_star_balances SET stars = stars - ?2 WHERE member_id = ?1 AND stars >= ?2')
+    .bind(from, amount).run();
+  if (!debit.meta?.changes) {
+    const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(from).first();
+    return json({ error: `Not enough Stars — you have ★${row?.stars ?? 0}.`, balance: row?.stars ?? 0 }, 409);
+  }
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(to, amount),
+      env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'pay',?4,?5)")
+        .bind(`${idem}:out`, from, -amount, note, to),
+      env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'receive',?4,?5)")
+        .bind(`${idem}:in`, to, amount, note, from),
+    ]);
+  } catch (err) {
+    // The credit failed after the debit succeeded — put it back. Losing Stars
+    // into a gap is the one outcome that is never acceptable.
+    await env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(from, amount).run();
+    console.error('[stars] rolled back', err?.message ?? err);
+    return json({ error: 'That didn’t go through — nothing was taken.' }, 500);
+  }
+
+  const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(from).first();
+  return json({ ok: true, balance: row?.stars ?? 0, to: payee.name, amount });
 }
 
 // ── the inbox ─────────────────────────────────────────────────────────────
@@ -650,6 +766,9 @@ export async function handleSocial(request, env, path) {
   if (path === '/accept' && post) return await accept(env, request);
   if (path === '/friends') return await friends(env, url);
   if (path === '/requests') return await requests(env, url);
+  if (path === '/who') return await who(env, url);
+  if (path === '/stars') return await stars(env, url);
+  if (path === '/pay' && post) return await pay(env, request);
   if (path === '/respond' && post) return await respond(env, request);
   if (path === '/plans') return await planList(env, url);
   if (path === '/plan' && post) return await planWrite(env, request);

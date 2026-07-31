@@ -15,6 +15,7 @@ import { saveProfile, uploadAvatar } from '../../lib/profile';
 import { REACTIONS } from '../../lib/prefs';
 import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
 import { THEMES, setTheme } from '../../lib/themes';
+import QrCard from './QrCard';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -226,6 +227,10 @@ export default function ProfileView() {
             ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask Num and we’ll sort it.'
             : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
         </div>
+      </Collapsible>
+
+      <Collapsible title="YOUR CODES" summary="Scan to connect, or to pay you in Stars" defaultOpen>
+        <QrCard />
       </Collapsible>
 
       <ThemePicker />

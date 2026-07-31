@@ -9,7 +9,7 @@
 //   /api/*        → never touched; Num's replies must always be live
 //
 // Bump CACHE to force every client to drop the old shell.
-const CACHE = 'num-shell-v2';
+const CACHE = 'num-shell-v3';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -60,8 +60,13 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
+    // `fetch(request)` still consults the browser's HTTP cache, and index.html
+    // is served must-revalidate — which a browser is entitled to satisfy from
+    // its own store. The practical result was a redeploy that never reached
+    // anyone until they manually cleared site data. `cache: 'no-store'` makes
+    // "network-first" actually mean the network.
     event.respondWith(
-      fetch(request)
+      fetch(request.url, { cache: 'no-store', credentials: 'same-origin' })
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put('/', copy));

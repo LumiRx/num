@@ -213,3 +213,73 @@ nicely not to say "how can I help you today?" is not a control — this is.
   knows themes exist. `--field-bg` was added because raised surfaces were
   hardcoded white and became white boxes floating on black.
 - **Dashboards** — see [launch-readiness.md](launch-readiness.md).
+
+---
+
+## QR codes, and paying by scan
+
+`src/lib/qr.ts`, `src/lib/stars.ts`, `worker/social.mjs` (`/stars`, `/pay`, `/who`).
+
+**The QR is a plain https link.** That one decision removes the whole scanner
+problem: every phone camera already reads a URL, iOS Safari has no barcode API
+at all, and nobody has to install anything. A tuk-tuk driver tapes a printed
+code to the dashboard; the passenger points their camera at it and the app
+opens with the payment already filled in.
+
+Two codes, because they answer two questions:
+
+| | Encodes | What a scan does |
+|---|---|---|
+| **Connect** | `/?ref=<code>&c=<member>` | Connects you, and counts as their referral |
+| **Get paid** | `/?p=<member>&a=<stars>&n=<note>` | Opens "Pay Tuk-tuk Somchai ★60 — Patong beach" |
+
+### The encoder is written out, and verified
+
+No runtime dependency: `qr.ts` is a byte-mode, level-M, version 1–10 encoder
+(~4KB). A payment code that scans wrong is worse than no code, so it is checked
+two ways, both in `scripts/`:
+
+- **`qr-check.mjs`** compares the full matrix against the reference `qrcode`
+  package — which also compares the chosen mask. Two real bugs came out of it:
+  the second format-info copy was off by one (bit 7 landed on the dark module),
+  and the format word was being written least-significant-bit first. Both are
+  silent failures: the code *looks* perfect and decodes with the wrong mask.
+- **`qr-decode.mjs`** renders our own matrix to a bitmap and reads it back with
+  **jsQR, a scanner implementation**. All 14 payloads — including multi-byte
+  Thai, and the long ones — decode to the exact string. That is the test that
+  actually matters, and it covers the cases where we legitimately choose a
+  different mask from the reference.
+
+### Stars moved server-side
+
+Balances left the device. A balance a phone can edit is not a balance, and the
+moment two people can pay each other the client stops being allowed an opinion
+about who has what. `num_star_balances` + `num_star_moves` (double-entered, so
+a balance can always be rebuilt from the log).
+
+The debit is a **conditional** update — `WHERE stars >= amount` — and the code
+checks how many rows changed. That is what makes it safe under a race, and an
+`idem` key makes a retry a no-op rather than a second payment.
+
+Verified live:
+
+| Case | Result |
+|---|---|
+| Rider pays ★60 | 100 → 40, driver 100 → 160 |
+| Same `idem` replayed (double scan) | `already: true`, nothing moved |
+| Five **simultaneous** ★30 payments from a ★40 balance | exactly **1** succeeded |
+| Overspend / negative / pay yourself / unknown code | each refused with its own message |
+| Credit fails after debit | debit is rolled back — Stars never vanish into a gap |
+
+Stars are in-app credit, not money. The sheet says so, and shows the payee's
+name from `/who` before you can send — "Pay them" is not a confirmation.
+
+## Service worker: why redeploys weren't landing
+
+Navigations were already network-first, but `fetch(request)` still consults the
+browser's HTTP cache, and index.html is served `must-revalidate` — which a
+browser may satisfy from its own store. The practical result was a deploy that
+never reached anyone until they cleared site data, which is exactly what kept
+happening during testing. Fixed with `cache: 'no-store'` on the navigation
+fetch, `updateViaCache: 'none'` on registration, a cache-name bump, and an
+update check when a backgrounded tab comes forward.

@@ -6,6 +6,7 @@
 // on their own device. Until then a link is 'pending' and carries nothing.
 import { store } from './store';
 import { refreshRequests } from './requests';
+import { refreshStars } from './stars';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
@@ -40,6 +41,24 @@ export function bootSocial(): void {
   const q = new URLSearchParams(window.location.search);
   const ref = q.get('ref');
   const token = q.get('i');
+
+  // A scanned pay code. The phone's own camera opened this URL, so by the time
+  // we are here the "scanner" has already done its job.
+  const payTo = q.get('p');
+  if (payTo) {
+    store.set({
+      payOpen: { to: payTo, amount: Number(q.get('a')) || undefined, note: q.get('n') ?? undefined },
+    });
+    history.replaceState(null, '', window.location.pathname);
+    // Put a name to the code: "Pay them" is not a confirmation.
+    void fetch(`/api/social/who?id=${encodeURIComponent(payTo)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((w) => {
+        if (w?.name) store.set((st) => ({ payOpen: st.payOpen ? { ...st.payOpen, toName: w.name } : st.payOpen }));
+      })
+      .catch(() => {});
+  }
+
   if (ref || token) {
     store.set((s) => ({ refCode: ref ?? s.refCode, inviteToken: token ?? s.inviteToken }));
     // Keep the launch URL clean so a refresh doesn't re-trigger the invite.
@@ -52,6 +71,7 @@ export function bootSocial(): void {
     void refreshPlans();
     void syncPlan();
     void refreshRequests();
+    void refreshStars();
     return;
   }
 
@@ -478,6 +498,7 @@ export function startPlanSync(): () => void {
     timer = setInterval(() => {
       void syncPlan();
       void refreshRequests();
+      void refreshStars();
     }, 45_000);
   };
   const stop = () => {

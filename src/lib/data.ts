@@ -86,6 +86,8 @@ function baseState() {
     walletOpen: false,
     permOn: false,
     bought: '',
+    starMoves: [],
+    payOpen: null,
     inbox: { connects: [], plans: [], events: [] },
     // Default layout. Num rewrites this as the trip changes — directions only
     // earn a slot when there is somewhere to be.
@@ -171,7 +173,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, ...keep } = s;
+    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, ...keep } = s;
   return keep;
 }
 

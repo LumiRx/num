@@ -17,8 +17,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 // connection (the scripted demo runs offline; Num's live replies need network).
 // Production only — a service worker caching a dev server just confuses HMR.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  // A tab that has been open across a deploy gets the new worker on its next
+  // foreground, not on its next cold start.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void navigator.serviceWorker.getRegistration().then((r) => r?.update());
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    // updateViaCache:'none' — never let the browser serve a cached copy of the
+    // worker script itself, or a fix to the worker can never ship.
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {
       // Registration failures are never fatal — the app works without it.
     });
   });

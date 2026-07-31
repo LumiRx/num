@@ -294,6 +294,11 @@ export interface AppState {
   /** YOU lives in the header now, not the tab bar — it opens as an overlay. */
   profileOpen: boolean;
 
+  /** Recent Stars movements — server truth, display only. */
+  starMoves: Array<{ id: string; delta: number; kind: string; note: string | null; other_name: string | null; created_at: string }>;
+  /** A scanned pay request waiting for confirmation. */
+  payOpen: { to: string; toName?: string; amount?: number; note?: string } | null;
+
   /** Requests waiting on an answer, refreshed with the plan sync. */
   inbox: InboxRequests;
   /** Which dash widgets are showing, in order. Num may rewrite this. */
