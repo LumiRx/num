@@ -18,7 +18,17 @@ const CONFIG = '--config wrangler.app.jsonc';
 // Written by `stage`, read by `ship`. Git-ignored: it describes one machine's
 // last upload, not the repository.
 const STAGED = '.release-staged.json';
-const sh = (cmd, quiet = false) => execSync(cmd, { encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' });
+// execSync throws on a non-zero exit, but only if we let it: swallowing that
+// is how `ship` printed "v0.8.4 is live" while production stayed on 0.8.1.
+// A release tool that lies about what it did is worse than no release tool.
+const sh = (cmd, quiet = false) => {
+  try {
+    return execSync(cmd, { encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' });
+  } catch (err) {
+    console.error(`\n✘ command failed: ${cmd}\n`);
+    throw err;
+  }
+};
 const cap = (cmd) => execSync(cmd, { encoding: 'utf8' }).trim();
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -97,6 +107,18 @@ switch (cmd) {
       }
       console.log(`\n── sending all traffic to ${staged.version} (${staged.id})\n`);
       sh(`npx wrangler versions deploy ${staged.id}@100% --yes ${CONFIG}`);
+      // Confirm against the running Worker rather than trusting the exit code.
+      // "Deployed" and "serving" are not the same claim.
+      try {
+        const live = JSON.parse(cap(`curl -s https://app.itsnum.com/api/version`));
+        if (live.version !== staged.version) {
+          console.error(`\n✘ deploy reported success but production is serving ${live.version}, not ${staged.version}.\n`);
+          process.exit(1);
+        }
+        console.log(`  verified: production is serving ${live.version}`);
+      } catch {
+        console.warn('  (could not verify against production — check manually)');
+      }
     } else {
       console.log(`\n── ${pct}% of traffic to the newest version, the rest stays put\n`);
       console.log('  wrangler will ask which two versions to split between.\n');

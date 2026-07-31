@@ -19,6 +19,7 @@ import { handleSocialSafe } from './social.mjs';
 import { handleEvents, handleEventPage } from './events.mjs';
 import { handleConsole, logUsage } from './console.mjs';
 import { handleClaim, handleClaimConfirm } from './claim.mjs';
+import { ask as askBrains, roster as brainRoster, probe as brainProbe } from './brains.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
@@ -257,6 +258,16 @@ export default {
     // be a real page and must not require the app.
     // What the server is running. The app compares it with its own stamp, so a
     // phone on a stale cache can be told rather than guessed at.
+    // Which brains are wired up. The operator console reads this.
+    if (url.pathname === '/api/brains') {
+      // The probe costs Workers AI neurons and takes seconds, so it is gated
+      // on the admin key rather than left open.
+      if (url.searchParams.get('probe') && env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY) {
+        return json(200, { brains: brainRoster(env), probe: await brainProbe(env) });
+      }
+      return json(200, { brains: brainRoster(env) });
+    }
+
     if (url.pathname === '/api/version') {
       return json(200, { version: env.NUM_VERSION ?? 'unknown', model: env.NUM_MODEL || DEFAULT_MODEL });
     }
@@ -367,11 +378,28 @@ export default {
       };
 
       const startedAt = Date.now();
-      let result = await callNum();
+      // The chain, not one model. Claude first for the full concierge; if it
+      // fails for any reason, an open model on Cloudflare's edge (or a
+      // self-hosted one) answers in prose rather than the user hitting a wall.
+      let result = await askBrains(env, {
+        structuredCall: callNum,
+        messages: history,
+        persona: PERSONA,
+        voice: VOICE,
+        context: contextBlock({
+          place: grounding.place,
+          partners: grounding.partners,
+          guide: grounding.guide,
+          profile,
+          buzz: grounding.buzz,
+        }),
+        style: styleBlock(parsed.state?.style),
+        guard: (t) => guardReply(t),
+      });
       ctx.waitUntil(
         logUsage(env, {
-          lane: 'big',
-          model: env.NUM_MODEL || DEFAULT_MODEL,
+          lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,
+          model: result._brain === 'claude' ? env.NUM_MODEL || DEFAULT_MODEL : result._brain,
           specialist: result._specialist ?? null,
           place: grounding.place?.name ?? null,
           usage: result._usage,
@@ -404,10 +432,14 @@ export default {
       const withPhoto = await attachPhoto(env, result, grounding);
       const withServices = attachServiceOptions(env, withPhoto, grounding);
       // Internals never leave the Worker.
-      const { _usage, _specialist, ...clean } = withServices;
+      const { _usage, _specialist, _brain, _tried, _ms, _degraded, ...clean } = withServices;
       void _usage;
       void _specialist;
-      return json(200, { ...clean, place: grounding.place ? grounding.place.name : null });
+      void _tried;
+      void _ms;
+      // `degraded` tells the app a fallback brain answered, so it can avoid
+      // treating a prose reply as if it created bookings.
+      return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
     } catch (err) {
       console.error('[num-ai]', err);
       // A guest never hears "the kitchen is broken". If the big model failed
