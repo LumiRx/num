@@ -400,7 +400,15 @@ async function invitedOpen(env, token) {
   if (!row) return new Response(null, { status: 302, headers: { Location: APP } });
   await env.DB.prepare("UPDATE num_invite_links SET opened_at=COALESCE(opened_at, datetime('now')) WHERE token=?1")
     .bind(token).run();
-  return new Response(null, { status: 302, headers: { Location: `${APP}/?ref=${row.code}&i=${token}`, 'Cache-Control': 'no-store' } });
+  // Land on the install page, not straight in the app. An invite goes to
+  // somebody who by definition does not have Num yet, and dropping them into a
+  // browser tab means they never put it on their home screen. The page carries
+  // ref and i straight through to its own "Open Num" button, so an existing
+  // user is one tap away and a new one is told what to do.
+  return new Response(null, {
+    status: 302,
+    headers: { Location: `https://itsnum.com/app?ref=${row.code}&i=${token}`, 'Cache-Control': 'no-store' },
+  });
 }
 
 /** Attribute a signup, honouring the code's fraud caps. */

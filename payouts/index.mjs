@@ -16,6 +16,7 @@
 // does not come back.
 import { buildContext, checkMember, worstSeverity, NEVER_PAY } from './preflight.mjs';
 import { ADAPTERS, STAR_CENTS, chooseRail, railReady, readyRails } from './rails.mjs';
+import { inspectDestination, treasuryCheck } from './chain.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -202,10 +203,20 @@ async function inspect(env, url) {
   const amountCents = (finance?.stars_earned ?? 0) * STAR_CENTS;
   const findings = checkMember({ member, finance, method, rails: countryRails ?? [], context: buildContext(allMethods ?? []) });
 
+  // Ask the chain as well as the rules. This is what catches a contract
+  // address nobody thought to put on a list.
+  const onChain = [];
+  for (const m of (mine ?? []).filter((x) => x.rail === 'usdc_base' && x.status === 'enabled')) {
+    const out = await inspectDestination(env, m.external_id);
+    onChain.push({ method_id: m.id, address: out.address, findings: out.findings });
+    findings.push(...out.findings);
+  }
+
   return json({
     member,
     finance,
     methods: mine ?? [],
+    on_chain: onChain,
     findings,
     severity: worstSeverity(findings),
     routing: chooseRail({ member, methods: mine ?? [], countryRails: countryRails ?? [], amountCents, env }),
@@ -235,6 +246,12 @@ async function requestPayout(env, req, ip) {
   const method = (mine ?? []).find((m) => m.is_default && m.status === 'enabled') ?? (mine ?? []).find((m) => m.status === 'enabled') ?? null;
 
   const findings = checkMember({ member, finance, method, rails: countryRails ?? [], context: buildContext(allMethods ?? []) });
+  // The chain is consulted before anything is held, not after. A destination
+  // that turns out to be a contract must never reach the queue.
+  if (method?.rail === 'usdc_base' && method.status === 'enabled') {
+    const out = await inspectDestination(env, method.external_id);
+    findings.push(...out.findings);
+  }
   const severity = worstSeverity(findings);
   if (severity === 'block') {
     await audit(env, { memberId, action: 'request_refused', detail: { findings }, ip });
@@ -402,6 +419,13 @@ export default {
       if (p === '/queue') return await queue(env, url);
       if (p === '/audit') return await auditLog(env, url);
       if (p === '/rules') return rules();
+      if (p === '/treasury') {
+        const total = Number(url.searchParams.get('cents') ?? 0);
+        if (!env.USDC_TREASURY_ADDRESS) {
+          return json({ ok: false, reason: 'No USDC_TREASURY_ADDRESS is set, so there is no wallet to check.' });
+        }
+        return json(await treasuryCheck(env, env.USDC_TREASURY_ADDRESS, total));
+      }
       if (p === '/request' && post) return await requestPayout(env, request, ip);
       if (p === '/decide' && post) return await decide(env, request, ip);
       if (p === '/execute' && post) return await execute(env, request, ip);

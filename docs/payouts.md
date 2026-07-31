@@ -106,3 +106,26 @@ Every step writes to `payout_audit`.
    already on file.
 6. Set `ADMIN_KEY` on `num-payouts` (`cd payouts && npx wrangler secret put ADMIN_KEY`)
    — use the same value as the app so one sign-in opens both.
+
+---
+
+## On-chain checks (`payouts/chain.mjs`)
+
+The hardcoded danger list caught one wallet because somebody happened to know
+what `0x8335…2913` is. That does not scale. The chain is now asked directly:
+
+- **`eth_getCode`** — bytecode means a contract, and USDC sent to a contract
+  that cannot forward it is gone. This catches every case the list misses, and
+  it independently re-caught the burn wallet with no list involved.
+- **`eth_getTransactionCount` / `eth_getBalance`** — an address that has never
+  transacted is held for a look. **Nine of the eleven wallets on file are in
+  this state**, which is a reason to test with one small payment first.
+- **`balanceOf`** — `/treasury?cents=` confirms the float covers a batch before
+  anything is approved.
+- **EIP-55 checksum** — a one-character typo in a pasted address is rejected
+  rather than paid.
+
+All read-only; nothing here can move funds. Verify with
+`node scripts/chain-check.mjs` (no credentials needed).
+
+Setup for sending: **[usdc-setup.md](usdc-setup.md)**.

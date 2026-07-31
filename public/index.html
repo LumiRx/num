@@ -21,7 +21,8 @@
     <a href="dashboard.html">Dashboard</a>
     <!-- Real href, not "#": the modal is the fast path when JS has loaded, and /signin/
          is the page it degrades to. It is also the URL we can put in an email. -->
-    <span id="signin-slot"><a href="/signin/" onclick="openSignin();return false;">Sign in</a></span>
+    <span id="signin-slot"><a href="/app">Get the app</a>
+        <a href="/signin/" onclick="openSignin();return false;">Sign in</a></span>
     <a class="btn pri" href="/claim/" style="padding:10px 18px;font-size:14px">List your business</a>
   </div>
   <button class="menu-btn" aria-label="Menu">☰</button>
@@ -41,7 +42,7 @@
       <h1 class="h1" style="margin-top:18px">A concierge in your pocket for every&nbsp;trip.</h1>
       <p class="sub">NUM plans your trip in a simple chat, books the best <b>real, verified</b> local places, and unlocks members-only perks — on LINE or WhatsApp, in your language.</p>
       <div class="cta">
-        <a class="btn pri lg" href="https://line.me/R/ti/p/@799pyrus">💬 Chat with Num on LINE</a>
+        <a class="btn pri lg" href="https://line.me/R/ti/p/@799pyrus" data-alt="line">💬 Chat with Num on LINE</a>
         <a class="btn ghost lg" href="how.html">See how it works</a>
       </div>
       <div class="trust">
