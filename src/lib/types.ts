@@ -1,4 +1,7 @@
 // Domain model for Num — ported from the Concierge.dc.html prototype state.
+import type { TabState } from './tabs';
+import type { Errand } from './errands';
+import type { FlightOffer, FlightQuery } from './flights';
 
 export type View = 'dash' | 'thread' | 'plan' | 'mem';
 
@@ -219,6 +222,10 @@ export interface PlanItem {
   photo?: string | null;
   by_id?: string | null;
   by_name?: string | null;
+  /** Who is actually coming. A guest with no member_id has no Num account. */
+  attendees?: Array<{ member_id: string | null; name: string; rsvp: 'going' | 'maybe' | 'out' }>;
+  /** Everyone who hasn't said no — the number the venue holds seats against. */
+  party_size?: number;
 }
 
 export interface PartyPlan {
@@ -302,6 +309,16 @@ export interface AppState {
   /** A scanned pay request waiting for confirmation. */
   payOpen: { to: string; toName?: string; amount?: number; note?: string } | null;
 
+  /** The live tab on screen, or null. Server truth — never computed here. */
+  tabOpen: TabState | null;
+  /** The tab to reopen on next launch, so a night out survives a reload. */
+  tabId: string | null;
+
+  /** The errand board: what's open nearby, and what's yours. */
+  errandsOpen: boolean;
+  errands: Errand[];
+  myErrands: Errand[];
+
   /** Requests waiting on an answer, refreshed with the plan sync. */
   inbox: InboxRequests;
   /** Which dash widgets are showing, in order. Num may rewrite this. */
@@ -341,6 +358,15 @@ export interface AppState {
   /** Referral that brought this user in, and the invite token to accept. */
   refCode: string | null;
   inviteToken: string | null;
+  /** A scanned connect code waiting to be acted on (survives sign-up). */
+  connectTo: string | null;
+
+  /** Live fares from the last search, plus what was asked for. */
+  flightOffers: { query: FlightQuery; offers: FlightOffer[] } | null;
+  flightSearching: boolean;
+  flightError: string | null;
+  /** An errand the concierge proposed — pre-fills the sheet, never posts. */
+  errandDraft: { title: string; detail?: string | null; where_from?: string | null; deliver_to: string; bounty: number; spend_cap: number } | null;
 
   inviteOpen: InviteDraft | null;
   partyOpen: boolean;

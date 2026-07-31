@@ -59,14 +59,28 @@ export function bootSocial(): void {
       .catch(() => {});
   }
 
-  if (ref || token) {
-    store.set((s) => ({ refCode: ref ?? s.refCode, inviteToken: token ?? s.inviteToken }));
+  // A scanned "connect with me" code. This is the whole point of the QR: the
+  // sharer offered, the scanner accepted, so the connection is made now rather
+  // than turned into a request somebody has to remember to approve.
+  const connectTo = q.get('c');
+
+  if (ref || token || connectTo) {
+    store.set((s) => ({
+      refCode: ref ?? s.refCode,
+      inviteToken: token ?? s.inviteToken,
+      connectTo: connectTo ?? s.connectTo,
+    }));
     // Keep the launch URL clean so a refresh doesn't re-trigger the invite.
     history.replaceState(null, '', window.location.pathname);
   }
 
   const me = store.get().me;
   if (me) {
+    // Someone who already has an account must never be pushed back through
+    // sign-up by opening an invite. They are already themselves; the link only
+    // adds a friend or a plan to what they have.
+    if (connectTo) void connectByCode(connectTo);
+    if (token) void acceptInvite(token);
     void refreshFriends();
     void refreshPlans();
     void syncPlan();
@@ -150,6 +164,8 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
     }).catch(() => {});
   }
   if (inviteToken) await acceptInvite(inviteToken);
+  const { connectTo } = store.get();
+  if (connectTo) await connectByCode(connectTo);
   return out;
 }
 
@@ -162,6 +178,35 @@ export async function verifyCode(code: string): Promise<boolean> {
 }
 
 /** Consent, second half: accepting is what turns a link active both ways. */
+/**
+ * Act on a scanned "connect with me" code.
+ *
+ * Quiet when it is a repeat: scanning the same code twice is a normal thing
+ * to do by accident, and announcing a connection that already existed makes
+ * the app look like it forgot.
+ */
+export async function connectByCode(memberId: string): Promise<void> {
+  const me = store.get().me;
+  if (!me || memberId === me.id) {
+    store.set({ connectTo: null });
+    return;
+  }
+  try {
+    const out = await api<{ friend?: { id: string; name: string }; already?: boolean }>('/connect', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, to: memberId }),
+    });
+    store.set({ connectTo: null });
+    await refreshFriends();
+    if (out.friend && !out.already) {
+      narrate(`You and ${out.friend.name} are connected. From here our two Nums can pass reservations, addresses and photos straight across — neither of you retypes a thing.`);
+    }
+  } catch (err) {
+    console.warn('[social] connect failed', err);
+    store.set({ connectTo: null });
+  }
+}
+
 export async function acceptInvite(token: string): Promise<void> {
   const me = store.get().me;
   if (!me) return;
@@ -194,6 +239,46 @@ export async function refreshFriends(): Promise<void> {
   } catch (err) {
     console.warn('[social] friends failed', err);
   }
+}
+
+// ── the invite door ────────────────────────────────────────────────────────
+//
+// Agent-to-agent invites arrive without the member having typed anything, so
+// the member decides who may send them: people they're connected to (the
+// default), anyone on Num, or nobody. See worker/permissions.mjs.
+
+export type InvitePolicy = 'friends' | 'public' | 'off';
+
+export interface InvitePrefs {
+  invite_policy: InvitePolicy;
+  accepting: boolean;
+  options?: Array<{ value: InvitePolicy; label: string; detail: string }>;
+  note?: string;
+}
+
+export async function getInvitePolicy(): Promise<InvitePrefs | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    return await api<InvitePrefs>(`/prefs?me=${encodeURIComponent(me.id)}`);
+  } catch (err) {
+    console.warn('[social] prefs failed', err);
+    return null;
+  }
+}
+
+/**
+ * Set it either way round: a three-way picker passes a policy, a plain switch
+ * passes `accepting` and the last open setting so turning it back on restores
+ * what they had rather than opening them to strangers.
+ */
+export async function setInvitePolicy(
+  next: InvitePolicy | { accepting: boolean; previous?: InvitePolicy },
+): Promise<InvitePrefs | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  const payload = typeof next === 'string' ? { invite_policy: next } : next;
+  return await api<InvitePrefs>('/prefs', { method: 'POST', body: JSON.stringify({ me: me.id, ...payload }) });
 }
 
 interface ContactsApi {
@@ -315,6 +400,50 @@ export async function shareInvite(): Promise<'shared' | 'copied' | 'none'> {
 
 function narrate(text: string): void {
   store.set((s) => ({ msgs: [...s.msgs, { who: 'c' as const, text }] }));
+}
+
+/**
+ * Add, remove, or answer for someone on a reservation.
+ *
+ * Every call returns the whole attendee list and the recomputed party size,
+ * because the server is the only thing entitled to decide either — a client
+ * that counts heads locally will eventually disagree with the table the venue
+ * is holding.
+ */
+export async function setAttendee(
+  itemId: string,
+  name: string,
+  opts?: { memberId?: string | null; rsvp?: 'going' | 'maybe' | 'out'; remove?: boolean },
+): Promise<{ ok: boolean; message: string }> {
+  const me = store.get().me;
+  if (!me) return { ok: false, message: 'Add your name and number first.' };
+  try {
+    const res = await fetch('/api/social/plan/item/attendees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        me: me.id,
+        item_id: itemId,
+        name,
+        ...(opts?.memberId ? { member_id: opts.memberId } : {}),
+        ...(opts?.rsvp ? { rsvp: opts.rsvp } : {}),
+        ...(opts?.remove ? { remove: true } : {}),
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; attendees?: PlanItem['attendees']; party_size?: number };
+    if (!res.ok) return { ok: false, message: body.error ?? 'That didn’t go through.' };
+    // Patch the item in place rather than re-syncing the whole plan: the
+    // answer we just got back IS the truth, and a full sync would make a tap
+    // feel slow for no extra correctness.
+    store.set((st) => ({
+      planItems: st.planItems.map((i) =>
+        i.id === itemId ? { ...i, attendees: body.attendees, party_size: body.party_size } : i,
+      ),
+    }));
+    return { ok: true, message: '' };
+  } catch {
+    return { ok: false, message: 'That didn’t go through.' };
+  }
 }
 
 export async function refreshPlans(): Promise<void> {

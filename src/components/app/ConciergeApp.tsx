@@ -7,6 +7,7 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
+import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
 import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
@@ -21,6 +22,8 @@ import WalletSheet from './WalletSheet';
 import BusinessSheet from './BusinessSheet';
 import EventSheet from './EventSheet';
 import PaySheet from './PaySheet';
+import TabSheet from './TabSheet';
+import ErrandSheet from './ErrandSheet';
 import InviteSheet from './InviteSheet';
 import PartySheet from './PartySheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
@@ -29,7 +32,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || !!s.inviteOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen);
   const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
@@ -49,15 +52,16 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, tabOpen: null, errandsOpen: false });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || !!s.inviteOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
   // other members' agents reach this one.
   useEffect(() => {
     bootSocial();
+    void restoreTab();
     // A push wakes the service worker, which has no localStorage — it asks the
     // page who is signed in, and this answers.
     serveIdentityToWorker();
@@ -92,7 +96,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, tabOpen: null, errandsOpen: false });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -107,7 +111,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.tabOpen || s.errandsOpen) closeSheets();
     else if (s.profileOpen) store.set({ profileOpen: false });
     else if (s.threadOpen) store.set({ threadOpen: false });
     if (s.voice) closeVoice();
@@ -329,6 +333,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <EventSheet />
       <BusinessSheet />
       <PaySheet />
+      <TabSheet />
+      <ErrandSheet />
       <InviteSheet />
       <ShareSheet />
       <WalletSheet />

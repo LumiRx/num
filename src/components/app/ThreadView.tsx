@@ -1,6 +1,7 @@
 // THREAD tab — the conversation: messages, cards, typing dots, chips, input bar.
 import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
+import { checkOffer, duration, stillValid, type FlightOffer } from '../../lib/flights';
 import { pressable } from '../../lib/a11y';
 import { tagOf } from '../../lib/derive';
 import { askNum, cleanText, sendChip, openVoice } from '../../lib/concierge';
@@ -51,6 +52,101 @@ function Reactions({ index, subject }: { index: number; subject: string }) {
  * pretend to have ordered — it picks the right app for this country and opens
  * it prefilled. One tap, and the honesty is the feature.
  */
+/**
+ * Live fares, rendered as data.
+ *
+ * Deliberately NOT prose. Every number here came back from Sabre in this
+ * session, and keeping it in its own card is what stops it drifting into the
+ * transcript where a later turn might repeat it as though it were still true.
+ * The expiry is shown for the same reason — a fare has a shelf life and
+ * pretending otherwise is how somebody turns up at a desk with the wrong price.
+ */
+function FlightTray() {
+  const state = useApp((s) => s.flightOffers);
+  const busy = useApp((s) => s.flightSearching);
+  const error = useApp((s) => s.flightError);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [verdict, setVerdict] = useState<Record<string, string>>({});
+
+  if (busy) {
+    return (
+      <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px', fontSize: 12, color: 'var(--ink-60)' }}>
+        Checking live fares…
+      </div>
+    );
+  }
+  if (error && !state) {
+    return (
+      <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px', fontSize: 12, color: 'var(--ink-60)' }}>
+        {error}
+      </div>
+    );
+  }
+  if (!state?.offers.length) return null;
+
+  const recheck = async (o: FlightOffer) => {
+    setChecking(o.id);
+    const out = await checkOffer(o, state.query);
+    setVerdict((v) => ({ ...v, [o.id]: out.message }));
+    setChecking(null);
+  };
+
+  return (
+    <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px' }}>
+      <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
+        LIVE FARES · {state.query.fromCode} → {state.query.toCode}
+      </div>
+      <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
+        {state.offers.map((o) => {
+          const leg = o.legs[0];
+          const hops = leg ? [leg.segments[0]?.from, ...leg.segments.map((sg) => sg.to)].filter(Boolean).join(' → ') : '';
+          const hidden = o.legs.flatMap((l) => l.segments).flatMap((sg) => sg.hiddenStops ?? []);
+          const dead = !stillValid(o);
+          return (
+            <div key={o.id} style={{ borderRadius: 12, border: '1px solid var(--ink-08)', padding: '9px 11px', opacity: dead ? 0.5 : 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>
+                  {o.currency} {o.price}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-40)' }}>
+                  {o.validatingCarrier} · {leg?.stops === 0 ? 'non-stop' : `${leg?.stops} stop${leg?.stops === 1 ? '' : 's'}`} · {duration(o.totalDurationInMinutes)}
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 3 }}>{hops}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 2 }}>
+                {leg?.segments.map((sg) => `${sg.marketing} ${sg.departs.slice(11, 16)}`).join(' · ')}
+                {leg?.segments[0]?.cabin ? ` · ${leg.segments[0].cabin}` : ''}
+              </div>
+              {/* A stop the airline does not advertise is the thing travellers
+                  find out about at the gate. Always said out loud. */}
+              {hidden.length > 0 && (
+                <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', fontWeight: 700, marginTop: 3 }}>
+                  Unadvertised stop at {hidden.map((h) => h.airportCode).join(', ')}
+                </div>
+              )}
+              {verdict[o.id] && <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.45 }}>{verdict[o.id]}</div>}
+              <div
+                {...pressable(() => void recheck(o))}
+                style={{
+                  cursor: 'pointer', marginTop: 7, borderRadius: 999, padding: '7px 12px', textAlign: 'center',
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em',
+                  background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
+                  opacity: checking === o.id ? 0.55 : 1,
+                }}
+              >
+                {checking === o.id ? 'RE-CHECKING…' : 'IS THIS STILL LIVE?'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
+        Real fares from Sabre. Num can price and re-check these — it can’t buy the ticket, so the purchase is still yours to make.
+      </div>
+    </div>
+  );
+}
+
 function ServiceTray() {
   const h = useApp((s) => s.handoff);
   if (!h) return null;
@@ -199,6 +295,7 @@ export default function ThreadView() {
           sending, or dismissing the keyboard. Bottom padding clears the home
           indicator without an extra margin that shifts on rotation. */}
       <div className="glass-bar" style={{ padding: '10px 14px max(env(safe-area-inset-bottom), 14px)', flex: 'none' }}>
+        <FlightTray />
         <ServiceTray />
         {!demo && (
           <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 42, alignItems: 'center', padding: '0 2px' }}>

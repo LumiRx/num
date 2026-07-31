@@ -1,34 +1,88 @@
-// Share sheet — live-updates and hide-costs toggles, the share link with
-// copy/kill, and the killed state.
-import { useRef } from 'react';
+// Share Num with somebody, with your referral carried in the link.
+//
+// This used to be a share-the-plan sheet full of demo scaffolding — a
+// hardcoded "Viv's SE Asia loop" and a concierge.travel URL that pointed
+// nowhere. Sharing a PLAN already has a home: the invite flow, which mints a
+// real token and can attach a specific plan. What was missing is the ordinary
+// thing — handing Num to a friend.
+//
+// Two details decide whether this works:
+//
+//   · The link comes from lib/links, which uses the CANONICAL host — never
+//     window.location.origin. Opened from a preview deploy, an origin-derived
+//     link reads "num-app.thatislumi.workers.dev", which looks like nothing to
+//     do with Num and lands the recipient where their account does not exist.
+//   · The referral code rides along, so whoever taps it is attributed to the
+//     person who shared it. A share with no attribution is one nobody can be
+//     thanked for.
+import { useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
-import { sheetBase, checkboxStyle, grabberStyle } from '../../lib/derive';
+import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, XIcon } from '../../lib/icons';
-import { SHARE_LINK } from '../../lib/data';
+import QrCard from './QrCard';
+import { pretty, referralLink } from '../../lib/links';
 
 export default function ShareSheet() {
   const open = useApp((s) => s.shareOpen);
-  const shLive = useApp((s) => s.shLive);
-  const shHide = useApp((s) => s.shHide);
-  const copied = useApp((s) => s.copied);
-  const killed = useApp((s) => s.killed);
-  const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
+  const me = useApp((s) => s.me);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
+  const [copied, setCopied] = useState(false);
 
-  const copyLink = () => {
-    try {
-      navigator.clipboard.writeText(SHARE_LINK);
-    } catch {
-      // clipboard unavailable — the COPIED state still confirms the tap
-    }
-    store.set({ copied: true });
+  if (!open) return null;
+  const close = () => store.set({ shareOpen: false });
+
+  // Canonical host, short path. Short because a shared link gets read aloud,
+  // screenshotted and typed back in by hand.
+  const link = me?.ref ? referralLink(me.ref) : 'https://app.itsnum.com';
+
+  const message = me?.name
+    ? `It's ${me.name}. I use NUM as my concierge — one thread that books dinner, cars, tables, whole weekends. Here's my invite: ${link}`
+    : `NUM is a concierge in one thread — dinner, cars, tables, whole weekends. ${link}`;
+
+  const flash = () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const close = () => store.set({ shareOpen: false });
+  const share = async () => {
+    const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
+    if (nav.share) {
+      try {
+        // URL passed separately from text — iOS only builds a link preview
+        // when the url field is its own thing.
+        await nav.share({ title: 'Join me on NUM', text: message, url: link });
+        return;
+      } catch {
+        /* cancelled, or the sheet is unavailable — fall through to copy */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(message);
+      flash();
+    } catch {
+      /* clipboard blocked — the link is on screen to read */
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      flash();
+    } catch {
+      /* nothing to do — the link is visible above */
+    }
+  };
+
   return (
-    <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      className="glass-strong"
+      style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: '88%', overflowY: 'auto' }}
+    >
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
@@ -38,63 +92,61 @@ export default function ShareSheet() {
       >
         <XIcon size={15} />
       </div>
-      <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)' }}>
-        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE PLAN</div>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Viv’s SE Asia loop</div>
-        <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 2 }}>{nBookings} bookings · 3 cities · live</div>
-      </div>
-      <div
-        {...pressable(() => store.set((s) => ({ shLive: !s.shLive })), 'checkbox')}
-        aria-checked={shLive}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--ink-08)', cursor: 'pointer' }}
-      >
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Live updates</div>
-          <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>Their copy changes when your plans change</div>
+
+      <div style={{ padding: 16 }}>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE NUM</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>Give someone a concierge</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
+          Your link is in here. When they join you’re connected — whatever either of you books, the other’s Num can see it.
         </div>
-        <span style={checkboxStyle(shLive)}>{shLive ? <CheckIcon size={14} /> : null}</span>
-      </div>
-      <div
-        {...pressable(() => store.set((s) => ({ shHide: !s.shHide })), 'checkbox')}
-        aria-checked={shHide}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--ink-08)', cursor: 'pointer' }}
-      >
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Hide costs & stars</div>
-          <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>They see where and when — never what you paid</div>
-        </div>
-        <span style={checkboxStyle(shHide)}>{shHide ? <CheckIcon size={14} /> : null}</span>
-      </div>
-      <div style={{ padding: '14px 16px' }}>
-        {!killed ? (
+
+        {!me ? (
           <>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1, borderRadius: 999, border: '1px solid var(--ink-12)', padding: '9px 14px', fontSize: 11, color: 'var(--color-neutral-700)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: 'var(--field-bg)' }}>
-                concierge.travel/p/viv-4k2x
-              </div>
-              <div
-                {...pressable(copyLink)}
-                className="press"
-                style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', boxShadow: '0 3px 10px rgba(236,48,19,.3)', color: '#fff', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '9px 13px', display: 'flex', gap: 6, alignItems: 'center' }}
-              >
-                <CopyIcon size={13} />
-                {copied ? 'COPIED' : 'COPY'}
-              </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 14, lineHeight: 1.55 }}>
+              Add your name first so the invite comes from someone — an anonymous link is one nobody taps.
             </div>
             <div
-              {...pressable(() => store.set({ killed: true }))}
-              style={{ marginTop: 12, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer' }}
+              {...pressable(() => store.set({ shareOpen: false, inviteOpen: {} }))}
+              style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center' }}
             >
-              KILL THIS LINK
-            </div>
-            <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
-              Opens in any browser. No app, no account — a webcal feed lets it live inside their calendar.
+              INTRODUCE YOURSELF
             </div>
           </>
         ) : (
-          <div style={{ fontSize: 12.5, color: 'var(--color-neutral-700)', lineHeight: 1.5 }}>
-            Link killed — anyone holding it now sees nothing. Ask me in the thread when you want a new one.
-          </div>
+          <>
+            <div
+              {...pressable(share)}
+              className="press"
+              style={{ cursor: 'pointer', marginTop: 16, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '14px 16px', textAlign: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.3)' }}
+            >
+              SHARE MY INVITE
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <div style={{ flex: 1, borderRadius: 999, border: '1px solid var(--ink-12)', padding: '10px 14px', fontSize: 11, color: 'var(--ink-60)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: 'var(--field-bg)' }}>
+                {pretty(link)}
+              </div>
+              <div
+                {...pressable(copy)}
+                className="press"
+                style={{ cursor: 'pointer', borderRadius: 999, border: '1px solid var(--ink-12)', color: 'var(--ink)', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '10px 14px', display: 'flex', gap: 6, alignItems: 'center', background: 'var(--field-bg)', whiteSpace: 'nowrap' }}
+              >
+                {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+                {copied ? 'COPIED' : 'COPY'}
+              </div>
+            </div>
+
+            {/* The same invite as a code. Somebody sitting opposite you scans
+                it and is connected on the spot — no typing, no waiting for a
+                text to arrive somewhere with no signal. */}
+            <div style={{ marginTop: 18 }}>
+              <QrCard />
+            </div>
+
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 14, lineHeight: 1.55 }}>
+              Anyone who joins on your link is credited to you. If they already have Num it just connects the two of you — it won’t make them sign in again.
+            </div>
+          </>
         )}
       </div>
     </div>

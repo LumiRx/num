@@ -10,7 +10,24 @@
 // The host side is the dashboard an event site would give you: who's coming,
 // who hasn't answered, plus-ones, and a one-tap chase for the silent ones —
 // again sent from the host's own phone rather than from an unknown shortcode.
+//
+// ── The second path: agent to agent ──────────────────────────────────────
+//
+// Everything above assumes the guest is a stranger holding a phone. When the
+// guest is already on Num, the text is the wrong shape entirely: their agent
+// is right there, and it can simply be asked. So an invite addressed to a
+// member id is DELIVERED rather than handed to a share sheet — it lands in
+// their inbox, buzzes their phone, and their Num puts the question to them in
+// their own thread. Nobody copies a link, nobody leaves the app, and the
+// answer comes back down the same channel to the host's Num.
+//
+// That channel needs a door, because unlike a text it does not go out through
+// the sender's own phone. `worker/permissions.mjs` is the door: the recipient
+// decides whether their Num takes invites from friends only, from anyone, or
+// from nobody. Delivery here is the thing that is automatic — never consent.
 import { uid, normalisePhone, maskPhone } from '../claim/verify.mjs';
+import { notify } from './push.mjs';
+import { canInvite, ensurePermissions } from './permissions.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -42,12 +59,38 @@ CREATE TABLE IF NOT EXISTS num_events (id TEXT PRIMARY KEY, host_id TEXT NOT NUL
 CREATE INDEX IF NOT EXISTS idx_num_events_host ON num_events(host_id);
 CREATE TABLE IF NOT EXISTS num_event_guests (token TEXT PRIMARY KEY, event_id TEXT NOT NULL, name TEXT, phone TEXT, member_id TEXT, rsvp TEXT NOT NULL DEFAULT 'pending', plus_ones INTEGER NOT NULL DEFAULT 0, message TEXT, invited_at TEXT NOT NULL DEFAULT (datetime('now')), opened_at TEXT, replied_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_num_event_guests_event ON num_event_guests(event_id, rsvp);
+CREATE INDEX IF NOT EXISTS idx_num_event_guests_member ON num_event_guests(member_id, rsvp);
 `;
+
+// CREATE TABLE IF NOT EXISTS silently skips a table that already exists with
+// an older shape, so anything added after the first deploy has to arrive as an
+// ALTER. "duplicate column" is the expected outcome from the second deploy on.
+const MIGRATIONS = [
+  // Who sent it. Needed for the reply ("Dre's Num says yes"), for the per-pair
+  // nag cap, and to tell an agent invite from a link the host texted out.
+  'ALTER TABLE num_event_guests ADD COLUMN invited_by TEXT',
+  // 'link' — a token the guest opens in a browser, no app needed.
+  // 'agent' — delivered into another member's Num.
+  "ALTER TABLE num_event_guests ADD COLUMN via TEXT NOT NULL DEFAULT 'link'",
+  // When their Num was actually told, as opposed to when the row was written.
+  'ALTER TABLE num_event_guests ADD COLUMN delivered_at TEXT',
+];
 
 let ensured = false;
 async function ensure(env) {
   if (ensured) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  for (const alter of MIGRATIONS) {
+    try {
+      await env.DB.prepare(alter).run();
+    } catch (err) {
+      if (!/duplicate column/i.test(err?.message ?? '')) console.warn('[events] migration:', err?.message);
+    }
+  }
+  // An agent invite is checked against the recipient's invite policy, which
+  // lives on num_members — so that column has to exist before the first one
+  // is sent, whichever Worker surface got hit first.
+  await ensurePermissions(env);
   ensured = true;
 }
 
@@ -77,7 +120,29 @@ async function createEvent(env, req, origin) {
   ).run();
 
   const event = await env.DB.prepare('SELECT * FROM num_events WHERE id=?1').bind(id).first();
-  return json({ event, url: `${origin}/e/${slug}` });
+
+  // "Dinner Friday with Dre and Sam" is one instruction, not two. Anyone named
+  // in `ask` who is on Num is asked here, in the same call that made the event
+  // — that is the whole agent-to-agent feature, and splitting it into a second
+  // round trip is how a host ends up with an event nobody was told about.
+  //
+  // Anyone we cannot identify still comes back as a link for the host to send,
+  // and anyone whose name matched two friends comes back as a question. Both
+  // are the caller's to finish; neither blocks the event from existing.
+  const ask = Array.isArray(b.ask) ? b.ask : Array.isArray(b.guests) ? b.guests : [];
+  const dispatched = ask.length
+    ? await dispatchInvites(env, {
+        event,
+        meId: hostId,
+        // A bare string is the shape the model produces when it just heard a
+        // name; an object is what the app sends once someone has been picked.
+        guests: ask.map((g) => (typeof g === 'string' ? { name: g } : g)),
+        origin,
+        ua: req.headers.get('User-Agent') ?? '',
+      })
+    : null;
+
+  return json({ event, url: `${origin}/e/${slug}`, ...(dispatched ?? {}) });
 }
 
 async function updateEvent(env, req) {
@@ -94,37 +159,231 @@ async function updateEvent(env, req) {
   return json({ event: await env.DB.prepare('SELECT * FROM num_events WHERE id=?1').bind(e.id).first() });
 }
 
-/** Mint a guest link. The token IS the guest — it arrives on their phone. */
+// ── who is this actually for ──────────────────────────────────────────────
+
+/** Everyone this member is connected to, as people rather than link rows. */
+async function friendsOf(env, meId) {
+  const { results } = await env.DB.prepare(
+    `SELECT m.id, m.name, m.avatar FROM num_links l
+       JOIN num_members m ON m.id = CASE WHEN l.a_id=?1 THEN l.b_id ELSE l.a_id END
+      WHERE l.state='active' AND (l.a_id=?1 OR l.b_id=?1)`,
+  ).bind(meId).all().catch(() => ({ results: [] }));
+  // One person can be reached through two links (they invited you, you later
+  // scanned their code). Two identical rows in a candidate list reads as two
+  // different people and makes an unambiguous match look ambiguous.
+  const seen = new Map();
+  for (const r of results ?? []) if (r.id && !seen.has(r.id)) seen.set(r.id, r);
+  return [...seen.values()];
+}
+
+const fold = (s) => String(s ?? '').trim().toLowerCase();
+
+/**
+ * Turn "invite Dre" into a member id — or into a question.
+ *
+ * The automatic part of this feature is DELIVERY, never the guess about who
+ * was meant. A name that matches exactly one friend is unambiguous and routes
+ * straight through; a name that matches several comes back as candidates for
+ * the user to pick from, which is the same rule the connection invite sheet
+ * has always followed. Sending a dinner invitation to the wrong Sam is not an
+ * error you can take back.
+ *
+ * A name that matches nobody is not a failure either — it is a guest who is
+ * not on Num, and they get the link path they have always had.
+ */
+async function resolveInvitee(env, meId, g) {
+  const memberId = clip(g.member_id, 40);
+  if (memberId) return { kind: 'member', member_id: memberId, name: clip(g.name, 60) };
+
+  const phone = normalisePhone(g.phone);
+  if (phone) {
+    // A number that belongs to a member is a member, whatever the caller
+    // thought they were doing. Texting a link to someone whose Num is sitting
+    // right there is the worse of the two experiences.
+    const row = await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(phone).first().catch(() => null);
+    if (row) return { kind: 'member', member_id: row.id, name: clip(g.name, 60) ?? row.name, phone };
+    return { kind: 'link', name: clip(g.name, 60), phone };
+  }
+
+  const name = clip(g.name, 60);
+  if (!name) return { kind: 'invalid' };
+
+  const friends = await friendsOf(env, meId);
+  const q = fold(name);
+  // Narrowest match first. An exact name beats a prefix beats a substring, so
+  // "Sam" does not become ambiguous just because "Samira" is also a friend.
+  const exact = friends.filter((f) => fold(f.name) === q);
+  const starts = exact.length ? exact : friends.filter((f) => fold(f.name).startsWith(q));
+  const hits = starts.length ? starts : friends.filter((f) => fold(f.name).includes(q));
+
+  if (hits.length === 1) return { kind: 'member', member_id: hits[0].id, name: hits[0].name };
+  if (hits.length > 1) return { kind: 'ambiguous', name, candidates: hits.map((f) => ({ id: f.id, name: f.name, avatar: f.avatar })) };
+  return { kind: 'link', name };
+}
+
+// ── inviting ──────────────────────────────────────────────────────────────
+
+/**
+ * Invite people. Two paths out of one endpoint, chosen by who the guest is.
+ *
+ *   · Not on Num → a token and a message the HOST sends from their own phone.
+ *     Unchanged, and still the default for anyone we cannot identify.
+ *   · On Num → delivered straight into their Num, subject to their invite
+ *     policy. Their agent asks them; the answer comes back here.
+ *
+ * The host is never told which path a given guest took unless they look: from
+ * the dashboard it is one guest list either way, which is the point.
+ */
 async function inviteGuest(env, req, origin) {
   const b = await readBody(req);
+  const meId = clip(b.me, 40);
   const e = await env.DB.prepare('SELECT * FROM num_events WHERE id=?1').bind(clip(b.event_id, 40) ?? '').first();
   if (!e) return json({ error: 'unknown event' }, 404);
-  if (e.host_id !== clip(b.me, 40)) return json({ error: 'not your event' }, 403);
+  if (e.host_id !== meId) return json({ error: 'not your event' }, 403);
 
+  const guests = Array.isArray(b.guests) ? b.guests : [{ name: b.name, phone: b.phone, member_id: b.member_id }];
+  return json(await dispatchInvites(env, { event: e, meId, guests, origin, ua: req.headers.get('User-Agent') ?? '' }));
+}
+
+/**
+ * The guest list, turned into whatever each guest needs.
+ *
+ * Shared by `/invite` and by event creation, because "make the event" and
+ * "ask the people" are one intention — a host who says "dinner Friday with Dre
+ * and Sam" has not asked for an event object, they have asked for their two
+ * friends to be asked.
+ */
+async function dispatchInvites(env, { event: e, meId, guests, origin, ua = '' }) {
   const host = await env.DB.prepare('SELECT name FROM num_members WHERE id=?1').bind(e.host_id).first();
-  const guests = Array.isArray(b.guests) ? b.guests.slice(0, 50) : [{ name: b.name, phone: b.phone }];
+  const hostName = host?.name ?? 'A friend';
+  guests = (Array.isArray(guests) ? guests : []).slice(0, 50);
+
   const out = [];
+  const asked = [];
+  const blocked = [];
+  const ambiguous = [];
+
   for (const g of guests) {
+    const who = await resolveInvitee(env, meId, g ?? {});
+    if (who.kind === 'invalid') continue;
+    if (who.kind === 'ambiguous') {
+      ambiguous.push(who);
+      continue;
+    }
+
+    if (who.kind === 'member') {
+      const delivered = await deliverToAgent(env, { event: e, hostId: meId, hostName, to: who });
+      if (delivered.ok) asked.push(delivered.invite);
+      else blocked.push(delivered.blocked);
+      continue;
+    }
+
+    // ── the link path, unchanged ──
     const t = token();
-    const name = clip(g.name, 60);
-    const phone = normalisePhone(g.phone);
-    await env.DB.prepare('INSERT INTO num_event_guests (token, event_id, name, phone) VALUES (?1,?2,?3,?4)')
-      .bind(t, e.id, name, phone).run();
+    const name = who.name;
+    const phone = who.phone ?? null;
+    await env.DB.prepare(
+      "INSERT INTO num_event_guests (token, event_id, name, phone, invited_by, via) VALUES (?1,?2,?3,?4,?5,'link')",
+    ).bind(t, e.id, name, phone, meId).run();
     const url = `${origin}/e/${e.slug}?g=${t}`;
     const message =
-      `${name ? name + ' — ' : ''}${host?.name ?? 'A friend'} is having ${e.title}` +
+      `${name ? name + ' — ' : ''}${hostName} is having ${e.title}` +
       `${when(e) ? `, ${when(e)}` : ''}${e.place ? ` at ${e.place}` : ''}. RSVP here (one tap, no app): ${url}`;
     out.push({
       token: t,
       name,
+      via: 'link',
       url,
       message,
-      sms_url: `sms:${phone ?? ''}${/iphone|ipad|mac/i.test(req.headers.get('User-Agent') ?? '') ? '&' : '?'}body=${encodeURIComponent(message)}`,
+      sms_url: `sms:${phone ?? ''}${/iphone|ipad|mac/i.test(ua) ? '&' : '?'}body=${encodeURIComponent(message)}`,
       whatsapp_url: `https://wa.me/${phone ? phone.replace(/\D/g, '') : ''}?text=${encodeURIComponent(message)}`,
       share: { title: e.title, text: message, url },
     });
   }
-  return json({ invites: out });
+
+  return {
+    // `invites` keeps its old meaning — things the host still has to send —
+    // so a caller written before agent delivery existed behaves identically.
+    invites: out,
+    // Things that have ALREADY gone. Nothing for the host to do.
+    asked,
+    blocked,
+    ambiguous,
+    summary: { sent: asked.length, to_send: out.length, blocked: blocked.length, needs_confirming: ambiguous.length },
+  };
+}
+
+/**
+ * Put the question to another member's Num.
+ *
+ * Idempotent per (event, member): asking twice does not produce two rows or
+ * two buzzes, it returns the ask already in flight. A host tapping "invite"
+ * again because they were not sure it worked is the most likely second call
+ * this will ever get, and it must not read as pestering on the other side.
+ */
+async function deliverToAgent(env, { event: e, hostId, hostName, to }) {
+  const gate = await canInvite(env, hostId, to.member_id);
+  if (!gate.ok) {
+    return {
+      ok: false,
+      blocked: { member_id: to.member_id, name: to.name ?? gate.to?.name ?? null, reason: gate.reason, message: gate.message, remedy: gate.remedy ?? null },
+    };
+  }
+
+  const already = await env.DB.prepare('SELECT * FROM num_event_guests WHERE event_id=?1 AND member_id=?2')
+    .bind(e.id, to.member_id).first();
+  if (already) {
+    return {
+      ok: true,
+      invite: { token: already.token, member_id: to.member_id, name: already.name, via: 'agent', delivered: true, already: true, rsvp: already.rsvp },
+    };
+  }
+
+  const t = token();
+  const name = to.name ?? gate.to?.name ?? null;
+  await env.DB.prepare(
+    `INSERT INTO num_event_guests (token, event_id, name, phone, member_id, invited_by, via, delivered_at)
+     VALUES (?1,?2,?3,?4,?5,?6,'agent',datetime('now'))`,
+  ).bind(t, e.id, name, to.phone ?? null, to.member_id, hostId).run();
+
+  // Their phone buzzes now; their Num asks them the moment they look. The
+  // inbox row above is the durable half — push is best-effort by design, and
+  // an invite that only exists as a notification is an invite that is lost the
+  // first time a phone is face down.
+  await notify(env, {
+    memberId: to.member_id,
+    kind: 'invite',
+    title: e.title,
+    body: askLine(e, hostName),
+    url: '/?app',
+    // One tag per event: a host who edits the time twice does not buzz you
+    // three times about one dinner.
+    tag: `event:${e.id}`,
+  }).catch((err) => console.warn('[events] notify', err?.message ?? err));
+
+  return {
+    ok: true,
+    invite: {
+      token: t,
+      member_id: to.member_id,
+      name,
+      via: 'agent',
+      delivered: true,
+      // The host's own agent says this back to them, so it reads as a thing
+      // that happened rather than a thing they must now go and do.
+      line: `Asked ${name || 'them'} — their Num will let you know.`,
+      // Deliberately NO guest url. On the link path the url is the invite and
+      // the host has to send it; here the host is not the courier, and handing
+      // them a link that answers on the guest's behalf would let a host RSVP
+      // "yes" for someone who never saw the question.
+    },
+  };
+}
+
+/** The question one Num puts to another. Written to be read out loud. */
+function askLine(e, hostName) {
+  const w = when(e);
+  return `${hostName || 'A friend'} asked if you want to join ${e.title}${w ? ` — ${w}` : ''}${e.place ? ` at ${e.place}` : ''}.`;
 }
 
 /** The host dashboard payload: counts, the list, and who to chase. */
@@ -136,7 +395,7 @@ async function eventDashboard(env, url, origin) {
   if (e.host_id !== me) return json({ error: 'not your event' }, 403);
 
   const { results: guests } = await env.DB.prepare(
-    'SELECT token, name, phone, rsvp, plus_ones, message, opened_at, replied_at FROM num_event_guests WHERE event_id=?1 ORDER BY replied_at IS NULL, replied_at DESC',
+    'SELECT token, name, phone, rsvp, plus_ones, message, via, opened_at, delivered_at, replied_at FROM num_event_guests WHERE event_id=?1 ORDER BY replied_at IS NULL, replied_at DESC',
   ).bind(e.id).all();
 
   const list = (guests ?? []).map((g) => ({ ...g, phone: maskPhone(g.phone) }));
@@ -158,6 +417,11 @@ async function eventDashboard(env, url, origin) {
       capacity: e.capacity,
       // The number a host actually wants: who got the text and never answered.
       silent: list.filter((g) => g.rsvp === 'pending' && g.opened_at).length,
+      // How the guest list was actually reached. `to_send` is the only number
+      // here that is a to-do: those are the links still sitting in the host's
+      // share sheet, unsent.
+      asked: list.filter((g) => g.via === 'agent').length,
+      to_send: list.filter((g) => g.via !== 'agent' && !g.opened_at && g.rsvp === 'pending').length,
     },
   });
 }
@@ -179,13 +443,193 @@ async function rsvp(env, req) {
   const b = await readBody(req);
   const g = await env.DB.prepare('SELECT * FROM num_event_guests WHERE token=?1').bind(clip(b.token, 40) ?? '').first();
   if (!g) return json({ error: 'unknown invite' }, 404);
-  const answer = ['yes', 'no', 'maybe'].includes(b.rsvp) ? b.rsvp : null;
-  if (!answer) return json({ error: 'rsvp must be yes, no or maybe' }, 400);
+
+  // An agent invite is answered by the person it was put to, in their own Num.
+  // The token exists for the web page, and on this path the token is the ONLY
+  // credential — so honouring it here would let anyone holding the token
+  // (starting with the host, who created it) answer on the member's behalf.
+  if (g.via === 'agent' && g.member_id) {
+    return json({ error: 'That one is waiting in your Num — answer it there.', answer_in_app: true }, 403);
+  }
+
+  const out = await answerEventInvite(env, {
+    guest: g,
+    rsvp: b.rsvp,
+    plusOnes: b.plus_ones,
+    name: clip(b.name, 60),
+    message: clip(b.message, 300),
+  });
+  return out.error ? json({ error: out.error }, out.status ?? 400) : json({ ok: true, rsvp: out.rsvp });
+}
+
+// ── the answer coming back ────────────────────────────────────────────────
+
+/**
+ * One implementation of "they answered", whichever door it came through — the
+ * public RSVP page, the app inbox, or the member's own Num acting on a spoken
+ * "yes, put me down for that".
+ *
+ * The half that makes it agent-to-agent rather than a form submission is what
+ * happens AFTER the row is updated: the host's Num is told, and if the event
+ * belongs to a group plan the answer is narrated into that plan's feed, where
+ * every other member's Num picks it up on its next sync. One person says yes
+ * out loud and five agents know.
+ */
+export async function answerEventInvite(env, { guest, rsvp: answer, plusOnes, name, message, memberId }) {
+  const rsvpValue = ['yes', 'no', 'maybe'].includes(answer) ? answer : null;
+  if (!rsvpValue) return { error: 'rsvp must be yes, no or maybe', status: 400 };
+
+  const e = await env.DB.prepare('SELECT * FROM num_events WHERE id=?1').bind(guest.event_id).first();
+  if (!e) return { error: 'unknown event', status: 404 };
 
   await env.DB.prepare(
-    "UPDATE num_event_guests SET rsvp=?2, plus_ones=?3, name=COALESCE(?4,name), message=COALESCE(?5,message), replied_at=datetime('now') WHERE token=?1",
-  ).bind(g.token, answer, Math.max(0, Math.min(10, Number(b.plus_ones) || 0)), clip(b.name, 60), clip(b.message, 300)).run();
-  return json({ ok: true, rsvp: answer });
+    `UPDATE num_event_guests SET rsvp=?2, plus_ones=?3, name=COALESCE(?4,name),
+            message=COALESCE(?5,message), member_id=COALESCE(?6,member_id), replied_at=datetime('now')
+      WHERE token=?1`,
+  ).bind(guest.token, rsvpValue, Math.max(0, Math.min(10, Number(plusOnes) || 0)), name ?? null, message ?? null, memberId ?? null).run();
+
+  const who = name || guest.name || 'Someone';
+  const extra = Math.max(0, Math.min(10, Number(plusOnes) || 0));
+  const line =
+    rsvpValue === 'yes'
+      ? `${who} is in${extra ? ` — bringing ${extra}` : ''}.`
+      : rsvpValue === 'no'
+        ? `${who} can’t make it.`
+        : `${who} is a maybe.`;
+
+  // The host hears it on their phone. A host who has to keep reopening a
+  // dashboard to find out whether anyone is coming does not have an agent.
+  await notify(env, {
+    memberId: e.host_id,
+    kind: 'rsvp',
+    title: e.title,
+    body: `${line}${message ? ` “${message}”` : ''}`,
+    url: '/?app',
+    tag: `event:${e.id}`,
+  }).catch((err) => console.warn('[events] host notify', err?.message ?? err));
+
+  // Tied to a group plan? Then it is everyone's news, not just the host's.
+  if (e.plan_id) {
+    const joinerId = memberId ?? guest.member_id ?? null;
+    // Saying yes is this member's half of consent, so they join the plan they
+    // just agreed to be part of — the same rule an accepted connection invite
+    // follows. Saying no or maybe joins nothing.
+    if (rsvpValue === 'yes' && joinerId) {
+      await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
+        .bind(e.plan_id, joinerId, who).run().catch(() => {});
+    }
+    await narrateToPlan(env, e.plan_id, { id: joinerId, name: who }, 'rsvp', `${line} — ${e.title}`).catch(() => {});
+  }
+
+  return { ok: true, rsvp: rsvpValue, line, event: { id: e.id, title: e.title, plan_id: e.plan_id ?? null } };
+}
+
+/**
+ * Append to a plan's feed and buzz the other members.
+ *
+ * Deliberately a local copy of what social.mjs's `event()` does rather than an
+ * import of it: social.mjs already imports the reply path from this file, and
+ * a two-way import between the two busiest modules in the Worker is a cycle
+ * waiting to bite on the next bundler change. Twelve lines is the cheaper
+ * side of that trade.
+ */
+async function narrateToPlan(env, planId, by, kind, summary) {
+  await env.DB.prepare(
+    'INSERT INTO num_plan_events (plan_id, by_id, by_name, kind, summary) VALUES (?1,?2,?3,?4,?5)',
+  ).bind(planId, by?.id ?? null, by?.name ?? null, kind, summary.slice(0, 300)).run();
+  await env.DB.prepare("UPDATE num_plans SET updated_at=datetime('now') WHERE id=?1").bind(planId).run();
+
+  const plan = await env.DB.prepare('SELECT title FROM num_plans WHERE id=?1').bind(planId).first();
+  const { results: members } = await env.DB.prepare(
+    'SELECT member_id FROM num_plan_members WHERE plan_id=?1 AND member_id <> ?2',
+  ).bind(planId, by?.id ?? '').all();
+  await Promise.all(
+    (members ?? []).map((m) =>
+      notify(env, { memberId: m.member_id, kind: 'plan', title: plan?.title ?? 'Your plan', body: summary, url: '/?app', tag: `plan:${planId}` }),
+    ),
+  );
+}
+
+/**
+ * Everything one member's Num has been asked to join, with the question
+ * already phrased. This is what the agent reads out; the app's own inbox
+ * (`/api/social/requests`) shows the same rows as cards.
+ *
+ * Matched on member id OR on the phone the invite was addressed to — so
+ * someone invited by number before they had ever opened Num finds the question
+ * waiting the moment they sign up, with nothing to click.
+ */
+async function pendingInvites(env, url) {
+  const meId = clip(url.searchParams.get('me'), 40);
+  if (!meId) return json({ error: 'me required' }, 400);
+  const me = await env.DB.prepare('SELECT id, phone FROM num_members WHERE id=?1').bind(meId).first();
+  if (!me) return json({ invites: [] });
+
+  const { results } = await env.DB.prepare(
+    `SELECT g.token, g.rsvp, g.via, g.name AS guest_name, g.invited_at,
+            e.id AS event_id, e.title, e.day, e.time, e.place, e.address, e.dress, e.note, e.plan_id,
+            h.id AS host_id, h.name AS host_name, h.avatar AS host_avatar
+       FROM num_event_guests g
+       JOIN num_events e ON e.id = g.event_id
+       LEFT JOIN num_members h ON h.id = e.host_id
+      WHERE g.rsvp='pending' AND e.state='open'
+        AND (g.member_id = ?1 OR (?2 IS NOT NULL AND g.phone = ?2))
+      ORDER BY g.invited_at DESC LIMIT 20`,
+  ).bind(meId, me.phone ?? null).all();
+
+  return json({
+    invites: (results ?? []).map((r) => ({
+      token: r.token,
+      event_id: r.event_id,
+      via: r.via ?? 'link',
+      title: r.title,
+      day: r.day,
+      time: r.time,
+      place: r.place,
+      address: r.address,
+      dress: r.dress,
+      note: r.note,
+      plan_id: r.plan_id,
+      host: { id: r.host_id, name: r.host_name, avatar: r.host_avatar },
+      invited_at: r.invited_at,
+      // The line the recipient's Num says. Phrased as a question because that
+      // is what it is — nothing has been put in their calendar.
+      ask: `${askLine({ title: r.title, day: r.day, time: r.time, place: r.place }, r.host_name)} Want in?`,
+    })),
+  });
+}
+
+/**
+ * The member's own answer, from inside their Num.
+ *
+ * Ownership is checked rather than assumed: the invite must name this member,
+ * or have been addressed to their verified-or-not number. Without that check
+ * any member holding a token could answer for the person it was sent to —
+ * which on the agent path includes the host who minted it.
+ */
+async function replyToInvite(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const tok = clip(b.token, 40);
+  if (!meId || !tok) return json({ error: 'me and token are required' }, 400);
+
+  const me = await env.DB.prepare('SELECT id, name, phone FROM num_members WHERE id=?1').bind(meId).first();
+  if (!me) return json({ error: 'sign up first' }, 404);
+  const g = await env.DB.prepare('SELECT * FROM num_event_guests WHERE token=?1').bind(tok).first();
+  if (!g) return json({ error: 'unknown invite' }, 404);
+
+  const mine = (g.member_id && g.member_id === meId) || (g.phone && me.phone && g.phone === me.phone);
+  if (!mine) return json({ error: 'not your invite' }, 403);
+
+  const out = await answerEventInvite(env, {
+    guest: g,
+    rsvp: b.rsvp,
+    plusOnes: b.plus_ones,
+    name: g.name ?? me.name,
+    message: clip(b.message, 300),
+    memberId: meId,
+  });
+  return out.error ? json({ error: out.error }, out.status ?? 400) : json(out);
 }
 
 /**
@@ -292,6 +736,9 @@ export async function handleEvents(request, env, path, origin) {
     if (path === '/update' && post) return await updateEvent(env, request);
     if (path === '/invite' && post) return await inviteGuest(env, request, origin);
     if (path === '/rsvp' && post) return await rsvp(env, request);
+    // The agent-to-agent pair: what my Num has been asked, and my answer.
+    if (path === '/invites') return await pendingInvites(env, url);
+    if (path === '/reply' && post) return await replyToInvite(env, request);
     if (path === '/dashboard') return await eventDashboard(env, url, origin);
     if (path === '/list') return await listEvents(env, url, origin);
     return json({ error: 'not found' }, 404);

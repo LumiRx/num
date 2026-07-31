@@ -1,0 +1,73 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+
+  // num-growth — capture, consent, referrals, VIP host console.
+  //
+  // Lives at num-concierge/growth/. Serves /num-capture.js itself rather than
+  // letting num-console serve it as a static asset, so the script and the
+  // endpoints it posts to can never be deployed out of step with each other.
+  // One deploy moves both.
+  "name": "num-growth",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      // NOT "num" — the deploy pack said "num" and it is wrong. The database
+      // is called num-db. A wrong name here fails the deploy outright, which
+      // is the good case; the bad case is creating a second empty database.
+      "database_name": "num-db",
+      "database_id": "823979c8-b118-4a8a-953a-e07655205cf5"
+    }
+  ],
+
+  "vars": {
+    "SITE": "https://itsnum.com",
+    "MAIL_FROM": "Num by 5arz <info@5arz.com>",
+    "SEND_BUDGET": "40"
+  },
+
+  // Drains queued VIP-host contact invites. A host who uploads 400 contacts
+  // sends the first SEND_BUDGET immediately and queues the rest.
+  "triggers": { "crons": ["*/15 * * * *"] },
+
+  // Every pattern is checked against the FULL URL including the query string,
+  // so each one ends in "*" — "itsnum.com/api/ev" would not match
+  // "itsnum.com/api/ev?x=1". Cloudflare rejects a literal "?" in a pattern
+  // (the API refuses the whole route set), so "*" is the only way to say it.
+  //
+  // These are deliberately narrow. The deploy pack proposed "itsnum.com/api/*",
+  // which would have shadowed num-accounts (/api/accounts*, /api/master*) and
+  // num-biz (/api/biz/*) — most-specific-route-wins does not save you when the
+  // new route is the more specific one. Checked against all 17 routes on the
+  // zone: none of these collide.
+  //
+  // "/api/claims*" IS included. Blocker B in the deploy pack asked whether
+  // num-biz already served it — it does not, and neither does anything else on
+  // the zone. Today it falls through to the origin, which answers 200 with the
+  // SPA's HTML, so a merchant filling in the claim form would watch it submit
+  // and silently go nowhere. That is the failure this route prevents.
+  //
+  // When num-claim (already deployed, currently unrouted) gets wired up as the
+  // long-term destination with phone and email verification, remove this one
+  // line — two Workers must never both claim it.
+  "routes": [
+    { "pattern": "itsnum.com/api/claims*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/ev*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/capture*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/consent*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/growth*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/host/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/admin/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/num-capture.js*", "zone_name": "itsnum.com" },
+    // Top-level on purpose. These go in emails and get read down the phone.
+    // "/r/*" does not collide with "/referral*"; "/go/*" does not collide
+    // with "/get*" — both need the slash.
+    { "pattern": "itsnum.com/r/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/go/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/stop/*", "zone_name": "itsnum.com" }
+  ]
+}

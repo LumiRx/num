@@ -112,17 +112,26 @@ switch (cmd) {
       // few seconds to reach every edge, so this polls instead of asking once;
       // a check that cries wolf on every deploy is a check people learn to
       // ignore.
+      // A new version does not reach every edge at once, and during the swap
+      // the same URL will answer with the OLD version and the NEW one
+      // alternately. One matching sample therefore proves nothing — it only
+      // proves that ONE colo has caught up. Require several in a row, so
+      // "verified" means the fleet has converged rather than that we got lucky
+      // on the first poll.
+      const NEEDED = 3;
       let serving = null;
-      for (let i = 0; i < 10; i++) {
+      let streak = 0;
+      for (let i = 0; i < 20 && streak < NEEDED; i++) {
         try {
           serving = JSON.parse(cap('curl -s --max-time 10 https://app.itsnum.com/api/version')).version;
-          if (serving === staged.version) break;
+          streak = serving === staged.version ? streak + 1 : 0;
         } catch {
-          /* edge still swapping — try again */
+          streak = 0; // a failed read is not agreement
         }
-        execSync('sleep 3');
+        if (streak < NEEDED) execSync('sleep 3');
       }
-      if (serving !== staged.version) {
+      if (streak < NEEDED) serving = serving === staged.version ? 'a mix of versions' : serving;
+      if (streak < NEEDED) {
         console.error(`\n✘ deploy reported success but production is still serving ${serving ?? 'an unknown version'}, not ${staged.version}.`);
         console.error('  Check `npm run release` and roll back if this is wrong.\n');
         process.exit(1);

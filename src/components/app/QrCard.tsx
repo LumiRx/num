@@ -29,7 +29,7 @@ export default function QrCard() {
   const [copied, setCopied] = useState(false);
   if (!me) return null;
 
-  const value = tab === 'connect' ? connectLink(me.ref, me.id) : payLink(me.id, Number(amount) || undefined);
+  const value = tab === 'connect' ? connectLink(me.id, me.ref) : payLink(me.id, Number(amount) || undefined);
   const label = tab === 'connect' ? 'Scan to connect with me' : amount ? `Scan to pay me ★${Number(amount).toLocaleString()}` : 'Scan to pay me';
 
   const Tab = ({ id, text }: { id: 'connect' | 'pay'; text: string }) => (

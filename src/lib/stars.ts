@@ -3,7 +3,6 @@
 // would be a bug waiting to happen.
 import { store } from './store';
 
-const APP_ORIGIN = window.location.origin;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch('/api/social' + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
@@ -48,14 +47,4 @@ export async function payStars(to: string, amount: number, note?: string, idem?:
   }
 }
 
-/** The link behind a "pay me" code. Any phone camera opens it — no scanner. */
-export function payLink(memberId: string, amount?: number, note?: string): string {
-  const q = new URLSearchParams({ p: memberId });
-  if (amount && amount > 0) q.set('a', String(Math.floor(amount)));
-  if (note) q.set('n', note);
-  return `${APP_ORIGIN}/?${q.toString()}`;
-}
-
-/** The link behind a "connect with me" code. */
-export const connectLink = (ref: string | null, memberId: string): string =>
-  `${APP_ORIGIN}/?${new URLSearchParams({ ...(ref ? { ref } : {}), c: memberId }).toString()}`;
+export { payLink, connectLink } from './links';

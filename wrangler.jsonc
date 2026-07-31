@@ -4,13 +4,34 @@
   "name": "num-console",
   "compatibility_date": "2026-07-01",
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    // Without this, an unmatched path falls back to the asset server default and
+    // the zone gets an infinite soft-404 space: every nonexistent URL answering
+    // 200 with a page. "404-page" serves public/404.html with a real 404 status,
+    // which is what stops Google indexing junk.
+    "not_found_handling": "404-page"
   },
-  // Instant preview URL (num-console.<account>.workers.dev) — live immediately after deploy
-  "workers_dev": true,
-  // Attaches ONLY the /console* path on itsnum.com — the existing site worker
-  // keeps serving every other path. Requires Zone → Workers Routes: Edit on itsnum.com.
+  // Off. This was on while num-console was a side project and the workers.dev URL
+  // was the only way to see it. Now that it serves the whole marketing site, that
+  // hostname would publish a second, fully crawlable copy of every page under a
+  // name we do not put in public. Verify on itsnum.com instead — it is the thing
+  // being verified.
+  "workers_dev": false,
+  // num-console is now the origin for the WHOLE zone. The older Cloudflare Pages
+  // project ("itsnum") used to serve every unrouted path and answered 200 with its
+  // homepage for URLs that do not exist — an unbounded soft-404 space, and the last
+  // place on the internet still saying "by Lumi". The catch-all below takes it out
+  // of the request path entirely.
+  //
+  // Safe alongside the API workers because Cloudflare picks the MOST SPECIFIC
+  // matching route: itsnum.com/api/claims* (num-growth) beats itsnum.com/api/claim*
+  // (num-ai) beats itsnum.com/* (here). Do not delete the explicit routes below —
+  // they cost nothing and they document what this worker is expected to own.
   "routes": [
+    { "pattern": "itsnum.com/*",        "zone_name": "itsnum.com" },
+    // www serves the same assets rather than the old Pages site. Every page
+    // canonicalises to the apex, so this consolidates rather than duplicates.
+    { "pattern": "www.itsnum.com/*",    "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/",         "zone_name": "itsnum.com" },
     // NOTE: "itsnum.com/" matches the bare root ONLY. itsnum.com/?signin=1 does not
     // match it and falls through to the older site worker, which serves a different
@@ -36,6 +57,17 @@
     // same reason as /app* above.
     { "pattern": "itsnum.com/get*",     "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/referral*", "zone_name": "itsnum.com" },
+    // The paid-traffic landing page. Every travel ad points here, so the star is
+    // load-bearing twice over: ad clicks always arrive with ?utm_source=... and
+    // often ?ref=..., and a bare "/vip" would match neither.
+    { "pattern": "itsnum.com/vip*",     "zone_name": "itsnum.com" },
+    // /join is the spoken and printed alias. It redirects to /vip in the browser
+    // and carries the query string across so attribution survives the hop.
+    { "pattern": "itsnum.com/join*",    "zone_name": "itsnum.com" },
+    // Num Tab, the merchant page for the QR/NFC table kit. Star for the same
+    // reason as /vip*: this is an ad and print destination, so it arrives with
+    // ?utm_source=... from paid traffic and from the codes themselves.
+    { "pattern": "itsnum.com/tabs*",    "zone_name": "itsnum.com" },
     // Team-only preview of the consumer app prototype. noindex in the HTML,
     // linked from nowhere public — shared in #num for design review.
     { "pattern": "itsnum.com/app-preview*", "zone_name": "itsnum.com" }

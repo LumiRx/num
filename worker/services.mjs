@@ -277,6 +277,25 @@ export const ADAPTERS = {
     ready: (env) => !!(env.DOORDASH_DEVELOPER_ID && env.DOORDASH_KEY_ID && env.DOORDASH_SIGNING_SECRET),
     needs: 'DOORDASH_DEVELOPER_ID + DOORDASH_KEY_ID + DOORDASH_SIGNING_SECRET',
   },
+
+  // Sabre: the first real air and stay content Num has had. Note the kinds are
+  // 'flight_shop' and 'stay_shop', not 'flight' and 'stay' — Sabre quotes,
+  // it does not book, and naming it as though it books is how a prompt ends up
+  // promising a ticket nobody holds.
+  sabre_air: {
+    kind: 'flight_shop',
+    label: 'Sabre (flights — quotes only)',
+    ready: (env) => !!(env.SABRE_CLIENT_ID && env.SABRE_CLIENT_SECRET),
+    needs: 'SABRE_CLIENT_ID + SABRE_CLIENT_SECRET',
+  },
+  sabre_hotel: {
+    kind: 'stay_shop',
+    label: 'Sabre (hotel rates — quotes only)',
+    // Credentials alone are not enough here: the rates endpoint path is not
+    // published in the overview docs, so this stays false until it is set.
+    ready: (env) => !!(env.SABRE_CLIENT_ID && env.SABRE_CLIENT_SECRET && env.SABRE_HOTEL_RATES_PATH),
+    needs: 'SABRE_CLIENT_ID + SABRE_CLIENT_SECRET + SABRE_HOTEL_RATES_PATH',
+  },
 };
 
 export const connected = (env, id) => !!ADAPTERS[id]?.ready?.(env);
@@ -312,6 +331,82 @@ export function optionsFor(kind, ctxIn = {}, env = {}) {
 }
 
 /** Compact block for the model: what it may promise, and with which names. */
+/**
+ * What Num may say about fares, which depends on whether Sabre is wired up.
+ *
+ * The two states are genuinely different promises and the wording has to move
+ * with them. Unconnected, every price is a recollection and must be hedged.
+ * Connected, the price is real and hedging it is its own kind of dishonesty —
+ * but "I can see the fare" and "I can buy the ticket" are still separate
+ * claims, and Sabre's shopping APIs only grant the first. A model told it is
+ * connected, without being told where connection stops, will book something
+ * that does not exist.
+ */
+function airBlock(env) {
+  const air = connected(env, 'sabre_air');
+  const stay = connected(env, 'sabre_hotel');
+  // Booking is a separate permission from shopping and is off by default even
+  // when the credentials that could do it are present.
+  const canBook = env.SABRE_BOOKING_ENABLED === 'true' && !!env.SABRE_BOOKING_PATHS;
+  if (!air && !stay) {
+    return (
+      '\n\nFLIGHTS & HOTELS: you cannot see live fares, so never state a price as current and never claim a fare is the ' +
+      'cheapest. Say the band people actually pay on that route, then put the SAME search into the comparison engines via a ' +
+      'service action with kind flight or hotel (fill from/to/fromCode/toCode/depart/ret, or city/checkin/checkout). If the ' +
+      'KNOWN FACTS carry an airline status or hotel programme, weigh it openly and say why — status on the route is often ' +
+      'worth more than the cheapest fare, and sometimes it plainly is not. '
+    );
+  }
+  return (
+    '\n\nFLIGHTS & HOTELS — READ THIS CAREFULLY, IT IS TWO DIFFERENT PERMISSIONS:\n' +
+    (air
+      ? 'HOW you see them: emit a flight_search ACTION with {fromCode, toCode, depart, ret, adults, cabin}. The app runs the search ' +
+        'and shows the fares itself, so do NOT promise to "come back with numbers" and do not write prices in your reply — emit the ' +
+        'action and say one short line about what you are pricing. The card appears under your message. Guess sensible IATA codes ' +
+        'from city names (Paris CDG, Berlin BER); only ask if the city genuinely has several and it matters.\n' +
+        'You CAN see real fares. Sabre is connected for flight shopping, so when a fare comes back from a search you may ' +
+        'state the price, carrier, times and stops as FACT, with no hedging — hedging a real number reads as evasion. ' +
+        'Quote the currency it came back in. Offers expire (usually ~20 minutes): if you are working from a fare that has ' +
+        'aged, say so and re-search rather than repeating it.\n'
+      : 'Flight fares are NOT connected — treat prices as remembered bands, never as current.\n') +
+    (stay
+      ? 'You CAN see real hotel rates, and you can confirm one specific rate with the supplier before anyone commits.\n'
+      : 'Hotel rates are NOT connected — treat nightly prices as remembered bands, never as current.\n') +
+    (air
+      ? 'You CAN also revalidate one specific fare against the airline before the traveller commits — that is the flight ' +
+        'check. The check returns isSameFare. If it is TRUE you may say "I\u2019ve just re-checked it and that exact fare is ' +
+        'still live at that price", which is a real and valuable thing to have done. If it is FALSE the airline gave us a ' +
+        'DIFFERENT option — usually the same cabin at another price or booking class — and you must say so plainly and show ' +
+        'what changed, rather than presenting it as the fare they were looking at. Quoting a substituted fare as though ' +
+        'nothing moved is the exact deception the check exists to prevent. A check also surfaces hidden stops and the ' +
+        'airline\u2019s own warnings (card fees, loyalty terms): mention a hidden stop every time, because a traveller finds ' +
+        'out about it at the gate otherwise.\n'
+      : '') +
+    'You still CANNOT book, hold, ticket or pay for any of it. Sabre quotes and revalidates; it does not issue. Never say ' +
+    '"booked", "ticketed", "held", "reserved" or "confirmed" for a flight or a room. Be careful with "held" in particular: ' +
+    'revalidating a fare does NOT hold a seat and takes nothing out of the airline\u2019s inventory, so the seat can still go to ' +
+    'somebody else a minute later. "The price is confirmed" is true; "your seat is confirmed" is not. What you HAVE done is ' +
+    'find the real fare, price it, and check it is still live — say that plainly, it is worth a lot, then hand off for the ' +
+    'purchase. Claiming a ticket nobody holds is the single worst thing you can do here, and it is worse precisely because ' +
+    'everything you said before it was true.\n' +
+    'ERRANDS: when somebody needs a THING fetched rather than a service booked — a charger, a forgotten passport, a prescription, ' +
+    'a bag from a hotel — emit an errand action {title, detail, where_from, deliver_to, bounty, spend_cap}. Someone nearby goes and ' +
+    'gets it. PROPOSE the bounty in your reply and say plainly that posting holds those Stars until it arrives; the app puts the ' +
+    'form in front of them pre-filled and THEY tap post. Never speak as though it is already posted.\n' +
+    (canBook
+      ? 'BOOKING EXISTS BUT IS NOT YOURS TO TRIGGER. Num can create bookings and issue tickets, and that happens only when a ' +
+        'PERSON confirms it — never as a side effect of a conversation, never because the traveller sounded keen, never ' +
+        'because you decided it was obviously what they wanted. Your job is to get them to the edge of it: the exact fare, ' +
+        'the exact times, what it costs, what it includes, and what happens if they change their mind. Then say clearly ' +
+        'that you can book it and ask them to confirm. Treat "yes, book it" as the start of a confirmation, not the end — ' +
+        'the app puts the final commit in front of them. Until they have been through that, the booking does not exist and ' +
+        'you must not speak as though it does.\n'
+      : '') +
+    'If the KNOWN FACTS carry an airline status or hotel programme, weigh it openly against the fare and say why — status ' +
+    'on the route is often worth more than the cheapest fare, and sometimes it plainly is not.'
+  );
+}
+
 export function servicesBlock(place, env = {}) {
   const country = place?.country_code || place?.country || '';
   const kinds = [
@@ -330,11 +425,7 @@ export function servicesBlock(place, env = {}) {
   return (
     'SERVICES AVAILABLE HERE (ranked by what people actually use in this country):\n' +
     lines.join('\n') +
-    '\n\nFLIGHTS & HOTELS: you cannot see live fares, so never state a price as current and never claim a fare is the ' +
-    'cheapest. Say the band people actually pay on that route, then put the SAME search into the comparison engines via a ' +
-    'service action with kind flight or hotel (fill from/to/fromCode/toCode/depart/ret, or city/checkin/checkout). If the ' +
-    'KNOWN FACTS carry an airline status or hotel programme, weigh it openly and say why — status on the route is often ' +
-    'worth more than the cheapest fare, and sometimes it plainly is not. ' +
+    airBlock(env) +
     '\n\nHAND-OFF rule: Num has no account with these companies yet, so you CANNOT place the order yourself. ' +
     'Do not say "booked", "on its way", or "ordered" for a hand-off. Instead: pick the ONE best provider for this exact ' +
     'request, say why it is the right one here, and emit the matching action (order_ride / order_food) — the app opens it ' +

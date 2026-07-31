@@ -1,116 +1,356 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Claim your business — NUM by 5arz</title>
-<meta name="description" content="Claim your business on NUM — free, five minutes, from any phone. Travelers are already asking about you.">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Confirm your listing — NUM</title>
+<meta name="description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card. 10% only on bookings that complete.">
 <style>
-:root{--ink:#1B1D36;--mut:#5B5F87;--soft:#8A8FB0;--brand:#5B5FEF;--line:#E5E7F5}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:var(--ink);background:#F4F5FE;line-height:1.6;-webkit-font-smoothing:antialiased}
-.bg{position:fixed;inset:0;z-index:-1;background:
- radial-gradient(720px 480px at 8% -8%,rgba(99,102,241,.14),transparent 60%),
- radial-gradient(640px 440px at 96% 4%,rgba(34,211,238,.12),transparent 60%),
- radial-gradient(720px 520px at 50% 108%,rgba(244,114,182,.10),transparent 60%),#F4F5FE}
-.wrap{max-width:560px;margin:0 auto;padding:0 18px 70px}
-header{display:flex;align-items:center;justify-content:space-between;padding:22px 0 18px}
-.logo{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:26px;color:var(--ink);text-decoration:none}
-.logo small{font-family:-apple-system,'Segoe UI',sans-serif;font-style:normal;font-weight:600;font-size:10.5px;letter-spacing:2px;color:var(--brand);text-transform:uppercase;display:block;margin-top:-2px}
-.card{background:rgba(255,255,255,.75);border:1.5px solid rgba(255,255,255,.9);border-radius:22px;box-shadow:0 18px 50px rgba(76,81,161,.10);backdrop-filter:blur(18px);padding:30px 26px}
-h1{font-size:24px;line-height:1.3;letter-spacing:-.3px}
-.sub{color:var(--mut);font-size:14.5px;margin:10px 0 2px}
-.th{color:var(--soft);font-size:13.5px}
-.perks{font-size:14px;color:#3A3E5C;background:#EEF0FE;border:1px solid #DDE0FB;border-radius:14px;padding:14px 18px;margin:16px 0 4px;line-height:1.9}
-label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin:16px 0 6px}
-input{width:100%;font-size:16px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);outline:none}
-input:focus{border-color:var(--brand)}
-button{width:100%;margin-top:20px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366F1,#8B5CF6);border:0;border-radius:12px;padding:15px;cursor:pointer}
-button:disabled{opacity:.6}
-.err{color:#E11D48;font-size:13.5px;margin-top:10px;min-height:18px}
-.alt{text-align:center;font-size:13.5px;color:var(--soft);margin-top:16px}
-.alt b{color:var(--brand)}
-#done{display:none;text-align:center}
-.big{font-size:44px}
-footer{text-align:center;color:var(--soft);font-size:12px;margin-top:26px}
-footer a{color:var(--mut)}
+  :root{
+    --ink:#12161c; --muted:#5b6673; --line:#e3e7ec; --bg:#fbfcfd;
+    --accent:#0f5c4a; --accent-ink:#0b3f33;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:0 0 56px;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 20px}
+  header{padding:26px 0 8px}
+  .brand{font-weight:700;letter-spacing:-.02em;font-size:19px}
+  .brand span{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
+  h1{font-size:26px;line-height:1.2;letter-spacing:-.02em;margin:18px 0 6px;font-weight:700}
+  h1 .biz{display:block;color:var(--accent-ink)}
+  .lede{color:var(--muted);margin:0 0 22px;font-size:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 20px;margin:0 0 18px}
+  .card h2{font-size:15px;margin:0 0 12px;letter-spacing:-.01em;font-weight:700}
+  .facts{list-style:none;margin:0;padding:0}
+  .facts li{padding:9px 0 9px 26px;position:relative;border-bottom:1px solid var(--line);font-size:15px}
+  .facts li:last-child{border-bottom:0;padding-bottom:0}
+  .facts li::before{content:"";position:absolute;left:2px;top:16px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  .facts b{font-weight:700}
+  .money{background:#f2f8f5;border-color:#cfe3da}
+  .money .num{font-size:30px;font-weight:700;letter-spacing:-.03em;color:var(--accent-ink);display:block;line-height:1.1}
+  .money .num small{font-size:15px;font-weight:400;color:var(--muted);letter-spacing:0}
+  label{display:block;font-weight:600;font-size:14px;margin:16px 0 6px}
+  label .opt{font-weight:400;color:var(--muted)}
+  input[type=text],input[type=tel],input[type=email]{
+    width:100%;padding:13px 12px;font-size:16px;border:1px solid #c9d0d8;border-radius:9px;
+    background:#fff;color:var(--ink);font-family:inherit;
+  }
+  input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+  .optin{display:flex;gap:10px;align-items:flex-start;margin:20px 0 0;padding:13px;background:#f7f9fa;border:1px solid var(--line);border-radius:9px}
+  .optin input{margin:2px 0 0;width:18px;height:18px;flex:0 0 auto;accent-color:var(--accent)}
+  .optin label{margin:0;font-weight:400;font-size:14px;line-height:1.45;color:var(--ink)}
+  button{
+    width:100%;margin-top:22px;padding:15px 16px;font-size:17px;font-weight:700;font-family:inherit;
+    background:var(--accent);color:#fff;border:0;border-radius:10px;cursor:pointer;letter-spacing:-.01em;
+  }
+  button:hover{background:var(--accent-ink)}
+  button[disabled]{opacity:.55;cursor:default}
+  .under{font-size:13px;color:var(--muted);text-align:center;margin:12px 0 0}
+  .err{background:#fff4f4;border:1px solid #f0c8c8;color:#8a1f1f;padding:11px 12px;border-radius:9px;font-size:14px;margin:16px 0 0}
+  footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  footer a{color:var(--muted)}
+  .done .tick{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 0 16px}
+  .done ol{padding-left:20px;margin:14px 0 0}
+  .done ol li{margin:0 0 9px;font-size:15px}
+  .hidden{display:none}
 </style>
+<link rel="canonical" href="https://itsnum.com/claim/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NUM">
+<meta property="og:title" content="Confirm your listing — NUM">
+<meta property="og:description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card. 10% only on bookings that complete.">
+<meta property="og:url" content="https://itsnum.com/claim/">
+<meta property="og:locale" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Confirm your listing — NUM">
+<meta name="twitter:description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card. 10% only on bookings that complete.">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:image" content="https://itsnum.com/assets/og.jpg">
 </head>
 <body>
-<div class="bg"></div>
 <div class="wrap">
-<header>
-  <a class="logo" href="/">NuM<small>by 5arz</small></a>
-</header>
 
-<div class="card">
-  <div id="form">
-    <h1>Claim your business — free</h1>
-    <p class="sub">Travelers on Num are already asking about places like yours. Claiming takes 2 minutes from any phone — no computer needed.</p>
-    <p class="th">เคลมร้านของคุณฟรี ใช้มือถือได้เลย ไม่ต้องใช้คอมพิวเตอร์</p>
-    <div class="perks">
-      ✅ Free — no signup fee, no subscription<br>
-      💬 Guests find you in 9 languages<br>
-      📅 Bookings arrive on your phone<br>
-      💸 Pay 10% only when a booking happens
+  <header><div class="brand">NUM<span>by 5arz</span></div></header>
+
+  <!-- ============ FORM VIEW ============ -->
+  <main id="view-form">
+
+    <h1>Confirm your listing<span class="biz" id="h-biz">on NUM</span></h1>
+    <p class="lede" id="lede">
+      We drafted this listing from public information. It is not live, and it
+      won&rsquo;t go live until you confirm it below.
+    </p>
+
+    <div class="card money">
+      <h2>The money, in full</h2>
+      <span class="num">10%<small> &mdash; on bookings that complete. Nothing else.</small></span>
+      <ul class="facts" style="margin-top:14px">
+        <li><b>Nothing to list.</b> No signup fee, no subscription, no monthly.</li>
+        <li><b>No card, ever.</b> There is no card field on this page and there
+            won&rsquo;t be one later.</li>
+        <li><b>10% only when a booking completes</b> through NUM and the guest turns
+            up. Invoiced weekly. That is the only money that changes hands.</li>
+      </ul>
     </div>
-    <label>Business name · ชื่อร้าน *</label>
-    <input id="business" placeholder="Kata Serenity Spa">
-    <label>Your name · ชื่อของคุณ</label>
-    <input id="contact" placeholder="Somchai" autocomplete="name">
-    <label>Phone · เบอร์โทร *</label>
-    <input id="phone" placeholder="08x xxx xxxx" inputmode="tel" autocomplete="tel">
-    <label>LINE ID (optional · ถ้ามี)</label>
-    <input id="lineid" placeholder="@yourline">
-    <label>Email (optional · ถ้ามี)</label>
-    <input id="email" placeholder="you@business.com" inputmode="email" autocomplete="email">
-    <button id="go" onclick="submitClaim()">Claim my business · เคลมร้านของฉัน</button>
-    <div class="err" id="err"></div>
-    <div class="alt">Prefer chat? Add <b>@799pyrus</b> on LINE and type <b>CLAIM + your business name</b> · หรือแอด LINE แล้วพิมพ์ CLAIM ตามด้วยชื่อร้าน</div>
-  </div>
 
-  <div id="done">
-    <div class="big">🌺</div>
-    <h1>You're in!</h1>
-    <p class="sub">Our local team will contact you within 1 business day to verify your listing and switch on bookings. Kob khun ka! 🙏</p>
-    <p class="th">ทีมงานจะติดต่อกลับภายใน 1 วันทำการค่ะ</p>
-    <div class="alt" style="margin-top:22px">Fastest replies on LINE: add <b>@799pyrus</b></div>
-  </div>
-</div>
-<footer>NUM by 5arz · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · info@5arz.com</footer>
+    <div class="card">
+      <h2>What happens if you&rsquo;re listed</h2>
+      <ul class="facts">
+        <li>A visitor messages NUM in their own language &mdash; any language &mdash;
+            and asks a normal question. NUM answers with a short list of real,
+            checked places, and can book one.</li>
+        <li><b>Bookings arrive as a message on the phone you already carry.</b> You
+            tap accept or decline. Nothing to download, nothing to log into.</li>
+        <li>You set your own hours and how much you can take.</li>
+        <li>You can take your listing down at any time.</li>
+      </ul>
+    </div>
+
+    <form id="claim-form" novalidate>
+      <div class="card">
+        <h2>Two minutes and you&rsquo;re done</h2>
+
+        <label for="business_name">Business name</label>
+        <input id="business_name" name="business_name" type="text" required
+               autocomplete="organization" placeholder="Your business name">
+        <p class="hint" id="hint-biz">Correct it if we got it wrong.</p>
+
+        <label for="contact_name">Your name</label>
+        <input id="contact_name" name="contact_name" type="text" required
+               autocomplete="name" placeholder="Who we should ask for">
+
+        <label for="phone">Mobile number</label>
+        <input id="phone" name="phone" type="tel" required
+               autocomplete="tel" inputmode="tel" placeholder="e.g. 07700 900123">
+        <p class="hint">
+          This is where bookings arrive, as a text. That is what the number is for.
+          We will not publish it, sell it or pass it on.
+        </p>
+
+        <label for="email">Email <span class="opt">(optional)</span></label>
+        <input id="email" name="email" type="email"
+               autocomplete="email" inputmode="email" placeholder="you@yourplace.co.uk">
+
+        <div class="optin">
+          <input type="checkbox" id="marketing_ok" name="marketing_ok" value="1">
+          <label for="marketing_ok">
+            Separately from bookings, you can text or email me occasionally about
+            NUM &mdash; how it&rsquo;s going in my area, what visitors are asking
+            for. Not required, and you can stop it any time.
+          </label>
+        </div>
+
+        <div id="form-error" class="err hidden" role="alert"></div>
+
+        <button type="submit" id="submit-btn">Confirm this listing</button>
+        <p class="under">No card. You can change or remove anything afterwards.</p>
+      </div>
+    </form>
+  </main>
+
+  <!-- ============ SUCCESS VIEW ============ -->
+  <main id="view-done" class="hidden done">
+    <div class="tick" aria-hidden="true">&#10003;</div>
+    <h1>That&rsquo;s it &mdash; we&rsquo;ve got it<span class="biz" id="d-biz"></span></h1>
+    <div class="card">
+      <h2>What happens next</h2>
+      <ol>
+        <li>A person from our team checks the listing against public records and
+            gets in touch on the number you gave us. Usually within one working day.</li>
+        <li>Once it&rsquo;s checked, your listing goes live with a
+            <b>Verified real</b> badge, and NUM can recommend and book into it.</li>
+        <li>Bookings arrive as a text on your phone. You accept or decline.</li>
+      </ol>
+      <p class="hint" style="margin-top:14px">
+        Nothing is charged at any point in this. The first money that ever changes
+        hands is 10% of a booking that has already completed.
+      </p>
+    </div>
+    <p class="under" style="text-align:left">
+      Something not right? Reply to the email we sent you, or write to
+      <a href="mailto:info@5arz.com">info@5arz.com</a>, and a person answers.
+    </p>
+  </main>
+
+  <footer>
+    NUM is a travel concierge, built by 5arz.<br>
+    <span id="legal-line"></span><br>
+    <a href="/privacy/">Privacy &amp; where your details came from</a>
+  </footer>
+
 </div>
 
 <script>
-const API = 'https://num-ai.thatislumi.workers.dev';
-async function submitClaim(){
-  const v = id => document.getElementById(id).value.trim();
-  const err = document.getElementById('err'); err.textContent = '';
-  if (v('business').length < 2){ err.textContent = 'Please enter your business name · กรอกชื่อร้าน'; return; }
-  if (v('phone').replace(/\D/g,'').length < 8 && !v('email') && !v('lineid')){ err.textContent = 'Add a phone, LINE ID, or email so we can reach you · ใส่ช่องทางติดต่ออย่างน้อยหนึ่งช่องทาง'; return; }
-  const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = 'Sending…';
-  try {
-    const r = await fetch(API + '/api/claim', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ business_name: v('business'), contact_name: v('contact'), phone: v('phone'), line_id: v('lineid'), email: v('email') }) });
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error||'failed');
-    document.getElementById('form').style.display = 'none';
-    document.getElementById('done').style.display = 'block';
-    window.scrollTo(0,0);
-  } catch(e){ err.textContent = 'Could not send — please try again, or claim via LINE @799pyrus · ส่งไม่สำเร็จ ลองใหม่หรือแอด LINE'; btn.disabled = false; btn.textContent = 'Claim my business · เคลมร้านของฉัน'; }
-}
+(function () {
+  "use strict";
+
+  // ---- config ------------------------------------------------------------
+  // Both routes are served by the num-growth worker. If Rick mounts it on a
+  // different prefix, change these two and nothing else.
+  var ENDPOINT  = "/api/claims";
+  var EVENT_URL = "/api/ev";
+  var LEGAL_LINE = "5arz Inc · info@5arz.com · +1 754 444 8885";
+
+  // ---- helpers -----------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+
+  function qp(name) {
+    try {
+      var v = new URLSearchParams(window.location.search).get(name);
+      return v ? v.trim() : "";
+    } catch (e) { return ""; }
+  }
+
+  // The business name arrives from an email merge field, so treat it as
+  // hostile. Whitelist rather than blacklist: keep letters (any alphabet),
+  // digits and the punctuation real business names actually use, replace
+  // everything else. Control characters can't survive this by construction.
+  // It is also only ever assigned via textContent / .value, never innerHTML.
+  var NAME_OK = /[^\p{L}\p{N} '&.,()\/+-]/gu;
+  function cleanName(s) {
+    if (!s) return "";
+    try { s = s.replace(NAME_OK, " "); }
+    catch (e) { s = s.replace(/[^A-Za-z0-9 '&.,()\/+-]/g, " "); } // no \p support
+    s = s.replace(/\s+/g, " ").trim();
+    return s.length > 80 ? s.slice(0, 80) : s;
+  }
+
+  // ---- prefill -----------------------------------------------------------
+  var biz   = cleanName(qp("b") || qp("business") || qp("name"));
+  var token = qp("t") || qp("ref") || qp("token") || "";
+  var refc  = qp("r") || qp("code") || "";
+
+  if (biz) {
+    $("h-biz").textContent = "for " + biz;
+    $("business_name").value = biz;
+    $("lede").textContent =
+      "We drafted a listing for " + biz + " from public information. It is not " +
+      "live, and it won't go live until you confirm it below.";
+  } else {
+    // No name in the link. Say so rather than pretending we know them.
+    $("h-biz").textContent = "on NUM";
+    $("hint-biz").textContent =
+      "We couldn't read your business name from the link — please type it in.";
+  }
+
+  $("legal-line").textContent = LEGAL_LINE;
+
+  // ---- first-party arrival log -------------------------------------------
+  // Deliberately no cookie and no third-party tag on this page. The worker
+  // logs the arrival server-side and derives a short-lived pseudonymous
+  // visitor id itself, so nothing is stored on the visitor's device and PECR
+  // reg 6 is not engaged. That is also why this page carries no cookie
+  // banner: a banner on a page that sets no cookies is noise, and it teaches
+  // people to dismiss the banner that does matter.
+  function logEvent(name, extra) {
+    try {
+      var body = JSON.stringify(Object.assign({
+        event: name,
+        page: "claim",
+        ref_code: refc,
+        invite_token: token.slice(0, 64),
+        utm_source: qp("utm_source"),
+        utm_medium: qp("utm_medium"),
+        utm_campaign: qp("utm_campaign"),
+        referrer: (document.referrer || "").slice(0, 200)
+      }, extra || {}));
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(EVENT_URL, new Blob([body], { type: "application/json" }));
+      } else {
+        fetch(EVENT_URL, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: body, keepalive: true
+        }).catch(function () {});
+      }
+    } catch (e) { /* analytics must never break the form */ }
+  }
+  logEvent("claim_view");
+
+  // ---- submit ------------------------------------------------------------
+  var form = $("claim-form");
+  var btn  = $("submit-btn");
+  var errBox = $("form-error");
+  var sending = false;
+
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.classList.remove("hidden");
+    errBox.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (sending) return;
+    errBox.textContent = "";
+    errBox.classList.add("hidden");
+
+    var payload = {
+      business_name: $("business_name").value.trim(),
+      contact_name:  $("contact_name").value.trim(),
+      phone:         $("phone").value.trim(),
+      email:         $("email").value.trim(),
+      marketing_ok:  $("marketing_ok").checked ? 1 : 0,
+      // Store the exact wording they were shown, not a bare boolean. A tick
+      // box with no record of what it said is not evidence of consent.
+      consent_text:  $("marketing_ok").checked
+        ? document.querySelector('label[for="marketing_ok"]').textContent.replace(/\s+/g, " ").trim()
+        : "",
+      ref_code:      refc,
+      invite_token:  token.slice(0, 64),
+      source:        "invite-uk" + (token ? ":" + token.slice(0, 40) : "")
+    };
+
+    if (!payload.business_name) return showError("Please tell us the business name.");
+    if (!payload.contact_name)  return showError("Please tell us your name, so we know who to ask for.");
+    if (payload.phone.replace(/[^\d]/g, "").length < 7) {
+      return showError("Please give a mobile number we can reach you on — that's where bookings arrive.");
+    }
+    if (payload.email && payload.email.indexOf("@") === -1) {
+      return showError("That email address doesn't look right. Leave it blank if you'd rather not.");
+    }
+
+    sending = true;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+
+    fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    .then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json().catch(function () { return {}; });
+    })
+    .then(function () {
+      logEvent("claim_done");
+      $("d-biz").textContent = payload.business_name ? "— " + payload.business_name : "";
+      $("view-form").classList.add("hidden");
+      $("view-done").classList.remove("hidden");
+      window.scrollTo(0, 0);
+    })
+    .catch(function () {
+      sending = false;
+      btn.disabled = false;
+      btn.textContent = "Confirm this listing";
+      showError(
+        "That didn't send — the problem is on our side, not yours. Please try " +
+        "once more, or just reply to the email we sent you and a person will " +
+        "sort it out."
+      );
+    });
+  });
+})();
 </script>
-
-<!-- Google Translate — any language -->
-<style>
-.gtx{position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(255,255,255,.92);border:1.5px solid #DDE0FB;border-radius:999px;padding:7px 14px;box-shadow:0 10px 30px rgba(76,81,161,.20);backdrop-filter:blur(10px)}
-.gtx::before{content:'🌐 '}
-.goog-te-banner-frame{display:none!important}html body{top:0!important}
-.goog-te-gadget{font-size:0!important;color:transparent!important}
-.goog-te-gadget .goog-te-combo{font-size:13px;font-family:inherit;border:0;background:transparent;color:#3A3E5C;outline:none;margin:0}
-.goog-logo-link,.goog-te-gadget img{display:none!important}
-</style>
-<div id="gtx" class="gtx"></div>
-<script>function gtInit(){try{new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'th,en,ru,zh-CN,zh-TW,ja,ko,de,fr,es,it,ar,hi,he,ms,vi',layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'gtx')}catch(e){}}</script>
-<script src="https://translate.google.com/translate_a/element.js?cb=gtInit" defer></script>
-
 </body>
 </html>

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Num Tab — turn every table into a checkout</title>
+<meta name="description" content="Stick a code on every table. Guests scan, split the bill and pay from their phone. Money settles to your PromptPay the same night. Ten codes, $20.">
+<link rel="canonical" href="https://itsnum.com/tabs">
+<meta name="theme-color" content="#F6FAF9">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://itsnum.com/tabs">
+<meta property="og:title" content="Num Tab — turn every table into a checkout">
+<meta property="og:description" content="Guests scan the code on the table, split the bill and pay from their own phone. Ten codes, $20. No card machine, no POS, nothing per month.">
+<meta property="og:image" content="https://itsnum.com/assets/hero.jpg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+
+<style>
+/* ── Num Tab: page-local only. Everything structural comes from site.css so this
+      page inherits the site palette, type scale, buttons, cards and rhythm.
+      Nothing here redefines a colour that site.css already owns. ───────────── */
+
+/* trust ticks — same shape as the homepage row, drawn rather than typed */
+.ic svg{width:22px;height:22px;fill:none;stroke:var(--pri-d);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ic.amber svg{stroke:#B07A22}
+.trust svg{width:15px;height:15px;fill:none;stroke:var(--pri);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* the tab, shown inside the shared .phone shell from site.css */
+.tabhead{display:flex;align-items:center;gap:7px;padding:0 4px 8px;border-bottom:1px solid #e9eeec;margin-bottom:9px}
+.tabhead .tv{width:23px;height:23px;border-radius:7px;background:var(--pri);color:#fff;font-size:10px;font-weight:800;
+  font-family:var(--disp);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.tabhead .tn{font-size:11px;font-weight:800;color:var(--ink);line-height:1.15;font-family:var(--disp)}
+.tabhead .ts{font-size:8.5px;color:var(--pri-d);font-weight:600}
+.trow{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:#3a4650;padding:3.5px 4px}
+.trow b{font-weight:600}
+.ttot{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;color:var(--ink);
+  padding:8px 4px 0;margin-top:5px;border-top:1px solid #e9eeec;font-family:var(--disp)}
+.tsplit{display:flex;align-items:center;gap:5px;margin:10px 4px 0}
+.tsplit i{width:17px;height:17px;border-radius:50%;background:var(--pri-l);border:1.5px solid #fff;
+  margin-left:-6px;display:block}
+.tsplit i:first-child{margin-left:0}
+.tsplit i:nth-child(2){background:#D6EDF9}.tsplit i:nth-child(3){background:var(--amber-l)}.tsplit i:nth-child(4){background:#E4E8F7}
+.tsplit span{font-size:8.5px;color:var(--slate);font-weight:600;margin-left:4px}
+.tpay{margin-top:9px;display:block;width:100%;background:var(--pri);color:#fff;border:none;border-radius:9px;
+  padding:7px;font-size:10px;font-weight:700;font-family:var(--body)}
+.tstick{position:absolute;right:-14px;top:26px;z-index:3;background:#fff;border:1px solid var(--line);
+  border-radius:16px;padding:11px 12px;text-align:center;box-shadow:0 16px 34px rgba(10,26,36,.16);width:104px}
+.tstick .q{display:block;width:56px;height:56px;margin:0 auto 7px;border-radius:6px;shape-rendering:crispEdges}
+.tstick .l{font-size:8.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);line-height:1.35}
+@media(max-width:860px){.tstick{right:0;top:12px}}
+
+/* numbered steps inside the two how-it-works cards */
+.tstep{display:flex;gap:13px;align-items:flex-start;padding:13px 0;border-top:1px solid var(--line)}
+.tstep:first-of-type{border-top:none;padding-top:4px}
+.tnum{flex:0 0 auto;width:25px;height:25px;border-radius:8px;background:var(--pri-l);color:var(--pri-d);
+  font-family:var(--disp);font-weight:700;font-size:12.5px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.tstep h4{font-family:var(--disp);font-size:15px;margin:0 0 3px}
+.tstep p{font-size:13.5px;color:var(--slate)}
+
+/* the three group-pay columns, inside the shared .dark panel */
+.dkrow{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:28px}
+@media(max-width:760px){.dkrow{grid-template-columns:1fr}}
+.dkc{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px}
+.dkc h3{font-size:16px;color:#fff;margin-bottom:6px}
+.dkc p{font-size:13.5px;color:#a7c3bc}
+
+/* kit + form */
+.kitgrid{display:grid;grid-template-columns:1.02fr .98fr;gap:22px;align-items:start;margin-top:28px}
+section[id]{scroll-margin-top:80px}
+
+/* ── two site.css specificity collisions, fixed page-local ─────────────────────
+   1. section{padding:64px 0} loses to .wrap{padding:0 24px} (class beats element),
+      so <section class="wrap"> renders with ZERO vertical padding and each block
+      collides into the next kicker.
+   2. <header class="wrap hero"> is two equal class selectors and site.css declares
+      .hero after .wrap, so .hero's shorthand zeroes the 24px gutter and the hero
+      runs edge-to-edge on a phone.
+   Both restated here without disturbing anything else.  */
+section.wrap{padding-top:58px;padding-bottom:58px}
+section.wrap:first-of-type{padding-top:34px}
+.hero{padding:64px 24px 44px}
+@media(max-width:860px){.kitgrid{grid-template-columns:1fr}.kitgrid>.card:last-child{order:-1}}
+.kitlist{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:13px}
+.kitlist li{display:flex;gap:11px;align-items:flex-start;font-size:14.5px}
+.kitlist svg{width:19px;height:19px;flex:0 0 auto;margin-top:2px;fill:none;stroke:var(--pri);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.ktprice{display:flex;align-items:baseline;gap:9px;margin:2px 0 18px}
+.ktprice b{font-family:var(--disp);font-size:38px;font-weight:700;line-height:1;color:var(--ink)}
+.ktprice span{font-size:14px;color:var(--slate)}
+.fld{width:100%;font-family:var(--body);font-size:15px;color:var(--ink);padding:13px 15px;margin-bottom:11px;
+  border:1px solid var(--line);border-radius:12px;background:#fff;transition:.15s}
+.fld:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-l)}
+.optin{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--slate);margin:5px 0 16px}
+.optin input{margin-top:3px;flex:0 0 auto}
+.msg{font-size:13px;margin-top:11px;min-height:1px;color:var(--pri-d)}
+.fine{font-size:12px;color:var(--slate);margin-top:14px;text-align:center}
+.fine a{color:var(--slate);text-decoration:underline}
+.doneic{width:54px;height:54px;border-radius:50%;background:var(--pri-l);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.doneic svg{width:26px;height:26px;fill:none;stroke:var(--pri-d);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.whycard{margin-top:16px;background:var(--pri-xl);border:1px solid #d8efe7;border-radius:var(--r);padding:20px}
+.whycard h4{font-family:var(--disp);font-size:15px;margin-bottom:6px}
+.whycard p{font-size:13.5px;color:var(--slate)}
+.whycard p + h4{margin-top:14px}
+</style>
+
+<script src="/num-capture.js" data-page="landing" defer></script>
+</head>
+<body>
+
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="/get/">Get the app</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/perks/">Perks</a>
+    <a href="/business/">For business</a>
+    <a href="/agents/">For AI agents</a>
+    <span id="signin-slot"><a href="/signin/">Sign in</a></span>
+    <a class="btn pri" href="#kit" style="padding:10px 18px;font-size:14px">Get the kit</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">&#9776;</button>
+</div>
+<div class="mobile">
+  <a href="#kit"><b>Get the kit</b></a>
+  <a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a>
+  <a href="/business/">For business</a><a href="/agents/">For AI agents</a>
+  <a href="/claim/">List your business</a>
+  <a href="/signin/">Sign in</a>
+</div>
+</nav>
+
+<header class="wrap hero">
+  <div class="hero-grid">
+    <div>
+      <span class="pill">Num Tab</span>
+      <h1 class="h1" style="margin-top:18px">Turn every table into a&nbsp;checkout.</h1>
+      <p class="sub">Stick a code on each table. Guests scan it, split the bill and pay from their own phone. The money reaches you the same night.</p>
+      <div class="cta">
+        <a class="btn pri lg" href="#kit">Claim your Tab Kit</a>
+        <a class="btn ghost lg" href="#how">See how it works</a>
+      </div>
+      <div class="trust">
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>No card machine</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Paid to your PromptPay</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Nothing per month</span>
+      </div>
+    </div>
+
+    <div class="showcase">
+      <img class="hero-photo" src="/assets/hero.jpg" alt="A guest smiling at her phone at a garden restaurant table">
+      <div class="tstick" aria-hidden="true">
+        <svg class="q" viewBox="0 0 21 21" aria-hidden="true"><rect width="21" height="21" fill="#fff"/><path d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM9 0h1v1h-1zM10 0h1v1h-1zM12 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM16 0h1v1h-1zM17 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM20 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM10 1h1v1h-1zM11 1h1v1h-1zM14 1h1v1h-1zM20 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM10 2h1v1h-1zM11 2h1v1h-1zM12 2h1v1h-1zM14 2h1v1h-1zM16 2h1v1h-1zM17 2h1v1h-1zM18 2h1v1h-1zM20 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM9 3h1v1h-1zM11 3h1v1h-1zM12 3h1v1h-1zM14 3h1v1h-1zM16 3h1v1h-1zM17 3h1v1h-1zM18 3h1v1h-1zM20 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM16 4h1v1h-1zM17 4h1v1h-1zM18 4h1v1h-1zM20 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM12 5h1v1h-1zM14 5h1v1h-1zM20 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM15 6h1v1h-1zM16 6h1v1h-1zM17 6h1v1h-1zM18 6h1v1h-1zM19 6h1v1h-1zM20 6h1v1h-1zM9 7h1v1h-1zM10 7h1v1h-1zM11 7h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM12 8h1v1h-1zM1 9h1v1h-1zM2 9h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM7 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM13 9h1v1h-1zM18 9h1v1h-1zM20 9h1v1h-1zM0 10h1v1h-1zM2 10h1v1h-1zM4 10h1v1h-1zM6 10h1v1h-1zM10 10h1v1h-1zM14 10h1v1h-1zM19 10h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM7 11h1v1h-1zM8 11h1v1h-1zM9 11h1v1h-1zM10 11h1v1h-1zM11 11h1v1h-1zM13 11h1v1h-1zM14 11h1v1h-1zM15 11h1v1h-1zM17 11h1v1h-1zM18 11h1v1h-1zM2 12h1v1h-1zM3 12h1v1h-1zM4 12h1v1h-1zM6 12h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM11 12h1v1h-1zM14 12h1v1h-1zM15 12h1v1h-1zM16 12h1v1h-1zM17 12h1v1h-1zM8 13h1v1h-1zM12 13h1v1h-1zM17 13h1v1h-1zM18 13h1v1h-1zM19 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM9 14h1v1h-1zM10 14h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM14 14h1v1h-1zM15 14h1v1h-1zM16 14h1v1h-1zM17 14h1v1h-1zM18 14h1v1h-1zM19 14h1v1h-1zM0 15h1v1h-1zM6 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM12 15h1v1h-1zM13 15h1v1h-1zM14 15h1v1h-1zM17 15h1v1h-1zM19 15h1v1h-1zM20 15h1v1h-1zM0 16h1v1h-1zM2 16h1v1h-1zM3 16h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM9 16h1v1h-1zM10 16h1v1h-1zM12 16h1v1h-1zM13 16h1v1h-1zM16 16h1v1h-1zM18 16h1v1h-1zM0 17h1v1h-1zM2 17h1v1h-1zM3 17h1v1h-1zM4 17h1v1h-1zM6 17h1v1h-1zM11 17h1v1h-1zM12 17h1v1h-1zM13 17h1v1h-1zM17 17h1v1h-1zM18 17h1v1h-1zM0 18h1v1h-1zM2 18h1v1h-1zM3 18h1v1h-1zM4 18h1v1h-1zM6 18h1v1h-1zM13 18h1v1h-1zM15 18h1v1h-1zM16 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM19 18h1v1h-1zM0 19h1v1h-1zM6 19h1v1h-1zM10 19h1v1h-1zM14 19h1v1h-1zM15 19h1v1h-1zM16 19h1v1h-1zM17 19h1v1h-1zM18 19h1v1h-1zM0 20h1v1h-1zM1 20h1v1h-1zM2 20h1v1h-1zM3 20h1v1h-1zM4 20h1v1h-1zM5 20h1v1h-1zM6 20h1v1h-1zM13 20h1v1h-1zM19 20h1v1h-1z" fill="#0A1A24"/></svg>
+        <div class="l">Scan to pay<br>your tab</div>
+      </div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="tabhead">
+            <span class="tv">7</span>
+            <div><div class="tn">Table 7 &middot; The Terrace</div><div class="ts">&#9679; tab open</div></div>
+          </div>
+          <div class="trow"><span>Pad thai</span><b>180</b></div>
+          <div class="trow"><span>Green curry</span><b>220</b></div>
+          <div class="trow"><span>Two Changs</span><b>160</b></div>
+          <div class="ttot"><span>Total</span><span>&#3647;560</span></div>
+          <div class="tsplit"><i></i><i></i><i></i><i></i><span>4 on this tab</span></div>
+          <button class="tpay" type="button">Pay my share &middot; &#3647;140</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- THE KIT + THE FORM -->
+<section class="wrap" id="kit">
+  <div class="center" style="max-width:640px;margin:0 auto">
+    <span class="kicker">The kit</span>
+    <h2 class="h2" style="margin-top:10px">Ten codes. Twenty dollars.</h2>
+    <p class="lead" style="margin-inline:auto">Enough for a small restaurant on the first night, and cheap enough that you do not have to think about it.</p>
+  </div>
+
+  <div class="kitgrid">
+    <div class="card">
+      <ul class="kitlist">
+        <li><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span>Ten adhesive codes. NFC and QR on the same face, so every phone works.</span></li>
+        <li><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span>A counter card so walk-ins know they can find you on Num.</span></li>
+        <li><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span>Your console set up, with every code labelled to a table before it arrives.</span></li>
+        <li><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span>Your listing on Num, free, so guests searching the area find you.</span></li>
+      </ul>
+      <div class="whycard">
+        <h4>Why it costs anything at all</h4>
+        <p>A free kit sits in a drawer. A kit you paid for goes on the tables tonight. Twenty dollars is the smallest number that gets the codes out of the box.</p>
+        <h4>What it does not cost</h4>
+        <p>Nothing per month, nothing to list, nothing to be found. You pay when a guest pays, and not before.</p>
+        <h4>You still take cash</h4>
+        <p>This is for the table that wants to split four ways, and the guest who walked in with no baht on them. Everything else carries on exactly as it does now.</p>
+        <p style="margin-top:14px;font-weight:700;color:var(--ink)">You are not buying a card machine. You are buying ten stickers.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="kt-form">
+        <h2 class="h3" style="font-size:22px">Claim your Tab Kit</h2>
+        <p class="lead" style="font-size:15px;margin-top:8px">Ten codes for your tables, ready to stick on tonight. First kits go to Phuket, Bangkok and Samui.</p>
+        <div class="ktprice" style="margin-top:18px"><b>$20</b><span>for ten codes</span></div>
+        <form data-num-capture data-source="tab-kit" data-done="You are on the list." onsubmit="return false">
+          <input class="fld" type="text" name="business" placeholder="Your venue name" required>
+          <input class="fld" type="email" name="email" autocomplete="email" placeholder="Email address" required>
+          <input class="fld" type="tel" name="phone" autocomplete="tel" placeholder="Mobile or PromptPay number">
+          <label class="optin">
+            <input type="checkbox" name="marketing_ok" value="1">
+            <span>Send me updates about Num for businesses. I can stop any time.</span>
+          </label>
+          <button class="btn pri lg" type="submit" style="width:100%">Claim my kit</button>
+          <p class="msg" data-num-msg></p>
+          <p class="fine" style="margin-top:10px">Nothing to pay here. We confirm your tables and your cost before anything ships.</p>
+        </form>
+        <p class="fine">We use your details to send the kit and to answer you. Nothing else.<br>
+          <a href="/privacy/">Privacy</a> &middot; <a href="/terms/">Terms</a></p>
+      </div>
+
+      <div id="kt-done" hidden>
+        <div class="doneic"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <h2 class="h3" style="font-size:22px">You are on the list.</h2>
+        <p class="lead" style="font-size:15px;margin-top:8px">We will message you to confirm the address and the tables. While you wait, put your venue on Num so guests can find you.</p>
+        <a class="btn pri lg" style="width:100%;margin-top:20px" href="/claim/">List your venue</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="wrap reveal" id="how">
+  <div class="center" style="max-width:640px;margin:0 auto">
+    <span class="kicker">How it works</span>
+    <h2 class="h2" style="margin-top:10px">Two sides. Neither one is complicated.</h2>
+  </div>
+  <div class="grid g2" style="margin-top:28px">
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v3M14 20h6"/></svg></div>
+      <h3 class="h3" style="margin-bottom:10px">For your guest</h3>
+      <div class="tstep"><div class="tnum">1</div><div><h4>They scan the code</h4><p>Camera or a tap. Every code is NFC and QR on the same face, so it works on any phone.</p></div></div>
+      <div class="tstep"><div class="tnum">2</div><div><h4>Their tab opens</h4><p>Venue, table, running total, and everyone else sitting with them. No app needed to join.</p></div></div>
+      <div class="tstep"><div class="tnum">3</div><div><h4>They pay their part</h4><p>All of it, an even split, or whatever they choose. PromptPay or card, on their own phone.</p></div></div>
+    </div>
+    <div class="card hov">
+      <div class="ic amber"><svg viewBox="0 0 24 24"><path d="M3 7h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 7l2.5-4h13L21 7M8 12h8"/></svg></div>
+      <h3 class="h3" style="margin-bottom:10px">For you</h3>
+      <div class="tstep"><div class="tnum">1</div><div><h4>Stick the codes on</h4><p>Label them in your console once. Table 1 to 8, the bar, the terrace. Takes a few minutes.</p></div></div>
+      <div class="tstep"><div class="tnum">2</div><div><h4>Type the total</h4><p>That is the whole operation. No POS to connect, no terminal to buy, no float to count.</p></div></div>
+      <div class="tstep"><div class="tnum">3</div><div><h4>Get paid</h4><p>Your phone tells you the moment a table settles. The money follows the same night.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- GROUP PAY — the one dark panel on the page, same component the homepage uses -->
+<section class="wrap reveal">
+  <div class="dark">
+    <div class="center" style="max-width:660px;margin:0 auto">
+      <span class="kicker">Group pay</span>
+      <h2 class="h2" style="margin-top:10px">Split the bill without the maths.</h2>
+      <p class="lead" style="margin-inline:auto">Everyone at the table scans the same code. The tab knows who is on it, what is left and who has already paid. Nobody works out a share on a napkin, and nobody chases anyone afterwards.</p>
+    </div>
+    <div class="dkrow">
+      <div class="dkc"><h3>One person covers it</h3><p>The most common tab. One scan, one payment, done.</p></div>
+      <div class="dkc"><h3>Split it evenly</h3><p>Four people, four scans. The tab divides itself and shows what is still outstanding.</p></div>
+      <div class="dkc"><h3>Throw in an amount</h3><p>Rounds at a bar. Anyone adds what they want and the balance updates live.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- WHO SCANS IT -->
+<section class="wrap reveal">
+  <div class="center" style="max-width:620px;margin:0 auto">
+    <span class="kicker">Who scans it</span>
+    <h2 class="h2" style="margin-top:10px">The people already on Num.</h2>
+    <p class="lead" style="margin-inline:auto">Travellers ask Num where to eat and walk in with it already open. Your code is the last thing they tap.</p>
+  </div>
+  <div class="people">
+    <img src="/assets/p1.jpg" alt="A couple laughing at a phone on a beach town street">
+    <img src="/assets/p2.jpg" alt="A traveller booking from his phone on the beach">
+    <img src="/assets/p3.jpg" alt="Two friends planning the day from a viewpoint over rice terraces">
+  </div>
+</section>
+
+<!-- GETTING PAID -->
+<section class="wrap reveal">
+  <div class="center" style="max-width:640px;margin:0 auto">
+    <span class="kicker">Getting paid</span>
+    <h2 class="h2" style="margin-top:10px">In your account tonight, not next week.</h2>
+    <p class="lead" style="margin-inline:auto">Guests pay the way they already pay in Thailand. You get it the way you already get it.</p>
+  </div>
+  <div class="grid g3" style="margin-top:28px">
+    <div class="card hov"><div class="ic"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></div><h3>PromptPay, in seconds</h3><p>The payout detail is a phone number. Nothing to open, nothing to install, nothing to reconcile.</p></div>
+    <div class="card hov"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/></svg></div><h3>Told by message</h3><p>Table 7 paid. The amount, the fee and what is landing, in a message you can show your staff.</p></div>
+    <div class="card hov"><div class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2"/></svg></div><h3>You never touch a card</h3><p>Payment happens on the processor's own page. Card details never reach your staff, your phone or us.</p></div>
+  </div>
+</section>
+
+<!-- NOT ONLY TABLES -->
+<section class="wrap reveal">
+  <div class="center" style="max-width:640px;margin:0 auto">
+    <span class="kicker">Not only tables</span>
+    <h2 class="h2" style="margin-top:10px">Anywhere someone owes you money.</h2>
+  </div>
+  <div class="grid g4" style="margin-top:28px">
+    <div class="card hov"><div class="ic"><svg viewBox="0 0 24 24"><path d="M6 3v8a3 3 0 0 0 6 0V3M9 11v10M18 3c-1.5 2-2 4-2 6s.5 3 2 3v9"/></svg></div><h3>Restaurants and bars</h3><p>One code per table. The bill is settled before anyone finds a waiter.</p></div>
+    <div class="card hov"><div class="ic"><svg viewBox="0 0 24 24"><path d="M5 17h14M4 17v-4l2-5h12l2 5v4"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg></div><h3>Tuk-tuks and taxis</h3><p>One sticker on the windscreen. No terminal, no float, no hunting for change.</p></div>
+    <div class="card hov"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 18c1.5 1.2 3 1.2 4.5 0S10.5 16.8 12 18s3 1.2 4.5 0S19.5 16.8 21 18"/><path d="M5 14 6.5 8h11L19 14M12 8V4h4"/></svg></div><h3>Boats and day tours</h3><p>A deposit at the desk is the same object as a tab. The code takes it.</p></div>
+    <div class="card hov"><div class="ic amber"><svg viewBox="0 0 24 24"><path d="M4 8h13v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/><path d="M17 9h2.5a2.5 2.5 0 0 1 0 5H17M5 4v1.5M9 3v2.5M13 4v1.5"/></svg></div><h3>Cafés and clubs</h3><p>Anywhere a guest currently has to walk to a counter to hand over money.</p></div>
+  </div>
+</section>
+
+<!-- CLOSE -->
+<section class="wrap reveal">
+  <div class="ctaband">
+    <h2>The bill is the introduction.</h2>
+    <p>Guests who scan to pay leave with a concierge that knows your venue. The next time they are hungry, you are already in the thread.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+      <a class="btn pri lg" href="#kit">Claim your Tab Kit</a>
+      <a class="btn light lg" href="/claim/">List your venue free</a>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="frow">
+    <div>
+      <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 77 destinations across 38 countries. By 5arz.</p>
+    </div>
+    <div><h4>Product</h4><a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a></div>
+    <div><h4>Get started</h4><a href="#kit">Get a Tab Kit</a><a href="/claim/">List your business</a><a href="/pricing/">Pricing</a><a href="/list-your-business/">Why list with NUM</a></div>
+    <div><h4>Company</h4><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@5arz.com">info@5arz.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://5arz.com">5arz.com</a></div>
+  </div>
+  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Verified humans, real places.</span></div>
+</div></footer>
+
+<script src="/assets/site.js"></script>
+<script>
+/* /api/capture writes the row and returns; it does not send mail. So the page
+   itself has to be the receipt — swap the form for the confirmation panel the
+   moment num-capture.js reports a successful write. Same pattern as /vip. */
+window.addEventListener('num:capture', function () {
+  var f = document.getElementById('kt-form'), d = document.getElementById('kt-done');
+  if (!f || !d) return;
+  f.hidden = true;
+  d.hidden = false;
+  try { d.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+});
+
+/* This page is the destination for paid traffic, and its strongest secondary
+   action sends people to /claim/. Without this the campaign tag dies at the
+   hop and that conversion is recorded as direct. Carry the query across every
+   internal link so per-channel numbers survive the whole funnel. */
+(function () {
+  var q = location.search;
+  if (!q || q.length < 2) return;
+  var params = new URLSearchParams(q), carry = new URLSearchParams();
+  params.forEach(function (v, k) {
+    if (/^(utm_|gclid|fbclid|ttclid|msclkid|ref$)/i.test(k)) carry.set(k, v);
+  });
+  var tail = carry.toString();
+  if (!tail) return;
+  document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+    var h = a.getAttribute('href');
+    if (!h || h.charAt(0) !== '/' || h.indexOf('#') === 0) return;
+    a.setAttribute('href', h + (h.indexOf('?') === -1 ? '?' : '&') + tail);
+  });
+})();
+</script>
+</body>
+</html>

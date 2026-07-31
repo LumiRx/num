@@ -22,6 +22,7 @@ import {
   domainOf, maskEmail, maskPhone, normalisePhone, nowIso, rateLimitOk, safeEqual, sameDomain,
   sendCode, uid,
 } from './verify.mjs';
+import { onboardStatements } from './onboard.mjs';
 
 const APP = 'https://num-app.thatislumi.workers.dev';
 const CORS = {
@@ -198,7 +199,10 @@ async function verify(env, req) {
 
   // Verified. Create the business, take ownership, link the verified number,
   // and burn the code so it can never be replayed.
-  const place = await env.DB.prepare('SELECT id, name, category, dest, phone FROM places WHERE id=?1').bind(claim.place_id).first();
+  const place = await env.DB.prepare(
+    `SELECT id, name, category, dest, phone, country, area, address, lat, lng, website, email
+       FROM places WHERE id=?1`,
+  ).bind(claim.place_id).first();
   const businessId = uid('biz');
   await env.DB.batch([
     env.DB.prepare(
@@ -216,6 +220,9 @@ async function verify(env, req) {
               decided_at=datetime('now'), decided_by='auto' WHERE id=?1`,
     ).bind(claim.id, businessId),
     env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1").bind(claim.place_id, businessId),
+    // Without these two the business is verified but inert -- no commission
+    // rate, no timezone, no locale, no feature flags. See onboard.mjs.
+    ...(await onboardStatements(env, businessId, place, 'claim:' + claim.channel)),
   ]);
   await logEvent(env, claim.id, 'verified', claim.channel, ip);
 
@@ -279,7 +286,10 @@ async function adminDecide(env, req) {
     return json({ ok: true, state: 'rejected' });
   }
 
-  const place = await env.DB.prepare('SELECT id, name, category, dest, phone FROM places WHERE id=?1').bind(claim.place_id).first();
+  const place = await env.DB.prepare(
+    `SELECT id, name, category, dest, phone, country, area, address, lat, lng, website, email
+       FROM places WHERE id=?1`,
+  ).bind(claim.place_id).first();
   const businessId = uid('biz');
   await env.DB.batch([
     env.DB.prepare(
@@ -295,6 +305,7 @@ async function adminDecide(env, req) {
     env.DB.prepare("UPDATE num_claims SET state='verified', business_id=?2, decided_at=datetime('now'), decided_by=?3 WHERE id=?1")
       .bind(claim.id, businessId, String(b.by || 'admin')),
     env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1").bind(claim.place_id, businessId),
+    ...(await onboardStatements(env, businessId, place, 'claim-review:' + String(b.by || 'admin'))),
   ]);
   await logEvent(env, claim.id, 'decided', 'approved by ' + (b.by || 'admin'), ipOf(req));
   return json({ ok: true, state: 'verified', business_id: businessId });

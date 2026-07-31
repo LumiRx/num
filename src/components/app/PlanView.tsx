@@ -1,6 +1,8 @@
+import { useState } from 'react';
 // PLAN tab — bookings grouped by city, expandable rows with note, cost,
 // receipt, and the ASK TO CHANGE / SHARE actions.
 import { store, useApp } from '../../lib/store';
+import { setAttendee } from '../../lib/social';
 import { pressable } from '../../lib/a11y';
 import { tagOf, bookingMetaLine, monthName } from '../../lib/derive';
 import { askToChange } from '../../lib/concierge';
@@ -10,6 +12,113 @@ import { ChevronRightIcon, UsersIcon } from '../../lib/icons';
 import type { Booking } from '../../lib/types';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
+
+/**
+ * Who is on this reservation.
+ *
+ * The shared plan item is matched by normalised title, the same way bookings
+ * are pushed into the plan — the client-side Booking and the server-side
+ * PlanItem are two views of one thing and the title is what ties them.
+ *
+ * Only shown once a plan exists: attendees are a SHARED concept, and offering
+ * to add guests to something nobody else can see would be a lie about what
+ * the feature does.
+ */
+function Attendees({ title }: { title: string }) {
+  const item = useApp((s) => {
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return s.planItems.find((i) => norm(i.title) === norm(title));
+  });
+  const me = useApp((s) => s.me);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  if (!item) return null;
+  const list = item.attendees ?? [];
+  const going = item.party_size ?? list.filter((a) => a.rsvp !== 'out').length;
+
+  const change = async (n: string, opts: Parameters<typeof setAttendee>[2]) => {
+    setBusy(true);
+    await setAttendee(item.id, n, opts);
+    setBusy(false);
+  };
+
+  const add = async () => {
+    if (!name.trim()) return;
+    await change(name.trim(), {});
+    setName('');
+    setAdding(false);
+  };
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--ink-08)' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>
+        WHO'S COMING · TABLE FOR {going}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
+        {list.map((a) => {
+          // A member owns their own answer; a plain-name guest is answered for
+          // by whoever added them. The UI only offers the tap where the server
+          // will actually allow it, so nobody meets a 403 they can see coming.
+          const mine = a.member_id ? a.member_id === me?.id : true;
+          const out = a.rsvp === 'out';
+          const next = a.rsvp === 'going' ? 'maybe' : a.rsvp === 'maybe' ? 'out' : 'going';
+          return (
+            <span
+              key={a.name}
+              {...(mine ? pressable(() => void change(a.name, { rsvp: next as 'going' })) : {})}
+              title={mine ? 'Tap to change' : `${a.name} answers for themselves`}
+              style={{
+                borderRadius: 999, padding: '5px 11px', fontSize: 11, fontWeight: 600,
+                border: '1px solid var(--ink-12)',
+                cursor: mine ? 'pointer' : 'default',
+                opacity: busy ? 0.6 : out ? 0.45 : 1,
+                textDecoration: out ? 'line-through' : 'none',
+                background: a.rsvp === 'going' ? 'var(--field-bg)' : 'transparent',
+                color: a.rsvp === 'maybe' ? 'var(--color-accent-700)' : 'var(--ink)',
+                // A guest with no Num account is shown lighter rather than
+                // annotated — a trailing mark next to a name reads as a typo.
+                borderStyle: a.member_id ? 'solid' : 'dashed',
+              }}
+            >
+              {a.name}
+              {a.rsvp === 'maybe' ? ' · maybe' : ''}
+            </span>
+          );
+        })}
+        {adding ? (
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => (e.key === 'Enter' ? void add() : e.key === 'Escape' ? setAdding(false) : null)}
+            onBlur={() => (name.trim() ? void add() : setAdding(false))}
+            placeholder="Name"
+            style={{
+              borderRadius: 999, padding: '5px 11px', fontSize: 11, width: 110,
+              border: '1px solid var(--color-accent)', background: 'var(--field-bg)',
+              outline: 'none', color: 'var(--color-text)', fontFamily: 'var(--font-body)',
+            }}
+          />
+        ) : (
+          <span
+            {...pressable(() => setAdding(true))}
+            style={{
+              borderRadius: 999, padding: '5px 11px', fontSize: 11, fontWeight: 700,
+              border: '1px dashed var(--ink-12)', color: 'var(--ink-60)', cursor: 'pointer',
+            }}
+          >
+            + ADD
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.45 }}>
+        A name with no account still counts toward the table. Anyone who drops out frees their seat.
+      </div>
+    </div>
+  );
+}
 
 function BookingRow({ b }: { b: Booking }) {
   const exp = useApp((s) => s.expanded === b.id);
@@ -42,6 +151,7 @@ function BookingRow({ b }: { b: Booking }) {
       {exp && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ink-08)' }}>
           <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>{b.note}</div>
+          <Attendees title={b.title} />
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 4 }}>{b.cost}</div>
           {b.receipt && (
             <div style={{ fontSize: 10, letterSpacing: '.08em', fontWeight: 700, color: 'var(--color-accent-700)', marginTop: 4 }}>

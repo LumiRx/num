@@ -15,7 +15,10 @@
     // Only /api/* reaches the Worker; everything else is served as a static asset.
     // /api/* is the app's own API; /e/* is the public RSVP page, which must be
     // server-rendered rather than falling through to the SPA shell.
-    "run_worker_first": ["/api/*", "/e/*", "/claim/confirm"]
+    // /r/*, /i/* and /c/* are the short share links. They must reach the Worker,
+    // not the SPA fallback, or the asset handler answers 200 with the app shell
+    // and the redirect never happens.
+    "run_worker_first": ["/api/*", "/e/*", "/claim/confirm", "/r/*", "/i/*", "/c/*"]
   },
   // Same brain as the texts: the num-ai LINE concierge's database (67 live
   // destinations, 500k+ ranked places). The app only reads; num-ai owns writes.
@@ -43,12 +46,30 @@
   // Push services require a contact address for abuse reports. Not a secret —
   // it is sent in the clear on every push — so it lives here where it can be
   // changed without a secret rotation.
-  "vars": { "VAPID_SUBJECT": "mailto:hello@itsnum.com" },
+  // SABRE_PCC is the Point of Sale (Pseudo City Code) every shopping call is
+  // made under. It is NOT a secret — it identifies the agency office, not a
+  // credential — so it lives here rather than in wrangler secret.
+  //
+  // It matters more than its size suggests: without an explicit PCC, Sabre
+  // derives one from the credential's group, and a group that is not a valid
+  // 3-4 character code (DEVCENTER, for instance) produces an EMPTY offers
+  // array rather than an error. Silent emptiness that looks exactly like "no
+  // flights available" cost this integration an afternoon.
+  //
+  // FF9A is the certification example from Sabre's own docs and returns real
+  // cert content. REPLACE IT with the agency's own PCC before production.
+  // ADMIN_EMAIL is an identity, not a credential — ADMIN_KEY is still the gate.
+  // It stamps the signed session so the console can say who is looking, and so
+  // the sign-in log has a name in it rather than a row of anonymous successes.
+  "vars": { "VAPID_SUBJECT": "mailto:hello@itsnum.com", "SABRE_PCC": "FF9A", "ADMIN_EMAIL": "andre@thatislumi.com" },
   // The concierge model. Opus is the default in code; set it here to flip the
   // latency/cost trade without a code change (e.g. "claude-sonnet-5").
   // "vars": { "NUM_MODEL": "claude-sonnet-5" },
   // Branded home for the app. Share links point at itsnum.com/get, which lands
   // here. A workers.dev URL in something we ask a stranger to tap is a trust leak.
+  // Transactional email. The binding needs no API key, but the sending domain
+  // must be onboarded first:  npx wrangler email sending enable itsnum.com
+  "send_email": [{ "name": "EMAIL" }],
   "routes": [
     { "pattern": "app.itsnum.com", "custom_domain": true }
   ],

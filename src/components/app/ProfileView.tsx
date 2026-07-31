@@ -17,6 +17,7 @@ import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from
 import { THEMES, setTheme } from '../../lib/themes';
 import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
+import { disablePush, enablePush, pushState } from '../../lib/push';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -236,6 +237,8 @@ export default function ProfileView() {
 
       <ThemePicker />
 
+      <NotificationsCard />
+
       <Section title="HOW YOU TRAVEL" summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
       <Section title="SO NUM GETS YOU RIGHT" summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
 
@@ -295,6 +298,77 @@ export default function ProfileView() {
         </div>
         {note && <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', marginTop: 8, textAlign: 'center' }}>{note}</div>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Notifications, asked for at the right moment and never before.
+ *
+ * The iPhone rule is the one that shapes this: Safari only allows push for a
+ * PWA that has been added to the home screen, and the permission prompt is
+ * one-shot — a "no" is permanent. So this is a card the user chooses to tap,
+ * not a prompt on launch, and on an un-installed iPhone it says what to do
+ * rather than burning the one ask on a browser that cannot deliver.
+ */
+function NotificationsCard() {
+  const on = useApp((s) => s.pushOn);
+  const me = useApp((s) => s.me);
+  const [state, setState] = useState(() => pushState());
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // display-mode changes when they add it to the home screen and reopen.
+  useEffect(() => setState(pushState()), [me?.id]);
+
+  const blurb =
+    state === 'unsupported'
+      ? 'This browser can’t do notifications — everything still waits for you in the app.'
+      : state === 'needs-install'
+        ? 'Add Num to your home screen first: tap Share, then “Add to Home Screen”. iPhone only allows notifications for installed apps.'
+        : state === 'denied'
+          ? 'Notifications are blocked in your browser settings. Turn them back on there and Num can reach you again.'
+          : on
+            ? 'On. Num will tell you when a table moves, a friend answers, or a plan changes — and nothing else.'
+            : 'A table that moved, a friend who said yes, a flight that shifted. Only the things you’d want interrupting you.';
+
+  const toggle = async () => {
+    setBusy(true);
+    if (on) {
+      await disablePush();
+      setMsg('Off — you’ll still see everything next time you open Num.');
+    } else {
+      const out = await enablePush();
+      setMsg(out.message);
+      setState(pushState());
+    }
+    setBusy(false);
+  };
+
+  const actionable = state === 'default' || state === 'granted';
+
+  return (
+    <div className="glass" style={{ ...card }}>
+      <div style={kicker}>NOTIFICATIONS</div>
+      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>
+        {on ? 'Num can reach you' : 'Let Num reach you'}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>{blurb}</div>
+      {actionable && (
+        <div
+          {...pressable(toggle)}
+          style={{
+            cursor: 'pointer', marginTop: 11, borderRadius: 999, padding: '11px 16px', textAlign: 'center',
+            fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', opacity: busy ? 0.55 : 1,
+            ...(on
+              ? { background: 'transparent', color: 'var(--ink-60)', border: '1px solid var(--ink-12)' }
+              : { background: 'var(--grad-accent)', color: '#fff' }),
+          }}
+        >
+          {busy ? 'ONE MOMENT…' : on ? 'TURN THEM OFF' : 'TURN ON NOTIFICATIONS'}
+        </div>
+      )}
+      {msg && <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.5 }}>{msg}</div>}
     </div>
   );
 }

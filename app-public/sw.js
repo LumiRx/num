@@ -28,7 +28,10 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // KEEP is not just the shell: the identity cache is how a push knows who
+      // it is for when no tab is open, and sweeping it on every version bump
+      // would silently downgrade the next notification to "Something needs you".
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== 'num-identity').map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -122,6 +125,15 @@ self.addEventListener('push', (event) => {
           notifications.map((n) =>
             self.registration.showNotification(n.title, {
               body: n.body || '',
+              // A message from a friend gets a reply box ON the notification.
+              // This is the whole point: answering "on my way" should not
+              // require unlocking, finding the app, and waiting for it to boot.
+              // Android honours type:'text'; iOS ignores actions entirely and
+              // falls back to tapping through, which is why the tap target
+              // still has to work.
+              ...(n.kind === 'dm'
+                ? { actions: [{ action: 'reply', type: 'text', title: 'Reply', placeholder: 'Type a reply…' }] }
+                : {}),
               // `tag` collapses: a second update about the same thing replaces
               // the first rather than stacking four alerts about one table.
               tag: n.tag || n.kind,
@@ -140,6 +152,30 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
+  // An inline reply never opens the app — that is the feature. Send it
+  // straight from the service worker and leave the phone locked.
+  if (event.action === 'reply') {
+    const text = (event.reply || '').trim();
+    const to = new URL(event.notification.data?.url || '/', self.location.origin).searchParams.get('dm');
+    event.notification.close();
+    if (!text || !to) return;
+    event.waitUntil(
+      (async () => {
+        let me = null;
+        const cached = await caches.match('/__num_me');
+        if (cached) me = (await cached.text()) || null;
+        if (!me) return;
+        await fetch('/api/dm/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // A stable id per reply, so a retried send cannot deliver it twice.
+          body: JSON.stringify({ me, to, body: text, idem: 'dm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10) }),
+        }).catch(() => {});
+      })(),
+    );
+    return;
+  }
+
   event.notification.close();
   const target = event.notification.data?.url || '/?app';
   event.waitUntil(

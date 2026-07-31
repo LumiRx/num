@@ -6,9 +6,10 @@ import { store } from './store';
 import { demoState } from './data';
 import { addPlanItem, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
 import { offerService } from './services';
+import { runFlightSearch, type FlightQuery } from './flights';
 import { createEvent } from './events';
 import { observeUserMessage, styleForRequest, tripCheck } from './prefs';
-import type { ServiceHandoff } from './types';
+import type { ServiceHandoff, AppState } from './types';
 import type { Booking, Chip, Meeting, Msg } from './types';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
@@ -313,8 +314,13 @@ export function permDeny() {
 // above remain untouched — the demo still works with the server off.
 
 interface NumAction {
-  type: 'add_booking' | 'update_booking' | 'add_meeting' | 'remember' | 'invite' | 'plan_create' | 'plan_add' | 'service' | 'create_event';
+  type:
+    | 'add_booking' | 'update_booking' | 'add_meeting' | 'remember' | 'invite'
+    | 'plan_create' | 'plan_add' | 'service' | 'create_event'
+    | 'errand' | 'flight_search';
   booking?: Booking;
+  errand?: AppState['errandDraft'];
+  search?: FlightQuery;
   id?: string;
   patch?: Partial<Booking>;
   meeting?: Meeting;
@@ -342,6 +348,8 @@ interface NumAction {
   place?: string | null;
   address?: string | null;
   dress?: string | null;
+  /** create_event — the people to ask, by name. Resolved server-side. */
+  ask?: string[];
 }
 
 interface NumReply {
@@ -386,6 +394,14 @@ function applyAction(a: NumAction) {
       place: a.item.place ?? null,
       note: a.item.note ?? null,
     }).then(() => syncPlan());
+  } else if (a.type === 'errand' && a.errand?.title) {
+    // The model PROPOSES an errand; it never posts one. Posting moves Stars
+    // into escrow immediately, and an agent that can spend someone's balance
+    // because a sentence sounded like a request is a liability. The sheet
+    // opens pre-filled and the person taps the button that names the number.
+    store.set({ errandsOpen: true, errandDraft: a.errand });
+  } else if (a.type === 'flight_search' && a.search?.fromCode) {
+    void runFlightSearch(a.search);
   } else if (a.type === 'service' && a.kind && a.options?.length) {
     offerService({ kind: a.kind, mode: a.mode ?? 'handoff', note: a.note, to: a.to, query: a.query, options: a.options });
   } else if (a.type === 'create_event' && a.title) {
@@ -397,6 +413,9 @@ function applyAction(a: NumAction) {
       address: a.address ?? null,
       dress: a.dress ?? null,
       note: a.note ?? null,
+      // Named guests go with the event, so the people already on Num are asked
+      // in the same round trip that creates it.
+      ask: a.ask ?? [],
     });
   }
 }

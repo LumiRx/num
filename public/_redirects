@@ -1,0 +1,47 @@
+# Cloudflare Workers static-asset redirects.
+# Everything here is a 301 because these URLs are dead for good, and a 301 is what
+# passes ranking to the replacement. If a rule ever needs to be temporary, use 302.
+#
+# Every target carries a trailing slash. Workers static assets serve
+# public/<slug>/index.html at "/<slug>/" and 307 "/<slug>" to it, so a target
+# written without the slash turns one redirect into a 301 -> 307 chain.
+
+# --- host: www folds into the apex ---------------------------------------------
+# Removed 31 Jul 2026. Workers static assets only accept relative sources here, so
+# wrangler rejects the whole file if this line is present. It was never live either
+# way — www.itsnum.com returned 200 rather than a 301. The www fold belongs in a
+# zone-level Redirect Rule (Rules > Redirect Rules), not in _redirects. Until that
+# rule exists, www serves the site directly; canonical tags point at the apex.
+
+# --- the retired Pages site's .html URLs ---------------------------------------
+/index.html       /                301
+/how.html         /how-it-works/   301
+/perks.html       /perks/          301
+/business.html    /business/       301
+/dashboard.html   /signin/         301
+/start.html       /get/            301
+/login.html       /signin/         301
+/signup.html      /claim/          301
+/whatsapp.html    /get/            301
+
+# --- paths the old site linked to that were never real pages -------------------
+/how              /how-it-works/   301
+/start            /get/            301
+/dashboard        /signin/         301
+/login            /signin/         301
+/signup           /claim/          301
+/whatsapp         /get/            301
+
+# --- aliases people type or that appeared in print -----------------------------
+/api              /agents/         301
+/developers       /agents/         301
+/mcp-server       /agents/         301
+/ai               /for-ai/         301
+/list             /list-your-business/ 301
+/prices           /pricing/        301
+/support          /contact/        301
+/help             /faq/            301
+/cities           /destinations/   301
+/city             /destinations/   301
+/tab              /tabs/           301
+/num-tab          /tabs/           301

@@ -48,6 +48,12 @@ let usageReady = false;
 async function ensureUsage(env) {
   if (usageReady) return;
   await env.DB.batch(USAGE_SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // Attribution was missing from the original table: turns were counted by
+  // lane and by day, so "how much is this costing" had an answer and "who is
+  // actually using it" did not. Added by migration rather than a schema bump
+  // so existing rows survive — they simply have a null member.
+  await env.DB.prepare('ALTER TABLE num_usage ADD COLUMN member_id TEXT').run().catch(() => {});
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_num_usage_member ON num_usage(member_id, day)').run().catch(() => {});
   usageReady = true;
 }
 
@@ -59,7 +65,7 @@ const PRICE = { in: 5, out: 25, cacheWrite: 6.25, cacheRead: 0.5 };
  * Record what a turn actually cost. Fire-and-forget via ctx.waitUntil: a
  * logging failure must never cost a user their reply.
  */
-export async function logUsage(env, { lane, model, specialist, place, usage, ms }) {
+export async function logUsage(env, { lane, model, specialist, place, usage, ms, memberId }) {
   if (!env.DB) return;
   try {
     await ensureUsage(env);
@@ -71,9 +77,9 @@ export async function logUsage(env, { lane, model, specialist, place, usage, ms 
       ((i * PRICE.in + o * PRICE.out + cw * PRICE.cacheWrite + cr * PRICE.cacheRead) / 1_000_000) * 1_000_000,
     );
     await env.DB.prepare(
-      `INSERT INTO num_usage (day, lane, model, specialist, place, in_tokens, out_tokens, cache_write, cache_read, ms, micro_usd)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`,
-    ).bind(new Date().toISOString().slice(0, 10), lane, model ?? null, specialist ?? null, place ?? null, i, o, cw, cr, ms ?? null, microUsd).run();
+      `INSERT INTO num_usage (day, lane, model, specialist, place, in_tokens, out_tokens, cache_write, cache_read, ms, micro_usd, member_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)`,
+    ).bind(new Date().toISOString().slice(0, 10), lane, model ?? null, specialist ?? null, place ?? null, i, o, cw, cr, ms ?? null, microUsd, memberId ?? null).run();
   } catch (err) {
     console.warn('[usage]', err?.message ?? err);
   }
@@ -178,28 +184,77 @@ function safeEq(a, b) {
   return diff === 0;
 }
 
-async function mintSession(env) {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify({ exp: Date.now() + SESSION_HOURS * 3600_000 })));
+/**
+ * Mint a session, stamped with WHO it belongs to.
+ *
+ * The key on its own is a shared secret with no identity attached: every
+ * session looks the same, so "who opened the console at 3am" has no answer.
+ * Carrying the operator's address in the signed payload costs nothing, cannot
+ * be edited without the key, and turns an anonymous door into an attributable
+ * one. It is not authentication on its own — the key is still the gate — but
+ * it makes the audit log mean something.
+ */
+async function mintSession(env, who) {
+  const payload = b64url(
+    new TextEncoder().encode(JSON.stringify({ exp: Date.now() + SESSION_HOURS * 3600_000, who: who ?? null })),
+  );
   return `${payload}.${await hmac(env, payload)}`;
 }
 
-async function sessionValid(env, token) {
+/** Read the signed payload back, or null if it does not verify. */
+async function sessionClaims(env, token) {
   const [payload, sig] = String(token ?? '').split('.');
-  if (!payload || !sig) return false;
-  if (!safeEq(sig, await hmac(env, payload))) return false;
+  if (!payload || !sig) return null;
+  if (!safeEq(sig, await hmac(env, payload))) return null;
   try {
-    const { exp } = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof exp === 'number' && exp > Date.now();
+    const c = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof c.exp === 'number' && c.exp > Date.now() ? c : null;
   } catch {
-    return false;
+    return null;
   }
 }
+
+/** Every admin sign-in, kept. An unauditable admin door is a liability. */
+const ADMIN_LOG = `
+CREATE TABLE IF NOT EXISTS num_admin_logins (
+  id TEXT PRIMARY KEY, who TEXT, ok INTEGER NOT NULL,
+  ip TEXT, ua TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);`;
+let adminLogReady = false;
+async function logAdmin(env, req, { who, ok }) {
+  try {
+    if (!adminLogReady) {
+      await env.DB.prepare(ADMIN_LOG.trim()).run();
+      adminLogReady = true;
+    }
+    await env.DB.prepare('INSERT INTO num_admin_logins (id, who, ok, ip, ua) VALUES (?1,?2,?3,?4,?5)')
+      .bind(
+        crypto.randomUUID(),
+        who ?? null,
+        ok ? 1 : 0,
+        // Enough to spot a pattern, not enough to be a tracking log.
+        (req.headers.get('CF-Connecting-IP') ?? '').split('.').slice(0, 2).join('.') + '.x.x',
+        String(req.headers.get('User-Agent') ?? '').slice(0, 120),
+      )
+      .run();
+  } catch (e) {
+    console.warn('[admin] login log failed', e?.message ?? e);
+  }
+}
+
+const sessionValid = async (env, token) => !!(await sessionClaims(env, token));
 
 async function adminSession(env, req) {
   const b = await readBody(req);
   if (!env.ADMIN_KEY) return json({ error: 'No admin key is configured on this Worker yet.' }, 503);
-  if (!safeEq(b.key, env.ADMIN_KEY)) return json({ error: 'That key does not match.' }, 401);
-  return json({ token: await mintSession(env), expires_in_hours: SESSION_HOURS });
+  const who = env.ADMIN_EMAIL ?? null;
+  if (!safeEq(b.key, env.ADMIN_KEY)) {
+    // Failures are logged too — a run of them is the only warning you get.
+    await logAdmin(env, req, { who: null, ok: false });
+    return json({ error: 'That key does not match.' }, 401);
+  }
+  await logAdmin(env, req, { who, ok: true });
+  return json({ token: await mintSession(env, who), who, expires_in_hours: SESSION_HOURS });
 }
 
 const isAdmin = async (env, req) =>
@@ -214,7 +269,7 @@ const count = async (env, sql, ...binds) => {
   }
 };
 
-async function adminOverview(env, url) {
+async function adminOverview(env, url, req) {
   await ensureUsage(env);
   const since = Number(url.searchParams.get('days')) || 7;
   const day = new Date(Date.now() - since * 86400_000).toISOString().slice(0, 10);
@@ -251,6 +306,37 @@ async function adminOverview(env, url) {
     ['bookings', 'SELECT COUNT(*) n FROM num_bookings'],
     ['guestProfiles', 'SELECT COUNT(*) n FROM num_guest_profiles'],
     // the business side
+    // ── the Stars economy ──────────────────────────────────────────────
+    // Money in circulation is not the same as money at rest: escrow is real
+    // Stars that a member no longer controls, so it is counted separately or
+    // the totals lie.
+    ['starsCirculating', "SELECT COALESCE(SUM(stars),0) n FROM num_star_balances WHERE member_id <> '__escrow__'"],
+    ['starsEscrow', "SELECT COALESCE(SUM(stars),0) n FROM num_star_balances WHERE member_id = '__escrow__'"],
+    ['starMoves', 'SELECT COUNT(*) n FROM num_star_moves'],
+    ['starMoves24', "SELECT COUNT(*) n FROM num_star_moves WHERE created_at > datetime('now','-1 day')"],
+    // ── live tabs ─────────────────────────────────────────────────────
+    ['tabsOpen', "SELECT COUNT(*) n FROM num_tabs WHERE state='open'"],
+    ['tabsAll', 'SELECT COUNT(*) n FROM num_tabs'],
+    ['tabItems', 'SELECT COUNT(*) n FROM num_tab_items'],
+    ['tabOnBoard', "SELECT COALESCE(SUM(i.stars),0) n FROM num_tab_items i JOIN num_tabs t ON t.id=i.tab_id WHERE t.state='open'"],
+    ['tabSettled', 'SELECT COALESCE(SUM(stars),0) n FROM num_tab_settlements'],
+    // ── errands ───────────────────────────────────────────────────────
+    ['errandsAll', 'SELECT COUNT(*) n FROM num_errands'],
+    ['errandsLive', "SELECT COUNT(*) n FROM num_errands WHERE state NOT IN ('settled','cancelled')"],
+    ['errandsOpen', "SELECT COUNT(*) n FROM num_errands WHERE state='open'"],
+    ['errandsDisputed', "SELECT COUNT(*) n FROM num_errands WHERE state='disputed'"],
+    ['errandsPaid', "SELECT COALESCE(SUM(bounty),0) n FROM num_errands WHERE state='settled'"],
+    ['errandsCommitted', "SELECT COALESCE(SUM(bounty + spend_cap),0) n FROM num_errands WHERE state NOT IN ('settled','cancelled')"],
+    // ── reach ─────────────────────────────────────────────────────────
+    ['pushSubs', 'SELECT COUNT(*) n FROM num_push_subs'],
+    ['pushDead', 'SELECT COUNT(*) n FROM num_push_subs WHERE fails >= 5'],
+    ['notifsSent', 'SELECT COUNT(*) n FROM num_notifications'],
+    ['notifsDelivered', 'SELECT COUNT(*) n FROM num_notifications WHERE delivered_at IS NOT NULL'],
+    // ── partners ──────────────────────────────────────────────────────
+    ['airCalls', 'SELECT COUNT(*) n FROM num_air_exchanges'],
+    ['airFailed', 'SELECT COUNT(*) n FROM num_air_exchanges WHERE ok=0'],
+    ['sabreBookings', 'SELECT COUNT(*) n FROM num_sabre_bookings'],
+    ['sabreFailed', 'SELECT COUNT(*) n FROM num_sabre_bookings WHERE ok=0'],
     ['businesses', 'SELECT COUNT(*) n FROM businesses'],
     ['claims', 'SELECT COUNT(*) n FROM num_claims'],
     ['owners', 'SELECT COUNT(*) n FROM num_place_owners'],
@@ -266,7 +352,7 @@ async function adminOverview(env, url) {
   const nums = await Promise.all(COUNTS.map(([, sql]) => settle(q(sql).first(), { n: 0 })));
   const c = Object.fromEntries(COUNTS.map(([k], i) => [k, nums[i]?.n ?? 0]));
 
-  const [usageByDay, topAsks, recent, leaders, leadsByDest, brainCost, latestBuzz, bizRows, recentReq] = await Promise.all([
+  const [usageByDay, topAsks, recent, leaders, leadsByDest, brainCost, latestBuzz, bizRows, recentReq, errandStates, recentErrands, starKinds, topUsers, retention] = await Promise.all([
     settle(
       q(`SELECT day, lane, COUNT(*) turns, SUM(in_tokens) in_tokens, SUM(out_tokens) out_tokens,
                 SUM(cache_read) cache_read, SUM(micro_usd) micro_usd, AVG(ms) avg_ms
@@ -298,6 +384,37 @@ async function adminOverview(env, url) {
       q(`SELECT id, vertical, intent, status, area, party_size, created_at FROM num_requests ORDER BY created_at DESC LIMIT 12`).all(),
       { results: [] },
     ),
+    settle(q('SELECT state, COUNT(*) n, COALESCE(SUM(bounty),0) bounty FROM num_errands GROUP BY state').all(), { results: [] }),
+    settle(
+      q(`SELECT e.id, e.title, e.state, e.bounty, e.spend_cap, e.place, e.created_at,
+                p.name AS poster, r.name AS runner
+           FROM num_errands e
+           LEFT JOIN num_members p ON p.id=e.poster_id LEFT JOIN num_members r ON r.id=e.runner_id
+          ORDER BY e.rowid DESC LIMIT 15`).all(),
+      { results: [] },
+    ),
+    settle(q("SELECT kind, COUNT(*) n, COALESCE(SUM(ABS(delta)),0) volume FROM num_star_moves GROUP BY kind ORDER BY n DESC").all(), { results: [] }),
+    // Who is actually using it, and how much. Turns per member is the closest
+    // thing to a real engagement number this product has — signups measure
+    // curiosity, this measures use.
+    settle(
+      q(`SELECT u.member_id, m.name, COUNT(*) turns, MAX(u.day) last_day,
+                COALESCE(SUM(u.micro_usd),0) micro_usd
+           FROM num_usage u LEFT JOIN num_members m ON m.id = u.member_id
+          WHERE u.member_id IS NOT NULL
+          GROUP BY u.member_id ORDER BY turns DESC LIMIT 20`).all(),
+      { results: [] },
+    ),
+    // The retention shape, in one row. Anyone can get signups; the gap between
+    // these three is whether the thing is actually worth opening again.
+    settle(
+      q(`SELECT
+           (SELECT COUNT(*) FROM num_members WHERE seen_at > datetime('now','-1 day')) d1,
+           (SELECT COUNT(*) FROM num_members WHERE seen_at > datetime('now','-7 day')) d7,
+           (SELECT COUNT(*) FROM num_members WHERE seen_at > datetime('now','-30 day')) d30,
+           (SELECT COUNT(DISTINCT member_id) FROM num_usage WHERE member_id IS NOT NULL) ever_asked`).first(),
+      {},
+    ),
   ]);
 
   const spend = (usageByDay.results ?? []).reduce((n, r) => n + (r.micro_usd ?? 0), 0) / 1_000_000;
@@ -328,7 +445,198 @@ async function adminOverview(env, url) {
       by_day: usageByDay.results ?? [],
     },
     product: { open_feature_requests: c.gaps, asks: topAsks.results ?? [] },
+
+    // ── the Stars economy ───────────────────────────────────────────────
+    // `escrow_balanced` is the one number worth alerting on. Escrow held must
+    // equal what live errands have committed; if they ever drift, money moved
+    // without an errand moving, and that is a bug you want to hear about from
+    // this dashboard rather than from the person who lost the Stars.
+    money: {
+      circulating: c.starsCirculating,
+      escrow_held: c.starsEscrow,
+      escrow_committed: c.errandsCommitted,
+      escrow_balanced: c.starsEscrow === c.errandsCommitted,
+      moves_total: c.starMoves,
+      moves_24h: c.starMoves24,
+      by_kind: starKinds.results ?? [],
+    },
+    tabs: {
+      open: c.tabsOpen,
+      all_time: c.tabsAll,
+      items: c.tabItems,
+      on_open_tabs: c.tabOnBoard,
+      settled_value: c.tabSettled,
+    },
+    errands: {
+      all_time: c.errandsAll,
+      live: c.errandsLive,
+      open: c.errandsOpen,
+      // Disputes are the health metric here. A marketplace with a rising
+      // dispute rate is failing quietly, well before anyone complains.
+      disputed: c.errandsDisputed,
+      bounties_paid: c.errandsPaid,
+      by_state: errandStates.results ?? [],
+      recent: recentErrands.results ?? [],
+    },
+    reach: {
+      push_subscriptions: c.pushSubs,
+      push_dead: c.pushDead,
+      notifications_queued: c.notifsSent,
+      notifications_delivered: c.notifsDelivered,
+      // Queued but never delivered means the wake-ups are not landing, which
+      // looks fine in every other metric.
+      delivery_rate: c.notifsSent ? Number((c.notifsDelivered / c.notifsSent).toFixed(3)) : null,
+    },
+    partners: {
+      air_calls: c.airCalls,
+      air_failed: c.airFailed,
+      sabre_operations: c.sabreBookings,
+      sabre_failed: c.sabreFailed,
+    },
+    // What is ACTUALLY wired right now, read from the same predicates the code
+    // paths use rather than a list someone has to remember to update.
+    rails: {
+      brain: !!env.ANTHROPIC_API_KEY,
+      push: !!(env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT),
+      courier: !!(env.DOORDASH_DEVELOPER_ID && env.DOORDASH_KEY_ID && env.DOORDASH_SIGNING_SECRET),
+      air: !!(env.AIR_MCP_URL && env.AIR_API_KEY),
+      flight_shopping: !!(env.SABRE_CLIENT_ID && env.SABRE_CLIENT_SECRET),
+      sabre_point_of_sale: env.SABRE_PCC ?? null,
+      sabre_environment: env.SABRE_ENV === 'prod' ? 'production' : 'certification',
+      booking: env.SABRE_BOOKING_ENABLED === 'true',
+      sms: false,
+    },
+    // Who is looking, and who has looked. Read back out of the signed session
+    // rather than from a header, so it cannot be spoofed by the caller.
+    // Engagement, kept separate from headcount on purpose: members is a
+    // vanity number, turns-per-person is the one that moves when the product
+    // is good.
+    engagement: {
+      active_1d: retention?.d1 ?? 0,
+      active_7d: retention?.d7 ?? 0,
+      active_30d: retention?.d30 ?? 0,
+      ever_asked: retention?.ever_asked ?? 0,
+      top_users: topUsers.results ?? [],
+    },
+    operator: {
+      signed_in_as: (await sessionClaims(env, req?.headers.get('X-Admin-Session')))?.who ?? null,
+      configured: env.ADMIN_EMAIL ?? null,
+      recent_logins: (
+        await settle(
+          q('SELECT who, ok, ip, created_at FROM num_admin_logins ORDER BY rowid DESC LIMIT 10').all(),
+          { results: [] },
+        )
+      ).results ?? [],
+    },
   });
+}
+
+/**
+ * The call queue: every verified claim no human has phoned yet, oldest first.
+ *
+ * WHY THIS EXISTS
+ * /claim tells a business, in writing: "A person from our team checks the
+ * listing against public records and gets in touch on the number you gave us.
+ * Usually within one working day." Until this route there was no list of who
+ * that was. A claim verified by SMS never passes through adminDecide, so it
+ * leaves no decided_at, and the only other surface was the overview's 15-row
+ * recent-businesses table, which has no contacted state and silently drops the
+ * sixteenth. With 500 invites landing at once that is a promise the system
+ * cannot keep and cannot even see itself failing to keep.
+ *
+ * Being contacted is recorded as a num_claim_events row rather than a new
+ * column: that table is already the claim's audit trail, a phone call is an
+ * event, and the queue therefore drains without a migration.
+ */
+async function adminClaims(env, url) {
+  const limit = Math.min(Number(url.searchParams.get('limit')) || 200, 500);
+
+  // Age runs from created_at, not from verification: the clock the business is
+  // counting starts when they filled the form, and created_at is the one
+  // timestamp every claim has.
+  const AGE = "ROUND((julianday('now') - julianday(c.created_at)) * 24, 1)";
+  const UNCALLED =
+    "NOT EXISTS (SELECT 1 FROM num_claim_events e WHERE e.claim_id = c.id AND e.event = 'contacted')";
+
+  const [queue, review, tally] = await Promise.all([
+    env.DB.prepare(
+      `SELECT c.id, c.place_id, c.business_id, c.claimant_name, c.claimant_phone,
+              c.claimant_email, c.channel, c.created_at, ${AGE} AS age_h,
+              p.name AS place_name, p.area, p.dest, p.country,
+              b.name AS business_name, pr.phone_e164, pr.vertical, pr.timezone
+         FROM num_claims c
+         LEFT JOIN places p               ON p.id = c.place_id
+         LEFT JOIN businesses b           ON b.id = c.business_id
+         LEFT JOIN num_business_profiles pr ON pr.business_id = c.business_id
+        WHERE c.state = 'verified' AND ${UNCALLED}
+        ORDER BY c.created_at ASC LIMIT ?1`,
+    ).bind(limit).all(),
+    env.DB.prepare(
+      `SELECT c.id, c.place_id, c.claimant_name, c.claimant_phone, c.claimant_email,
+              c.review_reason, c.created_at, ${AGE} AS age_h,
+              p.name AS place_name, p.area, p.dest
+         FROM num_claims c LEFT JOIN places p ON p.id = c.place_id
+        WHERE c.state = 'review'
+        ORDER BY c.created_at ASC LIMIT 100`,
+    ).all(),
+    env.DB.prepare(
+      `SELECT
+         SUM(c.state = 'verified')                    AS verified,
+         SUM(c.state = 'review')                      AS in_review,
+         SUM(c.state = 'pending')                     AS pending,
+         SUM(c.state = 'verified' AND ${UNCALLED})    AS to_call,
+         SUM(c.state = 'verified' AND ${UNCALLED}
+             AND (julianday('now') - julianday(c.created_at)) * 24 > 24) AS overdue
+       FROM num_claims c`,
+    ).first(),
+  ]);
+
+  const rows = queue.results ?? [];
+  return json({
+    // The count is the truth even when the list is capped, so a queue longer
+    // than the page cannot read as a queue that is finished.
+    counts: {
+      to_call: tally?.to_call ?? 0,
+      overdue: tally?.overdue ?? 0,
+      in_review: tally?.in_review ?? 0,
+      verified_total: tally?.verified ?? 0,
+      pending: tally?.pending ?? 0,
+    },
+    truncated: rows.length >= limit && (tally?.to_call ?? 0) > rows.length,
+    // Past 24h we have missed what the page promised. Say so plainly here
+    // rather than leaving an operator to work it out from timestamps.
+    to_call: rows.map((r) => ({ ...r, overdue: Number(r.age_h) > 24 })),
+    awaiting_review: review.results ?? [],
+  });
+}
+
+/**
+ * Record that a person phoned this claimant.
+ *
+ * Deliberately NOT routed through claim/verify.mjs's logEvent: that helper
+ * swallows its own errors so the audit log can never break the flow it audits,
+ * which is right there and wrong here. If this write fails the operator must
+ * find out, because otherwise the queue looks drained and the call never
+ * happened.
+ */
+async function adminClaimContacted(env, req) {
+  const b = await readBody(req);
+  const id = clip(b.claim_id ?? b.id, 64);
+  if (!id) return json({ error: 'claim_id required' }, 400);
+
+  const row = await env.DB.prepare('SELECT id, state FROM num_claims WHERE id=?1').bind(id).first();
+  if (!row) return json({ error: 'no such claim' }, 404);
+  if (row.state !== 'verified')
+    return json({ error: `claim is ${row.state}, not verified — there is nothing to call about yet` }, 409);
+
+  const who = clip(b.by, 60) || 'admin';
+  const note = b.note ? ': ' + String(b.note).slice(0, 300) : '';
+  const res = await env.DB.prepare(
+    'INSERT INTO num_claim_events (claim_id, event, detail, ip) VALUES (?1,?2,?3,?4)',
+  ).bind(id, 'contacted', who + note, req.headers.get('CF-Connecting-IP') ?? null).run();
+  if (!res?.success) return json({ error: 'the call was not recorded — try again' }, 500);
+
+  return json({ ok: true, claim_id: id, by: who });
 }
 
 /** Close out a flagged capability gap once it is built or answered. */
@@ -356,7 +664,9 @@ export async function handleConsole(request, env, path) {
       // The only unauthenticated route: trade the key for a session.
       if (path === '/admin/session' && post) return await adminSession(env, request);
       if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
-      if (path === '/admin/overview') return await adminOverview(env, url);
+      if (path === '/admin/overview') return await adminOverview(env, url, request);
+      if (path === '/admin/claims' && !post) return await adminClaims(env, url);
+      if (path === '/admin/claims/contacted' && post) return await adminClaimContacted(env, request);
       if (path === '/admin/resolve' && post) return await adminResolve(env, request);
       return json({ error: 'not found' }, 404);
     }

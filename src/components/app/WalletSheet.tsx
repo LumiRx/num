@@ -6,6 +6,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack } from '../../lib/concierge';
+import { TabStarter } from './TabSheet';
 
 const PACKS: Array<{ stars: string; price: string; n: number; via: string }> = [
   { stars: '★500', price: '$150 · Apple Pay', n: 500, via: 'Apple Pay' },
@@ -61,6 +62,22 @@ export default function WalletSheet() {
           ))}
         </div>
         {!!bought && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-accent-700)', fontWeight: 600 }}>{bought}</div>}
+      </div>
+      <div style={{ padding: '0 16px 14px' }}>
+        <TabStarter />
+        <div
+          {...pressable(() => store.set({ walletOpen: false, errandsOpen: true }))}
+          className="glass lift"
+          style={{ cursor: 'pointer', marginTop: 14, borderRadius: 14, padding: '12px 13px' }}
+        >
+          <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>ERRANDS</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>
+            Need something fetched?
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2, lineHeight: 1.45 }}>
+            Post it with a bounty and someone nearby goes — or earn Stars running one yourself.
+          </div>
+        </div>
       </div>
       <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--ink-08)', display: 'flex', gap: 14, fontSize: 10.5, color: 'var(--color-neutral-700)' }}>
         <span style={{ fontWeight: 600 }}> Apple Pay · on</span>

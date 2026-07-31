@@ -63,7 +63,6 @@ export const MEMORY_GROUPS: Array<[name: MemoryItem['trip'], dates: string]> = [
   ['LISBON', '15 – 18 MAY 2026'],
 ];
 
-export const SHARE_LINK = 'https://concierge.travel/p/viv-4k2x';
 
 /** Everything both modes share at boot. */
 function baseState() {
@@ -88,6 +87,16 @@ function baseState() {
     bought: '',
     starMoves: [],
     payOpen: null,
+    connectTo: null,
+    flightOffers: null,
+    flightSearching: false,
+    flightError: null,
+    errandDraft: null,
+    tabOpen: null,
+    tabId: null,
+    errandsOpen: false,
+    errands: [],
+    myErrands: [],
     inbox: { connects: [], plans: [], events: [] },
     // Default layout. Num rewrites this as the trip changes — directions only
     // earn a slot when there is somewhere to be.
@@ -178,31 +187,95 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, ...keep } = s;
-  return keep;
+    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft, ...keep } = s;
+  // The transcript is the only field that grows without limit, and it is the
+  // one that used to push the whole save over quota.
+  return { ...keep, msgs: keep.msgs.slice(-MAX_PERSISTED_MSGS) };
 }
+
+/**
+ * Identity lives in its OWN key, separate from everything else.
+ *
+ * This is the fix for "it asks who I am every time I open the app". The
+ * account used to be one field inside a single large blob that also held the
+ * entire chat transcript. Two ways that lost people:
+ *
+ *   · The transcript grows forever. Once the blob passed the localStorage
+ *     quota, setItem threw, the catch swallowed it, and NOTHING was saved from
+ *     then on — so the next launch restored a stale blob or none at all.
+ *   · A single malformed field made the loader discard the whole object,
+ *     identity included.
+ *
+ * Who you are is a few hundred bytes and must never be at the mercy of either.
+ * It is written separately, first, and read back independently.
+ */
+const IDENTITY_KEY = 'num-identity-v1';
+
+/** Keep the transcript from growing without bound and evicting the account. */
+const MAX_PERSISTED_MSGS = 200;
 
 export function saveState(s: AppState): void {
   // The demo is a showroom, not the user's data — never persist it.
   if (s.demo) return;
+
+  // Identity first and on its own, so a full quota can never cost the account.
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable(s)));
+    if (s.me) localStorage.setItem(IDENTITY_KEY, JSON.stringify({ me: s.me, place: s.place, onboarded: s.onboarded }));
   } catch {
-    // Storage full or blocked (private mode) — the session still works.
+    /* nothing else to try — private mode blocks writes entirely */
+  }
+
+  const body = persistable(s);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(body));
+  } catch {
+    // Almost always quota. Drop the oldest messages and try once more rather
+    // than silently giving up on every future save.
+    try {
+      const trimmed = { ...body, msgs: Array.isArray(body.msgs) ? body.msgs.slice(-40) : [] };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    } catch {
+      /* storage genuinely unavailable — the session still works in memory */
+    }
   }
 }
 
 export function initialState(): AppState {
+  // Identity is read on its own and applied LAST, so a corrupt or missing
+  // main blob costs you your chat history and never your account.
+  let identity: Partial<AppState> = {};
+  try {
+    const raw = localStorage.getItem(IDENTITY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.me?.id) identity = { me: parsed.me, place: parsed.place ?? null, onboarded: !!parsed.onboarded };
+    }
+  } catch {
+    /* unreadable identity — fall through to the main blob */
+  }
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
-      if (saved && typeof saved === 'object' && Array.isArray(saved.msgs)) {
-        return { ...freshState(), ...saved, demo: false };
+      if (saved && typeof saved === 'object') {
+        // A missing or malformed transcript is not a reason to forget who
+        // somebody is. Repair the field instead of discarding the object —
+        // and if we know them, do NOT fall back to the cold-start welcome
+        // that ends "let's start with your name". Being greeted like a
+        // stranger by an app you are signed into is worse than an empty
+        // thread, because it reads as though it forgot you.
+        const known = identity.me ?? saved.me;
+        const msgs = Array.isArray(saved.msgs)
+          ? saved.msgs
+          : known
+            ? [{ who: 'c' as const, text: `Welcome back${known.name ? ', ' + known.name : ''}. Your trip and your people are all still here — what do you need?` }]
+            : freshState().msgs;
+        return { ...freshState(), ...saved, msgs, ...identity, demo: false };
       }
     }
   } catch {
-    // Corrupt or unavailable storage — start clean.
+    // Corrupt or unavailable storage — start clean, but keep the account.
   }
-  return freshState();
+  return { ...freshState(), ...identity };
 }

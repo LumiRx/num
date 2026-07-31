@@ -74,10 +74,39 @@ export async function disablePush(): Promise<void> {
 }
 
 /**
+ * Leave the member id where the service worker can find it with the app shut.
+ *
+ * This is the path that actually matters: a push arrives when Num is closed,
+ * so there is no page to ask, and without this every real notification
+ * degrades to "Something needs you". A cache entry is the only storage a
+ * service worker can read synchronously from a push event — localStorage and
+ * the store are both out of reach there.
+ */
+async function cacheIdentity(id: string | null): Promise<void> {
+  try {
+    const cache = await caches.open('num-identity');
+    if (id) await cache.put('/__num_me', new Response(id));
+    else await cache.delete('/__num_me');
+  } catch {
+    /* private mode, quota, an old browser — the open-tab path still works */
+  }
+}
+
+/**
  * The service worker has no localStorage, so when a push wakes it, it asks the
- * page who is signed in. This answers.
+ * page who is signed in. This answers — and keeps the offline copy in step.
  */
 export function serveIdentityToWorker(): void {
+  void cacheIdentity(store.get().me?.id ?? null);
+  let last = store.get().me?.id ?? null;
+  store.subscribe(() => {
+    const now = store.get().me?.id ?? null;
+    if (now !== last) {
+      last = now;
+      void cacheIdentity(now);
+    }
+  });
+
   navigator.serviceWorker?.addEventListener('message', (event) => {
     const data = event.data as { type?: string; url?: string };
     if (data?.type === 'num-who') {

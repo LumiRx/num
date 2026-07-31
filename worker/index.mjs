@@ -23,6 +23,13 @@ import { ask as askBrains, roster as brainRoster, probe as brainProbe } from './
 import { AIR_TOOLS, airReady, callAir, trustEnvelope } from './air.mjs';
 import { handlePush, notify, pushReady } from './push.mjs';
 import { driveReady, handleDrive } from './doordash.mjs';
+import { handleSabre, sabreReady } from './sabre.mjs';
+import { bookingConfigured, handleBooking } from './sabre-booking.mjs';
+import { handleErrands } from './errands.mjs';
+import { handleEmail } from './email.mjs';
+import { handlePay, payMode } from './pay.mjs';
+import { handleVoice, voiceReady } from './voice.mjs';
+import { handleDm } from './dm.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
@@ -34,7 +41,7 @@ const DEFAULT_MODEL = 'claude-opus-5';
 
 const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
 
-async function askNum(client, messages, state, grounding, profile, extraSystem, env, userText) {
+async function askNum(client, messages, state, grounding, profile, extraSystem, env, userText, acceptLang) {
   // PERSONA + VOICE are identical on every request, so they sit above the
   // cache breakpoint. Everything below it changes per turn.
   const specialist = pickSpecialist(userText ?? '');
@@ -53,6 +60,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         party: state?.party,
         trip: state?.tripCheck,
         air: airReady(env),
+        acceptLang,
       }),
     },
     { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
@@ -236,10 +244,16 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const cors = corsHeaders(request, url.origin);
+    // no-store on every API response, without exception. These are all
+    // per-user or per-moment answers, and a cached one is a wrong one — most
+    // sharply on /api/version, which exists to say what is running RIGHT NOW
+    // and which the release script polls to decide whether a deploy landed.
+    // A cached version string makes that check confidently wrong, which is
+    // worse than having no check at all.
     const json = (status, body, extra) =>
       new Response(JSON.stringify(body), {
         status,
-        headers: { 'Content-Type': 'application/json', ...cors, ...extra },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors, ...extra },
       });
 
     if (request.method === 'OPTIONS') {
@@ -289,7 +303,25 @@ export default {
     }
 
     if (url.pathname === '/api/version') {
-      return json(200, { version: env.NUM_VERSION ?? 'unknown', model: env.NUM_MODEL || DEFAULT_MODEL });
+      // What is actually wired, in one place. Each flag is a capability claim,
+      // so it reads the same predicate the code paths do rather than a list
+      // someone has to remember to update.
+      return json(200, {
+        version: env.NUM_VERSION ?? 'unknown',
+        model: env.NUM_MODEL || DEFAULT_MODEL,
+        connected: {
+          brain: !!env.ANTHROPIC_API_KEY,
+          push: pushReady(env),
+          courier: driveReady(env),
+          air: airReady(env),
+          // Shopping, not booking — the name says so on purpose.
+          flight_shopping: sabreReady(env),
+          booking: bookingConfigured(env),
+          email: !!env.EMAIL,
+          payments: payMode(env),
+          voice_in: voiceReady(env),
+        },
+      });
     }
 
     if (url.pathname === '/claim/confirm') return await handleClaimConfirm(request, env);
@@ -307,6 +339,66 @@ export default {
 
     if (url.pathname.startsWith('/api/drive')) {
       const res = await handleDrive(request, env, url.pathname.slice('/api/drive'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Booking sits on its own prefix, not under /api/sabre, so that the
+    // committing surface is never reachable by fat-fingering a shopping path.
+    // Short share paths. /r/CODE, /i/TOKEN and /c/ID exist so a link that gets
+    // read aloud, screenshotted or printed is short enough to survive it. They
+    // 302 to the query form the app already understands, so there is exactly
+    // one place that parses them and no new client code.
+    const short = /^\/(r|i|c)\/([A-Za-z0-9_-]{1,64})\/?$/.exec(url.pathname);
+    if (short) {
+      const key = { r: 'ref', i: 'i', c: 'c' }[short[1]];
+      const q = new URLSearchParams(url.search);
+      q.delete(key);
+      q.set(key, short[2]);
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `/?${q.toString()}`, 'Cache-Control': 'no-store' },
+      });
+    }
+
+    if (url.pathname.startsWith('/api/dm')) {
+      const res = await handleDm(request, env, url.pathname.slice('/api/dm'.length) || '/', ctx);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/voice')) {
+      const res = await handleVoice(request, env, url.pathname.slice('/api/voice'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/pay')) {
+      const res = await handlePay(request, env, url.pathname.slice('/api/pay'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/email')) {
+      const res = await handleEmail(request, env, url.pathname.slice('/api/email'.length) || '/', ctx);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/errands')) {
+      const res = await handleErrands(request, env, url.pathname.slice('/api/errands'.length) || '/', ctx);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/booking')) {
+      const res = await handleBooking(request, env, url.pathname.slice('/api/booking'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/sabre')) {
+      const res = await handleSabre(request, env, url.pathname.slice('/api/sabre'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
@@ -373,6 +465,12 @@ export default {
       const lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
       const grounding = await groundRequest(env, { userText: lastUser, statedPlace: parsed.place, cf: request.cf });
 
+      // The browser's own preference, as a tiebreaker only. What the person
+      // actually TYPED wins every time — somebody with an English phone asking
+      // in Thai wants Thai back — but on a first message of two words there is
+      // nothing else to go on.
+      const acceptLang = String(request.headers.get('Accept-Language') ?? '').split(',')[0].trim().slice(0, 12) || null;
+
       // Profile + trip state carry long-term context now, so the model only
       // needs the recent turns.
       const history = parsed.messages.slice(-14);
@@ -390,7 +488,7 @@ export default {
           if (guard.ok) {
             // The cheap lane is the reason the bill stays sane; count how often
             // it actually fires so that claim can be checked, not assumed.
-            ctx.waitUntil(logUsage(env, { lane: 'small', model: 'workers-ai', place: grounding.place?.name ?? null, usage: null, ms: null }));
+            ctx.waitUntil(logUsage(env, { lane: 'small', model: 'workers-ai', place: grounding.place?.name ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
             return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: grounding.place?.name ?? null });
           }
         }
@@ -399,13 +497,13 @@ export default {
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       const callNum = async (extraSystem) => {
         try {
-          return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser);
+          return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
         } catch (err) {
           // Grammar compilation is cached once it succeeds but can time out on a
           // cold schema — one retry usually lands on the warmed cache.
           if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
           await new Promise((r) => setTimeout(r, 1500));
-          return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser);
+          return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
         }
       };
 
@@ -436,6 +534,7 @@ export default {
           place: grounding.place?.name ?? null,
           usage: result._usage,
           ms: Date.now() - startedAt,
+          memberId: parsed.state?.me?.id ?? null,
         }),
       );
       // Output guard: never let leaked JSON scaffolding reach the user. One
@@ -498,7 +597,7 @@ export default {
         const rescue = await smallReply(env, parsed.messages.slice(-4), parsed.state?.profile ?? {}, parsed.place ?? null);
         const guard = rescue ? guardReply(rescue) : { ok: false };
         if (guard.ok && !/\bHANDOFF\b/.test(guard.cleaned) && !soundsLikeASwitchboard(guard.cleaned)) {
-          ctx.waitUntil(logUsage(env, { lane: 'rescue', model: 'workers-ai', place: parsed.place ?? null, usage: null, ms: null }));
+          ctx.waitUntil(logUsage(env, { lane: 'rescue', model: 'workers-ai', place: parsed.place ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
           return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: parsed.place ?? null });
         }
       } catch (rescueErr) {

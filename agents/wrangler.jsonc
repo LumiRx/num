@@ -1,0 +1,34 @@
+{
+  // NUM agent platform — signup, business + promo submissions, metered directory
+  // reads, and the MCP server. Separate worker so the public marketing site
+  // (num-console) and the agent API can be deployed independently.
+  "name": "num-agents",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01",
+  // Off on purpose. This worker is built to be found and cited by AI, so the
+  // hostname it answers on is part of the product — it must be itsnum.com and
+  // nothing else. workers.dev would publish a second, parallel origin under a
+  // name that is not ours to show.
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
+  ],
+  // Every pattern ends in "*" on purpose: Cloudflare matches the FULL URL
+  // including the query string, so a pattern without a wildcard silently misses
+  // "/api/agent/search?q=..." — the one request this worker exists to answer.
+  //
+  // All of these are more specific than num-console's "itsnum.com/*" catch-all,
+  // and none overlap the existing /api/accounts*, /api/claim*, /api/claims*,
+  // /api/ev*, /api/capture*, /api/consent*, /api/growth*, /api/host/*,
+  // /api/admin/*, /api/ref/*, /api/places* or /api/destinations* routes.
+  "routes": [
+    { "pattern": "itsnum.com/api/agent*",                  "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/mcp*",                        "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/openapi.json*",               "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/.well-known/ai-plugin.json*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/.well-known/mcp.json*",       "zone_name": "itsnum.com" },
+    { "pattern": "www.itsnum.com/api/agent*",              "zone_name": "itsnum.com" },
+    { "pattern": "www.itsnum.com/mcp*",                    "zone_name": "itsnum.com" }
+  ]
+}

@@ -24,6 +24,64 @@ const primary: React.CSSProperties = {
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const helpText: React.CSSProperties = { fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 };
 
+/**
+ * The install prompt.
+ *
+ * Two reasons this is big rather than a footnote:
+ *
+ *   · A PWA that lives in a browser tab is a PWA nobody opens twice. Installed,
+ *     it is on the home screen next to everything else they use.
+ *   · On iPhone, push notifications ONLY work for an installed app. Every
+ *     "your table moved" Num will ever send depends on this one tap.
+ *
+ * The instructions differ per platform and getting them wrong is worse than
+ * omitting them — an iPhone user told to look for "Install app" will hunt for
+ * a menu item that does not exist.
+ */
+function AddToHomeScreen() {
+  const installed =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (installed) return null;
+
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  return (
+    <div
+      style={{
+        marginTop: 18,
+        borderRadius: 'var(--r-lg)',
+        padding: '18px 16px',
+        background: 'var(--field-bg)',
+        border: '1px solid var(--ink-12)',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 10, letterSpacing: '.16em', fontWeight: 800, color: 'var(--color-accent)' }}>PUT NUM ON YOUR PHONE</div>
+      <div
+        style={{
+          fontFamily: 'var(--font-heading)',
+          fontWeight: 800,
+          fontSize: 26,
+          lineHeight: 1.2,
+          marginTop: 8,
+          letterSpacing: '-.01em',
+        }}
+      >
+        {ios ? 'Tap Share, then Add to Home Screen' : 'Tap the menu, then Add to Home Screen'}
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.55 }}>
+        {ios
+          ? 'The Share button is at the bottom of Safari — the square with an arrow coming out of it. Scroll down the list and pick “Add to Home Screen”.'
+          : 'Open the ⋮ menu at the top right of Chrome and choose “Add to Home screen” or “Install app”.'}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
+        It opens full screen, remembers you, and it is the only way Num can reach you when a table moves or a friend replies.
+      </div>
+    </div>
+  );
+}
+
 export default function InviteSheet() {
   const draft = useApp((s) => s.inviteOpen);
   const me = useApp((s) => s.me);
@@ -36,6 +94,10 @@ export default function InviteSheet() {
   const [toName, setToName] = useState('');
   const [toPhone, setToPhone] = useState('');
   const [code, setCode] = useState('');
+  // Null until we have heard from the server; false once it has told us there
+  // is no SMS provider. Never assumed true — showing a verification step that
+  // cannot work is the failure this replaces.
+  const [smsOn, setSmsOn] = useState(false);
   // Two independent notices: one about the account/number, one about the
   // invite. Sharing a single `note` printed the SMS message under both.
   const [accountNote, setAccountNote] = useState<string | null>(null);
@@ -56,12 +118,38 @@ export default function InviteSheet() {
   if (!draft) return null;
   const close = () => store.set({ inviteOpen: null });
 
+  // The button says what is missing rather than sitting dim and silent, so
+  // nobody has to guess which field is the problem.
+  const phoneOk = /^\+[1-9][0-9\s()-]{6,}$/.test(phone.trim());
+  const ready = !!name.trim() && phoneOk;
+
   const doSignUp = async () => {
-    if (!name.trim()) return;
+    // Never return silently. A button that looks tappable and does nothing is
+    // read as a broken app, not as a validation failure — the person has no
+    // way to know their name did not register, so they tap it again, and
+    // again, and then leave.
+    if (!name.trim()) {
+      setAccountNote('I need a name first — just what you want to be called.');
+      return;
+    }
+    // The number is REQUIRED and must carry a country code. It is how friends
+    // find you, how an invite carries your name, and how the account is
+    // recovered on a new phone — an account without one is a dead end that
+    // looks fine until the day it matters.
+    if (!phone.trim()) {
+      setAccountNote('I need your mobile too — it’s how friends find you and how I reach you if a booking moves.');
+      return;
+    }
+    if (!/^\+[1-9][0-9\s()-]{6,}$/.test(phone.trim())) {
+      setAccountNote('Start your number with the country code — +1 for the US, +44 UK, +66 Thailand.');
+      return;
+    }
+    setAccountNote(null);
     setBusy(true);
     try {
       const out = await signUp(name.trim(), phone.trim() || undefined);
       // Honest about what actually happened to the number.
+      setSmsOn(!!out.verification?.sent);
       setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
       // Cold first run: they came to try the app, not to invite someone. Get
       // out of the way — Num picks the conversation up in the thread. When an
@@ -138,17 +226,43 @@ export default function InviteSheet() {
           </div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
             <input style={field} placeholder={sending ? 'Your name' : 'What should I call you?'} value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={field} placeholder={sending ? 'Mobile number (+country code)' : 'Your mobile — with country code'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <div {...pressable(doSignUp)} style={{ ...primary, opacity: busy || !name.trim() ? 0.6 : 1 }}>
-              {busy ? 'ONE SEC…' : sending ? 'CREATE MY ACCOUNT' : 'NICE TO MEET YOU'}
+            <input style={field} placeholder={sending ? 'Mobile (+country code)' : 'Mobile — start with +1, +44, +66…'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <div
+              {...pressable(doSignUp)}
+              aria-disabled={busy || !ready}
+              style={{ ...primary, opacity: busy || !ready ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}
+            >
+              {busy
+                ? 'ONE SEC…'
+                : !name.trim()
+                  ? 'YOUR NAME FIRST'
+                  : !phone.trim()
+                    ? 'AND YOUR MOBILE'
+                    : !phoneOk
+                      ? 'ADD YOUR COUNTRY CODE'
+                      : sending
+                        ? 'CREATE MY ACCOUNT'
+                        : 'NICE TO MEET YOU'}
             </div>
           </div>
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
+
+          {/* Add to home screen. Deliberately large and above the fold on this
+              screen, because it is the single step that decides whether Num is
+              an app somebody has or a tab they lose. It only shows in a
+              browser — once installed, telling someone to install is noise. */}
+          <AddToHomeScreen />
         </div>
       ) : (
         <>
-          {/* 2 — verify the number, when SMS is switched on. */}
-          {!me.phone_verified && me.phone && (
+          {/* 2 — verify the number, ONLY when SMS is actually switched on.
+              It used to show unconditionally: a "6-digit code" box and a CHECK
+              button for a code that is never sent, because there is no SMS
+              provider. Dead controls are worse than missing ones — people wait
+              for a text that will not arrive, then assume the app is broken
+              rather than that the feature is not built. `smsOn` is set from
+              the sign-up response, which says plainly whether a code went. */}
+          {smsOn && !me.phone_verified && me.phone && (
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
               <div style={label}>VERIFY YOUR NUMBER</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

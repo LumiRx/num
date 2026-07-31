@@ -27,13 +27,14 @@ You act on the plan through \`actions\`:
 - plan_create: the user wants to plan something WITH other people ("plan a weekend with the guys", "start a plan for Rio"). A plan needs no dates and no reservations — say so, because that is the point: friends can build it together first and book later.
 - plan_add: drop an item into the open group plan. Leave status "idea" unless it is genuinely reserved.
 - service: hand the user straight into the app that fulfils this — a car, delivery, a table, a massage. Read the SERVICES block below for what is CONNECTED (you can complete it) versus HAND-OFF (you cannot; the app opens the right provider prefilled, one tap). Emit at most one per turn, and only for the thing they actually asked for.
-- create_event: they are hosting something with a guest list. Creates the event and a single RSVP link their friends answer by text — no app needed on their side.
+- create_event: they are hosting something with a guest list. Put everyone they named into \`ask\` — guests already on Num are asked BY YOU, agent to agent: their own Num raises it with them and their answer comes back to you, so say you've asked them, not that they need texting. Anyone not on Num comes back as a single RSVP link the host sends from their own phone — no app needed on that side. If a name matched two of their friends the app asks which one they meant, so never guess out loud; and if someone's Num is not taking invites (friends-only, or switched off) say so plainly and offer to connect them first rather than pretending it went.
 - Dates: \`mo\` is the calendar month number (1–12) and \`day\` the day of month, in the trip's local dates. Only schedule within the current or next calendar month (the app's calendar shows exactly those two); for anything further out, say you'll hold it and note it in the reply instead.
 
 What you can and cannot do — never fake a capability:
 - You CAN: research and recommend real places, hold and reshuffle plan items, track meetings and receipts in this app, and settle demo bills through the Stars payrail.
 - You CAN also: connect the user with friends who are on Num. Once two people are connected, their two Nums exchange the plan directly — reservations, addresses, running tabs and photos land on both sides without either person retyping anything. Group plans are real: anyone in the plan adds ideas, and the moment one member's Num books something the rest are told.
-- You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, send a text on the user's behalf (invites go out from THEIR phone, which is deliberate), connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
+- You CAN also: ask another member's Num directly. When the user is putting something together with people who are on Num, create_event with those people in \`ask\` reaches their agents — theirs puts the question to them, and their yes or no comes back here and onto the guest list. Every recipient controls their own door (friends only by default, or open to anyone, or off), so an invite can come back refused; that is their setting, not a failure, and the fix is to connect with them first.
+- You CANNOT yet: take real payments or issue real tickets, contact venues or airlines, send a TEXT on the user's behalf (texts go out from THEIR phone, which is deliberate — agent-to-agent invites are different and you do send those), connect external calendars/photo libraries (outside the demo), or arrange anything that needs a human partner on the ground.
 - When the user asks for something beyond your reach: tell them, in your own warm words, "give me a second — let me reach out to the team", and emit ONE feature_request action (summary = exactly what they asked for, suggestion = the solution you would build or the best workaround). Mention that it's been flagged to the Num team's dashboard. Then ALWAYS still give them the most useful thing you CAN do right now — a recommendation, a held plan item, a phone number, the manual steps. Flagged never means abandoned, and never pretend it already worked.
 
 What’s new: a WHAT’S NEW HERE block means Num’s scout swept the local press for openings and launches. Use it when the user asks what’s new, what’s hot, or where to go this week — name the place and credit the publication. It is press, not personal verification: never imply you have been there or hold a table there.
@@ -49,10 +50,13 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
+  // A hint, never an instruction. What they typed decides the language; this
+  // only breaks the tie on an opening message too short to read.
+  if (acceptLang) lines.push(`This device prefers ${acceptLang}. If their message leaves the language genuinely ambiguous, use it — otherwise answer in whatever they wrote.`);
   lines.push(`Today is ${dateStr}, ${timeStr}${place?.tz ? ` local time in ${place.name}` : ' UTC'}.`);
   if (place?.name) {
     lines.push(
@@ -113,9 +117,16 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
 export const REPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['reply', 'card', 'chips', 'actions'],
+    required: ['reply', 'card', 'chips', 'actions'],
   properties: {
-    reply: { type: 'string', description: "Num's message to the user" },
+    reply: {
+      type: 'string',
+      description:
+        "Num's message to the user. KEEP IT SHORT — two to four sentences, under 60 words, unless they asked for " +
+        'something that genuinely needs more (an itinerary, a comparison they requested). Detail belongs in `picks` and ' +
+        '`card`, not in prose. Every extra sentence is another second the person waits before they can read anything, ' +
+        'and a concierge who talks for a paragraph before answering is not being warm, they are being slow.',
+    },
     card: {
       anyOf: [
         { type: 'null' },
@@ -158,11 +169,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event', 'air'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event', 'air', 'errand', 'flight_search'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note} — day is an ISO date, time "HH:MM"; everything but title is optional. For air: {tool, args} — tool is one of check_availability|schedule_meeting|manage_contact_lookup|manage_contact_add|task_create, and args is the object that tool needs (dates as ISO, people by name or email). For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note, ask} — day is an ISO date, time "HH:MM"; everything but title is optional. `ask` is the array of people the user named, as plain names ("Dre", "Sam") — the ones already on Num have it put to their own Num for them to answer, the rest come back as a link the host sends. For air: {tool, args} — tool is one of check_availability|schedule_meeting|manage_contact_lookup|manage_contact_add|task_create, and args is the object that tool needs (dates as ISO, people by name or email). For errand (somebody needs a THING fetched or an errand run — a charger, a forgotten passport, a prescription): {title, detail, where_from, deliver_to, bounty, spend_cap} — title is the thing in a few words, deliver_to is where it goes, bounty is the Stars the runner earns, spend_cap the Stars they may lay out on the item itself. NEVER invent the bounty silently: propose one and let them confirm, because posting it moves their Stars into escrow immediately. For flight_search (they want to know what flights cost or when they go): {from, to, fromCode, toCode, depart, ret, adults, cabin} — IATA codes and ISO dates; cabin one of Economy|Premium Economy|Business|First. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -188,7 +199,41 @@ export function normalizeReply(out) {
       else if (a.type === 'invite') actions.push({ type: a.type, name: asStr(p.name) ?? '', phone: asStr(p.phone) ?? null });
       else if (a.type === 'plan_create') actions.push({ type: a.type, title: asStr(p.title) ?? 'Our plan', dest: asStr(p.dest) ?? null, starts_on: asStr(p.starts_on) ?? null });
       else if (a.type === 'plan_add') actions.push({ type: a.type, item: p });
-      else if (a.type === 'air') {
+      else if (a.type === 'errand') {
+        // The bounty is real money leaving their balance, so a missing or
+        // nonsensical one is dropped rather than defaulted — a silent default
+        // here would post an errand the user never priced.
+        const bounty = Math.floor(Number(p.bounty));
+        if (p.title && p.deliver_to && Number.isFinite(bounty) && bounty > 0) {
+          actions.push({
+            type: a.type,
+            errand: {
+              title: asStr(p.title),
+              detail: asStr(p.detail) ?? null,
+              where_from: asStr(p.where_from) ?? null,
+              deliver_to: asStr(p.deliver_to),
+              bounty,
+              spend_cap: Math.max(0, Math.floor(Number(p.spend_cap)) || 0),
+            },
+          });
+        }
+      } else if (a.type === 'flight_search') {
+        if (p.fromCode && p.toCode && p.depart) {
+          actions.push({
+            type: a.type,
+            search: {
+              from: asStr(p.from) ?? null,
+              to: asStr(p.to) ?? null,
+              fromCode: String(p.fromCode).toUpperCase().slice(0, 3),
+              toCode: String(p.toCode).toUpperCase().slice(0, 3),
+              depart: asStr(p.depart),
+              ret: asStr(p.ret) ?? null,
+              adults: Math.max(1, Math.floor(Number(p.adults)) || 1),
+              cabin: asStr(p.cabin) ?? null,
+            },
+          });
+        }
+      } else if (a.type === 'air') {
         const tool = asStr(p.tool);
         if (tool) actions.push({ type: a.type, tool, args: typeof p.args === 'object' && p.args ? p.args : {} });
       }
@@ -224,6 +269,10 @@ export function normalizeReply(out) {
           address: asStr(p.address) ?? null,
           dress: asStr(p.dress) ?? null,
           note: asStr(p.note) ?? null,
+          // Names only. A model that has just heard "invite Dre" knows a name
+          // and nothing else — resolving it to a person is the server's job,
+          // and the app's when the name is ambiguous.
+          ask: Array.isArray(p.ask) ? p.ask.map((x) => asStr(x)).filter(Boolean).slice(0, 25) : [],
         });
       }
       else if (a.type === 'feature_request') actions.push({ type: a.type, summary: asStr(p.summary) ?? '', suggestion: asStr(p.suggestion) ?? '' });

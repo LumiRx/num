@@ -1,0 +1,276 @@
+# itsnum.com — NUM, the verified AI travel concierge, by 5arz.
+# Answer engines are welcome here. Structured data on every page,
+# a plain-language summary at /llms.txt and the full corpus at
+# /llms-full.txt. Machine-readable business data: /for-ai/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Claude-User
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Googlebot-Image
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Applebot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Amazonbot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: meta-externalagent
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: FacebookBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: cohere-ai
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: cohere-training-data-crawler
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: CCBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Diffbot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Timpibot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: YouBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: DuckAssistBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: MistralAI-User
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: Bytespider
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: PetalBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: YandexBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+Sitemap: https://itsnum.com/sitemap.xml

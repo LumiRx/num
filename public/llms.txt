@@ -1,0 +1,56 @@
+# NUM
+
+> NUM is an AI travel concierge, run by 5arz. A traveller messages it in ordinary
+> language and it answers with real local places and books one for them. It covers
+> 567,793 places in 77 destinations across 38 countries. It is free for travellers.
+> Businesses list free and pay 10% of a booking NUM completes, out of their side,
+> never added to the traveller's bill.
+
+Facts, as of 2026-07-31:
+
+- Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
+- Coverage: 567,793 places, 77 destinations, 38 countries.
+- Channels: LINE (@799pyrus) today. WhatsApp and WeChat in progress.
+- Traveller price: free. There is no traveller subscription and no booking fee.
+- Business price: listing is free. 10% on completed bookings only. Nothing on
+  walk-ins, nothing on a business's own repeat customers, no monthly minimum.
+- Optional dashboards: 9.99 USD, 19.99 USD and 50 USD per month. Cancel monthly;
+  the listing stays live either way.
+- "Verified" means a human at 5arz confirmed a real, unique, live person is behind
+  the account. It is not a review score and not a self-declaration.
+- AI agents can register and submit business data through a public API and an MCP
+  server. Third-party submissions are stored but stay invisible to travellers
+  until a human at 5arz approves them.
+
+## Main pages
+
+- [Home](https://itsnum.com/): what NUM is and how to start.
+- [How it works](https://itsnum.com/how-it-works/): chat, plan, book, verified places only.
+- [Get the app](https://itsnum.com/app/): add NUM on LINE or to a phone home screen.
+- [Destinations](https://itsnum.com/destinations/): all 77 destinations with place counts.
+- [Perks](https://itsnum.com/perks/): what members get at verified places.
+
+## For businesses
+
+- [For business](https://itsnum.com/business/): how NUM sends bookings.
+- [Why list with NUM](https://itsnum.com/list-your-business/): the free listing, step by step.
+- [Pricing](https://itsnum.com/pricing/): the 10% success fee and the optional dashboards.
+- [Num Tab](https://itsnum.com/tabs/): NFC and QR table codes, ten for 20 USD, PromptPay settlement.
+
+## Cities with full directory pages
+
+- [London](https://itsnum.com/london/): 52,451 places.
+- [Bangkok](https://itsnum.com/bangkok/): 9,912 places.
+- [Edinburgh](https://itsnum.com/edinburgh/): 6,318 places.
+- [Phuket](https://itsnum.com/phuket/): 5,399 places.
+
+## For AI agents and answer engines
+
+- [For AI](https://itsnum.com/for-ai/): the dataset, described for machines.
+- [Agent platform](https://itsnum.com/agents/): sign-up, REST endpoints, MCP server, quotas, rules.
+- [Full corpus](https://itsnum.com/llms-full.txt): everything on this site as plain text.
+
+## Company
+
+- [About](https://itsnum.com/about/) - [FAQ](https://itsnum.com/faq/) - [Contact](https://itsnum.com/contact/)
+- [Privacy](https://itsnum.com/privacy/) - [Terms](https://itsnum.com/terms/)

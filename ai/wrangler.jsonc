@@ -9,5 +9,14 @@
     { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" }
   ],
   // nightly retention sweep — 20:00 UTC = 03:00 Phuket
-  "triggers": { "crons": ["0 20 * * *"] }
+  "triggers": { "crons": ["0 20 * * *"] },
+  // Served on the apex so the browser calls same-origin. Nothing in public JS
+  // should ever name a *.workers.dev host. Cloudflare picks the most specific
+  // route, so num-growth's itsnum.com/api/claims* still beats /api/claim* here.
+  "routes": [
+    { "pattern": "itsnum.com/api/claim*",        "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/ref/*",         "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/places*",       "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/destinations*", "zone_name": "itsnum.com" }
+  ]
 }

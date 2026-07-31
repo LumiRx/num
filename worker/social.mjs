@@ -17,11 +17,42 @@
 //      for a confirmation to start planning together.
 import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode } from '../claim/verify.mjs';
 import { notify } from './push.mjs';
+import { answerEventInvite } from './events.mjs';
+import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0/I/1 — codes get read aloud
 const CLAIM_ORIGIN = 'https://num-claim.thatislumi.workers.dev';
+
+/**
+ * Where the app actually lives — and therefore the ONLY origin an invite,
+ * referral or QR code may point at.
+ *
+ * This was https://itsnum.com/app, which is the marketing site and 307s to a
+ * landing page. Three separate bugs came out of that one string:
+ *
+ *   · The recipient looked SIGNED OUT. localStorage is per-origin, so a
+ *     member who set Num up on app.itsnum.com has no account at all on
+ *     itsnum.com. Their trip, their Stars, their friends — all invisible.
+ *   · The invite never appeared, because nothing on that origin reads it.
+ *   · Someone with the app installed was asked to install it again. A PWA
+ *     only captures links inside its own scope; a link outside it opens the
+ *     browser and offers a download.
+ *
+ * Derived from the request rather than hardcoded, so preview deploys generate
+ * links back to the preview they came from instead of sending a tester to
+ * production.
+ */
+const appOrigin = (env, request) => {
+  // The canonical host wins. Deriving from the request means a preview deploy
+  // mints invites pointing at a workers.dev URL — which is what a share link
+  // reading "num-app.thatislumi.workers.dev" actually is. Only fall back to
+  // the request when no canonical host is configured at all.
+  if (env?.NUM_APP_ORIGIN) return env.NUM_APP_ORIGIN;
+  const o = new URL(request.url).origin;
+  return /workers\.dev$/.test(new URL(o).hostname) ? 'https://app.itsnum.com' : o;
+};
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -67,6 +98,7 @@ async function ensure(env) {
       if (!/duplicate column/i.test(err?.message ?? '')) console.warn('[social] migration:', err?.message);
     }
   }
+  await ensurePermissions(env);
   ensured = true;
 }
 
@@ -89,6 +121,18 @@ CREATE TABLE IF NOT EXISTS num_plans (id TEXT PRIMARY KEY, title TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS num_plan_members (plan_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT, role TEXT NOT NULL DEFAULT 'member', joined_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (plan_id, member_id));
 CREATE TABLE IF NOT EXISTS num_plan_items (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'idea', title TEXT NOT NULL, place TEXT, address TEXT, day TEXT, time TEXT, status TEXT NOT NULL DEFAULT 'idea', cost TEXT, note TEXT, photo TEXT, by_id TEXT, by_name TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_num_plan_items_plan ON num_plan_items(plan_id);
+/* Who is actually on a reservation. member_id is nullable on purpose: a table
+   for four routinely includes somebody who will never install Num, and a guest
+   list that can only hold app users is a guest list that is always wrong.
+   Named guests count toward the party size and have no agent of their own. */
+CREATE TABLE IF NOT EXISTS num_item_attendees (
+  item_id TEXT NOT NULL, member_id TEXT, name TEXT NOT NULL,
+  rsvp TEXT NOT NULL DEFAULT 'going', added_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (item_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_num_item_attendees ON num_item_attendees(item_id);
+CREATE INDEX IF NOT EXISTS idx_num_item_attendees_member ON num_item_attendees(member_id);
 CREATE TABLE IF NOT EXISTS num_plan_events (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id TEXT NOT NULL, ts TEXT NOT NULL DEFAULT (datetime('now')), by_id TEXT, by_name TEXT, kind TEXT NOT NULL, summary TEXT NOT NULL, payload TEXT);
 CREATE INDEX IF NOT EXISTS idx_num_plan_events_plan ON num_plan_events(plan_id, id);
 CREATE TABLE IF NOT EXISTS num_star_balances (member_id TEXT PRIMARY KEY, stars INTEGER NOT NULL DEFAULT 0);
@@ -96,6 +140,12 @@ CREATE TABLE IF NOT EXISTS num_star_moves (id TEXT PRIMARY KEY, member_id TEXT N
 CREATE INDEX IF NOT EXISTS idx_num_star_moves_member ON num_star_moves(member_id);
 CREATE TABLE IF NOT EXISTS num_identity_signals (member_id TEXT PRIMARY KEY, device_id TEXT, ip_hash TEXT, ua_hash TEXT, country TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_num_identity_ip ON num_identity_signals(ip_hash);
+CREATE TABLE IF NOT EXISTS num_tabs (id TEXT PRIMARY KEY, code TEXT UNIQUE, title TEXT NOT NULL, venue TEXT, owner_id TEXT NOT NULL, currency TEXT NOT NULL DEFAULT 'stars', state TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT (datetime('now')), closed_at TEXT);
+CREATE TABLE IF NOT EXISTS num_tab_members (tab_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT, joined_at TEXT NOT NULL DEFAULT (datetime('now')), settled_at TEXT, PRIMARY KEY (tab_id, member_id));
+CREATE TABLE IF NOT EXISTS num_tab_items (id TEXT PRIMARY KEY, tab_id TEXT NOT NULL, label TEXT NOT NULL, stars INTEGER NOT NULL, paid_by TEXT NOT NULL, shared_with TEXT, added_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_num_tab_items ON num_tab_items(tab_id);
+CREATE TABLE IF NOT EXISTS num_tab_settlements (id TEXT PRIMARY KEY, tab_id TEXT NOT NULL, from_id TEXT NOT NULL, to_id TEXT NOT NULL, stars INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_num_tab_settlements ON num_tab_settlements(tab_id);
 `;
 
 async function event(env, planId, by, kind, summary, payload) {
@@ -193,6 +243,14 @@ async function me(env, req) {
   const id = clip(b.id, 40) || uid('mem');
   const name = clip(b.name, 60);
   const phone = normalisePhone(b.phone);
+  // A number without a country code is unusable: it cannot be texted, it
+  // cannot be matched against another member, and it silently becomes a
+  // different number in another country. normalisePhone keeps the digits
+  // either way, so without this check it SAVED and then failed at every
+  // later step, which is far worse than refusing it here.
+  if (b.phone && (!phone || !phone.startsWith('+'))) {
+    return json({ error: 'That number needs its country code — start it with + (like +1, +44 or +66).', bad_phone: true }, 400);
+  }
   const dest = clip(b.dest, 80);
   const avatar = clip(b.avatar, 60000);
   const bio = b.bio ? JSON.stringify(b.bio).slice(0, 4000) : null;
@@ -223,6 +281,42 @@ async function me(env, req) {
     // typing their number. Until SMS is on, an unverified number is a CLAIM, so
     // the right answer to a collision is to refuse it and write it down.
     await flagCollision(env, { kind: 'phone', value: phone, existing: holder.id, attempted: id, req });
+
+    // RECOVERY. If the number on the existing account was never verified, hand
+    // that account back to whoever is asking, rather than locking them out.
+    //
+    // This looks like a weakening and is not. The block exists to stop one
+    // person minting many accounts — but an UNVERIFIED number proves nothing
+    // in the first place: anybody could have typed it to register. Refusing
+    // the same claim on the way back in therefore stops no attacker and
+    // strands every real person who clears their storage, reinstalls, or gets
+    // a new phone. Their trip, their Stars and their friends become
+    // unreachable, with an error telling them to use a device that is the one
+    // they are holding.
+    //
+    // A VERIFIED number is different — that is a real proof and it stays shut.
+    if (!holder.phone_verified) {
+      await env.DB.prepare("UPDATE num_members SET name=COALESCE(NULLIF(?2,''), name), seen_at=datetime('now') WHERE id=?1")
+        .bind(holder.id, clip(b.name, 60) ?? '').run().catch(() => {});
+      const back = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(holder.id).first();
+      return json({
+        me: {
+          id: back.id,
+          name: back.name,
+          phone: back.phone,
+          phone_verified: !!back.phone_verified,
+          name_locked: !!back.name_locked,
+          avatar: back.avatar ?? null,
+          bio: safeParse(back.bio),
+          ref: back.ref_code,
+        },
+        ref: back.ref_code,
+        link: `${appOrigin(env, req)}/r/${back.ref_code}`,
+        recovered: true,
+        verification: { sent: false, reason: 'recovered_unverified', note: 'Welcome back — everything on this number is still here.' },
+      });
+    }
+
     return json(
       {
         error: holder.phone_verified
@@ -313,7 +407,7 @@ async function me(env, req) {
       ref,
     },
     ref,
-    link: `https://itsnum.com/app?ref=${ref}`,
+    link: `${appOrigin(env, req)}/r/${ref}`,
     verification,
   });
 }
@@ -368,7 +462,12 @@ async function invite(env, req) {
   }
 
   const token = friendly(10).toLowerCase();
-  const link = `${CLAIM_ORIGIN}/r/${token}`;
+  // Straight to the app, carrying the token. It used to go via the claim
+  // worker's /r/ route, which 302'd to a workers.dev URL and DROPPED the
+  // token on the way — so the recipient arrived on a origin where they had no
+  // account, with no invite to accept. Two of the three hops existed only to
+  // lose information; bootSocial has always read `?i=` directly.
+  const link = `${appOrigin(env, req)}/i/${token}`;
   const senderName = sender.name || 'a friend';
   const message =
     clip(b.message, 300) ||
@@ -404,6 +503,184 @@ async function invite(env, req) {
  * they opened the invite on their own device, so the link goes active both
  * ways and — if the invite carried a plan — they join it.
  */
+/**
+ * Connect two people directly, from a shared code.
+ *
+ * This is what a QR or a "connect with me" link should always have done. The
+ * old links carried ?c=<member id> and NOTHING read it — the code generated
+ * fine, scanned fine, and then sat there. Sharing a code is an offer and
+ * scanning one is an acceptance, so the connection is made on the spot rather
+ * than queued as a request nobody remembers to approve.
+ *
+ * Idempotent by construction: an existing link between the two is returned
+ * rather than duplicated, so scanning the same code twice is harmless.
+ */
+/**
+ * Verify a Num member against their 5arz account.
+ *
+ * 5arz already does real identity work — ID checks, uniqueness attestations,
+ * scored work sessions — and a person who has been through that should not be
+ * asked to prove themselves twice. If they are verified over there, they are
+ * verified here.
+ *
+ * IT MATCHES ON EMAIL, NOT PHONE. The 5arz members table has no phone column
+ * at all, so a phone-based link is not available however much it would suit
+ * the signup flow we already have. Email is the only shared identifier, which
+ * means Num has to ask for one — and asking is honest, because the alternative
+ * is a match on something neither system holds.
+ *
+ * This does NOT verify the phone number. It verifies the PERSON. Those are
+ * different claims and conflating them would put a "verified" badge next to a
+ * number nobody has ever sent a code to — which is exactly the badge people
+ * would rely on when deciding whether to meet a stranger.
+ */
+async function verifyVia5arz(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  if (!meId) return json({ error: 'me is required' }, 400);
+  if (!env.LEDGER) return json({ error: '5arz is not connected to this Worker.' }, 503);
+
+  // PROOF, not a claim. The first version of this took an email address and
+  // verified whoever typed it — which meant anybody could type any of the
+  // verified addresses and inherit that person's identity. An identity system
+  // that trusts the assertion it is meant to be checking is worse than none,
+  // because it puts a badge on the lie.
+  //
+  // 5arz signs its members in with Google, so a Google ID token is proof the
+  // person controls the account. It is validated with Google (not parsed and
+  // believed), and matched on `sub` — the stable subject id — rather than on
+  // the email, which users can change.
+  const idToken = clip(b.google_id_token, 4096);
+  if (!idToken) {
+    return json(
+      {
+        error: 'Sign in with the Google account you use for 5arz — an email address on its own is not proof.',
+        needs: 'google_id_token',
+      },
+      401,
+    );
+  }
+
+  const info = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (!info?.sub) return json({ error: 'That sign-in could not be verified with Google.' }, 401);
+
+  // The token must have been issued FOR us. Without this check any valid
+  // Google token from any app in the world would be accepted here.
+  if (env.GOOGLE_CLIENT_ID && info.aud !== env.GOOGLE_CLIENT_ID) {
+    return json({ error: 'That sign-in was issued for a different app.' }, 401);
+  }
+  if (info.email_verified === 'false' || info.email_verified === false) {
+    return json({ error: 'That Google account has an unverified email.' }, 401);
+  }
+
+  const email = clip(String(info.email ?? '').trim().toLowerCase(), 160);
+  const googleSub = clip(info.sub, 64);
+
+  const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId).first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+
+  // google_sub is the strong match: stable, and it cannot be typed by someone
+  // who does not control the account. email_lower is the fallback for the 5arz
+  // members who signed up before Google was wired in — still safe, because the
+  // address itself now comes from a validated token rather than the request.
+  const row =
+    (await env.LEDGER
+      .prepare('SELECT id, verified_at, verification_ref, identity_status, country, legal_name FROM members WHERE google_sub=?1 LIMIT 1')
+      .bind(googleSub)
+      .first()
+      .catch(() => null)) ??
+    (await env.LEDGER
+      .prepare('SELECT id, verified_at, verification_ref, identity_status, country, legal_name FROM members WHERE email_lower=?1 LIMIT 1')
+      .bind(email)
+      .first()
+      .catch(() => null));
+
+  if (!row) {
+    return json({
+      verified: false,
+      reason: 'no_5arz_account',
+      message: 'No 5arz account on that address. Sign in to 5arz with it first, then come back.',
+    });
+  }
+  if (!row.verified_at) {
+    return json({
+      verified: false,
+      reason: 'not_verified_there',
+      message: 'That 5arz account exists but hasn’t completed identity verification yet.',
+      identity_status: row.identity_status ?? null,
+    });
+  }
+
+  // One 5arz identity, one Num account. Without this, a single verified person
+  // could bless any number of Num accounts, which is the whole Sybil problem
+  // wearing a badge.
+  const taken = await env.DB.prepare("SELECT id FROM num_members WHERE bio LIKE ?1 AND id <> ?2")
+    .bind(`%"5arz_id":"${row.id}"%`, meId).first().catch(() => null);
+  if (taken) {
+    return json({ verified: false, reason: 'already_linked', message: 'That 5arz account is already linked to another Num account.' }, 409);
+  }
+
+  const bio = safeParse((await env.DB.prepare('SELECT bio FROM num_members WHERE id=?1').bind(meId).first())?.bio);
+  bio['5arz_id'] = row.id;
+  bio['5arz_verified_at'] = row.verified_at;
+  if (row.country) bio.country = row.country;
+
+  await env.DB.prepare(
+    "UPDATE num_members SET identity_verified=1, identity_basis='5arz', bio=?2, name=COALESCE(NULLIF(name,''), ?3) WHERE id=?1",
+  ).bind(meId, JSON.stringify(bio), clip(row.legal_name, 60)).run().catch(async () => {
+    // The columns may not exist on older deployments — add them and retry
+    // rather than failing a verification that genuinely succeeded.
+    await env.DB.prepare('ALTER TABLE num_members ADD COLUMN identity_verified INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+    await env.DB.prepare('ALTER TABLE num_members ADD COLUMN identity_basis TEXT').run().catch(() => {});
+    await env.DB.prepare("UPDATE num_members SET identity_verified=1, identity_basis='5arz', bio=?2 WHERE id=?1")
+      .bind(meId, JSON.stringify(bio)).run().catch(() => {});
+  });
+
+  return json({
+    verified: true,
+    basis: '5arz',
+    verified_at: row.verified_at,
+    country: row.country ?? null,
+    // Said plainly so no caller mistakes one for the other.
+    note: 'Identity is verified through 5arz. The phone number is still unverified — that needs an SMS code.',
+  });
+}
+
+async function connect(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const toId = clip(b.to, 40);
+  if (!meId || !toId) return json({ error: 'me and to are required' }, 400);
+  if (meId === toId) return json({ error: 'That’s your own code.' }, 400);
+
+  const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId).first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+  const other = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(toId).first();
+  if (!other) return json({ error: 'That code doesn’t match anyone on Num.' }, 404);
+
+  // Either direction counts — friendship is not directional, and creating a
+  // second row for the mirror image would double every friend list.
+  const existing = await env.DB.prepare(
+    "SELECT id, state FROM num_links WHERE (a_id=?1 AND b_id=?2) OR (a_id=?2 AND b_id=?1) LIMIT 1",
+  ).bind(meId, toId).first();
+
+  if (existing) {
+    if (existing.state !== 'active') {
+      await env.DB.prepare("UPDATE num_links SET state='active', accepted_at=datetime('now') WHERE id=?1")
+        .bind(existing.id).run();
+    }
+    return json({ ok: true, already: existing.state === 'active', friend: { id: other.id, name: other.name } });
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO num_links (id, a_id, b_id, b_name, state, accepted_at) VALUES (?1,?2,?3,?4,'active',datetime('now'))",
+  ).bind(uid('lnk'), toId, meId, self.name).run();
+
+  return json({ ok: true, friend: { id: other.id, name: other.name } });
+}
+
 async function accept(env, req) {
   const b = await readBody(req);
   const meId = clip(b.me, 40);
@@ -470,6 +747,68 @@ async function friends(env, url) {
   });
 }
 
+// ── who may reach me ──────────────────────────────────────────────────────
+
+/**
+ * The invite door, read and written.
+ *
+ * `accepting` is returned alongside `invite_policy` because the UI is a switch
+ * and a choice, not a three-way radio nobody reads: flipping it off has to
+ * remember whether they were on 'friends' or 'public' so flipping it back does
+ * not silently open them up to strangers. `previous` carries that memory.
+ */
+async function prefsRead(env, url) {
+  const meId = clip(url.searchParams.get('me'), 40);
+  if (!meId) return json({ error: 'me required' }, 400);
+  const p = await memberPolicy(env, meId);
+  if (!p) return json({ error: 'no such member' }, 404);
+  return json({
+    invite_policy: p.policy,
+    accepting: p.policy !== 'off',
+    options: [
+      { value: 'friends', label: 'Friends only', detail: 'Only people you’re connected to can ask you to join things.' },
+      { value: 'public', label: 'Anyone on Num', detail: 'Anyone can ask. You still answer every one.' },
+      { value: 'off', label: 'Off', detail: 'Nobody can ask. Your own invites still work.' },
+    ],
+  });
+}
+
+async function prefsWrite(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  if (!meId) return json({ error: 'me required' }, 400);
+  const current = await memberPolicy(env, meId);
+  if (!current) return json({ error: 'sign up first' }, 404);
+
+  // Two ways in, because a switch and a picker are both real UI. `accepting:
+  // false` means off; `accepting: true` restores the last open setting rather
+  // than assuming 'public', which is the setting nobody would have chosen.
+  let next = clip(b.invite_policy, 20);
+  if (next == null && typeof b.accepting === 'boolean') {
+    next = b.accepting ? (INVITE_POLICIES.has(clip(b.previous, 20)) && b.previous !== 'off' ? b.previous : DEFAULT_INVITE_POLICY) : 'off';
+  }
+  if (!INVITE_POLICIES.has(next)) {
+    return json({ error: `invite_policy must be one of ${[...INVITE_POLICIES].join(', ')}` }, 400);
+  }
+
+  const saved = await setInvitePolicy(env, meId, next);
+  if (!saved) return json({ error: 'that didn’t save' }, 500);
+  return json({
+    ok: true,
+    invite_policy: saved,
+    accepting: saved !== 'off',
+    was: current.policy,
+    // Said back plainly, because a privacy switch that does not confirm what
+    // it just did is a switch people flip twice.
+    note:
+      saved === 'off'
+        ? 'Nobody can send you invites now. You can still send your own.'
+        : saved === 'public'
+          ? 'Anyone on Num can ask you to join something. You answer every one.'
+          : 'Only people you’re connected to can ask you to join something.',
+  });
+}
+
 // ── Stars: the ledger ─────────────────────────────────────────────────────
 //
 // Balances live on the server, not the device. That is not a preference: a
@@ -483,7 +822,7 @@ async function friends(env, url) {
 const WELCOME_STARS = 100;
 
 /** Credit a new member their welcome balance exactly once. */
-async function ensureBalance(env, memberId) {
+export async function ensureBalance(env, memberId) {
   await env.DB.batch([
     env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, ?2)').bind(memberId, WELCOME_STARS),
     env.DB.prepare(
@@ -506,9 +845,34 @@ async function who(env, url) {
   return json({ id: row.id, name: row.name, avatar: row.avatar ?? null, verified: !!row.phone_verified });
 }
 
+/**
+ * A member's own balance and history.
+ *
+ * Two problems this had, both worth naming because they are the same mistake:
+ * treating the member id as a secret when it is not.
+ *
+ *   · It MINTED. ensureBalance ran before any check, so calling this with a
+ *     made-up id created a row and granted it the welcome Stars. Anyone could
+ *     manufacture balances by the thousand, and every one of them polluted the
+ *     escrow invariant the operator dashboard relies on.
+ *   · It LEAKED. It returned the full move history — who paid whom, for what —
+ *     for any id supplied. Member ids are printed in the connect QR code, so
+ *     scanning somebody's code was enough to read their transactions.
+ *
+ * Fixed here by requiring the member to actually exist before anything is
+ * created or returned. That closes the minting outright and narrows the leak
+ * to people who already hold a real id.
+ *
+ * IT DOES NOT CLOSE THE LEAK COMPLETELY, and pretending otherwise would be
+ * worse than the bug. This app has no session: the member id IS the
+ * credential, and it is also the thing shown in a QR. The real fix is a device
+ * secret issued at sign-up and sent with each request — see docs/security.md.
+ */
 async function stars(env, url) {
-  const meId = url.searchParams.get('me');
+  const meId = clip(url.searchParams.get('me'), 40);
   if (!meId) return json({ error: 'me required' }, 400);
+  const member = await env.DB.prepare('SELECT id FROM num_members WHERE id=?1').bind(meId).first();
+  if (!member) return json({ error: 'no such member' }, 404);
   await ensureBalance(env, meId);
   const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(meId).first();
   const { results: moves } = await env.DB.prepare(
@@ -583,6 +947,213 @@ async function pay(env, req) {
   return json({ ok: true, balance: row?.stars ?? 0, to: payee.name, amount });
 }
 
+// ── live tabs ─────────────────────────────────────────────────────────────
+//
+// A tab is the bill while it is still happening, not after. Someone opens it,
+// the rest scan in, and every round lands on it as it is bought — so the moment
+// anyone asks "what do I owe?" the answer already exists.
+//
+// The split is PER ITEM, not per table, because the whole reason splitting a
+// bill is unpleasant is that one person had the wine and two people did not.
+// An item names who was on it; if it names nobody, everybody is.
+
+/** Who owes what, computed from the items rather than stored. */
+/**
+ * Who owes whom, right now.
+ *
+ * `settlements` is not an afterthought — without it the split is computed from
+ * the rounds alone, so a person who has already paid still reads "owes ★30"
+ * and can be asked to pay again. Money that has moved has to move the maths
+ * with it: a settlement counts as the payer having put that much in, and the
+ * receiver having had that much of their stake returned.
+ */
+function settleUp(members, items, settlements = []) {
+  const owed = Object.fromEntries(members.map((m) => [m.member_id, 0]));
+  const paid = Object.fromEntries(members.map((m) => [m.member_id, 0]));
+  for (const it of items) {
+    const on = (() => {
+      try {
+        const parsed = JSON.parse(it.shared_with ?? 'null');
+        return Array.isArray(parsed) && parsed.length ? parsed : members.map((m) => m.member_id);
+      } catch {
+        return members.map((m) => m.member_id);
+      }
+    })().filter((id) => id in owed);
+    if (!on.length) continue;
+    // Integer Stars only. The remainder goes to the payer rather than
+    // vanishing — a split that loses a Star is a split somebody argues about.
+    const each = Math.floor(it.stars / on.length);
+    const remainder = it.stars - each * on.length;
+    on.forEach((id) => (owed[id] += each));
+    owed[it.paid_by] = (owed[it.paid_by] ?? 0) + remainder;
+    paid[it.paid_by] = (paid[it.paid_by] ?? 0) + it.stars;
+  }
+  for (const st of settlements) {
+    if (!(st.from_id in paid) || !(st.to_id in paid)) continue;
+    paid[st.from_id] += st.stars;
+    paid[st.to_id] -= st.stars;
+  }
+
+  return members.map((m) => ({
+    member_id: m.member_id,
+    name: m.name,
+    owes: owed[m.member_id] ?? 0,
+    paid: paid[m.member_id] ?? 0,
+    net: (paid[m.member_id] ?? 0) - (owed[m.member_id] ?? 0),
+    settled_at: m.settled_at,
+  }));
+}
+
+async function tabState(env, id) {
+  const tab = await env.DB.prepare('SELECT * FROM num_tabs WHERE id=?1 OR code=?1').bind(id).first();
+  if (!tab) return null;
+  const { results: members } = await env.DB.prepare('SELECT member_id, name, settled_at FROM num_tab_members WHERE tab_id=?1').bind(tab.id).all();
+  // Join the payer's name in: "Ana bought the first round" is the line people
+  // read, and an id is not a name.
+  const { results: items } = await env.DB.prepare(
+    `SELECT i.*, m.name AS paid_by_name FROM num_tab_items i
+     LEFT JOIN num_tab_members m ON m.tab_id = i.tab_id AND m.member_id = i.paid_by
+     WHERE i.tab_id=?1 ORDER BY i.rowid`,
+  ).bind(tab.id).all();
+  const { results: paid } = await env.DB.prepare('SELECT from_id, to_id, stars FROM num_tab_settlements WHERE tab_id=?1').bind(tab.id).all();
+  const total = (items ?? []).reduce((n, i) => n + i.stars, 0);
+  return {
+    tab,
+    members: members ?? [],
+    items: items ?? [],
+    total,
+    settled: (paid ?? []).reduce((n, p) => n + p.stars, 0),
+    split: settleUp(members ?? [], items ?? [], paid ?? []),
+  };
+}
+
+async function tabWrite(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId ?? '').first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+
+  const id = uid('tab');
+  const code = friendly(6);
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO num_tabs (id, code, title, venue, owner_id) VALUES (?1,?2,?3,?4,?5)')
+      .bind(id, code, clip(b.title, 80) || 'Tonight', clip(b.venue, 120), meId),
+    env.DB.prepare('INSERT INTO num_tab_members (tab_id, member_id, name) VALUES (?1,?2,?3)').bind(id, meId, self.name),
+  ]);
+  return json(await tabState(env, id));
+}
+
+async function tabJoin(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId ?? '').first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+  const tab = await env.DB.prepare("SELECT * FROM num_tabs WHERE code=?1 AND state='open'").bind(String(b.code ?? '').toUpperCase()).first();
+  if (!tab) return json({ error: 'No open tab with that code.' }, 404);
+  await env.DB.prepare('INSERT OR IGNORE INTO num_tab_members (tab_id, member_id, name) VALUES (?1,?2,?3)').bind(tab.id, meId, self.name).run();
+  await notifyTab(env, tab, meId, `${self.name || 'Someone'} joined the tab.`);
+  return json(await tabState(env, tab.id));
+}
+
+async function tabItem(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const tabId = clip(b.tab_id, 40);
+  const mine = await env.DB.prepare('SELECT * FROM num_tab_members WHERE tab_id=?1 AND member_id=?2').bind(tabId ?? '', meId ?? '').first();
+  if (!mine) return json({ error: 'not your tab' }, 403);
+  const tab = await env.DB.prepare("SELECT * FROM num_tabs WHERE id=?1 AND state='open'").bind(tabId).first();
+  if (!tab) return json({ error: 'That tab is closed.' }, 409);
+
+  const stars = Math.floor(Number(b.stars));
+  if (!Number.isFinite(stars) || stars <= 0) return json({ error: 'How many Stars?' }, 400);
+  const on = Array.isArray(b.shared_with) && b.shared_with.length ? b.shared_with.map((x) => clip(x, 40)) : null;
+
+  await env.DB.prepare('INSERT INTO num_tab_items (id, tab_id, label, stars, paid_by, shared_with) VALUES (?1,?2,?3,?4,?5,?6)')
+    .bind(uid('itm'), tabId, clip(b.label, 80) || 'Round', stars, meId, on ? JSON.stringify(on) : null).run();
+  await notifyTab(env, tab, meId, `${mine.name || 'Someone'} put ${clip(b.label, 40) || 'a round'} on the tab — ★${stars}.`);
+  return json(await tabState(env, tabId));
+}
+
+/**
+ * Settle. Everyone who owes pays the people who fronted it, in Stars, through
+ * the same conditional-debit ledger a direct payment uses — so a tab cannot
+ * move money the balance does not have.
+ */
+async function tabSettle(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const state = await tabState(env, clip(b.tab_id, 40) ?? '');
+  if (!state) return json({ error: 'no such tab' }, 404);
+  if (!state.members.some((m) => m.member_id === meId)) return json({ error: 'not your tab' }, 403);
+
+  const mine = state.split.find((s) => s.member_id === meId);
+  if (!mine || mine.net >= 0) {
+    await env.DB.prepare("UPDATE num_tab_members SET settled_at=datetime('now') WHERE tab_id=?1 AND member_id=?2").bind(state.tab.id, meId).run();
+    return json({ ok: true, nothing_owed: true, ...(await tabState(env, state.tab.id)) });
+  }
+
+  // Pay each person who is up, largest first, until this member is square.
+  let left = -mine.net;
+  const creditors = state.split.filter((s) => s.net > 0).sort((a, b2) => b2.net - a.net);
+
+  // Every balance row has to exist before a conditional debit can touch it.
+  // Without this the debit updates zero rows and reports "not enough Stars" to
+  // somebody whose balance is fine — it just had never been written down.
+  await Promise.all([meId, ...creditors.map((c) => c.member_id)].map((id) => ensureBalance(env, id)));
+  const paid = [];
+  for (const c of creditors) {
+    if (left <= 0) break;
+    const amount = Math.min(left, c.net);
+    const debit = await env.DB.prepare('UPDATE num_star_balances SET stars = stars - ?2 WHERE member_id = ?1 AND stars >= ?2').bind(meId, amount).run();
+    if (!debit.meta?.changes) {
+      const bal = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(meId).first();
+      return json({ error: `Not enough Stars — you have ★${bal?.stars ?? 0} and owe ★${-mine.net}.`, balance: bal?.stars ?? 0 }, 409);
+    }
+    // The credit, the two ledger lines and the settlement record go together:
+    // the debit above has already happened, so anything that fails here would
+    // take Stars off somebody and give them to nobody. Move ids are unique per
+    // settlement — a fixed id would make a legitimate second settlement (more
+    // rounds arrived after the first) collide and strand the debit.
+    const ref = uid('stl');
+    await env.DB.batch([
+      env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(c.member_id, amount),
+      env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'tab',?4,?5)")
+        .bind(`${ref}:out`, meId, -amount, state.tab.title, c.member_id),
+      env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'tab',?4,?5)")
+        .bind(`${ref}:in`, c.member_id, amount, state.tab.title, meId),
+      env.DB.prepare('INSERT INTO num_tab_settlements (id, tab_id, from_id, to_id, stars) VALUES (?1,?2,?3,?4,?5)')
+        .bind(ref, state.tab.id, meId, c.member_id, amount),
+    ]);
+    paid.push({ to: c.name, stars: amount });
+    left -= amount;
+  }
+  await env.DB.prepare("UPDATE num_tab_members SET settled_at=datetime('now') WHERE tab_id=?1 AND member_id=?2").bind(state.tab.id, meId).run();
+  await notifyTab(env, state.tab, meId, `${mine.name || 'Someone'} settled up.`);
+  return json({ ok: true, paid, ...(await tabState(env, state.tab.id)) });
+}
+
+async function tabClose(env, req) {
+  const b = await readBody(req);
+  const tab = await env.DB.prepare('SELECT * FROM num_tabs WHERE id=?1').bind(clip(b.tab_id, 40) ?? '').first();
+  if (!tab) return json({ error: 'no such tab' }, 404);
+  if (tab.owner_id !== clip(b.me, 40)) return json({ error: 'only whoever opened it can close it' }, 403);
+  await env.DB.prepare("UPDATE num_tabs SET state='closed', closed_at=datetime('now') WHERE id=?1").bind(tab.id).run();
+  return json(await tabState(env, tab.id));
+}
+
+async function notifyTab(env, tab, byId, line) {
+  try {
+    const { results } = await env.DB.prepare('SELECT member_id FROM num_tab_members WHERE tab_id=?1 AND member_id <> ?2').bind(tab.id, byId).all();
+    await Promise.all(
+      (results ?? []).map((m) =>
+        notify(env, { memberId: m.member_id, kind: 'tab', title: tab.title, body: line, url: '/?app', tag: `tab:${tab.id}` }),
+      ),
+    );
+  } catch (err) {
+    console.warn('[tab-notify]', err?.message ?? err);
+  }
+}
+
 // ── the inbox ─────────────────────────────────────────────────────────────
 
 /**
@@ -622,14 +1193,20 @@ async function requests(env, url) {
   ).bind(meId).all();
 
   const { results: events } = await env.DB.prepare(
-    `SELECT g.token, g.rsvp, e.id AS event_id, e.title, e.day, e.time, e.place, e.slug, m.name AS host_name
+    `SELECT g.token, g.rsvp, g.via, e.id AS event_id, e.title, e.day, e.time, e.place, e.slug, m.name AS host_name
        FROM num_event_guests g JOIN num_events e ON e.id=g.event_id
        LEFT JOIN num_members m ON m.id = e.host_id
-      WHERE (g.member_id = ?1 OR (?2 IS NOT NULL AND g.phone = ?2)) AND g.rsvp='pending'
+      WHERE (g.member_id = ?1 OR (?2 IS NOT NULL AND g.phone = ?2)) AND g.rsvp='pending' AND e.state='open'
       ORDER BY g.invited_at DESC LIMIT 10`,
   ).bind(meId, me.phone).all();
 
-  return json({ connects: connects ?? [], plans: plans ?? [], events: events ?? [] });
+  return json({
+    connects: connects ?? [],
+    plans: plans ?? [],
+    // `via: 'agent'` is the flag the app reads to say "their Num asked yours"
+    // rather than "you were sent a link" — same row, different sentence.
+    events: (events ?? []).map((e) => ({ ...e, via: e.via ?? 'link' })),
+  });
 }
 
 /**
@@ -695,11 +1272,26 @@ async function respond(env, req) {
   if (b.kind === 'event') {
     const g = await env.DB.prepare('SELECT * FROM num_event_guests WHERE token=?1').bind(id).first();
     if (!g) return json({ error: 'unknown invite' }, 404);
+
+    // It has to actually be theirs. This used to stamp `member_id = meId` on
+    // whatever token was passed, so any member who came by a token — the host
+    // who minted it, most obviously — could answer on the invitee's behalf and
+    // then own the row. Positive check only: yours if it names you, or was
+    // addressed to your number.
+    const mine = (g.member_id && g.member_id === meId) || (g.phone && self.phone && g.phone === self.phone);
+    if (!mine) return json({ error: 'not your invite' }, 403);
+
     const rsvp = action === 'accept' ? 'yes' : action === 'decline' ? 'no' : 'maybe';
-    await env.DB.prepare(
-      "UPDATE num_event_guests SET rsvp=?2, member_id=?3, message=COALESCE(?4,message), replied_at=datetime('now') WHERE token=?1",
-    ).bind(id, rsvp, meId, clip(b.message, 300)).run();
-    return json({ ok: true, rsvp });
+    // Same path the member's own Num uses — so the host is told, and a plan
+    // behind the event hears about it, whichever door the answer came through.
+    const out = await answerEventInvite(env, {
+      guest: g,
+      rsvp,
+      name: g.name ?? self.name,
+      message: clip(b.message, 300),
+      memberId: meId,
+    });
+    return out.error ? json({ error: out.error }, out.status ?? 400) : json({ ok: true, rsvp: out.rsvp, posted: out.line });
   }
 
   return json({ error: 'unknown kind' }, 400);
@@ -733,6 +1325,84 @@ async function planWrite(env, req) {
     .bind(id, meId, self.name).run();
   await event(env, id, { id: meId, name: self.name }, 'joined', `${self.name || 'Someone'} started the plan.`);
   return json({ plan: await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(id).first() });
+}
+
+/**
+ * Who is on a reservation.
+ *
+ * Three things this has to get right, and each is a real-world failure:
+ *
+ *   · A guest need not be a Num member. Half of any dinner table is not on
+ *     the app, and refusing to count them makes the party size wrong — which
+ *     is the number the restaurant actually holds seats against.
+ *   · Saying no removes a seat. party_size counts everyone who has not said
+ *     "out", because a table held for six that four people turn up to is how
+ *     a venue learns to stop trusting you.
+ *   · Anyone on the plan may add a guest, but only that guest — or whoever
+ *     added them — may change their answer. Otherwise one member can mark
+ *     another as not coming and somebody quietly misses dinner.
+ */
+async function itemAttendees(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const itemId = clip(b.item_id, 40);
+  if (!meId || !itemId) return json({ error: 'me and item_id are required' }, 400);
+
+  const item = await env.DB.prepare('SELECT id, plan_id, title FROM num_plan_items WHERE id=?1').bind(itemId).first();
+  if (!item) return json({ error: 'no such reservation' }, 404);
+  const mem = await memberOf(env, item.plan_id, meId);
+  if (!mem) return json({ error: 'not your plan' }, 403);
+
+  const name = clip(b.name, 60);
+  const action = b.remove ? 'remove' : b.rsvp ? 'rsvp' : 'add';
+  if (!name) return json({ error: 'Who is coming? Give a name.' }, 400);
+
+  if (action === 'add') {
+    await env.DB.prepare(
+      `INSERT INTO num_item_attendees (item_id, member_id, name, rsvp, added_by) VALUES (?1,?2,?3,?4,?5)
+       ON CONFLICT(item_id, name) DO UPDATE SET member_id=COALESCE(excluded.member_id, member_id)`,
+    ).bind(itemId, clip(b.member_id, 40), name, 'going', meId).run();
+  } else if (action === 'rsvp') {
+    const rsvp = ['going', 'maybe', 'out'].includes(b.rsvp) ? b.rsvp : 'going';
+    const row = await env.DB.prepare('SELECT member_id, added_by FROM num_item_attendees WHERE item_id=?1 AND name=?2')
+      .bind(itemId, name).first();
+    if (!row) return json({ error: 'They are not on this one.' }, 404);
+    // A Num member owns their own answer outright — being the person who
+    // added them to the table does not grant the right to answer for them.
+    // For a plain-name guest there is nobody else who CAN answer, so whoever
+    // added them speaks for them.
+    const theirs = row.member_id ? row.member_id === meId : row.added_by === meId;
+    if (!theirs) {
+      return json(
+        { error: row.member_id ? 'Only they can change their own answer.' : 'Only whoever added them can answer for them.' },
+        403,
+      );
+    }
+    await env.DB.prepare('UPDATE num_item_attendees SET rsvp=?3 WHERE item_id=?1 AND name=?2').bind(itemId, name, rsvp).run();
+  } else {
+    await env.DB.prepare('DELETE FROM num_item_attendees WHERE item_id=?1 AND name=?2').bind(itemId, name).run();
+  }
+
+  const { results } = await env.DB.prepare('SELECT member_id, name, rsvp FROM num_item_attendees WHERE item_id=?1').bind(itemId).all();
+  const attendees = results ?? [];
+  const party = attendees.filter((a) => a.rsvp !== 'out').length;
+
+  // Narrated into the plan so every other member's agent picks it up on their
+  // next sync. A party size that changes silently is the whole problem.
+  await event(
+    env,
+    item.plan_id,
+    { id: meId, name: mem.name },
+    'attendees',
+    action === 'add'
+      ? `${name} is on ${item.title} — ${party} going.`
+      : action === 'remove'
+        ? `${name} is off ${item.title} — ${party} going.`
+        : `${name} is ${b.rsvp} for ${item.title} — ${party} going.`,
+    { item_id: itemId, party_size: party },
+  ).catch(() => null);
+
+  return json({ ok: true, attendees, party_size: party });
 }
 
 /**
@@ -814,10 +1484,33 @@ async function planRead(env, url) {
     'SELECT id, ts, by_id, by_name, kind, summary FROM num_plan_events WHERE plan_id=?1 AND id > ?2 ORDER BY id LIMIT 50',
   ).bind(id, since).all();
 
+  // One query for every attendee on the plan, grouped in memory. A per-item
+  // query would be N round trips for a list that is almost always tiny.
+  const { results: guests } = await env.DB.prepare(
+    `SELECT a.item_id, a.member_id, a.name, a.rsvp FROM num_item_attendees a
+       JOIN num_plan_items i ON i.id = a.item_id
+      WHERE i.plan_id = ?1`,
+  ).bind(id).all().catch(() => ({ results: [] }));
+  const byItem = new Map();
+  for (const g of guests ?? []) {
+    if (!byItem.has(g.item_id)) byItem.set(g.item_id, []);
+    byItem.get(g.item_id).push({ member_id: g.member_id, name: g.name, rsvp: g.rsvp });
+  }
+
   return json({
     plan,
     members: members ?? [],
-    items: items ?? [],
+    items: (items ?? []).map((i) => {
+      const attendees = byItem.get(i.id) ?? [];
+      return {
+        ...i,
+        attendees,
+        // The number that matters to a restaurant. Anyone who has said no is
+        // not a seat, and a booking held for a party that shrank is the most
+        // common way a table gets given away.
+        party_size: attendees.filter((a) => a.rsvp !== 'out').length,
+      };
+    }),
     // Your own actions are not news to you — only the other agents' are.
     events: (events ?? []).filter((e) => e.by_id !== meId),
     cursor: (events ?? []).reduce((m, e) => Math.max(m, e.id), since),
@@ -863,16 +1556,30 @@ export async function handleSocial(request, env, path) {
   if (path === '/verify' && post) return await verifyMe(env, request);
   if (path === '/invite' && post) return await invite(env, request);
   if (path === '/accept' && post) return await accept(env, request);
+  if (path === '/connect' && post) return await connect(env, request);
+  if (path === '/verify/5arz' && post) return await verifyVia5arz(env, request);
   if (path === '/friends') return await friends(env, url);
+  if (path === '/prefs' && post) return await prefsWrite(env, request);
+  if (path === '/prefs') return await prefsRead(env, url);
   if (path === '/requests') return await requests(env, url);
   if (path === '/who') return await who(env, url);
   if (path === '/stars') return await stars(env, url);
+  if (path === '/tab' && post) return await tabWrite(env, request);
+  if (path === '/tab') {
+    const st = await tabState(env, url.searchParams.get('id') ?? '');
+    return st ? json(st) : json({ error: 'no such tab' }, 404);
+  }
+  if (path === '/tab/join' && post) return await tabJoin(env, request);
+  if (path === '/tab/item' && post) return await tabItem(env, request);
+  if (path === '/tab/settle' && post) return await tabSettle(env, request);
+  if (path === '/tab/close' && post) return await tabClose(env, request);
   if (path === '/pay' && post) return await pay(env, request);
   if (path === '/respond' && post) return await respond(env, request);
   if (path === '/plans') return await planList(env, url);
   if (path === '/plan' && post) return await planWrite(env, request);
   if (path === '/plan') return await planRead(env, url);
   if (path === '/plan/item' && post) return await planItem(env, request);
+  if (path === '/plan/item/attendees' && post) return await itemAttendees(env, request);
   if (path === '/plan/join' && post) return await planJoin(env, request);
   return json({ error: 'not found' }, 404);
 }
