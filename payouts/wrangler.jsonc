@@ -1,0 +1,23 @@
+{
+  // NUM payout desk — operator-only. Binds the 5arz ledger, which is where
+  // members, Stars and payout destinations actually live.
+  //
+  // Deliberately a separate Worker from the consumer app: money code should not
+  // share a deploy, a blast radius or a set of bindings with a chat UI.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "num-payouts",
+  "main": "index.mjs",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "d1_databases": [
+    { "binding": "LEDGER", "database_name": "5arz-ledger", "database_id": "479dfff2-cd26-49b0-ae54-84d4a41b99aa" }
+  ],
+  "observability": { "enabled": true }
+  // Secrets (wrangler secret put …):
+  //   ADMIN_KEY        — required; same scheme as the operator console
+  //   USDC_SIGNER_KEY / USDC_RPC_URL   — turns on the only rail with real
+  //                                      destinations already on file
+  //   STRIPE_SECRET_KEY, WISE_API_TOKEN, PAYPAL_CLIENT_ID/SECRET, THUNES_API_KEY
+  // Until a rail's secrets exist its adapter reports not-ready and /execute
+  // refuses rather than pretending to have sent anything.
+}

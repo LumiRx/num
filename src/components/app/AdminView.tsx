@@ -10,6 +10,11 @@ import { pressable } from '../../lib/a11y';
 import { ChevronRightIcon, XIcon } from '../../lib/icons';
 
 const TOKEN_KEY = 'num-admin-session';
+const PAYOUT_TOKEN_KEY = 'num-payout-session';
+// The payout desk is a separate Worker on purpose — money code should not share
+// a deploy or a set of bindings with a chat UI. It uses the same key, so one
+// sign-in mints both sessions.
+const PAYOUTS = 'https://num-payouts.thatislumi.workers.dev';
 
 interface Overview {
   app: {
@@ -81,6 +86,110 @@ const Row = ({ left, right }: { left: React.ReactNode; right?: React.ReactNode }
   </div>
 );
 
+interface Roster {
+  rows: Array<{
+    member_id: string; name: string | null; country: string | null; stars: number; amount_cents: number;
+    rail: string | null; rail_ready: boolean; severity: 'block' | 'hold' | 'note' | 'clear'; payable: boolean;
+    findings: Array<{ severity: string; code: string; message: string }>;
+  }>;
+  systemic: Array<{ code: string; severity: string; message: string; fix: string }>;
+  totals: { members: number; stars: number; payable_cents: number; block?: number; hold?: number };
+  rails: { ready: string[]; all: Array<{ id: string; label: string; ready: boolean; needs: string }> };
+}
+
+const money = (cents: number) => '$' + (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * The payout desk. Read-only here by design: approving and sending are
+ * deliberate acts, and this screen exists so nobody performs them blind.
+ */
+function PayoutPanel() {
+  const [data, setData] = useState<Roster | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [openRow, setOpenRow] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = localStorage.getItem(PAYOUT_TOKEN_KEY);
+    if (!t) {
+      setErr('The payout desk has no admin key set yet.');
+      return;
+    }
+    void fetch(`${PAYOUTS}/roster`, { headers: { 'X-Admin-Session': t } })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(r.status === 401 ? 'Sign in again to reach the payout desk.' : `payouts ${r.status}`);
+        setData((await r.json()) as Roster);
+      })
+      .catch((e) => setErr(e instanceof Error ? e.message : 'unavailable'));
+  }, []);
+
+  const tone = (s: string) => (s === 'block' ? 'var(--color-accent-700)' : s === 'hold' ? 'var(--color-accent)' : 'var(--ink-60)');
+
+  return (
+    <Panel
+      title="PAYOUT DESK"
+      summary={data ? `${money(data.totals.payable_cents)} clear · ${data.totals.block ?? 0} blocked · ${data.totals.hold ?? 0} need a human` : (err ?? 'loading…')}
+      defaultOpen
+    >
+      {err && <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.5 }}>{err}</div>}
+      {data && (
+        <>
+          {data.systemic.map((s) => (
+            <div key={s.code} style={{ padding: 11, borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', marginBottom: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: tone(s.severity), lineHeight: 1.45 }}>{s.message}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>→ {s.fix}</div>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, margin: '12px 0' }}>
+            <Stat n={data.totals.members} label="WITH A BALANCE" />
+            <Stat n={money(data.totals.stars * 100)} label="TOTAL OWED" accent />
+            <Stat n={money(data.totals.payable_cents)} label="NOT BLOCKED" />
+            <Stat n={data.rails.ready.length} label="RAILS LIVE" />
+          </div>
+
+          <div style={kicker}>RAILS</div>
+          {data.rails.all.map((r) => (
+            <Row
+              key={r.id}
+              left={<>{r.label} {r.ready ? <span style={{ color: '#0e6b45' }}>✓</span> : <span style={{ color: 'var(--ink-40)' }}>not connected</span>}</>}
+              right={r.ready ? 'live' : r.needs}
+            />
+          ))}
+
+          <div style={{ ...kicker, marginTop: 14 }}>EVERYONE WITH A BALANCE</div>
+          {data.rows.map((r) => (
+            <div key={r.member_id} style={{ borderBottom: '1px solid var(--ink-08)' }}>
+              <div
+                {...pressable(() => setOpenRow(openRow === r.member_id ? null : r.member_id))}
+                style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', fontSize: 12 }}
+              >
+                <span style={{ minWidth: 0 }}>
+                  <b style={{ color: tone(r.severity) }}>●</b> {r.name ?? r.member_id}
+                  <span style={{ color: 'var(--ink-40)' }}> · {r.country ?? '—'}</span>
+                </span>
+                <span style={{ color: 'var(--ink-60)', flex: 'none' }}>{money(r.amount_cents)}</span>
+              </div>
+              {openRow === r.member_id && (
+                <div style={{ paddingBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--ink-60)' }}>
+                    {r.stars}★ · rail {r.rail ?? 'none'} {r.rail_ready ? '(live)' : '(not connected)'}
+                  </div>
+                  {r.findings.map((f, i) => (
+                    <div key={i} style={{ fontSize: 11.5, marginTop: 5, lineHeight: 1.5, color: tone(f.severity) }}>
+                      {f.severity === 'block' ? '✕' : f.severity === 'hold' ? '!' : '·'} {f.message}
+                    </div>
+                  ))}
+                  {!r.findings.length && <div style={{ fontSize: 11.5, marginTop: 5, color: '#0e6b45' }}>Nothing wrong — clear to pay.</div>}
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </Panel>
+  );
+}
+
 export default function AdminView() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [key, setKey] = useState('');
@@ -102,6 +211,18 @@ export default function AdminView() {
       if (!res.ok) throw new Error(body.error ?? 'That did not work.');
       localStorage.setItem(TOKEN_KEY, body.token);
       setToken(body.token);
+      // Best-effort: if the payout Worker has no key set, the desk simply says
+      // it isn't connected rather than blocking the whole dashboard.
+      try {
+        const pr = await fetch(`${PAYOUTS}/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: key.trim() }),
+        });
+        if (pr.ok) localStorage.setItem(PAYOUT_TOKEN_KEY, (await pr.json()).token);
+      } catch {
+        /* desk offline — the panel reports it */
+      }
       setKey('');
       setErr(null);
     } catch (e) {
@@ -112,6 +233,7 @@ export default function AdminView() {
   };
 
   const signOut = () => {
+    localStorage.removeItem(PAYOUT_TOKEN_KEY);
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setData(null);
@@ -327,6 +449,8 @@ export default function AdminView() {
                     <Row key={b.id} left={b.name} right={`${b.category ?? '—'} · ${b.status ?? '—'}`} />
                   ))}
                 </Panel>
+
+                <PayoutPanel />
 
                 <Panel title="ASKED FOR, COULDN'T DO" summary={`${data.product.open_feature_requests} open`} defaultOpen>
                   {data.product.asks.length === 0 && <div style={{ fontSize: 12, color: 'var(--ink-60)' }}>Nothing flagged.</div>}
