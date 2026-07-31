@@ -55,25 +55,47 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   const brief = specialistBrief(specialist);
   if (brief) system.push({ type: 'text', text: brief });
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
-  const response = await client.messages.create({
-    model: env?.NUM_MODEL || DEFAULT_MODEL,
-    // 4096 was ~3x what a real turn needs and let the model ramble into the
-    // action payloads — measured p50 was 950 output tokens for a 115-token
-    // reply, which is both the biggest slice of the bill AND the reason a
-    // reply took 15s. Output tokens are generated serially: fewer is faster.
-    max_tokens: 1400,
-    system,
-    output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
-    messages,
-  });
+  // A structured reply is one long JSON string. If the model runs out of room
+  // it stops MID-STRING, JSON.parse throws, and the user gets an error instead
+  // of an answer — which is exactly what a 1400 ceiling did to "cocktails near
+  // the beach in Malibu for six". Headroom is cheaper than a dead end. Trimming
+  // cost belongs in the prompt that tells the model to keep payloads lean, not
+  // in a ceiling that cuts it off mid-sentence.
+  const call = (maxTokens) =>
+    client.messages.create({
+      model: env?.NUM_MODEL || DEFAULT_MODEL,
+      max_tokens: maxTokens,
+      system,
+      output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
+      messages,
+    });
+
+  let response = await call(3000);
+  if (response.stop_reason === 'max_tokens') {
+    console.warn('[num-ai] hit the 3000 ceiling, retrying wider');
+    response = await call(4096);
+  }
 
   if (response.stop_reason === 'refusal') {
     return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
   }
   const text = response.content.find((b) => b.type === 'text')?.text ?? '';
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Last resort: `reply` is the first field in the schema, so even a truncated
+    // payload almost always holds a complete one. Salvaging it turns a hard
+    // failure into a slightly less useful answer — a trade worth making every
+    // single time.
+    const salvaged = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text);
+    if (!salvaged) throw new Error('reply could not be parsed or salvaged');
+    console.warn('[num-ai] salvaged a truncated reply');
+    parsed = { reply: JSON.parse('"' + salvaged[1] + '"'), card: null, chips: null, actions: [] };
+  }
   // usage rides back with the reply so the caller can bill it to a day. Real
   // counts, not an estimate — this is what the admin dashboard reports.
-  return { ...normalizeReply(JSON.parse(text)), _usage: response.usage, _specialist: specialist };
+  return { ...normalizeReply(parsed), _usage: response.usage, _specialist: specialist };
 }
 
 /**
@@ -233,6 +255,12 @@ export default {
 
     // The claim magic link — opened from the business's own inbox, so it must
     // be a real page and must not require the app.
+    // What the server is running. The app compares it with its own stamp, so a
+    // phone on a stale cache can be told rather than guessed at.
+    if (url.pathname === '/api/version') {
+      return json(200, { version: env.NUM_VERSION ?? 'unknown', model: env.NUM_MODEL || DEFAULT_MODEL });
+    }
+
     if (url.pathname === '/claim/confirm') return await handleClaimConfirm(request, env);
     if (url.pathname.startsWith('/api/claim')) {
       const res = await handleClaim(request, env, url.pathname.slice('/api/claim'.length) || '/', url.origin);
@@ -382,8 +410,36 @@ export default {
       return json(200, { ...clean, place: grounding.place ? grounding.place.name : null });
     } catch (err) {
       console.error('[num-ai]', err);
-      const status = err?.status === 401 ? 401 : err?.status === 429 ? 429 : 500;
-      return json(status, { error: err?.message ?? 'unknown error' });
+      // A guest never hears "the kitchen is broken". If the big model failed
+      // for any reason, try the cheap one — it cannot book anything, but it can
+      // hold the conversation open, which is the whole job at this moment.
+      try {
+        const rescue = await smallReply(env, parsed.messages.slice(-4), parsed.state?.profile ?? {}, parsed.place ?? null);
+        const guard = rescue ? guardReply(rescue) : { ok: false };
+        if (guard.ok && !/\bHANDOFF\b/.test(guard.cleaned) && !soundsLikeASwitchboard(guard.cleaned)) {
+          ctx.waitUntil(logUsage(env, { lane: 'rescue', model: 'workers-ai', place: parsed.place ?? null, usage: null, ms: null }));
+          return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: parsed.place ?? null });
+        }
+      } catch (rescueErr) {
+        console.warn('[num-ai] rescue lane also failed:', rescueErr?.message ?? rescueErr);
+      }
+
+      // Both lanes down. Own it, keep it warm, and give them the one thing that
+      // actually helps — a nudge to say it again — rather than blaming their
+      // connection, which is almost never the cause and always sounds like it
+      // is their fault.
+      const status = err?.status === 429 ? 429 : 200;
+      return json(status, {
+        reply:
+          err?.status === 429
+            ? 'You’ve got me moving faster than I can keep up — give me a few seconds and ask me again.'
+            : 'That one slipped away from me — entirely my end, nothing to do with you. Say it once more and I’ll pick it straight up.',
+        card: null,
+        chips: null,
+        actions: [],
+        place: parsed.place ?? null,
+        degraded: true,
+      });
     }
   },
 };

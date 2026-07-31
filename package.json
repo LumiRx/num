@@ -1,14 +1,18 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "ai": "node server/index.mjs",
-    "design:check": "node scripts/design-check.mjs status"
+    "design:check": "node scripts/design-check.mjs status",
+    "release": "node scripts/release.mjs",
+    "release:stage": "node scripts/release.mjs stage",
+    "release:ship": "node scripts/release.mjs ship",
+    "release:rollback": "node scripts/release.mjs rollback"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

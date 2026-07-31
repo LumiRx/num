@@ -486,7 +486,13 @@ export async function askNum(text: string) {
       typing: false,
       msgs: [
         ...prev.msgs,
-        { who: 'c', text: 'I can’t reach my brain right now — check your connection and try again in a moment.' },
+        {
+          who: 'c',
+          // Never blame the guest for the kitchen. This fires when the request
+          // did not leave the device at all, so it is the one case where the
+          // connection genuinely is the cause — and it still reads as ours.
+          text: 'I didn’t manage to get that — looks like we’ve dropped the line. I’ll be right here when it’s back; just send it again.',
+        },
       ],
       chips: defChips(),
     }));

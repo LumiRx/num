@@ -15,6 +15,7 @@ import { saveProfile, uploadAvatar } from '../../lib/profile';
 import { REACTIONS } from '../../lib/prefs';
 import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
 import { THEMES, setTheme } from '../../lib/themes';
+import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
@@ -283,6 +284,8 @@ export default function ProfileView() {
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
 
+      <VersionLine />
+
       <div style={{ padding: '4px 12px 0' }}>
         <div
           {...pressable(save)}
@@ -333,6 +336,34 @@ function ThemePicker() {
         })}
       </div>
     </Collapsible>
+  );
+}
+
+/**
+ * Which build this phone is actually running, and a nudge if it is behind.
+ * Small, quiet, and the single fastest way to answer "why am I seeing the old
+ * copy?" — which is otherwise pure guesswork.
+ */
+function VersionLine() {
+  const [stale, setStale] = useState<string | null>(null);
+  useEffect(() => {
+    void checkForUpdate().then((r) => r?.stale && setStale(r.server));
+  }, []);
+  return (
+    <div style={{ padding: '14px 14px 0', textAlign: 'center' }}>
+      <div style={{ fontSize: 10, color: 'var(--ink-40)', letterSpacing: '.04em' }}>Num {versionLine}</div>
+      {stale && (
+        <div
+          {...pressable(() => {
+            void navigator.serviceWorker?.getRegistration().then((r) => r?.update());
+            location.reload();
+          })}
+          style={{ cursor: 'pointer', marginTop: 8, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: 'var(--color-accent)' }}
+        >
+          v{stale} IS OUT — TAP TO UPDATE
+        </div>
+      )}
+    </div>
   );
 }
 
