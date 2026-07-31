@@ -93,6 +93,8 @@ CREATE INDEX IF NOT EXISTS idx_num_plan_events_plan ON num_plan_events(plan_id, 
 CREATE TABLE IF NOT EXISTS num_star_balances (member_id TEXT PRIMARY KEY, stars INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS num_star_moves (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, delta INTEGER NOT NULL, kind TEXT NOT NULL, note TEXT, counterparty TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_num_star_moves_member ON num_star_moves(member_id);
+CREATE TABLE IF NOT EXISTS num_identity_signals (member_id TEXT PRIMARY KEY, device_id TEXT, ip_hash TEXT, ua_hash TEXT, country TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_num_identity_ip ON num_identity_signals(ip_hash);
 `;
 
 async function event(env, planId, by, kind, summary, payload) {
@@ -107,6 +109,45 @@ async function memberOf(env, planId, memberId) {
   if (!planId || !memberId) return null;
   return await env.DB.prepare('SELECT * FROM num_plan_members WHERE plan_id=?1 AND member_id=?2')
     .bind(planId, memberId).first();
+}
+
+// ── who is real: signals and collisions ───────────────────────────────────
+
+const sha12 = async (v) => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(v ?? '')));
+  return [...new Uint8Array(buf)].slice(0, 12).map((x) => x.toString(16).padStart(2, '0')).join('');
+};
+
+async function ctxSignals(env, memberId, req, body) {
+  const ip = req.headers.get('CF-Connecting-IP') ?? '';
+  await env.DB.prepare(
+    `INSERT INTO num_identity_signals (member_id, device_id, ip_hash, ua_hash, country)
+     VALUES (?1,?2,?3,?4,?5)
+     ON CONFLICT(member_id) DO UPDATE SET ip_hash=excluded.ip_hash, ua_hash=excluded.ua_hash, country=excluded.country`,
+  ).bind(
+    memberId,
+    clip(body?.device, 64) ?? memberId,
+    ip ? await sha12(ip) : null,
+    await sha12(req.headers.get('User-Agent') ?? ''),
+    req.headers.get('CF-IPCountry') ?? null,
+  ).run();
+}
+
+/** A refused duplicate is a signal, not just an error — so keep it. */
+async function flagCollision(env, { kind, value, existing, attempted, req }) {
+  try {
+    await env.DB.prepare(
+      'INSERT OR IGNORE INTO num_identity_signals (member_id, device_id, ip_hash, ua_hash, country) VALUES (?1,?2,?3,?4,?5)',
+    ).bind(
+      `collision:${kind}:${await sha12(value)}:${attempted}`,
+      attempted,
+      req ? await sha12(req.headers.get('CF-Connecting-IP') ?? '') : null,
+      `blocked:${kind}:kept=${existing}`,
+      req?.headers.get('CF-IPCountry') ?? null,
+    ).run();
+  } catch (err) {
+    console.warn('[identity] collision log failed', err?.message ?? err);
+  }
 }
 
 // ── identity ──────────────────────────────────────────────────────────────
@@ -135,9 +176,31 @@ async function me(env, req) {
   const existing = (rows ?? []).find((r) => r.id === id) ?? null;
   const holder = phone ? (rows ?? []).find((r) => r.phone === phone && r.id !== id) ?? null : null;
 
+  // A NEW account needs a name. Without this, `POST /me {}` minted an account
+  // AND a referral code on every call — a Sybil farm in one curl loop, and
+  // referral codes are worth Stars. Existing accounts may still patch freely.
+  if (!existing && !name) {
+    return json({ error: 'Tell me your name first — I can’t open an account without one.' }, 400);
+  }
+
   if (holder) {
-    // Verified means it is genuinely theirs — nobody else gets to claim it.
-    if (holder.phone_verified) return json({ error: 'That number is already on Num. Sign in from the device that has it.' }, 409);
+    // One number, one account, verified or not.
+    //
+    // Releasing an unverified number to whoever asked next was wrong in both
+    // directions: it let one person mint an account per device from a single
+    // number, and it handed a stranger somebody else's account for the price of
+    // typing their number. Until SMS is on, an unverified number is a CLAIM, so
+    // the right answer to a collision is to refuse it and write it down.
+    await flagCollision(env, { kind: 'phone', value: phone, existing: holder.id, attempted: id, req });
+    return json(
+      {
+        error: holder.phone_verified
+          ? 'That number is already on Num. Sign in from the device that has it.'
+          : 'That number is already on an account. Open Num on the device you set it up on, or verify it to move it across.',
+        number_taken: true,
+      },
+      409,
+    );
   }
   if (existing) {
     // The name on a verified account is an identity claim, not a nickname: it
@@ -182,6 +245,11 @@ async function me(env, req) {
     );
   }
   await env.DB.batch(writes);
+
+  // Who, and roughly where from — the raw material for spotting a farm. Hashed,
+  // because an IP is personal data and the only question we ever ask of it is
+  // whether two accounts share one, never what it was.
+  ctxSignals(env, id, req, b).catch((err) => console.warn('[identity]', err?.message ?? err));
 
   let verification = null;
   if (phone && !existing?.phone_verified && b.verify !== false) {

@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.5 — 2026-07-31 02:11 UTC
+
+Anti-Sybil: a name is required to open an account, one number means one account, and identity signals are recorded
+
+- commit `84366e3`
+
 ## 0.8.4 — 2026-07-31 01:58 UTC
 
 Brain chain with Claude first, five open models on Workers AI behind it, and one adapter for Jan/Ollama/any OpenAI-compatible endpoint
