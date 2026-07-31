@@ -5,6 +5,7 @@
 // two people until BOTH acted — you by sending the invite, them by opening it
 // on their own device. Until then a link is 'pending' and carries nothing.
 import { store } from './store';
+import { refreshRequests } from './requests';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
@@ -50,6 +51,7 @@ export function bootSocial(): void {
     void refreshFriends();
     void refreshPlans();
     void syncPlan();
+    void refreshRequests();
     return;
   }
 
@@ -470,8 +472,13 @@ export function startPlanSync(): () => void {
   let timer: ReturnType<typeof setInterval> | undefined;
   const start = () => {
     stop();
-    if (!store.get().planId) return;
-    timer = setInterval(() => void syncPlan(), 45_000);
+    // No `planId` guard: the inbox matters even before you belong to a plan.
+    // Requests ride the same clock as the plan sync — a friend's invite should
+    // be waiting for you, not something you go looking for.
+    timer = setInterval(() => {
+      void syncPlan();
+      void refreshRequests();
+    }, 45_000);
   };
   const stop = () => {
     if (timer) clearInterval(timer);
@@ -480,6 +487,7 @@ export function startPlanSync(): () => void {
   const onVis = () => {
     if (document.visibilityState === 'visible') {
       void syncPlan();
+      void refreshRequests();
       start();
     } else stop();
   };

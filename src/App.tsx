@@ -72,10 +72,16 @@ export default function App() {
     };
   }, [standalone]);
 
-  // The operator console. No link points here; the key is verified server-side
-  // on every request, so the URL is routing, not authorisation.
-  const adminKey = new URLSearchParams(window.location.search).get('admin');
-  if (adminKey) return <AdminView adminKey={adminKey} />;
+  // The operator console at /admin (or ?admin). The URL is ROUTING ONLY — it
+  // carries no key and never will. Auth is a signed session obtained by posting
+  // the key once, held in localStorage, sent as a header.
+  const q = new URLSearchParams(window.location.search);
+  if (q.has('admin') || window.location.pathname.replace(/\/$/, '') === '/admin') {
+    // A key left in an old bookmark is scrubbed from the address bar on sight
+    // rather than being honoured.
+    if (q.get('admin')) history.replaceState(null, '', window.location.pathname);
+    return <AdminView />;
+  }
 
   if (showCanvas) return <PrototypeCanvas />;
   if (standalone) {

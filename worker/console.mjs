@@ -84,10 +84,13 @@ export async function logUsage(env, { lane, model, specialist, place, usage, ms 
 /** Every place this member has proved they own. The scope for everything else. */
 async function ownedPlaces(env, memberId, phone) {
   const { results } = await env.DB.prepare(
+    // Columns match the real num_place_owners (place_id, business_id, claim_id,
+    // method, phone, verified_at, revoked_at, member_ref) — an earlier version
+    // of this query invented `verified_phone` and `created_at` and 500'd.
     `SELECT p.id, p.name, p.category, p.dest, p.area, p.phone, p.website, p.rating, p.reviews, p.photo_url,
-            o.business_id, o.method, o.created_at AS owned_since
+            o.business_id, o.method, o.verified_at AS owned_since
        FROM num_place_owners o JOIN places p ON p.id = o.place_id
-      WHERE o.member_ref = ?1 OR (?2 IS NOT NULL AND o.verified_phone = ?2)`,
+      WHERE o.revoked_at IS NULL AND (o.member_ref = ?1 OR (?2 IS NOT NULL AND o.phone = ?2))`,
   ).bind(memberId ?? '', phone ?? null).all();
   return results ?? [];
 }
@@ -148,8 +151,59 @@ async function businessUpdate(env, req) {
 
 // ── admin side ────────────────────────────────────────────────────────────
 
-const isAdmin = (env, req, url) =>
-  !!env.ADMIN_KEY && (req.headers.get('X-Admin-Key') === env.ADMIN_KEY || url.searchParams.get('key') === env.ADMIN_KEY);
+// ── admin auth ────────────────────────────────────────────────────────────
+//
+// The key never travels in a URL. A URL lands in browser history, in the
+// address bar of a screenshot, in the Referer header of every outbound link,
+// and in server logs — which is exactly how the old `?admin=<key>` scheme
+// leaked. Instead: the key is posted once, exchanged for a short-lived signed
+// session, and every later request carries the session in a header.
+
+const SESSION_HOURS = 12;
+const b64url = (buf) =>
+  btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+async function hmac(env, data) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.ADMIN_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64url(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data)));
+}
+
+/** Constant-time compare — a length-independent early exit leaks the key. */
+function safeEq(a, b) {
+  const x = String(a ?? '');
+  const y = String(b ?? '');
+  if (x.length !== y.length) return false;
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return diff === 0;
+}
+
+async function mintSession(env) {
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ exp: Date.now() + SESSION_HOURS * 3600_000 })));
+  return `${payload}.${await hmac(env, payload)}`;
+}
+
+async function sessionValid(env, token) {
+  const [payload, sig] = String(token ?? '').split('.');
+  if (!payload || !sig) return false;
+  if (!safeEq(sig, await hmac(env, payload))) return false;
+  try {
+    const { exp } = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof exp === 'number' && exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+async function adminSession(env, req) {
+  const b = await readBody(req);
+  if (!env.ADMIN_KEY) return json({ error: 'No admin key is configured on this Worker yet.' }, 503);
+  if (!safeEq(b.key, env.ADMIN_KEY)) return json({ error: 'That key does not match.' }, 401);
+  return json({ token: await mintSession(env), expires_in_hours: SESSION_HOURS });
+}
+
+const isAdmin = async (env, req) =>
+  !!env.ADMIN_KEY && (await sessionValid(env, req.headers.get('X-Admin-Session')));
 
 const count = async (env, sql, ...binds) => {
   try {
@@ -162,60 +216,118 @@ const count = async (env, sql, ...binds) => {
 
 async function adminOverview(env, url) {
   await ensureUsage(env);
-  const since = url.searchParams.get('days') ? Number(url.searchParams.get('days')) : 7;
+  const since = Number(url.searchParams.get('days')) || 7;
   const day = new Date(Date.now() - since * 86400_000).toISOString().slice(0, 10);
 
-  const [members, verified, active24, plans, planItems, events, guests, rsvpYes, invites, joined, conversions, gaps] =
-    await Promise.all([
-      count(env, 'SELECT COUNT(*) n FROM num_members'),
-      count(env, 'SELECT COUNT(*) n FROM num_members WHERE phone_verified=1'),
-      count(env, "SELECT COUNT(*) n FROM num_members WHERE seen_at > datetime('now','-1 day')"),
-      count(env, 'SELECT COUNT(*) n FROM num_plans'),
-      count(env, 'SELECT COUNT(*) n FROM num_plan_items'),
-      count(env, 'SELECT COUNT(*) n FROM num_events'),
-      count(env, 'SELECT COUNT(*) n FROM num_event_guests'),
-      count(env, "SELECT COUNT(*) n FROM num_event_guests WHERE rsvp='yes'"),
-      count(env, 'SELECT COUNT(*) n FROM num_invite_links'),
-      count(env, 'SELECT COUNT(*) n FROM num_invite_links WHERE signed_up_at IS NOT NULL'),
-      count(env, 'SELECT COUNT(*) n FROM num_referral_conversions'),
-      count(env, "SELECT COUNT(*) n FROM feature_requests WHERE status='new'"),
-    ]);
+  // One batch, one round trip. D1 caps the terms in a compound SELECT, so
+  // these stay separate statements rather than one big UNION — and a table
+  // that does not exist yet resolves to zero instead of failing the request.
+  const q = (sql) => env.DB.prepare(sql);
+  const COUNTS = [
+    ['members', 'SELECT COUNT(*) n FROM num_members'],
+    ['verified', 'SELECT COUNT(*) n FROM num_members WHERE phone_verified=1'],
+    ['active24', "SELECT COUNT(*) n FROM num_members WHERE seen_at > datetime('now','-1 day')"],
+    ['plans', 'SELECT COUNT(*) n FROM num_plans'],
+    ['planItems', 'SELECT COUNT(*) n FROM num_plan_items'],
+    ['events', 'SELECT COUNT(*) n FROM num_events'],
+    ['guests', 'SELECT COUNT(*) n FROM num_event_guests'],
+    ['rsvpYes', "SELECT COUNT(*) n FROM num_event_guests WHERE rsvp='yes'"],
+    ['invites', 'SELECT COUNT(*) n FROM num_invite_links'],
+    ['joined', 'SELECT COUNT(*) n FROM num_invite_links WHERE signed_up_at IS NOT NULL'],
+    ['conversions', 'SELECT COUNT(*) n FROM num_referral_conversions'],
+    ['gaps', "SELECT COUNT(*) n FROM feature_requests WHERE status='new'"],
+    // the website
+    ['leads', 'SELECT COUNT(*) n FROM leads'],
+    ['leadsNew', "SELECT COUNT(*) n FROM leads WHERE status IS NULL OR status IN ('new','')"],
+    ['accounts', 'SELECT COUNT(*) n FROM accounts'],
+    // the directory
+    ['places', 'SELECT COUNT(*) n FROM places'],
+    ['placesPhoto', 'SELECT COUNT(*) n FROM places WHERE photo_url IS NOT NULL'],
+    ['destinations', 'SELECT COUNT(*) n FROM destinations'],
+    ['buzz', 'SELECT COUNT(*) n FROM buzz'],
+    // the LINE / WhatsApp brain
+    ['msgs', 'SELECT COUNT(*) n FROM num_messages'],
+    ['requests', 'SELECT COUNT(*) n FROM num_requests'],
+    ['bookings', 'SELECT COUNT(*) n FROM num_bookings'],
+    ['guestProfiles', 'SELECT COUNT(*) n FROM num_guest_profiles'],
+    // the business side
+    ['businesses', 'SELECT COUNT(*) n FROM businesses'],
+    ['claims', 'SELECT COUNT(*) n FROM num_claims'],
+    ['owners', 'SELECT COUNT(*) n FROM num_place_owners'],
+  ];
 
-  const { results: usageByDay } = await env.DB.prepare(
-    `SELECT day, lane, COUNT(*) turns, SUM(in_tokens) in_tokens, SUM(out_tokens) out_tokens,
-            SUM(cache_read) cache_read, SUM(micro_usd) micro_usd, AVG(ms) avg_ms
-       FROM num_usage WHERE day >= ?1 GROUP BY day, lane ORDER BY day DESC`,
-  ).bind(day).all();
+  const settle = async (stmt, fallback) => {
+    try {
+      return await stmt;
+    } catch {
+      return fallback;
+    }
+  };
+  const nums = await Promise.all(COUNTS.map(([, sql]) => settle(q(sql).first(), { n: 0 })));
+  const c = Object.fromEntries(COUNTS.map(([k], i) => [k, nums[i]?.n ?? 0]));
 
-  const { results: topAsks } = await env.DB.prepare(
-    'SELECT ts, place, summary, suggestion, status FROM feature_requests ORDER BY id DESC LIMIT 25',
-  ).all().catch(() => ({ results: [] }));
+  const [usageByDay, topAsks, recent, leaders, leadsByDest, brainCost, latestBuzz, bizRows, recentReq] = await Promise.all([
+    settle(
+      q(`SELECT day, lane, COUNT(*) turns, SUM(in_tokens) in_tokens, SUM(out_tokens) out_tokens,
+                SUM(cache_read) cache_read, SUM(micro_usd) micro_usd, AVG(ms) avg_ms
+           FROM num_usage WHERE day >= '${day}' GROUP BY day, lane ORDER BY day DESC`).all(),
+      { results: [] },
+    ),
+    settle(q('SELECT id, ts, place, summary, suggestion, status FROM feature_requests ORDER BY id DESC LIMIT 25').all(), { results: [] }),
+    settle(q('SELECT id, name, phone, phone_verified, dest, created_at, seen_at FROM num_members ORDER BY created_at DESC LIMIT 25').all(), { results: [] }),
+    settle(
+      q(`SELECT c.code, c.owner_id, c.owner_type, COUNT(v.code) joined
+           FROM num_referral_codes c LEFT JOIN num_referral_conversions v ON v.code=c.code
+          GROUP BY c.code ORDER BY joined DESC LIMIT 12`).all(),
+      { results: [] },
+    ),
+    settle(q('SELECT dest, COUNT(*) n FROM leads GROUP BY dest ORDER BY n DESC LIMIT 12').all(), { results: [] }),
+    settle(
+      q(`SELECT tier, COUNT(*) calls, SUM(in_tokens) in_tokens, SUM(out_tokens) out_tokens, AVG(ms) avg_ms
+           FROM num_llm_calls GROUP BY tier ORDER BY calls DESC`).all(),
+      { results: [] },
+    ),
+    settle(q('SELECT dest, title, publisher, kind, published_at FROM buzz ORDER BY seen_at DESC LIMIT 10').all(), { results: [] }),
+    settle(
+      q(`SELECT b.id, b.name, b.category, b.status, p.commerce_status, p.country, p.phone_e164, p.website
+           FROM businesses b LEFT JOIN num_business_profiles p ON p.business_id=b.id
+          ORDER BY b.created_at DESC LIMIT 15`).all(),
+      { results: [] },
+    ),
+    settle(
+      q(`SELECT id, vertical, intent, status, area, party_size, created_at FROM num_requests ORDER BY created_at DESC LIMIT 12`).all(),
+      { results: [] },
+    ),
+  ]);
 
-  const { results: recent } = await env.DB.prepare(
-    'SELECT id, name, phone, phone_verified, dest, created_at, seen_at FROM num_members ORDER BY created_at DESC LIMIT 30',
-  ).all();
-
-  const { results: leaders } = await env.DB.prepare(
-    `SELECT c.code, c.owner_id, c.owner_type, COUNT(v.code) joined
-       FROM num_referral_codes c LEFT JOIN num_referral_conversions v ON v.code=c.code
-      GROUP BY c.code ORDER BY joined DESC, c.created_at ASC LIMIT 15`,
-  ).all().catch(() => ({ results: [] }));
-
-  const spend = (usageByDay ?? []).reduce((n, r) => n + (r.micro_usd ?? 0), 0) / 1_000_000;
-  const turns = (usageByDay ?? []).reduce((n, r) => n + (r.turns ?? 0), 0);
+  const spend = (usageByDay.results ?? []).reduce((n, r) => n + (r.micro_usd ?? 0), 0) / 1_000_000;
+  const turns = (usageByDay.results ?? []).reduce((n, r) => n + (r.turns ?? 0), 0);
 
   return json({
-    people: { members, verified, active24, recent: (recent ?? []).map((r) => ({ ...r, phone: maskPhone(r.phone) })) },
-    usage: { plans, planItems, events, guests, rsvpYes, invites, joined, conversions },
+    app: {
+      members: c.members, verified: c.verified, active24: c.active24,
+      plans: c.plans, planItems: c.planItems, events: c.events, guests: c.guests, rsvpYes: c.rsvpYes,
+      invites: c.invites, joined: c.joined, conversions: c.conversions,
+      recent: (recent.results ?? []).map((r) => ({ ...r, phone: maskPhone(r.phone) })),
+      referrals: leaders.results ?? [],
+    },
+    // itsnum.com — the same database, the other front door.
+    site: { leads: c.leads, leadsNew: c.leadsNew, accounts: c.accounts, byDest: leadsByDest.results ?? [] },
+    // The LINE / WhatsApp concierge, which predates the app and shares num-db.
+    brain: {
+      messages: c.msgs, requests: c.requests, bookings: c.bookings, guests: c.guestProfiles,
+      byTier: brainCost.results ?? [], recentRequests: recentReq.results ?? [],
+    },
+    directory: { places: c.places, withPhoto: c.placesPhoto, destinations: c.destinations, buzz: c.buzz, latestBuzz: latestBuzz.results ?? [] },
+    business: { businesses: c.businesses, claims: c.claims, owners: c.owners, rows: bizRows.results ?? [] },
     ai: {
       window_days: since,
       turns,
       spend_usd: Number(spend.toFixed(4)),
       per_turn_usd: turns ? Number((spend / turns).toFixed(5)) : 0,
-      by_day: usageByDay ?? [],
+      by_day: usageByDay.results ?? [],
     },
-    product: { open_feature_requests: gaps, asks: topAsks ?? [] },
-    referrals: leaders ?? [],
+    product: { open_feature_requests: c.gaps, asks: topAsks.results ?? [] },
   });
 }
 
@@ -241,7 +353,9 @@ export async function handleConsole(request, env, path) {
       return json({ error: 'not found' }, 404);
     }
     if (path.startsWith('/admin')) {
-      if (!isAdmin(env, request, url)) return json({ error: 'unauthorized' }, 401);
+      // The only unauthenticated route: trade the key for a session.
+      if (path === '/admin/session' && post) return await adminSession(env, request);
+      if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
       if (path === '/admin/overview') return await adminOverview(env, url);
       if (path === '/admin/resolve' && post) return await adminResolve(env, request);
       return json({ error: 'not found' }, 404);

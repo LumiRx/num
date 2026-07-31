@@ -368,6 +368,128 @@ async function friends(env, url) {
   });
 }
 
+// ── the inbox ─────────────────────────────────────────────────────────────
+
+/**
+ * Everything waiting on this member's answer, in one call.
+ *
+ * The important bit is that a pending invite is matched by PHONE, not by
+ * clicking a link: someone texts you an invite, you sign up with the number
+ * they sent it to, and the request is simply there. Nothing to find, no link to
+ * dig back out of a message thread.
+ */
+async function requests(env, url) {
+  const meId = url.searchParams.get('me');
+  if (!meId) return json({ error: 'me required' }, 400);
+  const me = await env.DB.prepare('SELECT id, phone FROM num_members WHERE id=?1').bind(meId).first();
+  if (!me) return json({ connects: [], plans: [], events: [] });
+
+  const { results: connects } = await env.DB.prepare(
+    `SELECT l.id, l.a_id, l.plan_id, l.created_at, m.name AS from_name, m.avatar AS from_avatar,
+            p.title AS plan_title
+       FROM num_links l
+       LEFT JOIN num_members m ON m.id = l.a_id
+       LEFT JOIN num_plans p ON p.id = l.plan_id
+      WHERE l.state='pending' AND l.a_id <> ?1
+        AND (l.b_id = ?1 OR (?2 IS NOT NULL AND l.b_phone = ?2))
+      ORDER BY l.created_at DESC LIMIT 20`,
+  ).bind(meId, me.phone).all();
+
+  // Plans you are already in, where someone else has added something you have
+  // not seen — the "they want you at dinner on Thursday" case.
+  const { results: plans } = await env.DB.prepare(
+    `SELECT p.id, p.title, p.dest, p.starts_on,
+            (SELECT COUNT(*) FROM num_plan_members x WHERE x.plan_id=p.id) members,
+            (SELECT COUNT(*) FROM num_plan_items i WHERE i.plan_id=p.id AND i.status IN ('idea','proposed')) open_items,
+            (SELECT summary FROM num_plan_events e WHERE e.plan_id=p.id AND e.by_id <> ?1 ORDER BY e.id DESC LIMIT 1) latest
+       FROM num_plans p JOIN num_plan_members pm ON pm.plan_id=p.id
+      WHERE pm.member_id=?1 ORDER BY p.updated_at DESC LIMIT 10`,
+  ).bind(meId).all();
+
+  const { results: events } = await env.DB.prepare(
+    `SELECT g.token, g.rsvp, e.id AS event_id, e.title, e.day, e.time, e.place, e.slug, m.name AS host_name
+       FROM num_event_guests g JOIN num_events e ON e.id=g.event_id
+       LEFT JOIN num_members m ON m.id = e.host_id
+      WHERE (g.member_id = ?1 OR (?2 IS NOT NULL AND g.phone = ?2)) AND g.rsvp='pending'
+      ORDER BY g.invited_at DESC LIMIT 10`,
+  ).bind(meId, me.phone).all();
+
+  return json({ connects: connects ?? [], plans: plans ?? [], events: events ?? [] });
+}
+
+/**
+ * Answer one. Accepting a connection is the same consent step the invite link
+ * performs — this is just the other door into it, for people who never clicked.
+ */
+async function respond(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const id = clip(b.id, 60);
+  const action = ['accept', 'decline', 'propose', 'message'].includes(b.action) ? b.action : null;
+  if (!meId || !id || !action) return json({ error: 'me, id and a valid action are required' }, 400);
+  const self = await env.DB.prepare('SELECT id, name, phone FROM num_members WHERE id=?1').bind(meId).first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+
+  if (b.kind === 'connect') {
+    const link = await env.DB.prepare('SELECT * FROM num_links WHERE id=?1').bind(id).first();
+    if (!link) return json({ error: 'unknown request' }, 404);
+    // You must be the ADDRESSEE. The earlier version only rejected when b_id
+    // was already set, so a pending invite — which is every invite in an inbox —
+    // could be accepted by any member who knew its id, putting a stranger
+    // inside a private group plan. Positive check only: this request is yours
+    // if it names you, or was sent to your number.
+    const mine =
+      (link.b_id && link.b_id === meId) ||
+      (link.b_phone && self.phone && link.b_phone === self.phone);
+    if (link.a_id === meId || !mine) return json({ error: 'not your request' }, 403);
+    if (action === 'decline') {
+      await env.DB.prepare("UPDATE num_links SET state='declined', b_id=?2 WHERE id=?1").bind(id, meId).run();
+      return json({ ok: true, state: 'declined' });
+    }
+    await env.DB.prepare("UPDATE num_links SET b_id=?2, state='active', accepted_at=datetime('now') WHERE id=?1").bind(id, meId).run();
+    let plan = null;
+    if (link.plan_id) {
+      await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
+        .bind(link.plan_id, meId, self.name).run();
+      plan = await env.DB.prepare('SELECT id, title FROM num_plans WHERE id=?1').bind(link.plan_id).first();
+      if (plan) await event(env, link.plan_id, { id: meId, name: self.name }, 'joined', `${self.name || 'A friend'} joined the plan.`);
+    }
+    const friend = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(link.a_id).first();
+    return json({ ok: true, state: 'active', friend, plan });
+  }
+
+  if (b.kind === 'plan') {
+    const mem = await memberOf(env, id, meId);
+    if (!mem) return json({ error: 'not your plan' }, 403);
+    const note = clip(b.message, 300);
+    const when = clip(b.time, 40);
+    // Proposing a time and leaving a note are the two things a group actually
+    // does; both land in the feed so every other Num narrates them.
+    const summary =
+      action === 'propose'
+        ? `${self.name || 'Someone'} suggested ${when || 'another time'}${note ? ` — “${note}”` : ''}.`
+        : action === 'decline'
+          ? `${self.name || 'Someone'} can’t make it${note ? ` — “${note}”` : ''}.`
+          : action === 'accept'
+            ? `${self.name || 'Someone'} is in.`
+            : `${self.name || 'Someone'} said: “${note ?? ''}”`;
+    await event(env, id, { id: meId, name: self.name }, action === 'propose' ? 'item_updated' : 'note', summary, { action, when, note });
+    return json({ ok: true, posted: summary });
+  }
+
+  if (b.kind === 'event') {
+    const g = await env.DB.prepare('SELECT * FROM num_event_guests WHERE token=?1').bind(id).first();
+    if (!g) return json({ error: 'unknown invite' }, 404);
+    const rsvp = action === 'accept' ? 'yes' : action === 'decline' ? 'no' : 'maybe';
+    await env.DB.prepare(
+      "UPDATE num_event_guests SET rsvp=?2, member_id=?3, message=COALESCE(?4,message), replied_at=datetime('now') WHERE token=?1",
+    ).bind(id, rsvp, meId, clip(b.message, 300)).run();
+    return json({ ok: true, rsvp });
+  }
+
+  return json({ error: 'unknown kind' }, 400);
+}
+
 // ── plans ─────────────────────────────────────────────────────────────────
 
 /** Create or rename a plan. A plan needs a title and nothing else. */
@@ -527,6 +649,8 @@ export async function handleSocial(request, env, path) {
   if (path === '/invite' && post) return await invite(env, request);
   if (path === '/accept' && post) return await accept(env, request);
   if (path === '/friends') return await friends(env, url);
+  if (path === '/requests') return await requests(env, url);
+  if (path === '/respond' && post) return await respond(env, request);
   if (path === '/plans') return await planList(env, url);
   if (path === '/plan' && post) return await planWrite(env, request);
   if (path === '/plan') return await planRead(env, url);

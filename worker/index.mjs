@@ -18,6 +18,7 @@ import { pickLane, smallReply, guardReply, soundsLikeASwitchboard } from './rout
 import { handleSocialSafe } from './social.mjs';
 import { handleEvents, handleEventPage } from './events.mjs';
 import { handleConsole, logUsage } from './console.mjs';
+import { handleClaim, handleClaimConfirm } from './claim.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
@@ -226,6 +227,15 @@ export default {
     }
     if (url.pathname.startsWith('/api/events')) {
       const res = await handleEvents(request, env, url.pathname.slice('/api/events'.length) || '/', url.origin);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // The claim magic link — opened from the business's own inbox, so it must
+    // be a real page and must not require the app.
+    if (url.pathname === '/claim/confirm') return await handleClaimConfirm(request, env);
+    if (url.pathname.startsWith('/api/claim')) {
+      const res = await handleClaim(request, env, url.pathname.slice('/api/claim'.length) || '/', url.origin);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

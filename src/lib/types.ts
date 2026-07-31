@@ -149,6 +149,22 @@ export interface EventGuest {
   replied_at?: string | null;
 }
 
+/** Everything waiting on this member's answer. */
+export interface InboxRequests {
+  connects: Array<{ id: string; a_id: string; plan_id: string | null; from_name: string | null; from_avatar: string | null; plan_title: string | null; created_at: string }>;
+  plans: Array<{ id: string; title: string; dest: string | null; members: number; open_items: number; latest: string | null }>;
+  events: Array<{ token: string; event_id: string; title: string; day: string | null; time: string | null; place: string | null; host_name: string | null }>;
+}
+
+/**
+ * A dash widget. The list is state, not markup, so Num can add and remove
+ * widgets as the trip needs them — a directions card appears when there is
+ * somewhere to be, and goes when there isn't.
+ */
+export type WidgetId =
+  | 'next' | 'requests' | 'directions' | 'calendar' | 'tripcheck'
+  | 'group' | 'events' | 'wallet' | 'connections';
+
 /** Outside data the user has chosen to plug in. Off until they say otherwise. */
 export interface Connections {
   contacts: boolean;
@@ -277,6 +293,11 @@ export interface AppState {
   businessOpen: boolean;
   /** YOU lives in the header now, not the tab bar — it opens as an overlay. */
   profileOpen: boolean;
+
+  /** Requests waiting on an answer, refreshed with the plan sync. */
+  inbox: InboxRequests;
+  /** Which dash widgets are showing, in order. Num may rewrite this. */
+  widgets: WidgetId[];
 
   /** Learned response preferences, and the reactions they came from. */
   style: StyleProfile;

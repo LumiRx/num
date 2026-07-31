@@ -1,5 +1,5 @@
 // Seed data — ported verbatim from Concierge.dc.html (NUM v0.8 canonical prototype).
-import type { AppState, Booking, Chip, Meeting, MemoryItem, Msg, Txn } from './types';
+import type { AppState, Booking, Chip, Meeting, MemoryItem, Msg, Txn, WidgetId } from './types';
 
 export const seedTxns: Txn[] = [
   { id: 't1', t: 'Top-up ★1,000', meta: 'Apple Pay · 24 Jul', amt: '+★1,000', dir: 1 },
@@ -86,6 +86,10 @@ function baseState() {
     walletOpen: false,
     permOn: false,
     bought: '',
+    inbox: { connects: [], plans: [], events: [] },
+    // Default layout. Num rewrites this as the trip changes — directions only
+    // earn a slot when there is somewhere to be.
+    widgets: ['next', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     theme: 'ember' as const,
     businessOpen: false,
     profileOpen: false,
