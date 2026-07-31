@@ -31,6 +31,10 @@
     // falls through to the old site worker and lands on the homepage. Same trap
     // as the "/" vs "/?signin=1" note above.
     { "pattern": "itsnum.com/app*",     "zone_name": "itsnum.com" },
+    // The short link we hand out. /get redirects to /app with the query string
+    // intact, so a shared referral still credits whoever sent it. Star for the
+    // same reason as /app* above.
+    { "pattern": "itsnum.com/get*",     "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/referral*", "zone_name": "itsnum.com" },
     // Team-only preview of the consumer app prototype. noindex in the HTML,
     // linked from nowhere public — shared in #num for design review.

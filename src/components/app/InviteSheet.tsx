@@ -124,20 +124,23 @@ export default function InviteSheet() {
         <div style={{ padding: 16 }}>
           {/* First run and "I'm about to invite someone" are different moments
               and deserve different words — nothing is being sent on a cold open. */}
-          <div style={label}>{sending ? 'YOUR NUM ACCOUNT' : 'WELCOME TO NUM'}</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-            {sending ? 'Who am I sending this as?' : 'First — who am I talking to?'}
+          {/* This is the first thing anyone is ASKED, and a form that reads
+              like a signup form gets closed. Warm heading, one line of why,
+              and a button that sounds like a person. */}
+          <div style={label}>{sending ? 'YOUR NUM ACCOUNT' : 'HELLO'}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
+            {sending ? 'Who am I sending this as?' : 'Let’s start with your name'}
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 3, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 5, lineHeight: 1.55 }}>
             {sending
               ? 'Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.'
-              : 'Your name so I know what to call you, and your mobile so friends can reach you through Num and I can tell you if a booking moves. Never shown to anyone you haven’t connected with.'}
+              : 'So I know what to call you. Your mobile is how friends find you here, and how I reach you if a booking moves — never shown to anyone you haven’t connected with.'}
           </div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={field} placeholder="Mobile number (+country code)" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input style={field} placeholder={sending ? 'Your name' : 'What should I call you?'} value={name} onChange={(e) => setName(e.target.value)} />
+            <input style={field} placeholder={sending ? 'Mobile number (+country code)' : 'Your mobile — with country code'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <div {...pressable(doSignUp)} style={{ ...primary, opacity: busy || !name.trim() ? 0.6 : 1 }}>
-              {busy ? 'ONE SEC…' : sending ? 'CREATE MY ACCOUNT' : 'THAT’S ME — LET’S GO'}
+              {busy ? 'ONE SEC…' : sending ? 'CREATE MY ACCOUNT' : 'NICE TO MEET YOU'}
             </div>
           </div>
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}

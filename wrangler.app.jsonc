@@ -39,6 +39,11 @@
   // The concierge model. Opus is the default in code; set it here to flip the
   // latency/cost trade without a code change (e.g. "claude-sonnet-5").
   // "vars": { "NUM_MODEL": "claude-sonnet-5" },
+  // Branded home for the app. Share links point at itsnum.com/get, which lands
+  // here. A workers.dev URL in something we ask a stranger to tap is a trust leak.
+  "routes": [
+    { "pattern": "app.itsnum.com", "custom_domain": true }
+  ],
   "workers_dev": true,
   "observability": {
     "enabled": true

@@ -68,7 +68,7 @@ export default function PaySheet() {
               Add your name and number first — Stars move between accounts, so we need to know whose they are.
             </div>
             <div {...pressable(() => store.set({ payOpen: null, inviteOpen: {} }))} style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center' }}>
-              ADD MY NAME &amp; NUMBER
+              INTRODUCE YOURSELF
             </div>
           </>
         ) : done ? (

@@ -131,7 +131,7 @@ export default function EventSheet() {
             Your guests RSVP from one text — no app, no account on their side. You just need your own name and number first.
           </div>
           <div {...pressable(() => store.set({ eventOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>
-            ADD MY NAME &amp; NUMBER
+            INTRODUCE YOURSELF
           </div>
         </div>
       ) : !eventId ? (

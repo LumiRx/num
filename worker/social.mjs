@@ -214,7 +214,7 @@ async function me(env, req) {
       ref,
     },
     ref,
-    link: `${CLAIM_ORIGIN.replace('num-claim', 'num-app')}/?ref=${ref}`,
+    link: `https://itsnum.com/app?ref=${ref}`,
     verification,
   });
 }

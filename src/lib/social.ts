@@ -79,17 +79,21 @@ export function bootSocial(): void {
   // not just invited ones. Without them Num has no way to connect this person
   // to anybody, and a demo that ends with an anonymous device is a demo we
   // cannot follow up on.
+  // The cold-start welcome already ends with "Let's start with your name", so
+  // adding another line here asks twice — which reads like the app was not
+  // listening to itself. Only the invited path needs its own framing.
   store.set((s) => ({
-    msgs: [
-      ...s.msgs,
-      {
-        who: 'c',
-        text: token || ref
-          ? 'You came in on a friend’s invite — nice. Give me your name and mobile number and I’ll connect you two, so our two Nums can trade reservations, addresses and photos without either of you retyping anything.'
-          : 'One thing before we start: what should I call you, and what’s your mobile number? The number is how friends reach you through Num and how I get back to you if a booking moves — nothing else, and never shown to anyone you haven’t connected with.',
-      },
-    ],
-    chips: [{ id: 'signup', label: 'Add my name & number' }],
+    msgs:
+      token || ref
+        ? [
+            ...s.msgs,
+            {
+              who: 'c' as const,
+              text: 'Someone you know sent you here, which saves me the sales pitch.\n\nShort version: you ask for things — a table, a car, a whole weekend — and I sort them out. And since your friend is already here, once you’re set up our two sides talk directly. Plans just land; nobody retypes an address.\n\nLet’s start with your name.',
+            },
+          ]
+        : s.msgs,
+    chips: [{ id: 'signup', label: 'Tell Num who I am' }],
   }));
   // Put the form in front of them rather than hoping they tap the chip. It
   // lands after the first paint so the app is visibly there behind it.
@@ -126,9 +130,11 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
       ...s.msgs,
       {
         who: 'c' as const,
-        text: `Got it, ${out.me.name ?? 'you'} — you’re on Num.${
-          out.me.phone ? ' Your number’s saved, so friends can find you and I can reach you if anything moves.' : ''
-        } Now: where in the world are you, and where are you headed?`,
+        // Acknowledge the person, not the transaction — then ask the one
+        // question that unlocks everything else.
+        text: `Good to meet you, ${out.me.name ?? 'you'}.${
+          out.me.phone ? '\n\nYour number’s tucked away — friends can find you now, and I’ll tell you if anything moves.' : ''
+        }\n\nSo, where in the world are you, and where are you headed next?`,
       },
     ],
   }));

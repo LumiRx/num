@@ -135,7 +135,7 @@ export default function ProfileView() {
             {...pressable(() => store.set({ inviteOpen: {} }))}
             style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
           >
-            ADD MY NAME &amp; NUMBER
+            INTRODUCE YOURSELF
           </div>
         </div>
       </div>

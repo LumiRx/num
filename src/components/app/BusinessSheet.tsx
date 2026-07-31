@@ -71,7 +71,7 @@ export default function BusinessSheet() {
               Add your name and number first — a claim has to belong to someone.
             </div>
             <div {...pressable(() => store.set({ businessOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>
-              ADD MY NAME &amp; NUMBER
+              INTRODUCE YOURSELF
             </div>
           </>
         )}

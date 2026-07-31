@@ -159,7 +159,11 @@ export function freshState(): AppState {
     msgs: [
       {
         who: 'c',
-        text: 'Welcome — I’m Num. Three letters, one job: your whole trip, handled from this one thread.\n\nTwo quick things so I never guess: where in the world are you right now, and where are you headed?',
+        // The first thing anyone reads. It has one job: make them want to
+        // reply. Concrete beats grand — "remembers you don't eat shellfish"
+        // lands where "your whole trip, handled" does not. Location is NOT
+        // asked here; one question at a time, and the name comes first.
+        text: 'Hi — I’m Num.\n\nThink of me as the friend who knows the good tables, gets a car to actually turn up, and remembers you don’t eat shellfish. Dinner tonight, a driver at six, a whole weekend for eight — you ask, I’ll sort it.\n\nLet’s start with your name.',
       },
     ],
     bookings: [],

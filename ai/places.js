@@ -144,13 +144,20 @@ async function areaCenter(env, destSlug, text) {
 /**
  * Where should recommendations be centred?
  * Priority: a place the guest named  >  where they actually are  >  where they
- * were last  >  Phuket (our first market).
+ * were last  >  a fallback centre, flagged as a guess.
+ *
+ * `guessed` is the one that matters. When it is true we do not know where the
+ * guest is, and nothing downstream may state a city, a country or a local time.
+ * We are live in 38 countries: telling a guest in London that they are in Phuket
+ * is worse than saying we do not know yet.
  */
 export async function resolveLocation(env, { text, guest, cf }) {
-  const out = { dest: null, lat: null, lng: null, label: null, precise: false, source: 'default' };
+  const out = { dest: null, lat: null, lng: null, label: null, precise: false, source: 'default', guessed: false, offline: false };
   let dests = [];
   try { dests = await liveDestinations(env); } catch (e) { console.log('dests', String(e)); }
-  if (!dests.length) return { ...out, dest: { slug: 'phuket', name: 'Phuket', country: 'TH', tz: 'Asia/Bangkok', lat: 7.953, lng: 98.338 } };
+  // D1 is unreachable. Keep a centre so retrieval has something to hold, but this
+  // is a guess, not a location.
+  if (!dests.length) return { ...out, guessed: true, offline: true, dest: { slug: 'phuket', name: 'Phuket', country: 'TH', tz: 'Asia/Bangkok', lat: 7.953, lng: 98.338 } };
 
   const named = destNamedIn(text, dests);
 
@@ -178,7 +185,10 @@ export async function resolveLocation(env, { text, guest, cf }) {
     out.dest = dests.find(d => d.slug === guest.last_dest) || null;
     if (out.dest) out.source = 'last_seen';
   }
-  if (!out.dest) out.dest = dests.find(d => d.slug === 'phuket') || dests[0];
+  // Nothing named, no usable coordinates, no history: we genuinely do not know.
+  // Pick a centre so retrieval still works, and flag it so the prompt asks
+  // rather than asserts.
+  if (!out.dest) { out.dest = dests.find(d => d.slug === 'phuket') || dests[0]; out.guessed = true; }
 
   // A named neighbourhood beats the city centre, but never beats live coordinates.
   if (!out.lat) {
