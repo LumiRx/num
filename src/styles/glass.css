@@ -104,9 +104,14 @@ body {
   border: 1px solid var(--glass-dark-border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), var(--glass-dark-shine);
 }
-/* Bare blur for docked bars that must blend into content edges */
+/* Bare blur for docked bars that must blend into content edges.
+   Themed, not hardcoded: this used to be a literal rgba(255,255,255,.6), which
+   made the composer a white slab under every dark theme while everything above
+   it followed the palette — the one element on screen that ignored the theme.
+   --glass-strong is the right token because a docked bar sits over content and
+   has to stay readable; every theme already defines it alongside --glass-bg. */
 .glass-bar {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--glass-strong);
   backdrop-filter: blur(22px) saturate(1.7);
   -webkit-backdrop-filter: blur(22px) saturate(1.7);
   border-top: 1px solid var(--glass-border);
