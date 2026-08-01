@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get NUM by text — your travel concierge over SMS</title>
+<meta name="description" content="Text your NUM travel concierge for a table, a driver, or a plan for the day. Service messages only — reply STOP any time.">
+<!--
+  ════════════════════════════════════════════════════════════════════════
+  PUBLISH THIS AT: itsnum.com/sms
+  Then cite https://itsnum.com/sms as the opt-in URL in the A2P campaign
+  (NOT /whatsapp — an SMS campaign must show an SMS opt-in flow).
+
+  Keep /whatsapp exactly as it is; different channel, different rules.
+
+  ⚠ Two things a carrier reviewer will fail you for if changed:
+     1. the consent checkbox must NOT be checked by default
+     2. the consent label must keep brand + frequency + rates + HELP + STOP
+  Restyle freely; don't remove copy.
+
+  WIRING: point the form at your real endpoint (see FORM ACTION below) and
+  make sure the server stores: phone, consent_text (verbatim), timestamp, IP.
+  Carriers can ask you to produce proof of consent for any number.
+  ════════════════════════════════════════════════════════════════════════
+-->
+<style>
+  :root{--ink:#11161f;--ink2:#5a6478;--ink3:#95a0b4;--line:#d3d9e3;--paper:#fff;--accent:#0d9488;--soft:#f7f8fa}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:560px;margin:0 auto;padding:40px 22px 64px}
+  .brand{font-weight:800;font-size:18px;letter-spacing:-.02em;margin-bottom:34px;display:inline-block;color:var(--ink);text-decoration:none}
+  .brand span{color:var(--accent)}
+  .eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  h1{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1.15;margin-bottom:12px}
+  .lede{font-size:16px;color:var(--ink2);margin-bottom:28px}
+  .steps{border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:28px;background:var(--soft)}
+  .steps ol{margin:0;padding-left:20px}
+  .steps li{font-size:14.5px;margin-bottom:7px}
+  .steps li:last-child{margin-bottom:0}
+  .steps b{font-weight:700}
+  label.fld{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+  input[type=tel],input[type=text]{width:100%;padding:13px 14px;font-size:16px;border:1px solid var(--line);border-radius:11px;margin-bottom:16px;font-family:inherit}
+  input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .consent{display:flex;gap:12px;align-items:flex-start;padding:15px;border:1px solid var(--line);border-radius:13px;background:var(--soft);margin-bottom:14px}
+  .consent input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
+  .consent label{font-size:13.5px;line-height:1.55}
+  .consent a{color:var(--accent);font-weight:600}
+  .fine{font-size:12.5px;color:var(--ink3);margin-bottom:20px;line-height:1.5}
+  button{width:100%;padding:15px;font-size:15.5px;font-weight:700;color:#fff;background:var(--ink);border:none;border-radius:12px;cursor:pointer;font-family:inherit}
+  button:hover{background:#000}
+  .done{margin-top:20px;padding:18px;border:1px solid #a7f0cd;background:#d1fae5;border-radius:13px}
+  .done b{display:block;margin-bottom:4px;font-size:15px}
+  .done span{font-size:14px}
+  .alt{margin-top:30px;padding-top:22px;border-top:1px solid var(--line);font-size:14px;color:var(--ink2)}
+  .alt a{color:var(--accent);font-weight:600}
+  footer{margin-top:36px;font-size:12.5px;color:var(--ink3)}
+  footer a{color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a href="/" class="brand">NU<span>M</span></a>
+
+  <div class="eyebrow">NUM by text message</div>
+  <h1>Your concierge, in plain SMS.</h1>
+  <p class="lede">Ask for a table, a driver, or a plan for a rainy afternoon. NUM texts back with the answer — not a list of links.</p>
+
+  <div class="steps">
+    <ol>
+      <li><b>Leave your number.</b> That's all we need to recognise you.</li>
+      <li><b>We text you first.</b> Say hello back.</li>
+      <li><b>Ask for anything.</b> NUM replies in your language and remembers the trip you're on.</li>
+    </ol>
+  </div>
+
+  <!-- FORM ACTION: change to your real endpoint -->
+  <form id="sms-form" method="post" action="/api/sms-optin">
+
+    <label class="fld" for="phone">Mobile number</label>
+    <input id="phone" name="phone" type="tel" required autocomplete="tel"
+           placeholder="+1 555 123 4567" inputmode="tel">
+
+    <label class="fld" for="first_name">First name <span style="font-weight:400;color:var(--ink3)">— optional</span></label>
+    <input id="first_name" name="first_name" type="text" autocomplete="given-name" placeholder="Dre">
+
+    <!-- ⚠ REQUIRED CONSENT BLOCK — checkbox must NOT be pre-checked -->
+    <div class="consent">
+      <input type="checkbox" id="sms_consent" name="sms_consent" required>
+      <label for="sms_consent">
+        Text me about my <strong>NUM travel concierge</strong> requests and bookings.
+        Message frequency varies. Message and data rates may apply.
+        Reply <strong>HELP</strong> for help, <strong>STOP</strong> to opt out.
+        See our <a href="/privacy/">Privacy Policy</a> and <a href="/terms/">Terms of Service</a>.
+      </label>
+    </div>
+
+    <p class="fine">
+      Consent is not a condition of any purchase. We send customer-care and booking
+      messages only — no marketing — and we never share your number with third
+      parties for marketing purposes.
+    </p>
+
+    <button type="submit">Start texting with NUM</button>
+  </form>
+
+  <div class="done" id="done" hidden>
+    <b>You're set up.</b>
+    <span>Check your phone — NUM just sent a first message. Reply STOP any time to stop everything.</span>
+  </div>
+
+  <div class="alt">
+    Prefer a messaging app? NUM is also on
+    <a href="https://line.me/R/ti/p/@799pyrus">LINE</a> and
+    <a href="/get/">WhatsApp</a>.
+  </div>
+
+  <footer>
+    NUM by 5arz · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> ·
+    <a href="mailto:info@5arz.com">info@5arz.com</a>
+  </footer>
+
+</div>
+
+<script>
+  // Never submit without explicit consent. The SERVER must also persist:
+  // phone, the consent text verbatim, timestamp, and IP — that record is
+  // what you show a carrier if consent is ever challenged.
+  document.getElementById("sms-form").addEventListener("submit", function (e) {
+    if (!document.getElementById("sms_consent").checked) {
+      e.preventDefault();
+      alert("Please tick the consent box so we can text you.");
+    }
+  });
+</script>
+</body>
+</html>
