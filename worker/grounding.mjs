@@ -2,7 +2,8 @@
 // concierge: identical D1 database (num-db) and identical retrieval code
 // (../ai/places.js). The app worker binds the database read-only-in-spirit;
 // all writes stay with the num-ai worker.
-import { resolveLocation, nearbyPlaces, destinationGuide } from '../ai/places.js';
+import { resolveLocation, nearbyPlaces, destinationGuide, detectCat } from '../ai/places.js';
+import { showtimesFor } from './showtimes.mjs';
 
 /**
  * Resolve where the user is and pull verified partners for their ask.
@@ -33,10 +34,15 @@ export async function groundRequest(env, { userText, statedPlace, cf }) {
     const TRUSTED = new Set(['named', 'named_area', 'shared_location', 'ip_location', 'last_seen']);
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
-    const [{ rows }, guide, buzz] = await Promise.all([
+    const [{ rows }, guide, buzz, showtimes] = await Promise.all([
       nearbyPlaces(env, loc, userText, 6).catch(() => ({ rows: [] })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
+      // Only on a movie ask, and dark without a SERPAPI_KEY secret — the
+      // model's honest "no live times" flow stays the fallback either way.
+      detectCat(userText) === 'cinema'
+        ? showtimesFor(env, loc.label || loc.dest.name).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
     return {
@@ -54,6 +60,7 @@ export async function groundRequest(env, { userText, statedPlace, cf }) {
       partners: rows ?? [],
       guide,
       buzz,
+      showtimes,
     };
   } catch (err) {
     // Grounding is an enhancement, never a dependency — a D1 hiccup must not

@@ -17,7 +17,7 @@ Voice and behavior:
 Location — never assume it:
 - If you do not yet know where the user IS and where they are GOING, that is your first job: ask warmly (both can be one question). Do not recommend, book, or guess a city until they tell you or the context below states it.
 - A "VERIFIED NEARBY PARTNERS" block below your context means real, currently-operating places from Num's own database, ranked by quality and distance — prefer them and use their details exactly. NEVER invent an address, phone number, price, or opening hours. With no partner data, recommend from general knowledge, name real well-known places only, and skip street-level specifics you cannot know.
-- Movies: the partners block will contain the actual nearest cinemas — list 2–3 by name and distance so the group can pick a theater. You CANNOT see live showtimes. Never state, pencil, or estimate a showtime — a made-up time is how a group misses a film. Instead: name the theater, link its website from the partner data if present so they can pick the exact screening, and offer to lock the plan item once they tell you the time. If they push for times, say plainly that live showtimes aren't wired up yet and emit ONE feature_request for it.
+- Movies: the partners block will contain the actual nearest cinemas — list 2–3 by name and distance so the group can pick a theater. If a "LIVE SHOWTIMES TODAY" block is present, those are real fetched times — offer them exactly as written and lock the plan item on the one the group picks. Without that block you CANNOT see showtimes: never state, pencil, or estimate one — a made-up time is how a group misses a film. Name the theater, link its website from partner data so they pick the exact screening, offer to lock once they tell you the time, and if pushed for times say plainly they aren't wired up yet and emit ONE feature_request.
 
 You act on the plan through \`actions\`:
 - add_booking: create a new plan item (invent a short unique id). \`grp\` is a short uppercase code you coin for the city (e.g. TYO for Tokyo, PAR for Paris) — reuse the same code for the same city so bookings group together.
@@ -51,7 +51,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -70,6 +70,11 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
     );
   } else {
     lines.push('The user has NOT yet said where they are or where they are going — find out first.');
+  }
+  if (showtimes) {
+    lines.push(
+      'LIVE SHOWTIMES TODAY (fetched minutes ago — these are the ONLY times you may state, exactly as written):\n' + showtimes,
+    );
   }
   if (partners.length) {
     lines.push(
