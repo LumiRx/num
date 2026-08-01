@@ -563,7 +563,7 @@ export async function syncPlan(): Promise<void> {
       items: PlanItem[];
       events: Array<{ id: number; ts: string; by_id: string | null; by_name: string | null; kind: string; summary: string }>;
       cursor: number;
-    }>(`/plan?id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}&since=${planCursor}`);
+    }>(`/plan?id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}&since=${planCursor}&self=1`);
 
     store.set((s) => ({
       planItems: out.items,
@@ -584,12 +584,12 @@ export async function syncPlan(): Promise<void> {
       .filter((i) => i.status === 'confirmed' && i.day)
       .forEach((i) => mirrorToBookings(i));
 
-    // Narration is for what happened while you weren't looking — other
-    // people's doing. Two exclusions: your own comments (already on your
-    // screen in the thread — an echo), and the initial history load (cursor 0
-    // means this is the first look, and the past is not news).
+    // Narration is for what happened while you weren't looking — OTHER
+    // people's doing. self=1 means the response now includes your own events
+    // (the thread needs them), so narration must drop everything by you, and
+    // the initial history load (cursor 0) is the past, not news.
     const first = planCursor === 0;
-    const news = out.events.filter((e) => !(e.kind === 'comment' && e.by_id === me.id));
+    const news = out.events.filter((e) => e.by_id !== me.id);
     if (news.length && !first) {
       const line = (e: (typeof news)[number]) =>
         e.kind === 'comment' ? `${e.by_name || 'Someone'} said: “${e.summary}”` : e.summary;

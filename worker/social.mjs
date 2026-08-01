@@ -1511,8 +1511,15 @@ async function planRead(env, url) {
         party_size: attendees.filter((a) => a.rsvp !== 'out').length,
       };
     }),
-    // Your own actions are not news to you — only the other agents' are.
-    events: (events ?? []).filter((e) => e.by_id !== meId),
+    // Historically your own events were filtered out, because the only consumer
+    // was narration ("what did the OTHERS do"). A chat thread must show your
+    // own messages, so clients that render the feed ask for them with self=1.
+    // The old filter stays as the default so pre-chat clients (≤0.8.78, still
+    // cached in service workers for a while) don't suddenly narrate the user's
+    // own actions back at them.
+    events: url.searchParams.get('self') === '1'
+      ? (events ?? [])
+      : (events ?? []).filter((e) => e.by_id !== meId),
     cursor: (events ?? []).reduce((m, e) => Math.max(m, e.id), since),
   });
 }
