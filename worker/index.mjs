@@ -30,6 +30,7 @@ import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleDm } from './dm.mjs';
+import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
@@ -363,6 +364,12 @@ export default {
 
     if (url.pathname.startsWith('/api/dm')) {
       const res = await handleDm(request, env, url.pathname.slice('/api/dm'.length) || '/', ctx);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/availability')) {
+      const res = await handleAvailability(request, env, url.pathname.slice('/api/availability'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
