@@ -493,11 +493,39 @@ export async function openPlan(id: string): Promise<void> {
   await syncPlan();
 }
 
+/** "Are you in on this plan?" — the whole-plan answer, changeable until booked. */
+export async function votePlan(vote: 'in' | 'out'): Promise<void> {
+  const { me, planId } = store.get();
+  if (!me || !planId) return;
+  try {
+    await api('/plan/vote', { method: 'POST', body: JSON.stringify({ me: me.id, plan_id: planId, vote }) });
+    await syncPlan();
+  } catch (err) {
+    console.warn('[social] vote failed', err);
+  }
+}
+
 /**
- * Say something to the group. The reply path is the same sync everyone else's
- * poll uses, so your comment appears in your feed the same way it appears in
- * theirs — no optimistic insert to reconcile later.
+ * Which of these phones already belong to Num members. Boolean per phone,
+ * nothing else — the server refuses to be a reverse phone book (see
+ * lookupPhones in worker/social.mjs for the guardrails).
  */
+export async function whoIsOnNum(phones: string[]): Promise<Map<string, boolean>> {
+  const me = store.get().me;
+  const map = new Map<string, boolean>();
+  if (!me || !phones.length) return map;
+  try {
+    const out = await api<{ results: Array<{ phone: string; on_num: boolean }> }>('/lookup', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, phones: phones.slice(0, 20) }),
+    });
+    for (const r of out.results) map.set(r.phone, r.on_num);
+  } catch (err) {
+    console.warn('[social] lookup failed', err);
+  }
+  return map;
+}
+
 export async function commentOnPlan(text: string): Promise<boolean> {
   const { me, planId } = store.get();
   const t = text.trim();

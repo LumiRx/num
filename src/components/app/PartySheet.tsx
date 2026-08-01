@@ -6,7 +6,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
-import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, startInvite, syncPlan } from '../../lib/social';
+import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, startInvite, syncPlan, votePlan } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -180,6 +180,59 @@ export default function PartySheet() {
               {plan.dest ? ` · ${plan.dest}` : ''} · {items.filter((i) => i.status === 'confirmed').length} booked
               {plan.join_code ? ` · code ${plan.join_code}` : ''}
             </div>
+            {/* Everyone answers the plan itself — in or out — before anything
+                is booked. Votes ride the same event feed as everything else,
+                so the group chat shows "Bob is in ✓" the moment it happens. */}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {members.map((m) => (
+                  <span
+                    key={m.member_id}
+                    style={{
+                      borderRadius: 999, padding: '4px 10px', fontSize: 10.5, fontWeight: 600,
+                      border: '1px solid var(--ink-12)',
+                      opacity: m.vote === 'out' ? 0.45 : 1,
+                      textDecoration: m.vote === 'out' ? 'line-through' : 'none',
+                      background: m.vote === 'in' ? 'rgba(22,140,90,.14)' : 'transparent',
+                      color: m.vote === 'in' ? '#0e6b45' : 'var(--ink-60)',
+                    }}
+                  >
+                    {m.member_id === me?.id ? 'You' : m.name || 'Friend'}
+                    {m.vote === 'in' ? ' ✓' : m.vote === 'out' ? ' ✗' : ' · ?'}
+                  </span>
+                ))}
+              </div>
+              {(() => {
+                const mine = members.find((m) => m.member_id === me?.id)?.vote ?? null;
+                return (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <div
+                      {...pressable(() => void votePlan('in'))}
+                      style={{
+                        cursor: 'pointer', flex: 1, textAlign: 'center', borderRadius: 999, padding: '9px 12px',
+                        fontSize: 11, fontWeight: 800, letterSpacing: '.06em',
+                        background: mine === 'in' ? 'rgba(22,140,90,.16)' : 'var(--field-bg)',
+                        border: mine === 'in' ? '1px solid #0e6b45' : '1px solid var(--ink-12)', color: '#0e6b45',
+                      }}
+                    >
+                      ✓ I'M IN
+                    </div>
+                    <div
+                      {...pressable(() => void votePlan('out'))}
+                      style={{
+                        cursor: 'pointer', flex: 1, textAlign: 'center', borderRadius: 999, padding: '9px 12px',
+                        fontSize: 11, fontWeight: 800, letterSpacing: '.06em',
+                        background: mine === 'out' ? 'rgba(32,30,29,.10)' : 'var(--field-bg)',
+                        border: mine === 'out' ? '1px solid var(--ink-60)' : '1px solid var(--ink-12)', color: 'var(--ink-60)',
+                      }}
+                    >
+                      ✗ CAN'T MAKE IT
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <div {...pressable(() => { close(); startInvite({ planId: plan.id }); })} style={{ ...primary, flex: 1 }}>
                 INVITE FRIENDS

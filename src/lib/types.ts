@@ -389,7 +389,7 @@ export interface AppState {
   plans: PartyPlan[];
   planId: string | null;
   planItems: PlanItem[];
-  planMembers: Array<{ member_id: string; name: string | null; role: string }>;
+  planMembers: Array<{ member_id: string; name: string | null; role: string; vote?: 'in' | 'out' | null }>;
   /** Last plan event narrated into the thread — the AI-to-AI read cursor. */
   planCursor: number;
   /**

@@ -6,7 +6,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
-import { contactsSupported, mintInvite, pickContacts, shareInvite, signUp, verifyCode } from '../../lib/social';
+import { contactsSupported, mintInvite, pickContacts, shareInvite, signUp, verifyCode, whoIsOnNum } from '../../lib/social';
 
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -93,6 +93,8 @@ export default function InviteSheet() {
   const [phone, setPhone] = useState('');
   const [toName, setToName] = useState('');
   const [toPhone, setToPhone] = useState('');
+  /** null = unknown / no number yet; true = they're already a member. */
+  const [onNum, setOnNum] = useState<boolean | null>(null);
   const [code, setCode] = useState('');
   // Null until we have heard from the server; false once it has told us there
   // is no SMS provider. Never assumed true — showing a verification step that
@@ -304,12 +306,44 @@ export default function InviteSheet() {
 
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
                 <input style={field} placeholder="Their name" value={toName} onChange={(e) => setToName(e.target.value)} />
-                <input style={field} placeholder="Their mobile number (optional)" inputMode="tel" value={toPhone} onChange={(e) => setToPhone(e.target.value)} />
+                <input
+                  style={field}
+                  placeholder="Their mobile number (optional)"
+                  inputMode="tel"
+                  value={toPhone}
+                  onChange={(e) => setToPhone(e.target.value)}
+                  onBlur={() => {
+                    // The moment a plausible number is in the box, find out if
+                    // they're already one of us — it changes what the invite
+                    // means (instant connect vs "text them the link").
+                    const p = toPhone.replace(/[^0-9+]/g, '');
+                    if (p.length >= 7) void whoIsOnNum([p]).then((m) => setOnNum(m.get(p) ?? null));
+                    else setOnNum(null);
+                  }}
+                />
+                {onNum !== null && (
+                  <div
+                    style={{
+                      fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: '8px 12px', lineHeight: 1.45,
+                      background: onNum ? 'rgba(22,140,90,.12)' : 'rgba(236,48,19,.08)',
+                      color: onNum ? '#0e6b45' : 'var(--color-accent-700)',
+                    }}
+                  >
+                    {onNum
+                      ? '✓ Already on Num — your invite connects you two instantly, no download needed.'
+                      : 'Not on Num yet — create the invite and text it to them; the link sets them up.'}
+                  </div>
+                )}
                 {contactsSupported() && (
                   <div
                     {...pressable(async () => {
                       const picked = await pickContacts();
-                      if (picked[0]) { setToName(picked[0].name); setToPhone(picked[0].phone ?? ''); }
+                      if (picked[0]) {
+                        setToName(picked[0].name);
+                        setToPhone(picked[0].phone ?? '');
+                        const p = (picked[0].phone ?? '').replace(/[^0-9+]/g, '');
+                        if (p.length >= 7) void whoIsOnNum([p]).then((m) => setOnNum(m.get(p) ?? null));
+                      }
                     })}
                     className="glass press"
                     style={{ cursor: 'pointer', borderRadius: 999, padding: '11px 16px', fontSize: 12, fontWeight: 700, letterSpacing: '.06em', textAlign: 'center' }}

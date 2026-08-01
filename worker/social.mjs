@@ -118,7 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_num_links_a ON num_links(a_id, state);
 CREATE INDEX IF NOT EXISTS idx_num_links_b ON num_links(b_id, state);
 CREATE INDEX IF NOT EXISTS idx_num_links_token ON num_links(token);
 CREATE TABLE IF NOT EXISTS num_plans (id TEXT PRIMARY KEY, title TEXT NOT NULL, dest TEXT, owner_id TEXT NOT NULL, starts_on TEXT, state TEXT NOT NULL DEFAULT 'planning', join_code TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
-CREATE TABLE IF NOT EXISTS num_plan_members (plan_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT, role TEXT NOT NULL DEFAULT 'member', joined_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (plan_id, member_id));
+CREATE TABLE IF NOT EXISTS num_plan_members (plan_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT, role TEXT NOT NULL DEFAULT 'member', joined_at TEXT NOT NULL DEFAULT (datetime('now')), vote TEXT, PRIMARY KEY (plan_id, member_id));
 CREATE TABLE IF NOT EXISTS num_plan_items (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'idea', title TEXT NOT NULL, place TEXT, address TEXT, day TEXT, time TEXT, status TEXT NOT NULL DEFAULT 'idea', cost TEXT, note TEXT, photo TEXT, by_id TEXT, by_name TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_num_plan_items_plan ON num_plan_items(plan_id);
 /* Who is actually on a reservation. member_id is nullable on purpose: a table
@@ -1478,7 +1478,7 @@ async function planRead(env, url) {
   if (!(await memberOf(env, id, meId))) return json({ error: 'not your plan' }, 403);
 
   const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(id).first();
-  const { results: members } = await env.DB.prepare('SELECT member_id, name, role FROM num_plan_members WHERE plan_id=?1').bind(id).all();
+  const { results: members } = await env.DB.prepare('SELECT member_id, name, role, vote FROM num_plan_members WHERE plan_id=?1').bind(id).all();
   const { results: items } = await env.DB.prepare('SELECT * FROM num_plan_items WHERE plan_id=?1 ORDER BY day IS NULL, day, time').bind(id).all();
   const { results: events } = await env.DB.prepare(
     'SELECT id, ts, by_id, by_name, kind, summary FROM num_plan_events WHERE plan_id=?1 AND id > ?2 ORDER BY id LIMIT 50',
@@ -1563,6 +1563,53 @@ async function planComment(env, req) {
   return json({ ok: true });
 }
 
+/**
+ * Approve or bow out of the plan as a whole. Not the same thing as a
+ * reservation RSVP (num_item_attendees) — this is "are you in on this trip",
+ * asked once per member per plan, changeable until the group books.
+ */
+async function planVote(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const planId = clip(b.plan_id, 40);
+  const vote = b.vote === 'in' ? 'in' : b.vote === 'out' ? 'out' : null;
+  if (!meId || !planId || !vote) return json({ error: 'me, plan_id and vote (in|out) required' }, 400);
+  const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId).first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+  if (!(await memberOf(env, planId, meId))) return json({ error: 'not your plan' }, 403);
+  await env.DB.prepare('UPDATE num_plan_members SET vote=?1 WHERE plan_id=?2 AND member_id=?3')
+    .bind(vote, planId, meId).run();
+  await event(env, planId, { id: meId, name: self.name }, 'vote',
+    vote === 'in' ? `${self.name || 'Someone'} is in ✓` : `${self.name || 'Someone'} can't make it`);
+  return json({ ok: true, vote });
+}
+
+/**
+ * Which of these phone numbers already belong to Num members — so an invite
+ * flow can say "on Num already, connects instantly" vs "send them a text".
+ *
+ * Guardrails, because a phone→membership oracle invites enumeration: caller
+ * must be a member, at most 20 numbers per call, and the answer is a bare
+ * boolean per phone — no names, no member ids, no profile data. Names are
+ * only ever revealed by the person themselves accepting a connect.
+ */
+async function lookupPhones(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  if (!meId) return json({ error: 'me required' }, 400);
+  const self = await env.DB.prepare('SELECT id FROM num_members WHERE id=?1').bind(meId).first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+  const phones = (Array.isArray(b.phones) ? b.phones : []).slice(0, 20)
+    .map((p) => String(p ?? '').replace(/[^0-9+]/g, '')).filter((p) => p.length >= 7);
+  if (!phones.length) return json({ results: [] });
+  const marks = phones.map((_, i) => `?${i + 1}`).join(',');
+  const { results } = await env.DB.prepare(
+    `SELECT phone FROM num_members WHERE phone IN (${marks})`,
+  ).bind(...phones).all();
+  const on = new Set((results ?? []).map((r) => r.phone));
+  return json({ results: phones.map((p) => ({ phone: p, on_num: on.has(p) })) });
+}
+
 /** Join by code — the low-tech path when someone reads it out loud. */
 async function planJoin(env, req) {
   const b = await readBody(req);
@@ -1616,6 +1663,8 @@ export async function handleSocial(request, env, path) {
   if (path === '/plan/item/attendees' && post) return await itemAttendees(env, request);
   if (path === '/plan/join' && post) return await planJoin(env, request);
   if (path === '/plan/comment' && post) return await planComment(env, request);
+  if (path === '/plan/vote' && post) return await planVote(env, request);
+  if (path === '/lookup' && post) return await lookupPhones(env, request);
   return json({ error: 'not found' }, 404);
 }
 

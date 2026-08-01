@@ -2,7 +2,7 @@ import { useState } from 'react';
 // PLAN tab — bookings grouped by city, expandable rows with note, cost,
 // receipt, and the ASK TO CHANGE / SHARE actions.
 import { store, useApp } from '../../lib/store';
-import { setAttendee } from '../../lib/social';
+import { openPlan, setAttendee } from '../../lib/social';
 import { pressable } from '../../lib/a11y';
 import { tagOf, bookingMetaLine, monthName } from '../../lib/derive';
 import { askToChange } from '../../lib/concierge';
@@ -231,43 +231,47 @@ function groupsFor(demo: boolean, bookings: Booking[]) {
  * with two half-built plans.
  */
 function PartyStrip() {
-  const plan = useApp((s) => s.plans.find((p) => p.id === s.planId) ?? null);
   const plans = useApp((s) => s.plans);
-  const members = useApp((s) => s.planMembers.length);
-  const items = useApp((s) => s.planItems);
-  const ideas = items.filter((i) => i.status === 'idea' || i.status === 'proposed').length;
   return (
-    <div className="glass lift" style={{ margin: '12px 12px 4px', borderRadius: 'var(--r-lg)', padding: 12 }}>
-      <div
-        {...pressable(() => store.set({ partyOpen: true }))}
-        style={{ cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
-      >
-        <div style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-          <UsersIcon size={17} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{plan ? plan.title : 'Plan it with friends'}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
-            {plan
-              ? `${members || 1} in · ${ideas} ${ideas === 1 ? 'idea' : 'ideas'} · ${items.length - ideas} booked`
-              : plans.length
-                ? `${plans.length} plan${plans.length === 1 ? '' : 's'} — open one, or start another`
-                : 'No dates and no bookings needed — add those together later'}
-          </div>
-        </div>
-        <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
-      </div>
+    <div style={{ margin: '12px 12px 4px' }}>
+      {/* NEW PLAN stands alone at the top; the plans themselves are listed
+          below it as their own tappable rows — a button that also pretends to
+          be the current plan was doing two jobs badly. */}
       <div
         {...pressable(() => store.set({ planId: null, partyOpen: true }))}
         className="press"
         style={{
-          cursor: 'pointer', marginTop: 11, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
-          fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '11px 14px', textAlign: 'center',
+          cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
+          fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '12px 14px', textAlign: 'center',
           boxShadow: '0 4px 14px rgba(236,48,19,.28)',
         }}
       >
         + NEW PLAN
       </div>
+      {plans.map((p) => (
+        <div
+          key={p.id}
+          {...pressable(() => { void openPlan(p.id); store.set({ partyOpen: true }); })}
+          className="glass lift"
+          style={{ cursor: 'pointer', marginTop: 8, borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
+        >
+          <div style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <UsersIcon size={17} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{p.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
+              {p.members ?? 1} in · {p.items ?? 0} {p.items === 1 ? 'item' : 'items'} · tap to open the group chat
+            </div>
+          </div>
+          <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
+        </div>
+      ))}
+      {plans.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--ink-60)', margin: '10px 4px 0', lineHeight: 1.5 }}>
+          No dates and no bookings needed — start a plan, pull friends in, decide together.
+        </div>
+      )}
     </div>
   );
 }
