@@ -21,7 +21,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, XIcon } from '../../lib/icons';
 import QrCard from './QrCard';
-import { pretty, referralLink } from '../../lib/links';
+import { connectLink, pretty } from '../../lib/links';
 
 export default function ShareSheet() {
   const open = useApp((s) => s.shareOpen);
@@ -33,9 +33,18 @@ export default function ShareSheet() {
   if (!open) return null;
   const close = () => store.set({ shareOpen: false });
 
-  // Canonical host, short path. Short because a shared link gets read aloud,
-  // screenshotted and typed back in by hand.
-  const link = me?.ref ? referralLink(me.ref) : 'https://app.itsnum.com';
+  // A CONNECT link, not a referral link.
+  //
+  // This sheet promises "when they join you're connected", and for a long time
+  // it handed out /r/CODE — which credits the referral and creates no link at
+  // all. Both people did everything the app asked and ended up strangers with
+  // an attribution row between them, which is the worst possible outcome: it
+  // looks like it worked.
+  //
+  // /c/<id>?ref=<code> does both. The Worker rewrites it to `?ref=…&c=…`,
+  // bootSocial reads `c` and connects, and the referral still rides along, so
+  // nothing is lost by making the honest link the default one.
+  const link = me ? connectLink(me.id, me.ref) : 'https://app.itsnum.com';
 
   const message = me?.name
     ? `It's ${me.name}. I use NUM as my concierge — one thread that books dinner, cars, tables, whole weekends. Here's my invite: ${link}`
