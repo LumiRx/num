@@ -64,6 +64,12 @@ Every rule below maps to one of those. Read this before touching anything.
   the platform's secret store (`wrangler secret put`, Railway variables) only.
 - The published place-count (567,793) is known-wrong (real: ~2.53M) — don't
   propagate it into new copy; regenerate from live D1 when fixing.
+- **`docs/cto-handoff-duke.md` §8 is binding on every session.** The ones that
+  bite day-to-day: every webhook verifies a signature (no assume-valid branch,
+  ever); `stars_ledger` is the truth and every other balance is a cache; never
+  sell Stars; money never rests with us; Lumi is never public; Cupidt is not
+  named in 5arz materials; no AI-generated imagery; cash-out is not live in any
+  copy until it is.
 
 ## 6. Handoffs
 
