@@ -469,9 +469,34 @@ async function invite(env, req) {
   // lose information; bootSocial has always read `?i=` directly.
   const link = `${appOrigin(env, req)}/i/${token}`;
   const senderName = sender.name || 'a friend';
+
+  // Is the invitee ALREADY one of us? Then the invite is a delivery, not a
+  // pitch. Without this check an existing member (Vivian, day one) tapped the
+  // link, landed in Safari — which on iOS shares nothing with her installed
+  // app — and was asked to sign up again. Instead: put the plan straight into
+  // her app, buzz her phone, and let the texted link be a pointer, not a gate.
+  const existing = toPhone
+    ? await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(toPhone).first()
+    : null;
+  if (existing && plan) {
+    await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
+      .bind(plan.id, existing.id, existing.name ?? toName).run();
+    // 'joined' kind deliberately: it doesn't broadcast-push (see event()), and
+    // the invitee gets their own targeted buzz below instead.
+    await event(env, plan.id, { id: from, name: senderName }, 'joined',
+      `${existing.name || toName || 'A friend'} was added by ${senderName} — the plan is in their app.`);
+    await notify(env, {
+      memberId: existing.id, kind: 'plan', title: plan.title,
+      body: `${senderName} added you to “${plan.title}” — open Num to see it and say if you're in.`,
+      url: '/?app', tag: `plan:${plan.id}`,
+    }).catch(() => {});
+  }
+
   const message =
     clip(b.message, 300) ||
-    (plan
+    (existing && plan
+      ? `${toName ? toName + ' — ' : ''}it's ${senderName}. “${plan.title}” is already waiting in your NUM app — open Num and you're in. (Link if you need it: ${link})`
+      : plan
       ? `${toName ? toName + ' — ' : ''}it's ${senderName}. I started “${plan.title}” on NUM — my concierge app. Join and we can plan it together, it books the tables and cars for us: ${link}`
       : `${toName ? toName + ' — ' : ''}it's ${senderName}. I use NUM as my concierge — one thread books dinner, cars, tables, everything. Here's my invite: ${link}`);
 
@@ -489,6 +514,9 @@ async function invite(env, req) {
     token,
     link,
     message,
+    // Already a member — the plan is in their app and their phone buzzed.
+    // The client shows "delivered" instead of pretending a signup is needed.
+    on_num: !!existing,
     to_name: toName,
     // Send-from-your-own-phone payloads — these work today, no SMS provider needed.
     sms_url: `sms:${toPhone ?? ''}${/iphone|ipad|mac/i.test(req.headers.get('User-Agent') ?? '') ? '&' : '?'}body=${encodeURIComponent(message)}`,
