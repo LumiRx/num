@@ -1,0 +1,24 @@
+# Status for Duke — 2026-08-01 (from Dre's session, digest of #num + today's work)
+
+Duke reads the artifacts, so this is your copy of record. Sources: Viv's
+production-verified status (Slack #num, 15:28 PT) + Dre-side session logs.
+
+## 1. The 5arz connection is LIVE in prod — finish it, don't build it (Viv, verified)
+- LEDGER->5arz-ledger bound; verify/5arz past guard; /api/air connected:true
+- 5arz: 141 members / 102 verified / 91 google_sub / 15 scored sessions / 0 UHA
+- NUM: 74 members / 1 linked / 0 phone-verified / 0 AiR calls
+- **Gap 1 (SECURITY, yours): GOOGLE_CLIENT_ID unset** — audience check skipped;
+  any Google token from any app accepted. `npx wrangler secret put
+  GOOGLE_CLIENT_ID --config wrangler.app.jsonc`
+- **Gap 2: CLOSED by Dre's session (0.8.87)** — Verify5arz.tsx in the profile:
+  GIS sign-in -> POST verify/5arz -> all four outcomes rendered. Dark until
+  your Gap-1 secret exists; /api/version serves google_client_id so client
+  and audience check can never disagree. Verified dark-safe in prod.
+- **Gap 3 (yours): AIR_SHARED_KEY unset** — /api/trust 401s everyone.
+- NOT blockers for this path: JWKS oracle mismatch (gates UHA only, 0 rows),
+  num-core migration. Track A-prime still gates UHA/nodes.
+- Claim limit: sell "verified identity + scored work sessions" (102/15), not
+  "attested unique humans" (0).
+
+## 2. Email (Viv's 29h audit): 800 sends, 709 ok, 91 bounce, 0 complaints
+- Merchant campaign bounce 17.25

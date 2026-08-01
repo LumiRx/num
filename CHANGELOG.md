@@ -2,6 +2,60 @@
 
 Every version that has been live, newest first.
 
+## 0.8.87 — 2026-08-01 22:44 UTC
+
+5arz verify frontend (dark until GOOGLE_CLIENT_ID)
+
+- commit `146f43d`
+
+## 0.8.86 — 2026-08-01 21:45 UTC
+
+invite delivers in-app to existing members
+
+- commit `99bb936`
+
+## 0.8.85 — 2026-08-01 21:33 UTC
+
+showtimes schema recon
+
+- commit `a23f3a1`
+
+## 0.8.84 — 2026-08-01 21:30 UTC
+
+showtimes: location param fix
+
+- commit `a43a39e`
+
+## 0.8.83 — 2026-08-01 21:03 UTC
+
+showtimes agent (dark until key)
+
+- commit `758ea91`
+
+## 0.8.82 — 2026-08-01 20:55 UTC
+
+clickable plan cards + honest movie showtimes
+
+- commit `35df0a3`
+
+## 0.8.81 — 2026-08-01 18:22 UTC
+
+plan votes + on-num lookup + plan list layout
+
+- commit `cdfb549`
+
+## 0.8.80 — 2026-08-01 18:11 UTC
+
+plan chat: self-visible thread
+
+- commit `73e1e51`
+
+## 0.8.79 — 2026-08-01 18:09 UTC
+
+plan group chat + book-with-num bridge
+
+- commit `c358d67`
+
 ## 0.8.78 — 2026-08-01 00:47 UTC
 
 Fix short share links for installed users: the service worker was answering navigations with a followed redirect, which is a network error — QR scans, referrals and invites failed only for people who had the app installed
