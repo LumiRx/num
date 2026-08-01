@@ -43,3 +43,12 @@ money actions. §Track C order in the CTO handoff.
 - Don't edit in the Cloudflare dashboard. Ever.
 
 Questions → leave a dated note in docs/, commit it. That's our channel.
+
+## Two tiers, two gates — NUM launches without waiting for you
+Decided by Dre 08-01: NUM users enter through NUM's OWN gate — phone OTP
+(worker/social.mjs signUp/verifyCode + claim/verify.mjs, complete and tested,
+lights up when TWILIO_SID/TWILIO_TOKEN/TWILIO_FROM secrets exist on num-app).
+That gate opens NOW. 5arz verification (liveness, attestation, proof chain) is
+an ADDITIVE second tier behind your key gates — build the connector so it
+UPGRADES a NUM account (phone_verified=1 -> 5arz-verified), never replaces or
+blocks the phone tier. A NUM user who never touches 5arz keeps working forever.
