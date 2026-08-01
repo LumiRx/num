@@ -62,6 +62,15 @@ test('statedPlace hears a city the guest declares', () => {
   }
 });
 
+test('statedPlace hears a city with no "I am" in front of it', () => {
+  // The exact message that still got a Phuket sky bar after the first fix.
+  // The first version required a trigger phrase; guests rarely use one.
+  assert.equal(statedPlace('Give me hookah bar in La tonight'), 'Los Angeles');
+  assert.equal(statedPlace('best sushi in Tokyo'), 'Tokyo');
+  assert.equal(statedPlace('hotels in NYC please'), 'New York');
+  assert.equal(statedPlace('rooftop bar in SF'), 'San Francisco');
+});
+
 test('statedPlace ignores "in" that names no place', () => {
   for (const text of [
     "I'm in a hurry",
@@ -140,10 +149,20 @@ test('out-of-area prompt never asserts the guest is in Phuket', () => {
   assert.doesNotMatch(p, /RECOMMENDATIONS CENTRED ON: Phuket/);
 });
 
-test('a normal in-area prompt is unchanged — no warning block leaks in', () => {
-  const p = SYSTEM({ ...basePlace, rows: [{ name: 'Baan Rim Pa', category: 'restaurant' }] },
+test('in-area prompt still serves partners and shows no warning block', () => {
+  const p = SYSTEM({ ...basePlace, source: 'named', rows: [{ name: 'Baan Rim Pa', category: 'restaurant' }] },
     {}, 'Mon 7pm', null);
-  assert.match(p, /GUEST IS IN: Phuket, TH/);
   assert.doesNotMatch(p, /DOES NOT COVER/);
   assert.match(p, /Baan Rim Pa/);
+});
+
+test('in-area location is stated as a guess, never as fact', () => {
+  // Defence in depth. statedPlace is a regex and will always miss cases, so the
+  // prompt must not assert location as known even when nothing was flagged —
+  // "GUEST IS IN: Phuket" is what the model defended against the guest.
+  const p = SYSTEM({ ...basePlace, source: 'last_seen' }, {}, 'Mon 7pm', null);
+  assert.doesNotMatch(p, /^GUEST IS IN:/m, 'location must not be asserted as fact');
+  assert.match(p, /WHERE WE THINK THE GUEST IS: Phuket, TH/);
+  assert.match(p, /it is sometimes wrong/i);
+  assert.match(p, /If the guest names anywhere else, they are right/);
 });
