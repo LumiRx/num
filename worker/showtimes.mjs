@@ -48,7 +48,12 @@ export async function showtimesFor(env, cityLabel) {
     }
     const d = await r.json();
     const block = formatShowtimes(d?.showtimes);
-    if (!block) console.warn('[showtimes] no showtimes in response for', cityLabel);
+    if (!block) {
+      // Schema recon, not noise: SerpAPI's showtimes live under different keys
+      // for different query shapes, and we can't see the payload any other way
+      // (the API key is a secret, rightly). Top-level keys only — no content.
+      console.warn('[showtimes] no showtimes for', cityLabel, '| keys:', Object.keys(d).join(','));
+    }
     if (block) {
       await env.DB.prepare(
         `INSERT INTO showtimes_cache (key, payload, fetched_at) VALUES (?1, ?2, datetime('now'))
