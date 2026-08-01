@@ -238,6 +238,17 @@ export interface PlanItem {
   party_size?: number;
 }
 
+/** One entry in a plan's shared feed — a member comment or a system event. */
+export interface PlanEvent {
+  id: number;
+  ts: string;
+  by_id: string | null;
+  by_name: string | null;
+  /** 'comment' is a human talking; everything else is their Num reporting. */
+  kind: string;
+  summary: string;
+}
+
 export interface PartyPlan {
   id: string;
   title: string;
@@ -381,6 +392,12 @@ export interface AppState {
   planMembers: Array<{ member_id: string; name: string | null; role: string }>;
   /** Last plan event narrated into the thread — the AI-to-AI read cursor. */
   planCursor: number;
+  /**
+   * The group thread, oldest first: members' comments interleaved with what
+   * their Nums did (joined, booked, changed). One feed because the server
+   * stores one feed — see planComment in worker/social.mjs.
+   */
+  planFeed: PlanEvent[];
   /** Referral that brought this user in, and the invite token to accept. */
   refCode: string | null;
   inviteToken: string | null;

@@ -1,12 +1,13 @@
 // Party sheet — the plan a group builds together. It exists before any
 // reservation does: items start as ideas, anyone in the plan can add one, and
 // the same row becomes the booking when someone locks it in.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
-import { addPlanItem, confirmPlanItem, createPlan, openPlan, startInvite, syncPlan } from '../../lib/social';
+import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, startInvite, syncPlan } from '../../lib/social';
+import { askNum } from '../../lib/concierge';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -38,12 +39,23 @@ export default function PartySheet() {
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
 
+  const feed = useApp((s) => s.planFeed);
   const [title, setTitle] = useState('');
   const [idea, setIdea] = useState('');
+  const [say, setSay] = useState('');
   const [busy, setBusy] = useState(false);
 
   const plan = plans.find((p) => p.id === planId) ?? null;
   const close = () => store.set({ partyOpen: false });
+
+  // A chat that only updates when you poke it isn't a chat. Poll while the
+  // sheet is open — 8s matches the "everyone sees this within the minute"
+  // promise without hammering the worker — and stop the moment it closes.
+  useEffect(() => {
+    if (!open || !planId) return;
+    const t = setInterval(() => void syncPlan(), 8000);
+    return () => clearInterval(t);
+  }, [open, planId]);
 
   const newPlan = async () => {
     if (!title.trim()) return;
@@ -67,6 +79,31 @@ export default function PartySheet() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const sendComment = async () => {
+    if (!say.trim()) return;
+    setBusy(true);
+    try {
+      if (await commentOnPlan(say)) setSay('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * The bridge from "we've decided" to "it's booked": close the sheet and put
+   * the request straight into the Num thread, where the booking flow already
+   * lives (provider tray, confirmation, mirror back onto this plan). No second
+   * booking path to maintain — the group decides here, Num books where Num
+   * books.
+   */
+  const bookWithNum = (itemTitle: string, day?: string | null, place?: string | null) => {
+    close();
+    void askNum(
+      `Book ${itemTitle} for our group plan "${plan?.title ?? 'our plan'}"` +
+        `${day ? ` on ${day}` : ''}${place ? ` at ${place}` : ''} — ${members.length || 'a few'} of us.`,
+    );
   };
 
   return (
@@ -180,11 +217,20 @@ export default function PartySheet() {
                     </span>
                   </div>
                   {i.status !== 'confirmed' && i.status !== 'cancelled' && (
-                    <div
-                      {...pressable(() => void confirmPlanItem(i.id))}
-                      style={{ marginTop: 9, fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center' }}
-                    >
-                      <CheckIcon size={12} /> IT’S BOOKED
+                    <div style={{ marginTop: 9, display: 'flex', gap: 14, alignItems: 'center' }}>
+                      <div
+                        {...pressable(() => bookWithNum(i.title, i.day, i.address || i.place))}
+                        style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center' }}
+                      >
+                        <SparklesIcon size={12} /> ASK NUM TO BOOK
+                      </div>
+                      <div
+                        {...pressable(() => void confirmPlanItem(i.id))}
+                        title="Already reserved it yourself? Mark it booked."
+                        style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--ink-60)', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center' }}
+                      >
+                        <CheckIcon size={12} /> IT’S BOOKED
+                      </div>
                     </div>
                   )}
                 </div>
@@ -203,6 +249,54 @@ export default function PartySheet() {
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 }}>
               Everyone in the plan sees this within the minute — their Num tells them what changed, and anything booked lands on all your calendars.
+            </div>
+
+            {/* The group's own thread: comments from people, one-liners from
+                their Nums, in the order they happened. Same feed the server
+                pushes on — nothing here is a second timeline. */}
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--ink-08)' }}>
+              <div style={{ ...label, color: 'var(--ink-60)' }}>GROUP CHAT</div>
+              <div style={{ marginTop: 8, display: 'grid', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+                {feed.length === 0 && (
+                  <div style={{ fontSize: 11.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
+                    Nothing said yet. Anything you type here reaches everyone on the plan.
+                  </div>
+                )}
+                {feed.map((e) =>
+                  e.kind === 'comment' ? (
+                    <div
+                      key={e.id}
+                      className="glass"
+                      style={{
+                        padding: '8px 11px', borderRadius: 'var(--r-md)',
+                        border: e.by_id === me?.id ? '1px solid var(--color-accent)' : '1px solid var(--ink-08)',
+                        justifySelf: e.by_id === me?.id ? 'end' : 'start', maxWidth: '88%',
+                      }}
+                    >
+                      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)' }}>
+                        {e.by_id === me?.id ? 'YOU' : (e.by_name || 'FRIEND').toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 12.5, lineHeight: 1.45, marginTop: 2 }}>{e.summary}</div>
+                    </div>
+                  ) : (
+                    <div key={e.id} style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', textAlign: 'center', lineHeight: 1.4 }}>
+                      {e.summary}
+                    </div>
+                  ),
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input
+                  style={{ ...field, flex: 1 }}
+                  placeholder="Say it to the group…"
+                  value={say}
+                  onChange={(e) => setSay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void sendComment(); }}
+                />
+                <div {...pressable(sendComment)} style={{ ...primary, padding: '12px 18px', opacity: busy || !say.trim() ? 0.6 : 1 }}>
+                  SEND
+                </div>
+              </div>
             </div>
           </div>
         </>

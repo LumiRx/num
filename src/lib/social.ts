@@ -489,8 +489,30 @@ export async function createPlan(title: string, dest?: string | null, startsOn?:
 }
 
 export async function openPlan(id: string): Promise<void> {
-  store.set({ planId: id, planItems: [], planCursor: 0 });
+  store.set({ planId: id, planItems: [], planCursor: 0, planFeed: [] });
   await syncPlan();
+}
+
+/**
+ * Say something to the group. The reply path is the same sync everyone else's
+ * poll uses, so your comment appears in your feed the same way it appears in
+ * theirs — no optimistic insert to reconcile later.
+ */
+export async function commentOnPlan(text: string): Promise<boolean> {
+  const { me, planId } = store.get();
+  const t = text.trim();
+  if (!me || !planId || !t) return false;
+  try {
+    await api('/plan/comment', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, plan_id: planId, text: t }),
+    });
+    await syncPlan();
+    return true;
+  } catch (err) {
+    console.warn('[social] comment failed', err);
+    return false;
+  }
 }
 
 export async function addPlanItem(item: Partial<PlanItem>): Promise<PlanItem | null> {
@@ -539,23 +561,44 @@ export async function syncPlan(): Promise<void> {
       plan: PartyPlan;
       members: Array<{ member_id: string; name: string | null; role: string }>;
       items: PlanItem[];
-      events: Array<{ id: number; summary: string; by_name: string | null }>;
+      events: Array<{ id: number; ts: string; by_id: string | null; by_name: string | null; kind: string; summary: string }>;
       cursor: number;
     }>(`/plan?id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}&since=${planCursor}`);
 
-    store.set({ planItems: out.items, planMembers: out.members, planCursor: out.cursor });
+    store.set((s) => ({
+      planItems: out.items,
+      planMembers: out.members,
+      planCursor: out.cursor,
+      // Append-and-dedupe: openPlan resets the cursor to 0, so a reopen
+      // re-delivers history and must not double every line.
+      planFeed: (() => {
+        const seen = new Set(s.planFeed.map((e) => e.id));
+        return [...s.planFeed, ...out.events.filter((e) => !seen.has(e.id))];
+      })(),
+    }));
 
-    if (out.events.length) {
-      const lines = out.events.map((e) => '· ' + e.summary).join('\n');
+    // A confirmed group booking belongs on this member's own shelf too —
+    // including ones that were already confirmed before this member first
+    // opened the plan, which is why this is not gated on "news".
+    out.items
+      .filter((i) => i.status === 'confirmed' && i.day)
+      .forEach((i) => mirrorToBookings(i));
+
+    // Narration is for what happened while you weren't looking — other
+    // people's doing. Two exclusions: your own comments (already on your
+    // screen in the thread — an echo), and the initial history load (cursor 0
+    // means this is the first look, and the past is not news).
+    const first = planCursor === 0;
+    const news = out.events.filter((e) => !(e.kind === 'comment' && e.by_id === me.id));
+    if (news.length && !first) {
+      const line = (e: (typeof news)[number]) =>
+        e.kind === 'comment' ? `${e.by_name || 'Someone'} said: “${e.summary}”` : e.summary;
+      const lines = news.map((e) => '· ' + line(e)).join('\n');
       narrate(
-        out.events.length === 1
-          ? `${out.events[0].summary} — straight from their Num, already on the group plan.`
+        news.length === 1
+          ? `${line(news[0])} — it's on the group plan; open PLANS to reply.`
           : `Group plan moved while you were away:\n${lines}`,
       );
-      // A confirmed group booking belongs on this member's own shelf too.
-      out.items
-        .filter((i) => i.status === 'confirmed' && i.day)
-        .forEach((i) => mirrorToBookings(i));
     }
   } catch (err) {
     console.warn('[social] sync failed', err);

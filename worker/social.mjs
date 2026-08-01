@@ -1529,6 +1529,33 @@ async function planList(env, url) {
   return json({ plans: results ?? [] });
 }
 
+/**
+ * A member says something to the group, in their own words.
+ *
+ * Deliberately a plan EVENT (kind='comment') rather than a new table: the plan
+ * already has one ordered feed that every member polls, pushes on, and renders
+ * — a second timeline for humans would mean two cursors, two notify paths, and
+ * a merge bug the first time someone books mid-conversation. Comments and
+ * system events interleave in the order they happened, which is what a group
+ * chat is.
+ *
+ * event() pushes to every member EXCEPT the author (see its member query), so
+ * commenting never buzzes your own phone.
+ */
+async function planComment(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const planId = clip(b.plan_id, 40);
+  const text = String(b.text ?? '').trim().slice(0, 280);
+  if (!meId || !planId) return json({ error: 'me and plan_id required' }, 400);
+  if (!text) return json({ error: 'say something' }, 400);
+  const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId).first();
+  if (!self) return json({ error: 'sign up first' }, 404);
+  if (!(await memberOf(env, planId, meId))) return json({ error: 'not your plan' }, 403);
+  await event(env, planId, { id: meId, name: self.name }, 'comment', text);
+  return json({ ok: true });
+}
+
 /** Join by code — the low-tech path when someone reads it out loud. */
 async function planJoin(env, req) {
   const b = await readBody(req);
@@ -1581,6 +1608,7 @@ export async function handleSocial(request, env, path) {
   if (path === '/plan/item' && post) return await planItem(env, request);
   if (path === '/plan/item/attendees' && post) return await itemAttendees(env, request);
   if (path === '/plan/join' && post) return await planJoin(env, request);
+  if (path === '/plan/comment' && post) return await planComment(env, request);
   return json({ error: 'not found' }, 404);
 }
 
