@@ -141,15 +141,111 @@ async function areaCenter(env, destSlug, text) {
   } catch (e) { console.log('areaCenter', String(e)); return null; }
 }
 
+/* Words that follow "in" without naming a place. Without this guard,
+   "I'm in a hurry" and "we're in the mood for Thai" would both be read as
+   the guest declaring an unsupported city. */
+const NOT_A_PLACE = new Set([
+  'a', 'an', 'the', 'my', 'our', 'your', 'his', 'her', 'their', 'this', 'that',
+  'need', 'love', 'search', 'trouble', 'hurry', 'mood', 'fact', 'general',
+  'town', 'time', 'order', 'charge', 'case', 'advance', 'total', 'front',
+  'back', 'here', 'there', 'bed', 'transit', 'touch', 'person',
+  'about', 'between', 'and', 'or', 'it', 'one', 'two', 'three', 'some', 'any',
+  'good', 'bad', 'terms', 'return', 'exchange', 'other', 'another',
+  // Time expressions — "a table in the evening", "in about an hour".
+  'morning', 'afternoon', 'evening', 'night', 'midnight', 'hour', 'hours',
+  'minute', 'minutes', 'day', 'days', 'week', 'weeks', 'month', 'months',
+  'future', 'meantime', 'moment',
+  // Generic spatial/other words that follow "in" without naming anywhere.
+  'area', 'city', 'centre', 'center', 'middle', 'room', 'walking', 'driving',
+  'range', 'budget', 'cash', 'english', 'thai', 'stock', 'season', 'mind',
+]);
+
+/**
+ * Short forms guests actually type for places. Two- and three-letter tokens
+ * cannot be told from noise by any general rule, so the useful ones are
+ * enumerated. This exists because "hookah bar in La tonight" was answered with
+ * a Phuket sky bar — "La" was two characters and got discarded as noise.
+ *
+ * Only places we do NOT cover belong here; covered destinations are matched
+ * earlier by destNamedIn/ALIASES.
+ */
+const SHORT_PLACES = {
+  la: 'Los Angeles', 'l.a.': 'Los Angeles', 'l.a': 'Los Angeles',
+  nyc: 'New York', ny: 'New York', sf: 'San Francisco', dc: 'Washington DC',
+  vegas: 'Las Vegas', philly: 'Philadelphia', atl: 'Atlanta', mia: 'Miami',
+  sd: 'San Diego', yyz: 'Toronto', yvr: 'Vancouver', cdmx: 'Mexico City',
+  ldn: 'London', edi: 'Edinburgh', gla: 'Glasgow', mcr: 'Manchester',
+  dxb: 'Dubai', blr: 'Bengaluru',
+};
+
+/** Trailing words that ride along with a captured place name. */
+const TRAILING_FILLER =
+  /[\s,]+(right|now|today|tonight|tomorrow|currently|please|asap|at|for|until|till|this|next|and|but|so|with|on|the|a|an|area|city|pls)$/i;
+
+/**
+ * A place the guest states outright that they are in — covered by us or not.
+ *
+ * This exists because of a real failure: a guest in Los Angeles was told
+ * "you're actually in Phuket" and handed a Phuket restaurant. `destNamedIn`
+ * only recognises cities we cover, so an unsupported city looked identical to
+ * the guest saying nothing at all, and resolution fell through to the Phuket
+ * default. The guest is the only authority on where the guest is, so we have
+ * to be able to hear a city we don't serve.
+ */
+export function statedPlace(text) {
+  // Deliberately NOT gated on "I'm in …". The first version required a trigger
+  // phrase, and "Give me hookah bar in La tonight" sailed straight past it into
+  // the Phuket default — guests name a city far more often than they announce
+  // themselves. Any "in <place>" counts; the filters below decide whether it is
+  // really a place.
+  const re = /\bin\s+([a-z][a-z'’.-]*(?:[ -][a-z][a-z'’.-]*){0,2})/gi;
+  let m;
+  while ((m = re.exec(text || '')) !== null) {
+    // The capture takes up to three words, so trailing filler rides along:
+    // "la tonight", "los angeles right now". Strip repeatedly, not once, or
+    // multi-word tails survive.
+    let raw = m[1].trim(), prev;
+    do {
+      prev = raw;
+      raw = raw.replace(TRAILING_FILLER, '').trim();
+    } while (raw !== prev);
+    if (!raw) continue;
+
+    const key = raw.toLowerCase();
+    if (SHORT_PLACES[key]) return SHORT_PLACES[key];
+    if (raw.length < 4) continue;
+    if (NOT_A_PLACE.has(key.split(/[ -]/)[0])) continue;
+    return raw;
+  }
+  return null;
+}
+
+/** Is this string a neighbourhood we already hold places in? */
+async function isKnownArea(env, s) {
+  try {
+    const r = await env.DB
+      .prepare('SELECT 1 FROM places WHERE area LIKE ?1 COLLATE NOCASE LIMIT 1')
+      .bind(s).first();
+    return !!r;
+  } catch (e) { console.log('isKnownArea', String(e)); return false; }
+}
+
 /**
  * Where should recommendations be centred?
  * Priority: a place the guest named  >  where they actually are  >  where they
  * were last  >  a fallback centre, flagged as a guess.
  *
- * `guessed` is the one that matters. When it is true we do not know where the
- * guest is, and nothing downstream may state a city, a country or a local time.
- * We are live in 38 countries: telling a guest in London that they are in Phuket
- * is worse than saying we do not know yet.
+ * Two flags matter, and they mean different things:
+ *
+ * `guessed` — we do NOT know where the guest is. Nothing downstream may state
+ * a city, a country or a local time. We are live in 38 countries: telling a
+ * guest in London that they are in Phuket is worse than saying we don't know.
+ *
+ * `unsupported` — we know EXACTLY where the guest is, because they named it,
+ * and we don't cover it. Resolution stops; `dest` still carries a value so
+ * timezone and query plumbing keep working, but callers MUST check
+ * `unsupported` before offering anything local. Don't ask them where they are
+ * (they just told us), and never assert a different city.
  */
 export async function resolveLocation(env, { text, guest, cf }) {
   const out = { dest: null, lat: null, lng: null, label: null, precise: false, source: 'default', guessed: false, offline: false };
@@ -160,6 +256,12 @@ export async function resolveLocation(env, { text, guest, cf }) {
   if (!dests.length) return { ...out, guessed: true, offline: true, dest: { slug: 'phuket', name: 'Phuket', country: 'TH', tz: 'Asia/Bangkok', lat: 7.953, lng: 98.338 } };
 
   const named = destNamedIn(text, dests);
+
+  // A place the guest stated that we don't cover as a destination. Guarded by
+  // an area lookup first: "I'm staying in Patong" names a neighbourhood, not an
+  // unsupported city, and areaCenter below handles those properly.
+  let stated = named ? null : statedPlace(text);
+  if (stated && await isKnownArea(env, stated)) stated = null;
 
   // Coordinates we trust: a location the guest shared on LINE in the last day,
   // else the coarse city-level position Cloudflare attaches to a web request.
@@ -181,6 +283,14 @@ export async function resolveLocation(env, { text, guest, cf }) {
   } else if (nearest && nearest.km < 120) {
     out.dest = nearest.d; out.lat = coords.lat; out.lng = coords.lng;
     out.precise = coords.precise; out.source = coords.source;
+  } else if (stated) {
+    // The guest named somewhere, and it matched no destination we cover.
+    // Believe them and stop here. Falling through to `last_dest` was the bug
+    // that made a Phuket guest permanently a Phuket guest: once last_dest was
+    // set, every later message resolved back to it no matter what they said.
+    out.unsupported = stated;
+    out.source = 'unsupported';
+    out.dest = dests.find(d => d.slug === guest?.last_dest) || dests.find(d => d.slug === 'phuket') || dests[0];
   } else if (guest?.last_dest) {
     out.dest = dests.find(d => d.slug === guest.last_dest) || null;
     if (out.dest) out.source = 'last_seen';

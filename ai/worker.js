@@ -40,14 +40,33 @@ export const SYSTEM = (place, guest, timeStr, guide, sig = {}) => {
      concierge does not get to make twice. */
   const known = !place.guessed;
   const city = `${place.dest.name}${place.dest.country ? ', ' + place.dest.country : ''}`;
-  const cityRef = known ? city : 'the city the guest is in';
-  const destRef = known ? place.dest.name : 'their city';
-  const where = place.label ? `${place.label} (in ${place.dest.name})`
+  /* Three location states now, not two:
+       unsupported — the guest NAMED somewhere we don't cover. We know exactly
+                     where they are; we just can't serve it. Never ask again,
+                     never assert another city. (fix/unsupported-location)
+       guessed     — we had nothing to go on and picked a centre so retrieval
+                     works. We do NOT know where they are: ask, don't assert.
+       known       — named a covered city, shared location, or recent history. */
+  const cityRef = place.unsupported ? place.unsupported : known ? city : 'the city the guest is in';
+  const destRef = place.unsupported ? place.unsupported : known ? place.dest.name : 'their city';
+  const where = place.unsupported ? place.unsupported
+    : place.label ? `${place.label} (in ${place.dest.name})`
     : place.precise ? `${place.dest.name} — you know their exact position, so "near me" means walking distance`
     : place.dest.name;
-  const whereBlock = known
+  /* "GUEST IS IN" is asserted as fact ONLY when the guest themselves is the
+     source (named a city, shared their location). History-derived positions are
+     framed as our belief, because a stale last_dest asserted as fact is exactly
+     how a guest in Los Angeles got told they were "actually in Phuket" — and a
+     detector regex will always miss some way of naming a city, so the prompt
+     must stay safe even when nothing was flagged. */
+  const told = place.source === 'named' || place.source === 'shared_location';
+  const whereBlock = place.unsupported
+    ? `GUEST IS IN: ${place.unsupported} — NOT a place NUM covers (see the warning above).\nLOCAL TIME AT THEIR LAST KNOWN TIMEZONE: ${timeStr}`
+    : !known
+    ? `GUEST'S CITY: UNKNOWN — you have not been told where they are, and you must not guess.\nAsk once, warmly, which city they are in, or invite them to tap the paperclip and share their location.`
+    : told
     ? `GUEST IS IN: ${city}\nLOCAL TIME THERE: ${timeStr}\nRECOMMENDATIONS CENTRED ON: ${where}`
-    : `GUEST'S CITY: UNKNOWN — you have not been told where they are, and you must not guess.\nAsk once, warmly, which city they are in, or invite them to tap the paperclip and share their location.`;
+    : `WHERE WE THINK THE GUEST IS: ${city} — inferred from ${place.source || 'history'}, NOT something they told you. It is sometimes wrong. If the guest names anywhere else, they are right and this line is wrong: never tell them they are somewhere other than where they say, and never say "I think there might be some confusion."\nLOCAL TIME THERE: ${timeStr}\nRECOMMENDATIONS CENTRED ON: ${where}`;
   const partners = place.rows.length
     ? place.rows.map(b => `- ${b.name}${b.name_local && b.name_local !== b.name ? ` (${b.name_local})` : ''} — ${b.category}${b.area ? `, ${b.area}` : ''}${b.km != null ? `, ${b.km < 1 ? Math.round(b.km * 1000) + ' m' : b.km + ' km'} away` : ''}${b.rating ? `, ${b.rating}★ (${b.reviews} reviews)` : ''}${b.phone ? `, ${b.phone}` : ''}`).join('\n')
     : '(none on file here yet — see the rule below on what to do)';
@@ -75,8 +94,25 @@ TRAVEL PSYCHOLOGY (read the guest's emotional state and meet them there):
   const empathyLine = psychBlock
     ? '' : `- If something has gone wrong for the guest, open with one warm sentence acknowledging it, then give exactly ONE clear next step — never a menu of options to someone who is already stressed.\n`;
 
-  return `You are Num, the personal AI travel concierge by 5arz — trained in the tradition of the world's great concierges (Les Clefs d'Or: "service through friendship"). Guests message you on LINE while travelling.
+  /* The guest has told us they are somewhere we don't cover. This block has to
+     outrank two rules further down that otherwise produce exactly the wrong
+     reply: "NEVER a flat no" pushes the model to offer something regardless,
+     and "if the partner list is empty, say you're still adding partners in
+     <city>" names the WRONG city. Left alone, those two turned "I'm in Los
+     Angeles" into a Phuket restaurant recommendation. */
+  const outOfArea = place.unsupported ? `
+⚠️ THE GUEST IS IN ${String(place.unsupported).toUpperCase()} — A PLACE NUM DOES NOT COVER YET.
+This overrides every other rule below, including "never say no" and anything about ${place.dest.name}.
+- The guest is the only authority on where they are. They said ${place.unsupported}; that is where they are. NEVER tell them they are somewhere else, and never say anything like "I think there might be some confusion."
+- You have NO verified partners in ${place.unsupported}. Say that plainly and warmly, in one sentence.
+- Do NOT name a single business. Not from ${place.dest.name}, not from memory, not from anywhere. A recommendation in the wrong city is worse than no recommendation.
+- Do NOT change the subject to travel packages, holidays, or visiting ${place.dest.name}. They asked for help where they are; pitching them a trip instead is a dodge and reads as broken.
+- What you CAN offer: remember them for when they're somewhere we cover, or help plan if THEY bring up a trip. General public knowledge about ${place.unsupported} is fine — no opening hours, prices, or specific venues.
+- Good: "I'm not set up in ${place.unsupported} yet, so I'd only be guessing — and I won't do that to you. Want me to note where you're based for when we get there?"
+` : '';
 
+  return `You are Num, the personal AI travel concierge by 5arz — trained in the tradition of the world's great concierges (Les Clefs d'Or: "service through friendship"). Guests message you on LINE while travelling.
+${outOfArea}
 ${whereBlock}
 GUEST: ${guest?.display_name ? `name: ${guest.display_name}` : 'name unknown'}${guest?.prefs ? ` · has previously asked about: ${guest.prefs}` : ' · first conversation'}
 GUEST BRAIN (everything you have learned about this guest so far — use it, quietly):
@@ -203,17 +239,23 @@ async function askSmall(env, userText, guest, cf, decision, started){
 async function askFull(env, userText, guest, cf, decision, escalated){
   const started = Date.now();
   const loc = await resolveLocation(env, { text: userText, guest, cf });
-  const { rows } = await nearbyPlaces(env, loc, userText, 8);
+  // The guest told us they're somewhere we don't cover. Every partner we hold
+  // is in the wrong city, so we offer none — recommending a Phuket restaurant
+  // to a guest in Los Angeles is worse than admitting we can't help there.
+  const { rows } = loc.unsupported ? { rows: [] } : await nearbyPlaces(env, loc, userText, 8);
   const place = { ...loc, rows };
   // If D1 gave us nothing at all in our first market, fall back to the bundled list.
-  // Only when we actually know the guest is there — never for a guessed centre.
-  if (!place.rows.length && place.dest.slug === 'phuket' && !place.guessed) {
+  // Only when we actually know the guest is there. Never for a guessed centre
+  // (we don't know where they are) and never when unsupported (we know exactly
+  // where they are, and it isn't Phuket) — that fallback is what put a Phuket
+  // restaurant in front of a guest in Los Angeles.
+  if (!place.rows.length && place.dest.slug === 'phuket' && !place.guessed && !place.unsupported) {
     place.rows = BIZ.filter(b => /restaurant|attraction|spa|massage|tour/i.test(b.category||''))
       .sort((a,b)=>(b.reviews||0)-(a.reviews||0)).slice(0,8);
   }
-  // No city, no city guide. Loading one destination's guide for a guest we cannot
-  // place is how the wrong city ends up in the answer.
-  const guide = place.guessed ? null : await destinationGuide(env, place.dest.slug);
+  // No city (or the wrong city), no city guide. Loading one destination's guide
+  // for a guest who is elsewhere is how the wrong city ends up in the answer.
+  const guide = (place.guessed || place.unsupported) ? null : await destinationGuide(env, place.dest.slug);
   // productAsk lives here rather than in the router: which goods we can point a
   // guest at is a fact about NUM's partners, not about language.
   const sig = { ...(decision.signals || {}), product: productAsk(userText) };
@@ -299,6 +341,12 @@ async function saveLocation(env, uid, lat, lng){
 async function noteDest(env, uid, slug){
   try { if (uid && uid !== 'unknown' && slug) await env.DB.prepare('UPDATE users SET last_dest=?1 WHERE line_user_id=?2').bind(slug, uid).run(); }
   catch(e){ console.log('noteDest', String(e)); }
+}
+
+/** Forget a stored destination once we know the guest has left our coverage. */
+async function clearDest(env, uid){
+  try { if (uid && uid !== 'unknown') await env.DB.prepare('UPDATE users SET last_dest=NULL WHERE line_user_id=?1').bind(uid).run(); }
+  catch(e){ console.log('clearDest', String(e)); }
 }
 
 const MEM_SYS = `You maintain a compact JSON "guest brain" for a travel concierge. Given the current brain and the latest exchange, return the UPDATED brain as JSON only.
@@ -427,6 +475,10 @@ async function handleEvents(env, events){
           if (d) out += `\n\n🛍️ NUM deal: ${d.name} — ${d.discount||'special price'} with code ${d.promo_code||'NUM'} at ${d.partner}${d.link ? ' → '+d.link : ''}`;
         }
         if (place?.source === 'named') await noteDest(env, uid, place.dest.slug);   // they told us where they are
+        // They've told us they're somewhere we don't cover, so a stored
+        // last_dest is now stale — and a stale last_dest is sticky: it silently
+        // re-anchors every later message to a city the guest already left.
+        else if (place?.unsupported) await clearDest(env, uid);
         /* "thanks" teaches us nothing about this guest, and updateMemory is
            itself a model call — running the brain on a template reply would
            spend back more than the free tier just saved. */
