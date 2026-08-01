@@ -34,13 +34,21 @@ export async function showtimesFor(env, cityLabel) {
 
   try {
     const u = new URL('https://serpapi.com/search.json');
+    // The place goes in q only. SerpAPI's `location` param requires a name
+    // from their canonical list and 400s on anything else — "Downtown" from
+    // our area labels killed every request, silently, on day one.
     u.searchParams.set('q', `movie showtimes near ${cityLabel}`);
-    u.searchParams.set('location', cityLabel);
     u.searchParams.set('api_key', env.SERPAPI_KEY);
-    const r = await fetch(u, { signal: AbortSignal.timeout(6000) });
-    if (!r.ok) return null;
+    const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) {
+      // A non-ok here is config or quota, and silence cost an hour of
+      // debugging already — say what happened.
+      console.warn('[showtimes] http', r.status, (await r.text()).slice(0, 160));
+      return null;
+    }
     const d = await r.json();
     const block = formatShowtimes(d?.showtimes);
+    if (!block) console.warn('[showtimes] no showtimes in response for', cityLabel);
     if (block) {
       await env.DB.prepare(
         `INSERT INTO showtimes_cache (key, payload, fetched_at) VALUES (?1, ?2, datetime('now'))
