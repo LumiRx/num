@@ -322,7 +322,14 @@ export default {
           email: !!env.EMAIL,
           payments: payMode(env),
           voice_in: voiceReady(env),
+          verify_5arz: !!env.GOOGLE_CLIENT_ID,
         },
+        // Public by design — a Google OAuth client id ships inside every page
+        // that uses Google Sign-In; the SECRET part of the pair never leaves
+        // Google. Serving it here means the frontend and the worker's audience
+        // check can never disagree, and the whole 5arz flow stays dark until
+        // Viv/Duke set the secret (Gap 1 in Viv's 08-01 status).
+        google_client_id: env.GOOGLE_CLIENT_ID ?? null,
       });
     }
 

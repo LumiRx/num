@@ -17,6 +17,7 @@ import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from
 import { THEMES, setTheme } from '../../lib/themes';
 import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
+import Verify5arz from './Verify5arz';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
@@ -214,6 +215,7 @@ export default function ProfileView() {
             )}
           </div>
         </div>
+        <Verify5arz />
       </div>
 
       <Collapsible title="NAME ON THE ACCOUNT" summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
