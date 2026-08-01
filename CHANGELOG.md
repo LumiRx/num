@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.78 — 2026-08-01 00:47 UTC
+
+Fix short share links for installed users: the service worker was answering navigations with a followed redirect, which is a network error — QR scans, referrals and invites failed only for people who had the app installed
+
+- commit `b665908`
+
+## 0.8.77 — 2026-08-01 00:43 UTC
+
+messaging UI, agent event invites, availability oracle, share-link fix
+
+- commit `b665908`
+
 ## 0.8.76 — 2026-07-31 17:27 UTC
 
 dm: rowid cannot be indexed

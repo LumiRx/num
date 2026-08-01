@@ -140,7 +140,7 @@ export interface GuestInvite {
  * their own phone, exactly as before.
  *
  * The full dispatch is returned rather than just the links, because "I asked
- * Dre and their Num will tell me" and "here is a link to text Sam" are two
+ * Alex and their Num will tell me" and "here is a link to text Sam" are two
  * different things to say to a host, and only the caller knows how to say them.
  */
 export async function inviteGuests(

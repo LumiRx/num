@@ -255,7 +255,7 @@ export interface InviteDraft {
   name?: string;
   phone?: string;
   planId?: string | null;
-  /** Candidates to disambiguate "send invite to dre" before anything is sent. */
+  /** Candidates to disambiguate "send invite to sam" before anything is sent. */
   candidates?: Array<{ name: string; phone?: string }>;
   minted?: {
     token: string;
@@ -372,7 +372,7 @@ export interface AppState {
   me: Member | null;
   /** Mutual connections — only 'active' ones share anything. */
   friends: Friend[];
-  /** People this user has named, so "invite dre" resolves without contacts. */
+  /** People this user has named, so "invite sam" resolves without contacts. */
   contacts: Array<{ name: string; phone?: string }>;
   /** Plans this member belongs to, and the one currently open. */
   plans: PartyPlan[];

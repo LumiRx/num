@@ -104,7 +104,7 @@ export default function PartySheet() {
             No dates or bookings needed. Name it, add whoever’s coming, and we’ll firm it up together.
           </div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder="e.g. Dre’s birthday weekend" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input style={field} placeholder="e.g. Sam’s birthday weekend" value={title} onChange={(e) => setTitle(e.target.value)} />
             <div {...pressable(newPlan)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
               {busy ? 'ONE SEC…' : 'START THE PLAN'}
             </div>

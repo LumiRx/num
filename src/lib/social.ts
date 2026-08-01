@@ -323,7 +323,7 @@ export async function pickContacts(): Promise<Array<{ name: string; phone?: stri
 const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 /**
- * "send invite to dre" → who is dre? We match saved contacts and existing
+ * "send invite to sam" → who is sam? We match saved contacts and existing
  * friends and hand back candidates; the user confirms before anything is sent,
  * because an invite goes to a real person's phone.
  */
@@ -471,12 +471,21 @@ export async function createPlan(title: string, dest?: string | null, startsOn?:
     narrate('Give me your name and number first and I’ll open the plan under your account, so you can pull friends into it.');
     return null;
   }
-  const out = await api<{ plan: PartyPlan }>('/plan', {
-    method: 'POST',
-    body: JSON.stringify({ me: me.id, title, dest: dest ?? store.get().place, starts_on: startsOn }),
-  });
-  store.set((s) => ({ plans: [out.plan, ...s.plans], planId: out.plan.id, planItems: [], planCursor: 0 }));
-  return out.plan;
+  // A failure here used to be invisible: api() throws, nothing caught it, and
+  // the caller's try/finally only reset the spinner — so START THE PLAN read as
+  // a dead button rather than as something that went wrong. Say what happened.
+  try {
+    const out = await api<{ plan: PartyPlan }>('/plan', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, title, dest: dest ?? store.get().place, starts_on: startsOn }),
+    });
+    store.set((s) => ({ plans: [out.plan, ...s.plans], planId: out.plan.id, planItems: [], planCursor: 0 }));
+    return out.plan;
+  } catch (err) {
+    console.warn('[social] createPlan failed', err);
+    narrate(`I couldn’t start that plan just now — ${(err as Error).message}. Try again in a moment.`);
+    return null;
+  }
 }
 
 export async function openPlan(id: string): Promise<void> {
@@ -488,12 +497,20 @@ export async function addPlanItem(item: Partial<PlanItem>): Promise<PlanItem | n
   const me = store.get().me;
   const planId = item.plan_id ?? store.get().planId;
   if (!me || !planId) return null;
-  const out = await api<{ item: PlanItem }>('/plan/item', {
-    method: 'POST',
-    body: JSON.stringify({ me: me.id, plan_id: planId, ...item }),
-  });
-  store.set((s) => ({ planItems: [...s.planItems.filter((i) => i.id !== out.item.id), out.item] }));
-  return out.item;
+  // Same reason as createPlan: an uncaught throw here is a button that does
+  // nothing, which is indistinguishable from a broken app.
+  try {
+    const out = await api<{ item: PlanItem }>('/plan/item', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, plan_id: planId, ...item }),
+    });
+    store.set((s) => ({ planItems: [...s.planItems.filter((i) => i.id !== out.item.id), out.item] }));
+    return out.item;
+  } catch (err) {
+    console.warn('[social] addPlanItem failed', err);
+    narrate(`That didn’t get added — ${(err as Error).message}.`);
+    return null;
+  }
 }
 
 /** Promote an idea to a real reservation once it is actually booked. */

@@ -180,7 +180,7 @@ export default function EventSheet() {
             Only the name is required — you can fill the rest in once the venue is settled. Guests get one link that answers where, when and what to wear.
           </div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder="e.g. Dre’s 30th" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input style={field} placeholder="e.g. Sam’s 30th" value={title} onChange={(e) => setTitle(e.target.value)} />
             <div style={{ display: 'flex', gap: 8 }}>
               <input style={{ ...field, flex: 1 }} type="date" value={day} onChange={(e) => setDay(e.target.value)} />
               <input style={{ ...field, width: 120 }} type="time" value={time} onChange={(e) => setTime(e.target.value)} />

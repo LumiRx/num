@@ -353,7 +353,7 @@ function TripCheck() {
 }
 
 const CONNECTIONS: Array<{ key: keyof Connections; label: string; why: string; icon: JSX.Element }> = [
-  { key: 'contacts', label: 'Contacts', why: 'so “invite Dre” finds the right Dre', icon: <UsersIcon size={14} /> },
+  { key: 'contacts', label: 'Contacts', why: 'so “invite Sam” finds the right Sam', icon: <UsersIcon size={14} /> },
   { key: 'photos', label: 'Photos', why: 'files your trip shots to the right night', icon: <CameraIcon size={14} /> },
   { key: 'calendar', label: 'Calendar', why: 'Num books around what’s already there', icon: <CalendarIcon size={14} /> },
   { key: 'crypto', label: 'Crypto wallet', why: 'balances on this screen, settle bills in USDC', icon: <WalletIcon size={14} /> },
