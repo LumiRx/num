@@ -22,3 +22,7 @@ out/
 
 # ── deploy snapshots: local rollback copies, not source ──
 .deploy-backups/
+
+# ai/release.sh state
+ai/.staged-version
+ai/.previous-version
