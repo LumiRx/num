@@ -5,6 +5,7 @@ import { checkOffer, duration, stillValid, type FlightOffer } from '../../lib/fl
 import { pressable } from '../../lib/a11y';
 import { tagOf } from '../../lib/derive';
 import { askNum, cleanText, sendChip, openVoice } from '../../lib/concierge';
+import { openPlan } from '../../lib/social';
 import { MicIcon, SendIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { Scene } from '../../lib/scenes';
 import { REACTIONS, react } from '../../lib/prefs';
@@ -205,7 +206,16 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
         <div style={{ whiteSpace: 'pre-line' }}>{u ? m.text : cleanText(m.text)}</div>
         {m.card && ct && (
           <div
+            {...pressable(() => {
+              // A card in the thread is a doorway, not a picture. If a group
+              // plan is live, tapping lands on the shared plan screen — items,
+              // votes, and the group chat — which is where "we can all look
+              // at it" actually happens.
+              const pid = store.get().planId ?? store.get().plans[0]?.id ?? null;
+              if (pid) { void openPlan(pid); store.set({ partyOpen: true }); }
+            })}
             style={{
+              cursor: 'pointer',
               marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 11, padding: 10,
               background: 'var(--field-bg)', border: '1px solid var(--ink-08)',
               borderRadius: 'var(--r-md)', boxShadow: '0 4px 12px rgba(32,30,29,.08)', color: 'var(--ink)',
