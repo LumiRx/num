@@ -52,10 +52,14 @@ Every rule below maps to one of those. Read this before touching anything.
 
 ## 5. Things every session must know (state, not style)
 
-- **`num-db` is over the D1 size cap — ALL writes fail, silently in `ai/`.**
-  Guest memory, signups, invites: nothing persists until the `num-core` import
-  runs. Do not chase "NUM doesn't remember" as a prompt bug, and do not
-  re-verify write endpoints expecting success. See `docs/handoff-duke.md`.
+- **RESOLVED 08-01 ~17:05 UTC — the num-db write block is over.** Root cause of
+  the two-day outage: the account was on the **Free plan** (500 MB D1 cap);
+  Dre upgraded to Workers Paid (10 GB cap) and writes resumed within a minute
+  (verified: signup 200, D1 DELETE ok). This answers open question #3 in
+  `HANDOFF-duke-2026-08-01.md`. Still true: the Overture ingest stays paused
+  (growth resumes otherwise), and the `num-core` split remains the right
+  architecture — now as planned work through the staged release flow, not an
+  emergency. Old handoffs describing failing writes are historical.
 - Location handling has **three states** — `unsupported` (guest named an
   uncovered city: honest decline, never re-ask), `guessed` (no idea: ask, never
   assert), known (assert only if the guest was the source). Keep all three.
