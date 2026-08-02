@@ -34,6 +34,28 @@
 // paying out against a drifting ledger pays the WRONG PEOPLE THE WRONG
 // AMOUNTS, and there is no undo on money that has left. The switch flips when
 // INV-1 has been green for 24h, not before.
+// ── TWO WALLETS. ONE DIRECTION. ───────────────────────────────────────────
+//
+//        NUM wallet  ──── cash out ────▶  5arz wallet
+//        NUM wallet  ◀──── NOTHING ────   5arz wallet
+//
+// 5arz Stars NEVER enter Num. Not as a transfer, not as a top-up, not as a
+// "link your balance" convenience. The two are separate wallets with separate
+// ledgers in separate Workers, and the ONLY thing that crosses is an outbound
+// payout request.
+//
+// Why this is load-bearing, not tidiness:
+//   · 5arz Stars are cashable there. If they could flow into Num and back out
+//     through Num, Num becomes a second exit for someone else's balance — a
+//     value-transfer service, which is the licensing shape we are avoiding.
+//   · 5arz's ledger is the one with the known drift (21 of 80 members). Import
+//     its numbers and we import its bugs into a ledger that is currently clean.
+//   · One-way means a bug over there can never mint Stars over here.
+//
+// The invariant, in one line a future session can check: **nothing in this
+// codebase credits `num_star_balances` from a 5arz source.** `cashout.test.mjs`
+// asserts it against the actual source, so breaking it fails the build rather
+// than shipping quietly.
 import { notify } from './push.mjs';
 
 const json = (body, status = 200) =>
@@ -42,6 +64,19 @@ const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
 
 /** Credits whose origin is work, not cash. Anything not listed is NOT cashable. */
 const EARNED_KINDS = ['errand', 'tab', 'bounty', 'referral', 'reward'];
+
+/**
+ * The wallet boundary, stated as data so it can be served, tested and read.
+ * `inbound_from_5arz: false` is not a setting — there is no code path to turn
+ * it on, and the test asserts none appears.
+ */
+export const WALLET_SEPARATION = Object.freeze({
+  wallets: ['num', '5arz'],
+  outbound_num_to_5arz: true,
+  inbound_from_5arz: false,
+  shared_ledger: false,
+  statement: 'Num and 5arz are separate wallets. Earned Num Stars can be paid out to 5arz. Nothing comes back the other way.',
+});
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS num_cashouts (

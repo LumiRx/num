@@ -60,3 +60,35 @@ untouched: `/api/pay/request` refuses `stars:*` unless `STARS_SALE_OK=1`.
 **If you do open it, the invariant to defend is:** never add a cash-out to
 `num_star_balances`, and never merge it with `stars_ledger`. That single line is
 what the posture rests on.
+
+## Addendum 4 — two wallets, one direction (0.8.101)
+
+Dre's call, and it is the right one: **Num and 5arz are separate wallets.**
+
+```
+NUM wallet  ──── cash out ────▶  5arz wallet
+NUM wallet  ◀──── NOTHING ────   5arz wallet
+```
+
+5arz Stars never enter Num — not as a transfer, a top-up, or a "link your
+balance" convenience. Reasons, in order of how much they'd cost us:
+
+1. If 5arz Stars could enter Num and leave through Num's payout, Num becomes a
+   second exit for someone else's balance — a value-transfer service, which is
+   the licensing shape we are avoiding.
+2. Your Track-A drift (21 of 80 members) lives in `stars_ledger`. Importing its
+   numbers imports its bugs into a ledger that is currently clean.
+3. One-way means a bug over there can never mint Stars over here.
+
+**Enforced, not just written down.** `worker/cashout.test.mjs` reads the actual
+source and fails the build on: a new place that credits `num_star_balances`
+(allowlisted by file, with reasons), any `fetch` to a 5arz host, and any query
+naming `stars_ledger` / `member_finance` / `payable_stars`. I verified it bites
+by adding a real import and watching two tests fail.
+
+That test also surfaced three credit sites in `social.mjs` I had not audited —
+member→member transfer, its rollback, and tab settlement. All three move Stars
+between Num members; none mints and none reaches outside. Recorded in the
+allowlist with that reasoning.
+
+Cash-out itself remains gated on `CASHOUT_OK` pending your Track A.

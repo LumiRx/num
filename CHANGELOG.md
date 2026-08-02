@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.100 — 2026-08-02 06:14 UTC
+
+earned stars cash out to 5arz
+
+- commit `60367ad`
+
 ## 0.8.99 — 2026-08-02 05:56 UTC
 
 closed-loop stars
