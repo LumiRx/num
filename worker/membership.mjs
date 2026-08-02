@@ -23,11 +23,15 @@
 // something free. Here, code asks "may this member do X" and never "which
 // plan are they on".
 //
-// ── Prices and limits are DRE'S to set ───────────────────────────────────
+// ── Prices ───────────────────────────────────────────────────────────────
 //
-// The numbers below are placeholders that make the machinery testable, chosen
-// to be defensible rather than final. Override any of them with MEMBERSHIP_TIERS
-// (JSON) without a deploy.
+// $8.98 and $28.98, set by Dre — no longer placeholders. Limits are still
+// first-guesses and should move once there is real usage to look at.
+//
+// These are the ONLY authority on price. The client asks the server what a
+// plan costs and the server charges what it says; a client that could name its
+// own number is the $1-for-★5,000 hole again in a different shirt. Change them
+// here, or override with MEMBERSHIP_TIERS (JSON) without a deploy.
 import { STAR_PACKS } from './preflight.mjs';
 
 const json = (body, status = 200) =>
@@ -63,7 +67,7 @@ const DEFAULT_TIERS = {
   },
   plus: {
     name: 'Num Plus',
-    price_cents: 900,
+    price_cents: 898,
     blurb: 'More room, more research, first in line when everyone asks at once.',
     entitlements: {
       concierge: true, plans: true, friends: true, errands: true, tabs: true, voice: true,
@@ -78,7 +82,7 @@ const DEFAULT_TIERS = {
   },
   pro: {
     name: 'Num Pro',
-    price_cents: 2900,
+    price_cents: 2898,
     blurb: 'Everything, no ceilings, and Num books on your behalf.',
     entitlements: {
       concierge: true, plans: true, friends: true, errands: true, tabs: true, voice: true,

@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.127 — 2026-08-02 23:10 UTC
+
+delete copy
+
+- commit `49a2bc2`
+
 ## 0.8.126 — 2026-08-02 22:59 UTC
 
 leaving UI, selector fix
