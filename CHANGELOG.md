@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.115 — 2026-08-02 20:32 UTC
+
+pwa share target + shortcuts
+
+- commit `7413890`
+
 ## 0.8.114 — 2026-08-02 20:29 UTC
 
 readable thread type

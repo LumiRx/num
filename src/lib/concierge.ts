@@ -3,6 +3,7 @@
 // surface (sendChip, openVoice, payBill, buyPack…) is the seam where a real
 // agent backend would slot in later.
 import { store } from './store';
+import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
 import { demoState } from './data';
 import { addPlanItem, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
 import { offerService } from './services';
@@ -544,6 +545,15 @@ export function cleanText(t: string): string {
 export async function askNum(text: string) {
   // A reply is already in flight — a double-tap must not double-send.
   if (store.get().typing) return;
+
+  // Somewhere-specific advice, and we still don't know where they are. This is
+  // the honest moment to ask: they just asked for something local, so the
+  // permission dialog explains itself. Asking at launch instead would earn a
+  // permanent "Don't allow" before Num had done anything for them.
+  if (wantsLocalAdvice(text) && !store.get().place && !store.get().here) {
+    await ensurePlaceForRecommendation();
+  }
+
   observeUserMessage(text);
   push({ who: 'u', text });
   // A new question retires the last provider tray — it belonged to the old one.
@@ -578,7 +588,10 @@ export async function askNum(text: string) {
     const res = await fetch('/api/num', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, state, place: s.place }),
+      // `here` is a REAL device fix and outranks anything inferred. Sending
+      // it separately from `place` keeps the distinction the model needs:
+      // what they told us, vs what their phone actually knows.
+      body: JSON.stringify({ messages, state, place: s.place, here: s.here }),
     });
     if (!res.ok) throw new Error('backend ' + res.status);
     const out: NumReply = await res.json();

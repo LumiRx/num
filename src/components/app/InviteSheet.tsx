@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
+import { normalisePhone } from '../../lib/phone';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
 import { contactsSupported, mintInvite, pickContacts, shareInvite, signUp, verifyCode, whoIsOnNum } from '../../lib/social';
@@ -122,7 +123,15 @@ export default function InviteSheet() {
 
   // The button says what is missing rather than sitting dim and silent, so
   // nobody has to guess which field is the problem.
-  const phoneOk = /^\+[1-9][0-9\s()-]{6,}$/.test(phone.trim());
+  //
+  // THE NUMBER IS NO LONGER A WALL. 48 of our first 77 sign-ups typed a name
+  // and stopped dead at this field — 62% of everyone who opened Num. A phone
+  // number is worth a lot to us and nothing to someone who has not yet seen
+  // the app work, so asking for it before any value is delivered trades most
+  // of our funnel for it. Num now lets them in on a name and asks for the
+  // number at the moment it actually buys them something (inviting a friend,
+  // saving a plan, cashing out) — which is also the moment they will say yes.
+  const phoneOk = !phone.trim() || normalisePhone(phone) !== null;
   const ready = !!name.trim() && phoneOk;
 
   const doSignUp = async () => {
@@ -134,22 +143,18 @@ export default function InviteSheet() {
       setAccountNote('I need a name first — just what you want to be called.');
       return;
     }
-    // The number is REQUIRED and must carry a country code. It is how friends
-    // find you, how an invite carries your name, and how the account is
-    // recovered on a new phone — an account without one is a dead end that
-    // looks fine until the day it matters.
-    if (!phone.trim()) {
-      setAccountNote('I need your mobile too — it’s how friends find you and how I reach you if a booking moves.');
-      return;
-    }
-    if (!/^\+[1-9][0-9\s()-]{6,}$/.test(phone.trim())) {
-      setAccountNote('Start your number with the country code — +1 for the US, +44 UK, +66 Thailand.');
+    // A number typed WRONG still stops here — a half-number is worse than
+    // none, because it looks like we can reach them and we cannot. A number
+    // left BLANK is fine: they are in, and Num asks again when it matters.
+    const tidy = phone.trim() ? normalisePhone(phone) : null;
+    if (phone.trim() && !tidy) {
+      setAccountNote('That number doesn’t look complete — or leave it blank and I’ll ask later.');
       return;
     }
     setAccountNote(null);
     setBusy(true);
     try {
-      const out = await signUp(name.trim(), phone.trim() || undefined);
+      const out = await signUp(name.trim(), tidy ?? undefined);
       // Honest about what actually happened to the number.
       setSmsOn(!!out.verification?.sent);
       setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
@@ -228,7 +233,7 @@ export default function InviteSheet() {
           </div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
             <input style={field} placeholder={sending ? 'Your name' : 'What should I call you?'} value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={field} placeholder={sending ? 'Mobile (+country code)' : 'Mobile — start with +1, +44, +66…'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input style={field} placeholder={sending ? 'Their mobile' : 'Mobile (optional — for friends and bookings)'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <div
               {...pressable(doSignUp)}
               aria-disabled={busy || !ready}
@@ -238,13 +243,11 @@ export default function InviteSheet() {
                 ? 'ONE SEC…'
                 : !name.trim()
                   ? 'YOUR NAME FIRST'
-                  : !phone.trim()
-                    ? 'AND YOUR MOBILE'
-                    : !phoneOk
-                      ? 'ADD YOUR COUNTRY CODE'
-                      : sending
-                        ? 'CREATE MY ACCOUNT'
-                        : 'NICE TO MEET YOU'}
+                  : !phoneOk
+                    ? 'THAT NUMBER LOOKS SHORT'
+                    : sending
+                      ? 'CREATE MY ACCOUNT'
+                      : 'NICE TO MEET YOU'}
             </div>
           </div>
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}

@@ -514,7 +514,17 @@ export default {
       // Same brain as the texts: resolve the user's location and pull
       // verified partners from the shared num-db before Claude answers.
       const lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-      const grounding = await groundRequest(env, { userText: lastUser, statedPlace: parsed.place, cf: request.cf });
+      // A real GPS fix from the device outranks the edge's IP guess. When the
+      // app sends `here`, hand it to grounding as a precise, NOT-inferred
+      // position — that is knowledge; request.cf is a hint.
+      const grounding = await groundRequest(env, {
+        userText: lastUser,
+        statedPlace: parsed.place,
+        cf: request.cf,
+        fix: parsed.here && Number.isFinite(parsed.here.lat) && Number.isFinite(parsed.here.lng)
+          ? { lat: parsed.here.lat, lng: parsed.here.lng }
+          : null,
+      });
 
       // The browser's own preference, as a tiebreaker only. What the person
       // actually TYPED wins every time — somebody with an English phone asking

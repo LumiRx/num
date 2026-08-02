@@ -290,6 +290,11 @@ export interface AppState {
 
   /** True when running the scripted Viv/SE-Asia demo trip. */
   demo: boolean;
+  /** A REAL device fix, when the guest has granted location. Distinct from
+   *  `place`, which is what they told us, and from the edge's IP guess, which
+   *  is never treated as knowledge. */
+  here: { lat: number; lng: number } | null;
+
   /** Where the user told Num they are (null until onboarding answers it). */
   place: string | null;
   /** First-run onboarding completed (a place is known or demo entered). */

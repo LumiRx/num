@@ -144,6 +144,7 @@ function baseState() {
 export function demoState(): AppState {
   return {
     ...baseState(),
+    here: null,
     demo: true,
     place: 'Bangkok',
     onboarded: true,
@@ -166,6 +167,7 @@ export function freshState(): AppState {
     ...baseState(),
     demo: false,
     place: null,
+    here: null,
     onboarded: false,
     profile: {},
     stars: 100, // welcome stars — enough to feel the payrail, not enough to matter

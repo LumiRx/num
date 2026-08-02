@@ -16,7 +16,7 @@ import { showtimesFor } from './showtimes.mjs';
  *
  * @returns {Promise<{place: object|null, partners: array, guide: string|null}>}
  */
-export async function groundRequest(env, { userText, statedPlace, cf }) {
+export async function groundRequest(env, { userText, statedPlace, cf, fix = null }) {
   const none = { place: null, partners: [], guide: null, buzz: [] };
   if (!env?.DB) return none; // local dev without the binding — Claude flies on general knowledge
 
@@ -25,7 +25,15 @@ export async function groundRequest(env, { userText, statedPlace, cf }) {
     // named-destination detector sees it even when the new message doesn't
     // repeat the city.
     const text = statedPlace ? `${statedPlace}. ${userText}` : userText;
-    const loc = await resolveLocation(env, { text, guest: null, cf });
+    // A GPS fix from the device is the strongest signal there is — it beats
+    // both the IP guess and a stale "last seen". Passed as a guest with live
+    // coordinates, which the resolver already treats as shared_location.
+    // last_loc_at must be set or the resolver's 24h freshness check drops it —
+    // this fix was taken seconds ago, so "now" is the honest timestamp.
+    const guest = fix
+      ? { last_lat: fix.lat, last_lng: fix.lng, last_loc_at: new Date().toISOString().slice(0, 19).replace('T', ' ') }
+      : null;
+    const loc = await resolveLocation(env, { text, guest, cf });
 
     // Only trust a resolution that traces back to something REAL: a place the
     // user named, live coordinates, or a previous session. The resolver's

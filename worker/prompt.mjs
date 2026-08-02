@@ -63,9 +63,13 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
     lines.push(
       `The user's current destination: ${place.label ? `${place.label}, ` : ''}${place.name}${place.country ? ', ' + place.country : ''}${place.precise ? ' (exact position known — "near me" means walking distance)' : ''}.` +
         (place.inferred
-          ? ' NOTE: this came from their connection, not from them (VPNs and roaming lie). Recommend freely, but do NOT create any booking action this turn — first weave one light confirmation into your reply ("You’re in ' +
+          ? ' ⚠️ THIS IS A GUESS FROM THEIR IP, NOT SOMETHING THEY TOLD YOU, and for a traveller on hotel wifi, a VPN or roaming it is often simply wrong. Treat it as a hint you hold privately, NOT as a fact about them.' +
+            ' Do NOT open by telling them where they are, and never state it twice — being told "you\'re in ' +
             place.name +
-            ', right?"); book once they confirm.'
+            '" when you are not is the single most trust-destroying thing Num can do.' +
+            ' If what they asked needs a location (somewhere to eat, drink, go, book, or anything "near me"), ASK where they are — one short question, first line, then answer as best you can. Phrase it as asking, not confirming: "Where are you right now?" rather than "You\'re in ' +
+            place.name +
+            ', right?". Create NO booking action until they have actually said.'
           : ''),
     );
   } else {
