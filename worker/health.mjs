@@ -176,6 +176,14 @@ async function alert(env, text) {
 }
 
 export async function handleHealth(request, env, path) {
+  // Run the cron body on demand. Two reasons this is not just a debug hook:
+  // an external scheduler (uptime service, GitHub Action) can drive it if the
+  // Workers cron ever stops firing, and a human can force a check after a fix
+  // instead of waiting out the interval.
+  if (path === '/run' && request.method === 'POST') {
+    const out = await healthCron(env);
+    return json({ ran: true, ...out });
+  }
   if (path === '/history') {
     await ensure(env);
     const { results } = await env.DB.prepare(
