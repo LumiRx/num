@@ -2,6 +2,24 @@
 
 Every version that has been live, newest first.
 
+## 0.8.98 — 2026-08-02 05:39 UTC
+
+stars delivery on paid webhook
+
+- commit `b4f91b0`
+
+## 0.8.97 — 2026-08-02 05:39 UTC
+
+stars delivery on paid webhook
+
+- commit `b4f91b0`
+
+## 0.8.96 — 2026-08-02 05:39 UTC
+
+stars delivery on paid webhook
+
+- commit `b4f91b0`
+
 ## 0.8.95 — 2026-08-02 04:00 UTC
 
 5arz card layout + google button sizing

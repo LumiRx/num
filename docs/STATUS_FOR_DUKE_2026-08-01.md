@@ -33,3 +33,30 @@ Remaining from your list: AIR_SHARED_KEY only.
 - **Connect Your World is real now** (0.8.91): contact/photo pickers, calendar auto-mirror, read-only wallet link, per-member email forward address (`num+<id>@itsnum.com`, worker `email()` handler shipped — needs Email Routing catch-all on itsnum.com flipped to the num-app worker), and inbound SMS at `/api/sms/inbound` with **Twilio signature verification** (403 otherwise — probed live).
 - **Pay rail** (0.8.92): Stripe Checkout end-to-end behind `STRIPE_SECRET_KEY`; `/api/pay/webhook` verifies Stripe signatures per your §8 rule (unsigned → 400, probed live). The wallet's top-up buttons no longer fake-credit Stars.
 - **§8 "Never sell Stars" is enforced in code**: `/api/pay/request` refuses any `stars:*` purchase with a 403 unless `STARS_SALE_OK=1` is set. That env var is yours to set or never set — bills/tabs/bookings/bounties are unaffected and can charge the moment a Stripe key exists. Money flows provider→recipient via Stripe; we hold nothing.
+
+## Addendum 3 — NUM Stars are closed-loop (0.8.99)
+
+Clarifying a conflation in Addendum 2. There are **two Star economies** and they
+must not be reasoned about together:
+
+| | 5arz `stars_ledger` | NUM `num_star_balances` |
+|---|---|---|
+| Worker | `num-payouts` / 5arz | `num-app` |
+| Cash-out | yes — USDC payout methods on file | **none, by construction** |
+| Your §8 rule | applies | see below |
+
+NUM Stars have **no path to money**: no cash-out endpoint, no refund-to-card, no
+transfer to an outside wallet. They move member → escrow → member inside
+`worker/errands.mjs` and stop. This is now stated and exported as `CLOSED_LOOP`
+in `worker/pay.mjs`, served on `/api/pay/status`, and reflected in app copy —
+the wallet's old "1★ ≈ $0.30" line read as an exchange rate and is gone.
+
+Because we never owe a Star holder money back — only service inside Num — a
+paid top-up is prepaid credit for our own service rather than stored value we
+hold and remit. That is a materially narrower question than the one §8 was
+written against, but it is **still your call with counsel**, so the switch is
+untouched: `/api/pay/request` refuses `stars:*` unless `STARS_SALE_OK=1`.
+
+**If you do open it, the invariant to defend is:** never add a cash-out to
+`num_star_balances`, and never merge it with `stars_ledger`. That single line is
+what the posture rests on.

@@ -52,8 +52,11 @@ export default function WalletSheet() {
             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 30, lineHeight: 1 }}>{stars.toLocaleString()}</span>
           </div>
         </div>
+        {/* Stars are closed-loop: credit for Num, never convertible to cash.
+            The old line ("1★ ≈ $0.30") read as an exchange rate, which is the
+            one thing they are not. */}
         <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', textAlign: 'right', lineHeight: 1.5 }}>
-          1★ ≈ $0.30 · Num is the payrail<br />friends see plans, never stars
+          Spends inside Num<br />friends see plans, never stars
         </div>
       </div>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ink-08)' }}>
@@ -72,6 +75,10 @@ export default function WalletSheet() {
           ))}
         </div>
         {!!bought && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-accent-700)', fontWeight: 600 }}>{bought}</div>}
+        {/* Said plainly, where the money decision happens. */}
+        <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
+          Stars are credit for Num — errands, tabs, bookings. They don’t convert to cash and don’t leave the app.
+        </div>
       </div>
       <div style={{ padding: '0 16px 14px' }}>
         <TabStarter />
@@ -95,7 +102,7 @@ export default function WalletSheet() {
           <>
             <span style={{ fontWeight: 600 }}> Apple Pay · ready</span>
             <span>Cards via Stripe</span>
-            {!pay.stars_sale && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>Stars are earned for now</span>}
+            {!pay.stars_sale && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>Top-ups opening soon</span>}
           </>
         ) : (
           <span>Pay rail connects soon — Stars are earned, and bills settle in person until then.</span>

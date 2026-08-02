@@ -109,7 +109,7 @@ export async function buyPack(n: number, cents: number, _label?: string) {
     // Say what you CAN do instead of leaving them at a dead end.
     push({
       who: 'c',
-      text: 'Stars aren’t for sale yet — they’re earned by running errands and settling tabs. If there’s a bill or a booking to pay, say the word and I’ll take care of it directly.',
+      text: 'Top-ups aren’t open yet — but you can earn Stars right now by running errands, and they spend on anything inside Num. If there’s a bill or a booking in front of you, say the word and I’ll settle it directly.',
     });
   } catch {
     store.set({ bought: 'Couldn’t reach the pay rail — try again in a moment.' });

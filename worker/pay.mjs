@@ -29,6 +29,31 @@
 
 const STRIPE = 'https://api.stripe.com/v1';
 
+/**
+ * NUM Stars are CLOSED-LOOP. This is the whole design, stated once:
+ *
+ *   · A Star is credit for Num and nothing else — errands, tabs, bookings,
+ *     bounties. It buys services inside Num.
+ *   · A Star never converts back to money. There is no cash-out, no refund
+ *     to card, no transfer to an outside wallet, and no path in this Worker
+ *     that turns `num_star_balances` into a payment instruction. Grep it.
+ *   · Stars move member → escrow → member (worker/errands.mjs) and stop
+ *     there. The perimeter IS the app.
+ *
+ * That is what keeps this from being stored value we have to hold and remit:
+ * we never owe anyone money back, only service. Do NOT add a cash-out to this
+ * balance — it would change what Stars legally are, and the whole posture with
+ * them. NUM Stars are NOT the 5arz `stars_ledger` (separate system, separate
+ * worker, separate economy, and that one does have payouts). They must never
+ * be merged.
+ */
+export const CLOSED_LOOP = Object.freeze({
+  cash_out: false,
+  transferable_outside_num: false,
+  spends_on: ['errands', 'tabs', 'bookings', 'bounties'],
+  statement: 'Stars are credit for Num. They don’t convert to cash and don’t leave the app.',
+});
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const readBody = async (req) => {
@@ -272,6 +297,7 @@ export async function handlePay(request, env, path) {
       // "Never sell Stars." It stays refused until Duke sets STARS_SALE_OK=1
       // on the record. Bills, tabs, bookings and bounties are unaffected.
       stars_sale: env.STARS_SALE_OK === '1',
+      stars: CLOSED_LOOP,
       apple_pay: mode === 'stripe' ? 'shown automatically in Stripe Checkout on Apple devices' : 'arrives with the Stripe key',
       configured_links: Object.keys(links(env)),
       note:
@@ -287,13 +313,15 @@ export async function handlePay(request, env, path) {
 
   if (path === '/request' && post) {
     const b = await readBody(request);
-    // The bright line, enforced where it can't be forgotten: a Stars purchase
-    // is refused until the licensing call is made and STARS_SALE_OK is set.
+    // Closed-loop switch. NUM Stars are credit for NUM and nothing else —
+    // see CLOSED_LOOP below. Buying them is therefore a prepaid in-app
+    // balance, not a stored-value instrument that can leave the system. It
+    // still waits on STARS_SALE_OK so the go/no-go stays a recorded decision.
     if (String(b.ref ?? '').startsWith('stars:') && env.STARS_SALE_OK !== '1') {
       return json({
         ok: false,
         mode: payMode(env),
-        error: 'Stars can’t be bought yet — they’re earned for now. Bills and bookings can be paid directly the moment the pay rail is on.',
+        error: 'Star top-ups aren’t open yet. You can earn Stars in Num now, and any bill or booking can be paid directly.',
       }, 403);
     }
     try {

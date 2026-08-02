@@ -41,7 +41,7 @@ export default function PrototypeCanvas() {
           <div style={{ borderTop: '2px solid var(--color-text)', paddingTop: 14 }}>
             <div style={{ fontSize: 11, letterSpacing: '.14em', fontWeight: 700, marginBottom: 10 }}>WHAT’S NEW IN V0.8 — MONEY &amp; MEMORY</div>
             <div style={{ fontSize: 12.5, lineHeight: 1.65, color: 'var(--color-neutral-800)' }}>
-              <p style={{ margin: '0 0 10px' }}><strong>Stars, the payrail.</strong> Buy stars once (Apple Pay, card, or a crypto link we text you) and every booking, ticket and bill settles in one tap — Num takes the transaction, not a form.</p>
+              <p style={{ margin: '0 0 10px' }}><strong>Stars, the payrail.</strong> Top up once (Apple Pay or card) and every booking, ticket and bill settles in one tap — Num takes the transaction, not a form. Stars are credit for Num: they spend on errands, tabs and bookings, and never convert back to cash.</p>
               <p style={{ margin: '0 0 10px' }}><strong>Pay by text.</strong> The restaurant assigns the bill to you; “pay my bill” settles it from the thread before you stand up. Stars, Apple Pay, or the link — your call.</p>
               <p style={{ margin: '0 0 10px' }}><strong>Receipts file themselves.</strong> Every payment lands on the event it belongs to — open the booking, the receipt is there.</p>
               <p style={{ margin: '0 0 10px' }}><strong>Photos become memories.</strong> One real permission ask, then photos pair to reservations by time and place. No cluster — they file to the memory shelf.</p>
