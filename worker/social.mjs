@@ -637,7 +637,7 @@ async function pairRedeem(env, req) {
 
   // Replay the original intent, now bound to the app's member id.
   const fake = (body) => new Request('https://x/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (row.kind === 'connect') return await connect(env, fake({ me, code: row.payload }));
+  if (row.kind === 'connect') return await connect(env, fake({ me, to: row.payload }));
   return await accept(env, fake({ me, token: row.payload }));
 }
 

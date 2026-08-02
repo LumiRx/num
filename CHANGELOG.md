@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.105 — 2026-08-02 18:35 UTC
+
+pair codes + health monitor
+
+- commit `0922c3e`
+
+## 0.8.104 — 2026-08-02 18:35 UTC
+
+pair codes + health monitor
+
+- commit `0922c3e`
+
 ## 0.8.103 — 2026-08-02 18:16 UTC
 
 origin-tagged cashouts
