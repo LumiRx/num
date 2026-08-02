@@ -475,9 +475,22 @@ async function invite(env, req) {
   // link, landed in Safari — which on iOS shares nothing with her installed
   // app — and was asked to sign up again. Instead: put the plan straight into
   // her app, buzz her phone, and let the texted link be a pointer, not a gate.
-  const existing = toPhone
-    ? await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(toPhone).first()
-    : null;
+  // WHO IS THIS PERSON? By member id if the app knows it, else by phone.
+  //
+  // Phone-only was a real bug: a friend you connected with by QR has no phone
+  // stored against them, so `existing` came back null, the link was written
+  // with b_id AND b_phone both NULL — and the inbox query matches on one or
+  // the other, so that row was unreachable by every read path, forever. The
+  // sender saw "invited"; the friend was never invited to anything. Tapping a
+  // QR-connected friend in the invite sheet hit this every single time.
+  const toId = clip(b.to_id, 40);
+  const existing =
+    (toId
+      ? await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(toId).first()
+      : null) ??
+    (toPhone
+      ? await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(toPhone).first()
+      : null);
   if (existing && plan) {
     await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
       .bind(plan.id, existing.id, existing.name ?? toName).run();
@@ -810,6 +823,17 @@ async function connect(env, req) {
     "INSERT INTO num_links (id, a_id, b_id, b_name, state, accepted_at) VALUES (?1,?2,?3,?4,'active',datetime('now'))",
   ).bind(uid('lnk'), toId, meId, self.name).run();
 
+  // TELL THE OTHER PERSON. They just gained a friend who can now DM them and
+  // add them to plans — a state change on their account that they had no part
+  // in initiating. Writing the row and staying silent is how "I scanned you"
+  // became "nothing happened" on the other phone. Only reached for a NEW
+  // link — the already-connected branch returns above.
+  await notify(env, {
+    memberId: other.id, kind: 'friend', title: 'New connection',
+    body: `${self.name || 'Someone'} connected with you on Num.`,
+    url: '/?app', tag: `friend:${meId}`,
+  }).catch(() => {});
+
   return json({ ok: true, friend: { id: other.id, name: other.name } });
 }
 
@@ -843,6 +867,17 @@ async function accept(env, req) {
   }
 
   const friend = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(link.a_id).first();
+  // The person who SENT the invite is the one waiting to hear. Until now they
+  // learned nothing — while the app told the accepter "they know." They did
+  // not. This is that message becoming true.
+  await notify(env, {
+    memberId: link.a_id, kind: 'friend', title: 'Invite accepted',
+    body: link.plan_id
+      ? `${self?.name || 'They'} joined your plan.`
+      : `${self?.name || 'Someone you invited'} is on Num now.`,
+    url: '/?app', tag: `accept:${meId}`,
+  }).catch(() => {});
+
   return json({ ok: true, friend: friend ? { id: friend.id, name: friend.name } : null, plan });
 }
 
@@ -1076,6 +1111,15 @@ async function pay(env, req) {
   }
 
   const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(from).first();
+  // Money arrived and nobody said so. The payee's only signal was a 45-second
+  // poll — with the app closed, nothing at all, ever. Every other credit in
+  // this codebase buzzes (errand settle, referral share); this one didn't.
+  await notify(env, {
+    memberId: to, kind: 'pay', title: `★${amount.toLocaleString()} from ${payer?.name || 'a friend'}`,
+    body: note ? `“${note}”` : 'It’s in your wallet.',
+    url: '/?app', tag: `pay:${from}`,
+  }).catch(() => {});
+
   return json({ ok: true, balance: row?.stars ?? 0, to: payee.name, amount });
 }
 
@@ -1282,6 +1326,10 @@ async function tabClose(env, req) {
   if (!tab) return json({ error: 'no such tab' }, 404);
   if (tab.owner_id !== clip(b.me, 40)) return json({ error: 'only whoever opened it can close it' }, 403);
   await env.DB.prepare("UPDATE num_tabs SET state='closed', closed_at=datetime('now') WHERE id=?1").bind(tab.id).run();
+  // Closing a tab takes away everyone else's ability to settle it. Silence
+  // here means a friend mid-payment just gets "That tab is closed."
+  await notifyTab(env, tab, clip(b.me, 40), `${tab.title} is closed.`).catch(() => {});
+
   return json(await tabState(env, tab.id));
 }
 

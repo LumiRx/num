@@ -40,7 +40,12 @@ export async function respond(
   });
   await refreshRequests();
   if (kind === 'connect' && out.state === 'active') {
-    return out.plan ? `You're in — ${out.plan.title}. ${out.friend?.name ?? 'They'} know.` : `Connected with ${out.friend?.name ?? 'them'}.`;
+    // "They know" was simply false — nothing was ever sent to the person who
+    // invited you. The server now notifies them (social.mjs accept/respond),
+    // so this can say it and mean it.
+    return out.plan
+      ? `You're in — ${out.plan.title}. ${out.friend?.name ?? 'They'} just got told.`
+      : `Connected with ${out.friend?.name ?? 'them'} — they've been told.`;
   }
   if (out.posted) return out.posted;
   if (out.rsvp) return out.rsvp === 'yes' ? 'You’re on the list.' : out.rsvp === 'no' ? 'Told them you can’t.' : 'Marked as a maybe.';

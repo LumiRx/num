@@ -407,13 +407,18 @@ const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
  * friends and hand back candidates; the user confirms before anything is sent,
  * because an invite goes to a real person's phone.
  */
-export function matchPeople(name: string): Array<{ name: string; phone?: string }> {
+export function matchPeople(name: string): Array<{ name: string; phone?: string; id?: string | null }> {
   const q = norm(name);
   if (!q) return [];
   const s = store.get();
-  const pool = [
+  const pool: Array<{ name: string; phone?: string; id?: string | null }> = [
     ...s.contacts,
-    ...s.friends.filter((f) => f.name).map((f) => ({ name: f.name, phone: undefined as string | undefined })),
+    // Carry the friend's MEMBER ID. Dropping it here is what made a plan
+    // invite to a QR-connected friend unroutable — the server had a name and
+    // nothing else to match on.
+    ...s.friends
+      .filter((f) => f.name)
+      .map((f) => ({ name: f.name, phone: undefined as string | undefined, id: f.id })),
   ];
   const seen = new Set<string>();
   return pool
@@ -439,7 +444,7 @@ export function startInvite(draft: InviteDraft): void {
 }
 
 /** Mint the personalised link. Sending stays on the user's own phone. */
-export async function mintInvite(name: string, phone?: string, planId?: string | null): Promise<void> {
+export async function mintInvite(name: string, phone?: string, planId?: string | null, toId?: string | null): Promise<void> {
   const me = store.get().me;
   if (!me) {
     store.set({ inviteOpen: { name, phone, planId } });
@@ -448,7 +453,17 @@ export async function mintInvite(name: string, phone?: string, planId?: string |
   }
   const minted = await api<InviteDraft['minted']>('/invite', {
     method: 'POST',
-    body: JSON.stringify({ from: me.id, to_name: name, to_phone: phone, plan_id: planId ?? store.get().planId }),
+    body: JSON.stringify({
+      from: me.id,
+      to_name: name,
+      to_phone: phone,
+      // If we already know this person's member id — because they're a friend
+      // — send it. Without it the server could only match on phone, and a
+      // QR-connected friend has no phone stored, so the invite row was born
+      // with nothing to match on and became invisible to everyone.
+      to_id: toId ?? matchPeople(name).find((c) => c.id)?.id ?? null,
+      plan_id: planId ?? store.get().planId,
+    }),
   });
   if (name) {
     store.set((s) => ({
@@ -864,6 +879,13 @@ export function startPlanSync(): () => void {
       void syncPlan();
       void refreshRequests();
       void refreshStars();
+      // Friends and plans were the ONLY social reads missing from this clock,
+      // which is exactly why they were the ones that looked half-landed: the
+      // server wrote the row and buzzed the phone, and the list on screen kept
+      // showing the world as it was at app launch. Someone adds you to a plan
+      // and it appears — without a restart.
+      void refreshFriends();
+      void refreshPlans();
     }, 45_000);
   };
   const stop = () => {
