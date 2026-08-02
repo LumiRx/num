@@ -19,6 +19,9 @@ import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
 import Verify5arz from './Verify5arz';
 import PairBridge from './PairBridge';
+import PeopleCard from './PeopleCard';
+import MembershipCard from './MembershipCard';
+import DangerZone from './DangerZone';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
@@ -242,6 +245,10 @@ export default function ProfileView() {
         <QrCard />
       </Collapsible>
 
+      <MembershipCard />
+
+      <PeopleCard />
+
       <ThemePicker />
 
       <NotificationsCard />
@@ -293,6 +300,8 @@ export default function ProfileView() {
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
+
+      <DangerZone />
 
       <VersionLine />
 

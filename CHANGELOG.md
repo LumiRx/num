@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.124 — 2026-08-02 22:43 UTC
+
+block holds on every path
+
+- commit `113f476`
+
 ## 0.8.123 — 2026-08-02 22:38 UTC
 
 leaving + memberships + errand alerts

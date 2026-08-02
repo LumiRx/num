@@ -6,7 +6,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
-import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan } from '../../lib/social';
+import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan, removePlan } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -46,6 +46,21 @@ export default function PartySheet() {
   const [busy, setBusy] = useState(false);
 
   const plan = plans.find((p) => p.id === planId) ?? null;
+  const [killing, setKilling] = useState(false);
+  // Owner deletes for everyone; a member only leaves. The server decides the
+  // same way, so a stale local flag can't turn a leave into a deletion.
+  const mine = !!plan && !!me && plan.owner_id === me.id;
+
+  /** Remove this plan — leave or delete, whichever the server rules apply. */
+  const killPlan = async () => {
+    if (!plan) return;
+    setBusy(true);
+    const msg = await removePlan(plan.id);
+    setBusy(false);
+    setKilling(false);
+    if (msg) store.set((st) => ({ msgs: [...st.msgs, { who: 'c' as const, text: msg }] }));
+    close();
+  };
   const close = () => store.set({ partyOpen: false });
 
   // A chat that only updates when you poke it isn't a chat. Poll while the
@@ -268,6 +283,48 @@ export default function PartySheet() {
               >
                 ALL PLANS
               </div>
+            </div>
+
+            {/* Leaving. Only ever a second tap, and the copy changes with who
+                you are: leaving is yours alone, deleting takes the plan away
+                from everyone who was counting on it. Same button in the same
+                place would make those look like the same act. */}
+            <div style={{ marginTop: 10, textAlign: 'center' }}>
+              {killing ? (
+                <div>
+                  <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', lineHeight: 1.5 }}>
+                    {mine
+                      ? `Delete "${plan.title}" for everyone? The group is told, and it can’t be undone.`
+                      : `Leave "${plan.title}"? You’ll stop getting updates. Anyone can add you back.`}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+                    <div
+                      {...pressable(() => { setKilling(false); })}
+                      className="glass press"
+                      style={{ cursor: 'pointer', flex: 1, borderRadius: 999, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.06em' }}
+                    >
+                      KEEP IT
+                    </div>
+                    <div
+                      {...pressable(() => { if (!busy) void killPlan(); })}
+                      style={{
+                        cursor: 'pointer', flex: 1, borderRadius: 999, padding: '11px 14px',
+                        border: '1.5px solid rgba(190,40,30,.35)', color: '#a3271c',
+                        fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
+                      }}
+                    >
+                      {busy ? '…' : mine ? 'DELETE' : 'LEAVE'}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  {...pressable(() => setKilling(true))}
+                  style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: 'var(--color-neutral-500)', padding: '6px 0' }}
+                >
+                  {mine ? 'DELETE THIS PLAN' : 'LEAVE THIS PLAN'}
+                </div>
+              )}
             </div>
           </div>
 
