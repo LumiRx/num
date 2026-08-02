@@ -642,6 +642,32 @@ async function apiDestinations(env){
   return api({ ok:true, count: dests.length, destinations: dests });
 }
 
+/* Length-then-content comparison in constant time. A plain `===` on a secret
+   leaks its length through timing, and an error that distinguishes "wrong
+   secret" from "no secret" tells an attacker which half they already have —
+   so the caller gets one unauthorised response either way. */
+function relayEq(a, b){
+  const x = String(a || ''), y = String(b || '');
+  if (x.length !== y.length || !x.length) return false;
+  let d = 0;
+  for (let i = 0; i < x.length; i++) d |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return d === 0;
+}
+
+/** Unprompted message to a LINE user. See /internal/push for why reply won't do. */
+async function linePush(env, to, text){
+  const token = String(env.LINE_CHANNEL_ACCESS_TOKEN || '').replace(/\s+/g, '');
+  if (!token) return { ok:false, status:0, error:'no LINE token on this worker' };
+  const r = await fetch('https://api.line.me/v2/bot/message/push', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + token },
+    body: JSON.stringify({ to, messages:[{ type:'text', text: String(text || '').slice(0, 4900) }] }),
+  });
+  const body = await r.text();
+  return { ok:r.ok, status:r.status, body: body.slice(0,300),
+           sid: r.headers.get('x-line-request-id') || null };
+}
+
 export default {
   // nightly retention sweep (03:00 Phuket): brains of guests inactive 12+ months are erased
   async scheduled(event, env, ctx){
