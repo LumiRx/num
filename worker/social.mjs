@@ -811,6 +811,17 @@ async function connect(env, req) {
   const other = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(toId).first();
   if (!other) return json({ error: 'That code doesn’t match anyone on Num.' }, 404);
 
+  // A block has to hold on EVERY path in, not just the one we thought of.
+  // invite() checked this; connect() didn't — so anyone you removed could
+  // walk back in by scanning your QR, which is the easiest path of all. A
+  // block that one route ignores is not a block.
+  //
+  // Deliberately vague: naming the block tells the blocked person they were
+  // blocked, which is precisely what the silence was protecting against.
+  if (await isBlocked(env, meId, toId)) {
+    return json({ error: 'That code isn’t working.' }, 403);
+  }
+
   // Either direction counts — friendship is not directional, and creating a
   // second row for the mirror image would double every friend list.
   const existing = await env.DB.prepare(

@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.123 — 2026-08-02 22:38 UTC
+
+leaving + memberships + errand alerts
+
+- commit `77bdfc9`
+
 ## 0.8.122 — 2026-08-02 22:21 UTC
 
 user-to-user bridges
