@@ -1,11 +1,12 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.124",
+  "version": "0.8.125",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "node --test worker/*.test.mjs src/lib/*.test.mjs",
     "preview": "vite preview",
     "ai": "node server/index.mjs",
     "design:check": "node scripts/design-check.mjs status",

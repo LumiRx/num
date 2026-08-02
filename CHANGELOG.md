@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.125 — 2026-08-02 22:51 UTC
+
+leaving UI + plan card
+
+- commit `db8cde8`
+
 ## 0.8.124 — 2026-08-02 22:43 UTC
 
 block holds on every path

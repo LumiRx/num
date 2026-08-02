@@ -18,9 +18,16 @@ const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
 
 export default function PeopleCard() {
-  // A pending row has no member id yet — there is nothing to remove, and
-  // offering the control would fail silently at the tap.
-  const friends = useApp((s) => s.friends.filter((f) => f.state === 'active' && !!f.id));
+  // Select the RAW array and filter below.
+  //
+  // useApp is useSyncExternalStore: the selector IS getSnapshot, and React
+  // compares snapshots by reference. A selector ending in .filter() returns a
+  // fresh array on every read, so React sees a change every time, re-renders,
+  // reads again — "Maximum update depth exceeded", and a blank screen. It
+  // crashed this whole tab before a browser pass caught it; the build and the
+  // types were both perfectly happy.
+  const all = useApp((s) => s.friends);
+  const friends = all.filter((f) => f.state === 'active' && !!f.id);
   const [openId, setOpenId] = useState<string | null>(null);
   const [block, setBlock] = useState(false);
   const [busy, setBusy] = useState(false);

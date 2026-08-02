@@ -75,6 +75,10 @@ switch (cmd) {
     // The build stamps the version in, so a running app can say what it is.
     process.env.VITE_NUM_VERSION = version;
     process.env.VITE_NUM_SHA = gitSha();
+    // Tests BEFORE the build. A preview URL is something a person will open
+    // and trust; a broken store selector or an unguarded credit site must not
+    // be able to reach one.
+    sh('npm test');
     sh('npm run build');
     changelog(version, arg);
     console.log(`\n── uploading ${version} as a version (NOT live yet)\n`);
