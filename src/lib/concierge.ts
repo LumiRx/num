@@ -72,17 +72,44 @@ function payBill(how: string) {
   }));
 }
 
-export function buyPack(n: number, price: string) {
-  store.set((s) => ({
-    stars: s.stars + n,
-    bought: 'Added ★' + n.toLocaleString() + ' — ' + price + ', done.',
-    txns: [
-      { id: 'tx' + Date.now(), t: 'Top-up ★' + n.toLocaleString(), meta: price + ' · just now', amt: '+★' + n.toLocaleString(), dir: 1 as const },
-      ...s.txns,
-    ],
-  }));
+/* REAL pay rail, replacing a button that credited ★5,000 for free. A tap now
+ * asks the server to mint a Stripe Checkout session for the exact amount —
+ * Apple Pay appears by itself on Apple devices — and the balance only ever
+ * moves when Stripe's SIGNED webhook says the money did. Two honest refusals
+ * live on the server: no Stripe key yet, and the §8 bright line (Stars aren't
+ * sellable until that licensing call is made — STARS_SALE_OK). Either way the
+ * user is told the truth on the sheet instead of being shown a fake receipt.
+ */
+export async function buyPack(n: number, cents: number, _label?: string) {
+  void _label;
+  const me = store.get().me;
+  store.set({ bought: 'Opening secure checkout…' });
   clearTimeout(boughtTimer);
-  boughtTimer = setTimeout(() => store.set({ bought: '' }), 3200);
+  try {
+    const r = await fetch('/api/pay/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        me: me?.id,
+        amount_cents: cents,
+        currency: 'usd',
+        description: `Num — ★${n.toLocaleString()} pack`,
+        ref: `stars:${n}`,
+      }),
+    });
+    const d = (await r.json()) as { ok?: boolean; url?: string; error?: string };
+    if (d.ok && d.url) {
+      store.set({ bought: '' });
+      // Stripe's hosted page opens in this same window and returns to the app
+      // via success_url — the PWA never closes.
+      window.location.assign(d.url);
+      return;
+    }
+    store.set({ bought: d.error ?? 'Payments aren’t switched on yet — Stars are earned for now.' });
+  } catch {
+    store.set({ bought: 'Couldn’t reach the pay rail — try again in a moment.' });
+  }
+  boughtTimer = setTimeout(() => store.set({ bought: '' }), 6000);
 }
 
 /* REAL voice, replacing the scripted demo that used to live here (fake timers,

@@ -179,16 +179,75 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
   return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency };
 }
 
+// ── Stripe webhook — "paid" is something Stripe signs, not a button press ──
+//
+// §8 of the CTO handoff: every webhook verifies a signature. Stripe signs
+// `t.payload` with the endpoint secret (HMAC-SHA256, hex, in the
+// Stripe-Signature header). No secret configured means no webhook — we would
+// rather not know than believe a forgery.
+async function verifyStripeSig(env, payload, header) {
+  if (!env.STRIPE_WEBHOOK_SECRET || !header) return false;
+  const parts = header.split(',').map((p) => p.split('='));
+  const t = parts.find(([k]) => k === 't')?.[1];
+  const sigs = parts.filter(([k]) => k === 'v1').map(([, v]) => v);
+  if (!t || !sigs.length) return false;
+  if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false; // replay window
+  const enc = (s) => new TextEncoder().encode(s);
+  const key = await crypto.subtle.importKey('raw', enc(env.STRIPE_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, enc(`${t}.${payload}`));
+  const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return sigs.includes(hex);
+}
+
 // ── routes ────────────────────────────────────────────────────────────────
 
 export async function handlePay(request, env, path) {
   const post = request.method === 'POST';
+
+  if (path === '/webhook' && post) {
+    const payload = await request.text();
+    const ok = await verifyStripeSig(env, payload, request.headers.get('Stripe-Signature'));
+    if (!ok) {
+      console.warn('[pay] webhook rejected — bad or missing signature');
+      return json({ error: 'bad signature' }, 400);
+    }
+    let event = {};
+    try { event = JSON.parse(payload); } catch { return json({ error: 'bad payload' }, 400); }
+    if (event.type === 'checkout.session.completed') {
+      const s = event.data?.object ?? {};
+      const id = s.client_reference_id || s.metadata?.num_payment_id;
+      if (id) {
+        await ensure(env);
+        await env.DB?.prepare(
+          "UPDATE num_payments SET state='paid', paid_at=datetime('now') WHERE id=?1",
+        ).bind(id).run().catch(() => {});
+        const memberId = s.metadata?.num_member;
+        if (memberId) {
+          const { notify } = await import('./push.mjs');
+          await notify(env, {
+            memberId,
+            kind: 'pay',
+            title: 'Payment received',
+            body: 'Stripe confirmed it — receipt is on your wallet.',
+            url: '/?app',
+            tag: `pay:${id}`,
+          }).catch(() => {});
+        }
+      }
+    }
+    return json({ received: true });
+  }
 
   if (path === '/status' || path === '/' || path === '') {
     const mode = payMode(env);
     return json({
       mode,
       can_take_payment: mode !== 'none',
+      // Stars-for-cash is a licensing decision, not a feature flag — §8:
+      // "Never sell Stars." It stays refused until Duke sets STARS_SALE_OK=1
+      // on the record. Bills, tabs, bookings and bounties are unaffected.
+      stars_sale: env.STARS_SALE_OK === '1',
+      apple_pay: mode === 'stripe' ? 'shown automatically in Stripe Checkout on Apple devices' : 'arrives with the Stripe key',
       configured_links: Object.keys(links(env)),
       note:
         mode === 'stripe'
@@ -203,6 +262,15 @@ export async function handlePay(request, env, path) {
 
   if (path === '/request' && post) {
     const b = await readBody(request);
+    // The bright line, enforced where it can't be forgotten: a Stars purchase
+    // is refused until the licensing call is made and STARS_SALE_OK is set.
+    if (String(b.ref ?? '').startsWith('stars:') && env.STARS_SALE_OK !== '1') {
+      return json({
+        ok: false,
+        mode: payMode(env),
+        error: 'Stars can’t be bought yet — they’re earned for now. Bills and bookings can be paid directly the moment the pay rail is on.',
+      }, 403);
+    }
     try {
       const out = await requestPayment(env, {
         memberId: clip(b.me, 40),

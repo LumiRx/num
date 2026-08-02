@@ -1,6 +1,6 @@
 // Stars wallet sheet — balance, instant top-up packs, payment methods,
 // and the activity/receipts ledger.
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
@@ -8,10 +8,10 @@ import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack } from '../../lib/concierge';
 import { TabStarter } from './TabSheet';
 
-const PACKS: Array<{ stars: string; price: string; n: number; via: string }> = [
-  { stars: '★500', price: '$150 · Apple Pay', n: 500, via: 'Apple Pay' },
-  { stars: '★1,000', price: '$295 · Apple Pay', n: 1000, via: 'Apple Pay' },
-  { stars: '★5,000', price: '$1,425 · card', n: 5000, via: 'Visa ··4242' },
+const PACKS: Array<{ stars: string; price: string; n: number; cents: number }> = [
+  { stars: '★500', price: '$150', n: 500, cents: 15000 },
+  { stars: '★1,000', price: '$295', n: 1000, cents: 29500 },
+  { stars: '★5,000', price: '$1,425', n: 5000, cents: 142500 },
 ];
 
 export default function WalletSheet() {
@@ -21,6 +21,16 @@ export default function WalletSheet() {
   const txns = useApp((s) => s.txns);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
+
+  // What the pay rail can actually do right now — asked, not asserted.
+  const [pay, setPay] = useState<{ mode: string; stars_sale?: boolean } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    void fetch('/api/pay/status')
+      .then((r) => r.json())
+      .then((d: { mode: string; stars_sale?: boolean }) => setPay(d))
+      .catch(() => setPay(null));
+  }, [open]);
 
   const close = () => store.set({ walletOpen: false });
   return (
@@ -52,7 +62,7 @@ export default function WalletSheet() {
           {PACKS.map((p) => (
             <div
               key={p.stars}
-              {...pressable(() => buyPack(p.n, p.via))}
+              {...pressable(() => { void buyPack(p.n, p.cents); })}
               className="glass lift press"
               style={{ flex: 1, cursor: 'pointer', borderRadius: 'var(--r-md)', padding: '10px 12px' }}
             >
@@ -79,10 +89,17 @@ export default function WalletSheet() {
           </div>
         </div>
       </div>
+      {/* Payment methods: what the server says is wired, never a costume. */}
       <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--ink-08)', display: 'flex', gap: 14, fontSize: 10.5, color: 'var(--color-neutral-700)' }}>
-        <span style={{ fontWeight: 600 }}> Apple Pay · on</span>
-        <span>Visa ··4242</span>
-        <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>Crypto — we text a link</span>
+        {pay?.mode === 'stripe' ? (
+          <>
+            <span style={{ fontWeight: 600 }}> Apple Pay · ready</span>
+            <span>Cards via Stripe</span>
+            {!pay.stars_sale && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>Stars are earned for now</span>}
+          </>
+        ) : (
+          <span>Pay rail connects soon — Stars are earned, and bills settle in person until then.</span>
+        )}
       </div>
       <div className="no-scrollbar" style={{ padding: '12px 16px 18px', maxHeight: 150, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)', marginBottom: 6 }}>

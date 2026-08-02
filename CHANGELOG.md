@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.91 — 2026-08-02 02:50 UTC
+
+connections real: pickers, wallet, email addr, sms line
+
+- commit `27def06`
+
 ## 0.8.90 — 2026-08-02 01:40 UTC
 
 agent invites + real voice
