@@ -6,7 +6,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
-import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, startInvite, syncPlan, votePlan } from '../../lib/social';
+import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -180,6 +180,30 @@ export default function PartySheet() {
               {plan.dest ? ` · ${plan.dest}` : ''} · {items.filter((i) => i.status === 'confirmed').length} booked
               {plan.join_code ? ` · code ${plan.join_code}` : ''}
             </div>
+            {/* WHEN — the group picks a date (and time), and it lands on every
+                member's calendar via the plan mirror. Native pickers: the OS
+                date wheel beats anything we could build. */}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>
+                WHEN{plan.starts_on ? ` · ON EVERYONE'S CALENDAR` : ' · PICK A DATE AND IT LANDS ON EVERYONE’S CALENDAR'}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
+                <input
+                  type="date"
+                  value={plan.starts_on ?? ''}
+                  onChange={(e) => { if (e.target.value) void schedulePlan(e.target.value, plan.starts_time ?? undefined); }}
+                  style={{ ...field, flex: 1.4, height: 40, fontSize: 14 }}
+                />
+                <input
+                  type="time"
+                  value={plan.starts_time ?? ''}
+                  onChange={(e) => { if (plan.starts_on && e.target.value) void schedulePlan(plan.starts_on, e.target.value); }}
+                  disabled={!plan.starts_on}
+                  style={{ ...field, flex: 1, height: 40, fontSize: 14, opacity: plan.starts_on ? 1 : 0.5 }}
+                />
+              </div>
+            </div>
+
             {/* Everyone answers the plan itself — in or out — before anything
                 is booked. Votes ride the same event feed as everything else,
                 so the group chat shows "Bob is in ✓" the moment it happens. */}

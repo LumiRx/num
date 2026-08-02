@@ -261,7 +261,8 @@ function PartyStrip() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{p.title}</div>
             <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
-              {p.members ?? 1} in · {p.items ?? 0} {p.items === 1 ? 'item' : 'items'} · tap to open the group chat
+              {p.starts_on ? `${p.starts_on}${p.starts_time ? ` · ${p.starts_time}` : ''} · ` : ''}
+              {p.members ?? 1} in · {p.items ?? 0} {p.items === 1 ? 'item' : 'items'} · tap for details & chat
             </div>
           </div>
           <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />

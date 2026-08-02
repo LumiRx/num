@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS num_links (id TEXT PRIMARY KEY, a_id TEXT NOT NULL, b
 CREATE INDEX IF NOT EXISTS idx_num_links_a ON num_links(a_id, state);
 CREATE INDEX IF NOT EXISTS idx_num_links_b ON num_links(b_id, state);
 CREATE INDEX IF NOT EXISTS idx_num_links_token ON num_links(token);
-CREATE TABLE IF NOT EXISTS num_plans (id TEXT PRIMARY KEY, title TEXT NOT NULL, dest TEXT, owner_id TEXT NOT NULL, starts_on TEXT, state TEXT NOT NULL DEFAULT 'planning', join_code TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS num_plans (id TEXT PRIMARY KEY, title TEXT NOT NULL, dest TEXT, owner_id TEXT NOT NULL, starts_on TEXT, starts_time TEXT, state TEXT NOT NULL DEFAULT 'planning', join_code TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS num_plan_members (plan_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT, role TEXT NOT NULL DEFAULT 'member', joined_at TEXT NOT NULL DEFAULT (datetime('now')), vote TEXT, PRIMARY KEY (plan_id, member_id));
 CREATE TABLE IF NOT EXISTS num_plan_items (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'idea', title TEXT NOT NULL, place TEXT, address TEXT, day TEXT, time TEXT, status TEXT NOT NULL DEFAULT 'idea', cost TEXT, note TEXT, photo TEXT, by_id TEXT, by_name TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_num_plan_items_plan ON num_plan_items(plan_id);
@@ -1339,9 +1339,17 @@ async function planWrite(env, req) {
     const planId = clip(b.id, 40);
     if (!(await memberOf(env, planId, meId))) return json({ error: 'not your plan' }, 403);
     await env.DB.prepare(
-      "UPDATE num_plans SET title=COALESCE(?2,title), dest=COALESCE(?3,dest), starts_on=COALESCE(?4,starts_on), state=COALESCE(?5,state), updated_at=datetime('now') WHERE id=?1",
-    ).bind(planId, clip(b.title, 120), clip(b.dest, 80), clip(b.starts_on, 20), clip(b.state, 20)).run();
-    return json({ plan: await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first() });
+      "UPDATE num_plans SET title=COALESCE(?2,title), dest=COALESCE(?3,dest), starts_on=COALESCE(?4,starts_on), starts_time=COALESCE(?6,starts_time), state=COALESCE(?5,state), updated_at=datetime('now') WHERE id=?1",
+    ).bind(planId, clip(b.title, 120), clip(b.dest, 80), clip(b.starts_on, 20), clip(b.state, 20), clip(b.starts_time, 8)).run();
+    const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first();
+    // Setting WHEN is the moment a plan becomes real — it goes on the feed and
+    // buzzes every member (event() pushes to everyone but the author), and the
+    // clients mirror it onto each calendar on their next sync.
+    if (b.starts_on || b.starts_time) {
+      await event(env, planId, { id: meId, name: self.name }, 'scheduled',
+        `${self.name || 'Someone'} set the plan for ${plan.starts_on ?? 'a date TBC'}${plan.starts_time ? ` at ${plan.starts_time}` : ''} — it's on everyone's calendar.`);
+    }
+    return json({ plan });
   }
 
   const id = uid('pln');

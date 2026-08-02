@@ -255,6 +255,7 @@ export interface PartyPlan {
   dest?: string | null;
   owner_id: string;
   starts_on?: string | null;
+  starts_time?: string | null;
   state: 'planning' | 'booked' | 'done' | 'archived';
   join_code?: string | null;
   members?: number;

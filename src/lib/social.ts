@@ -493,6 +493,27 @@ export async function openPlan(id: string): Promise<void> {
   await syncPlan();
 }
 
+/**
+ * Set WHEN the plan happens. The server broadcasts a 'scheduled' event (feed +
+ * push to every other member) and each client mirrors the plan onto its own
+ * calendar on the next sync — the Frienzy moment: pick a date, and it's on
+ * everyone's calendar.
+ */
+export async function schedulePlan(date: string, time?: string): Promise<void> {
+  const { me, planId } = store.get();
+  if (!me || !planId || !date) return;
+  try {
+    const out = await api<{ plan: PartyPlan }>('/plan', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, id: planId, starts_on: date, starts_time: time ?? null }),
+    });
+    store.set((s) => ({ plans: s.plans.map((p) => (p.id === out.plan.id ? out.plan : p)) }));
+    await syncPlan();
+  } catch (err) {
+    console.warn('[social] schedule failed', err);
+  }
+}
+
 /** "Are you in on this plan?" — the whole-plan answer, changeable until booked. */
 export async function votePlan(vote: 'in' | 'out'): Promise<void> {
   const { me, planId } = store.get();
@@ -594,6 +615,11 @@ export async function syncPlan(): Promise<void> {
     }>(`/plan?id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}&since=${planCursor}&self=1`);
 
     store.set((s) => ({
+      // The fresh plan carries starts_on/starts_time — the header and the
+      // WHEN pickers read it from the plans list, so keep that list current.
+      plans: s.plans.some((p) => p.id === out.plan.id)
+        ? s.plans.map((p) => (p.id === out.plan.id ? out.plan : p))
+        : [out.plan, ...s.plans],
       planItems: out.items,
       planMembers: out.members,
       planCursor: out.cursor,
@@ -611,6 +637,10 @@ export async function syncPlan(): Promise<void> {
     out.items
       .filter((i) => i.status === 'confirmed' && i.day)
       .forEach((i) => mirrorToBookings(i));
+
+    // The plan ITSELF, once dated, is a calendar entry for every member — the
+    // whole point of the group choosing a date. Same mirror pattern as items.
+    if (out.plan?.starts_on) mirrorPlanDate(out.plan);
 
     // Narration is for what happened while you weren't looking — OTHER
     // people's doing. self=1 means the response now includes your own events
@@ -653,6 +683,32 @@ function mirrorToBookings(item: PlanItem): void {
     ...(item.photo ? { photo: item.photo } : {}),
   };
   void y;
+  store.set((s) => ({
+    bookings: s.bookings.some((b) => b.id === id)
+      ? s.bookings.map((b) => (b.id === id ? { ...b, ...booking } : b))
+      : [...s.bookings, booking],
+  }));
+}
+
+/** The dated plan as a calendar entry on this member's shelf. */
+function mirrorPlanDate(plan: PartyPlan): void {
+  const [y, m, d] = (plan.starts_on ?? '').split('-').map(Number);
+  if (!m || !d) return;
+  void y;
+  const id = 'pld_' + plan.id.slice(-8);
+  const booking: Booking = {
+    id,
+    mo: m,
+    day: d,
+    time: plan.starts_time ?? '19:00',
+    dur: 120,
+    place: plan.dest ?? '',
+    title: plan.title,
+    grp: (plan.dest ?? 'NUM').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'NUM',
+    status: 'confirmed',
+    note: 'Group plan — everyone on the plan sees this.',
+    cost: '',
+  };
   store.set((s) => ({
     bookings: s.bookings.some((b) => b.id === id)
       ? s.bookings.map((b) => (b.id === id ? { ...b, ...booking } : b))
