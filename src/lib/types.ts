@@ -355,6 +355,9 @@ export interface AppState {
   handoff: ServiceHandoff | null;
   /** Outside data sources the user has switched on. */
   connections: Connections;
+  /** What each live connection actually points at — the forwarding address,
+   *  the SMS number, the wallet — shown right on the row. */
+  connDetail: Partial<Record<keyof Connections, string>>;
 
   /** Events this member hosts, and the one open in the dashboard. */
   events: NumEvent[];

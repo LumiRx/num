@@ -109,6 +109,7 @@ function baseState() {
     reactions: {},
     handoff: null,
     connections: { contacts: false, photos: false, calendar: false, crypto: false, email: false, texts: false },
+    connDetail: {},
     events: [],
     eventId: null,
     eventOpen: false,

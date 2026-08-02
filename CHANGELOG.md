@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.90 — 2026-08-02 01:40 UTC
+
+agent invites + real voice
+
+- commit `ed0e559`
+
+## 0.8.89 — 2026-08-02 01:14 UTC
+
+plan date/time -> calendars (Frienzy flow)
+
+- commit `9743b5d`
+
 ## 0.8.87 — 2026-08-01 22:44 UTC
 
 5arz verify frontend (dark until GOOGLE_CLIENT_ID)

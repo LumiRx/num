@@ -29,6 +29,7 @@ import { handleErrands } from './errands.mjs';
 import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
+import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
@@ -330,6 +331,9 @@ export default {
         // check can never disagree, and the whole 5arz flow stays dark until
         // Viv/Duke set the secret (Gap 1 in Viv's 08-01 status).
         google_client_id: env.GOOGLE_CLIENT_ID ?? null,
+        // The number members text to reach Num. A phone number is public by
+        // nature; serving it here keeps the app and the worker agreeing.
+        sms_number: env.TWILIO_FROM ?? null,
       });
     }
 
@@ -384,6 +388,14 @@ export default {
 
     if (url.pathname.startsWith('/api/voice')) {
       const res = await handleVoice(request, env, url.pathname.slice('/api/voice'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Twilio's inbound-SMS webhook and the member's inbox view of it.
+    if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+    if (url.pathname === '/api/sms/inbox') {
+      const res = await handleInboxRead(request, env);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
@@ -636,5 +648,11 @@ export default {
         degraded: true,
       });
     }
+  },
+
+  // Email Routing hands forwarded mail here once the itsnum.com catch-all
+  // points at this worker. num+<member id>@itsnum.com files it to the member.
+  async email(message, env) {
+    await handleEmailIn(message, env);
   },
 };

@@ -10,6 +10,7 @@ import { tripCheck } from '../../lib/prefs';
 import { askNum } from '../../lib/concierge';
 import { listEvents } from '../../lib/events';
 import { refreshRequests, respond } from '../../lib/requests';
+import { toggleConnection, contactsSupported, sendAndShare } from '../../lib/connect';
 import { directionsUrl, nextWithPlace, preferredMaps, trafficUrl } from '../../lib/maps';
 import { Scene } from '../../lib/scenes';
 import {
@@ -364,10 +365,14 @@ const CONNECTIONS: Array<{ key: keyof Connections; label: string; why: string; i
 /**
  * Connections. Each one is off, named, and says what it buys — a permission
  * screen that explains itself is the difference between a grant and a decline.
- * Toggling records intent; the actual grant happens at first use, per platform.
+ * Flipping a switch performs the REAL connection right then (src/lib/connect):
+ * pickers open as sheets over the app, addresses are minted, numbers fetched —
+ * the user never leaves. iOS has no contacts API at all, so there the contacts
+ * row becomes Send & Share, which is the honest version of the same promise.
  */
 function ConnectionsCard() {
   const conn = useApp((s) => s.connections);
+  const detail = useApp((s) => s.connDetail);
   const on = Object.values(conn).filter(Boolean).length;
   return (
     <Collapsible
@@ -376,11 +381,30 @@ function ConnectionsCard() {
     >
       <div>
         {CONNECTIONS.map((c) => {
+          // No picker on this platform → the row keeps its promise another way.
+          if (c.key === 'contacts' && !contactsSupported()) {
+            return (
+              <div
+                key="share"
+                {...pressable(() => { void sendAndShare(); })}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}
+              >
+                <span style={{ width: 26, height: 26, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--grad-accent)', color: '#fff' }}>
+                  {c.icon}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>Send &amp; Share</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>invite anyone from the share sheet — you stay right here</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-60)' }}>OPEN</span>
+              </div>
+            );
+          }
           const on = conn[c.key];
           return (
             <div
               key={c.key}
-              {...pressable(() => store.set((s) => ({ connections: { ...s.connections, [c.key]: !s.connections[c.key] } })), 'switch')}
+              {...pressable(() => toggleConnection(c.key), 'switch')}
               aria-checked={on}
               style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}
             >
@@ -389,7 +413,9 @@ function ConnectionsCard() {
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>{c.why}</div>
+                <div style={{ fontSize: 10.5, color: on && detail[c.key] ? 'var(--ink-80, var(--ink-60))' : 'var(--ink-60)', overflowWrap: 'anywhere' }}>
+                  {(on && detail[c.key]) || c.why}
+                </div>
               </div>
               <span
                 style={{

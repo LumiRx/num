@@ -691,7 +691,7 @@ function mirrorToBookings(item: PlanItem): void {
 }
 
 /** The dated plan as a calendar entry on this member's shelf. */
-function mirrorPlanDate(plan: PartyPlan): void {
+export function mirrorPlanDate(plan: PartyPlan): void {
   const [y, m, d] = (plan.starts_on ?? '').split('-').map(Number);
   if (!m || !d) return;
   void y;
