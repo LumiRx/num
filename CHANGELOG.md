@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.102 — 2026-08-02 06:30 UTC
+
+wallet separation enforced
+
+- commit `fafca96`
+
+## 0.8.101 — 2026-08-02 06:30 UTC
+
+wallet separation enforced
+
+- commit `fafca96`
+
 ## 0.8.100 — 2026-08-02 06:14 UTC
 
 earned stars cash out to 5arz

@@ -91,6 +91,15 @@ test('the only 5arz move is outbound, and it debits', () => {
   assert.doesNotMatch(cashout, /INSERT INTO num_star_moves[^\n]*'5arz'[^\n]*\+/);
 });
 
+test('every cash-out this Worker files is stamped origin=num', () => {
+  const cashout = code(readFileSync(join(HERE, 'cashout.mjs'), 'utf8'));
+  // A constant, not a request field — so a caller can never file a request
+  // claiming to be a 5arz-native payout and ride the Num queue's open switch.
+  assert.match(cashout, /const ORIGIN = 'num'/);
+  assert.match(cashout, /INSERT INTO num_cashouts[^;]*origin[^;]*ORIGIN/s);
+  assert.doesNotMatch(cashout, /origin:\s*(b\.|body\.|clip\(b\.)/);
+});
+
 test('purchased Stars are never cashable', () => {
   assert.equal(STAR_POLICY.earned_cashable, true);
   assert.equal(STAR_POLICY.purchased_cashable, false);

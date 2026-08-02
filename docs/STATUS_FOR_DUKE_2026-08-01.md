@@ -92,3 +92,30 @@ between Num members; none mints and none reaches outside. Recorded in the
 allowlist with that reasoning.
 
 Cash-out itself remains gated on `CASHOUT_OK` pending your Track A.
+
+## Addendum 5 — Num payouts open, partner payouts stay paused (0.8.103)
+
+Dre's decision: **Num-originated cash-outs are LIVE. 5arz-native payouts remain
+paused.** Opening one did not open the other, and the record now makes that
+distinguishable rather than a matter of trust.
+
+Every request `num-app` files carries `origin = 'num'` — a module constant, not
+a request field, so no caller can claim to be a partner-native payout and ride
+the Num queue's open switch. `num_cashouts` gained an `origin` column (applied
+live) and an `(origin, state)` index so the desk can filter cheaply.
+
+**What the payout desk must do:** process only `origin = 'num'`. Partner-native
+payouts stay queued until Track A closes. If the desk currently drains the
+whole table, that is the one change needed before the next run.
+
+`/api/cashout/status` now reports `scope: "num-originated cash-outs only"` so
+this is legible from outside without reading code.
+
+Guarded by `worker/cashout.test.mjs` (7 tests): origin is a constant, never
+taken from a body. Note the test also caught me — an explanatory comment naming
+a partner ledger table failed the "no partner ledger in num-app" check, which is
+the check doing its job.
+
+**Still true and still yours:** the Num ledger is clean; the drift is on the
+partner side, which is where these settle. First payouts are small. Worth a
+manual eyeball on the first few settlements.

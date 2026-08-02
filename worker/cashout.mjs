@@ -84,10 +84,20 @@ CREATE TABLE IF NOT EXISTS num_cashouts (
   dest TEXT NOT NULL, dest_ref TEXT,
   state TEXT NOT NULL DEFAULT 'requested',
   requested_at TEXT NOT NULL DEFAULT (datetime('now')),
-  settled_at TEXT, note TEXT
+  settled_at TEXT, note TEXT,
+  -- Which economy the Stars came from. ALWAYS 'num' from this Worker, the only
+  -- thing num-app can speak for. The payout desk filters on it so that opening
+  -- Num payouts does NOT open 5arz-native ones — those sit in the partner
+  -- ledger, carry the Track-A drift, and stay paused until it clears.
+  origin TEXT NOT NULL DEFAULT 'num'
 );
 CREATE INDEX IF NOT EXISTS idx_num_cashouts_member ON num_cashouts(member_id, requested_at);
+CREATE INDEX IF NOT EXISTS idx_num_cashouts_origin ON num_cashouts(origin, state);
 `;
+
+/** This Worker can only ever speak for Num. Stated as a constant so the insert
+ *  can't drift into taking it from a request body. */
+const ORIGIN = 'num';
 let ready = false;
 async function ensure(env) {
   if (ready || !env.DB) return;
@@ -139,6 +149,11 @@ export async function handleCashout(request, env, path) {
     return json({
       open,
       destination: '5arz',
+      // The scope of what `open` actually opens. Num payouts running does NOT
+      // mean 5arz-native payouts are running — those are a separate queue on
+      // the payout desk, still paused pending Track A.
+      scope: 'num-originated cash-outs only',
+      origin: ORIGIN,
       rule: 'Earned Stars can be cashed out. Purchased Stars spend inside Num and are not cashable.',
       earned_kinds: EARNED_KINDS,
       blocked_reason: open
@@ -189,8 +204,8 @@ export async function handleCashout(request, env, path) {
     const id = `co_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
     try {
       await env.DB.prepare(
-        'INSERT INTO num_cashouts (id, member_id, stars, dest, dest_ref) VALUES (?1,?2,?3,?4,?5)',
-      ).bind(id, me, stars, '5arz', destRef).run();
+        'INSERT INTO num_cashouts (id, member_id, stars, dest, dest_ref, origin) VALUES (?1,?2,?3,?4,?5,?6)',
+      ).bind(id, me, stars, '5arz', destRef, ORIGIN).run();
       await env.DB.prepare(
         "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'cashout',?4,'5arz')",
       ).bind(`${id}:out`, me, -stars, 'Cash-out to 5arz').run().catch(() => {});
