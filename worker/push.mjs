@@ -53,7 +53,13 @@ async function ensure(env) {
   ready = true;
 }
 
-export const pushReady = (env) => !!(env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
+// ALL THREE, or push is a lie. VAPID_PUBLIC_KEY was missing from this check
+// while vapidHeader() interpolates it into every request — so with it unset
+// the header read `k=undefined`, every push service rejected the send, wake()
+// swallowed the failure, notify() still reported success, and /api/version
+// cheerfully said `push: true`. Silent, total, and invisible from every
+// surface we had. The predicate now covers what the code actually uses.
+export const pushReady = (env) => !!(env.VAPID_PRIVATE_KEY && env.VAPID_PUBLIC_KEY && env.VAPID_SUBJECT);
 
 /**
  * The VAPID JWT that proves to a push service we are who we say we are.

@@ -265,6 +265,40 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
     }
+
+    // ── One limiter, in front of everything that WRITES ──────────────────
+    //
+    // Rate limiting used to guard exactly two endpoints. Everything else was
+    // open at full speed, including: unauthenticated Workers-AI transcription
+    // (8 MB an upload, billed to us), real courier dispatch, Stripe session
+    // creation, Star movements, and — worst — /api/admin/session, which had no
+    // lockout at all and could be brute-forced offline-fast.
+    //
+    // Applying it here, once, means a new route is covered the day it is added
+    // instead of the day someone remembers. GETs stay unmetered: they are the
+    // polling surface, and throttling them breaks the app before it stops an
+    // attacker.
+    if (request.method === 'POST' && url.pathname.startsWith('/api/')) {
+      // Webhooks are machine-to-machine, signature-verified, and retried by
+      // the sender on any non-2xx — throttling them turns a retry storm into
+      // lost payments and lost texts.
+      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound';
+      if (!isWebhook) {
+        const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+        // The admin door gets its own, much smaller bucket: a password guess
+        // is not a user action and there is no legitimate reason to make more
+        // than a handful a minute.
+        const scope = url.pathname === '/api/admin/session' ? `admin:${ip}` : ip;
+        const gate = await enforceRateLimit(env, scope);
+        if (!gate.ok) {
+          return json(429, {
+            error: url.pathname === '/api/admin/session'
+              ? 'Too many attempts. Wait a minute.'
+              : 'You’re going faster than I can keep up — give me a moment.',
+          });
+        }
+      }
+    }
     // Identity, invites, friend links and shared plans. Separate surface from
     // the AI endpoint: no model call, no Anthropic key, its own rate profile.
     // The guest-facing RSVP page. Public, server-rendered, no app required —

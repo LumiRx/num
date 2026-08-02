@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.118 — 2026-08-02 21:07 UTC
+
+security fixes
+
+- commit `d1e257f`
+
+## 0.8.117 — 2026-08-02 21:06 UTC
+
+security fixes
+
+- commit `d1e257f`
+
 ## 0.8.116 — 2026-08-02 20:49 UTC
 
 signup + location honesty

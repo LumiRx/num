@@ -57,6 +57,7 @@
 // asserts it against the actual source, so breaking it fails the build rather
 // than shipping quietly.
 import { notify } from './push.mjs';
+import { checkStars, refusal } from './preflight.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -205,15 +206,17 @@ export async function handleCashout(request, env, path) {
     const destRef = clip(b.dest_ref, 120); // 5arz account / wallet handle
     if (!me || !Number.isFinite(stars) || stars <= 0) return json({ ok: false, error: 'How many Stars?' }, 400);
 
+    // Checked against the LEDGER before a single Star moves, and a refusal
+    // comes back with the amount that WOULD work — "you can take ★40 now"
+    // beats "declined" every time.
     const q = await cashable(env, me);
-    if (stars > q.cashable) {
-      return json({
-        ok: false,
-        error: q.locked_purchased > 0
-          ? `You can cash out ${q.cashable} Stars. The other ${q.locked_purchased} were bought rather than earned — those spend inside Num.`
-          : `You can cash out ${q.cashable} Stars right now.`,
-        ...q,
-      }, 409);
+    const verdict = checkStars({ amount: stars, available: q.cashable, label: 'cash out' });
+    if (!verdict.ok) {
+      const body = refusal(verdict);
+      if (q.locked_purchased > 0) {
+        body.error += ` ★${q.locked_purchased.toLocaleString()} of your balance was bought rather than earned — that spends inside Num.`;
+      }
+      return json({ ...body, ...q }, 409);
     }
 
     // Debit first, conditionally. If the balance moved under us, nothing

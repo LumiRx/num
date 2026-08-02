@@ -76,6 +76,31 @@ function checkPay(env) {
   return { ok: true };
 }
 
+/**
+ * Push, the most silent failure of all. Nothing else notices it: every send is
+ * fire-and-forget, wake() swallows rejections into a `fails` counter nobody
+ * reads, and notify() reports how many it TRIED, not how many landed. A member
+ * whose plan moves simply never hears.
+ */
+async function checkPush(env) {
+  if (!env.VAPID_PRIVATE_KEY && !env.VAPID_SUBJECT) return { ok: true, note: 'push not configured' };
+  if (!env.VAPID_PUBLIC_KEY) {
+    return { ok: false, remedy: 'VAPID_PUBLIC_KEY is missing while the other VAPID secrets are set — every push send is rejected and silently dropped. Set it, and make sure it matches the key the app subscribes with.' };
+  }
+  try {
+    const dead = await env.DB.prepare('SELECT COUNT(*) n FROM num_push_subs WHERE fails >= 5').first();
+    const all = await env.DB.prepare('SELECT COUNT(*) n FROM num_push_subs').first();
+    const bad = Number(dead?.n ?? 0);
+    const total = Number(all?.n ?? 0);
+    if (total >= 5 && bad / total > 0.5) {
+      return { ok: false, dead: bad, of: total, remedy: `${bad} of ${total} push subscriptions have failed 5+ times. That usually means the VAPID keys were rotated on the server without the app being updated — check /api/push/config against the key the client subscribes with.` };
+    }
+    return { ok: true, dead: bad, of: total };
+  } catch {
+    return { ok: true };
+  }
+}
+
 /** Inbound SMS with no token = an open mailbox anyone can post into. */
 function checkSms(env) {
   if (env.TWILIO_FROM && !env.TWILIO_TOKEN) {
@@ -113,6 +138,7 @@ export async function runHealth(env) {
     brain: checkBrain(env),
     payments: checkPay(env),
     sms: checkSms(env),
+    push: await checkPush(env),
     storage: await checkStorage(env),
   };
   const failing = Object.entries(checks).filter(([, v]) => !v.ok).map(([k]) => k);
@@ -181,6 +207,8 @@ export async function handleHealth(request, env, path) {
   // Workers cron ever stops firing, and a human can force a check after a fix
   // instead of waiting out the interval.
   if (path === '/run' && request.method === 'POST') {
+    const { isAdmin } = await import('./console.mjs');
+    if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
     const out = await healthCron(env);
     return json({ ran: true, ...out });
   }
@@ -192,7 +220,17 @@ export async function handleHealth(request, env, path) {
     return json({ history: results ?? [] });
   }
   const out = await runHealth(env);
-  // A monitor that answers 200 when the thing is down is a monitor nobody can
-  // point an uptime checker at.
-  return json(out, out.verdict === 'down' ? 503 : 200);
+  // PUBLIC gets the verdict. Nothing else.
+  //
+  // The full `checks` object names exactly which secrets are missing — "Stripe
+  // can charge but the webhook secret is missing", "TWILIO_TOKEN is not set" —
+  // which is a live reconnaissance feed telling an attacker precisely which
+  // window is open right now. An uptime checker only ever needed the status
+  // code and the word.
+  const { isAdmin } = await import('./console.mjs');
+  if (await isAdmin(env, request)) return json(out, out.verdict === 'down' ? 503 : 200);
+  return json(
+    { verdict: out.verdict, failing: out.failing.length, at: out.at },
+    out.verdict === 'down' ? 503 : 200,
+  );
 }

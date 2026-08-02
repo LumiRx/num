@@ -27,6 +27,8 @@
 // for a BIN, the first six digits, which is precisely because the full number
 // is somebody else's problem on purpose.
 
+import { checkPayment, refusal, STAR_PACKS } from './preflight.mjs';
+
 const STRIPE = 'https://api.stripe.com/v1';
 
 /**
@@ -83,7 +85,7 @@ function links(env) {
 export const payMode = (env) => (env.STRIPE_SECRET_KEY ? 'stripe' : Object.keys(links(env)).length ? 'links' : 'none');
 
 /**
- * THE PRICE LIST LIVES HERE, NOT IN THE REQUEST.
+ * THE PRICE LIST LIVES IN preflight.mjs, NOT IN THE REQUEST.
  *
  * The first version took `amount_cents` AND `ref` from the client and never
  * checked that they agreed — so `{ref:"stars:5000", amount_cents:100}` bought
@@ -94,11 +96,8 @@ export const payMode = (env) => (env.STRIPE_SECRET_KEY ? 'stripe' : Object.keys(
  * Anything a customer receives must be priced by us. The client may say WHICH
  * pack; it may never say what a pack costs.
  */
-const STAR_PACKS = Object.freeze({
-  500: 15000,
-  1000: 29500,
-  5000: 142500,
-});
+// Re-exported so callers and tests have one place to read prices from.
+export { STAR_PACKS };
 
 /**
  * Stripe's API is form-encoded, including nested objects, which trips people
@@ -344,20 +343,16 @@ export async function handlePay(request, env, path) {
   if (path === '/request' && post) {
     const b = await readBody(request);
 
-    // A Stars purchase is priced from OUR table, using only the pack id the
-    // client named. A client-supplied amount is ignored outright rather than
-    // validated, because there is no version of "the buyer set the price" that
-    // is safe.
-    const packRef = /^stars:(\d{1,7})$/.exec(String(b.ref ?? ''));
-    if (packRef) {
-      const n = Number(packRef[1]);
-      const priced = STAR_PACKS[n];
-      if (!priced) {
-        return json({ ok: false, mode: payMode(env), error: 'That isn’t one of our Star packs.' }, 400);
-      }
-      b.amount_cents = priced;
+    // EVERY payment is checked before it exists. The verdict recomputes the
+    // amount from our own price list, so a client number is a claim to be
+    // checked rather than an input to trust — and a wrong one comes back with
+    // the corrected transaction attached instead of a bare refusal.
+    const verdict = checkPayment(b);
+    if (!verdict.ok) return json({ ...refusal(verdict), mode: payMode(env) }, 400);
+    b.amount_cents = verdict.amount_cents;
+    if (/^stars:/.test(String(b.ref ?? ''))) {
       b.currency = 'usd';
-      b.description = `Num — ★${n.toLocaleString()} pack`;
+      b.description = `Num — ${verdict.note}`;
     }
 
     // Closed-loop switch. NUM Stars are credit for NUM and nothing else —
