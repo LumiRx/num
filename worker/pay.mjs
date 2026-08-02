@@ -290,6 +290,16 @@ export async function handlePay(request, env, path) {
         // money and hands over nothing — the reason /request refuses Stars
         // until STARS_SALE_OK is set AND this path exists.
         const ref = s.metadata?.num_ref ?? '';
+
+        // A membership is delivered the same way Stars are: only after Stripe
+        // has signed for the money. Never from a client request.
+        const tierMatch = /^tier:([a-z_]{2,20})$/.exec(ref);
+        if (firstTime && tierMatch && memberId) {
+          const { grantTier } = await import('./membership.mjs');
+          const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id });
+          console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId);
+        }
+
         const packMatch = /^stars:(\d{1,7})$/.exec(ref);
         if (firstTime && packMatch && memberId && env.STARS_SALE_OK === '1') {
           const n = Number(packMatch[1]);

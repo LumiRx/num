@@ -33,6 +33,8 @@ import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
 import { handleHealth, healthCron } from './health.mjs';
 import { handleBizReferral } from './bizreferral.mjs';
+import { handleAccount } from './account.mjs';
+import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
@@ -441,6 +443,20 @@ export default {
     // when the product is actually broken, not just when the Worker is down.
     if (url.pathname.startsWith('/api/health')) {
       const res = await handleHealth(request, env, url.pathname.slice('/api/health'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Leaving: unfriend, remove a plan, delete an account.
+    if (url.pathname.startsWith('/api/account')) {
+      const res = await handleAccount(request, env, url.pathname.slice('/api/account'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Tiers, entitlements, subscribe.
+    if (url.pathname.startsWith('/api/membership')) {
+      const res = await handleMembership(request, env, url.pathname.slice('/api/membership'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

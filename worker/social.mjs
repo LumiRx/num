@@ -17,6 +17,7 @@
 //      for a confirmation to start planning together.
 import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode } from '../claim/verify.mjs';
 import { notify } from './push.mjs';
+import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
 
@@ -484,6 +485,11 @@ async function invite(env, req) {
   // sender saw "invited"; the friend was never invited to anything. Tapping a
   // QR-connected friend in the invite sheet hit this every single time.
   const toId = clip(b.to_id, 40);
+  // A removal that the other party can undo is not a removal. If either side
+  // blocked the other, the invite stops here.
+  if (toId && (await isBlocked(env, from, toId))) {
+    return json({ error: 'That person can’t be added.' }, 403);
+  }
   const existing =
     (toId
       ? await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(toId).first()

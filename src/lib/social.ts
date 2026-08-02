@@ -270,6 +270,78 @@ export async function connectByCode(memberId: string): Promise<void> {
  * this binds it to the identity that actually matters — the one holding the
  * person's plans, friends and Stars.
  */
+/**
+ * Remove someone. Optionally block, which is what makes it stick — `invite()`
+ * re-friends an existing member instantly, so without a block the person you
+ * removed can add you straight back.
+ */
+export async function unfriend(id: string, block = false): Promise<string | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch('/api/account/unfriend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, id, block }),
+    }).then((r) => r.json()) as { ok?: boolean; note?: string };
+    await refreshFriends();
+    return out.note ?? null;
+  } catch {
+    return 'Couldn’t do that just now — try again.';
+  }
+}
+
+/** Leave a plan, or delete it if it's yours. The server decides which. */
+export async function removePlan(planId: string): Promise<string | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch('/api/account/plan/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, plan_id: planId }),
+    }).then((r) => r.json()) as { ok?: boolean; deleted?: boolean; left?: boolean; title?: string; error?: string };
+    if (!out.ok) return out.error ?? 'Couldn’t remove that.';
+    store.set((st) => ({
+      plans: st.plans.filter((p) => p.id !== planId),
+      planId: st.planId === planId ? null : st.planId,
+    }));
+    await refreshPlans();
+    return out.deleted ? `${out.title} is gone — everyone's been told.` : `You've left ${out.title}.`;
+  } catch {
+    return 'Couldn’t remove that just now.';
+  }
+}
+
+/**
+ * Delete the account. Two calls on purpose: the first returns exactly what
+ * will be destroyed, the second destroys it. No undo, so the inventory comes
+ * first.
+ */
+export async function deleteAccount(confirm = false): Promise<{
+  ok?: boolean; needs_confirm?: boolean; inventory?: Record<string, number>;
+  blockers?: string[]; can_delete?: boolean; note?: string;
+} | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch('/api/account/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, ...(confirm ? { confirm: 'DELETE' } : {}) }),
+    }).then((r) => r.json());
+    if (out?.ok && out?.deleted) {
+      // Leave nothing behind on the device either — a "deleted" account whose
+      // data is still in localStorage is not deleted.
+      try { localStorage.clear(); } catch { /* private mode */ }
+      window.location.replace('/');
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 export async function redeemPairCode(code: string): Promise<string | null> {
   const me = store.get().me;
   const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);

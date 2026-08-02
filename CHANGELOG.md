@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.122 — 2026-08-02 22:21 UTC
+
+user-to-user bridges
+
+- commit `c6250e2`
+
 ## 0.8.121 — 2026-08-02 22:07 UTC
 
 payout desk bridge
