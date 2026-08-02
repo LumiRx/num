@@ -1,21 +1,25 @@
-// Refer a business, earn a share of what it pays Num — for as long as it pays.
+// Refer a business, earn 2% of every booking Num sends it — for as long as it
+// stays on Num.
 //
-// The growth loop this creates: a guest asks the bar "are you on Num?", the bar
-// isn't, the guest refers it, and when that bar becomes a paying merchant the
-// guest earns from every invoice it ever settles. It turns every user into a
-// salesperson at zero CAC, and it is the cheapest way to fill a new city.
+// The growth loop: a guest asks the bar "are you on Num?", the bar isn't, the
+// guest refers it, and once it joins the guest earns from every booking Num
+// puts through its door. Every user becomes a salesperson at zero CAC, and it
+// is the cheapest way to fill a new city.
 //
 // ── The promises this makes, stated plainly ──────────────────────────────
 //
-// "A % of their forever revenue" is a real, ongoing financial obligation, so
-// this file is deliberately conservative about it:
+// An ongoing revenue share is a real financial obligation, so this file is
+// deliberately conservative about it. Note the basis: BOOKINGS THROUGH NUM,
+// not the merchant's whole till — the referrer is paid out of business we
+// demonstrably created, which keeps the cost proportional to the value.
 //
 //   · The rate is CONFIGURED (`BIZ_REFERRAL_PCT`), never hardcoded, and is
 //     recorded ON THE REFERRAL ROW at the moment it is created. Changing the
 //     rate later must not silently rewrite what someone was promised — that is
 //     the difference between a business decision and a broken promise.
 //   · Nothing is earned at referral time. A referral is a CLAIM. It earns only
-//     when the business actually pays Num, and only while it stays a customer.
+//     when a booking at that business is actually paid, and only while the
+//     business stays on Num.
 //   · Attribution is FIRST-CLAIM-WINS and one referrer per business, forever.
 //     Without that rule two people eventually claim the same restaurant and
 //     both believe they are owed.
@@ -31,8 +35,18 @@ const json = (body, status = 200) =>
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
 const uid = (p) => `${p}_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
 
-/** Default share if nothing is configured. Set BIZ_REFERRAL_PCT to change it. */
-const DEFAULT_PCT = 5;
+/**
+ * 2% of what a referred business earns THROUGH BOOKINGS Num sends them.
+ *
+ * "Referred and booked" is the tighter, better promise: the referrer is paid
+ * out of business we demonstrably created, not out of the merchant's till.
+ * That keeps the obligation proportional to value delivered, and it means the
+ * cost of the programme scales with revenue rather than with signups.
+ *
+ * Override with BIZ_REFERRAL_PCT. Whatever is set here is copied onto each
+ * referral row at claim time and never re-read for that row.
+ */
+const DEFAULT_PCT = 2;
 const rate = (env) => {
   const n = Number(env.BIZ_REFERRAL_PCT ?? DEFAULT_PCT);
   // A nonsense rate is a business risk, not a rounding error — clamp hard.
@@ -74,9 +88,11 @@ const bizKey = (name, city) =>
   `${String(name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')}|${String(city ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
 /**
- * Credit a referrer when their business pays. Called from wherever merchant
- * revenue is recognised — safe to call more than once per invoice only if the
- * caller passes a unique `ref`, which is why it is required.
+ * Credit a referrer when a booking at their business is paid.
+ *
+ * Call this from the BOOKING settlement path, not from generic merchant
+ * revenue — the promise is a share of business Num sent them. `ref` must be
+ * unique per booking; it is what makes a retried webhook idempotent.
  */
 export async function creditBizReferral(env, { businessId, stars, ref }) {
   await ensure(env);
@@ -101,7 +117,7 @@ export async function creditBizReferral(env, { businessId, stars, ref }) {
   // for, so it is cashable like any other earning.
   await env.DB.prepare(
     "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'referral',?4,?5)",
-  ).bind(moveId, row.referrer_id, cut, `${row.pct}% of a business you brought in`, businessId).run();
+  ).bind(moveId, row.referrer_id, cut, `${row.pct}% of a booking at a place you brought in`, businessId).run();
   await env.DB.prepare('UPDATE num_biz_referrals SET lifetime_stars = lifetime_stars + ?2 WHERE id = ?1')
     .bind(row.id, cut).run();
 
@@ -109,7 +125,7 @@ export async function creditBizReferral(env, { businessId, stars, ref }) {
     memberId: row.referrer_id,
     kind: 'referral',
     title: `You earned ★${cut}`,
-    body: 'A business you brought to Num just got paid — your share is in your wallet.',
+    body: 'A place you brought to Num just took a booking — your share is in your wallet.',
     url: '/?app',
     tag: `bizref:${row.id}`,
   }).catch(() => {});
@@ -126,8 +142,10 @@ export async function handleBizReferral(request, env, path) {
     return json({
       pct: rate(env),
       earns: 'Stars, cashable like any other earning',
-      when: 'Every time the business pays Num — for as long as they stay.',
+      when: 'Every booking Num sends them — for as long as they stay on Num.',
+      basis: 'bookings made through Num',
       rules: [
+        'You earn on bookings Num sends them, not on their whole till.',
         'One referrer per business, first claim wins.',
         'You can’t refer a business already on Num.',
         'You can’t refer your own business.',
@@ -178,7 +196,7 @@ export async function handleBizReferral(request, env, path) {
       ok: true,
       id,
       pct,
-      message: `${name} is yours. If they join Num, you earn ${pct}% of what they pay us — every time, for as long as they stay.`,
+      message: `${name} is yours. If they join Num, you earn ${pct}% of every booking Num sends them — for as long as they stay.`,
     });
   }
 
@@ -210,7 +228,7 @@ export async function handleBizReferral(request, env, path) {
         memberId: row.referrer_id,
         kind: 'referral',
         title: `${row.biz_name} joined Num`,
-        body: `The place you brought in is live. You now earn ${row.pct}% of everything they pay us.`,
+        body: `The place you brought in is live. You now earn ${row.pct}% of every booking Num sends them.`,
         url: '/?app',
         tag: `bizref:${id}`,
       }).catch(() => {});

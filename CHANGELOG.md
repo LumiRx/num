@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.111 — 2026-08-02 19:57 UTC
+
+biz referrals + install prompt + metrics
+
+- commit `442b939`
+
+## 0.8.110 — 2026-08-02 19:56 UTC
+
+biz referrals + install prompt + metrics
+
+- commit `442b939`
+
 ## 0.8.109 — 2026-08-02 18:55 UTC
 
 health run endpoint

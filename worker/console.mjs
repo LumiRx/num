@@ -308,6 +308,15 @@ async function adminOverview(env, url, req) {
     // `verified` is the number that matters most: an unverified member is a
     // device, not a person, and reinstalling mints a new one. When this sits
     // far below `members`, friends and plans WILL fragment across identities.
+    // PEOPLE, not rows. Identity is device-local, so reinstalling mints a new
+    // member row — counting rows counts phones-and-reinstalls, not humans. The
+    // last 10 digits are the stable part of a number across the +1/spacing
+    // formats we have actually stored, so they are what dedupes.
+    ['people', "SELECT COUNT(DISTINCT substr(replace(replace(replace(replace(replace(phone,' ',''),'-',''),'(',''),')',''),'+',''), -10)) n FROM num_members WHERE phone IS NOT NULL"],
+    ['redownloads', "SELECT COUNT(*) - COUNT(DISTINCT substr(replace(replace(replace(replace(replace(phone,' ',''),'-',''),'(',''),')',''),'+',''), -10)) n FROM num_members WHERE phone IS NOT NULL"],
+    // Rows that never got as far as a number: abandoned first-opens, plus any
+    // reinstall that bailed before signing up. Not people, not yet.
+    ['anonDevices', 'SELECT COUNT(*) n FROM num_members WHERE phone IS NULL'],
     ['membersVerified', 'SELECT COUNT(*) n FROM num_members WHERE phone_verified = 1'],
     ['members7d', "SELECT COUNT(*) n FROM num_members WHERE created_at > datetime('now','-7 days')"],
     ['members24h', "SELECT COUNT(*) n FROM num_members WHERE created_at > datetime('now','-1 day')"],
