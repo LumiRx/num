@@ -93,3 +93,39 @@ Every rule below maps to one of those. Read this before touching anything.
 | FastAPI (SMS/WhatsApp, dormant) | Railway `num` | `railway up` from `backend-fastapi` | Supabase (unreachable acct) |
 
 Cloudflare account: thatislumi@gmail.com · Railway: info@thatislumi.com.
+
+## Every app command needs `--config wrangler.app.jsonc`
+
+A bare `wrangler …` in this repo uses `wrangler.jsonc`, which is **num-console**,
+not the app. Dre nearly deployed a console version to production because
+`wrangler versions deploy` with no flag listed the console's history and looked
+plausible. The versions were dated hours earlier than anything we had shipped —
+that mismatch is the tell.
+
+```bash
+npx wrangler versions secret put NAME --config wrangler.app.jsonc   # app
+npx wrangler d1 execute num-db --remote --config wrangler.app.jsonc # app's DB
+npx wrangler deploy --config wrangler.jsonc                         # console (deliberate)
+```
+
+Secrets accumulate across versions, so `versions secret put` twice then deploying
+the LATEST version carries both. Deploy with an explicit id and `@100%`:
+
+```bash
+npx wrangler versions deploy <id>@100% -y --config wrangler.app.jsonc
+```
+
+## Health monitoring (0.8.107+)
+
+`/api/health` deep-checks the failures that return 200 anyway: D1 writes, the
+brain key, a pay rail that can charge but not deliver, an SMS webhook that would
+reject everything. Returns 503 when genuinely broken — point uptime checks there.
+A 5-minute cron (`triggers.crons` in wrangler.app.jsonc) runs the same checks and
+alerts on a CHANGE of state only, via `ALERT_SMS_TO` and/or `ALERT_WEBHOOK`.
+History: `/api/health/history`.
+
+**Known scale fact:** `places` holds ~2.53M rows against ~77 members — the
+directory IS the 1.24 GB database. That is ~$1/month, so this is not a cost
+problem; it is the cliff that caused the 2-day read-only outage. Keep the
+Overture ingest paused. Splitting the directory into `num-core` remains the
+right fix and is about resilience, not the bill.
