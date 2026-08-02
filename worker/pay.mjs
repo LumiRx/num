@@ -100,6 +100,12 @@ CREATE TABLE IF NOT EXISTS num_payments (
 );
 CREATE INDEX IF NOT EXISTS idx_num_payments_member ON num_payments(member_id);
 CREATE INDEX IF NOT EXISTS idx_num_payments_ref ON num_payments(ref);
+CREATE TABLE IF NOT EXISTS num_star_ledger (
+  id TEXT PRIMARY KEY, member_id TEXT NOT NULL, delta INTEGER NOT NULL,
+  kind TEXT NOT NULL, ref TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_num_star_ledger_member ON num_star_ledger(member_id, created_at);
 `;
 let ready = false;
 async function ensure(env) {
@@ -218,10 +224,29 @@ export async function handlePay(request, env, path) {
       const id = s.client_reference_id || s.metadata?.num_payment_id;
       if (id) {
         await ensure(env);
-        await env.DB?.prepare(
-          "UPDATE num_payments SET state='paid', paid_at=datetime('now') WHERE id=?1",
-        ).bind(id).run().catch(() => {});
+        // Idempotent by construction: only a row still in 'created' flips, so
+        // Stripe's at-least-once delivery can't credit the same purchase twice.
+        const flip = await env.DB?.prepare(
+          "UPDATE num_payments SET state='paid', paid_at=datetime('now') WHERE id=?1 AND state<>'paid'",
+        ).bind(id).run().catch(() => null);
+        const firstTime = (flip?.meta?.changes ?? 0) > 0;
         const memberId = s.metadata?.num_member;
+
+        // DELIVER WHAT WAS BOUGHT. Without this a Stars purchase takes the
+        // money and hands over nothing — the reason /request refuses Stars
+        // until STARS_SALE_OK is set AND this path exists.
+        const ref = s.metadata?.num_ref ?? '';
+        const packMatch = /^stars:(\d{1,7})$/.exec(ref);
+        if (firstTime && packMatch && memberId && env.STARS_SALE_OK === '1') {
+          const n = Number(packMatch[1]);
+          await env.DB?.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)').bind(memberId).run().catch(() => {});
+          await env.DB?.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(memberId, n).run().catch(() => {});
+          await env.DB?.prepare(
+            'INSERT INTO num_star_ledger (id, member_id, delta, kind, ref) VALUES (?1,?2,?3,?4,?5)',
+          ).bind(`sl_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`, memberId, n, 'purchase', id).run().catch((e) => console.warn('[pay] ledger', e?.message));
+          console.log('[pay] credited', n, 'stars to', memberId, 'for', id);
+        }
+
         if (memberId) {
           const { notify } = await import('./push.mjs');
           await notify(env, {

@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.95 — 2026-08-02 04:00 UTC
+
+5arz card layout + google button sizing
+
+- commit `4437d4c`
+
+## 0.8.94 — 2026-08-02 03:59 UTC
+
+5arz card layout + google button sizing
+
+- commit `4437d4c`
+
 ## 0.8.93 — 2026-08-02 02:55 UTC
 
 real pay rail + honest stars buttons
