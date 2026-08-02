@@ -173,7 +173,11 @@ async function accountDelete(env, req) {
   // ── Things that must be settled first ────────────────────────────────
   const blockers = [];
   if (stars > 0) {
-    blockers.push(`You still hold ★${stars.toLocaleString()}. Spend it or cash out what's earned first — deleting would destroy it.`);
+    // Do NOT offer cash-out here. It is switched off, and pointing someone at
+    // a door that doesn't open is worse than saying nothing — they'd go
+    // looking, fail, and conclude the app is broken rather than that the
+    // feature isn't live.
+    blockers.push(`You still hold ★${stars.toLocaleString()}. Spend it first — deleting would destroy it.`);
   }
   if (liveErrands > 0) {
     blockers.push(`${liveErrands} errand${liveErrands === 1 ? ' is' : 's are'} still running. Finishing or cancelling them first keeps the other person whole.`);

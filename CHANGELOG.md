@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.126 — 2026-08-02 22:59 UTC
+
+leaving UI, selector fix
+
+- commit `056109b`
+
 ## 0.8.125 — 2026-08-02 22:51 UTC
 
 leaving UI + plan card
