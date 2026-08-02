@@ -88,6 +88,7 @@ function baseState() {
     starMoves: [],
     payOpen: null,
     connectTo: null,
+    pairCode: null,
     flightOffers: null,
     flightSearching: false,
     flightError: null,

@@ -74,6 +74,14 @@
     { "pattern": "app.itsnum.com", "custom_domain": true }
   ],
   "workers_dev": true,
+  // Num watching Num, every 5 minutes. The checks are in worker/health.mjs and
+  // are deliberately aimed at the failures that return 200 — a read-only
+  // database, a dead brain key, a pay rail that can charge but never deliver.
+  // Alerts fire only on a CHANGE of state, so this can run forever without
+  // becoming noise everyone learns to ignore.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "observability": {
     "enabled": true
   }

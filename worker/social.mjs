@@ -558,6 +558,89 @@ async function invite(env, req) {
  * Idempotent by construction: an existing link between the two is returned
  * rather than duplicated, so scanning the same code twice is harmless.
  */
+// ── Pairing codes: crossing the Safari ↔ installed-app wall ───────────────
+//
+// On iOS the home-screen app and Safari have SEPARATE storage. They are the
+// same origin and the same server, but they cannot see each other's
+// localStorage — so each mints its own member id. A friend link tapped in
+// Messages opens Safari, the friendship binds to the Safari identity, and the
+// person's actual app never hears about it. That is the "it added a friend to
+// my Safari Num" bug, and no amount of client code inside one context can see
+// into the other.
+//
+// A pairing code is the bridge that does not require them to see each other:
+// the browser parks the pending connection on the SERVER and shows a short
+// code; the app redeems it against its own identity. Six characters because
+// it gets read off one screen and typed into another, and because it lives
+// for fifteen minutes — long enough to walk between apps, short enough that a
+// screenshot in a group chat is not a standing invitation.
+const PAIR_TTL_MIN = 15;
+const PAIR_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I/L/O/0/1
+
+const PAIR_SCHEMA = `
+CREATE TABLE IF NOT EXISTS num_pair_codes (
+  code TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), used_at TEXT
+);
+`;
+let pairReady = false;
+async function ensurePair(env) {
+  if (pairReady || !env.DB) return;
+  await env.DB.prepare(PAIR_SCHEMA.trim()).run();
+  pairReady = true;
+}
+
+const pairCode = () => {
+  const b = crypto.getRandomValues(new Uint8Array(6));
+  return [...b].map((n) => PAIR_ALPHABET[n % PAIR_ALPHABET.length]).join('');
+};
+
+/** Park a connect/invite that arrived in the wrong browsing context. */
+async function pairMint(env, req) {
+  await ensurePair(env);
+  const b = await readBody(req);
+  const kind = b.connect_to ? 'connect' : b.token ? 'invite' : null;
+  const payload = clip(b.connect_to ?? b.token, 120);
+  if (!kind || !payload) return json({ error: 'nothing to pair' }, 400);
+
+  const code = pairCode();
+  await env.DB.prepare('INSERT INTO num_pair_codes (code, kind, payload) VALUES (?1,?2,?3)')
+    .bind(code, kind, payload).run();
+  return json({ code, expires_in_minutes: PAIR_TTL_MIN });
+}
+
+/**
+ * Redeem in the app, against the APP's identity — which is the whole point.
+ * Single-use and time-boxed; a used or stale code says so rather than failing
+ * silently, because the person is standing there holding a code that looked
+ * right.
+ */
+async function pairRedeem(env, req) {
+  await ensurePair(env);
+  const b = await readBody(req);
+  const me = clip(b.me, 40);
+  const code = clip(b.code, 12)?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!me || !code) return json({ error: 'Which code?' }, 400);
+
+  const row = await env.DB.prepare(
+    "SELECT kind, payload, used_at, created_at FROM num_pair_codes WHERE code = ?1",
+  ).bind(code).first();
+  if (!row) return json({ error: 'That code isn’t one of ours — check it and try again.' }, 404);
+  if (row.used_at) return json({ error: 'That code has already been used.' }, 409);
+
+  const age = (Date.now() - Date.parse(`${row.created_at}Z`)) / 60000;
+  if (!Number.isFinite(age) || age > PAIR_TTL_MIN) {
+    return json({ error: 'That code has expired — ask for the link again.' }, 410);
+  }
+
+  await env.DB.prepare("UPDATE num_pair_codes SET used_at = datetime('now') WHERE code = ?1").bind(code).run();
+
+  // Replay the original intent, now bound to the app's member id.
+  const fake = (body) => new Request('https://x/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (row.kind === 'connect') return await connect(env, fake({ me, code: row.payload }));
+  return await accept(env, fake({ me, token: row.payload }));
+}
+
 /**
  * Verify a Num member against their 5arz account.
  *
@@ -1689,6 +1772,8 @@ export async function handleSocial(request, env, path) {
   if (path === '/invite' && post) return await invite(env, request);
   if (path === '/accept' && post) return await accept(env, request);
   if (path === '/connect' && post) return await connect(env, request);
+  if (path === '/pair/mint' && post) return await pairMint(env, request);
+  if (path === '/pair/redeem' && post) return await pairRedeem(env, request);
   if (path === '/verify/5arz' && post) return await verifyVia5arz(env, request);
   if (path === '/friends') return await friends(env, url);
   if (path === '/prefs' && post) return await prefsWrite(env, request);

@@ -409,6 +409,9 @@ export interface AppState {
   inviteToken: string | null;
   /** A scanned connect code waiting to be acted on (survives sign-up). */
   connectTo: string | null;
+  /** A connect/invite that arrived outside the installed app, parked as a
+   *  six-character code to carry across the Safari ↔ home-screen wall. */
+  pairCode: string | null;
 
   /** Live fares from the last search, plus what was asked for. */
   flightOffers: { query: FlightQuery; offers: FlightOffer[] } | null;

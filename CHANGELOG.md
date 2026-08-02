@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.103 — 2026-08-02 18:16 UTC
+
+origin-tagged cashouts
+
+- commit `793f2c6`
+
 ## 0.8.102 — 2026-08-02 06:30 UTC
 
 wallet separation enforced

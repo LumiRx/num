@@ -31,6 +31,7 @@ import { handlePay, payMode } from './pay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
+import { handleHealth, healthCron } from './health.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
@@ -401,6 +402,14 @@ export default {
       return res;
     }
 
+    // Deep health. Point an uptime checker at /api/health — it answers 503
+    // when the product is actually broken, not just when the Worker is down.
+    if (url.pathname.startsWith('/api/health')) {
+      const res = await handleHealth(request, env, url.pathname.slice('/api/health'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/cashout')) {
       const res = await handleCashout(request, env, url.pathname.slice('/api/cashout'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -661,5 +670,11 @@ export default {
   // points at this worker. num+<member id>@itsnum.com files it to the member.
   async email(message, env) {
     await handleEmailIn(message, env);
+  },
+
+  // Num watching Num. Every 5 minutes: probe the paths that fail silently,
+  // record the verdict, and shout ONLY when the state changes.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
   },
 };

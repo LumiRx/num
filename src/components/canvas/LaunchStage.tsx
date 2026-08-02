@@ -25,6 +25,8 @@ const PROMISES: Array<[label: string, Icon: (p?: IconProps) => JSX.Element]> = [
   ['Settle in one tap', WalletIcon],
 ];
 
+import { PairHandoff } from '../app/PairBridge';
+
 export default function LaunchStage() {
   const width = useViewportWidth();
   const showLock = width >= 1180;
@@ -46,6 +48,12 @@ export default function LaunchStage() {
       }}
     >
       <div className="aurora-layer" aria-hidden="true" />
+
+      {/* A friend link opened in the browser instead of the app. Show the code
+          to carry across, above everything — it is why they are here. */}
+      <div style={{ position: 'relative', zIndex: 2, width: '100%', maxWidth: 420 }}>
+        <PairHandoff />
+      </div>
 
       <header style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 620 }}>
         <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 40, letterSpacing: '-.02em', margin: 0, lineHeight: 1.05 }}>

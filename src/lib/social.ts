@@ -75,6 +75,35 @@ export function bootSocial(): void {
     history.replaceState(null, '', window.location.pathname);
   }
 
+  // ── The Safari ↔ installed-app wall ─────────────────────────────────────
+  //
+  // On iOS the home-screen app and Safari keep SEPARATE storage, so each has
+  // its own member id. A friend link tapped in Messages opens Safari — and
+  // accepting it there bound the friendship to a Safari identity the person's
+  // real app can never see. That is why friends "went to my Safari Num".
+  //
+  // So when a connect or invite arrives OUTSIDE the installed app, we do not
+  // consume it. We park it server-side and show a short code to carry across.
+  // Refusing to act is the correct behaviour here: acting would silently do
+  // the wrong thing, which is worse than asking for one more tap.
+  const installed =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+  if (!installed && (connectTo || token)) {
+    void fetch('/api/social/pair/mint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(connectTo ? { connect_to: connectTo } : { token }),
+    })
+      .then((r) => r.json())
+      .then((d: { code?: string }) => {
+        if (d.code) store.set({ pairCode: d.code, connectTo: null, inviteToken: null });
+      })
+      .catch(() => {});
+    return;
+  }
+
   const me = store.get().me;
   if (me) {
     // Someone who already has an account must never be pushed back through
@@ -208,6 +237,34 @@ export async function connectByCode(memberId: string): Promise<void> {
   } catch (err) {
     console.warn('[social] connect failed', err);
     store.set({ connectTo: null });
+  }
+}
+
+/**
+ * Redeem a pairing code inside the installed app.
+ *
+ * This is the other half of the Safari wall: the browser parked the intent,
+ * this binds it to the identity that actually matters — the one holding the
+ * person's plans, friends and Stars.
+ */
+export async function redeemPairCode(code: string): Promise<string | null> {
+  const me = store.get().me;
+  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  if (!me || clean.length < 6) return 'Enter the six characters from the link.';
+  try {
+    const r = await fetch('/api/social/pair/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, code: clean }),
+    });
+    const d = (await r.json()) as { error?: string };
+    if (!r.ok) return d.error ?? 'That didn’t go through.';
+    await refreshFriends();
+    await refreshPlans();
+    store.set({ pairCode: null });
+    return null;
+  } catch {
+    return 'Couldn’t reach Num — try again in a moment.';
   }
 }
 
