@@ -362,6 +362,28 @@ export default function InviteSheet() {
               </div>
               {inviteNote && <div style={{ ...helpText, color: 'var(--color-accent-700)' }}>{inviteNote}</div>}
             </div>
+          ) : (minted as { on_num?: boolean }).on_num ? (
+            /* 4a — they're already on Num: the agents handled it. The plan is
+               in their app and their phone buzzed. No text message needed —
+               offering one anyway would make delivery look like it failed. */
+            <div style={{ padding: 16 }}>
+              <div style={label}>DELIVERED</div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
+                ✓ Sent app to app{draft.name ? ` — ${draft.name} has it` : ''}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--color-neutral-600)', lineHeight: 1.55, marginTop: 8 }}>
+                They’re already on Num, so your Num told theirs directly: the {draft.planId ? 'plan is in their PLAN tab' : 'connection is live'} and their phone just buzzed. Nothing to text, nothing to tap.
+              </div>
+              <div
+                {...pressable(() => store.set({ inviteOpen: null }))}
+                style={{ marginTop: 14, cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
+              >
+                DONE
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', marginTop: 10, lineHeight: 1.5 }}>
+                Want to nudge them yourself anyway? The link still works: {minted.link}
+              </div>
+            </div>
           ) : (
             /* 4 — ready to send, from the member's own phone. */
             <div style={{ padding: 16 }}>

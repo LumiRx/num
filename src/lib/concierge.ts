@@ -85,26 +85,67 @@ export function buyPack(n: number, price: string) {
   boughtTimer = setTimeout(() => store.set({ bought: '' }), 3200);
 }
 
-export function openVoice() {
+/* REAL voice, replacing the scripted demo that used to live here (fake timers,
+ * a fake "massage moved" — it looked alive and listened to nothing, which is
+ * worse than no mic at all). The backend has been ready the whole time:
+ * POST raw audio to /api/voice/transcribe → Whisper, ~99 languages,
+ * auto-detected. Tap the mic to talk, tap again to send.
+ */
+let rec: MediaRecorder | null = null;
+let recStream: MediaStream | null = null;
+let recChunks: Blob[] = [];
+let recCap: ReturnType<typeof setTimeout> | null = null;
+
+export async function openVoice() {
+  if (rec) return closeVoice(); // second tap while recording = stop & send
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    push({ who: 'c', text: 'I need microphone access for that — allow it in your browser settings and tap the mic again.' });
+    return;
+  }
+  // Safari records mp4/aac, everyone else webm/opus; Whisper eats both.
+  const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+  recChunks = [];
+  rec = new MediaRecorder(recStream, { mimeType: mime });
+  rec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+  rec.onstop = () => void submitVoice();
+  rec.start();
   store.set({ voice: 1 });
-  voiceT1 = setTimeout(() => store.set({ voice: 2 }), 1400);
-  voiceT2 = setTimeout(() => {
-    setB('m1', { time: '17:00', note: 'Moved to 17:00 by voice — same room, same therapist.' });
-    store.set((s) => ({
-      voice: 3,
-      msgs: [
-        ...s.msgs,
-        { who: 'u', text: '“Move my massage to five.” — said aloud' },
-        { who: 'c', text: 'Done — Ruen Nuad moved to 17:00. Same room, same therapist, calendar’s updated.' },
-      ],
-    }));
-  }, 3400);
+  // A stuck recorder is the only thing that talks for a minute straight.
+  recCap = setTimeout(() => closeVoice(), 45_000);
 }
 
 export function closeVoice() {
   clearTimeout(voiceT1);
   clearTimeout(voiceT2);
-  store.set({ voice: 0 });
+  if (recCap) { clearTimeout(recCap); recCap = null; }
+  if (rec && rec.state !== 'inactive') {
+    store.set({ voice: 2 }); // "thinking" while we transcribe
+    rec.stop();              // onstop → submitVoice()
+  } else {
+    store.set({ voice: 0 });
+  }
+}
+
+async function submitVoice() {
+  const blob = new Blob(recChunks, { type: rec?.mimeType || 'audio/webm' });
+  rec = null;
+  recStream?.getTracks().forEach((t) => t.stop());
+  recStream = null;
+  recChunks = [];
+  try {
+    if (blob.size < 1500) { store.set({ voice: 0 }); return; } // a tap, not speech
+    const r = await fetch('/api/voice/transcribe', { method: 'POST', body: blob });
+    const d = await r.json();
+    const text = (d?.text ?? d?.transcript ?? '').trim();
+    store.set({ voice: 0 });
+    if (text) void askNum(text);
+    else push({ who: 'c', text: 'I couldn’t make that out — try again a little closer to the mic?' });
+  } catch {
+    store.set({ voice: 0 });
+    push({ who: 'c', text: 'The transcription hiccuped — say it once more?' });
+  }
 }
 
 export function askToChange(title: string) {

@@ -505,10 +505,25 @@ async function invite(env, req) {
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8)`,
   ).bind(token, sender.ref_code, from, senderName, toPhone, toName, message, clip(b.channel, 20) ?? 'share').run();
 
-  // The pending half of the friendship. It activates only when they open it.
+  // The friendship. For a STRANGER it stays pending until they open the link
+  // — consent by action. For an EXISTING member it activates immediately:
+  // both people are on Num, the sender addressed them by their own number,
+  // and the recipient's phone buzzes with who connected — the agents talk to
+  // each other, no text message in the loop. (This is the fix for Dre↔Vivian
+  // day one: she was a member, yet her invite behaved like a cold signup.)
   await env.DB.prepare(
-    'INSERT INTO num_links (id, a_id, b_phone, b_name, token, plan_id) VALUES (?1,?2,?3,?4,?5,?6)',
-  ).bind(uid('lnk'), from, toPhone, toName, token, planId).run();
+    "INSERT INTO num_links (id, a_id, b_id, b_phone, b_name, token, plan_id, state, accepted_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+  ).bind(
+    uid('lnk'), from, existing?.id ?? null, toPhone, toName, token, planId,
+    existing ? 'active' : 'pending', existing ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+  ).run();
+  if (existing && !plan) {
+    // Plan invites already notified above; a pure friend-connect buzzes too.
+    await notify(env, {
+      memberId: existing.id, kind: 'friend', title: 'New connection',
+      body: `${senderName} connected with you on Num.`, url: '/?app', tag: `friend:${from}`,
+    }).catch(() => {});
+  }
 
   return json({
     token,

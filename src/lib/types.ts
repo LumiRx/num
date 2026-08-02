@@ -273,6 +273,8 @@ export interface InviteDraft {
     token: string;
     link: string;
     message: string;
+    /** True = invitee is already a member: delivered app-to-app, no text needed. */
+    on_num?: boolean;
     sms_url: string;
     whatsapp_url: string;
     install_steps: { ios: string[]; android: string[] };
