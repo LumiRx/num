@@ -58,6 +58,7 @@
 // than shipping quietly.
 import { notify } from './push.mjs';
 import { checkStars, refusal } from './preflight.mjs';
+import { queuePayout, deskReady } from './payoutdesk.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -166,7 +167,10 @@ export async function cashable(env, memberId) {
 export async function handleCashout(request, env, path) {
   const post = request.method === 'POST';
   const url = new URL(request.url);
-  const open = env.CASHOUT_OK === '1';
+  // OPEN REQUIRES THE BRIDGE. Setting CASHOUT_OK=1 without PAYOUT_DESK_KEY
+  // would reopen the exact hole this rewrite closed — a switch that says yes
+  // to a road that doesn't reach anywhere. Both, or neither.
+  const open = env.CASHOUT_OK === '1' && deskReady(env);
 
   if (path === '/status' || path === '/' || path === '') {
     return json({
@@ -176,6 +180,9 @@ export async function handleCashout(request, env, path) {
       // mean 5arz-native payouts are running — those are a separate queue on
       // the payout desk, still paused pending Track A.
       scope: 'num-originated cash-outs only',
+      // Whether the bridge to the desk exists at all. `open` without this is
+      // a promise we cannot keep.
+      desk_connected: deskReady(env),
       origin: ORIGIN,
       rule: 'Earned Stars can be cashed out. Purchased Stars spend inside Num and are not cashable.',
       earned_kinds: EARNED_KINDS,
@@ -219,18 +226,46 @@ export async function handleCashout(request, env, path) {
       return json({ ...body, ...q }, 409);
     }
 
-    // Debit first, conditionally. If the balance moved under us, nothing
-    // happens — the same guard the escrow uses.
+    // ── THE DESK IS ASKED FIRST. NOTHING MOVES UNTIL IT ANSWERS. ────────
+    //
+    // The old order was: debit, write a local row, tell the member it was on
+    // its way. The desk reads a different database and never saw the row, so
+    // the Stars left and reached nobody while every layer reported success.
+    //
+    // Now the request goes to the desk BEFORE the balance is touched. If it
+    // refuses, or times out, or isn't connected, the member's Stars are
+    // exactly where they were and they are told so in the same breath.
+    const id = `co_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+    const desk = await queuePayout(env, { memberId: me, stars, idempotencyKey: id });
+    if (!desk.ok) {
+      console.warn('[cashout] desk refused', desk.detail);
+      return json({
+        ok: false,
+        error: desk.reason,
+        retryable: !!desk.retryable,
+        findings: desk.findings ?? null,
+        // Said explicitly, because "it failed" leaves people wondering.
+        balance_untouched: true,
+        ...q,
+      }, desk.retryable ? 503 : 409);
+    }
+
+    // The desk has it. NOW the Stars can move.
     const debit = await env.DB.prepare(
       'UPDATE num_star_balances SET stars = stars - ?2 WHERE member_id = ?1 AND stars >= ?2',
     ).bind(me, stars).run().catch(() => null);
-    if (!(debit?.meta?.changes > 0)) return json({ ok: false, error: 'That didn’t go through — try again.' }, 409);
+    if (!(debit?.meta?.changes > 0)) {
+      // Rare: the balance moved between the check and here. The desk already
+      // holds a request we are not going to fund, so say so loudly — a silent
+      // orphan on the desk is exactly the class of bug this rewrite removes.
+      console.error('[cashout] DESK HOLDS AN UNFUNDED REQUEST', id, 'for', me, '— balance moved after ack');
+      return json({ ok: false, error: 'Your balance changed while I was setting that up — nothing was taken. Try again.', desk_ref: desk.id }, 409);
+    }
 
-    const id = `co_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
     try {
       await env.DB.prepare(
-        'INSERT INTO num_cashouts (id, member_id, stars, dest, dest_ref, origin) VALUES (?1,?2,?3,?4,?5,?6)',
-      ).bind(id, me, stars, '5arz', destRef, ORIGIN).run();
+        'INSERT INTO num_cashouts (id, member_id, stars, dest, dest_ref, origin, note) VALUES (?1,?2,?3,?4,?5,?6,?7)',
+      ).bind(id, me, stars, '5arz', destRef, ORIGIN, `desk:${desk.id} ${desk.status}`).run();
       await env.DB.prepare(
         "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'cashout',?4,'5arz')",
       ).bind(`${id}:out`, me, -stars, 'Cash-out to 5arz').run().catch(() => {});
@@ -244,13 +279,15 @@ export async function handleCashout(request, env, path) {
     await notify(env, {
       memberId: me,
       kind: 'cashout',
-      title: 'Cash-out requested',
-      body: `${stars} Stars are on their way to your 5arz account.`,
+      title: 'Cash-out queued',
+      // "On their way" was a claim we couldn't back. The desk has it; that is
+      // what we know, so that is what we say.
+      body: `${stars} Stars are with the payout desk. I'll tell you when it lands.`,
       url: '/?app',
       tag: `cashout:${id}`,
     }).catch(() => {});
 
-    return json({ ok: true, id, stars, dest: '5arz', state: 'requested' });
+    return json({ ok: true, id, stars, dest: '5arz', state: desk.status, desk_ref: desk.id, rail: desk.rail });
   }
 
   if (path === '/history') {

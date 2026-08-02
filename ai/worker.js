@@ -14,7 +14,7 @@ import { detectCat, resolveLocation, nearbyPlaces, destinationGuide, liveDestina
 import { route, templateReply, smallSystem, looksWeak, usageFrom, logCall, BIG_MODEL, SMALL_MODEL } from './router.js';
 
 const MODEL = BIG_MODEL;
-const MEM_MODEL = '@cf/meta/llama-3.1-8b-instruct';   // small fast model that maintains each guest's brain
+const MEM_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';   // small fast model that maintains each guest's brain
 
 /**
  * The full concierge prompt. Three blocks below are conditional on what the
@@ -204,12 +204,73 @@ async function ask(env, userText, guest, cf, opts = {}){
 
   if (decision.tier === 't1') {
     const r = await askSmall(env, userText, guest, cf, decision, started);
-    if (!r.weak) return r;
+    if (!r.weak) { await logRequest(env, guest, userText, decision, r, started); return r; }
     console.log('escalate t1→t2:', r.weak, JSON.stringify(userText).slice(0, 80));
-    return askFull(env, userText, guest, cf, decision, true);
+    const r2 = await askFull(env, userText, guest, cf, decision, true);
+    await logRequest(env, guest, userText, decision, r2, started);
+    return r2;
   }
 
-  return askFull(env, userText, guest, cf, decision, false);
+  const r3 = await askFull(env, userText, guest, cf, decision, false);
+  await logRequest(env, guest, userText, decision, r3, started);
+  return r3;
+}
+
+/* `num_llm_calls` answers "what did we spend". `num_requests` answers "what did
+   a guest actually want, and did we have it" — intent, vertical, where, whether
+   anything was found, and how long they waited. It is the table the demand and
+   supply-gap views are built on, and it sat empty because nothing wrote to it.
+
+   Only a supply lookup can be "unfulfilled". Chit-chat that returns no places
+   is a normal answer, not a miss; counting it as one would make the unmet-demand
+   number meaningless the moment anyone said hello. */
+const KIND_TO_INTENT = {
+  category:'recommend', place:'ask', arranging:'book', trouble:'complain',
+  sea:'recommend', open_request:'ask', chat:'other', chat_feeling:'other',
+  long:'other', greeting:'other', thanks:'other',
+};
+
+async function nrHash(t){
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(t||'')));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,'0')).join('');
+}
+const nrId = p => p + '_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+
+async function logRequest(env, guest, userText, decision, result, started){
+  try {
+    if (!env.DB) return;
+    const uid  = (guest && (guest.line_user_id || guest.member_ref)) || null;
+    const rows = (result && result.place && result.place.rows) || [];
+    const dest = (result && result.place && result.place.dest && result.place.dest.slug) || null;
+    const supply = decision.kind === 'category' || decision.kind === 'place';
+    const status = supply ? (rows.length ? 'matched' : 'unfulfilled') : 'matched';
+    const cat = detectCat(userText);
+    const id  = nrId('req');
+    const t   = Math.floor(Date.now()/1000);
+    const ms  = Math.max(0, Math.round(Date.now() - started)) | 0;
+
+    await env.DB.prepare(
+      `INSERT INTO num_requests
+         (id, member_ref, thread_key, locale, raw_text, intent, vertical, area,
+          status, fallback_tier, first_response_ms, created_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)`
+    ).bind(
+      id, uid, uid ? (await nrHash(uid)).slice(0,32) : null,
+      String(decision.lang || 'en'), String(userText || '').slice(0,500),
+      KIND_TO_INTENT[decision.kind] || 'other',
+      cat ? String(cat) : null, dest,
+      status, result && result.tier === 't2' ? 1 : 0, ms, t
+    ).run();
+
+    if (status === 'unfulfilled') {
+      await env.DB.prepare(
+        `INSERT INTO num_unmet_demand
+           (id, request_id, vertical, area, reason, detail, created_at)
+         VALUES (?1,?2,?3,?4,'no_supply',?5,?6)`
+      ).bind(nrId('um'), id, cat ? String(cat) : null, dest,
+             String(userText || '').slice(0,200), t).run();
+    }
+  } catch(e){ console.log('logRequest', String(e).slice(0,160)); }
 }
 
 /** t1 — no partner list, no destination guide, no brain. Resolving the city is
@@ -354,19 +415,49 @@ Fields (omit empty ones): language, city (where they are travelling), hotel_or_a
 Rules: merge NEW facts from the exchange; remove open_requests that were just fulfilled; keep the whole thing under 130 words; never invent facts; output ONLY the JSON object, no prose, no code fences.
 NEVER store (even if the guest mentions them): health or medical conditions (simple diet preference like "vegetarian" is fine), religion, political views, sexuality, nationality or ID/passport numbers, payment or card details, exact home address in their home country, or their precise coordinates. Omit such details entirely.`;
 
+/* Every outcome of the brain write, good or bad, lands in num_llm_calls under
+   tier 'mem'. This is the whole lesson of the two-month outage: the old version
+   ended in `catch(e){ console.log('memory', …) }`, so a dead model and a guest
+   with nothing worth remembering produced exactly the same silence.
+
+   We record WHY it failed, never WHAT the guest said. `kind` carries a fixed
+   tag and `out_tokens` the length of the model's reply — enough to tell "the
+   model returned nothing" from "the model returned prose with no JSON in it",
+   without copying a guest's words into a diagnostics table. MEM_SYS is strict
+   about what may be stored; a debug column is not a way around it. */
+async function memLog(env, ok, tag, rawLen, model, started){
+  await logCall(env, { tier:'mem', model, kind:tag, out_tokens: rawLen|0,
+    estimated:1, ms: Date.now() - started, ok });
+}
+
 async function updateMemory(env, uid, userText, aiReply, guest){
-  try {
-    if (!uid || uid === 'unknown') return;
-    const res = await env.AI.run(MEM_MODEL, { max_tokens: 400, messages: [
-      { role:'system', content: MEM_SYS },
-      { role:'user', content: `CURRENT BRAIN:\n${guest?.memory || '{}'}\n\nGUEST SAID: ${userText.slice(0,500)}\nCONCIERGE REPLIED: ${(aiReply||'').slice(0,500)}` },
-    ]});
-    const raw = (res.response||'').replace(/```json|```/g,'');
-    const m = raw.match(/\{[\s\S]*\}/); if (!m) return;
-    const obj = JSON.parse(m[0]);                       // throws → keep old brain
-    const compact = JSON.stringify(obj).slice(0, 1800);
-    await env.DB.prepare('UPDATE users SET memory=?1 WHERE line_user_id=?2').bind(compact, uid).run();
-  } catch(e){ console.log('memory', String(e).slice(0,120)); }
+  const started = Date.now();
+  if (!uid || uid === 'unknown') return;
+  const args = { max_tokens: 400, messages: [
+    { role:'system', content: MEM_SYS },
+    { role:'user', content: `CURRENT BRAIN:\n${guest?.memory || '{}'}\n\nGUEST SAID: ${userText.slice(0,500)}\nCONCIERGE REPLIED: ${(aiReply||'').slice(0,500)}` },
+  ]};
+  /* If the small model will not produce JSON — retired, rate limited, or just
+     chatty today — fall back to the model we know works. A brain written
+     expensively beats no brain, and this is the failure that already cost us
+     two months of guest memory. */
+  let tag = 'never_ran', rawLen = 0;
+  for (const model of [MEM_MODEL, BIG_MODEL]) {
+    try {
+      const res = await env.AI.run(model, args);
+      const raw = (res.response||'').replace(/```json|```/g,'');
+      rawLen = raw.length;
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (!m) { tag = 'no_json'; continue; }
+      let obj;
+      try { obj = JSON.parse(m[0]); } catch { tag = 'bad_json'; continue; }   // keep the old brain
+      const compact = JSON.stringify(obj).slice(0, 1800);
+      await env.DB.prepare('UPDATE users SET memory=?1 WHERE line_user_id=?2').bind(compact, uid).run();
+      await memLog(env, true, model === MEM_MODEL ? 'ok' : 'ok_fallback', rawLen, model, started);
+      return;
+    } catch(e){ tag = 'ai_error'; console.log('memory', model, String(e).slice(0,120)); }
+  }
+  await memLog(env, false, tag, rawLen, MEM_MODEL, started);
 }
 
 async function rememberInterest(env, uid, text, guest){
@@ -588,6 +679,22 @@ export default {
       let payload = {}; try { payload = JSON.parse(body); } catch {}
       ctx.waitUntil(handleEvents(env, payload.events));
       return new Response('ok');            // answer LINE fast; replies go out async
+    }
+    /* num-biz sends booking confirmations to venues and monitor alerts to ops,
+       and this Worker is the only one holding the LINE channel token — which is
+       correct: one worker, one credential. It reaches us through a service
+       binding, so this path is not exposed to the internet by any route in
+       wrangler.jsonc; the shared secret is belt and braces.
+
+       lineReply() cannot serve this. A reply token exists only inside a guest's
+       inbound message and expires; an unprompted notification has to be a push. */
+    if (url.pathname === '/internal/push' && req.method === 'POST') {
+      if (!relayEq(req.headers.get('x-num-relay'), env.NUM_RELAY_SECRET))
+        return Response.json({ ok:false, error:'unauthorised' }, { status:401 });
+      let b = {}; try { b = await req.json(); } catch {}
+      if (!b.to || !b.text) return Response.json({ ok:false, error:'to and text required' }, { status:400 });
+      const out = await linePush(env, b.to, b.text);
+      return Response.json(out, { status: out.ok ? 200 : 502 });
     }
     if (url.pathname === '/' || url.pathname === '/health') {
       let places = null, dests = null;

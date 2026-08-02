@@ -101,6 +101,17 @@ async function checkPush(env) {
   }
 }
 
+/**
+ * Cash-out that can't reach the desk. This is the shape that lost money once:
+ * a switch saying "open" over a road that doesn't arrive.
+ */
+function checkCashout(env) {
+  if (env.CASHOUT_OK === '1' && !env.PAYOUT_DESK_KEY) {
+    return { ok: false, remedy: 'CASHOUT_OK is on but PAYOUT_DESK_KEY is unset, so no cash-out can reach the payout desk. The code refuses rather than debiting, but the switch is lying — set the key or turn CASHOUT_OK off.' };
+  }
+  return { ok: true };
+}
+
 /** Inbound SMS with no token = an open mailbox anyone can post into. */
 function checkSms(env) {
   if (env.TWILIO_FROM && !env.TWILIO_TOKEN) {
@@ -139,6 +150,7 @@ export async function runHealth(env) {
     payments: checkPay(env),
     sms: checkSms(env),
     push: await checkPush(env),
+    cashout: checkCashout(env),
     storage: await checkStorage(env),
   };
   const failing = Object.entries(checks).filter(([, v]) => !v.ok).map(([k]) => k);

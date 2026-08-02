@@ -102,6 +102,26 @@ test('every cash-out this Worker files is stamped origin=num', () => {
   assert.doesNotMatch(cashout, /origin:\s*(b\.|body\.|clip\(b\.)/);
 });
 
+test('the payout desk is asked BEFORE any Star is debited', () => {
+  // The ordering IS the fix. Debiting first and queueing second is what lost
+  // money: the desk read a different database, never saw the request, and the
+  // Stars were simply gone. A future refactor that "tidies" the debit back up
+  // above the desk call must fail here.
+  const src = code(readFileSync(join(HERE, 'cashout.mjs'), 'utf8'));
+  const deskAt = src.indexOf('queuePayout(env');
+  const debitAt = src.indexOf('stars = stars - ?2');
+  assert.ok(deskAt > 0, 'cash-out must call the payout desk');
+  assert.ok(debitAt > 0, 'cash-out must debit somewhere');
+  assert.ok(deskAt < debitAt, 'the desk must be asked before the balance is touched');
+});
+
+test('cash-out cannot be opened without a bridge to the desk', () => {
+  // CASHOUT_OK=1 alone used to be enough to promise a payout over a road that
+  // didn't arrive. Both, or neither.
+  const src = code(readFileSync(join(HERE, 'cashout.mjs'), 'utf8'));
+  assert.match(src, /CASHOUT_OK === '1' && deskReady\(env\)/);
+});
+
 test('purchased Stars are never cashable', () => {
   assert.equal(STAR_POLICY.earned_cashable, true);
   assert.equal(STAR_POLICY.purchased_cashable, false);

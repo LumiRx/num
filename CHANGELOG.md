@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.120 — 2026-08-02 21:20 UTC
+
+preflight polish
+
+- commit `8201a2d`
+
 ## 0.8.119 — 2026-08-02 21:18 UTC
 
 preflight + audit fixes
