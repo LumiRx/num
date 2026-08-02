@@ -26,6 +26,7 @@ const PROMISES: Array<[label: string, Icon: (p?: IconProps) => JSX.Element]> = [
 ];
 
 import { PairHandoff } from '../app/PairBridge';
+import InstallPrompt from '../app/InstallPrompt';
 
 export default function LaunchStage() {
   const width = useViewportWidth();
@@ -48,6 +49,7 @@ export default function LaunchStage() {
       }}
     >
       <div className="aurora-layer" aria-hidden="true" />
+      <InstallPrompt />
 
       {/* A friend link opened in the browser instead of the app. Show the code
           to carry across, above everything — it is why they are here. */}

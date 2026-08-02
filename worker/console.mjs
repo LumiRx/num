@@ -304,6 +304,24 @@ async function adminOverview(env, url, req) {
     ['msgs', 'SELECT COUNT(*) n FROM num_messages'],
     ['requests', 'SELECT COUNT(*) n FROM num_requests'],
     ['bookings', 'SELECT COUNT(*) n FROM num_bookings'],
+    // ── who is actually here, and are they real ───────────────────────
+    // `verified` is the number that matters most: an unverified member is a
+    // device, not a person, and reinstalling mints a new one. When this sits
+    // far below `members`, friends and plans WILL fragment across identities.
+    ['membersVerified', 'SELECT COUNT(*) n FROM num_members WHERE phone_verified = 1'],
+    ['members7d', "SELECT COUNT(*) n FROM num_members WHERE created_at > datetime('now','-7 days')"],
+    ['members24h', "SELECT COUNT(*) n FROM num_members WHERE created_at > datetime('now','-1 day')"],
+    // ── what they ask, and how they reach us ──────────────────────────
+    ['questions', 'SELECT COUNT(*) n FROM num_usage'],
+    ['questions24h', "SELECT COUNT(*) n FROM num_usage WHERE created_at > datetime('now','-1 day')"],
+    ['textsIn', "SELECT COUNT(*) n FROM num_inbox WHERE kind='sms'"],
+    ['emailsIn', "SELECT COUNT(*) n FROM num_inbox WHERE kind='email'"],
+    ['friendships', "SELECT COUNT(*) n FROM num_links WHERE state='active'"],
+    ['plansAll', 'SELECT COUNT(*) n FROM num_plans'],
+    ['webVisits', 'SELECT COUNT(*) n FROM num_web_events'],
+    // ── growth loops ──────────────────────────────────────────────────
+    ['bizReferrals', 'SELECT COUNT(*) n FROM num_biz_referrals'],
+    ['bizReferralsLive', "SELECT COUNT(*) n FROM num_biz_referrals WHERE state='active'"],
     ['guestProfiles', 'SELECT COUNT(*) n FROM num_guest_profiles'],
     // the business side
     // ── the Stars economy ──────────────────────────────────────────────

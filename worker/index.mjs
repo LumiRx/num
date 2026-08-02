@@ -32,6 +32,7 @@ import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
 import { handleHealth, healthCron } from './health.mjs';
+import { handleBizReferral } from './bizreferral.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
@@ -406,6 +407,13 @@ export default {
     // when the product is actually broken, not just when the Worker is down.
     if (url.pathname.startsWith('/api/health')) {
       const res = await handleHealth(request, env, url.pathname.slice('/api/health'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Refer a business, earn a share of what it pays Num.
+    if (url.pathname.startsWith('/api/bizref')) {
+      const res = await handleBizReferral(request, env, url.pathname.slice('/api/bizref'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

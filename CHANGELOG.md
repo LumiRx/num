@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.109 — 2026-08-02 18:55 UTC
+
+health run endpoint
+
+- commit `66212d5`
+
+## 0.8.108 — 2026-08-02 18:55 UTC
+
+health run endpoint
+
+- commit `66212d5`
+
 ## 0.8.107 — 2026-08-02 18:37 UTC
 
 pair redeem field fix
