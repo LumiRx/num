@@ -704,7 +704,9 @@ function mirrorPlanDate(plan: PartyPlan): void {
     dur: 120,
     place: plan.dest ?? '',
     title: plan.title,
-    grp: (plan.dest ?? 'NUM').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'NUM',
+    // Booking.grp is a fixed union of known city codes; a plan can be for
+    // anywhere, so coin the 3-letter code the same way the model does and cast.
+    grp: (((plan.dest ?? 'NUM').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'NUM')) as Booking['grp'],
     status: 'confirmed',
     note: 'Group plan — everyone on the plan sees this.',
     cost: '',
