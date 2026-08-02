@@ -22,3 +22,8 @@ production-verified status (Slack #num, 15:28 PT) + Dre-side session logs.
 
 ## 2. Email (Viv's 29h audit): 800 sends, 709 ok, 91 bounce, 0 complaints
 - Merchant campaign bounce 17.25
+## UPDATE 2026-08-01 late — Gap 1 CLOSED by Dre
+GOOGLE_CLIENT_ID set on num-app (the existing "NUM Web" OAuth client in the
+5arz GCP project, origins verified). Confirmed live: /api/version reports
+verify_5arz:true and serves the client id; audience check now enforced.
+Remaining from your list: AIR_SHARED_KEY only.
