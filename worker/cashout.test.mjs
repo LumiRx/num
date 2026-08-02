@@ -38,16 +38,18 @@ test('the boundary is declared one-way', () => {
  * should be asking why.
  *
  *   errands.mjs — escrow release + its rollback. Stars already inside Num.
- *   social.mjs  — member→member transfer, that transfer's rollback, and tab
- *                 settlement. All three move Stars BETWEEN Num members; none
- *                 mints, none reaches outside. (Audited 2026-08-02 when this
- *                 test first flagged them.)
+ *   social.mjs  — member→member transfer, that transfer's rollback, tab
+ *                 settlement, and (added 2026-08-02 after a security audit)
+ *                 the tab-settlement ROLLBACK, which re-credits the payer when
+ *                 the settlement batch fails. All four move Stars BETWEEN Num
+ *                 members or return them to where they came from; none mints,
+ *                 none reaches outside.
  *   pay.mjs     — a Stripe-paid top-up, only after a verified signature.
  *   cashout.mjs — the rollback when filing a cash-out request fails.
  *
  * Note what is NOT here and never should be: anything sourced from 5arz.
  */
-const CREDIT_SITES = { 'errands.mjs': 2, 'social.mjs': 3, 'pay.mjs': 1, 'cashout.mjs': 1 };
+const CREDIT_SITES = { 'errands.mjs': 2, 'social.mjs': 4, 'pay.mjs': 1, 'cashout.mjs': 1, 'bizreferral.mjs': 1 };
 
 test('the set of places a Num balance can grow is exactly the reviewed set', () => {
   const found = {};

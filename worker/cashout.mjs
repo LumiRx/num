@@ -62,8 +62,30 @@ const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
 
-/** Credits whose origin is work, not cash. Anything not listed is NOT cashable. */
-const EARNED_KINDS = ['errand', 'tab', 'bounty', 'referral', 'reward'];
+/**
+ * Credits whose origin is work, not cash. Anything not listed is NOT cashable.
+ *
+ * ⚠️ `errand` and `tab` were here and have been REMOVED. A security audit found
+ * they made the whole earned/purchased split defeatable with two accounts:
+ *
+ *     A buys ★10,000 (purchased, not cashable)
+ *     A posts an errand with a ★10,000 bounty  →  escrow
+ *     B claims it, "delivers", A confirms
+ *     B now holds ★10,000 of kind 'errand'  →  cashable
+ *
+ * Cash in, cash out, through a rail that exists to pay for real work. The same
+ * trick runs through a tab settlement. Netting (below) only ever defended
+ * against a single account round-tripping to itself; it cannot see a
+ * confederate.
+ *
+ * The honest fix is per-move provenance — tagging every Star with whether it
+ * was bought or earned and carrying that through escrow — and that is the
+ * right thing to build. Until it exists, only PLATFORM-FUNDED credits are
+ * cashable: Num decides who gets a bounty, a referral share or a reward, and
+ * Num cannot be tricked into paying itself. Peer-to-peer credits still spend
+ * freely inside Num; they just cannot become money.
+ */
+const EARNED_KINDS = ['bounty', 'referral', 'reward'];
 
 /**
  * The wallet boundary, stated as data so it can be served, tested and read.

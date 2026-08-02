@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.116 — 2026-08-02 20:49 UTC
+
+signup + location honesty
+
+- commit `080acbc`
+
 ## 0.8.115 — 2026-08-02 20:32 UTC
 
 pwa share target + shortcuts

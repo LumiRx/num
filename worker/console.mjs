@@ -257,7 +257,7 @@ async function adminSession(env, req) {
   return json({ token: await mintSession(env, who), who, expires_in_hours: SESSION_HOURS });
 }
 
-const isAdmin = async (env, req) =>
+export const isAdmin = async (env, req) =>
   !!env.ADMIN_KEY && (await sessionValid(env, req.headers.get('X-Admin-Session')));
 
 const count = async (env, sql, ...binds) => {

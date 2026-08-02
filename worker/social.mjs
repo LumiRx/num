@@ -694,7 +694,13 @@ async function verifyVia5arz(env, req) {
 
   // The token must have been issued FOR us. Without this check any valid
   // Google token from any app in the world would be accepted here.
-  if (env.GOOGLE_CLIENT_ID && info.aud !== env.GOOGLE_CLIENT_ID) {
+  // FAIL CLOSED. This used to be `if (env.GOOGLE_CLIENT_ID && ...)`, so with
+  // the secret unset the audience check was skipped entirely and ANY valid
+  // Google token from ANY app on the internet was accepted — and /api/version
+  // publicly advertises whether the id is set, so an attacker could check
+  // first. A verification that switches itself off when unconfigured is worse
+  // than no verification, because it still hands out the badge.
+  if (!env.GOOGLE_CLIENT_ID || info.aud !== env.GOOGLE_CLIENT_ID) {
     return json({ error: 'That sign-in was issued for a different app.' }, 401);
   }
   if (info.email_verified === 'false' || info.email_verified === false) {
@@ -1241,15 +1247,27 @@ async function tabSettle(env, req) {
     // settlement — a fixed id would make a legitimate second settlement (more
     // rounds arrived after the first) collide and strand the debit.
     const ref = uid('stl');
-    await env.DB.batch([
-      env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(c.member_id, amount),
-      env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'tab',?4,?5)")
-        .bind(`${ref}:out`, meId, -amount, state.tab.title, c.member_id),
-      env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'tab',?4,?5)")
-        .bind(`${ref}:in`, c.member_id, amount, state.tab.title, meId),
-      env.DB.prepare('INSERT INTO num_tab_settlements (id, tab_id, from_id, to_id, stars) VALUES (?1,?2,?3,?4,?5)')
-        .bind(ref, state.tab.id, meId, c.member_id, amount),
-    ]);
+    try {
+      await env.DB.batch([
+        env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(c.member_id, amount),
+        env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'tab',?4,?5)")
+          .bind(`${ref}:out`, meId, -amount, state.tab.title, c.member_id),
+        env.DB.prepare("INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'tab',?4,?5)")
+          .bind(`${ref}:in`, c.member_id, amount, state.tab.title, meId),
+        env.DB.prepare('INSERT INTO num_tab_settlements (id, tab_id, from_id, to_id, stars) VALUES (?1,?2,?3,?4,?5)')
+          .bind(ref, state.tab.id, meId, c.member_id, amount),
+      ]);
+    } catch (err) {
+      // PUT IT BACK. The comment above described this hazard correctly and
+      // then didn't guard it: the debit had already landed, so a failed batch
+      // (D1 blip, storage cap, id collision) simply destroyed the payer's
+      // Stars. pay(), moveEscrow() and cashout all roll back; this is the one
+      // money path that didn't, and it runs in a loop over every creditor.
+      await env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1')
+        .bind(meId, amount).run().catch(() => {});
+      console.error('[tab-settle] rolled back', err?.message ?? err);
+      return json({ error: 'That settlement didn’t go through — nothing was taken.' }, 500);
+    }
     paid.push({ to: c.name, stars: amount });
     left -= amount;
   }

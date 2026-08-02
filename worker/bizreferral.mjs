@@ -29,6 +29,7 @@
 // Earnings land as EARNED Stars, which means they inherit the cash-out path in
 // cashout.mjs (earned is cashable, purchased is not). One economy, one rule.
 import { notify } from './push.mjs';
+import { isAdmin } from './console.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -212,7 +213,13 @@ export async function handleBizReferral(request, env, path) {
   }
 
   // Admin: a claimed business signed up — link it and start the clock.
+  //
+  // GATED. This was open to the internet: anyone could claim a business, then
+  // activate their own claim against a real business id and start collecting a
+  // share of its bookings — as `referral` Stars, which are cashable. Activation
+  // decides who gets paid, so it is an admin action, not a public one.
   if (path === '/activate' && post) {
+    if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
     const b = await request.json().catch(() => ({}));
     const id = clip(b.id, 40);
     const businessId = clip(b.business_id, 40);

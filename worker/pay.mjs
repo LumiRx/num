@@ -83,6 +83,24 @@ function links(env) {
 export const payMode = (env) => (env.STRIPE_SECRET_KEY ? 'stripe' : Object.keys(links(env)).length ? 'links' : 'none');
 
 /**
+ * THE PRICE LIST LIVES HERE, NOT IN THE REQUEST.
+ *
+ * The first version took `amount_cents` AND `ref` from the client and never
+ * checked that they agreed — so `{ref:"stars:5000", amount_cents:100}` bought
+ * ★5,000 for a dollar, and the webhook credited it because it reads the Stars
+ * count out of `ref`. Verified against production before this fix: a live
+ * Stripe session was minted for $1.00.
+ *
+ * Anything a customer receives must be priced by us. The client may say WHICH
+ * pack; it may never say what a pack costs.
+ */
+const STAR_PACKS = Object.freeze({
+  500: 15000,
+  1000: 29500,
+  5000: 142500,
+});
+
+/**
  * Stripe's API is form-encoded, including nested objects, which trips people
  * up because everything else about it looks modern. `a[b]=c` is the shape.
  */
@@ -250,6 +268,14 @@ export async function handlePay(request, env, path) {
     try { event = JSON.parse(payload); } catch { return json({ error: 'bad payload' }, 400); }
     if (event.type === 'checkout.session.completed') {
       const s = event.data?.object ?? {};
+      // `completed` is not `paid`. Async methods (bank debits, vouchers) fire
+      // this event while the money is still in flight and can still fail —
+      // crediting on the event alone hands out Stars for a payment that may
+      // never land.
+      if (s.payment_status && s.payment_status !== 'paid') {
+        console.warn('[pay] session completed but not paid:', s.payment_status);
+        return json({ received: true, ignored: 'unpaid' });
+      }
       const id = s.client_reference_id || s.metadata?.num_payment_id;
       if (id) {
         await ensure(env);
@@ -317,6 +343,23 @@ export async function handlePay(request, env, path) {
 
   if (path === '/request' && post) {
     const b = await readBody(request);
+
+    // A Stars purchase is priced from OUR table, using only the pack id the
+    // client named. A client-supplied amount is ignored outright rather than
+    // validated, because there is no version of "the buyer set the price" that
+    // is safe.
+    const packRef = /^stars:(\d{1,7})$/.exec(String(b.ref ?? ''));
+    if (packRef) {
+      const n = Number(packRef[1]);
+      const priced = STAR_PACKS[n];
+      if (!priced) {
+        return json({ ok: false, mode: payMode(env), error: 'That isn’t one of our Star packs.' }, 400);
+      }
+      b.amount_cents = priced;
+      b.currency = 'usd';
+      b.description = `Num — ★${n.toLocaleString()} pack`;
+    }
+
     // Closed-loop switch. NUM Stars are credit for NUM and nothing else —
     // see CLOSED_LOOP below. Buying them is therefore a prepaid in-app
     // balance, not a stored-value instrument that can leave the system. It
