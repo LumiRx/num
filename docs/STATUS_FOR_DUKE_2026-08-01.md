@@ -27,3 +27,9 @@ GOOGLE_CLIENT_ID set on num-app (the existing "NUM Web" OAuth client in the
 5arz GCP project, origins verified). Confirmed live: /api/version reports
 verify_5arz:true and serves the client id; audience check now enforced.
 Remaining from your list: AIR_SHARED_KEY only.
+
+## Addendum 2 — pay rail + connections (0.8.91/0.8.92, later 08-01)
+
+- **Connect Your World is real now** (0.8.91): contact/photo pickers, calendar auto-mirror, read-only wallet link, per-member email forward address (`num+<id>@itsnum.com`, worker `email()` handler shipped — needs Email Routing catch-all on itsnum.com flipped to the num-app worker), and inbound SMS at `/api/sms/inbound` with **Twilio signature verification** (403 otherwise — probed live).
+- **Pay rail** (0.8.92): Stripe Checkout end-to-end behind `STRIPE_SECRET_KEY`; `/api/pay/webhook` verifies Stripe signatures per your §8 rule (unsigned → 400, probed live). The wallet's top-up buttons no longer fake-credit Stars.
+- **§8 "Never sell Stars" is enforced in code**: `/api/pay/request` refuses any `stars:*` purchase with a 403 unless `STARS_SALE_OK=1` is set. That env var is yours to set or never set — bills/tabs/bookings/bounties are unaffected and can charge the moment a Stripe key exists. Money flows provider→recipient via Stripe; we hold nothing.
