@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.99 — 2026-08-02 05:56 UTC
+
+closed-loop stars
+
+- commit `ae0f227`
+
 ## 0.8.98 — 2026-08-02 05:39 UTC
 
 stars delivery on paid webhook

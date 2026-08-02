@@ -5,7 +5,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
-import { buyPack } from '../../lib/concierge';
+import { buyPack, requestCashout } from '../../lib/concierge';
 import { TabStarter } from './TabSheet';
 
 const PACKS: Array<{ stars: string; price: string; n: number; cents: number }> = [
@@ -24,12 +24,19 @@ export default function WalletSheet() {
 
   // What the pay rail can actually do right now — asked, not asserted.
   const [pay, setPay] = useState<{ mode: string; stars_sale?: boolean } | null>(null);
+  // Earned vs bought. Only earned Stars can become money — the wallet says so
+  // with a number rather than making someone find out at the worst moment.
+  const [out, setOut] = useState<{ open: boolean; cashable: number; locked_purchased: number } | null>(null);
   useEffect(() => {
     if (!open) return;
-    void fetch('/api/pay/status')
-      .then((r) => r.json())
-      .then((d: { mode: string; stars_sale?: boolean }) => setPay(d))
-      .catch(() => setPay(null));
+    void fetch('/api/pay/status').then((r) => r.json()).then(setPay).catch(() => setPay(null));
+    const me = store.get().me;
+    if (me) {
+      void fetch(`/api/cashout/quote?me=${encodeURIComponent(me.id)}`)
+        .then((r) => r.json())
+        .then(setOut)
+        .catch(() => setOut(null));
+    }
   }, [open]);
 
   const close = () => store.set({ walletOpen: false });
@@ -52,11 +59,11 @@ export default function WalletSheet() {
             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 30, lineHeight: 1 }}>{stars.toLocaleString()}</span>
           </div>
         </div>
-        {/* Stars are closed-loop: credit for Num, never convertible to cash.
-            The old line ("1★ ≈ $0.30") read as an exchange rate, which is the
-            one thing they are not. */}
+        {/* No exchange rate here. The old line ("1★ ≈ $0.30") read as a
+            redemption promise across the whole balance, which is only true of
+            the earned half — that number lives in its own row below. */}
         <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', textAlign: 'right', lineHeight: 1.5 }}>
-          Spends inside Num<br />friends see plans, never stars
+          Earn it, spend it, cash it out<br />friends see plans, never stars
         </div>
       </div>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ink-08)' }}>
@@ -77,9 +84,39 @@ export default function WalletSheet() {
         {!!bought && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-accent-700)', fontWeight: 600 }}>{bought}</div>}
         {/* Said plainly, where the money decision happens. */}
         <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
-          Stars are credit for Num — errands, tabs, bookings. They don’t convert to cash and don’t leave the app.
+          Stars you buy spend inside Num — errands, tabs, bookings. Stars you <strong>earn</strong> can be cashed out to 5arz.
         </div>
       </div>
+      {/* EARNED — the money side. Shown only when there is something to show,
+          so it never nags a traveller who has never run an errand. */}
+      {!!out && out.cashable > 0 && (
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--ink-08)' }}>
+          <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)' }}>EARNED — YOURS TO CASH OUT</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 17 }}>★{out.cashable.toLocaleString()}</div>
+              <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', marginTop: 2, lineHeight: 1.45 }}>
+                {out.open
+                  ? 'Sends to your 5arz account.'
+                  : 'Counted and safe — cash-out opens shortly.'}
+                {out.locked_purchased > 0 && ` ★${out.locked_purchased.toLocaleString()} bought, spends in Num.`}
+              </div>
+            </div>
+            <div
+              {...pressable(() => { void requestCashout(out.cashable); })}
+              className="press"
+              style={{
+                cursor: out.open ? 'pointer' : 'default', borderRadius: 999, padding: '9px 14px',
+                fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', whiteSpace: 'nowrap',
+                background: out.open ? 'var(--grad-accent)' : 'var(--ink-12)',
+                color: out.open ? '#fff' : 'var(--ink-60)',
+              }}
+            >
+              CASH OUT
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ padding: '0 16px 14px' }}>
         <TabStarter />
         <div

@@ -72,6 +72,40 @@ function payBill(how: string) {
   }));
 }
 
+/**
+ * Take earned Stars out as money, to 5arz.
+ *
+ * Only Stars EARNED through work are cashable — the server computes that from
+ * their origin, and this just asks. Bought Stars spend inside Num. That split
+ * is what lets Num pay a runner real money without becoming a money
+ * transmitter, so the client never tries to talk the server out of it.
+ */
+export async function requestCashout(stars: number) {
+  const me = store.get().me;
+  if (!me || stars <= 0) return;
+  try {
+    const r = await fetch('/api/cashout/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, stars }),
+    });
+    const d = (await r.json()) as { ok?: boolean; error?: string; stars?: number };
+    if (d.ok) {
+      store.set((s) => ({
+        stars: Math.max(0, s.stars - (d.stars ?? stars)),
+        bought: `★${(d.stars ?? stars).toLocaleString()} on the way to 5arz.`,
+      }));
+      push({ who: 'c', text: `That's ★${(d.stars ?? stars).toLocaleString()} heading to your 5arz account. I'll tell you the moment it lands.` });
+    } else {
+      store.set({ bought: d.error ?? 'Cash-out didn’t go through.' });
+    }
+  } catch {
+    store.set({ bought: 'Couldn’t reach the payout desk — try again shortly.' });
+  }
+  clearTimeout(boughtTimer);
+  boughtTimer = setTimeout(() => store.set({ bought: '' }), 6000);
+}
+
 /* REAL pay rail, replacing a button that credited ★5,000 for free. A tap now
  * asks the server to mint a Stripe Checkout session for the exact amount —
  * Apple Pay appears by itself on Apple devices — and the balance only ever

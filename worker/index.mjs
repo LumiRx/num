@@ -30,6 +30,7 @@ import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
+import { handleCashout } from './cashout.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
@@ -396,6 +397,12 @@ export default {
     if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
     if (url.pathname === '/api/sms/inbox') {
       const res = await handleInboxRead(request, env);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/cashout')) {
+      const res = await handleCashout(request, env, url.pathname.slice('/api/cashout'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
