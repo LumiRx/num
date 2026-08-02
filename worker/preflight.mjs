@@ -82,7 +82,9 @@ export function checkPayment(intent = {}) {
       // correction to hand back, so an honest stale client can retry right.
       return fail(
         `★${n.toLocaleString()} costs ${money(priced)}, not ${money(claimed)}.`,
-        { ref, amount_cents: priced, stars: n, says: `★${n.toLocaleString()} is ${money(priced)}.` },
+        // `says` is what the app puts ON THE BUTTON, so it is an instruction,
+        // not a repeat of the sentence above it.
+        { ref, amount_cents: priced, stars: n, says: `Continue at ${money(priced)}?` },
       );
     }
     return pass(priced, `★${n.toLocaleString()} pack`);

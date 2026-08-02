@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.119 — 2026-08-02 21:18 UTC
+
+preflight + audit fixes
+
+- commit `26263dd`
+
 ## 0.8.118 — 2026-08-02 21:07 UTC
 
 security fixes

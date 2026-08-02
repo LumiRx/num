@@ -16,6 +16,7 @@ test('the client can never set the price of a Star pack', () => {
   assert.equal(v.correction.amount_cents, STAR_PACKS[5000]);
   assert.match(v.reason, /\$1,425\.00/);
   assert.match(v.reason, /\$1\.00/); // says what they claimed, too
+  assert.match(v.correction.says, /Continue at \$1,425\.00/); // a button label
 });
 
 test('a pack with no amount is still priced by us', () => {
