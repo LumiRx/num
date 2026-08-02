@@ -196,7 +196,14 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
       <div
         className={u ? undefined : 'glass'}
         style={{
-          maxWidth: '82%', fontSize: 13, lineHeight: 1.5, padding: '10px 13px',
+          // 13px was set for density; this is a READING surface. Num's replies
+          // run several sentences, often on a phone, often outdoors, often by
+          // someone tired at the end of a travel day. 15.5/1.62 is the size
+          // people actually read prose at — the extra millimetre costs a line
+          // of scroll and buys not squinting.
+          maxWidth: '84%', fontSize: 15.5, lineHeight: 1.62, padding: '12px 15px',
+          fontFamily: 'var(--font-read)',
+          letterSpacing: '.005em',
           borderRadius: 18,
           ...(u
             ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(236,48,19,.25)' }
@@ -349,7 +356,7 @@ export default function ThreadView() {
             placeholder="Message Num…"
             /* 16px: iOS zooms the page in on focus for anything smaller, and
                that zoom is itself a viewport resize — i.e. a second glitch. */
-            style={{ flex: 1, height: 44, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '0 16px', fontSize: 16, color: 'var(--color-text)', background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-body)', minWidth: 0 }}
+            style={{ flex: 1, height: 44, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '0 16px', fontSize: 16, color: 'var(--color-text)', background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-read)', minWidth: 0 }}
           />
           {draft.trim() ? (
             <div

@@ -44,6 +44,16 @@
   --font-heading: "Archivo", system-ui, sans-serif;
   --font-heading-weight: 800;
   --font-body: "Archivo", system-ui, sans-serif;
+  /* READING type, for the one surface that is long-form: the thread.
+     Archivo is a grotesque built for headlines — tight apertures, uniform
+     stroke, narrow-ish. Excellent on a label, tiring over five sentences.
+     The system UI stack (SF on iOS, Roboto on Android) is what those
+     platforms optimise for body text at small sizes: larger x-height, open
+     counters, hinted at every weight, and already resident so it costs no
+     download and never flashes. Brand voice lives in the headings; the part
+     people READ should be the part their eyes find easiest. */
+  --font-read: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "Noto Sans", "Noto Sans Thai", sans-serif;
 
   --space-1: 4.0px;
   --space-2: 8.0px;

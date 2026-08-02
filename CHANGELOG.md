@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.112 — 2026-08-02 20:08 UTC
+
+people metric + 2% booking referrals
+
+- commit `67fa27b`
+
 ## 0.8.111 — 2026-08-02 19:57 UTC
 
 biz referrals + install prompt + metrics
