@@ -119,3 +119,38 @@ the check doing its job.
 **Still true and still yours:** the Num ledger is clean; the drift is on the
 partner side, which is where these settle. First payouts are small. Worth a
 manual eyeball on the first few settlements.
+
+## Addendum 6 — the cash-out bridge, and the one thing only you can decide (0.8.121)
+
+**What was broken.** Cash-out debited a member's Stars, wrote a row into
+`num_cashouts` (num-db), and told them "on its way to 5arz". Your desk reads
+`cashout_requests` in the 5arz ledger and never saw it. Money left the balance
+and reached nobody; every layer reported success. `CASHOUT_OK` was ON for a few
+hours today. No member cash-out was attempted in that window — checked.
+
+**What now happens.** `worker/payoutdesk.mjs` calls your `/request` endpoint
+(session-authed with `PAYOUT_DESK_KEY`, same scheme as the console) and the
+balance moves ONLY after the desk answers with a reference. Refusal, timeout or
+missing config → the member's Stars are untouched and they're told exactly
+that. Our idempotency key is stable per attempt, so a retry after a timeout
+resolves to your existing request instead of queueing a second payout.
+`CASHOUT_OK=1` alone can no longer open cash-out — `deskReady()` must also be
+true, so the switch can't promise a road that doesn't arrive. Two tests pin the
+ordering; a future refactor that moves the debit back above the desk call fails
+the build.
+
+**THE DECISION THAT IS YOURS.** Your desk pays from `member_finance.stars_earned`
+in the 5arz ledger. Num-earned Stars are in num-db and are NOT in that ledger,
+so today your desk would answer "Only 0 Stars available" for every Num member.
+I did not work around this. The two ways I can see:
+
+1. **Desk reads Num for `origin: 'num'`** — we already send that field. Your
+   side binds num-db read-only and takes the earned balance from
+   `num_star_moves`. Wallets stay separate; one ledger stays authoritative for
+   each economy. This is the option I'd argue for.
+2. **Num funds a 5arz balance first** — merges the two wallets, which is the
+   boundary Dre asked for and which `cashout.test.mjs` now enforces. I'd need
+   an explicit instruction to undo that, and I don't recommend it.
+
+Until you pick, cash-out stays closed and honest. Nothing is queued, nothing is
+owed, and nobody is told otherwise.

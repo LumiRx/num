@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.121 — 2026-08-02 22:07 UTC
+
+payout desk bridge
+
+- commit `75fdba2`
+
 ## 0.8.120 — 2026-08-02 21:20 UTC
 
 preflight polish
