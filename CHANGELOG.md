@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.93 — 2026-08-02 02:55 UTC
+
+real pay rail + honest stars buttons
+
+- commit `2d38282`
+
+## 0.8.92 — 2026-08-02 02:55 UTC
+
+real pay rail + honest stars buttons
+
+- commit `2d38282`
+
 ## 0.8.91 — 2026-08-02 02:50 UTC
 
 connections real: pickers, wallet, email addr, sms line

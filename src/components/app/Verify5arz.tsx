@@ -99,15 +99,21 @@ export default function Verify5arz() {
           }
         },
       });
-      g.renderButton(host, { theme: 'outline', size: 'large', text: 'continue_with', shape: 'pill' });
+      // GIS renders at a fixed pixel width, so it must be told the card's
+      // width or it either overflows the phone or floats undersized. 400 is
+      // Google's documented maximum.
+      const width = Math.min(400, Math.max(200, Math.round(host.getBoundingClientRect().width) || 280));
+      g.renderButton(host, { theme: 'outline', size: 'large', text: 'continue_with', shape: 'pill', width });
     });
   }, [clientId, done, me?.id]);
 
   // Feature dark (no client id yet) or no account on this device: render nothing.
   if (!clientId || !me) return null;
 
+  // Its own card, matching the rest of the profile stack. It used to be the
+  // third child of the identity flex row, where it overprinted the name.
   return (
-    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ink-08)' }}>
+    <div className="glass" style={{ margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 }}>
       <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 700, color: 'var(--ink-40)' }}>IDENTITY · 5ARZ</div>
       {done ? (
         <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: '#0e6b45' }}>
@@ -119,7 +125,7 @@ export default function Verify5arz() {
             Already verified on 5arz? Link it — sign in with the same Google account and Num carries the
             “verified human” badge. One 5arz identity links to one Num account, ever.
           </div>
-          <div id="g5arz-btn" style={{ opacity: busy ? 0.5 : 1 }} />
+          <div id="g5arz-btn" style={{ opacity: busy ? 0.5 : 1, display: 'flex', justifyContent: 'center', maxWidth: '100%', overflow: 'hidden' }} />
           {outcome && 'message' in outcome && (
             <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.5, color: 'var(--color-accent-700)' }}>
               {outcome.message}

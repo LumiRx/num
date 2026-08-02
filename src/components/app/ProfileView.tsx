@@ -215,8 +215,10 @@ export default function ProfileView() {
             )}
           </div>
         </div>
-        <Verify5arz />
       </div>
+      {/* Its own block UNDER the identity row. As a third flex child it was
+          being squeezed into the name column and printing over "Dre". */}
+      <Verify5arz />
 
       <Collapsible title="NAME ON THE ACCOUNT" summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
         <input
