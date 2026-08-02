@@ -8,6 +8,7 @@ import { store } from './store';
 import { refreshRequests } from './requests';
 import { refreshStars } from './stars';
 import { resumeDm } from './dm';
+import { askNum } from './concierge';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
@@ -74,6 +75,28 @@ export function bootSocial(): void {
     // Keep the launch URL clean so a refresh doesn't re-trigger the invite.
     history.replaceState(null, '', window.location.pathname);
   }
+
+  // ── Share target: anything, from any app, straight into the thread ──────
+  //
+  // A concierge is most useful at the moment you see the thing — a friend
+  // sends a restaurant link, you spot a hotel, someone forwards an event. The
+  // manifest registers Num in the OS share sheet, so that moment costs one tap
+  // instead of copy → switch app → paste. The shared text becomes a question.
+  const shared = [q.get('share_title'), q.get('share_text'), q.get('share_url')]
+    .filter(Boolean).join(' ').trim();
+  if (shared) {
+    history.replaceState(null, '', window.location.pathname);
+    store.set({ threadOpen: true, view: 'thread' });
+    // Deferred so the app has mounted and the store is live before it answers.
+    setTimeout(() => { void askNum(`Someone shared this with me — what do you make of it? ${shared}`); }, 400);
+  }
+
+  // ── Home-screen shortcuts (long-press the icon) ─────────────────────────
+  const go = q.get('go');
+  if (go === 'thread') store.set({ threadOpen: true, view: 'thread' });
+  else if (go === 'plan') store.set({ view: 'plan', threadOpen: false });
+  else if (go === 'wallet') store.set({ walletOpen: true, threadOpen: false });
+  if (go) history.replaceState(null, '', window.location.pathname);
 
   // ── The Safari ↔ installed-app wall ─────────────────────────────────────
   //

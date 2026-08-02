@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.114 — 2026-08-02 20:29 UTC
+
+readable thread type
+
+- commit `4b4a748`
+
+## 0.8.113 — 2026-08-02 20:28 UTC
+
+readable thread type
+
+- commit `4b4a748`
+
 ## 0.8.112 — 2026-08-02 20:08 UTC
 
 people metric + 2% booking referrals
