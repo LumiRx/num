@@ -80,3 +80,29 @@ test('every activity row is labelled by the server', () => {
     assert.ok(feed.includes(`${kind}:`), `activity feed has no label for '${kind}'`);
   }
 });
+
+test('refund metadata actually travels on the charge, not just the session', () => {
+  // The refund handler shipped DEAD: metadata sat on the Checkout Session,
+  // and Stripe does not copy session metadata to the intent or the charge —
+  // so charge.refunded arrived carrying nothing and the handler read
+  // undefined forever. The earlier tests passed because they checked the
+  // handler EXISTS, not that Stripe would ever feed it. This one pins the
+  // wire: the session creation must set payment_intent_data.metadata.
+  const create = pay.slice(pay.indexOf('metadata: { num_payment_id'));
+  assert.match(create, /payment_intent_data:\s*\{/, 'refunds will arrive with no metadata and reclaim nothing');
+  const pid = pay.indexOf('payment_intent_data');
+  assert.ok(pid !== -1 && /num_payment_id/.test(pay.slice(pid, pid + 400)),
+    'payment_intent_data exists but does not carry num_payment_id');
+});
+
+test('stored dossier JSON is capped by trimming fields, never by slicing the string', () => {
+  const dossier = readFileSync(join(HERE, 'bizdossier.mjs'), 'utf8');
+  assert.ok(!/JSON\.stringify\([^)]*\)\.slice\(/.test(dossier),
+    'a sliced JSON string is not JSON — the first long dossier crashes whatever parses it');
+});
+
+test('the console parses dossier JSON defensively', () => {
+  const console_ = readFileSync(join(HERE, 'console.mjs'), 'utf8');
+  const seg = console_.slice(console_.indexOf('web_signups'));
+  assert.match(seg, /try\s*\{[^}]*JSON\.parse/, 'one malformed dossier row would 500 the whole Claims screen');
+});

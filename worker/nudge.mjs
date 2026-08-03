@@ -166,7 +166,13 @@ export async function claimSweep(env) {
     await alert(
       env,
       `[biz] ${unseen.length} NEW web signup(s): ` +
-        unseen.slice(0, 6).map((c) => `${c.business_name}${c.contact_name ? ` (${c.contact_name}` : ''}${c.phone ? `${c.contact_name ? ', ' : ' ('}${c.phone})` : c.contact_name ? ')' : ''}`).join('; ') +
+        unseen.slice(0, 6).map((c) => {
+          // Built as a list and joined — the nested-ternary version of this
+          // could print "Name ( +44…)" and was unreadable enough that nobody
+          // would have spotted it doing so.
+          const bits = [c.contact_name, c.phone].filter(Boolean).join(', ');
+          return bits ? `${c.business_name} (${bits})` : c.business_name;
+        }).join('; ') +
         (unseen.length > 6 ? ` +${unseen.length - 6} more` : '') +
         ' — console → Claims.',
     ).catch(() => {});

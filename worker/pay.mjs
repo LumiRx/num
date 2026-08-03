@@ -221,6 +221,14 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
       // The reference travels with the money, so a webhook or a dashboard row
       // can be tied back to the thing it paid for without a spreadsheet.
       metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(memberId ? { num_member: memberId } : {}) },
+      // AND on the payment intent. Stripe does NOT copy session metadata to
+      // the intent or the charge — so without this, charge.refunded arrives
+      // carrying nothing, the refund handler reads undefined, and the whole
+      // reclaim path is dead code. Found in self-review, not by a refund —
+      // which is the only acceptable way to find it.
+      payment_intent_data: {
+        metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(memberId ? { num_member: memberId } : {}) },
+      },
     },
     id,
   );

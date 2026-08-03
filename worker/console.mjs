@@ -641,7 +641,13 @@ async function adminClaims(env, url) {
     // what we found about them and draft promo options for the callback.
     // promos are marked ai_generated — preparation for the call, never sent
     // to the business unreviewed.
-    web_signups: (web.results ?? []).map((r) => ({ ...r, promos: r.promos ? JSON.parse(r.promos) : null })),
+    web_signups: (web.results ?? []).map((r) => {
+      // Parse defensively: one malformed dossier must cost ONE row's promos,
+      // never the whole Claims screen.
+      let promos = null;
+      try { promos = r.promos ? JSON.parse(r.promos) : null; } catch { promos = { ai_generated: true, unreadable: true }; }
+      return { ...r, promos };
+    }),
     // The count is the truth even when the list is capped, so a queue longer
     // than the page cannot read as a queue that is finished.
     counts: {

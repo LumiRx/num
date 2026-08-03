@@ -97,13 +97,25 @@ async function tailor(env, name, source, found) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: env.NUM_RESEARCH_MODEL || 'claude-haiku-4-5',
+        // The dated string, not the alias — an alias that doesn't resolve
+        // fails r.ok and every dossier quietly ships without promos, which
+        // looks like a model quality problem and is actually a 404.
+        model: env.NUM_RESEARCH_MODEL || 'claude-haiku-4-5-20251001',
         max_tokens: 600,
         messages: [{
           role: 'user',
           content:
             `A business signed up to Num, a travel-concierge app in ${market}. ` +
-            `Name: "${name}". What we found publicly: ${JSON.stringify(found ?? {}).slice(0, 1500)}\n\n` +
+            // Trimmed fields, not a sliced string — the model reading a
+            // truncated JSON tail is harmless but it IS reading garbage.
+            `Name: "${name}". What we found publicly: ${JSON.stringify({
+              website: clip(found?.website, 200),
+              category: clip(found?.category, 80),
+              rating: found?.rating ?? null,
+              address: clip(found?.address, 150),
+              description: clip(found?.description, 400),
+              top: (found?.top ?? []).slice(0, 2).map((t) => ({ title: clip(t.title, 80), snippet: clip(t.snippet, 150) })),
+            })}\n\n` +
             'Reply with ONLY JSON: {"category": "<one short label>", "summary": "<2 sentences on what this business is>", ' +
             '"promos": [{"title": "<short>", "pitch": "<one sentence, specific to THIS kind of business, that a Num rep could say on a call>"}, ...exactly 3]}. ' +
             'Promos must fit a concierge that sends guests: think first-visit perks, quiet-hours offers, group/plan deals — never generic discounts.',
@@ -169,8 +181,27 @@ export async function dossierSweep(env) {
       clip(brain?.summary, 500),
       // Marked at the field level, not in a README nobody reads: these are
       // drafts for the call, generated, unreviewed.
-      brain?.promos ? JSON.stringify({ ai_generated: true, options: brain.promos }).slice(0, 2000) : null,
-      found ? JSON.stringify(found).slice(0, 4000) : null,
+      //
+      // Capped by trimming FIELDS, never by slicing the JSON string — a
+      // sliced JSON string is not JSON, and the first truncated row would
+      // crash whatever parses it (it would have taken the whole admin
+      // Claims screen down with it).
+      brain?.promos
+        ? JSON.stringify({
+            ai_generated: true,
+            options: (Array.isArray(brain.promos) ? brain.promos : []).slice(0, 3).map((o) => ({
+              title: clip(o?.title, 80),
+              pitch: clip(o?.pitch, 300),
+            })),
+          })
+        : null,
+      found
+        ? JSON.stringify({
+            ...found,
+            description: clip(found.description, 400),
+            top: (found.top ?? []).map((t) => ({ title: clip(t.title, 100), snippet: clip(t.snippet, 200), link: clip(t.link, 200) })),
+          })
+        : null,
       found || brain ? 'researched' : 'lookup_failed',
     ).run().catch((e) => console.warn('[dossier]', e?.message));
     built++;

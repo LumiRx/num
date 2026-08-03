@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.136 — 2026-08-03 17:54 UTC
+
+signup dossiers
+
+- commit `af30983`
+
 ## 0.8.135 — 2026-08-03 16:24 UTC
 
 web signups visible
