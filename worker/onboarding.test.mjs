@@ -55,7 +55,10 @@ test('the UK web funnel is read by the console and watched by the sweep', () => 
   // the rows landed in `claims` — which no dashboard read and no alert
   // watched. Dre learned about his own signups secondhand, days later.
   const console_ = readFileSync(join(HERE, 'console.mjs'), 'utf8');
-  assert.match(console_, /FROM claims WHERE state = 'new'/, 'the admin console still cannot see web signups');
+  // Pinned to the semantics, not the exact SQL: the console must select from
+  // the growth worker's `claims` table, whatever aliases the query grows.
+  assert.match(console_, /FROM claims\b/, 'the admin console still cannot see web signups');
+  assert.match(console_, /web_signups/, 'the signups are queried but never returned');
   assert.match(nudge, /'webclaim'/, 'a web signup would again reach Dre secondhand, days later');
   // And each signup alerts exactly once, forever — not once per sweep.
   const sweep = nudge.slice(nudge.indexOf('webclaim') - 800, nudge.indexOf('webclaim') + 200);
@@ -67,4 +70,38 @@ test('the public /activate stays admin-gated even with auto-activation live', ()
   // endpoint is the one an attacker can reach, and it must stay locked.
   const pub = bizref.slice(bizref.indexOf("path === '/activate'"));
   assert.match(pub, /isAdmin\(env, request\)/, 'the public activate endpoint lost its admin gate');
+});
+
+// ── Dossiers: every signup researched, none researched twice ──────────────
+
+test('every web signup gets a dossier, and the sweep is wired to cron', () => {
+  const dossier = readFileSync(join(HERE, 'bizdossier.mjs'), 'utf8');
+  assert.match(dossier, /NOT EXISTS \(SELECT 1 FROM num_biz_dossiers/, 'the sweep would re-research businesses it already covered');
+  assert.match(index, /dossierSweep\(env\)/, 'the dossier sweep exists but nothing runs it');
+});
+
+test('research is claimed before it is spent', () => {
+  // SerpAPI credits and model calls are real money. The dossier row is
+  // INSERTed (unique claim_id) BEFORE the lookup, so overlapping crons
+  // cannot both pay to research the same business.
+  const dossier = readFileSync(join(HERE, 'bizdossier.mjs'), 'utf8');
+  assert.ok(
+    dossier.indexOf('INSERT OR IGNORE INTO num_biz_dossiers') < dossier.indexOf('await lookup(env'),
+    'lookup runs before the row is claimed — two crons would pay twice',
+  );
+});
+
+test('AI promos are labelled as drafts, at the field level', () => {
+  // A wrong AI promo pitched by a human who trusted it blindly costs a
+  // partner. The label travels WITH the data, not in a doc nobody reads.
+  const dossier = readFileSync(join(HERE, 'bizdossier.mjs'), 'utf8');
+  assert.match(dossier, /ai_generated: true/, 'generated promos are indistinguishable from human-approved ones');
+});
+
+test('the search is anchored to the right market', () => {
+  // "Golden Dragon" exists in every city on earth. A lookup without a place
+  // word researches the wrong business convincingly — worse than failing.
+  const dossier = readFileSync(join(HERE, 'bizdossier.mjs'), 'utf8');
+  assert.match(dossier, /Edinburgh/, 'UK-funnel businesses would be searched globally');
+  assert.match(dossier, /Phuket/, 'pilot businesses would be searched globally');
 });

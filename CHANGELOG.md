@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.135 — 2026-08-03 16:24 UTC
+
+web signups visible
+
+- commit `bef1b81`
+
 ## 0.8.134 — 2026-08-03 16:18 UTC
 
 onboarding chain

@@ -777,5 +777,12 @@ export default {
         .then((m) => m.claimSweep(env))
         .catch((e) => console.error('[claimsweep]', e?.message ?? e)),
     );
+    // Every signup gets researched — dossier with its own data and promo
+    // options, three per tick so a backlog clears in minutes, not budgets.
+    ctx.waitUntil(
+      import('./bizdossier.mjs')
+        .then((m) => m.dossierSweep(env))
+        .catch((e) => console.error('[dossier]', e?.message ?? e)),
+    );
   },
 };

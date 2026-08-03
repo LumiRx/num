@@ -628,14 +628,20 @@ async function adminClaims(env, url) {
   // says this table is its system of record and a migration under a live
   // funnel is how signups get lost twice.
   const web = await env.DB.prepare(
-    `SELECT id, business_name, contact_name, phone, email, source, state, created_at,
-            ROUND((julianday('now') - julianday(created_at)) * 24, 1) AS age_h
-       FROM claims WHERE state = 'new' ORDER BY created_at DESC LIMIT 100`,
+    `SELECT c.id, c.business_name, c.contact_name, c.phone, c.email, c.source, c.state, c.created_at,
+            ROUND((julianday('now') - julianday(c.created_at)) * 24, 1) AS age_h,
+            d.website, d.category, d.rating, d.summary, d.promos, d.state AS research
+       FROM claims c
+       LEFT JOIN num_biz_dossiers d ON d.claim_id = CAST(c.id AS TEXT)
+      WHERE c.state = 'new' ORDER BY c.created_at DESC LIMIT 100`,
   ).all().catch(() => ({ results: [] }));
 
   return json({
-    // Web/UK funnel signups awaiting first contact — the newest pipeline.
-    web_signups: web.results ?? [],
+    // Web/UK funnel signups awaiting first contact, each with its dossier:
+    // what we found about them and draft promo options for the callback.
+    // promos are marked ai_generated — preparation for the call, never sent
+    // to the business unreviewed.
+    web_signups: (web.results ?? []).map((r) => ({ ...r, promos: r.promos ? JSON.parse(r.promos) : null })),
     // The count is the truth even when the list is capped, so a queue longer
     // than the page cannot read as a queue that is finished.
     counts: {
