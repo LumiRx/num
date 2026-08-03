@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.140 — 2026-08-03 21:02 UTC
+
+go links
+
+- commit `5207b2d`
+
 ## 0.8.139 — 2026-08-03 20:59 UTC
 
 watch page
