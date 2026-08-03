@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.139 — 2026-08-03 20:59 UTC
+
+watch page
+
+- commit `84da005`
+
 ## 0.8.138 — 2026-08-03 19:27 UTC
 
 ad measurement

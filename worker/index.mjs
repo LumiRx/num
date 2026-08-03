@@ -468,6 +468,29 @@ export default {
       });
     }
 
+    // ── Tiny ad links: /go/<code> ──────────────────────────────────────
+    //
+    // An ad link full of utm_ parameters looks like tracking because it is,
+    // and on a poster or in a bio it's unusable. So the campaign lives in a
+    // CODE and the server expands it — the link people see is tiny and
+    // branded, and the attribution arrives intact anyway.
+    //
+    // The map lives HERE, in code, on purpose: adding a campaign is one line
+    // and one deploy, and the git history becomes the registry of every link
+    // we've ever put money behind.
+    if (url.pathname.startsWith('/go/')) {
+      const GO = {
+        yt: '/watch/?utm_source=youtube&utm_medium=video&utm_campaign=phuket-pretrip-film1',
+        ytb: '/watch/?utm_source=youtube&utm_medium=video&utm_campaign=bkk-pretrip-film1',
+        ig: '/watch/?utm_source=instagram&utm_medium=reels&utm_campaign=phuket-intrip-film1',
+        tt: '/watch/?utm_source=tiktok&utm_medium=video&utm_campaign=phuket-intrip-film1',
+      };
+      const to = GO[url.pathname.slice(4).replace(/\/$/, '')];
+      // Unknown code → the watch page untagged, not a 404. A typo on a poster
+      // should cost us attribution, never a visitor.
+      return Response.redirect(new URL(to ?? '/watch/', url.origin).toString(), 302);
+    }
+
     if (url.pathname.startsWith('/api/book')) {
       const { handleBooking } = await import('./bookdesk.mjs');
       const res = await handleBooking(request, env, url.pathname.slice('/api/book'.length) || '/');
