@@ -305,9 +305,21 @@ export async function handlePay(request, env, path) {
           const n = Number(packMatch[1]);
           await env.DB?.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)').bind(memberId).run().catch(() => {});
           await env.DB?.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(memberId, n).run().catch(() => {});
+          // num_star_moves — the SAME table every other Star movement uses.
+          //
+          // This wrote to a `num_star_ledger` that nothing else reads: errands,
+          // social, cash-out, the console and the wallet history all read
+          // num_star_moves. So a purchase left the balance correct and the
+          // history blank — the one Star event a person actually paid for was
+          // the one they couldn't see, and it was missing from the audit trail
+          // too.
+          //
+          // Kind stays 'purchase', which is deliberately NOT in cashout's
+          // EARNED_KINDS. Bought Stars were already un-cashable, but only by
+          // accident of being in a table nobody read. Now it's on purpose.
           await env.DB?.prepare(
-            'INSERT INTO num_star_ledger (id, member_id, delta, kind, ref) VALUES (?1,?2,?3,?4,?5)',
-          ).bind(`sl_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`, memberId, n, 'purchase', id).run().catch((e) => console.warn('[pay] ledger', e?.message));
+            "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'purchase',?4,NULL)",
+          ).bind(`sm_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`, memberId, n, `Stripe ${id}`).run().catch((e) => console.warn('[pay] moves', e?.message));
           console.log('[pay] credited', n, 'stars to', memberId, 'for', id);
         }
 

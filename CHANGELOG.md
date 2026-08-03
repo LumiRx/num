@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.128 — 2026-08-02 23:18 UTC
+
+prices 8.98 / 28.98
+
+- commit `6bbc554`
+
 ## 0.8.127 — 2026-08-02 23:10 UTC
 
 delete copy
