@@ -192,7 +192,7 @@ export async function healthCron(env) {
 }
 
 /** Wherever the humans are. Silent if nothing is configured — never throws. */
-async function alert(env, text) {
+export async function alert(env, text) {
   if (env.ALERT_WEBHOOK) {
     await fetch(env.ALERT_WEBHOOK, {
       method: 'POST',

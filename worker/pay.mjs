@@ -28,6 +28,7 @@
 // is somebody else's problem on purpose.
 
 import { checkPayment, refusal, STAR_PACKS } from './preflight.mjs';
+import { alert } from './health.mjs';
 
 const STRIPE = 'https://api.stripe.com/v1';
 
@@ -336,6 +337,75 @@ export async function handlePay(request, env, path) {
         }
       }
     }
+
+    // ── Money that comes BACK ────────────────────────────────────────────
+    //
+    // Only `checkout.session.completed` was handled, so every payment in the
+    // system was in state 'paid' forever. A refunded Star pack left the money
+    // returned, the Stars still spendable, and the wallet still showing a
+    // receipt — which is both a hole and a lie to the person reading it.
+    //
+    // Stripe is the source of truth for money, so we take its word for these
+    // and write down what happened rather than deciding anything ourselves.
+    if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+      const c = event.data?.object ?? {};
+      const id = c.metadata?.num_payment_id;
+      const memberId = c.metadata?.num_member;
+      const ref = c.metadata?.num_ref ?? '';
+      const disputed = event.type === 'charge.dispute.created';
+      const state = disputed ? 'disputed' : 'refunded';
+
+      if (id) {
+        await ensure(env);
+        // Same idempotence shape as the credit: only a row not already in this
+        // state flips, so Stripe's at-least-once delivery can't claw back the
+        // same Stars twice.
+        const flip = await env.DB?.prepare(
+          'UPDATE num_payments SET state=?2 WHERE id=?1 AND state<>?2',
+        ).bind(id, state).run().catch(() => null);
+        const firstTime = (flip?.meta?.changes ?? 0) > 0;
+
+        const packMatch = /^stars:(\d{1,7})$/.exec(ref);
+        if (firstTime && packMatch && memberId) {
+          const n = Number(packMatch[1]);
+          // Take back what was bought. The balance is allowed to go negative
+          // rather than clamping at zero: if someone spent refunded Stars we
+          // need to SEE that, not quietly absorb it. A negative balance is a
+          // thing a human should look at; a silently-adjusted one is a thing
+          // nobody ever finds.
+          await env.DB?.prepare('UPDATE num_star_balances SET stars = stars - ?2 WHERE member_id = ?1')
+            .bind(memberId, n).run().catch(() => {});
+          await env.DB?.prepare(
+            "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'refund',?4,NULL)",
+          ).bind(`sm_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`, memberId, -n, `${state} ${id}`)
+            .run().catch((e) => console.warn('[pay] refund move', e?.message));
+          console.warn('[pay]', state, '— reclaimed', n, 'stars from', memberId, 'for', id);
+        }
+
+        // A membership that was refunded should stop being a membership.
+        const tierMatch = /^tier:([a-z_]{2,20})$/.exec(ref);
+        if (firstTime && tierMatch && memberId) {
+          await env.DB?.prepare("UPDATE num_memberships SET tier='free', renews_at=NULL WHERE member_id=?1")
+            .bind(memberId).run().catch(() => {});
+          console.warn('[pay]', state, '— membership revoked for', memberId);
+        }
+      }
+      // Worth a human's attention either way — a dispute especially.
+      await alert(env, `[pay] ${state}: ${id ?? 'unknown payment'} ${ref}`).catch(() => {});
+    }
+
+    // A payment that failed should say so, not sit in 'created' looking like
+    // something still in flight.
+    if (event.type === 'payment_intent.payment_failed') {
+      const pi = event.data?.object ?? {};
+      const id = pi.metadata?.num_payment_id;
+      if (id) {
+        await ensure(env);
+        await env.DB?.prepare("UPDATE num_payments SET state='failed' WHERE id=?1 AND state='created'")
+          .bind(id).run().catch(() => {});
+      }
+    }
+
     return json({ received: true });
   }
 
@@ -349,6 +419,15 @@ export async function handlePay(request, env, path) {
       // on the record. Bills, tabs, bookings and bounties are unaffected.
       stars_sale: env.STARS_SALE_OK === '1',
       stars: STAR_POLICY,
+      // The packs, priced HERE. The wallet used to carry its own copy of these
+      // numbers, which is the $1-for-★5,000 hole in a different shirt: two
+      // sources of truth for a price, and the client's is the one an attacker
+      // controls. The client displays what this returns and nothing else.
+      packs: Object.entries(STAR_PACKS).map(([stars, cents]) => ({
+        stars: Number(stars),
+        cents,
+        price: `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 })}`,
+      })),
       apple_pay: mode === 'stripe' ? 'shown automatically in Stripe Checkout on Apple devices' : 'arrives with the Stripe key',
       configured_links: Object.keys(links(env)),
       note:
@@ -413,6 +492,88 @@ export async function handlePay(request, env, path) {
       'SELECT id, mode, ref, amount_cents, currency, description, state, created_at, paid_at FROM num_payments WHERE member_id=?1 ORDER BY rowid DESC LIMIT 25',
     ).bind(me).all();
     return json({ payments: results ?? [] });
+  }
+
+  // ── /activity — everything financial, in one list ──────────────────────
+  //
+  // Stars and money were two separate stories: /history returned card
+  // payments, /social/stars returned Star moves, and the wallet showed
+  // neither — it rendered a seeded demo array. So the one screen a person
+  // opens to answer "what happened to my money?" answered with fiction.
+  //
+  // One feed, because that is how the question is actually asked. Nobody
+  // wonders "what happened in my Stars ledger" — they wonder what they were
+  // charged and what they have left.
+  //
+  // Server-side labelling on purpose: the client should never have to know
+  // that kind 'tab' means a shared bill. If it did, two clients would drift.
+  if (path === '/activity') {
+    const url = new URL(request.url);
+    const me = clip(url.searchParams.get('me'), 40);
+    const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 40, 1), 100);
+    if (!me || !env.DB) return json({ activity: [] });
+    await ensure(env);
+
+    const [moves, pays] = await Promise.all([
+      env.DB.prepare(
+        `SELECT m.id, m.delta, m.kind, m.note, m.counterparty, m.created_at, p.name AS other_name
+           FROM num_star_moves m
+           LEFT JOIN num_members p ON p.id = m.counterparty
+          WHERE m.member_id = ?1
+          ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?2`,
+      ).bind(me, limit).all().catch(() => ({ results: [] })),
+      env.DB.prepare(
+        `SELECT id, amount_cents, currency, description, state, ref, created_at, paid_at
+           FROM num_payments WHERE member_id = ?1
+          ORDER BY rowid DESC LIMIT ?2`,
+      ).bind(me, limit).all().catch(() => ({ results: [] })),
+    ]);
+
+    // What a person would call this, not what the column says.
+    const STAR_LABEL = {
+      welcome: () => 'Welcome Stars',
+      purchase: () => 'Bought Stars',
+      refund: () => 'Refunded — Stars returned',
+      pay: (r) => `Sent to ${r.other_name ?? 'someone'}`,
+      receive: (r) => `From ${r.other_name ?? 'someone'}`,
+      tab: (r) => r.note || 'Shared bill',
+      errand: (r) => r.note || 'Errand',
+      referral: () => 'Referral reward',
+      bounty: (r) => r.note || 'Bounty',
+      reward: (r) => r.note || 'Reward',
+      cashout: () => 'Cashed out',
+    };
+
+    const activity = [
+      ...(moves.results ?? []).map((r) => ({
+        id: r.id,
+        at: r.created_at,
+        unit: 'stars',
+        delta: r.delta,
+        title: (STAR_LABEL[r.kind] ?? (() => r.kind))(r),
+        detail: r.note && r.note !== (STAR_LABEL[r.kind]?.(r) ?? '') ? r.note : null,
+        kind: r.kind,
+        state: 'done',
+      })),
+      ...(pays.results ?? []).map((r) => ({
+        id: r.id,
+        at: r.paid_at || r.created_at,
+        unit: r.currency || 'usd',
+        // Money LEAVES you — always negative, so the sign means the same thing
+        // in both halves of one list. A mixed feed where +/- flips meaning is
+        // worse than two separate lists.
+        delta: -Math.abs(r.amount_cents ?? 0),
+        title: r.description || 'Payment',
+        detail: null,
+        kind: /^tier:/.test(r.ref ?? '') ? 'membership' : /^stars:/.test(r.ref ?? '') ? 'topup' : 'payment',
+        // 'created' means Stripe never came back — in flight, not complete.
+        state: r.state === 'paid' ? 'done' : r.state === 'created' ? 'pending' : r.state,
+      })),
+    ]
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+      .slice(0, limit);
+
+    return json({ activity });
   }
 
   return json({ error: 'not found' }, 404);

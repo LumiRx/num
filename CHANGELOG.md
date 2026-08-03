@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.129 — 2026-08-03 00:36 UTC
+
+one star ledger
+
+- commit `9f585c9`
+
 ## 0.8.128 — 2026-08-02 23:18 UTC
 
 prices 8.98 / 28.98
