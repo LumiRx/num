@@ -41,6 +41,22 @@ function deviceId(): string {
  */
 export function bootSocial(): void {
   const q = new URLSearchParams(window.location.search);
+
+  // ── Ad attribution, first touch only ────────────────────────────────────
+  //
+  // The UTM on the FIRST open is the ad that brought this person; a later
+  // visit via a different link must not overwrite it, or every campaign's
+  // numbers bleed into whichever ad they clicked most recently. Captured
+  // before history.replaceState below scrubs the URL.
+  if (q.get('utm_source') && !localStorage.getItem('num-utm')) {
+    try {
+      localStorage.setItem('num-utm', JSON.stringify({
+        source: q.get('utm_source')?.slice(0, 60),
+        medium: q.get('utm_medium')?.slice(0, 60),
+        campaign: q.get('utm_campaign')?.slice(0, 80),
+      }));
+    } catch { /* private mode — attribution is not worth breaking boot */ }
+  }
   const ref = q.get('ref');
   const token = q.get('i');
 
@@ -184,9 +200,13 @@ interface MeResponse {
  * NOT treated as verified — see the note we surface to the user.
  */
 export async function signUp(name: string, phone?: string): Promise<MeResponse> {
+  // The ad that brought them travels with the signup — this is the moment
+  // attribution becomes a conversion instead of a pageview.
+  let utm: unknown = null;
+  try { utm = JSON.parse(localStorage.getItem('num-utm') ?? 'null'); } catch { /* fine */ }
   const out = await api<MeResponse>('/me', {
     method: 'POST',
-    body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place }),
+    body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place, utm }),
   });
   // The "add my name & number" prompt has done its job — leave it up and it
   // reads as if nothing happened.
@@ -229,7 +249,17 @@ export async function verifyCode(code: string): Promise<boolean> {
   const me = store.get().me;
   if (!me) return false;
   const out = await api<{ ok?: boolean }>('/verify', { method: 'POST', body: JSON.stringify({ id: me.id, code }) });
-  if (out.ok) store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
+  if (out.ok) {
+    store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
+    // THE conversion. A verified phone is the number every ad channel is
+    // judged by — installs and pageviews are noise. Guarded: gtag exists
+    // only where Dre's GA tag is actually installed.
+    try {
+      (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag?.('event', 'verified_signup', {
+        method: 'sms',
+      });
+    } catch { /* analytics must never break verification */ }
+  }
   return !!out.ok;
 }
 

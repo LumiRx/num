@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.137 — 2026-08-03 18:08 UTC
+
+self-review fixes
+
+- commit `e48f18e`
+
 ## 0.8.136 — 2026-08-03 17:54 UTC
 
 signup dossiers

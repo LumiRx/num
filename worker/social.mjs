@@ -110,6 +110,12 @@ const MIGRATIONS = [
   // act from telling Num — default off, flipped per-plan by its owner… no.
   // Flipped by the MEMBER, per plan, because it is their information.
   'ALTER TABLE num_plan_members ADD COLUMN share_prefs INTEGER NOT NULL DEFAULT 0',
+  // First-touch ad attribution — which ad brought this member. Written once
+  // at signup, never overwritten: re-attribution on every visit makes every
+  // campaign's numbers bleed into the most recent click.
+  'ALTER TABLE num_members ADD COLUMN utm_source TEXT',
+  'ALTER TABLE num_members ADD COLUMN utm_medium TEXT',
+  'ALTER TABLE num_members ADD COLUMN utm_campaign TEXT',
   'ALTER TABLE num_members ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0',
 ];
 
@@ -365,6 +371,16 @@ async function me(env, req) {
           "INSERT INTO num_members (id, name, phone, dest, avatar, bio, ref_code, seen_at) VALUES (?1,?2,?3,?4,?5,?6,?7,datetime('now'))",
         ).bind(id, name, phone, dest, avatar, bio, ref),
   );
+  // First-touch attribution, first write wins. COALESCE keeps the original:
+  // a member who signs up from the Instagram ad and later opens a YouTube
+  // link stays Instagram's conversion, which is the only honest ledger for
+  // deciding where the next ad dollar goes.
+  const utm = b.utm && typeof b.utm === 'object' ? b.utm : null;
+  if (utm?.source) {
+    writes.push(env.DB.prepare(
+      `UPDATE num_members SET utm_source=COALESCE(utm_source,?2), utm_medium=COALESCE(utm_medium,?3), utm_campaign=COALESCE(utm_campaign,?4) WHERE id=?1`,
+    ).bind(id, clip(utm.source, 60), clip(utm.medium, 60), clip(utm.campaign, 80)));
+  }
   if (!existing?.ref_code) {
     writes.push(
       env.DB.prepare(

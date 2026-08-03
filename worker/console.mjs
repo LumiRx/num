@@ -454,6 +454,18 @@ async function adminOverview(env, url, req) {
       invites: c.invites, joined: c.joined, conversions: c.conversions,
       recent: (recent.results ?? []).map((r) => ({ ...r, phone: maskPhone(r.phone) })),
       referrals: leaders.results ?? [],
+      // Where the ad money is actually working: signups and VERIFIED signups
+      // by first-touch source. Verified is the honest column — an ad channel
+      // that produces unverified signups produces bots and typos.
+      by_source: await env.DB.prepare(
+        `SELECT COALESCE(utm_source, 'organic') source,
+                COALESCE(utm_campaign, '') campaign,
+                COUNT(*) signups,
+                SUM(phone_verified) verified
+           FROM num_members
+          WHERE created_at > datetime('now', ?1)
+          GROUP BY 1, 2 ORDER BY signups DESC LIMIT 20`,
+      ).bind(`-${since} day`).all().then((r) => r.results ?? []).catch(() => []),
     },
     // itsnum.com — the same database, the other front door.
     site: { leads: c.leads, leadsNew: c.leadsNew, accounts: c.accounts, byDest: leadsByDest.results ?? [] },

@@ -448,6 +448,26 @@ export default {
     }
 
     // Leaving: unfriend, remove a plan, delete an account.
+    // ── Analytics loader ───────────────────────────────────────────────
+    //
+    // Static assets never pass through the Worker, so the Cloudflare Web
+    // Analytics beacon can't be injected at the edge. Instead index.html
+    // loads THIS, and the token lives in env (CF_BEACON_TOKEN) — paste the
+    // token once as a secret and analytics is live, no code deploy. Until
+    // it's set, this serves a comment rather than a broken script tag.
+    if (url.pathname === '/api/analytics.js') {
+      const token = env.CF_BEACON_TOKEN;
+      const js = token
+        ? `(function(){var s=document.createElement('script');s.defer=true;` +
+          `s.src='https://static.cloudflareinsights.com/beacon.min.js';` +
+          `s.setAttribute('data-cf-beacon', JSON.stringify({ token: ${JSON.stringify(String(token))} }));` +
+          `document.head.appendChild(s);})();`
+        : '/* analytics: set CF_BEACON_TOKEN to enable */';
+      return new Response(js, {
+        headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'public, max-age=300', ...cors },
+      });
+    }
+
     if (url.pathname.startsWith('/api/book')) {
       const { handleBooking } = await import('./bookdesk.mjs');
       const res = await handleBooking(request, env, url.pathname.slice('/api/book'.length) || '/');

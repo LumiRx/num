@@ -17,6 +17,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Num" />
     <title>Num — Your Concierge</title>
+      <!-- Cloudflare Web Analytics, via the worker so the token is config.
+         Deferred and last: measurement must never cost the app a millisecond
+         of first paint. -->
+    <script defer src="/api/analytics.js"></script>
   </head>
   <body>
     <div id="root"></div>
