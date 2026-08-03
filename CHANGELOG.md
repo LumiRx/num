@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.134 — 2026-08-03 16:18 UTC
+
+onboarding chain
+
+- commit `9a6995a`
+
 ## 0.8.133 — 2026-08-03 05:14 UTC
 
 share toggle

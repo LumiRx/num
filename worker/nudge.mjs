@@ -139,9 +139,42 @@ export async function nudgeSweep(env) {
 export async function claimSweep(env) {
   if (!env.DB) return { alerted: false };
   await ensure(env);
+
+  // ── NEW web signups: alerted within one cron tick, not once a day ───────
+  //
+  // The itsnum.com merchant form (num-growth) writes to `claims` — a table no
+  // dashboard read and no alert watched. Businesses signed up in Scotland and
+  // the news reached Dre days later, secondhand, from Sean. A signup is the
+  // one event where minutes matter: the owner is sitting there having just
+  // typed their phone number, and that is the moment to call them back.
+  //
+  // Runs every sweep (no quiet hours — this alerts DRE, not a user, and he
+  // said to wake him for money). Deduped per claim forever, so the backlog
+  // fires once and each new signup fires once.
+  const { results: webNew } = await env.DB.prepare(
+    "SELECT id, business_name, contact_name, phone, source, created_at FROM claims WHERE state = 'new' ORDER BY created_at DESC LIMIT 24",
+  ).all().catch(() => ({ results: [] }));
+  const unseen = [];
+  for (const c of webNew ?? []) {
+    const claimed = await env.DB.prepare(
+      'INSERT OR IGNORE INTO num_nudges (id, member_id, plan_id, moment) VALUES (?1, ?2, ?3, ?4)',
+    ).bind(crypto.randomUUID(), 'desk', String(c.id), 'webclaim').run().catch(() => null);
+    if (claimed?.meta?.changes) unseen.push(c);
+  }
+  if (unseen.length) {
+    const { alert } = await import('./health.mjs');
+    await alert(
+      env,
+      `[biz] ${unseen.length} NEW web signup(s): ` +
+        unseen.slice(0, 6).map((c) => `${c.business_name}${c.contact_name ? ` (${c.contact_name}` : ''}${c.phone ? `${c.contact_name ? ', ' : ' ('}${c.phone})` : c.contact_name ? ')' : ''}`).join('; ') +
+        (unseen.length > 6 ? ` +${unseen.length - 6} more` : '') +
+        ' — console → Claims.',
+    ).catch(() => {});
+  }
+
   const hour = phuketHour();
   // Once a day, mid-morning Phuket — when a follow-up call can actually happen.
-  if (hour !== 10) return { alerted: false, skipped: 'not the hour' };
+  if (hour !== 10) return { alerted: unseen.length > 0, web_new: unseen.length, skipped: 'not the hour' };
 
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.state, c.created_at, p.name, p.dest

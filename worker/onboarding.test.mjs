@@ -50,6 +50,18 @@ test('stalled claims surface daily, with names, exactly once', () => {
   assert.match(index, /claimSweep\(env\)/, 'the sweep exists but nothing runs it');
 });
 
+test('the UK web funnel is read by the console and watched by the sweep', () => {
+  // Three workers, three claim tables. Businesses signed up in Scotland and
+  // the rows landed in `claims` — which no dashboard read and no alert
+  // watched. Dre learned about his own signups secondhand, days later.
+  const console_ = readFileSync(join(HERE, 'console.mjs'), 'utf8');
+  assert.match(console_, /FROM claims WHERE state = 'new'/, 'the admin console still cannot see web signups');
+  assert.match(nudge, /'webclaim'/, 'a web signup would again reach Dre secondhand, days later');
+  // And each signup alerts exactly once, forever — not once per sweep.
+  const sweep = nudge.slice(nudge.indexOf('webclaim') - 800, nudge.indexOf('webclaim') + 200);
+  assert.match(sweep, /INSERT OR IGNORE INTO num_nudges/, 'the web-signup alert has no dedup — every 5 minutes, the same list');
+});
+
 test('the public /activate stays admin-gated even with auto-activation live', () => {
   // Auto-activation is safe because a VERIFIED claim triggers it. The public
   // endpoint is the one an attacker can reach, and it must stay locked.

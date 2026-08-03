@@ -619,7 +619,23 @@ async function adminClaims(env, url) {
   ]);
 
   const rows = queue.results ?? [];
+
+  // The THIRD claim table. itsnum.com's merchant form (num-growth worker,
+  // claim-uk.html — the UK funnel) writes to `claims`, a table this console
+  // never read. Sean's Scottish signups were real, stored, and invisible —
+  // three workers, three claim tables, one dashboard reading one of them.
+  // Merged here rather than migrated, because the growth worker's comment
+  // says this table is its system of record and a migration under a live
+  // funnel is how signups get lost twice.
+  const web = await env.DB.prepare(
+    `SELECT id, business_name, contact_name, phone, email, source, state, created_at,
+            ROUND((julianday('now') - julianday(created_at)) * 24, 1) AS age_h
+       FROM claims WHERE state = 'new' ORDER BY created_at DESC LIMIT 100`,
+  ).all().catch(() => ({ results: [] }));
+
   return json({
+    // Web/UK funnel signups awaiting first contact — the newest pipeline.
+    web_signups: web.results ?? [],
     // The count is the truth even when the list is capped, so a queue longer
     // than the page cannot read as a queue that is finished.
     counts: {
