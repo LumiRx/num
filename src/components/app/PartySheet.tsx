@@ -6,7 +6,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
-import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan, removePlan } from '../../lib/social';
+import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan, removePlan, planFit, shareWithPlan } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -50,6 +50,24 @@ export default function PartySheet() {
   // Owner deletes for everyone; a member only leaves. The server decides the
   // same way, so a stale local flag can't turn a leave into a deletion.
   const mine = !!plan && !!me && plan.owner_id === me.id;
+
+  // Group intelligence: whether MY diet/budget help this plan's suggestions.
+  // fit is the group's state; the toggle only ever writes my own row.
+  const [fit, setFit] = useState<{ me_sharing?: boolean; sharing?: number; members?: number } | null>(null);
+  useEffect(() => {
+    if (!open || !planId) { setFit(null); return; }
+    void planFit(planId).then(setFit);
+  }, [open, planId]);
+
+  const flipShare = async () => {
+    if (!plan || !fit) return;
+    const next = !fit.me_sharing;
+    // Optimistic, then reconciled — a consent toggle that lags feels broken,
+    // but one that lies is worse, so the server's answer wins.
+    setFit((f) => (f ? { ...f, me_sharing: next } : f));
+    const real = await shareWithPlan(plan.id, next);
+    setFit((f) => (f ? { ...f, me_sharing: real } : f));
+  };
 
   /** Remove this plan — leave or delete, whichever the server rules apply. */
   const killPlan = async () => {
@@ -284,6 +302,26 @@ export default function PartySheet() {
                 ALL PLANS
               </div>
             </div>
+
+            {/* Group intelligence consent. Lives ON the plan because that is
+                what's being consented to — sharing your diet with THIS group,
+                not with Num (Num already knows). Default off; the copy says
+                exactly what travels and to whom. */}
+            {fit && (
+              <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 12, cursor: 'pointer', fontSize: 11, color: 'var(--color-neutral-600)', lineHeight: 1.5 }}>
+                <input
+                  type="checkbox"
+                  checked={!!fit.me_sharing}
+                  onChange={() => { void flipShare(); }}
+                  style={{ marginTop: 2, accentColor: 'var(--color-accent)' }}
+                />
+                <span>
+                  <b style={{ color: 'var(--ink)' }}>Let this plan use my preferences.</b>{' '}
+                  Diet, budget, arrival — so suggestions fit everyone, not just whoever asked.
+                  Only this group{fit.members ? ` (${fit.sharing ?? 0} of ${fit.members} sharing)` : ''}, never your whole profile.
+                </span>
+              </label>
+            )}
 
             {/* Leaving. Only ever a second tap, and the copy changes with who
                 you are: leaving is yours alone, deleting takes the plan away

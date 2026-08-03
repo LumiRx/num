@@ -1927,13 +1927,15 @@ async function planFit(env, url) {
   // of aggregate that leaks — "no shellfish, halal, lands 21:00" narrows six
   // people to one fast.
   const mine = await env.DB.prepare(
-    'SELECT member_id FROM num_plan_members WHERE plan_id=?1 AND member_id=?2',
+    'SELECT member_id, share_prefs FROM num_plan_members WHERE plan_id=?1 AND member_id=?2',
   ).bind(planId, me).first();
   if (!mine) return json({ error: 'You’re not on that plan.' }, 403);
 
   const fit = await groupNeeds(env, planId);
   return json({
     plan_id: planId,
+    // My own flag, so the toggle renders true state instead of guessing.
+    me_sharing: !!mine.share_prefs,
     ...fit,
     summary: fit.summary
       ?? `Group of ${fit.members} — nobody is sharing preferences yet, so recommendations can only fit the person asking.`,

@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.132 — 2026-08-03 04:29 UTC
+
+three moat features
+
+- commit `7358002`
+
 ## 0.8.131 — 2026-08-03 01:09 UTC
 
 monthly report

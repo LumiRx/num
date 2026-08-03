@@ -342,6 +342,34 @@ export async function deleteAccount(confirm = false): Promise<{
   }
 }
 
+/** What the group needs — and whether I'm contributing to it. */
+export async function planFit(planId: string): Promise<{
+  me_sharing?: boolean; members?: number; sharing?: number; summary?: string;
+} | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    return await api(`/plan/fit?plan_id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}`);
+  } catch {
+    return null;
+  }
+}
+
+/** Flip MY sharing for one plan. The server only lets me flip my own row. */
+export async function shareWithPlan(planId: string, share: boolean): Promise<boolean> {
+  const me = store.get().me;
+  if (!me) return false;
+  try {
+    const out = await api<{ ok?: boolean; sharing?: boolean }>('/plan/share', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, plan_id: planId, share }),
+    });
+    return !!out.sharing;
+  } catch {
+    return share ? false : true; // failed flip = state unchanged
+  }
+}
+
 export async function redeemPairCode(code: string): Promise<string | null> {
   const me = store.get().me;
   const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
