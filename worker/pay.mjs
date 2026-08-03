@@ -576,5 +576,64 @@ export async function handlePay(request, env, path) {
     return json({ activity });
   }
 
+  // ── /report — the month, added up ──────────────────────────────────────
+  //
+  // The activity feed answers "what happened?"; this answers "so where did it
+  // all go?" — which is a different question, asked monthly, usually with a
+  // slight sense of dread. Totals by kind, per month, straight off
+  // num_star_moves and num_payments. Computed at read time from the ledgers,
+  // never stored: a stored summary can drift from the rows it summarises, and
+  // then you have two answers to one question about money.
+  if (path === '/report') {
+    const url = new URL(request.url);
+    const me = clip(url.searchParams.get('me'), 40);
+    // Default: this month. ?month=2026-07 for any other.
+    const month = /^\d{4}-\d{2}$/.test(url.searchParams.get('month') ?? '')
+      ? url.searchParams.get('month')
+      : new Date().toISOString().slice(0, 7);
+    if (!me || !env.DB) return json({ month, stars: {}, money: {} });
+    await ensure(env);
+
+    const [stars, money, balance] = await Promise.all([
+      env.DB.prepare(
+        `SELECT kind, COUNT(*) n, SUM(delta) net,
+                SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END) got,
+                SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END) spent
+           FROM num_star_moves
+          WHERE member_id = ?1 AND strftime('%Y-%m', created_at) = ?2
+          GROUP BY kind`,
+      ).bind(me, month).all().catch(() => ({ results: [] })),
+      env.DB.prepare(
+        `SELECT state, COUNT(*) n, SUM(amount_cents) cents
+           FROM num_payments
+          WHERE member_id = ?1 AND strftime('%Y-%m', COALESCE(paid_at, created_at)) = ?2
+          GROUP BY state`,
+      ).bind(me, month).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1')
+        .bind(me).first().catch(() => null),
+    ]);
+
+    const sk = Object.fromEntries((stars.results ?? []).map((r) => [r.kind, { count: r.n, net: r.net, in: r.got, out: r.spent }]));
+    const mk = Object.fromEntries((money.results ?? []).map((r) => [r.state, { count: r.n, cents: r.cents }]));
+
+    return json({
+      month,
+      balance: Number(balance?.stars ?? 0),
+      stars: {
+        by_kind: sk,
+        in: Object.values(sk).reduce((a, v) => a + v.in, 0),
+        out: Object.values(sk).reduce((a, v) => a + v.out, 0),
+      },
+      money: {
+        by_state: mk,
+        // Only 'paid' is money that actually left. Pending isn't spent yet and
+        // failed never was — a report that adds those in is lying upward,
+        // which is the worse direction for a money report to lie.
+        charged_cents: mk.paid?.cents ?? 0,
+        refunded_cents: mk.refunded?.cents ?? 0,
+      },
+    });
+  }
+
   return json({ error: 'not found' }, 404);
 }
