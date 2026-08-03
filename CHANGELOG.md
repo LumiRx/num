@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.142 — 2026-08-03 21:09 UTC
+
+sw video fix
+
+- commit `b196a5b`
+
 ## 0.8.141 — 2026-08-03 21:04 UTC
 
 watch page in right dir

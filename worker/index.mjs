@@ -468,6 +468,40 @@ export default {
       });
     }
 
+    // ── /media/* — video with real byte ranges ─────────────────────────
+    //
+    // The static asset handler answers a Range request with a 200 and the
+    // whole file. Desktop Chrome shrugs and plays anyway; iPhones REFUSE —
+    // AVPlayer demands a 206 or shows a black box. The ad traffic is
+    // iPhones. So video is served here, by the worker, which reads the
+    // asset once and slices the bytes the player actually asked for.
+    if (url.pathname.startsWith('/media/') && env.ASSETS) {
+      const asset = await env.ASSETS.fetch(new URL('/assets/' + url.pathname.slice(7), url.origin));
+      if (!asset.ok) return new Response('not found', { status: 404 });
+      const buf = await asset.arrayBuffer();
+      const range = request.headers.get('range');
+      const type = asset.headers.get('content-type') ?? 'video/mp4';
+      const common = {
+        'Content-Type': type,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=86400',
+        ...cors,
+      };
+      const m = range && /bytes=(\d*)-(\d*)/.exec(range);
+      if (m) {
+        const start = m[1] ? parseInt(m[1], 10) : 0;
+        const end = m[2] ? Math.min(parseInt(m[2], 10), buf.byteLength - 1) : buf.byteLength - 1;
+        if (start >= buf.byteLength) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${buf.byteLength}`, ...cors } });
+        }
+        return new Response(buf.slice(start, end + 1), {
+          status: 206,
+          headers: { ...common, 'Content-Range': `bytes ${start}-${end}/${buf.byteLength}`, 'Content-Length': String(end - start + 1) },
+        });
+      }
+      return new Response(buf, { headers: { ...common, 'Content-Length': String(buf.byteLength) } });
+    }
+
     // ── Tiny ad links: /go/<code> ──────────────────────────────────────
     //
     // An ad link full of utm_ parameters looks like tracking because it is,
