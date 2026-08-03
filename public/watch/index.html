@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover so the page owns the notch area on iPhones — the film
+     hero should reach the edges, not float in a letterboxed strip. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NUM — Your concierge in Phuket</title>
+<meta name="description" content="Ask for anything — a table, a car, a whole day — and Num sorts it. Watch 30 seconds, then try it.">
+<link rel="canonical" href="https://app.itsnum.com/watch/">
+<meta property="og:title" content="NUM — Your concierge in Phuket">
+<meta property="og:description" content="Ask for anything. Num sorts it.">
+<meta property="og:image" content="https://app.itsnum.com/assets/film1_poster.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+/* The one job of this page: video → three reasons → one button. An ad click
+   is a fragile thing; every extra idea on this page costs signups. */
+.hero{display:flex;flex-direction:column;align-items:center;padding:28px 16px 8px}
+.vidwrap{position:relative;width:100%;max-width:420px;border-radius:24px;overflow:hidden;
+  box-shadow:0 18px 50px rgba(32,30,29,.22);background:#0e0d0c;
+  /* aspect-ratio, not a fixed height — a fixed height is exactly how pages
+     end up clipped or scroll-trapped on small phones. */
+  aspect-ratio:9/16}
+.vidwrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.unmute{position:absolute;right:12px;bottom:12px;z-index:2;border:0;cursor:pointer;
+  background:rgba(14,13,12,.62);color:#fff;border-radius:999px;padding:9px 14px;
+  font:600 12px 'Plus Jakarta Sans',sans-serif;backdrop-filter:blur(6px)}
+.cta{display:block;text-align:center;margin:20px auto 0;max-width:420px;width:100%;
+  background:linear-gradient(135deg,#ff6a3d,#ec3013);color:#fff;text-decoration:none;
+  font:700 16px 'Plus Jakarta Sans',sans-serif;letter-spacing:.02em;
+  padding:17px 22px;border-radius:999px;box-shadow:0 10px 26px rgba(236,48,19,.35)}
+.cta small{display:block;font-weight:500;font-size:12px;opacity:.85;margin-top:3px}
+.feats{max-width:640px;margin:44px auto 0;padding:0 18px;display:grid;gap:14px}
+.feat{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line,rgba(32,30,29,.08));
+  border-radius:18px;padding:16px 18px;box-shadow:0 6px 18px rgba(32,30,29,.05)}
+.feat .ic{flex:none;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#ffe9e2,#ffd9cd);font-size:18px}
+.feat b{font:700 15px 'Plus Jakarta Sans',sans-serif;display:block}
+.feat span{font-size:13px;color:var(--ink2,#6b625d);line-height:1.5}
+.more{max-width:640px;margin:34px auto 60px;padding:0 18px;text-align:center}
+.more a{color:var(--ink2,#6b625d);font-size:13px;text-decoration:underline}
+@media(min-width:760px){
+  /* Desktop gets the film and features side by side so nothing important
+     lives below the fold — but this page is built phone-first because the
+     ad traffic is phones. */
+  .split{display:grid;grid-template-columns:380px 1fr;gap:44px;max-width:960px;margin:0 auto;align-items:center;padding:40px 24px}
+  .hero{padding:0}.feats{margin-top:0;padding:0}
+}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="https://itsnum.com/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="https://itsnum.com/how-it-works/">How it works</a>
+    <a href="https://itsnum.com/perks/">Perks</a>
+    <a href="https://itsnum.com/business/">For business</a>
+    <a class="btn pri js-app" href="/" style="padding:10px 18px;font-size:14px">Open Num</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">&#9776;</button>
+</div>
+<div class="mobile">
+  <a href="https://itsnum.com/how-it-works/">How it works</a>
+  <a href="https://itsnum.com/perks/">Perks</a>
+  <a href="https://itsnum.com/business/">For business</a>
+  <a class="js-app" href="/">Open Num</a>
+</div>
+</nav>
+
+<div class="split">
+  <div class="hero">
+    <div class="vidwrap">
+      <!-- muted+playsinline is what ALLOWS autoplay on iPhones; without both
+           the phone shows a black box with a play arrow and the page dies.
+           The unmute button exists because the music is worth hearing but
+           must never be forced on someone on a bus. -->
+      <video id="film" autoplay muted loop playsinline preload="metadata" poster="/assets/film1_poster.jpg">
+        <source src="/assets/film1_web.mp4" type="video/mp4">
+      </video>
+      <button class="unmute" id="unmute" aria-label="Unmute">&#128264; Sound</button>
+    </div>
+    <a class="cta js-app" href="/">Ask Num anything
+      <small>Free · no app store · works in 10 seconds</small>
+    </a>
+  </div>
+
+  <div class="feats">
+    <div class="feat"><div class="ic">&#127860;</div><div>
+      <b>Ask in plain words</b>
+      <span>"Dinner for four tonight, somewhere with a view" — Num finds it, checks it, books it.</span>
+    </div></div>
+    <div class="feat"><div class="ic">&#128663;</div><div>
+      <b>Cars that actually turn up</b>
+      <span>Airport pickups, drivers for the day, a ride home at 2am — sorted from one message.</span>
+    </div></div>
+    <div class="feat"><div class="ic">&#128101;</div><div>
+      <b>Plan together</b>
+      <span>Pull your friends in. Everyone sees the plan, nobody retypes an address, the group decides once.</span>
+    </div></div>
+    <div class="feat"><div class="ic">&#11088;</div><div>
+      <b>Split anything</b>
+      <span>Open a tab for the night out. Everyone pays for exactly what they were in on.</span>
+    </div></div>
+    <div class="feat"><div class="ic">&#128276;</div><div>
+      <b>It thinks ahead</b>
+      <span>Rain coming before your beach day? A table to reconfirm? Num tells you before you ask.</span>
+    </div></div>
+  </div>
+</div>
+
+<div class="more">
+  <a href="https://itsnum.com/">More about NUM at itsnum.com</a>
+</div>
+
+<script>
+// The whole reason this page can exist without breaking attribution: every
+// path into the app carries the ad's UTM forward. The app captures it on
+// first open and scrubs it; if we dropped it here, every ad signup would
+// read as "organic" and the campaign numbers would be fiction.
+(function () {
+  var qs = location.search;
+  if (qs) {
+    document.querySelectorAll('a.js-app').forEach(function (a) {
+      a.href = '/' + qs;
+    });
+  }
+  var v = document.getElementById('film');
+  var b = document.getElementById('unmute');
+  b.addEventListener('click', function () {
+    v.muted = !v.muted;
+    b.innerHTML = v.muted ? '&#128264; Sound' : '&#128266; On';
+  });
+  // Mobile menu (same behaviour as the main site).
+  var m = document.querySelector('.menu-btn');
+  if (m) m.addEventListener('click', function () { document.body.classList.toggle('menu-open'); });
+})();
+</script>
+</body>
+</html>

@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.138 — 2026-08-03 19:27 UTC
+
+ad measurement
+
+- commit `c90b088`
+
 ## 0.8.137 — 2026-08-03 18:08 UTC
 
 self-review fixes
