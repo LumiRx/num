@@ -448,6 +448,13 @@ export default {
     }
 
     // Leaving: unfriend, remove a plan, delete an account.
+    if (url.pathname.startsWith('/api/book')) {
+      const { handleBooking } = await import('./bookdesk.mjs');
+      const res = await handleBooking(request, env, url.pathname.slice('/api/book'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/account')) {
       const res = await handleAccount(request, env, url.pathname.slice('/api/account'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -618,6 +625,19 @@ export default {
         }
       };
 
+      // Group intelligence: if the conversation is happening inside a shared
+      // plan, fetch what the group needs — server-side, from consented rows
+      // only. The client names the plan; it never assembles the needs itself,
+      // because the merged list must come from consent flags the client
+      // can't forge.
+      if (parsed.state?.party?.id) {
+        try {
+          const { groupNeeds } = await import('./social.mjs');
+          const fit = await groupNeeds(env, String(parsed.state.party.id).slice(0, 40));
+          if (fit.summary) parsed.state.party.needs = fit.summary;
+        } catch { /* the plan context is seasoning — never block the answer */ }
+      }
+
       const startedAt = Date.now();
       // The chain, not one model. Claude first for the full concierge; if it
       // fails for any reason, an open model on Cloudflare's edge (or a
@@ -744,5 +764,12 @@ export default {
   // record the verdict, and shout ONLY when the state changes.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
+    // The concierge that speaks first. Same cron, its own failure domain —
+    // a broken nudge must never take health monitoring down with it.
+    ctx.waitUntil(
+      import('./nudge.mjs')
+        .then((m) => m.nudgeSweep(env))
+        .catch((e) => console.error('[nudge]', e?.message ?? e)),
+    );
   },
 };

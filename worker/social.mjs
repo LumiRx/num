@@ -106,6 +106,10 @@ async function ensure(env) {
 const MIGRATIONS = [
   'ALTER TABLE num_members ADD COLUMN avatar TEXT',
   'ALTER TABLE num_members ADD COLUMN bio TEXT',
+  // Group intelligence consent. Sharing your diet with a PLAN is a different
+  // act from telling Num — default off, flipped per-plan by its owner… no.
+  // Flipped by the MEMBER, per plan, because it is their information.
+  'ALTER TABLE num_plan_members ADD COLUMN share_prefs INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE num_members ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0',
 ];
 
@@ -1844,6 +1848,98 @@ async function planJoin(env, req) {
 
 // ── router ────────────────────────────────────────────────────────────────
 
+// ── Group intelligence ─────────────────────────────────────────────────────
+//
+// "Ben doesn't eat shellfish, Cleo lands at nine, so it's the late seating at
+// the one place that does halal" — a human concierge holds all of that in
+// their head. This gives Num the same view of a group, under one hard rule:
+//
+//   A MEMBER'S PREFERENCES JOIN THE PLAN ONLY IF THAT MEMBER SAID SO.
+//
+// Consent is per-plan and per-member (share_prefs on the membership row),
+// default OFF. Telling Num your diet is a private act; sharing it with six
+// friends on a trip is a different one, and conflating them would make people
+// stop telling Num anything — which kills the whole feature layer above it.
+
+/** Flip my own sharing for one plan. Nobody can flip it for me. */
+async function planShare(env, req) {
+  const b = await readBody(req);
+  const me = clip(b.me, 40);
+  const planId = clip(b.plan_id, 40);
+  const share = b.share ? 1 : 0;
+  if (!me || !planId) return json({ error: 'me and plan_id required' }, 400);
+  const flip = await env.DB.prepare(
+    'UPDATE num_plan_members SET share_prefs=?3 WHERE plan_id=?1 AND member_id=?2',
+  ).bind(planId, me, share).run();
+  if (!flip.meta.changes) return json({ error: 'You’re not on that plan.' }, 404);
+  return json({ ok: true, sharing: !!share });
+}
+
+/**
+ * What the group needs, merged. Only fields that matter for choosing a venue
+ * or a time — never the whole bio, because "what does the plan need" and
+ * "tell me everything about Ben" are different questions and only the first
+ * one was consented to.
+ */
+const FIT_FIELDS = ['dietary', 'budget', 'vibe', 'mobility', 'arrive'];
+
+/** The computation behind /plan/fit, exported so the brain can use it too. */
+export async function groupNeeds(env, planId) {
+  const { results } = await env.DB.prepare(
+    `SELECT pm.member_id, pm.share_prefs, m.name, m.bio
+       FROM num_plan_members pm JOIN num_members m ON m.id = pm.member_id
+      WHERE pm.plan_id = ?1`,
+  ).bind(planId).all().catch(() => ({ results: [] }));
+  const members = results ?? [];
+  const shared = members.filter((r) => r.share_prefs);
+  const needs = {};
+  for (const r of shared) {
+    let bio = {};
+    try { bio = JSON.parse(r.bio ?? '{}') ?? {}; } catch { /* old rows */ }
+    for (const f of FIT_FIELDS) {
+      const v = clip(bio[f], 120);
+      if (!v) continue;
+      (needs[f] ??= []).push({ who: r.name ?? 'someone', what: v });
+    }
+  }
+  const lines = [];
+  if (needs.dietary?.length) lines.push(`Dietary: ${needs.dietary.map((n) => `${n.who} — ${n.what}`).join('; ')}.`);
+  if (needs.budget?.length) lines.push(`Budget: ${needs.budget.map((n) => n.what).join(', ')}.`);
+  if (needs.vibe?.length) lines.push(`Mood: ${needs.vibe.map((n) => n.what).join(', ')}.`);
+  if (needs.mobility?.length) lines.push(`Access: ${needs.mobility.map((n) => `${n.who} — ${n.what}`).join('; ')}.`);
+  if (needs.arrive?.length) lines.push(`Arrivals: ${needs.arrive.map((n) => `${n.who} ${n.what}`).join('; ')}.`);
+  return {
+    members: members.length,
+    sharing: shared.length,
+    needs,
+    summary: lines.length
+      ? `Group of ${members.length}, ${shared.length} sharing preferences. ${lines.join(' ')}`
+      : null,
+  };
+}
+
+async function planFit(env, url) {
+  const planId = clip(url.searchParams.get('plan_id'), 40);
+  const me = clip(url.searchParams.get('me'), 40);
+  if (!planId || !me) return json({ error: 'plan_id and me required' }, 400);
+
+  // Only a member sees the group's needs. The fit summary is exactly the kind
+  // of aggregate that leaks — "no shellfish, halal, lands 21:00" narrows six
+  // people to one fast.
+  const mine = await env.DB.prepare(
+    'SELECT member_id FROM num_plan_members WHERE plan_id=?1 AND member_id=?2',
+  ).bind(planId, me).first();
+  if (!mine) return json({ error: 'You’re not on that plan.' }, 403);
+
+  const fit = await groupNeeds(env, planId);
+  return json({
+    plan_id: planId,
+    ...fit,
+    summary: fit.summary
+      ?? `Group of ${fit.members} — nobody is sharing preferences yet, so recommendations can only fit the person asking.`,
+  });
+}
+
 export async function handleSocial(request, env, path) {
   if (!env.DB) return json({ error: 'social features need the database binding' }, 503);
   await ensure(env);
@@ -1883,6 +1979,8 @@ export async function handleSocial(request, env, path) {
   if (path === '/plan/join' && post) return await planJoin(env, request);
   if (path === '/plan/comment' && post) return await planComment(env, request);
   if (path === '/plan/vote' && post) return await planVote(env, request);
+  if (path === '/plan/share' && post) return await planShare(env, request);
+  if (path === '/plan/fit') return await planFit(env, url);
   if (path === '/lookup' && post) return await lookupPhones(env, request);
   return json({ error: 'not found' }, 404);
 }

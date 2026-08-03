@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.131 — 2026-08-03 01:09 UTC
+
+monthly report
+
+- commit `9463a62`
+
 ## 0.8.130 — 2026-08-03 00:59 UTC
 
 pay section + activity
