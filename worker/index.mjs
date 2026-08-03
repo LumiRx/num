@@ -771,5 +771,11 @@ export default {
         .then((m) => m.nudgeSweep(env))
         .catch((e) => console.error('[nudge]', e?.message ?? e)),
     );
+    // Stalled business onboardings — the pilot's highest-value follow-up.
+    ctx.waitUntil(
+      import('./nudge.mjs')
+        .then((m) => m.claimSweep(env))
+        .catch((e) => console.error('[claimsweep]', e?.message ?? e)),
+    );
   },
 };

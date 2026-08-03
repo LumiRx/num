@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.133 — 2026-08-03 05:14 UTC
+
+share toggle
+
+- commit `5ceefe8`
+
 ## 0.8.132 — 2026-08-03 04:29 UTC
 
 three moat features

@@ -125,3 +125,51 @@ export async function nudgeSweep(env) {
   if (sent) console.log('[nudge] sent', sent, 'for', plans.length, 'plan(s) starting', tomorrow);
   return { sent, plans: plans.length };
 }
+
+/**
+ * Stalled business onboarding, surfaced once a day.
+ *
+ * A claim in 'pending' whose link expired, or parked in 'review'/'locked',
+ * is a business owner who WANTED in and hit a wall — the highest-value
+ * follow-up call the pilot has, and until now it vanished into a table
+ * nobody read. One alert to Dre a day, only when there's something to say,
+ * with names — because "3 claims stalled" prompts a query, but "Baan Rim Pa
+ * stalled" prompts a phone call.
+ */
+export async function claimSweep(env) {
+  if (!env.DB) return { alerted: false };
+  await ensure(env);
+  const hour = phuketHour();
+  // Once a day, mid-morning Phuket — when a follow-up call can actually happen.
+  if (hour !== 10) return { alerted: false, skipped: 'not the hour' };
+
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.state, c.created_at, p.name, p.dest
+       FROM num_app_claims c JOIN places p ON p.id = c.place_id
+      WHERE c.state IN ('review', 'locked')
+         OR (c.state = 'pending' AND c.expires_at < datetime('now'))
+      ORDER BY c.created_at DESC LIMIT 12`,
+  ).all().catch(() => ({ results: [] }));
+  const stalled = results ?? [];
+  if (!stalled.length) return { alerted: false, stalled: 0 };
+
+  // The same once-only gate the plan nudges use — one row per claim per day.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: PHUKET.tz }).format(new Date());
+  const fresh = [];
+  for (const c of stalled) {
+    const claimed = await env.DB.prepare(
+      'INSERT OR IGNORE INTO num_nudges (id, member_id, plan_id, moment) VALUES (?1, ?2, ?3, ?4)',
+    ).bind(crypto.randomUUID(), 'desk', c.id, `claimstall:${today}`).run().catch(() => null);
+    if (claimed?.meta?.changes) fresh.push(c);
+  }
+  if (!fresh.length) return { alerted: false, stalled: stalled.length };
+
+  const { alert } = await import('./health.mjs');
+  await alert(
+    env,
+    `[biz] ${fresh.length} onboarding(s) stalled: ` +
+      fresh.map((c) => `${c.name} (${c.state})`).join(', ') +
+      ' — console → Claims to finish them.',
+  ).catch(() => {});
+  return { alerted: true, stalled: fresh.length };
+}

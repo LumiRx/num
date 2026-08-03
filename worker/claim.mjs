@@ -257,6 +257,50 @@ async function grant(env, claim) {
     env.DB.prepare("UPDATE num_app_claims SET state='verified', verified_at=datetime('now'), code_hash=NULL, code_salt=NULL, link_token=NULL WHERE id=?1")
       .bind(claim.id),
   ]);
+
+  // ── The onboarding actually completes now ──────────────────────────────
+  //
+  // Before this, grant() wrote three rows and went silent. The owner who
+  // verified from a desktop email saw a web page and their APP never said a
+  // word; Dre found out a business had onboarded by reading the database; and
+  // a referral for this exact business sat unmatched forever, which made
+  // "refer a place, earn when they join" a promise with no mechanism.
+
+  // 1. The owner's app knows. The dashboard is only 'connected' if the phone
+  //    in their pocket says so — a web page on someone's laptop isn't that.
+  try {
+    const { notify } = await import('./push.mjs');
+    await notify(env, {
+      memberId: claim.member_id,
+      kind: 'business',
+      title: `${place.name} is yours`,
+      body: 'Verified. The owner tools are open — bookings, asks about your place, and your events all live there now.',
+      url: '/?app',
+      tag: `claim:${claim.id}`,
+    });
+  } catch { /* push is best-effort; the grant itself already happened */ }
+
+  // 2. Dre knows. A business onboarding is the single most important event in
+  //    the pilot — it must never be something you discover by querying D1.
+  try {
+    const { alert } = await import('./health.mjs');
+    await alert(env, `[biz] onboarded: ${place.name} (${place.dest ?? '—'}) via ${claim.channel} → ${businessId}`);
+  } catch { /* same: informational */ }
+
+  // 3. The referral chain closes. If someone claimed this business before it
+  //    joined, their claim activates on the spot — matched by the same key
+  //    the claim was made under, refused if the referrer IS the owner.
+  try {
+    const { activateByKey } = await import('./bizreferral.mjs');
+    const m = await activateByKey(env, {
+      name: place.name,
+      city: place.dest,
+      businessId,
+      ownerMemberId: claim.member_id,
+    });
+    if (m.matched) console.log('[claim] referral', m.referral_id, 'activated for', m.referrer_id);
+  } catch (e) { console.warn('[claim] referral match failed:', e?.message); }
+
   return { ok: true, state: 'verified', business_id: businessId, place: place.name };
 }
 
