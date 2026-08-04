@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "node --test worker/*.test.mjs src/lib/*.test.mjs",
+    "test": "node --test worker/*.test.mjs src/lib/*.test.mjs scripts/*.test.mjs",
+    "uptime": "node scripts/uptime.mjs",
     "preview": "vite preview",
     "ai": "node server/index.mjs",
     "design:check": "node scripts/design-check.mjs status",

@@ -1,0 +1,75 @@
+# Uptime — the check that does not live inside the thing it checks.
+#
+# On 4 Aug 2026 itsnum.com served an infinite redirect loop for hours. The
+# in-Worker health cron ran 288 times in that window and reported zero
+# failures, because every check it makes is of an internal dependency. It also
+# structurally cannot probe app.itsnum.com: a Worker fetching its own public
+# hostname loops back and Cloudflare answers 522.
+#
+# This runs on GitHub's infrastructure. Different company, different network.
+# If Cloudflare, the zone, the routes or the Worker fail, this still runs and
+# still says so.
+#
+# HOW THE ALERT REACHES A HUMAN: the job exits non-zero, GitHub marks the run
+# failed, and GitHub emails the repo owner. No secret, no third-party account,
+# nothing else to configure. If it ever stops arriving, check
+# github.com/settings/notifications → Actions → "Send notifications for failed
+# workflows only" is enabled.
+#
+# TWO WAYS THIS MONITOR CAN QUIETLY STOP, both worth knowing before you rely
+# on its silence:
+#
+#   1. `schedule:` only ever runs from the repository's DEFAULT BRANCH. On a
+#      feature branch this file is inert no matter how correct it is. It has to
+#      be merged to main to become a monitor.
+#   2. GitHub disables scheduled workflows in a repository with no commit
+#      activity for 60 days, and emails to say so. On an active repo this never
+#      fires; on one that goes quiet — which is exactly when nobody is watching
+#      — it does. If this repo ever goes dormant, move the schedule to a
+#      dedicated external monitor rather than trusting a green past.
+name: uptime
+
+on:
+  schedule:
+    # Every 5 minutes — GitHub's finest supported granularity.
+    #
+    # BE HONEST ABOUT WHAT THIS IS: GitHub scheduled workflows are best-effort.
+    # They queue on shared runners and are commonly several minutes late, and
+    # under load a tick can be skipped entirely. Treat this as "you will know
+    # within roughly 5–20 minutes", which against an outage that ran for hours
+    # unnoticed is the whole win. It is NOT a 60-second SLA prober. If we ever
+    # need that, add a paid external monitor alongside — not instead of.
+    - cron: '*/5 * * * *'
+  # So it can be run by hand mid-incident to confirm a fix, rather than waiting
+  # for the next tick while staring at a browser tab.
+  workflow_dispatch:
+  # Catches the case where a change to the probe itself breaks the probe.
+  push:
+    paths:
+      - 'scripts/uptime.mjs'
+      - '.github/workflows/uptime.yml'
+
+# A slow probe must never stack up behind an earlier slow probe.
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    # The probe itself caps each request at 15s; this is the outer stop so a
+    # wedged runner cannot hold a slot open.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No install step on purpose. The probe uses only built-in fetch, so
+      # there is no dependency tree that can break the monitor on a day the
+      # registry is having a bad time.
+      - name: Probe the front doors
+        run: node scripts/uptime.mjs
