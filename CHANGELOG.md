@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.144 — 2026-08-04 07:52 UTC
+
+(no note given)
+
+- commit `ed87caa`
+
 ## 0.8.143 — 2026-08-03 21:14 UTC
 
 media ranges
