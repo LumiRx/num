@@ -90,6 +90,23 @@ test('a failed probe exits non-zero, because that is what sends the alert', () =
     'the script exits 0 on failure, so the workflow stays green and no alert is sent');
 });
 
+test('the entrypoint check cannot silently no-op', () => {
+  // `import.meta.url === \`file://${process.argv[1]}\`` does not match when the
+  // checkout path contains a space or any character needing percent-encoding.
+  // When it fails it fails invisibly: nothing runs, exit code 0, workflow
+  // green, zero probes. pathToFileURL does the encoding correctly.
+  const src = readFileSync(join(HERE, 'uptime.mjs'), 'utf8');
+  assert.ok(!/file:\/\/\$\{process\.argv\[1\]\}/.test(src),
+    'the entrypoint uses a hand-built file:// URL — on a path with a space the probe silently does nothing and reports success');
+  assert.match(src, /pathToFileURL\(process\.argv\[1\]\)/, 'the entrypoint guard is not encoding-safe');
+});
+
+// NOTE — there is deliberately no test here that shells out and probes the
+// live site. `release:stage` is gated on `npm test`, so a network assertion in
+// this suite would mean an outage blocks shipping the fix for that outage. The
+// end-to-end path is covered instead by the workflow's `push:` trigger on
+// scripts/uptime.mjs, which runs the real thing whenever the probe changes.
+
 test('the workflow runs on a schedule, not only on push', () => {
   // An outage does not wait for a commit. A prober that only runs in CI on
   // push is a test, not a monitor.

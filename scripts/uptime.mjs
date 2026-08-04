@@ -13,6 +13,7 @@
 //
 // Usage:  node scripts/uptime.mjs            (probe live, exit 1 on failure)
 //         node scripts/uptime.mjs --json     (machine-readable)
+import { pathToFileURL } from 'node:url';
 
 // ── what a working front door looks like ──────────────────────────────────
 //
@@ -125,7 +126,13 @@ export async function runAll(targets = TARGETS) {
 }
 
 // ── entrypoint ────────────────────────────────────────────────────────────
-if (import.meta.url === `file://${process.argv[1]}`) {
+//
+// pathToFileURL, not a `file://${argv[1]}` template. The hand-rolled version
+// fails to match whenever the checkout path contains a space or a character
+// needing percent-encoding — and it fails SILENTLY: the body never runs, the
+// process exits 0, and the workflow is green forever while probing nothing.
+// A monitor whose failure mode is "reports success" is worse than none.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const out = await runAll();
 
   if (process.argv.includes('--json')) {
