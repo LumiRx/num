@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.143 — 2026-08-03 21:14 UTC
+
+media ranges
+
+- commit `b43da97`
+
 ## 0.8.142 — 2026-08-03 21:09 UTC
 
 sw video fix

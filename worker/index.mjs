@@ -455,14 +455,51 @@ export default {
     // loads THIS, and the token lives in env (CF_BEACON_TOKEN) — paste the
     // token once as a secret and analytics is live, no code deploy. Until
     // it's set, this serves a comment rather than a broken script tag.
+    // Two loaders in one file: the Cloudflare beacon (traffic) and GA4
+    // (conversions). GA4 must be here, not just referenced by app code:
+    // src/lib/social.ts fires `window.gtag?.('event','verified_signup')`,
+    // and the `?.` means that on a page with no gtag library it does
+    // NOTHING, silently, forever. That is exactly what shipped — the event
+    // existed in code, was never installed on the page, and so never
+    // appeared in GA4 for Google Ads to optimize toward. The optional
+    // chaining that made it crash-proof also made it invisible.
+    //
+    // GA_MEASUREMENT_ID is config, not code: paste it once as a var and
+    // conversions start flowing with no deploy.
     if (url.pathname === '/api/analytics.js') {
       const token = env.CF_BEACON_TOKEN;
-      const js = token
-        ? `(function(){var s=document.createElement('script');s.defer=true;` +
+      const ga = env.GA_MEASUREMENT_ID;
+      const parts = [];
+      if (token) {
+        parts.push(
+          `(function(){var s=document.createElement('script');s.defer=true;` +
           `s.src='https://static.cloudflareinsights.com/beacon.min.js';` +
           `s.setAttribute('data-cf-beacon', JSON.stringify({ token: ${JSON.stringify(String(token))} }));` +
-          `document.head.appendChild(s);})();`
-        : '/* analytics: set CF_BEACON_TOKEN to enable */';
+          `document.head.appendChild(s);})();`,
+        );
+      }
+      if (ga) {
+        // dataLayer + gtag stub FIRST, synchronously. The stub queues calls
+        // made before gtag.js finishes downloading — without it, a fast
+        // verifier who signs up in the first second loses their conversion.
+        parts.push(
+          `(function(){var id=${JSON.stringify(String(ga))};` +
+          `window.dataLayer=window.dataLayer||[];` +
+          `window.gtag=window.gtag||function(){window.dataLayer.push(arguments);};` +
+          `window.gtag('js',new Date());` +
+          // The app is a single-page PWA: gtag's automatic page_view fires
+          // once and never again as the user moves between tabs. Conversions
+          // are event-based here, so that's fine — but say so explicitly
+          // rather than leaving someone to wonder why sessions look short.
+          `window.gtag('config',id,{send_page_view:true});` +
+          `var s=document.createElement('script');s.async=true;` +
+          `s.src='https://www.googletagmanager.com/gtag/js?id='+encodeURIComponent(id);` +
+          `document.head.appendChild(s);})();`,
+        );
+      }
+      const js = parts.length
+        ? parts.join('\n')
+        : '/* analytics: set CF_BEACON_TOKEN and/or GA_MEASUREMENT_ID to enable */';
       return new Response(js, {
         headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'public, max-age=300', ...cors },
       });
@@ -518,6 +555,16 @@ export default {
         ytb: '/watch/?utm_source=youtube&utm_medium=video&utm_campaign=bkk-pretrip-film1',
         ig: '/watch/?utm_source=instagram&utm_medium=reels&utm_campaign=phuket-intrip-film1',
         tt: '/watch/?utm_source=tiktok&utm_medium=video&utm_campaign=phuket-intrip-film1',
+        // Destination-agnostic campaigns. The film is shot in Phuket but the
+        // copy sells the concierge, so these carry `global` — the campaign
+        // name has to describe the TARGETING, or the by_source table lies
+        // about what was bought.
+        //
+        // Reddit specifically: some placements append Reddit's own utm_source
+        // to the destination URL, overwriting ours. Redirecting from here
+        // keeps the params server-side where Reddit can't reach them.
+        rd: '/watch/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1',
+        dg: '/watch/?utm_source=google&utm_medium=demandgen&utm_campaign=global-pretrip-film1',
       };
       const to = GO[url.pathname.slice(4).replace(/\/$/, '')];
       // Unknown code → the watch page untagged, not a 404. A typo on a poster
