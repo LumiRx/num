@@ -25,8 +25,11 @@ Or run all of them at once: `bash scripts/preflight.sh`
 - **Two lineages, no common ancestor.** `origin/main` is the Worker codebase;
   `origin/backend-fastapi` is Python/FastAPI. Never merge or force-push across
   them — it deletes a codebase.
-- **The branch named `main` in `~/Documents/Claude/Projects/NUM` tracks
-  `backend-fastapi`.** Verify tracking; never trust the name.
+- **Branch names lied here until 2026-08-05.** `~/Documents/Claude/Projects/NUM`
+  had a branch called `main` that tracked `backend-fastapi`; it is now correctly
+  named `backend-fastapi`, and this worktree is on the real `main`. The habit
+  outlives the fix: verify tracking, never trust a name. Three pushes were
+  rejected on 04–05 Aug and every rejection was correct.
 - **Agents: git is read-only from the Cowork sandbox.** Writes leave lock files
   the sandbox cannot delete, and each retry blocks the next command. Write
   files, run tests, hand the user a commit command. Pushing needs the user —
