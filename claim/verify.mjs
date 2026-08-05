@@ -175,7 +175,19 @@ export async function sendCode(env, { channel, to, code, businessName }) {
           Authorization: 'Basic ' + btoa(`${env.TWILIO_SID}:${env.TWILIO_TOKEN}`),
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({ To: to, From: env.TWILIO_FROM, Body: text }),
+        // StatusCallback is what turns "Twilio accepted it" into "a carrier
+        // delivered it". Without it the success below is a promise to try:
+        // Twilio answers 201 the instant it queues a message, and a carrier
+        // can drop it silently seconds later with nobody any the wiser. On
+        // 2026-08-04 that blind spot left us unable to tell a filtered message
+        // from a delivered one, right after a day spent misreading an auth
+        // failure as a compliance problem.
+        body: new URLSearchParams({
+          To: to,
+          From: env.TWILIO_FROM,
+          Body: text,
+          StatusCallback: 'https://app.itsnum.com/api/sms/status',
+        }),
       });
       if (!res.ok) {
         // Read Twilio's own words, not just the status line.

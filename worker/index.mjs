@@ -29,7 +29,7 @@ import { handleErrands } from './errands.mjs';
 import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
-import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
+import { handleSmsInbound, handleSmsStatus, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
 import { handleHealth, healthCron } from './health.mjs';
 import { handleBizReferral } from './bizreferral.mjs';
@@ -285,7 +285,12 @@ export default {
       // Webhooks are machine-to-machine, signature-verified, and retried by
       // the sender on any non-2xx — throttling them turns a retry storm into
       // lost payments and lost texts.
-      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound';
+      // /api/sms/status joins the exempt list for the same reason as the other
+      // two: Twilio retries on any non-2xx, so rate-limiting a status callback
+      // would turn a busy minute into a retry storm — and would drop exactly
+      // the delivery failures we most need to see.
+      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound'
+        || url.pathname === '/api/sms/status';
       if (!isWebhook) {
         const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
         // The admin door gets its own, much smaller bucket: a password guess
@@ -450,6 +455,8 @@ export default {
 
     // Twilio's inbound-SMS webhook and the member's inbox view of it.
     if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+    // Twilio's delivery receipts. Signature-verified inside, like inbound.
+    if (url.pathname === '/api/sms/status') return await handleSmsStatus(request, env);
     if (url.pathname === '/api/sms/inbox') {
       const res = await handleInboxRead(request, env);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
