@@ -1,5 +1,34 @@
 # A2P 10DLC Rejection — Diagnosis & Resubmission Pack
 
+> ## ⚠️ Read this first — 2026-08-05
+>
+> **There were TWO blockers, stacked. A2P was the second one.**
+>
+> `TWILIO_SID` held a **Messaging Service SID (`US…`)** where an **Account SID
+> (`AC…`)** belongs — same 34 characters, different console page. Every send in
+> the product's life failed with **HTTP 401 `20003 Authentication Error`**,
+> before Twilio ever looked at a campaign. That is why 0 of 82 members were
+> verified and why 34 people who gave us a phone number received nothing.
+>
+> **Fixing A2P alone would have changed nothing.** Auth had to be fixed first,
+> or the real blocker stayed invisible behind it.
+>
+> With auth working, delivery receipts now confirm the second blocker with
+> evidence instead of inference:
+>
+> ```
+> status: undelivered   error_code: 30034
+> A2P 10DLC campaign is not registered or not approved.
+> ```
+>
+> So everything below is still required — it was simply never the whole story.
+> **The code side is complete** (§5). What remains is Twilio console work.
+>
+> Diagnostics added the same day, worth keeping: `/api/sms/status` records
+> every delivery receipt with the carrier code in `num_sms_delivery`, and
+> `/api/version` reports `twilio_sid_shape` (prefix + length + whitespace flag,
+> never the value) which caught two wrong pastes in seconds each.
+
 **Rejection:** *"The campaign submission has been reviewed and rejected because a compliant privacy policy can not be verified."*
 **Verified live 2026-07-24:** `itsnum.com/privacy` ✅ reachable · `itsnum.com/whatsapp` ✅ reachable · `itsnum.com/terms` ✅ linked.
 
@@ -94,14 +123,27 @@ Put the full opt-out language in message #1 (the confirmation) — that's the on
 
 ## 5 · Resubmit checklist
 
-- [ ] Privacy policy §SMS added, **with the carve-out sentence verbatim** — publish and confirm it renders publicly
-- [ ] `itsnum.com/sms` live with the compliant consent block, checkbox unchecked by default
-- [ ] Privacy + Terms links visible on the opt-in page itself
-- [ ] Terms of Service mentions the messaging program (one paragraph is enough)
+**Verified live against itsnum.com on 2026-08-04** — curl'd, not assumed.
+
+- [x] Privacy policy §SMS added, **with the carve-out sentence verbatim** — ✅ live. `"No mobile information will be shared with third parties or affiliates"` and `"text-messaging originator opt-in data"` both present at `/privacy/`.
+- [x] `itsnum.com/sms` live with the compliant consent block, checkbox unchecked by default — ✅ `<input type="checkbox" id="sms_consent" required>` with no `checked` attribute. Brand, frequency, rates, HELP, STOP, and "not a condition" all present in the label.
+- [x] Privacy + Terms links visible on the opt-in page itself — ✅ both in the consent label and the footer.
+- [x] **The opt-in form actually stores consent** — ⚠️ **was broken, now fixed.** The form posted to `/api/sms-optin`, which existed nowhere: every submission returned **HTTP 405** and *no consent was ever recorded for anyone*. Since proof of consent is the first thing an audit asks for, this was a worse failure than the original privacy-policy rejection. Now implemented in `growth/worker.js` (`smsOptin`), routed in `growth/wrangler.jsonc`, storing phone · verbatim consent text (server-side constant, never client-supplied) · version · IP · user-agent · country · timestamp, in `num_sms_consent`, with `revoked_at` for STOP. Guarded by `worker/sms-optin.test.mjs` (7 tests, each verified to fail on the corresponding breakage).
+- [x] Confirmation copy no longer claims a text was sent — ⚠️ it said *"Check your phone — NUM just sent a first message."* Nothing is sent while A2P is unapproved, so a reviewer opting in would experience a visibly broken flow. Now states consent is recorded and texting switches on shortly. **Restore the original line once approved** — the welcome message carries the strongest opt-out disclosure we send.
+- [x] Terms of Service mentions the messaging program — ⚠️ **was missing, now live.** The page described NUM as reachable via "LINE, WhatsApp, and similar messaging apps" and never used the word SMS. A reviewer cross-checking the campaign against the Terms would have found no messaging program at all. New **§5 · Text messages (SMS)** covers program scope (customer-care and transactional only), frequency, rates, HELP/STOP with all five stop words, consent not a condition of purchase, carrier non-liability, and the privacy carve-out; §5–§10 renumbered to §6–§11 and the preamble now names SMS. Verified live: `curl https://itsnum.com/terms/` returns the section and the phrase `Reply HELP for help, STOP to opt out`.
+- [x] **The mandated phrases survive an automated scan** — a subtle one worth keeping. The first draft wrote `Reply <b>HELP</b> for help`, which reads correctly to a human but breaks a literal grep for the carrier phrase. Markup now sits *outside* each mandated phrase on both `/terms` and `/sms`. The same check caught a wording drift — Terms said "HELP for help, **or** STOP to opt out" while `/sms` and the stored `SMS_CONSENT_TEXT` omitted the "or". All three surfaces are now byte-identical, so the consent record we produce in an audit reads exactly as the page the user saw.
 - [ ] Campaign description replaced with §4 text, opt-in URL updated to `/sms`
 - [ ] Sample messages updated — all include STOP, first one includes frequency + rates
 - [ ] Confirm the number/brand registration details match your legal entity exactly (5arz), including EIN/registration number and address — mismatches here get blamed on the privacy policy
 - [ ] Resubmit; typical re-review is 1–3 business days
+
+**Evidence you can now produce on request:**
+
+```sh
+npx wrangler d1 execute num-db --remote --command \
+  "SELECT phone, consent_version, datetime(created_at,'unixepoch') at, ip
+   FROM num_sms_consent ORDER BY created_at DESC LIMIT 20;"
+```
 
 ## 6 · Worth deciding before you resubmit
 
