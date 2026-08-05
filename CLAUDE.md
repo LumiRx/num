@@ -1,25 +1,20 @@
 # CLAUDE.md — this folder is NOT the live product
 
-**The branch checked out here is named `main` but tracks
-`refs/heads/backend-fastapi`.** It is the Python/FastAPI lineage — Railway plus
-Supabase — which has never served a guest. It shares **no ancestry** with the
-real `origin/main`.
+**The branch checked out here is `backend-fastapi`.** It is the Python/FastAPI
+lineage — Railway plus Supabase — which has never served a guest. It shares **no
+ancestry** with the real `origin/main`.
 
-Verify before believing the name:
+Until 2026-08-05 this branch was *named* `main` while tracking
+`refs/heads/backend-fastapi`. `git push origin main` from here asked to replace
+the entire Worker codebase with the Python backend. It was attempted twice on
+2026-08-04 and only non-fast-forward rejection prevented it; a `--force` would
+have destroyed ~89 commits. The branch has since been renamed so the name stops
+lying. **Never force-push from this folder.**
 
-```bash
-git config --get branch.main.merge      # → refs/heads/backend-fastapi
-```
-
-`git push origin main` from here asks to replace the entire Worker codebase
-with the Python backend. It was attempted twice on 2026-08-04 and only
-non-fast-forward rejection prevented it. A `--force` would have destroyed ~89
-commits. **Never force-push from this folder.**
-
-Consider renaming it so the name stops lying:
+Verify rather than trust, here or anywhere:
 
 ```bash
-git branch -m main backend-fastapi && git branch -u origin/backend-fastapi backend-fastapi
+git config --get branch.$(git branch --show-current).merge
 ```
 
 ## Where the live product lives
