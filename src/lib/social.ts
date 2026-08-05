@@ -9,6 +9,7 @@ import { refreshRequests } from './requests';
 import { refreshStars } from './stars';
 import { resumeDm } from './dm';
 import { askNum } from './concierge';
+import { track } from './track';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
@@ -226,6 +227,18 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
     ],
   }));
 
+  // The account exists. This is the widest real conversion we have while SMS
+  // verification is blocked — it has volume (Google needs roughly 50 events
+  // before its optimiser stops guessing) but it only proves someone filled in
+  // a form. `first_ask` below is the one that proves they found the product
+  // useful. Send both and judge on the second.
+  track('sign_up', {
+    method: out.me.phone ? 'phone' : 'name_only',
+    // Recovery returns an existing account rather than creating one. Counting
+    // it as a fresh signup would inflate exactly the number we spend against.
+    recovered: !!(out as { recovered?: boolean }).recovered,
+  });
+
   // Attribute the referral that brought them in, then accept the invite that
   // carried it — that second call is what makes the friendship mutual.
   const { refCode, inviteToken } = store.get();
@@ -251,14 +264,12 @@ export async function verifyCode(code: string): Promise<boolean> {
   const out = await api<{ ok?: boolean }>('/verify', { method: 'POST', body: JSON.stringify({ id: me.id, code }) });
   if (out.ok) {
     store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
-    // THE conversion. A verified phone is the number every ad channel is
-    // judged by — installs and pageviews are noise. Guarded: gtag exists
-    // only where Dre's GA tag is actually installed.
-    try {
-      (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag?.('event', 'verified_signup', {
-        method: 'sms',
-      });
-    } catch { /* analytics must never break verification */ }
+    // THE conversion, once SMS is on: a verified phone is the strongest signal
+    // an ad channel can be judged by. Until A2P clears it cannot fire at all,
+    // which is why `sign_up` and `first_ask` exist below — a campaign
+    // optimising toward an event that never happens is optimising toward
+    // nothing.
+    track('verified_signup', { method: 'sms' });
   }
   return !!out.ok;
 }

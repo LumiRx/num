@@ -18,6 +18,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
 const social = readFileSync(join(ROOT, 'src', 'lib', 'social.ts'), 'utf8');
+const concierge = readFileSync(join(ROOT, 'src', 'lib', 'concierge.ts'), 'utf8');
+const trackLib = readFileSync(join(ROOT, 'src', 'lib', 'track.ts'), 'utf8');
+// Every client module that can emit an event, concatenated once so the scan
+// below cannot miss one by only looking in the file someone thought of.
+const allClient = [social, concierge].join('\n');
 const appHtml = readFileSync(join(ROOT, 'index.html'), 'utf8');
 const watchHtml = readFileSync(join(ROOT, 'app-public', 'watch', 'index.html'), 'utf8');
 
@@ -27,11 +32,19 @@ const loader = index.slice(
   index.indexOf("url.pathname.startsWith('/media/')"),
 );
 
-test('every gtag event the app fires has a gtag library to land in', () => {
-  // Find what the app actually sends. If someone adds a second event later,
-  // this still holds them to the same bargain.
-  const fired = [...social.matchAll(/gtag\?\.\(\s*'event'\s*,\s*'([a-z_]+)'/g)].map((m) => m[1]);
-  if (fired.length === 0) return; // nothing fired, nothing to guarantee
+test('every analytics event the app fires has a gtag library to land in', () => {
+  // Find what the app actually sends, across every module that sends anything.
+  //
+  // This scan deliberately keys on the track()/trackOnce() helpers rather than
+  // on `gtag(`. An earlier version of this test grepped for the inline
+  // `gtag?.('event', ...)` form; when those call sites were refactored behind
+  // track(), the regex stopped matching, `fired` became empty, and the early
+  // return below turned the whole guard into a no-op that still reported
+  // PASS. A test that silently stops testing is worse than no test, so if the
+  // helper is ever renamed, the assertion at the bottom fails loudly instead.
+  const fired = [...allClient.matchAll(/\btrackOnce?\(\s*(?:'[a-z-]+'\s*,\s*)?'([a-z_]+)'/g)].map((m) => m[1]);
+  assert.ok(fired.length > 0,
+    'no analytics events found — either the app measures nothing, or track() was renamed and this guard silently stopped looking');
 
   assert.match(
     loader,
@@ -40,6 +53,30 @@ test('every gtag event the app fires has a gtag library to land in', () => {
       'the events go nowhere and the Ads conversion dropdown stays empty',
   );
   assert.match(loader, /GA_MEASUREMENT_ID/, 'gtag.js is loaded with no measurement ID to send to');
+});
+
+test('there is a conversion that can actually fire while SMS is blocked', () => {
+  // A2P 10DLC is unapproved, so `verified_signup` has fired exactly zero times
+  // in the product's life. Two live campaigns were optimising toward it — i.e.
+  // toward nothing. Whatever else changes, the app must always emit at least
+  // one conversion that does not depend on SMS, or paid spend goes blind again
+  // the next time a provider gates us.
+  const fired = [...allClient.matchAll(/\btrackOnce?\(\s*(?:'[a-z-]+'\s*,\s*)?'([a-z_]+)'/g)].map((m) => m[1]);
+  const smsFree = fired.filter((e) => e !== 'verified_signup');
+  assert.ok(smsFree.length > 0,
+    'every conversion depends on SMS verification — if the provider blocks us, the ads are optimising toward an event that cannot happen');
+  assert.ok(fired.includes('first_ask'),
+    'no activation event — signups measure a filled-in form, not a person finding the product useful');
+});
+
+test('activation is counted once per device, not once per message', () => {
+  // first_ask fired on every send would turn a quality signal into a chat
+  // counter, and Google Ads would learn to buy whoever talks most rather than
+  // whoever arrives and gets value.
+  assert.match(concierge, /trackOnce\(\s*'first-ask'/,
+    'first_ask uses track() not trackOnce() — it will fire on every message and inflate the number budget is judged against');
+  assert.match(trackLib, /localStorage\.getItem/,
+    'trackOnce does not persist — a page reload would re-fire "first" events');
 });
 
 test('the gtag stub is defined before the library finishes downloading', () => {

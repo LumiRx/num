@@ -788,6 +788,7 @@ export default {
 
       if (p === "/api/ev" && req.method === "POST") return ev(req, env);
       if (p === "/api/consent" && req.method === "POST") return consent(req, env);
+      if (p === "/api/sms-optin" && req.method === "POST") return smsOptin(req, env);
       if (p === "/api/capture" && req.method === "POST") return capture(req, env);
       if (p === "/api/claims" && req.method === "POST") return claims(req, env, ctx);
 
@@ -893,6 +894,119 @@ async function consent(req, env) {
   );
   await env.DB.batch(stmts);
   return J({ ok: true, visitor: vid, granted: cats });
+}
+
+/* ------------------------------------------ /api/sms-optin  A2P consent */
+
+/**
+ * The exact words shown beside the checkbox on /sms/.
+ *
+ * Held here, server-side, and NEVER read from the request body. The entire
+ * evidentiary value of a consent record is that we can state what the person
+ * was shown — a client-supplied string proves nothing, because anything
+ * posting to this endpoint could claim any language. If the page copy changes,
+ * change it here too and bump the version, so old records keep describing what
+ * was actually on screen when they were signed.
+ */
+const SMS_CONSENT_VERSION = "2026-08-04.1";
+const SMS_CONSENT_TEXT =
+  "Text me about my NUM travel concierge requests and bookings. " +
+  "Message frequency varies. Message and data rates may apply. " +
+  "Reply HELP for help, STOP to opt out. " +
+  "See our Privacy Policy and Terms of Service.";
+
+// Written lazily rather than as a migration so the endpoint cannot go live
+// without its table — the failure mode of a separate migration step is that
+// the form starts accepting consent it silently cannot store, which is worse
+// than not accepting it at all.
+const SMS_CONSENT_SCHEMA = `
+CREATE TABLE IF NOT EXISTS num_sms_consent (
+  id TEXT PRIMARY KEY,
+  phone TEXT NOT NULL UNIQUE,
+  first_name TEXT,
+  consent_text TEXT NOT NULL,
+  consent_version TEXT NOT NULL,
+  page TEXT,
+  ip TEXT,
+  user_agent TEXT,
+  country TEXT,
+  created_at INTEGER NOT NULL,
+  revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_num_sms_consent_phone ON num_sms_consent(phone);
+`;
+let smsConsentReady = false;
+async function ensureSmsConsent(env) {
+  if (smsConsentReady) return;
+  await env.DB.batch(
+    SMS_CONSENT_SCHEMA.split(";").map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s))
+  );
+  smsConsentReady = true;
+}
+
+/**
+ * Record an SMS opt-in from /sms/.
+ *
+ * This exists because the form on that page posted to an endpoint that was
+ * never built — every submission returned 405 and no consent was ever stored.
+ * A carrier or TCR audit asks one question: show us the consent. Until now the
+ * honest answer would have been that we had none, for anyone.
+ *
+ * Reads a FORM body, not JSON, on purpose: /sms/ is a plain HTML form so that
+ * it still works with JavaScript disabled. A compliance page that requires JS
+ * is a compliance page a reviewer can fail to complete.
+ */
+async function smsOptin(req, env) {
+  if (badOrigin(req)) return J({ ok: false, error: "bad_origin" }, 403);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("sms:" + ip, 8)) return J({ ok: false, error: "slow_down" }, 429);
+
+  let form;
+  try { form = await req.formData(); } catch (e) { return J({ ok: false, error: "bad_form" }, 400); }
+
+  // Consent is the whole point: no tick, no record, no exceptions. The browser
+  // enforces `required` too, but a checkbox is trivially bypassed and this is
+  // the copy of the check that actually matters.
+  if (!form.get("sms_consent")) return J({ ok: false, error: "consent_required" }, 400);
+
+  const raw = String(form.get("phone") || "").trim();
+  if (!okPhone(raw)) return J({ ok: false, error: "bad_phone" }, 400);
+  // Keep the + form the person typed when they gave one — guessing a country
+  // code onto an international traveller's number is how you store a number
+  // that belongs to somebody else.
+  const phone = raw.startsWith("+") ? "+" + digits(raw) : e164(raw);
+
+  await ensureSmsConsent(env);
+  await env.DB.prepare(
+    `INSERT INTO num_sms_consent
+       (id, phone, first_name, consent_text, consent_version, page, ip, user_agent, country, created_at, revoked_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,NULL)
+     ON CONFLICT(phone) DO UPDATE SET
+       first_name      = COALESCE(NULLIF(excluded.first_name,''), num_sms_consent.first_name),
+       consent_text    = excluded.consent_text,
+       consent_version = excluded.consent_version,
+       created_at      = excluded.created_at,
+       -- Re-consenting is how somebody comes back after STOP. Clearing this is
+       -- the only way back in, and it must be their own deliberate act.
+       revoked_at      = NULL`
+  ).bind(
+    "smsc_" + token(8),
+    phone,
+    clean(form.get("first_name"), 60),
+    SMS_CONSENT_TEXT,
+    SMS_CONSENT_VERSION,
+    clean(req.headers.get("referer"), 200),
+    // Retained deliberately: IP and timestamp are the standard evidence a
+    // carrier asks for. Its only purpose is proving this consent happened.
+    ip,
+    clean(req.headers.get("user-agent"), 200),
+    country(req),
+    now()
+  ).run();
+
+  // Back to the page they were on, which shows the confirmation. 303 so the
+  // browser switches to GET and a refresh cannot re-post the form.
+  return new Response(null, { status: 303, headers: { Location: "/sms/?ok=1" } });
 }
 
 /* -------------------------------------------------- /api/capture  emails */

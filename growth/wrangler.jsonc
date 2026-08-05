@@ -59,6 +59,11 @@
     { "pattern": "itsnum.com/api/ev*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/capture*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/consent*", "zone_name": "itsnum.com" },
+    // The A2P 10DLC opt-in. /sms/ posts here, and until this route existed
+    // every submission hit the static asset worker and returned 405 — the
+    // form looked live and stored nothing. Proof of consent is the first
+    // thing a carrier audit asks for.
+    { "pattern": "itsnum.com/api/sms-optin*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/growth*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/host/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/admin/*", "zone_name": "itsnum.com" },

@@ -2,6 +2,24 @@
 
 Every version that has been live, newest first.
 
+## 0.8.151 — 2026-08-05 05:00 UTC
+
+(no note given)
+
+- commit `af3d068`
+
+## 0.8.150 — 2026-08-05 04:56 UTC
+
+(no note given)
+
+- commit `af3d068`
+
+## 0.8.149 — 2026-08-05 04:38 UTC
+
+(no note given)
+
+- commit `af3d068`
+
 ## 0.8.148 — 2026-08-04 19:37 UTC
 
 (no note given)
