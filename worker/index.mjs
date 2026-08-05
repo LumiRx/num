@@ -36,6 +36,7 @@ import { handleBizReferral } from './bizreferral.mjs';
 import { markReferralEarned } from './referral.mjs';
 import { handleBizApi, bizApiIndex } from './bizapi.mjs';
 import { handleBizMcp } from './bizmcp.mjs';
+import { recordImpressions } from './impressions.mjs';
 import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
@@ -835,6 +836,20 @@ export default {
       if (parsed.state?.me?.id) {
         ctx.waitUntil(markReferralEarned(env, parsed.state.me.id, 'first_ask'));
       }
+      // Which businesses the guest was actually shown. Deferred, never awaited:
+      // the answer is already on its way and a merchant's analytics must never
+      // be a reason somebody waits. Only places NAMED in the reply or featured
+      // as the card are counted — being a candidate and passed over is not an
+      // impression, and inflating that number would corrupt the one figure a
+      // merchant makes decisions on.
+      ctx.waitUntil(recordImpressions(env, {
+        partners: grounding.partners,
+        reply: result.reply,
+        card: result.card,
+        memberId: parsed.state?.me?.id ?? null,
+        dest: grounding.place?.slug ?? null,
+        asked: userText,
+      }));
       // Output guard: never let leaked JSON scaffolding reach the user. One
       // corrective retry, then salvage, then the safe fallback.
       const guard = guardReply(result.reply);
