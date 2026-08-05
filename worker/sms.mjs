@@ -186,8 +186,44 @@ export async function handleSmsStatus(request, env) {
   // message. Everything else is routine progress.
   if (status === 'undelivered' || status === 'failed') {
     console.warn(`[sms] NOT DELIVERED ${sid} status=${status} code=${code ?? 'none'} — ${CARRIER_HINTS[Number(code)] ?? 'no hint for this code'}`);
+    await retractUndeliveredCode(env, sid);
   }
   return new Response('ok');
+}
+
+/**
+ * A code that never arrived is not a pending code — retract it.
+ *
+ * `issueCode` stores the hash the moment Twilio ACCEPTS the message, because
+ * that is the only signal available at the time. When the carrier then drops
+ * it, the member is left holding a pending code that nobody on earth knows:
+ * `/verify` says "wrong code" and burns an attempt, and `/resend` says "a code
+ * is on its way" and refuses for the cooldown. They are stuck behind a phantom,
+ * and every surface tells them things are fine. Dre hit exactly this on
+ * 2026-08-05 while A2P was still blocking delivery.
+ *
+ * Matched on the message SID, never on the phone number. A failure receipt can
+ * arrive seconds after a successful retry, and clearing by recipient would
+ * wipe the newer, valid code — turning a recoverable failure into a worse one.
+ */
+async function retractUndeliveredCode(env, messageSid) {
+  if (!messageSid) return;
+  try {
+    const res = await env.DB.prepare(
+      `UPDATE num_members
+          SET code_hash = NULL, code_salt = NULL, code_expires = NULL, code_sid = NULL, attempts = 0
+        WHERE code_sid = ?1 AND COALESCE(phone_verified, 0) = 0`,
+    ).bind(messageSid).run();
+    const changed = res?.meta?.changes ?? res?.meta?.rows_written ?? 0;
+    if (changed > 0) {
+      // Worth a line: it means somebody asked to verify and we could not
+      // deliver. The retraction lets them retry immediately rather than wait
+      // out a cooldown for a message that is never coming.
+      console.warn(`[sms] retracted undelivered code for message ${messageSid} — member can request another immediately`);
+    }
+  } catch (e) {
+    console.warn('[sms] code retraction failed', e?.message ?? e);
+  }
 }
 
 // Opt-out keywords, per CTIA and Twilio's own handling.

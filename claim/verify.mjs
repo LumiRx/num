@@ -219,7 +219,16 @@ export async function sendCode(env, { channel, to, code, businessName }) {
         }
         return { ok: false, error: `sms provider ${res.status}${detail}`, status: res.status };
       }
-      return { ok: true, via: 'twilio' };
+      // Carry Twilio's message SID back to the caller.
+      //
+      // It is what lets a later delivery receipt be matched to the exact code
+      // it was carrying. Without it, a failure callback can only say "a
+      // message to this number failed" — and clearing the member's pending
+      // code on that basis would wipe a NEWER, valid code whenever a slow
+      // failure receipt lands after a successful retry.
+      let sid = null;
+      try { sid = (await res.json())?.sid ?? null; } catch { /* body is a bonus, not a requirement */ }
+      return { ok: true, via: 'twilio', sid };
     }
     return { ok: false, error: 'no_sms_provider' };
   }

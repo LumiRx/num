@@ -458,9 +458,14 @@ async function issueCode(env, id, phone) {
     // unapproved every send lands here.
     return { sent: false, reason: out.error, note: 'Number saved, but not verified — SMS is not switched on yet.' };
   }
+  // code_sid ties this pending code to the message carrying it, so a delivery
+  // failure can retract exactly this code and nothing newer. Added by
+  // migration; rows written before it simply have a null sid and are never
+  // auto-retracted, which is the safe direction to be wrong in.
+  await env.DB.prepare('ALTER TABLE num_members ADD COLUMN code_sid TEXT').run().catch(() => {});
   await env.DB.prepare(
-    'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0 WHERE id=?1',
-  ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString()).run();
+    'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0, code_sid=?5 WHERE id=?1',
+  ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString(), out.sid ?? null).run();
   return { sent: true, channel: 'sms', expires_in_min: CODE_TTL_MIN };
 }
 

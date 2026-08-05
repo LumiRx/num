@@ -34,6 +34,8 @@ import { handleCashout } from './cashout.mjs';
 import { handleHealth, healthCron } from './health.mjs';
 import { handleBizReferral } from './bizreferral.mjs';
 import { markReferralEarned } from './referral.mjs';
+import { handleBizApi, bizApiIndex } from './bizapi.mjs';
+import { handleBizMcp } from './bizmcp.mjs';
 import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
@@ -617,6 +619,15 @@ export default {
     }
 
     // Refer a business, earn a share of what it pays Num.
+    // Num for Business: public API + MCP. Mounted here rather than on its own
+    // Worker so it shares the D1 binding and the claim/verify code; the paths
+    // are chosen so it can be lifted to api.itsnum.com without renaming.
+    if (url.pathname === '/api/biz' || url.pathname === '/api/biz/') return bizApiIndex();
+    if (url.pathname === '/api/biz/mcp') return await handleBizMcp(request, env);
+    if (url.pathname.startsWith('/api/biz/')) {
+      return await handleBizApi(request, env, url.pathname.slice('/api/biz'.length));
+    }
+
     if (url.pathname.startsWith('/api/bizref')) {
       const res = await handleBizReferral(request, env, url.pathname.slice('/api/bizref'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));

@@ -422,6 +422,27 @@ export async function handlePay(request, env, path) {
     return json({
       mode,
       can_take_payment: mode !== 'none',
+      // TEST or LIVE — the difference between taking money and rehearsing it.
+      //
+      // `can_take_payment: true` only means a Stripe key is present. With a
+      // test key every step still works: a session mints, Checkout renders,
+      // the webhook fires, Stars land, the member is delighted — and not one
+      // real cent moves. There is no error anywhere to notice, which makes it
+      // exactly the failure this codebase keeps producing: a system reporting
+      // success while doing nothing. Twilio's wrong SID hid the same way for
+      // the product's entire life until its shape was surfaced.
+      //
+      // Derived from the key prefix, which is not a secret — `sk_test_` vs
+      // `sk_live_` is published in Stripe's own docs. The key itself is never
+      // read, logged or returned.
+      stripe_mode: env.STRIPE_SECRET_KEY
+        ? (String(env.STRIPE_SECRET_KEY).startsWith('sk_live_') ? 'live'
+          : String(env.STRIPE_SECRET_KEY).startsWith('sk_test_') ? 'test'
+          : 'unrecognised-key-prefix')
+        : null,
+      // A webhook secret is not optional decoration: without it every "paid"
+      // event is refused, so checkout completes and nothing is ever granted.
+      webhook_configured: !!env.STRIPE_WEBHOOK_SECRET,
       // Stars-for-cash is a licensing decision, not a feature flag — §8:
       // "Never sell Stars." It stays refused until Duke sets STARS_SALE_OK=1
       // on the record. Bills, tabs, bookings and bounties are unaffected.

@@ -109,3 +109,39 @@ test('the status webhook is exempt from rate limiting', () => {
   const line = c.slice(c.indexOf('const isWebhook'), c.indexOf('const isWebhook') + 300);
   assert.match(line, /\/api\/sms\/status/, 'delivery receipts can be rate-limited away');
 });
+
+test('a code that never arrived is retracted, not left as a phantom', () => {
+  // issueCode stores the hash when Twilio ACCEPTS the message — the only
+  // signal available at that moment. If the carrier then drops it, the member
+  // holds a pending code nobody knows: /verify burns an attempt on every
+  // guess, /resend refuses for the cooldown, and both surfaces claim all is
+  // well. Dre hit this on 2026-08-05 with a real undelivered 30034.
+  // Assert the CALL, scoped to the status handler — not the bare name, which
+  // the function's own definition satisfies. Deleting the call site left this
+  // green on the first pass; that decoy has now caught six guards in this
+  // codebase, always the same way.
+  const handler = smsCode.slice(smsCode.indexOf('export async function handleSmsStatus'), smsCode.indexOf('async function retractUndeliveredCode'));
+  assert.match(handler, /await retractUndeliveredCode\(env,\s*sid\)/,
+    'the status handler never retracts — an undelivered message leaves its pending code in place forever');
+  const fn = smsCode.slice(smsCode.indexOf('async function retractUndeliveredCode'), smsCode.indexOf('const STOP_WORDS'));
+  assert.match(fn, /code_hash = NULL/, 'the retraction does not actually clear the pending code');
+  assert.match(fn, /attempts = 0/, 'attempts are not reset, so a failed delivery still costs the member tries');
+});
+
+test('retraction matches the message, never the recipient', () => {
+  // A failure receipt can land seconds AFTER a successful retry. Clearing by
+  // phone number would wipe the newer valid code and turn a recoverable
+  // failure into a worse one.
+  const fn = smsCode.slice(smsCode.indexOf('async function retractUndeliveredCode'), smsCode.indexOf('const STOP_WORDS'));
+  assert.match(fn, /WHERE code_sid = \?1/,
+    'retraction keys on something other than the message SID — a late failure would clear a newer, valid code');
+  assert.ok(!/to_phone|WHERE phone/.test(fn), 'retraction keys on the phone number, which is racy');
+  assert.match(fn, /phone_verified, 0\) = 0/, 'an already-verified member could have state cleared by a stray receipt');
+});
+
+test('the code is tied to its message when issued', () => {
+  // Retraction is only possible if the SID was recorded in the first place.
+  assert.match(code(verify), /sid = \(await res\.json\(\)\)\?\.sid/, 'the Twilio message SID is never captured');
+  const social = code(readFileSync(join(HERE, 'social.mjs'), 'utf8'));
+  assert.match(social, /code_sid=\?5/, 'the message SID is not stored against the pending code');
+});
