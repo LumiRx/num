@@ -177,7 +177,36 @@ export async function sendCode(env, { channel, to, code, businessName }) {
         },
         body: new URLSearchParams({ To: to, From: env.TWILIO_FROM, Body: text }),
       });
-      if (!res.ok) return { ok: false, error: `sms provider ${res.status}` };
+      if (!res.ok) {
+        // Read Twilio's own words, not just the status line.
+        //
+        // This used to return `sms provider ${status}` and nothing else, which
+        // cost most of a day: a 401 and a 400 look identical from outside, and
+        // "SMS is failing" was misdiagnosed as an unapproved A2P campaign when
+        // it was actually rejected credentials. Twilio always answers with a
+        // JSON body naming the exact cause, and the distinctions matter:
+        //
+        //   20003 "Authenticate"                 — bad SID or token, and the
+        //         message says "invalid username" (SID) vs "invalid password"
+        //         (token), which is the difference between two separate fixes
+        //   30034 unregistered A2P 10DLC campaign — the compliance path
+        //   21266 To and From cannot be the same  — a test artefact, not a fault
+        //   21608 unverified number on a trial account
+        //
+        // The body contains no credentials — Twilio says "your AccountSid or
+        // AuthToken was incorrect" without echoing either — so this is safe to
+        // surface to the caller and to log.
+        let detail = '';
+        try {
+          const body = await res.json();
+          const parts = [body?.code, body?.message].filter(Boolean);
+          if (parts.length) detail = ` — ${parts.join(' ')}`.slice(0, 200);
+        } catch {
+          // A non-JSON error body is itself informative, but never worth an
+          // exception on a path whose job is reporting a different failure.
+        }
+        return { ok: false, error: `sms provider ${res.status}${detail}`, status: res.status };
+      }
       return { ok: true, via: 'twilio' };
     }
     return { ok: false, error: 'no_sms_provider' };

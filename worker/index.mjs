@@ -374,6 +374,22 @@ export default {
         // The number members text to reach Num. A phone number is public by
         // nature; serving it here keeps the app and the worker agreeing.
         sms_number: env.TWILIO_FROM ?? null,
+        // The SHAPE of the Twilio SID — never the value.
+        //
+        // Twilio answered 401 for every send in this product's life, and no
+        // amount of reading could tell us whether the stored SID was the right
+        // kind of thing. The two failure modes are invisible from outside and
+        // need different fixes: an `SK…` API Key SID where an `AC…` Account SID
+        // belongs (our code uses it as both URL path and auth username, so it
+        // fails twice), or trailing whitespace from a paste, which makes a
+        // correct value fail in a way that looks identical to a wrong one.
+        //
+        // Two characters and a length settle both and reveal nothing usable —
+        // an Account SID is not a credential, and this is not even that. The
+        // token is never described here in any form.
+        twilio_sid_shape: env.TWILIO_SID
+          ? { prefix: String(env.TWILIO_SID).slice(0, 2), length: String(env.TWILIO_SID).length, clean: String(env.TWILIO_SID) === String(env.TWILIO_SID).trim() }
+          : null,
       });
     }
 
