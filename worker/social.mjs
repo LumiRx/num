@@ -20,6 +20,7 @@ import { notify } from './push.mjs';
 import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
+import { markReferralEarned } from './referral.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
@@ -310,6 +311,17 @@ async function me(env, req) {
       await env.DB.prepare("UPDATE num_members SET name=COALESCE(NULLIF(?2,''), name), seen_at=datetime('now') WHERE id=?1")
         .bind(holder.id, clip(b.name, 60) ?? '').run().catch(() => {});
       const back = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(holder.id).first();
+      // Send them a code too.
+      //
+      // This branch used to return "welcome back" and nothing else — no code,
+      // and no other route could issue one. That made the FIRST send a person's
+      // only chance to ever verify: miss it and every return visit landed here,
+      // reassured them everything was fine, and quietly left them stranded.
+      // Recovery is exactly the moment somebody is trying again, so it is the
+      // moment most worth sending.
+      const verification = b.verify === false
+        ? { sent: false, reason: 'not_requested' }
+        : await issueCode(env, back.id, back.phone);
       return json({
         me: {
           id: back.id,
@@ -324,7 +336,7 @@ async function me(env, req) {
         ref: back.ref_code,
         link: `${appOrigin(env, req)}/r/${back.ref_code}`,
         recovered: true,
-        verification: { sent: false, reason: 'recovered_unverified', note: 'Welcome back — everything on this number is still here.' },
+        verification,
       });
     }
 
@@ -399,19 +411,7 @@ async function me(env, req) {
 
   let verification = null;
   if (phone && !existing?.phone_verified && b.verify !== false) {
-    const code = generateCode();
-    const salt = crypto.randomUUID();
-    const out = await sendCode(env, { channel: 'sms', to: phone, code, businessName: 'NUM' });
-    if (out.ok) {
-      await env.DB.prepare(
-        'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0 WHERE id=?1',
-      ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString()).run();
-      verification = { sent: true, channel: 'sms' };
-    } else {
-      // Honest failure: the number is on file so invites and links work, but we
-      // do not claim it was verified. Adding the Twilio secrets turns this on.
-      verification = { sent: false, reason: out.error, note: 'Number saved, but not verified — SMS is not switched on yet.' };
-    }
+    verification = await issueCode(env, id, phone);
   }
 
   // No re-read: we know exactly what was written, and a third round trip to
@@ -433,6 +433,72 @@ async function me(env, req) {
   });
 }
 
+/**
+ * Mint a code, text it, and store the hash — the one place that does this.
+ *
+ * It exists as a function because it used to be inline in the signup path and
+ * nowhere else, which meant a person got exactly ONE chance at a code, ever.
+ * If that first text failed, or arrived late, or they closed the app before
+ * typing it, they were permanently unable to verify: coming back hit the
+ * recovery branch, which returned "welcome back" and silently sent nothing,
+ * and no other route could issue one. Sharing this between signup, recovery
+ * and resend is what makes "I didn't get the code" a solvable situation.
+ *
+ * The hash is only written when the send actually succeeded. A stored hash for
+ * a text that never arrived is a member who can never verify and whose retry
+ * gets told a code is already pending.
+ */
+async function issueCode(env, id, phone) {
+  const code = generateCode();
+  const salt = crypto.randomUUID();
+  const out = await sendCode(env, { channel: 'sms', to: phone, code, businessName: 'NUM' });
+  if (!out.ok) {
+    // Honest failure: the number is on file so invites and links still work,
+    // but we never claim a verification we did not get. While A2P 10DLC is
+    // unapproved every send lands here.
+    return { sent: false, reason: out.error, note: 'Number saved, but not verified — SMS is not switched on yet.' };
+  }
+  await env.DB.prepare(
+    'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0 WHERE id=?1',
+  ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString()).run();
+  return { sent: true, channel: 'sms', expires_in_min: CODE_TTL_MIN };
+}
+
+/**
+ * "Send it again." The single most common thing that happens in any phone
+ * verification flow, and until now the only flow with no answer to it.
+ *
+ * Cooled down rather than hard-limited: each resend costs us a message and an
+ * unthrottled endpoint is a way to spend our Twilio balance on someone else's
+ * afternoon. A cooldown says "not yet" to a button masher without locking out
+ * a person whose first text genuinely never came.
+ */
+const RESEND_COOLDOWN_SEC = 60;
+
+async function resendCode(env, req) {
+  const b = await readBody(req);
+  const row = await env.DB.prepare('SELECT id, phone, phone_verified, code_expires FROM num_members WHERE id=?1')
+    .bind(clip(b.id, 40) ?? '').first();
+  if (!row) return json({ error: 'unknown member' }, 404);
+  if (row.phone_verified) return json({ ok: true, already: true });
+  if (!row.phone) return json({ error: 'no number on file' }, 400);
+
+  // A code minted less than the cooldown ago is still in flight. code_expires
+  // is CODE_TTL_MIN in the future at mint, so anything fresher than
+  // (TTL - cooldown) from now was issued within the cooldown window.
+  if (row.code_expires) {
+    const mintedMsAgo = CODE_TTL_MIN * 60_000 - (new Date(row.code_expires).getTime() - Date.now());
+    if (mintedMsAgo >= 0 && mintedMsAgo < RESEND_COOLDOWN_SEC * 1000) {
+      return json({
+        error: 'A code is on its way — give it a moment before asking for another.',
+        retry_after_sec: Math.ceil((RESEND_COOLDOWN_SEC * 1000 - mintedMsAgo) / 1000),
+      }, 429);
+    }
+  }
+
+  return json(await issueCode(env, row.id, row.phone));
+}
+
 async function verifyMe(env, req) {
   const b = await readBody(req);
   const row = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(clip(b.id, 40) ?? '').first();
@@ -447,6 +513,9 @@ async function verifyMe(env, req) {
     await env.DB.prepare('UPDATE num_members SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
     return json({ error: 'wrong code', attempts_left: MAX_ATTEMPTS - (row.attempts + 1) }, 400);
   }
+  // Whoever referred this person has now earned it. Fire-and-forget: a
+  // referral bookkeeping problem must never fail somebody's verification.
+  markReferralEarned(env, row.id, 'phone_verified').catch(() => {});
   await env.DB.prepare('UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL WHERE id=?1')
     .bind(row.id).run();
   return json({ ok: true, phone_verified: true });
@@ -1966,6 +2035,7 @@ export async function handleSocial(request, env, path) {
 
   if (path === '/me' && post) return await me(env, request);
   if (path === '/verify' && post) return await verifyMe(env, request);
+  if (path === '/resend' && post) return await resendCode(env, request);
   if (path === '/invite' && post) return await invite(env, request);
   if (path === '/accept' && post) return await accept(env, request);
   if (path === '/connect' && post) return await connect(env, request);

@@ -12,6 +12,13 @@ node_modules/
 .wrangler/
 .DS_Store
 *.log
+# FUSE leftovers. When a file is replaced while something still holds it open,
+# the mount renames the old inode to .fuse_hidden<hex> instead of unlinking it.
+# An agent session doing mutation testing (cp/sed a source file, run tests,
+# restore) generates these by the handful — six of them, ~9,000 lines of stale
+# duplicated source, landed in a commit on 2026-08-04. Harmless to run, but
+# they poison every future grep and code review in the repo.
+.fuse_hidden*
 # ── build output ──
 dist/
 *.tsbuildinfo

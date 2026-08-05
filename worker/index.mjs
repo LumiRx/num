@@ -33,6 +33,7 @@ import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
 import { handleHealth, healthCron } from './health.mjs';
 import { handleBizReferral } from './bizreferral.mjs';
+import { markReferralEarned } from './referral.mjs';
 import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
@@ -792,6 +793,14 @@ export default {
           memberId: parsed.state?.me?.id ?? null,
         }),
       );
+      // Somebody asked their concierge something, which is the moment a
+      // referral stops being a signup and starts being a user. Runs after the
+      // response is on its way, and is a no-op once already earned, so calling
+      // it on every ask costs one indexed write attempt and never adds latency
+      // — cheaper than reading first to find out it has nothing to do.
+      if (parsed.state?.me?.id) {
+        ctx.waitUntil(markReferralEarned(env, parsed.state.me.id, 'first_ask'));
+      }
       // Output guard: never let leaked JSON scaffolding reach the user. One
       // corrective retry, then salvage, then the safe fallback.
       const guard = guardReply(result.reply);
