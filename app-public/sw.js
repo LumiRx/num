@@ -15,7 +15,7 @@
 // installed app's shell permanently. Anyone already carrying a poisoned entry
 // gets it evicted by this rename on their next launch; without it they would
 // keep launching into "not found" no matter how often we redeployed.
-const CACHE = 'num-shell-v5';
+const CACHE = 'num-shell-v6';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -72,6 +72,13 @@ self.addEventListener('fetch', (event) => {
   }
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
+
+  // Video streams NEVER go through the worker. The browser's media stack
+  // asks for byte ranges and requires a 206 back; a cache that answers a
+  // Range request with a full 200 makes <video> silently refuse to load —
+  // readyState 0, no error, nothing to debug. Found on /watch/ where the ad
+  // film sat black. Step aside and let the network do ranges properly.
+  if (request.headers.has('range') || /\.(mp4|webm|m4v|mov)$/i.test(url.pathname)) return;
 
   if (request.mode === 'navigate') {
     /* STAY OUT OF THE WAY of the short share links and the pages the Worker

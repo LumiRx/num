@@ -85,7 +85,7 @@ async function ensure(env) {
  * One business, one key. "Joe's Bar", "joes bar" and "JOES BAR  " are the same
  * place, and if they are not, two people get paid for one customer.
  */
-const bizKey = (name, city) =>
+export const bizKey = (name, city) =>
   `${String(name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')}|${String(city ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
 /**
@@ -133,6 +133,50 @@ export async function creditBizReferral(env, { businessId, stars, ref }) {
 
   return { credited: cut };
 }
+
+/**
+ * Activation from the VERIFIED-CLAIM path — the missing link in the chain.
+ *
+ * Before this, a referral only ever activated if an admin manually called
+ * /activate with two ids fished out of the database. So the loop we sold —
+ * "refer a place, earn when they join" — was a promise with no mechanism:
+ * the business could onboard, the referrer's claim would sit in 'claimed'
+ * forever, and nobody would ever know the two rows were about the same
+ * restaurant.
+ *
+ * This is safe where the public /activate endpoint was not, because the
+ * trigger is a business PROVING ownership through the claim loop — not
+ * anyone naming a business id. The one check that matters: the person who
+ * verified the listing must not be the referrer, because "you can't refer
+ * your own business" is a rule about money, and rules about money hold on
+ * every path or on none.
+ */
+export async function activateByKey(env, { name, city, businessId, ownerMemberId }) {
+  const key = bizKey(name, city);
+  // Try dest-qualified first, then city-less — people claim "Baan Rim Pa"
+  // without typing "Phuket", and an unmatched referral pays nobody.
+  const row = await env.DB.prepare(
+    "SELECT id, referrer_id, biz_name, pct FROM num_biz_referrals WHERE state='claimed' AND (biz_key = ?1 OR biz_key = ?2) LIMIT 1",
+  ).bind(key, bizKey(name, '')).first().catch(() => null);
+  if (!row) return { matched: false };
+  if (row.referrer_id === ownerMemberId) return { matched: false, self: true };
+
+  const r = await env.DB.prepare(
+    "UPDATE num_biz_referrals SET state='active', business_id=?2, activated_at=datetime('now') WHERE id=?1 AND state='claimed'",
+  ).bind(row.id, businessId).run();
+  if (!(r.meta?.changes > 0)) return { matched: false };
+
+  await notify(env, {
+    memberId: row.referrer_id,
+    kind: 'referral',
+    title: `${row.biz_name} joined Num`,
+    body: `The place you brought in is live. You now earn ${row.pct}% of every booking Num sends them.`,
+    url: '/?app',
+    tag: `bizref:${row.id}`,
+  }).catch(() => {});
+  return { matched: true, referral_id: row.id, referrer_id: row.referrer_id };
+}
+
 
 export async function handleBizReferral(request, env, path) {
   const post = request.method === 'POST';

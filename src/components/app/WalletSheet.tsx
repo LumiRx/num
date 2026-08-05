@@ -7,12 +7,12 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack, requestCashout } from '../../lib/concierge';
 import { TabStarter } from './TabSheet';
+import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
+import type { Pack } from '../../lib/wallet';
 
-const PACKS: Array<{ stars: string; price: string; n: number; cents: number }> = [
-  { stars: '★500', price: '$150', n: 500, cents: 15000 },
-  { stars: '★1,000', price: '$295', n: 1000, cents: 29500 },
-  { stars: '★5,000', price: '$1,425', n: 5000, cents: 142500 },
-];
+// No PACKS constant here on purpose. The wallet used to carry its own copy of
+// the prices, which is two sources of truth for a number an attacker would
+// love to control. /api/pay/status is the only one now.
 
 export default function WalletSheet() {
   const open = useApp((s) => s.walletOpen);
@@ -23,13 +23,18 @@ export default function WalletSheet() {
   useDialogFocus(open, ref);
 
   // What the pay rail can actually do right now — asked, not asserted.
-  const [pay, setPay] = useState<{ mode: string; stars_sale?: boolean } | null>(null);
+  const [pay, setPay] = useState<{ mode: string; stars_sale?: boolean; packs?: Pack[] } | null>(null);
   // Earned vs bought. Only earned Stars can become money — the wallet says so
   // with a number rather than making someone find out at the worst moment.
   const [out, setOut] = useState<{ open: boolean; cashable: number; locked_purchased: number } | null>(null);
+  const activity = useApp((s) => s.activity);
+
   useEffect(() => {
     if (!open) return;
     void fetch('/api/pay/status').then((r) => r.json()).then(setPay).catch(() => setPay(null));
+    // Pulled on every open. A wallet is read precisely when someone doubts
+    // what it says, so a cached one is worth very little.
+    void refreshActivity();
     const me = store.get().me;
     if (me) {
       void fetch(`/api/cashout/quote?me=${encodeURIComponent(me.id)}`)
@@ -69,17 +74,25 @@ export default function WalletSheet() {
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ink-08)' }}>
         <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)', marginBottom: 8 }}>TOP UP — INSTANT</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {PACKS.map((p) => (
+          {(pay?.packs ?? []).map((p) => (
             <div
               key={p.stars}
-              {...pressable(() => { void buyPack(p.n, p.cents); })}
+              {...pressable(() => { void buyPack(p.stars, p.cents); })}
               className="glass lift press"
               style={{ flex: 1, cursor: 'pointer', borderRadius: 'var(--r-md)', padding: '10px 12px' }}
             >
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14 }}>{p.stars}</div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14 }}>★{p.stars.toLocaleString()}</div>
               <div style={{ fontSize: 9.5, color: 'var(--color-neutral-600)', marginTop: 2 }}>{p.price}</div>
             </div>
           ))}
+          {/* Until the server has answered, show nothing rather than a price
+              we made up. A wrong price shown for half a second is still a
+              wrong price someone can tap. */}
+          {!pay?.packs?.length && (
+            <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', padding: '6px 0' }}>
+              Checking today’s prices…
+            </div>
+          )}
         </div>
         {!!bought && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-accent-700)', fontWeight: 600 }}>{bought}</div>}
         {/* Said plainly, where the money decision happens. */}
@@ -150,15 +163,37 @@ export default function WalletSheet() {
           <WalletIcon size={12} style={{ color: 'var(--ink-40)' }} />
           ACTIVITY & RECEIPTS
         </div>
-        {txns.map((t) => (
-          <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--ink-08)', fontSize: 11.5 }}>
-            <div>
-              {t.t}
-              <div style={{ fontSize: 9.5, color: 'var(--color-neutral-500)', marginTop: 1 }}>{t.meta}</div>
-            </div>
-            <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: t.dir ? '#1f7a48' : 'var(--ink)' }}>{t.amt}</span>
+        {activity.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--color-neutral-500)', lineHeight: 1.5, padding: '4px 0' }}>
+            Nothing yet. Stars you earn, bills you settle and anything you're charged all land here.
           </div>
-        ))}
+        )}
+        {activity.map((a) => {
+          const note = stateNote(a);
+          const good = a.unit === 'stars' && a.delta > 0;
+          // A refund or a failure must not read like a normal line. Someone
+          // scanning for "why am I down money" should hit it immediately.
+          const wrong = a.state === 'failed' || a.state === 'refunded' || a.state === 'disputed';
+          return (
+            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--ink-08)', fontSize: 11.5 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                <div style={{ fontSize: 9.5, color: wrong ? '#a3271c' : 'var(--color-neutral-500)', marginTop: 1 }}>
+                  {[note, a.detail, whenOf(a.at)].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <span
+                style={{
+                  fontWeight: 700, whiteSpace: 'nowrap',
+                  color: wrong ? 'var(--color-neutral-500)' : good ? '#1f7a48' : 'var(--ink)',
+                  textDecoration: a.state === 'refunded' ? 'line-through' : 'none',
+                }}
+              >
+                {amountOf(a)}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -104,9 +104,24 @@
     <button type="submit">Start texting with NUM</button>
   </form>
 
+  <!--
+    This copy said "Check your phone — NUM just sent a first message." No
+    message was sent: A2P 10DLC is not approved yet, so Twilio rejects every
+    send. Telling somebody to check a phone that will never ring is a small
+    lie with an outsized cost here — a carrier reviewer opting in and getting
+    nothing is exactly the sort of broken flow that fails a review.
+
+    WHEN A2P IS APPROVED: restore the "check your phone" line, because by then
+    it will be true and the welcome message is the strongest opt-out disclosure
+    we send.
+  -->
   <div class="done" id="done" hidden>
     <b>You're set up.</b>
-    <span>Check your phone — NUM just sent a first message. Reply STOP any time to stop everything.</span>
+    <span>Your consent is recorded. Texting is switching on shortly — your first
+    message from NUM will arrive then, and you can reply STOP at any time to
+    stop everything. In the meantime NUM is live on
+    <a href="https://line.me/R/ti/p/@799pyrus">LINE</a> and
+    <a href="/get/">WhatsApp</a>.</span>
   </div>
 
   <div class="alt">
@@ -132,6 +147,17 @@
       alert("Please tick the consent box so we can text you.");
     }
   });
+
+  // The endpoint 303s back here with ?ok=1 after storing the consent record.
+  // Doing the confirmation this way — a real form POST, then a redirect —
+  // keeps the submission itself working with JavaScript switched off, which
+  // matters on a page a compliance reviewer has to be able to complete. Only
+  // this confirmation banner needs JS; the consent is already recorded before
+  // this line ever runs.
+  if (new URLSearchParams(location.search).has("ok")) {
+    document.getElementById("done").hidden = false;
+    document.getElementById("sms-form").hidden = true;
+  }
 </script>
 <script src="/js/track.js" defer></script>
 </body>

@@ -102,6 +102,26 @@ test('every cash-out this Worker files is stamped origin=num', () => {
   assert.doesNotMatch(cashout, /origin:\s*(b\.|body\.|clip\(b\.)/);
 });
 
+test('the payout desk is asked BEFORE any Star is debited', () => {
+  // The ordering IS the fix. Debiting first and queueing second is what lost
+  // money: the desk read a different database, never saw the request, and the
+  // Stars were simply gone. A future refactor that "tidies" the debit back up
+  // above the desk call must fail here.
+  const src = code(readFileSync(join(HERE, 'cashout.mjs'), 'utf8'));
+  const deskAt = src.indexOf('queuePayout(env');
+  const debitAt = src.indexOf('stars = stars - ?2');
+  assert.ok(deskAt > 0, 'cash-out must call the payout desk');
+  assert.ok(debitAt > 0, 'cash-out must debit somewhere');
+  assert.ok(deskAt < debitAt, 'the desk must be asked before the balance is touched');
+});
+
+test('cash-out cannot be opened without a bridge to the desk', () => {
+  // CASHOUT_OK=1 alone used to be enough to promise a payout over a road that
+  // didn't arrive. Both, or neither.
+  const src = code(readFileSync(join(HERE, 'cashout.mjs'), 'utf8'));
+  assert.match(src, /CASHOUT_OK === '1' && deskReady\(env\)/);
+});
+
 test('purchased Stars are never cashable', () => {
   assert.equal(STAR_POLICY.earned_cashable, true);
   assert.equal(STAR_POLICY.purchased_cashable, false);
@@ -109,4 +129,36 @@ test('purchased Stars are never cashable', () => {
   // Cashability is computed from move kinds, never from the raw balance.
   assert.match(cashout, /EARNED_KINDS/);
   assert.doesNotMatch(cashout, /cashable:\s*balance\b/);
+});
+
+// ── One ledger, or none of this means anything ────────────────────────────
+//
+// Star purchases were written to `num_star_ledger`. Nothing reads that table:
+// errands, social, cash-out, the console and the wallet history all read
+// num_star_moves. So the balance was right and the history was blank — the one
+// Star event a person actually paid money for was the one they couldn't see,
+// and the audit trail didn't have it either.
+//
+// It was also the reason bought Stars couldn't be cashed out: not because we
+// decided that, but because they sat in a table the cash-out audit never
+// looked at. Safe by accident is a thing that stops being safe the moment
+// someone "fixes" the inconsistency without knowing why it was there.
+test('every Star movement is written to the one table everything reads', () => {
+  const files = readdirSync(HERE).filter((f) => f.endsWith('.mjs') && !f.includes('.test.'));
+  const strays = [];
+  for (const f of files) {
+    const src = readFileSync(join(HERE, f), 'utf8');
+    for (const line of src.split('\n')) {
+      // A write to any Star table that ISN'T num_star_moves / num_star_balances.
+      const m = /(?:INSERT\s+INTO|UPDATE)\s+(num_star_[a-z_]+)/i.exec(line);
+      if (m && !['num_star_moves', 'num_star_balances'].includes(m[1].toLowerCase())) {
+        strays.push(`${f}: writes ${m[1]}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    strays,
+    [],
+    `these write Stars somewhere the history and the cash-out audit never read:\n  ${strays.join('\n  ')}`,
+  );
 });

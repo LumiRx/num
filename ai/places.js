@@ -311,7 +311,13 @@ export async function resolveLocation(env, { text, guest, cf }) {
 
 // ---------------------------------------------------------------- retrieval
 
-const SELECT_COLS = 'name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license';
+// `id` is first and is NOT rendered into the model prompt — prompt.mjs builds
+// the partner block field by field, so this costs zero tokens. It is here so
+// that when a place is recommended we can record WHICH place it was, exactly,
+// rather than matching on a name later. Names collide across cities ('The
+// Bridge' exists in most of them) and a merchant's impression count has to be
+// right or it is worse than absent.
+const SELECT_COLS = 'id, name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license';
 
 /**
  * Ranking blends quality and distance rather than sorting on either alone —

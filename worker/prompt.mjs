@@ -117,6 +117,15 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
       `SHARED PLAN IN PROGRESS: "${party.title}" with ${party.members ?? 1} ${party.members === 1 ? 'person' : 'people'}. ` +
         'Anything you book or add here reaches every member’s Num within the minute, so speak as if the group is listening — and when something firms up, say that the others have been told.',
     );
+    // The group's merged needs — only members who chose to share, and the
+    // model is told the honest denominator so "works for everyone" is only
+    // said when it is true.
+    if (party.needs) {
+      lines.push(
+        `THE GROUP'S NEEDS (from members who chose to share them): ${party.needs} ` +
+          'Recommendations must fit ALL of these at once. If they cover only part of the group, say so plainly — "fits the three who shared preferences" — never imply the whole group was checked when it wasn\'t.',
+      );
+    }
   }
   if (trip?.length) {
     lines.push('TRIP CHECK (computed from their actual plan — use these facts, do not re-derive them):\n' + trip.map((t) => `- ${t}`).join('\n'));

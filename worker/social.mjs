@@ -17,8 +17,10 @@
 //      for a confirmation to start planning together.
 import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode } from '../claim/verify.mjs';
 import { notify } from './push.mjs';
+import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
+import { markReferralEarned } from './referral.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
@@ -105,6 +107,16 @@ async function ensure(env) {
 const MIGRATIONS = [
   'ALTER TABLE num_members ADD COLUMN avatar TEXT',
   'ALTER TABLE num_members ADD COLUMN bio TEXT',
+  // Group intelligence consent. Sharing your diet with a PLAN is a different
+  // act from telling Num — default off, flipped per-plan by its owner… no.
+  // Flipped by the MEMBER, per plan, because it is their information.
+  'ALTER TABLE num_plan_members ADD COLUMN share_prefs INTEGER NOT NULL DEFAULT 0',
+  // First-touch ad attribution — which ad brought this member. Written once
+  // at signup, never overwritten: re-attribution on every visit makes every
+  // campaign's numbers bleed into the most recent click.
+  'ALTER TABLE num_members ADD COLUMN utm_source TEXT',
+  'ALTER TABLE num_members ADD COLUMN utm_medium TEXT',
+  'ALTER TABLE num_members ADD COLUMN utm_campaign TEXT',
   'ALTER TABLE num_members ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0',
 ];
 
@@ -299,6 +311,17 @@ async function me(env, req) {
       await env.DB.prepare("UPDATE num_members SET name=COALESCE(NULLIF(?2,''), name), seen_at=datetime('now') WHERE id=?1")
         .bind(holder.id, clip(b.name, 60) ?? '').run().catch(() => {});
       const back = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(holder.id).first();
+      // Send them a code too.
+      //
+      // This branch used to return "welcome back" and nothing else — no code,
+      // and no other route could issue one. That made the FIRST send a person's
+      // only chance to ever verify: miss it and every return visit landed here,
+      // reassured them everything was fine, and quietly left them stranded.
+      // Recovery is exactly the moment somebody is trying again, so it is the
+      // moment most worth sending.
+      const verification = b.verify === false
+        ? { sent: false, reason: 'not_requested' }
+        : await issueCode(env, back.id, back.phone);
       return json({
         me: {
           id: back.id,
@@ -313,7 +336,7 @@ async function me(env, req) {
         ref: back.ref_code,
         link: `${appOrigin(env, req)}/r/${back.ref_code}`,
         recovered: true,
-        verification: { sent: false, reason: 'recovered_unverified', note: 'Welcome back — everything on this number is still here.' },
+        verification,
       });
     }
 
@@ -360,6 +383,16 @@ async function me(env, req) {
           "INSERT INTO num_members (id, name, phone, dest, avatar, bio, ref_code, seen_at) VALUES (?1,?2,?3,?4,?5,?6,?7,datetime('now'))",
         ).bind(id, name, phone, dest, avatar, bio, ref),
   );
+  // First-touch attribution, first write wins. COALESCE keeps the original:
+  // a member who signs up from the Instagram ad and later opens a YouTube
+  // link stays Instagram's conversion, which is the only honest ledger for
+  // deciding where the next ad dollar goes.
+  const utm = b.utm && typeof b.utm === 'object' ? b.utm : null;
+  if (utm?.source) {
+    writes.push(env.DB.prepare(
+      `UPDATE num_members SET utm_source=COALESCE(utm_source,?2), utm_medium=COALESCE(utm_medium,?3), utm_campaign=COALESCE(utm_campaign,?4) WHERE id=?1`,
+    ).bind(id, clip(utm.source, 60), clip(utm.medium, 60), clip(utm.campaign, 80)));
+  }
   if (!existing?.ref_code) {
     writes.push(
       env.DB.prepare(
@@ -378,19 +411,7 @@ async function me(env, req) {
 
   let verification = null;
   if (phone && !existing?.phone_verified && b.verify !== false) {
-    const code = generateCode();
-    const salt = crypto.randomUUID();
-    const out = await sendCode(env, { channel: 'sms', to: phone, code, businessName: 'NUM' });
-    if (out.ok) {
-      await env.DB.prepare(
-        'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0 WHERE id=?1',
-      ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString()).run();
-      verification = { sent: true, channel: 'sms' };
-    } else {
-      // Honest failure: the number is on file so invites and links work, but we
-      // do not claim it was verified. Adding the Twilio secrets turns this on.
-      verification = { sent: false, reason: out.error, note: 'Number saved, but not verified — SMS is not switched on yet.' };
-    }
+    verification = await issueCode(env, id, phone);
   }
 
   // No re-read: we know exactly what was written, and a third round trip to
@@ -412,6 +433,77 @@ async function me(env, req) {
   });
 }
 
+/**
+ * Mint a code, text it, and store the hash — the one place that does this.
+ *
+ * It exists as a function because it used to be inline in the signup path and
+ * nowhere else, which meant a person got exactly ONE chance at a code, ever.
+ * If that first text failed, or arrived late, or they closed the app before
+ * typing it, they were permanently unable to verify: coming back hit the
+ * recovery branch, which returned "welcome back" and silently sent nothing,
+ * and no other route could issue one. Sharing this between signup, recovery
+ * and resend is what makes "I didn't get the code" a solvable situation.
+ *
+ * The hash is only written when the send actually succeeded. A stored hash for
+ * a text that never arrived is a member who can never verify and whose retry
+ * gets told a code is already pending.
+ */
+async function issueCode(env, id, phone) {
+  const code = generateCode();
+  const salt = crypto.randomUUID();
+  const out = await sendCode(env, { channel: 'sms', to: phone, code, businessName: 'NUM' });
+  if (!out.ok) {
+    // Honest failure: the number is on file so invites and links still work,
+    // but we never claim a verification we did not get. While A2P 10DLC is
+    // unapproved every send lands here.
+    return { sent: false, reason: out.error, note: 'Number saved, but not verified — SMS is not switched on yet.' };
+  }
+  // code_sid ties this pending code to the message carrying it, so a delivery
+  // failure can retract exactly this code and nothing newer. Added by
+  // migration; rows written before it simply have a null sid and are never
+  // auto-retracted, which is the safe direction to be wrong in.
+  await env.DB.prepare('ALTER TABLE num_members ADD COLUMN code_sid TEXT').run().catch(() => {});
+  await env.DB.prepare(
+    'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0, code_sid=?5 WHERE id=?1',
+  ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString(), out.sid ?? null).run();
+  return { sent: true, channel: 'sms', expires_in_min: CODE_TTL_MIN };
+}
+
+/**
+ * "Send it again." The single most common thing that happens in any phone
+ * verification flow, and until now the only flow with no answer to it.
+ *
+ * Cooled down rather than hard-limited: each resend costs us a message and an
+ * unthrottled endpoint is a way to spend our Twilio balance on someone else's
+ * afternoon. A cooldown says "not yet" to a button masher without locking out
+ * a person whose first text genuinely never came.
+ */
+const RESEND_COOLDOWN_SEC = 60;
+
+async function resendCode(env, req) {
+  const b = await readBody(req);
+  const row = await env.DB.prepare('SELECT id, phone, phone_verified, code_expires FROM num_members WHERE id=?1')
+    .bind(clip(b.id, 40) ?? '').first();
+  if (!row) return json({ error: 'unknown member' }, 404);
+  if (row.phone_verified) return json({ ok: true, already: true });
+  if (!row.phone) return json({ error: 'no number on file' }, 400);
+
+  // A code minted less than the cooldown ago is still in flight. code_expires
+  // is CODE_TTL_MIN in the future at mint, so anything fresher than
+  // (TTL - cooldown) from now was issued within the cooldown window.
+  if (row.code_expires) {
+    const mintedMsAgo = CODE_TTL_MIN * 60_000 - (new Date(row.code_expires).getTime() - Date.now());
+    if (mintedMsAgo >= 0 && mintedMsAgo < RESEND_COOLDOWN_SEC * 1000) {
+      return json({
+        error: 'A code is on its way — give it a moment before asking for another.',
+        retry_after_sec: Math.ceil((RESEND_COOLDOWN_SEC * 1000 - mintedMsAgo) / 1000),
+      }, 429);
+    }
+  }
+
+  return json(await issueCode(env, row.id, row.phone));
+}
+
 async function verifyMe(env, req) {
   const b = await readBody(req);
   const row = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(clip(b.id, 40) ?? '').first();
@@ -426,6 +518,9 @@ async function verifyMe(env, req) {
     await env.DB.prepare('UPDATE num_members SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
     return json({ error: 'wrong code', attempts_left: MAX_ATTEMPTS - (row.attempts + 1) }, 400);
   }
+  // Whoever referred this person has now earned it. Fire-and-forget: a
+  // referral bookkeeping problem must never fail somebody's verification.
+  markReferralEarned(env, row.id, 'phone_verified').catch(() => {});
   await env.DB.prepare('UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL WHERE id=?1')
     .bind(row.id).run();
   return json({ ok: true, phone_verified: true });
@@ -475,9 +570,27 @@ async function invite(env, req) {
   // link, landed in Safari — which on iOS shares nothing with her installed
   // app — and was asked to sign up again. Instead: put the plan straight into
   // her app, buzz her phone, and let the texted link be a pointer, not a gate.
-  const existing = toPhone
-    ? await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(toPhone).first()
-    : null;
+  // WHO IS THIS PERSON? By member id if the app knows it, else by phone.
+  //
+  // Phone-only was a real bug: a friend you connected with by QR has no phone
+  // stored against them, so `existing` came back null, the link was written
+  // with b_id AND b_phone both NULL — and the inbox query matches on one or
+  // the other, so that row was unreachable by every read path, forever. The
+  // sender saw "invited"; the friend was never invited to anything. Tapping a
+  // QR-connected friend in the invite sheet hit this every single time.
+  const toId = clip(b.to_id, 40);
+  // A removal that the other party can undo is not a removal. If either side
+  // blocked the other, the invite stops here.
+  if (toId && (await isBlocked(env, from, toId))) {
+    return json({ error: 'That person can’t be added.' }, 403);
+  }
+  const existing =
+    (toId
+      ? await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(toId).first()
+      : null) ??
+    (toPhone
+      ? await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(toPhone).first()
+      : null);
   if (existing && plan) {
     await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
       .bind(plan.id, existing.id, existing.name ?? toName).run();
@@ -792,6 +905,17 @@ async function connect(env, req) {
   const other = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(toId).first();
   if (!other) return json({ error: 'That code doesn’t match anyone on Num.' }, 404);
 
+  // A block has to hold on EVERY path in, not just the one we thought of.
+  // invite() checked this; connect() didn't — so anyone you removed could
+  // walk back in by scanning your QR, which is the easiest path of all. A
+  // block that one route ignores is not a block.
+  //
+  // Deliberately vague: naming the block tells the blocked person they were
+  // blocked, which is precisely what the silence was protecting against.
+  if (await isBlocked(env, meId, toId)) {
+    return json({ error: 'That code isn’t working.' }, 403);
+  }
+
   // Either direction counts — friendship is not directional, and creating a
   // second row for the mirror image would double every friend list.
   const existing = await env.DB.prepare(
@@ -809,6 +933,17 @@ async function connect(env, req) {
   await env.DB.prepare(
     "INSERT INTO num_links (id, a_id, b_id, b_name, state, accepted_at) VALUES (?1,?2,?3,?4,'active',datetime('now'))",
   ).bind(uid('lnk'), toId, meId, self.name).run();
+
+  // TELL THE OTHER PERSON. They just gained a friend who can now DM them and
+  // add them to plans — a state change on their account that they had no part
+  // in initiating. Writing the row and staying silent is how "I scanned you"
+  // became "nothing happened" on the other phone. Only reached for a NEW
+  // link — the already-connected branch returns above.
+  await notify(env, {
+    memberId: other.id, kind: 'friend', title: 'New connection',
+    body: `${self.name || 'Someone'} connected with you on Num.`,
+    url: '/?app', tag: `friend:${meId}`,
+  }).catch(() => {});
 
   return json({ ok: true, friend: { id: other.id, name: other.name } });
 }
@@ -843,6 +978,17 @@ async function accept(env, req) {
   }
 
   const friend = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(link.a_id).first();
+  // The person who SENT the invite is the one waiting to hear. Until now they
+  // learned nothing — while the app told the accepter "they know." They did
+  // not. This is that message becoming true.
+  await notify(env, {
+    memberId: link.a_id, kind: 'friend', title: 'Invite accepted',
+    body: link.plan_id
+      ? `${self?.name || 'They'} joined your plan.`
+      : `${self?.name || 'Someone you invited'} is on Num now.`,
+    url: '/?app', tag: `accept:${meId}`,
+  }).catch(() => {});
+
   return json({ ok: true, friend: friend ? { id: friend.id, name: friend.name } : null, plan });
 }
 
@@ -1076,6 +1222,15 @@ async function pay(env, req) {
   }
 
   const row = await env.DB.prepare('SELECT stars FROM num_star_balances WHERE member_id=?1').bind(from).first();
+  // Money arrived and nobody said so. The payee's only signal was a 45-second
+  // poll — with the app closed, nothing at all, ever. Every other credit in
+  // this codebase buzzes (errand settle, referral share); this one didn't.
+  await notify(env, {
+    memberId: to, kind: 'pay', title: `★${amount.toLocaleString()} from ${payer?.name || 'a friend'}`,
+    body: note ? `“${note}”` : 'It’s in your wallet.',
+    url: '/?app', tag: `pay:${from}`,
+  }).catch(() => {});
+
   return json({ ok: true, balance: row?.stars ?? 0, to: payee.name, amount });
 }
 
@@ -1282,6 +1437,10 @@ async function tabClose(env, req) {
   if (!tab) return json({ error: 'no such tab' }, 404);
   if (tab.owner_id !== clip(b.me, 40)) return json({ error: 'only whoever opened it can close it' }, 403);
   await env.DB.prepare("UPDATE num_tabs SET state='closed', closed_at=datetime('now') WHERE id=?1").bind(tab.id).run();
+  // Closing a tab takes away everyone else's ability to settle it. Silence
+  // here means a friend mid-payment just gets "That tab is closed."
+  await notifyTab(env, tab, clip(b.me, 40), `${tab.title} is closed.`).catch(() => {});
+
   return json(await tabState(env, tab.id));
 }
 
@@ -1779,6 +1938,100 @@ async function planJoin(env, req) {
 
 // ── router ────────────────────────────────────────────────────────────────
 
+// ── Group intelligence ─────────────────────────────────────────────────────
+//
+// "Ben doesn't eat shellfish, Cleo lands at nine, so it's the late seating at
+// the one place that does halal" — a human concierge holds all of that in
+// their head. This gives Num the same view of a group, under one hard rule:
+//
+//   A MEMBER'S PREFERENCES JOIN THE PLAN ONLY IF THAT MEMBER SAID SO.
+//
+// Consent is per-plan and per-member (share_prefs on the membership row),
+// default OFF. Telling Num your diet is a private act; sharing it with six
+// friends on a trip is a different one, and conflating them would make people
+// stop telling Num anything — which kills the whole feature layer above it.
+
+/** Flip my own sharing for one plan. Nobody can flip it for me. */
+async function planShare(env, req) {
+  const b = await readBody(req);
+  const me = clip(b.me, 40);
+  const planId = clip(b.plan_id, 40);
+  const share = b.share ? 1 : 0;
+  if (!me || !planId) return json({ error: 'me and plan_id required' }, 400);
+  const flip = await env.DB.prepare(
+    'UPDATE num_plan_members SET share_prefs=?3 WHERE plan_id=?1 AND member_id=?2',
+  ).bind(planId, me, share).run();
+  if (!flip.meta.changes) return json({ error: 'You’re not on that plan.' }, 404);
+  return json({ ok: true, sharing: !!share });
+}
+
+/**
+ * What the group needs, merged. Only fields that matter for choosing a venue
+ * or a time — never the whole bio, because "what does the plan need" and
+ * "tell me everything about Ben" are different questions and only the first
+ * one was consented to.
+ */
+const FIT_FIELDS = ['dietary', 'budget', 'vibe', 'mobility', 'arrive'];
+
+/** The computation behind /plan/fit, exported so the brain can use it too. */
+export async function groupNeeds(env, planId) {
+  const { results } = await env.DB.prepare(
+    `SELECT pm.member_id, pm.share_prefs, m.name, m.bio
+       FROM num_plan_members pm JOIN num_members m ON m.id = pm.member_id
+      WHERE pm.plan_id = ?1`,
+  ).bind(planId).all().catch(() => ({ results: [] }));
+  const members = results ?? [];
+  const shared = members.filter((r) => r.share_prefs);
+  const needs = {};
+  for (const r of shared) {
+    let bio = {};
+    try { bio = JSON.parse(r.bio ?? '{}') ?? {}; } catch { /* old rows */ }
+    for (const f of FIT_FIELDS) {
+      const v = clip(bio[f], 120);
+      if (!v) continue;
+      (needs[f] ??= []).push({ who: r.name ?? 'someone', what: v });
+    }
+  }
+  const lines = [];
+  if (needs.dietary?.length) lines.push(`Dietary: ${needs.dietary.map((n) => `${n.who} — ${n.what}`).join('; ')}.`);
+  if (needs.budget?.length) lines.push(`Budget: ${needs.budget.map((n) => n.what).join(', ')}.`);
+  if (needs.vibe?.length) lines.push(`Mood: ${needs.vibe.map((n) => n.what).join(', ')}.`);
+  if (needs.mobility?.length) lines.push(`Access: ${needs.mobility.map((n) => `${n.who} — ${n.what}`).join('; ')}.`);
+  if (needs.arrive?.length) lines.push(`Arrivals: ${needs.arrive.map((n) => `${n.who} ${n.what}`).join('; ')}.`);
+  return {
+    members: members.length,
+    sharing: shared.length,
+    needs,
+    summary: lines.length
+      ? `Group of ${members.length}, ${shared.length} sharing preferences. ${lines.join(' ')}`
+      : null,
+  };
+}
+
+async function planFit(env, url) {
+  const planId = clip(url.searchParams.get('plan_id'), 40);
+  const me = clip(url.searchParams.get('me'), 40);
+  if (!planId || !me) return json({ error: 'plan_id and me required' }, 400);
+
+  // Only a member sees the group's needs. The fit summary is exactly the kind
+  // of aggregate that leaks — "no shellfish, halal, lands 21:00" narrows six
+  // people to one fast.
+  const mine = await env.DB.prepare(
+    'SELECT member_id, share_prefs FROM num_plan_members WHERE plan_id=?1 AND member_id=?2',
+  ).bind(planId, me).first();
+  if (!mine) return json({ error: 'You’re not on that plan.' }, 403);
+
+  const fit = await groupNeeds(env, planId);
+  return json({
+    plan_id: planId,
+    // My own flag, so the toggle renders true state instead of guessing.
+    me_sharing: !!mine.share_prefs,
+    ...fit,
+    summary: fit.summary
+      ?? `Group of ${fit.members} — nobody is sharing preferences yet, so recommendations can only fit the person asking.`,
+  });
+}
+
 export async function handleSocial(request, env, path) {
   if (!env.DB) return json({ error: 'social features need the database binding' }, 503);
   await ensure(env);
@@ -1787,6 +2040,7 @@ export async function handleSocial(request, env, path) {
 
   if (path === '/me' && post) return await me(env, request);
   if (path === '/verify' && post) return await verifyMe(env, request);
+  if (path === '/resend' && post) return await resendCode(env, request);
   if (path === '/invite' && post) return await invite(env, request);
   if (path === '/accept' && post) return await accept(env, request);
   if (path === '/connect' && post) return await connect(env, request);
@@ -1818,6 +2072,8 @@ export async function handleSocial(request, env, path) {
   if (path === '/plan/join' && post) return await planJoin(env, request);
   if (path === '/plan/comment' && post) return await planComment(env, request);
   if (path === '/plan/vote' && post) return await planVote(env, request);
+  if (path === '/plan/share' && post) return await planShare(env, request);
+  if (path === '/plan/fit') return await planFit(env, url);
   if (path === '/lookup' && post) return await lookupPhones(env, request);
   return json({ error: 'not found' }, 404);
 }

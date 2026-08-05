@@ -454,6 +454,18 @@ async function adminOverview(env, url, req) {
       invites: c.invites, joined: c.joined, conversions: c.conversions,
       recent: (recent.results ?? []).map((r) => ({ ...r, phone: maskPhone(r.phone) })),
       referrals: leaders.results ?? [],
+      // Where the ad money is actually working: signups and VERIFIED signups
+      // by first-touch source. Verified is the honest column — an ad channel
+      // that produces unverified signups produces bots and typos.
+      by_source: await env.DB.prepare(
+        `SELECT COALESCE(utm_source, 'organic') source,
+                COALESCE(utm_campaign, '') campaign,
+                COUNT(*) signups,
+                SUM(phone_verified) verified
+           FROM num_members
+          WHERE created_at > datetime('now', ?1)
+          GROUP BY 1, 2 ORDER BY signups DESC LIMIT 20`,
+      ).bind(`-${since} day`).all().then((r) => r.results ?? []).catch(() => []),
     },
     // itsnum.com — the same database, the other front door.
     site: { leads: c.leads, leadsNew: c.leadsNew, accounts: c.accounts, byDest: leadsByDest.results ?? [] },
@@ -555,7 +567,77 @@ async function adminOverview(env, url, req) {
         )
       ).results ?? [],
     },
+
+    // ── Daily series: the only honest way to draw a line ──────────────────
+    //
+    // The console used to render hand-typed arrays of ascending numbers as
+    // "trends". Every chart sloped up because someone typed it that way. A
+    // chart is a claim about reality; these come from GROUP BY date(), so a
+    // flat week looks flat and a dead week looks dead.
+    //
+    // Days with no rows are absent from SQL, not zero — the UI zero-fills so
+    // a gap reads as "nothing happened", never as "no data, skip the point".
+    series: {
+      days: since,
+      signups: await dayseries(env, 'num_members', 'created_at', since),
+      verified: await dayseries(env, 'num_members', 'created_at', since, 'phone_verified=1'),
+      messages: await dayseries(env, 'num_messages', 'created_at', since),
+      bookings: await dayseries(env, 'num_bookings', 'created_at', since),
+    },
+
+    // ── The queue: rows a human has to do something about ─────────────────
+    //
+    // A dashboard that only reports is a scoreboard. These are the items
+    // where nothing happens until someone acts, which is the difference
+    // between a number to admire and a number to fix.
+    todo: {
+      // Signed up, gave a phone, never verified. At n>0 with verified=0 this
+      // is not a conversion problem, it is the A2P gate — the whole funnel
+      // stops here and every downstream metric is capped at zero.
+      unverified: (await settle(
+        q(`SELECT id, name, phone, created_at FROM num_members
+            WHERE phone IS NOT NULL AND phone <> '' AND COALESCE(phone_verified,0)=0
+            ORDER BY created_at DESC LIMIT 25`).all(), { results: [] })).results ?? [],
+      // Businesses that raised a hand on the web form and are still waiting.
+      claims_new: (await settle(
+        q(`SELECT id, business_name, contact_name, phone, source, created_at
+             FROM claims WHERE state='new' ORDER BY created_at DESC LIMIT 25`).all(), { results: [] })).results ?? [],
+      // A guest is waiting on a venue to answer. Every hour here is a booking
+      // cooling off.
+      bookings_pending: (await settle(
+        q(`SELECT id, state, created_at FROM num_booking_requests
+            WHERE state='requested' ORDER BY created_at ASC LIMIT 25`).all(), { results: [] })).results ?? [],
+    },
   });
+}
+
+/**
+ * One metric, one row per day, zero-filled — the shape a chart can trust.
+ *
+ * Table and column names are interpolated because D1 cannot bind an
+ * identifier; they are never caller-supplied — every call site below passes a
+ * literal. The `where` argument is likewise a literal from this file. If that
+ * ever stops being true this becomes an injection, so keep the call sites
+ * honest rather than adding a sanitiser that suggests user input is welcome.
+ */
+async function dayseries(env, table, col, days, where = null) {
+  // Self-contained: a missing table must yield a flat line, never a 500 that
+  // takes the whole dashboard down with it.
+  let rows = [];
+  try {
+    rows = (await env.DB.prepare(
+      `SELECT date(${col}) d, COUNT(*) n FROM ${table}
+        WHERE ${col} > datetime('now', ?1)${where ? ` AND ${where}` : ''}
+        GROUP BY 1 ORDER BY 1`,
+    ).bind(`-${days} day`).all()).results ?? [];
+  } catch { rows = []; }
+  const byDay = new Map(rows.map((r) => [r.d, r.n]));
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+    out.push({ d, n: byDay.get(d) ?? 0 }); // absent day = 0, not a hole
+  }
+  return out;
 }
 
 /**
@@ -619,7 +701,35 @@ async function adminClaims(env, url) {
   ]);
 
   const rows = queue.results ?? [];
+
+  // The THIRD claim table. itsnum.com's merchant form (num-growth worker,
+  // claim-uk.html — the UK funnel) writes to `claims`, a table this console
+  // never read. Sean's Scottish signups were real, stored, and invisible —
+  // three workers, three claim tables, one dashboard reading one of them.
+  // Merged here rather than migrated, because the growth worker's comment
+  // says this table is its system of record and a migration under a live
+  // funnel is how signups get lost twice.
+  const web = await env.DB.prepare(
+    `SELECT c.id, c.business_name, c.contact_name, c.phone, c.email, c.source, c.state, c.created_at,
+            ROUND((julianday('now') - julianday(c.created_at)) * 24, 1) AS age_h,
+            d.website, d.category, d.rating, d.summary, d.promos, d.state AS research
+       FROM claims c
+       LEFT JOIN num_biz_dossiers d ON d.claim_id = CAST(c.id AS TEXT)
+      WHERE c.state = 'new' ORDER BY c.created_at DESC LIMIT 100`,
+  ).all().catch(() => ({ results: [] }));
+
   return json({
+    // Web/UK funnel signups awaiting first contact, each with its dossier:
+    // what we found about them and draft promo options for the callback.
+    // promos are marked ai_generated — preparation for the call, never sent
+    // to the business unreviewed.
+    web_signups: (web.results ?? []).map((r) => {
+      // Parse defensively: one malformed dossier must cost ONE row's promos,
+      // never the whole Claims screen.
+      let promos = null;
+      try { promos = r.promos ? JSON.parse(r.promos) : null; } catch { promos = { ai_generated: true, unreadable: true }; }
+      return { ...r, promos };
+    }),
     // The count is the truth even when the list is capped, so a queue longer
     // than the page cannot read as a queue that is finished.
     counts: {

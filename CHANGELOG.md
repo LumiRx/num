@@ -2,6 +2,246 @@
 
 Every version that has been live, newest first.
 
+## 0.8.159 — 2026-08-05 17:22 UTC
+
+(no note given)
+
+- commit `1f240b5`
+
+## 0.8.158 — 2026-08-05 16:08 UTC
+
+(no note given)
+
+- commit `00fdc7e`
+
+## 0.8.157 — 2026-08-05 16:02 UTC
+
+(no note given)
+
+- commit `b4d9407`
+
+## 0.8.156 — 2026-08-05 06:51 UTC
+
+(no note given)
+
+- commit `b4d9407`
+
+## 0.8.155 — 2026-08-05 06:40 UTC
+
+(no note given)
+
+- commit `d0f4c4c`
+
+## 0.8.154 — 2026-08-05 05:59 UTC
+
+(no note given)
+
+- commit `d8227c4`
+
+## 0.8.153 — 2026-08-05 05:34 UTC
+
+(no note given)
+
+- commit `d8227c4`
+
+## 0.8.152 — 2026-08-05 05:24 UTC
+
+(no note given)
+
+- commit `78429a4`
+
+## 0.8.151 — 2026-08-05 05:00 UTC
+
+(no note given)
+
+- commit `af3d068`
+
+## 0.8.150 — 2026-08-05 04:56 UTC
+
+(no note given)
+
+- commit `af3d068`
+
+## 0.8.149 — 2026-08-05 04:38 UTC
+
+(no note given)
+
+- commit `af3d068`
+
+## 0.8.148 — 2026-08-04 19:37 UTC
+
+(no note given)
+
+- commit `8389894`
+
+## 0.8.147 — 2026-08-04 19:32 UTC
+
+(no note given)
+
+- commit `8389894`
+
+## 0.8.146 — 2026-08-04 19:28 UTC
+
+(no note given)
+
+- commit `8389894`
+
+## 0.8.145 — 2026-08-04 08:05 UTC
+
+(no note given)
+
+- commit `cd774d6`
+
+## 0.8.144 — 2026-08-04 07:52 UTC
+
+(no note given)
+
+- commit `ed87caa`
+
+## 0.8.143 — 2026-08-03 21:14 UTC
+
+media ranges
+
+- commit `b43da97`
+
+## 0.8.142 — 2026-08-03 21:09 UTC
+
+sw video fix
+
+- commit `b196a5b`
+
+## 0.8.141 — 2026-08-03 21:04 UTC
+
+watch page in right dir
+
+- commit `852d548`
+
+## 0.8.140 — 2026-08-03 21:02 UTC
+
+go links
+
+- commit `5207b2d`
+
+## 0.8.139 — 2026-08-03 20:59 UTC
+
+watch page
+
+- commit `84da005`
+
+## 0.8.138 — 2026-08-03 19:27 UTC
+
+ad measurement
+
+- commit `c90b088`
+
+## 0.8.137 — 2026-08-03 18:08 UTC
+
+self-review fixes
+
+- commit `e48f18e`
+
+## 0.8.136 — 2026-08-03 17:54 UTC
+
+signup dossiers
+
+- commit `af30983`
+
+## 0.8.135 — 2026-08-03 16:24 UTC
+
+web signups visible
+
+- commit `bef1b81`
+
+## 0.8.134 — 2026-08-03 16:18 UTC
+
+onboarding chain
+
+- commit `9a6995a`
+
+## 0.8.133 — 2026-08-03 05:14 UTC
+
+share toggle
+
+- commit `5ceefe8`
+
+## 0.8.132 — 2026-08-03 04:29 UTC
+
+three moat features
+
+- commit `7358002`
+
+## 0.8.131 — 2026-08-03 01:09 UTC
+
+monthly report
+
+- commit `9463a62`
+
+## 0.8.130 — 2026-08-03 00:59 UTC
+
+pay section + activity
+
+- commit `6c62336`
+
+## 0.8.129 — 2026-08-03 00:36 UTC
+
+one star ledger
+
+- commit `9f585c9`
+
+## 0.8.128 — 2026-08-02 23:18 UTC
+
+prices 8.98 / 28.98
+
+- commit `6bbc554`
+
+## 0.8.127 — 2026-08-02 23:10 UTC
+
+delete copy
+
+- commit `49a2bc2`
+
+## 0.8.126 — 2026-08-02 22:59 UTC
+
+leaving UI, selector fix
+
+- commit `056109b`
+
+## 0.8.125 — 2026-08-02 22:51 UTC
+
+leaving UI + plan card
+
+- commit `db8cde8`
+
+## 0.8.124 — 2026-08-02 22:43 UTC
+
+block holds on every path
+
+- commit `113f476`
+
+## 0.8.123 — 2026-08-02 22:38 UTC
+
+leaving + memberships + errand alerts
+
+- commit `77bdfc9`
+
+## 0.8.122 — 2026-08-02 22:21 UTC
+
+user-to-user bridges
+
+- commit `c6250e2`
+
+## 0.8.121 — 2026-08-02 22:07 UTC
+
+payout desk bridge
+
+- commit `75fdba2`
+
+## 0.8.120 — 2026-08-02 21:20 UTC
+
+preflight polish
+
+- commit `8201a2d`
+
 ## 0.8.119 — 2026-08-02 21:18 UTC
 
 preflight + audit fixes

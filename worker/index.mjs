@@ -29,10 +29,16 @@ import { handleErrands } from './errands.mjs';
 import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
-import { handleSmsInbound, handleInboxRead, handleEmailIn } from './sms.mjs';
+import { handleSmsInbound, handleSmsStatus, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
 import { handleHealth, healthCron } from './health.mjs';
 import { handleBizReferral } from './bizreferral.mjs';
+import { markReferralEarned } from './referral.mjs';
+import { handleBizApi, bizApiIndex } from './bizapi.mjs';
+import { handleBizMcp } from './bizmcp.mjs';
+import { recordImpressions } from './impressions.mjs';
+import { handleAccount } from './account.mjs';
+import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
@@ -282,7 +288,12 @@ export default {
       // Webhooks are machine-to-machine, signature-verified, and retried by
       // the sender on any non-2xx — throttling them turns a retry storm into
       // lost payments and lost texts.
-      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound';
+      // /api/sms/status joins the exempt list for the same reason as the other
+      // two: Twilio retries on any non-2xx, so rate-limiting a status callback
+      // would turn a busy minute into a retry storm — and would drop exactly
+      // the delivery failures we most need to see.
+      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound'
+        || url.pathname === '/api/sms/status';
       if (!isWebhook) {
         const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
         // The admin door gets its own, much smaller bucket: a password guess
@@ -371,6 +382,22 @@ export default {
         // The number members text to reach Num. A phone number is public by
         // nature; serving it here keeps the app and the worker agreeing.
         sms_number: env.TWILIO_FROM ?? null,
+        // The SHAPE of the Twilio SID — never the value.
+        //
+        // Twilio answered 401 for every send in this product's life, and no
+        // amount of reading could tell us whether the stored SID was the right
+        // kind of thing. The two failure modes are invisible from outside and
+        // need different fixes: an `SK…` API Key SID where an `AC…` Account SID
+        // belongs (our code uses it as both URL path and auth username, so it
+        // fails twice), or trailing whitespace from a paste, which makes a
+        // correct value fail in a way that looks identical to a wrong one.
+        //
+        // Two characters and a length settle both and reveal nothing usable —
+        // an Account SID is not a credential, and this is not even that. The
+        // token is never described here in any form.
+        twilio_sid_shape: env.TWILIO_SID
+          ? { prefix: String(env.TWILIO_SID).slice(0, 2), length: String(env.TWILIO_SID).length, clean: String(env.TWILIO_SID) === String(env.TWILIO_SID).trim() }
+          : null,
       });
     }
 
@@ -431,6 +458,8 @@ export default {
 
     // Twilio's inbound-SMS webhook and the member's inbox view of it.
     if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+    // Twilio's delivery receipts. Signature-verified inside, like inbound.
+    if (url.pathname === '/api/sms/status') return await handleSmsStatus(request, env);
     if (url.pathname === '/api/sms/inbox') {
       const res = await handleInboxRead(request, env);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -445,7 +474,161 @@ export default {
       return res;
     }
 
+    // Leaving: unfriend, remove a plan, delete an account.
+    // ── Analytics loader ───────────────────────────────────────────────
+    //
+    // Static assets never pass through the Worker, so the Cloudflare Web
+    // Analytics beacon can't be injected at the edge. Instead index.html
+    // loads THIS, and the token lives in env (CF_BEACON_TOKEN) — paste the
+    // token once as a secret and analytics is live, no code deploy. Until
+    // it's set, this serves a comment rather than a broken script tag.
+    // Two loaders in one file: the Cloudflare beacon (traffic) and GA4
+    // (conversions). GA4 must be here, not just referenced by app code:
+    // src/lib/social.ts fires `window.gtag?.('event','verified_signup')`,
+    // and the `?.` means that on a page with no gtag library it does
+    // NOTHING, silently, forever. That is exactly what shipped — the event
+    // existed in code, was never installed on the page, and so never
+    // appeared in GA4 for Google Ads to optimize toward. The optional
+    // chaining that made it crash-proof also made it invisible.
+    //
+    // GA_MEASUREMENT_ID is config, not code: paste it once as a var and
+    // conversions start flowing with no deploy.
+    if (url.pathname === '/api/analytics.js') {
+      const token = env.CF_BEACON_TOKEN;
+      const ga = env.GA_MEASUREMENT_ID;
+      const parts = [];
+      if (token) {
+        parts.push(
+          `(function(){var s=document.createElement('script');s.defer=true;` +
+          `s.src='https://static.cloudflareinsights.com/beacon.min.js';` +
+          `s.setAttribute('data-cf-beacon', JSON.stringify({ token: ${JSON.stringify(String(token))} }));` +
+          `document.head.appendChild(s);})();`,
+        );
+      }
+      if (ga) {
+        // dataLayer + gtag stub FIRST, synchronously. The stub queues calls
+        // made before gtag.js finishes downloading — without it, a fast
+        // verifier who signs up in the first second loses their conversion.
+        parts.push(
+          `(function(){var id=${JSON.stringify(String(ga))};` +
+          `window.dataLayer=window.dataLayer||[];` +
+          `window.gtag=window.gtag||function(){window.dataLayer.push(arguments);};` +
+          `window.gtag('js',new Date());` +
+          // The app is a single-page PWA: gtag's automatic page_view fires
+          // once and never again as the user moves between tabs. Conversions
+          // are event-based here, so that's fine — but say so explicitly
+          // rather than leaving someone to wonder why sessions look short.
+          `window.gtag('config',id,{send_page_view:true});` +
+          `var s=document.createElement('script');s.async=true;` +
+          `s.src='https://www.googletagmanager.com/gtag/js?id='+encodeURIComponent(id);` +
+          `document.head.appendChild(s);})();`,
+        );
+      }
+      const js = parts.length
+        ? parts.join('\n')
+        : '/* analytics: set CF_BEACON_TOKEN and/or GA_MEASUREMENT_ID to enable */';
+      return new Response(js, {
+        headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'public, max-age=300', ...cors },
+      });
+    }
+
+    // ── /media/* — video with real byte ranges ─────────────────────────
+    //
+    // The static asset handler answers a Range request with a 200 and the
+    // whole file. Desktop Chrome shrugs and plays anyway; iPhones REFUSE —
+    // AVPlayer demands a 206 or shows a black box. The ad traffic is
+    // iPhones. So video is served here, by the worker, which reads the
+    // asset once and slices the bytes the player actually asked for.
+    if (url.pathname.startsWith('/media/') && env.ASSETS) {
+      const asset = await env.ASSETS.fetch(new URL('/assets/' + url.pathname.slice(7), url.origin));
+      if (!asset.ok) return new Response('not found', { status: 404 });
+      const buf = await asset.arrayBuffer();
+      const range = request.headers.get('range');
+      const type = asset.headers.get('content-type') ?? 'video/mp4';
+      const common = {
+        'Content-Type': type,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=86400',
+        ...cors,
+      };
+      const m = range && /bytes=(\d*)-(\d*)/.exec(range);
+      if (m) {
+        const start = m[1] ? parseInt(m[1], 10) : 0;
+        const end = m[2] ? Math.min(parseInt(m[2], 10), buf.byteLength - 1) : buf.byteLength - 1;
+        if (start >= buf.byteLength) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${buf.byteLength}`, ...cors } });
+        }
+        return new Response(buf.slice(start, end + 1), {
+          status: 206,
+          headers: { ...common, 'Content-Range': `bytes ${start}-${end}/${buf.byteLength}`, 'Content-Length': String(end - start + 1) },
+        });
+      }
+      return new Response(buf, { headers: { ...common, 'Content-Length': String(buf.byteLength) } });
+    }
+
+    // ── Tiny ad links: /go/<code> ──────────────────────────────────────
+    //
+    // An ad link full of utm_ parameters looks like tracking because it is,
+    // and on a poster or in a bio it's unusable. So the campaign lives in a
+    // CODE and the server expands it — the link people see is tiny and
+    // branded, and the attribution arrives intact anyway.
+    //
+    // The map lives HERE, in code, on purpose: adding a campaign is one line
+    // and one deploy, and the git history becomes the registry of every link
+    // we've ever put money behind.
+    if (url.pathname.startsWith('/go/')) {
+      const GO = {
+        yt: '/watch/?utm_source=youtube&utm_medium=video&utm_campaign=phuket-pretrip-film1',
+        ytb: '/watch/?utm_source=youtube&utm_medium=video&utm_campaign=bkk-pretrip-film1',
+        ig: '/watch/?utm_source=instagram&utm_medium=reels&utm_campaign=phuket-intrip-film1',
+        tt: '/watch/?utm_source=tiktok&utm_medium=video&utm_campaign=phuket-intrip-film1',
+        // Destination-agnostic campaigns. The film is shot in Phuket but the
+        // copy sells the concierge, so these carry `global` — the campaign
+        // name has to describe the TARGETING, or the by_source table lies
+        // about what was bought.
+        //
+        // Reddit specifically: some placements append Reddit's own utm_source
+        // to the destination URL, overwriting ours. Redirecting from here
+        // keeps the params server-side where Reddit can't reach them.
+        rd: '/watch/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1',
+        dg: '/watch/?utm_source=google&utm_medium=demandgen&utm_campaign=global-pretrip-film1',
+      };
+      const to = GO[url.pathname.slice(4).replace(/\/$/, '')];
+      // Unknown code → the watch page untagged, not a 404. A typo on a poster
+      // should cost us attribution, never a visitor.
+      return Response.redirect(new URL(to ?? '/watch/', url.origin).toString(), 302);
+    }
+
+    if (url.pathname.startsWith('/api/book')) {
+      const { handleBooking } = await import('./bookdesk.mjs');
+      const res = await handleBooking(request, env, url.pathname.slice('/api/book'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (url.pathname.startsWith('/api/account')) {
+      const res = await handleAccount(request, env, url.pathname.slice('/api/account'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Tiers, entitlements, subscribe.
+    if (url.pathname.startsWith('/api/membership')) {
+      const res = await handleMembership(request, env, url.pathname.slice('/api/membership'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     // Refer a business, earn a share of what it pays Num.
+    // Num for Business: public API + MCP. Mounted here rather than on its own
+    // Worker so it shares the D1 binding and the claim/verify code; the paths
+    // are chosen so it can be lifted to api.itsnum.com without renaming.
+    if (url.pathname === '/api/biz' || url.pathname === '/api/biz/') return bizApiIndex();
+    if (url.pathname === '/api/biz/mcp') return await handleBizMcp(request, env);
+    if (url.pathname.startsWith('/api/biz/')) {
+      return await handleBizApi(request, env, url.pathname.slice('/api/biz'.length));
+    }
+
     if (url.pathname.startsWith('/api/bizref')) {
       const res = await handleBizReferral(request, env, url.pathname.slice('/api/bizref'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -602,6 +785,19 @@ export default {
         }
       };
 
+      // Group intelligence: if the conversation is happening inside a shared
+      // plan, fetch what the group needs — server-side, from consented rows
+      // only. The client names the plan; it never assembles the needs itself,
+      // because the merged list must come from consent flags the client
+      // can't forge.
+      if (parsed.state?.party?.id) {
+        try {
+          const { groupNeeds } = await import('./social.mjs');
+          const fit = await groupNeeds(env, String(parsed.state.party.id).slice(0, 40));
+          if (fit.summary) parsed.state.party.needs = fit.summary;
+        } catch { /* the plan context is seasoning — never block the answer */ }
+      }
+
       const startedAt = Date.now();
       // The chain, not one model. Claude first for the full concierge; if it
       // fails for any reason, an open model on Cloudflare's edge (or a
@@ -632,6 +828,28 @@ export default {
           memberId: parsed.state?.me?.id ?? null,
         }),
       );
+      // Somebody asked their concierge something, which is the moment a
+      // referral stops being a signup and starts being a user. Runs after the
+      // response is on its way, and is a no-op once already earned, so calling
+      // it on every ask costs one indexed write attempt and never adds latency
+      // — cheaper than reading first to find out it has nothing to do.
+      if (parsed.state?.me?.id) {
+        ctx.waitUntil(markReferralEarned(env, parsed.state.me.id, 'first_ask'));
+      }
+      // Which businesses the guest was actually shown. Deferred, never awaited:
+      // the answer is already on its way and a merchant's analytics must never
+      // be a reason somebody waits. Only places NAMED in the reply or featured
+      // as the card are counted — being a candidate and passed over is not an
+      // impression, and inflating that number would corrupt the one figure a
+      // merchant makes decisions on.
+      ctx.waitUntil(recordImpressions(env, {
+        partners: grounding.partners,
+        reply: result.reply,
+        card: result.card,
+        memberId: parsed.state?.me?.id ?? null,
+        dest: grounding.place?.slug ?? null,
+        asked: userText,
+      }));
       // Output guard: never let leaked JSON scaffolding reach the user. One
       // corrective retry, then salvage, then the safe fallback.
       const guard = guardReply(result.reply);
@@ -728,5 +946,25 @@ export default {
   // record the verdict, and shout ONLY when the state changes.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
+    // The concierge that speaks first. Same cron, its own failure domain —
+    // a broken nudge must never take health monitoring down with it.
+    ctx.waitUntil(
+      import('./nudge.mjs')
+        .then((m) => m.nudgeSweep(env))
+        .catch((e) => console.error('[nudge]', e?.message ?? e)),
+    );
+    // Stalled business onboardings — the pilot's highest-value follow-up.
+    ctx.waitUntil(
+      import('./nudge.mjs')
+        .then((m) => m.claimSweep(env))
+        .catch((e) => console.error('[claimsweep]', e?.message ?? e)),
+    );
+    // Every signup gets researched — dossier with its own data and promo
+    // options, three per tick so a backlog clears in minutes, not budgets.
+    ctx.waitUntil(
+      import('./bizdossier.mjs')
+        .then((m) => m.dossierSweep(env))
+        .catch((e) => console.error('[dossier]', e?.message ?? e)),
+    );
   },
 };

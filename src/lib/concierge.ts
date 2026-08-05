@@ -10,6 +10,7 @@ import { offerService } from './services';
 import { runFlightSearch, type FlightQuery } from './flights';
 import { createEvent } from './events';
 import { observeUserMessage, styleForRequest, tripCheck } from './prefs';
+import { trackOnce } from './track';
 import type { ServiceHandoff, AppState } from './types';
 import type { Booking, Chip, Meeting, Msg } from './types';
 
@@ -578,11 +579,16 @@ export async function askNum(text: string) {
     // How they like to be answered, learned from their own reactions.
     style: styleForRequest(s),
     // The group listening in, if there is one.
-    ...(s.planId ? { party: { title: s.plans.find((p) => p.id === s.planId)?.title, members: s.planMembers.length || 1 } } : {}),
+    ...(s.planId ? { party: { id: s.planId, title: s.plans.find((p) => p.id === s.planId)?.title, members: s.planMembers.length || 1 } } : {}),
     // Clashes and expiring holds are arithmetic — we do them, the model
     // decides which ones matter and how to say it.
     ...(/trip check|am i ready|check my trip|what needs me/i.test(text) ? { tripCheck: tripCheck(s) } : {}),
   };
+
+  // Activation, and the truest signal we can measure right now: this person
+  // did not just land and sign up, they asked Num for something. A signup is a
+  // form; this is the product working. Fires once per device — see trackOnce.
+  trackOnce('first-ask', 'first_ask');
 
   try {
     const res = await fetch('/api/num', {

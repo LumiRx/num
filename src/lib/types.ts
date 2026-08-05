@@ -429,6 +429,8 @@ export interface AppState {
   partyOpen: boolean;
 
   txns: Txn[];
+  /** The real money story from the server — see lib/wallet.ts. */
+  activity: import('./wallet').Activity[];
   meetings: Meeting[];
   memories: MemoryItem[];
   chips: Chip[];

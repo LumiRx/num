@@ -9,6 +9,7 @@ import { refreshRequests } from './requests';
 import { refreshStars } from './stars';
 import { resumeDm } from './dm';
 import { askNum } from './concierge';
+import { track } from './track';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
@@ -41,6 +42,22 @@ function deviceId(): string {
  */
 export function bootSocial(): void {
   const q = new URLSearchParams(window.location.search);
+
+  // ── Ad attribution, first touch only ────────────────────────────────────
+  //
+  // The UTM on the FIRST open is the ad that brought this person; a later
+  // visit via a different link must not overwrite it, or every campaign's
+  // numbers bleed into whichever ad they clicked most recently. Captured
+  // before history.replaceState below scrubs the URL.
+  if (q.get('utm_source') && !localStorage.getItem('num-utm')) {
+    try {
+      localStorage.setItem('num-utm', JSON.stringify({
+        source: q.get('utm_source')?.slice(0, 60),
+        medium: q.get('utm_medium')?.slice(0, 60),
+        campaign: q.get('utm_campaign')?.slice(0, 80),
+      }));
+    } catch { /* private mode — attribution is not worth breaking boot */ }
+  }
   const ref = q.get('ref');
   const token = q.get('i');
 
@@ -184,9 +201,13 @@ interface MeResponse {
  * NOT treated as verified — see the note we surface to the user.
  */
 export async function signUp(name: string, phone?: string): Promise<MeResponse> {
+  // The ad that brought them travels with the signup — this is the moment
+  // attribution becomes a conversion instead of a pageview.
+  let utm: unknown = null;
+  try { utm = JSON.parse(localStorage.getItem('num-utm') ?? 'null'); } catch { /* fine */ }
   const out = await api<MeResponse>('/me', {
     method: 'POST',
-    body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place }),
+    body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place, utm }),
   });
   // The "add my name & number" prompt has done its job — leave it up and it
   // reads as if nothing happened.
@@ -205,6 +226,18 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
       },
     ],
   }));
+
+  // The account exists. This is the widest real conversion we have while SMS
+  // verification is blocked — it has volume (Google needs roughly 50 events
+  // before its optimiser stops guessing) but it only proves someone filled in
+  // a form. `first_ask` below is the one that proves they found the product
+  // useful. Send both and judge on the second.
+  track('sign_up', {
+    method: out.me.phone ? 'phone' : 'name_only',
+    // Recovery returns an existing account rather than creating one. Counting
+    // it as a fresh signup would inflate exactly the number we spend against.
+    recovered: !!(out as { recovered?: boolean }).recovered,
+  });
 
   // Attribute the referral that brought them in, then accept the invite that
   // carried it — that second call is what makes the friendship mutual.
@@ -229,7 +262,15 @@ export async function verifyCode(code: string): Promise<boolean> {
   const me = store.get().me;
   if (!me) return false;
   const out = await api<{ ok?: boolean }>('/verify', { method: 'POST', body: JSON.stringify({ id: me.id, code }) });
-  if (out.ok) store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
+  if (out.ok) {
+    store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
+    // THE conversion, once SMS is on: a verified phone is the strongest signal
+    // an ad channel can be judged by. Until A2P clears it cannot fire at all,
+    // which is why `sign_up` and `first_ask` exist below — a campaign
+    // optimising toward an event that never happens is optimising toward
+    // nothing.
+    track('verified_signup', { method: 'sms' });
+  }
   return !!out.ok;
 }
 
@@ -270,6 +311,106 @@ export async function connectByCode(memberId: string): Promise<void> {
  * this binds it to the identity that actually matters — the one holding the
  * person's plans, friends and Stars.
  */
+/**
+ * Remove someone. Optionally block, which is what makes it stick — `invite()`
+ * re-friends an existing member instantly, so without a block the person you
+ * removed can add you straight back.
+ */
+export async function unfriend(id: string, block = false): Promise<string | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch('/api/account/unfriend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, id, block }),
+    }).then((r) => r.json()) as { ok?: boolean; note?: string };
+    await refreshFriends();
+    return out.note ?? null;
+  } catch {
+    return 'Couldn’t do that just now — try again.';
+  }
+}
+
+/** Leave a plan, or delete it if it's yours. The server decides which. */
+export async function removePlan(planId: string): Promise<string | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch('/api/account/plan/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, plan_id: planId }),
+    }).then((r) => r.json()) as { ok?: boolean; deleted?: boolean; left?: boolean; title?: string; error?: string };
+    if (!out.ok) return out.error ?? 'Couldn’t remove that.';
+    store.set((st) => ({
+      plans: st.plans.filter((p) => p.id !== planId),
+      planId: st.planId === planId ? null : st.planId,
+    }));
+    await refreshPlans();
+    return out.deleted ? `${out.title} is gone — everyone's been told.` : `You've left ${out.title}.`;
+  } catch {
+    return 'Couldn’t remove that just now.';
+  }
+}
+
+/**
+ * Delete the account. Two calls on purpose: the first returns exactly what
+ * will be destroyed, the second destroys it. No undo, so the inventory comes
+ * first.
+ */
+export async function deleteAccount(confirm = false): Promise<{
+  ok?: boolean; needs_confirm?: boolean; inventory?: Record<string, number>;
+  blockers?: string[]; can_delete?: boolean; note?: string;
+} | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch('/api/account/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, ...(confirm ? { confirm: 'DELETE' } : {}) }),
+    }).then((r) => r.json());
+    if (out?.ok && out?.deleted) {
+      // Leave nothing behind on the device either — a "deleted" account whose
+      // data is still in localStorage is not deleted.
+      try { localStorage.clear(); } catch { /* private mode */ }
+      window.location.replace('/');
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** What the group needs — and whether I'm contributing to it. */
+export async function planFit(planId: string): Promise<{
+  me_sharing?: boolean; members?: number; sharing?: number; summary?: string;
+} | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    return await api(`/plan/fit?plan_id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}`);
+  } catch {
+    return null;
+  }
+}
+
+/** Flip MY sharing for one plan. The server only lets me flip my own row. */
+export async function shareWithPlan(planId: string, share: boolean): Promise<boolean> {
+  const me = store.get().me;
+  if (!me) return false;
+  try {
+    const out = await api<{ ok?: boolean; sharing?: boolean }>('/plan/share', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, plan_id: planId, share }),
+    });
+    return !!out.sharing;
+  } catch {
+    return share ? false : true; // failed flip = state unchanged
+  }
+}
+
 export async function redeemPairCode(code: string): Promise<string | null> {
   const me = store.get().me;
   const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
@@ -407,13 +548,18 @@ const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
  * friends and hand back candidates; the user confirms before anything is sent,
  * because an invite goes to a real person's phone.
  */
-export function matchPeople(name: string): Array<{ name: string; phone?: string }> {
+export function matchPeople(name: string): Array<{ name: string; phone?: string; id?: string | null }> {
   const q = norm(name);
   if (!q) return [];
   const s = store.get();
-  const pool = [
+  const pool: Array<{ name: string; phone?: string; id?: string | null }> = [
     ...s.contacts,
-    ...s.friends.filter((f) => f.name).map((f) => ({ name: f.name, phone: undefined as string | undefined })),
+    // Carry the friend's MEMBER ID. Dropping it here is what made a plan
+    // invite to a QR-connected friend unroutable — the server had a name and
+    // nothing else to match on.
+    ...s.friends
+      .filter((f) => f.name)
+      .map((f) => ({ name: f.name, phone: undefined as string | undefined, id: f.id })),
   ];
   const seen = new Set<string>();
   return pool
@@ -439,7 +585,7 @@ export function startInvite(draft: InviteDraft): void {
 }
 
 /** Mint the personalised link. Sending stays on the user's own phone. */
-export async function mintInvite(name: string, phone?: string, planId?: string | null): Promise<void> {
+export async function mintInvite(name: string, phone?: string, planId?: string | null, toId?: string | null): Promise<void> {
   const me = store.get().me;
   if (!me) {
     store.set({ inviteOpen: { name, phone, planId } });
@@ -448,7 +594,17 @@ export async function mintInvite(name: string, phone?: string, planId?: string |
   }
   const minted = await api<InviteDraft['minted']>('/invite', {
     method: 'POST',
-    body: JSON.stringify({ from: me.id, to_name: name, to_phone: phone, plan_id: planId ?? store.get().planId }),
+    body: JSON.stringify({
+      from: me.id,
+      to_name: name,
+      to_phone: phone,
+      // If we already know this person's member id — because they're a friend
+      // — send it. Without it the server could only match on phone, and a
+      // QR-connected friend has no phone stored, so the invite row was born
+      // with nothing to match on and became invisible to everyone.
+      to_id: toId ?? matchPeople(name).find((c) => c.id)?.id ?? null,
+      plan_id: planId ?? store.get().planId,
+    }),
   });
   if (name) {
     store.set((s) => ({
@@ -864,6 +1020,13 @@ export function startPlanSync(): () => void {
       void syncPlan();
       void refreshRequests();
       void refreshStars();
+      // Friends and plans were the ONLY social reads missing from this clock,
+      // which is exactly why they were the ones that looked half-landed: the
+      // server wrote the row and buzzed the phone, and the list on screen kept
+      // showing the world as it was at app launch. Someone adds you to a plan
+      // and it appears — without a restart.
+      void refreshFriends();
+      void refreshPlans();
     }, 45_000);
   };
   const stop = () => {

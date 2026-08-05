@@ -28,8 +28,14 @@
  *    needs nothing, not from squeezing the traffic that does.
  */
 
+/* Cloudflare retired `@cf/meta/llama-3.1-8b-instruct` on 30 May 2026. Every t1
+   call and every guest-brain write threw from that day, each throw was caught
+   and console.log'd, and nobody noticed until 29 July — because a caught error
+   that only reaches a log nobody reads is indistinguishable from no error.
+   The `-fast` variant is the live replacement. models.test.mjs fails the build
+   if a retired id ever comes back; it has come back twice already. */
 export const BIG_MODEL   = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-export const SMALL_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+export const SMALL_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 
 /* ------------------------------------------------------------------ *
  * Language

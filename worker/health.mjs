@@ -101,6 +101,17 @@ async function checkPush(env) {
   }
 }
 
+/**
+ * Cash-out that can't reach the desk. This is the shape that lost money once:
+ * a switch saying "open" over a road that doesn't arrive.
+ */
+function checkCashout(env) {
+  if (env.CASHOUT_OK === '1' && !env.PAYOUT_DESK_KEY) {
+    return { ok: false, remedy: 'CASHOUT_OK is on but PAYOUT_DESK_KEY is unset, so no cash-out can reach the payout desk. The code refuses rather than debiting, but the switch is lying — set the key or turn CASHOUT_OK off.' };
+  }
+  return { ok: true };
+}
+
 /** Inbound SMS with no token = an open mailbox anyone can post into. */
 function checkSms(env) {
   if (env.TWILIO_FROM && !env.TWILIO_TOKEN) {
@@ -131,20 +142,145 @@ async function checkStorage(env) {
   }
 }
 
+/**
+ * Does the front door actually open?
+ *
+ * WHY THIS EXISTS — 4 Aug 2026
+ * itsnum.com served an infinite 301 loop for hours. Every path redirected to
+ * itself, browsers gave up, the site was gone. During that window this health
+ * system ran 288 checks and reported ZERO failures, because every other check
+ * here inspects an internal dependency — D1, the model key, Stripe, Twilio.
+ * All the ingredients were in the kitchen; nobody checked that a meal came
+ * out. A total outage of the public site was structurally invisible.
+ *
+ * So this fetches the real URLs over the real internet and asserts three
+ * things a dependency check cannot:
+ *
+ *   1. HTTP 200 — not a redirect, not a 5xx.
+ *   2. `redirect: 'manual'` — a 301 is a FAILURE, not something to follow.
+ *      Following redirects is exactly how a loop hides: curl and fetch will
+ *      happily chase it and report the last hop, which looks like a slow
+ *      success. Refusing to follow turns the loop into an instant, loud no.
+ *   3. The body contains an expected marker. A 200 that serves the wrong
+ *      thing — a parked page, an SPA shell where the marketing site should
+ *      be — is still an outage to the person reading it.
+ *
+ * Deliberately tolerant of network flake: a fetch that throws is reported as
+ * a failure with the error attached, never as a thrown exception, because a
+ * monitor that can crash is a monitor that stops monitoring.
+ */
+async function checkPublic(url, marker) {
+  try {
+    const res = await fetch(url, {
+      redirect: 'manual',
+      cf: { cacheTtl: 0 },
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'num-health/1.0' },
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const to = res.headers.get('location') || '(none)';
+      return {
+        ok: false,
+        status: res.status,
+        location: to,
+        remedy: `${url} answers ${res.status} -> ${to} instead of serving a page. `
+          + 'If the target equals the requested path this is a redirect loop: check that the '
+          + 'Worker owning the route is deployed (npx wrangler deploy from app-main re-registers '
+          + "num-console's itsnum.com/* routes), and that DNS is not pointing at a retired Pages project.",
+      };
+    }
+    if (!res.ok) {
+      return { ok: false, status: res.status, remedy: `${url} returned HTTP ${res.status}.` };
+    }
+    const body = await res.text();
+    if (marker && !body.includes(marker)) {
+      return {
+        ok: false,
+        status: 200,
+        remedy: `${url} answers 200 but the page does not contain "${marker}", so it is serving `
+          + 'something other than the real site — a parked page, a stale deploy, or the wrong Worker.',
+      };
+    }
+    return { ok: true, status: res.status };
+  } catch (e) {
+    // Unreachable is a failure worth waking up for, but it must not throw.
+    return { ok: false, remedy: `${url} could not be reached: ${e?.message ?? e}` };
+  }
+}
+
+/**
+ * The last verdict the cron actually observed, or null if it has never run.
+ *
+ * Staleness is surfaced, not swallowed: if the newest row is older than three
+ * cron intervals the cron itself has stopped, and a monitor that quietly
+ * reports a fifteen-minute-old "ok" is lying by omission.
+ */
+async function runHealthFromLastRun(env) {
+  try {
+    const row = await env.DB.prepare(
+      "SELECT at, verdict, failing, detail FROM num_health WHERE verdict <> 'probe' ORDER BY id DESC LIMIT 1",
+    ).first();
+    if (!row) return null;
+    const ageMin = (Date.now() - new Date(row.at.replace(' ', 'T') + 'Z').getTime()) / 60000;
+    if (ageMin > 16) {
+      return {
+        verdict: 'down',
+        failing: ['health_cron_stalled'],
+        checks: { health_cron_stalled: { ok: false, last_run: row.at, remedy:
+          `The health cron has not run for ${Math.round(ageMin)} minutes. Check that the scheduled `
+          + 'trigger is still deployed (npx wrangler triggers deploy --config wrangler.app.jsonc).' } },
+        at: row.at,
+      };
+    }
+    let checks = {};
+    try { checks = JSON.parse(row.detail || '{}'); } catch { /* a truncated row is not an outage */ }
+    return {
+      verdict: row.verdict,
+      failing: row.failing ? row.failing.split(',') : [],
+      checks,
+      at: row.at,
+    };
+  } catch { return null; }
+}
+
 export async function runHealth(env) {
   await ensure(env);
+  // WHY ONLY itsnum.com IS PROBED HERE
+  //
+  // The first version of this also fetched https://app.itsnum.com/ and it
+  // returned 522 every time — a false "down" while the app was serving fine.
+  // Cause: this code IS num-app, and a Worker fetching its own public
+  // hostname makes a subrequest that loops back into itself. Cloudflare times
+  // it out rather than recursing. There is no header or cf option that fixes
+  // that; it is the architecture saying no.
+  //
+  // itsnum.com is a different Worker (num-console) on the same zone, so this
+  // probe is a genuine end-to-end check — and it is the surface that actually
+  // broke on 4 Aug, so it is the one worth having.
+  //
+  // The gap this leaves, stated plainly: nothing here proves app.itsnum.com's
+  // ROUTE resolves. The cron running proves the Worker executes, not that
+  // traffic reaches it. Closing that needs a prober outside Cloudflare — an
+  // external uptime check hitting /api/version every minute. Until that
+  // exists, this file cannot honestly claim to watch the app's front door.
+  const site = await checkPublic('https://itsnum.com/', 'NUM');
   const checks = {
+    site_public: site,        // itsnum.com — a real cross-Worker probe
     d1_write: await checkWrite(env),
     brain: checkBrain(env),
     payments: checkPay(env),
     sms: checkSms(env),
     push: await checkPush(env),
+    cashout: checkCashout(env),
     storage: await checkStorage(env),
   };
   const failing = Object.entries(checks).filter(([, v]) => !v.ok).map(([k]) => k);
-  // A broken write or a dead brain is DOWN — the product does not work. The
-  // rest degrade a feature without taking the app with them.
-  const verdict = failing.includes('d1_write') || failing.includes('brain')
+  // A broken write or a dead brain is DOWN — the product does not work. So is
+  // a front door that will not open: on 4 Aug the site served an infinite
+  // redirect for hours while every internal check stayed green, which is
+  // precisely the case this severity exists to stop being quiet about.
+  const DOWN = ['d1_write', 'brain', 'site_public'];
+  const verdict = failing.some((f) => DOWN.includes(f))
     ? 'down'
     : failing.length ? 'degraded' : 'ok';
   return { verdict, failing, checks, at: new Date().toISOString() };
@@ -180,7 +316,7 @@ export async function healthCron(env) {
 }
 
 /** Wherever the humans are. Silent if nothing is configured — never throws. */
-async function alert(env, text) {
+export async function alert(env, text) {
   if (env.ALERT_WEBHOOK) {
     await fetch(env.ALERT_WEBHOOK, {
       method: 'POST',
@@ -219,7 +355,22 @@ export async function handleHealth(request, env, path) {
     ).all();
     return json({ history: results ?? [] });
   }
-  const out = await runHealth(env);
+  // Report what the CRON last observed; do not re-probe on every poll.
+  //
+  // Two reasons, one of which cost an hour on 4 Aug:
+  //
+  //   1. Running the public probe inside a live request makes a same-zone
+  //      subrequest that fails where the identical probe succeeds from cron.
+  //      The endpoint reported "down" while the cron reported "ok" — the
+  //      monitor disagreeing with itself, which is worse than no monitor.
+  //   2. An endpoint that performs outbound fetches per request is a lever
+  //      anyone can pull. Uptime checkers poll this every minute.
+  //
+  // The cron is the observer; this is the window onto what it saw. If the
+  // cron has not written for a while, that staleness is itself the signal, so
+  // it is reported rather than hidden.
+  let out = await runHealthFromLastRun(env);
+  if (!out) out = await runHealth(env);   // first boot, before any cron row
   // PUBLIC gets the verdict. Nothing else.
   //
   // The full `checks` object names exactly which secrets are missing — "Stripe

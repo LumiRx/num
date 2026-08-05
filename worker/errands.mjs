@@ -205,6 +205,26 @@ async function post(env, req, ctx) {
   ).run();
 
   await logEvent(env, id, me, 'posted', `★${bounty} bounty, ★${cap} cap`);
+  // TELL SOMEBODY. The board was pull-only: an errand posted into a quiet room
+  // was never seen by anyone, so the bounty sat in escrow and the thing never
+  // got fetched. Friends first — the people most likely to actually go.
+  try {
+    const { results: friends } = await env.DB.prepare(
+      `SELECT CASE WHEN a_id = ?1 THEN b_id ELSE a_id END AS id
+         FROM num_links WHERE (a_id = ?1 OR b_id = ?1) AND state = 'active' LIMIT 25`,
+    ).bind(me).all();
+    for (const f of friends ?? []) {
+      if (!f.id || f.id === me) continue;
+      await notify(env, {
+        memberId: f.id, kind: 'errand', title: `★${bounty} — ${clip(b.title, 80)}`,
+        body: `${poster?.name || 'A friend'} needs something fetched. First to claim it earns the bounty.`,
+        url: '/?app', tag: `errand:${id}`,
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[errands] post notify', err?.message ?? err);
+  }
+
   return json({ ok: true, errand: await one(env, id), held });
 }
 
