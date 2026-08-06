@@ -20,6 +20,13 @@
  * (comma-separated ids) — useful for putting a cheap brain first during a
  * spend freeze without touching code.
  */
+import {
+  load as loadBrainState,
+  plan as planChain,
+  recordFailure as recordBrainFailure,
+  recordSuccess as recordBrainSuccess,
+} from './brainstate.mjs';
+
 export const BRAINS = [
   {
     id: 'claude',
@@ -190,16 +197,28 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
  */
 export async function ask(env, { structuredCall, messages, persona, voice, context, style, guard }) {
   const tried = [];
-  for (const brain of chain(env)) {
+  // Prefer brains that are not currently standing down. A brain that just
+  // returned "out of credit" will still be out of credit four seconds later,
+  // and paying a round trip to rediscover that adds latency to a guest who is
+  // already waiting. Cooling brains are demoted, never dropped — see
+  // brainstate.plan(); refusing to try them would turn a partial outage into
+  // a total one of our own making.
+  const state = await loadBrainState(env);
+  const { order, healthy, cooling } = planChain(chain(env), state);
+  if (cooling && !healthy) console.warn(`[brains] every brain is cooling (${cooling}) — trying anyway`);
+
+  for (const brain of order) {
     const started = Date.now();
     try {
       if (brain.structured) {
         const out = await structuredCall();
+        await recordBrainSuccess(env, brain.id, state);
         return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started };
       }
       const text = await callProse(env, brain, { messages, system: proseSystem({ persona, voice, context, style }) });
       const clean = guard ? guard(text) : { ok: true, cleaned: text };
       if (!clean.ok) throw new Error(`${brain.id} output failed the guard`);
+      await recordBrainSuccess(env, brain.id, state);
       return {
         reply: clean.cleaned,
         card: null,
@@ -211,12 +230,21 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
         _ms: Date.now() - started,
       };
     } catch (err) {
-      tried.push({ brain: brain.id, error: String(err?.message ?? err).slice(0, 160) });
-      console.warn(`[brains] ${brain.id} failed:`, err?.message ?? err);
+      const noted = await recordBrainFailure(env, brain.id, err);
+      tried.push({ brain: brain.id, class: noted.class, error: String(err?.message ?? err).slice(0, 160) });
+      // The class is in the log line on purpose: "claude failed: quota" is a
+      // billing job, "claude failed: auth" is a key job, and reading the raw
+      // message to work out which one has cost us hours before.
+      console.warn(`[brains] ${brain.id} failed (${noted.class}):`, err?.message ?? err);
     }
   }
   const err = new Error('every brain failed');
   err.tried = tried;
+  // Whole-chain failure is the one condition that must never be inferred from
+  // a status code — /api/num answers 200 with a graceful apology, which is
+  // right for the guest and invisible to a monitor. Say it plainly here so the
+  // tail, the alerting cron and the operator console all see the same words.
+  console.error('[brains] EVERY BRAIN FAILED —', JSON.stringify(tried));
   throw err;
 }
 

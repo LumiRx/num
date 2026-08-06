@@ -55,8 +55,21 @@ test('rates are never shown without their denominator', () => {
 test('a chart of all zeros says so instead of drawing a flat line', () => {
   // A straight line at the axis looks like a working chart reporting nothing.
   // Words are honest where a line is ambiguous.
-  const fn = script.slice(script.indexOf('function spark('), script.indexOf('const card'));
-  assert.match(fn, /max === 0/, 'an all-zero series still renders as a line');
+  //
+  // Every chart-drawing function must carry the check, not just the one that
+  // happened to exist when this was written. The original pinned the name
+  // `spark(` and slice()d to it; when the dashboard was rebuilt and the
+  // function became `area()`, indexOf returned -1, the slice silently produced
+  // a nonsense window, and the assertion stopped testing anything real. A
+  // guard that a rename can quietly switch off is not a guard.
+  const drawers = [...script.matchAll(/function (area|mini|spark)\s*\(/g)].map((m) => m[1]);
+  assert.ok(drawers.length, 'no chart-drawing function found — did one get renamed again?');
+  for (const name of drawers) {
+    const start = script.indexOf(`function ${name}(`);
+    const body = script.slice(start, start + 1200);
+    assert.match(body, /max === 0/,
+      `${name}() draws an all-zero series as a line instead of saying it is empty`);
+  }
 });
 
 test('the series the charts draw are built by SQL, per day, zero-filled', () => {

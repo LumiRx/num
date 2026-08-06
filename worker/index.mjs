@@ -590,7 +590,16 @@ export default {
         // Reddit specifically: some placements append Reddit's own utm_source
         // to the destination URL, overwriting ours. Redirecting from here
         // keeps the params server-side where Reddit can't reach them.
-        rd: '/watch/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1',
+        // Reddit goes STRAIGHT INTO THE APP, not to the film page.
+        //
+        // The first 300 clicks landed on /watch/, which is a good page and the
+        // wrong one for this traffic: the ad creative already did the
+        // persuading, and a second video before anyone can type is a stop.
+        // Landing on the app root puts them in the thread they were sold, and
+        // InstallPrompt (see src/components/app/InstallPrompt.tsx) offers
+        // add-to-home-screen 1.2s in, with the right instructions per platform
+        // and never when Num is already installed.
+        rd: '/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1',
         dg: '/watch/?utm_source=google&utm_medium=demandgen&utm_campaign=global-pretrip-film1',
       };
       const to = GO[url.pathname.slice(4).replace(/\/$/, '')];

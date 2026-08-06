@@ -126,8 +126,16 @@ test('every /go/ code lands on a real page with a full UTM triple', () => {
   const go = index.slice(index.indexOf('const GO = {'), index.indexOf('const to = GO['));
   const codes = [...go.matchAll(/^\s{8}(\w+):\s*'([^']+)'/gm)];
   assert.ok(codes.length >= 4, 'the /go/ map lost entries');
+  // An allowlist, not a single hard-coded page. This originally required every
+  // code to start with '/watch/', which was true when there was one landing
+  // page and became wrong the moment Reddit was pointed at the app itself. The
+  // list stays explicit on purpose: adding a destination that ad money flows
+  // to should cost one deliberate line here, not happen by accident.
+  const LIVE_SURFACES = ['/watch/', '/'];
   for (const [, code, dest] of codes) {
-    assert.ok(dest.startsWith('/watch/'), `/go/${code} points somewhere other than the landing page`);
+    const path = dest.split('?')[0];
+    assert.ok(LIVE_SURFACES.includes(path),
+      `/go/${code} points at ${path}, which is not a known live surface — add it here if that is deliberate`);
     for (const p of ['utm_source', 'utm_medium', 'utm_campaign']) {
       assert.match(dest, new RegExp(`[?&]${p}=[^&]+`), `/go/${code} is missing ${p} — its spend lands in 'organic'`);
     }
