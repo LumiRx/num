@@ -288,7 +288,22 @@ export default function LaunchStage() {
 
       {/* Live product, not a screenshot — the left frame is the real
           ConciergeApp and answers for real. */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 40, alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap' }}>
+      {/* SCROLL, NOT CAPTURE.
+          These frames contain the real ConciergeApp, which has its own
+          scrollable thread — and they sit dead centre of the viewport, exactly
+          where a cursor lands. With pointer events live, the wheel scrolled the
+          app inside the frame and the page appeared frozen; three separate
+          "the page won't scroll" reports were all this, not the CSS.
+          The frames are a showcase here: the way in is the Open Num button, so
+          they are inert and the wheel always belongs to the page. */}
+      <div
+        style={{
+          position: 'relative', zIndex: 1, display: 'flex', gap: 40,
+          alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap',
+          pointerEvents: 'none', userSelect: 'none',
+        }}
+        aria-hidden="true"
+      >
         <IOSDevice width={frameW} height={frameH}>
           <ConciergeApp />
         </IOSDevice>

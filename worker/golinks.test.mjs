@@ -126,3 +126,14 @@ test('the add-to-home prompt exists and is mounted', () => {
   assert.match(prompt, /display-mode: standalone/,
     'the prompt no longer checks whether Num is already installed — it would nag existing users');
 });
+
+test('the phone mockup does not swallow the page scroll', () => {
+  // The frames hold the REAL app, with its own scrollable thread, centred in
+  // the viewport where the cursor lands. Live pointer events meant the wheel
+  // scrolled the app inside the frame and the page looked frozen — reported
+  // three times as "the page won't scroll" and misdiagnosed twice as CSS.
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  const frames = stage.slice(stage.indexOf('SCROLL, NOT CAPTURE'), stage.indexOf('</IOSDevice>'));
+  assert.match(frames, /pointerEvents:\s*'none'/,
+    'the mockup is interactive again — it will capture the wheel and the page will appear stuck');
+});

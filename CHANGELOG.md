@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.169 — 2026-08-06 18:19 UTC
+
+(no note given)
+
+- commit `dc6483e`
+
 ## 0.8.168 — 2026-08-06 18:11 UTC
 
 (no note given)
