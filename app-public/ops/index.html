@@ -289,11 +289,36 @@ async function boot() {
     $('err').textContent = e.message === 'unauthorized' ? 'Key rejected.' : 'Could not load: ' + e.message;
   }
 }
-$('signin').onclick = () => {
-  S.key = $('key').value.trim();
-  if (!S.key) return;
-  sessionStorage.setItem('num_ops', S.key);
-  $('err').textContent = ''; boot();
+/* Exchange the admin key for a signed session token.
+ *
+ * This step was missing, and its absence made the console unopenable with ANY
+ * key. The typed value used to go straight into the X-Admin-Session header,
+ * but that header is verified by sessionClaims(), which splits on "." and
+ * needs `payload.signature` — so a raw key failed before it was ever compared
+ * to ADMIN_KEY. Every attempt returned "Key rejected", which reads as a wrong
+ * password and sent us rotating a secret that was fine.
+ *
+ * The key is sent once, here, and never stored; only the token it returns is
+ * kept, and that expires on its own. */
+$('signin').onclick = async () => {
+  const key = $('key').value.trim();
+  if (!key) return;
+  $('err').textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/admin/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { $('err').textContent = d.error || 'That key does not match.'; return; }
+    S.key = d.token;
+    sessionStorage.setItem('num_ops', d.token);
+    $('err').textContent = '';
+    boot();
+  } catch (e) {
+    $('err').textContent = 'Could not reach the sign-in endpoint: ' + (e?.message ?? e);
+  }
 };
 $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('signin').click(); });
 boot();
