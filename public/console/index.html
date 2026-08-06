@@ -34,11 +34,14 @@
        border-radius:10px;font-weight:600}
   .why{margin-top:26px;font-size:13px;color:#9a938c}
 </style>
+<meta http-equiv="refresh" content="0;url=https://app.itsnum.com/ops/">
 <script>
-  /* Anyone with the old URL wants to look at operations, so send them there.
-     Delayed so the reason is readable — a silent bounce teaches nobody why
-     the numbers they remember are gone. */
-  setTimeout(function(){ location.replace('https://app.itsnum.com/ops/'); }, 3500);
+  /* Straight through to the live console. The 3.5s delay that used to sit here
+     existed so people could read why the old demo numbers were gone; that
+     warning has done its job and now it is just a wait. The copy below still
+     shows for the instant before the redirect, and for anyone without JS the
+     meta refresh above covers it. */
+  location.replace('https://app.itsnum.com/ops/');
 </script>
 </head>
 <body>
@@ -48,7 +51,7 @@
     <p>It showed illustrative demo figures, not live data. The real one reads
        straight from the database.</p>
     <a class="go" href="https://app.itsnum.com/ops/">Open NUM Ops &rarr;</a>
-    <div class="why">Taking you there automatically&hellip;</div>
+    <div class="why">Taking you there now&hellip;</div>
   </div>
 </body>
 </html>
