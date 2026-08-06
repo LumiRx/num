@@ -15,7 +15,13 @@
 // installed app's shell permanently. Anyone already carrying a poisoned entry
 // gets it evicted by this rename on their next launch; without it they would
 // keep launching into "not found" no matter how often we redeployed.
-const CACHE = 'num-shell-v6';
+// v7 — 2026-08-06. The landing page rebuild (scrollable, nav, features,
+// install steps) shipped in 0.8.164–0.8.167 and NOBODY SAW IT: the shell was
+// precached under v6, so every returning client kept being served the old
+// index.html and its old bundle. Three deploys looked successful and changed
+// nothing on screen. If a UI change is live at /api/version but invisible in
+// the browser, this constant is the first thing to check.
+const CACHE = 'num-shell-v7';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
