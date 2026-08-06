@@ -62,6 +62,58 @@ test('the desktop landing page can scroll and has a way in', () => {
     'the landing page has no primary call to action');
   assert.match(stage, /id="on-your-phone"/,
     'the desktop → phone handoff section is gone; a laptop visitor cannot install from here and needs telling how');
+  // Scoped to the NAV declaration, NOT the whole file. The first version of
+  // this matched /itsnum.com\/how-it-works/ anywhere, which the FOOTER also
+  // satisfies — deleting the entire nav left the test green. A guard that a
+  // duplicate link elsewhere can satisfy is not guarding anything.
+  const nav = stage.slice(stage.indexOf('const NAV'), stage.indexOf('export default'));
+  assert.ok(nav.includes('how-it-works') && nav.includes('itsnum.com/'),
+    'the nav no longer links back to the site — an ad visitor has only the back button');
+  assert.match(stage, /href="https:\/\/itsnum\.com\/"[\s\S]{0,400}NUM/,
+    'the brand mark no longer links home');
+  assert.ok(/FEATURES/.test(stage) && /Cars that actually turn up/.test(stage),
+    'the feature list is gone; the mockup alone does not say what Num does');
+});
+
+test('a phone visitor is asked to install, a laptop visitor is not', () => {
+  // "Add to your home screen" is impossible advice on a laptop and the single
+  // most valuable thing a phone visitor can do. Getting the primary CTA
+  // backwards asks people for something they cannot give.
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  assert.match(stage, /onPhone\s*\?/, 'the primary call to action no longer varies by device');
+  assert.match(stage, /Add Num to my home screen/, 'phones are not offered the install as the primary action');
+  assert.match(stage, /Open Num/, 'there is no way into the app');
+});
+
+test('the headline scales instead of being pinned to one size', () => {
+  // A fixed 44px headline is small on a 1440px laptop and oversized on a
+  // 360px phone — the two viewports this page actually gets.
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  const h1 = stage.slice(stage.indexOf('<h1'), stage.indexOf('</h1>'));
+  assert.match(h1, /clamp\(/, 'the headline uses a fixed font size and will not read well on both phone and laptop');
+});
+
+test('the two ad landing pages make the same promise', () => {
+  // /watch/ and the app root are both live ad destinations. If their feature
+  // copy drifts, the product someone was sold depends on which link they
+  // happened to click.
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  const watch = readFileSync(join(HERE, '..', 'app-public', 'watch', 'index.html'), 'utf8');
+  for (const promise of ['Cars that actually turn up', 'Plan together', 'Split anything', 'It thinks ahead']) {
+    assert.ok(watch.includes(promise), `/watch/ no longer promises "${promise}"`);
+    assert.ok(stage.includes(promise), `the app landing no longer promises "${promise}"`);
+  }
+});
+
+test('install steps agree with the floating prompt', () => {
+  // A visitor sees InstallPrompt AND this section. Two different sets of
+  // instructions for the same three taps is worse than one set.
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  const prompt = readFileSync(join(HERE, '..', 'src', 'components', 'app', 'InstallPrompt.tsx'), 'utf8');
+  for (const step of ['Add to Home Screen', 'Install app']) {
+    assert.ok(prompt.includes(step) && stage.includes(step),
+      `"${step}" appears in one place but not the other — the two install guides have drifted`);
+  }
 });
 
 test('the add-to-home prompt exists and is mounted', () => {
