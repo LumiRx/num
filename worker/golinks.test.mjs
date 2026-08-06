@@ -49,6 +49,21 @@ test('an unknown code still lands somewhere real', () => {
     'an unrecognised /go/ code no longer falls back to a real page');
 });
 
+test('the desktop landing page can scroll and has a way in', () => {
+  // The page ad traffic lands on. It shipped with `overflow: hidden` around
+  // two 852px-tall phone frames and no button — on a laptop shorter than the
+  // frames, the mockups were clipped, the page would not scroll to reveal
+  // them, and the only call to action was grey footer text. Every desktop
+  // click from Reddit hit that.
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  assert.ok(!/overflow:\s*'hidden'/.test(stage),
+    "the landing page hides its overflow again — content taller than the viewport becomes unreachable");
+  assert.match(stage, /Open Num/,
+    'the landing page has no primary call to action');
+  assert.match(stage, /id="on-your-phone"/,
+    'the desktop → phone handoff section is gone; a laptop visitor cannot install from here and needs telling how');
+});
+
 test('the add-to-home prompt exists and is mounted', () => {
   // The whole point of sending Reddit to the app root. If this component were
   // ever unmounted the ad would still "work" and quietly stop asking anyone to
