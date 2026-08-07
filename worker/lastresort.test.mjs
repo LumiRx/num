@@ -92,10 +92,34 @@ test('the self-hosted brain reads the same env names it claims to accept', () =>
   // "undefined/chat/completions" — a brain that lies about being ready is
   // worse than one that is absent, because the chain stops looking.
   const brains = readFileSync(join(HERE, 'brains.mjs'), 'utf8');
-  const ready = brains.slice(brains.indexOf("id: 'jan'"), brains.indexOf('];'));
-  assert.match(ready, /OLLAMA_BASE_URL \|\| env\.JAN_BASE_URL/, 'ready() no longer accepts the Ollama alias');
-  const call = brains.slice(brains.indexOf("brain.kind === 'openai-compatible'"));
+  const jan = brains.slice(brains.indexOf("id: 'jan'"), brains.indexOf('];'));
   for (const v of ['OLLAMA_BASE_URL', 'OLLAMA_MODEL', 'OLLAMA_API_KEY']) {
-    assert.ok(call.includes(v), `callProse ignores ${v} — the brain would report ready and then fail on every call`);
+    assert.ok(jan.includes(v), `the self-hosted brain no longer declares ${v}`);
   }
+});
+
+test('two openai-compatible brains cannot borrow each other\'s endpoint', () => {
+  // Both `hosted` and `jan` speak the same protocol. When callProse read
+  // OLLAMA_BASE_URL directly, adding a second one meant the hosted brain would
+  // quietly fetch the laptop tunnel — the exact failure this layer exists to
+  // survive. Each brain names its own variables and callProse reads only those.
+  const brains = readFileSync(join(HERE, 'brains.mjs'), 'utf8');
+  const call = brains.slice(brains.indexOf("brain.kind === 'openai-compatible'"));
+  assert.ok(!/env\.OLLAMA_BASE_URL/.test(call),
+    'callProse hardcodes the Ollama endpoint again — a second openai brain would hit the wrong host');
+  assert.match(call, /brain\.env\.base/, 'callProse no longer reads the per-brain env descriptor');
+  for (const id of ["id: 'hosted'", "id: 'jan'"]) {
+    const b = brains.slice(brains.indexOf(id));
+    assert.match(b.slice(0, 700), /env: \{[\s\S]{0,200}base:/,
+      `${id} has no env descriptor — callProse would read undefined and fetch "undefined/chat/completions"`);
+  }
+});
+
+test('the independent-quota brain outranks the ones sharing a pool', () => {
+  // Rotation cannot save a chain whose brains all draw on two quotas. The
+  // hosted brain is the only one on a third bill, so it must be reached before
+  // the five Workers AI brains, not after them.
+  const brains = readFileSync(join(HERE, 'brains.mjs'), 'utf8');
+  assert.ok(brains.indexOf("id: 'hosted'") < brains.indexOf("id: 'gpt-oss-120b'"),
+    'the hosted brain sits below Workers AI — it would only be tried after the shared pool is already exhausted');
 });

@@ -37,6 +37,26 @@ export const BRAINS = [
     note: 'The concierge. Books, remembers, uses the specialists.',
   },
   {
+    // A hosted model on a SEPARATE bill from Anthropic and from Workers AI.
+    //
+    // This is the layer the 2026-08-06 and 08-07 outages were actually missing.
+    // Rotation cannot help when every brain draws on one of two pools and both
+    // are empty at the same moment — the chain had seven brains and two
+    // quotas. This adds a third, independent one, high enough in the order to
+    // carry real conversation rather than merely avoid silence.
+    //
+    // Any OpenAI-compatible provider works. Groq (llama-3.3-70b) is fast and
+    // has a free tier; OpenAI, DeepSeek, Together and OpenRouter all fit the
+    // same three variables. Set NUM_LLM_BASE_URL, NUM_LLM_MODEL, NUM_LLM_KEY.
+    id: 'hosted',
+    label: 'Hosted (independent quota)',
+    kind: 'openai-compatible',
+    structured: false,
+    env: { base: ['NUM_LLM_BASE_URL'], key: ['NUM_LLM_KEY'], model: ['NUM_LLM_MODEL'] },
+    ready: (env) => !!env.NUM_LLM_BASE_URL,
+    note: 'A hosted OpenAI-compatible model on its own bill — Groq, OpenAI, DeepSeek, Together, OpenRouter. Ranked above Workers AI because it does not share a quota with anything else in this chain.',
+  },
+  {
     id: 'gpt-oss-120b',
     label: 'GPT-OSS 120B',
     kind: 'workers-ai',
@@ -104,6 +124,11 @@ export const BRAINS = [
     label: 'Ollama / Jan / self-hosted',
     kind: 'openai-compatible',
     structured: false,
+    env: {
+      base: ['OLLAMA_BASE_URL', 'JAN_BASE_URL'],
+      key: ['OLLAMA_API_KEY', 'JAN_API_KEY'],
+      model: ['OLLAMA_MODEL', 'JAN_MODEL'],
+    },
     ready: (env) => !!(env.OLLAMA_BASE_URL || env.JAN_BASE_URL),
     note: 'Any OpenAI-compatible endpoint — Ollama, Jan, LM Studio, vLLM, OpenRouter, Groq. Set OLLAMA_BASE_URL (or JAN_BASE_URL), plus OLLAMA_MODEL and optionally OLLAMA_API_KEY. No quota to run out of: this is the floor under the whole chain.',
   },
@@ -183,15 +208,20 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
     // Alias-aware: ready() accepts either name, so the caller must too —
     // reading only JAN_BASE_URL here would let a brain report itself ready and
     // then fetch 'undefined/chat/completions' on the one night it is needed.
-    const base = String(env.OLLAMA_BASE_URL || env.JAN_BASE_URL).replace(/\/+$/, '');
+    // Each openai-compatible brain names its own env vars, so two of them can
+    // run side by side — a hosted model with real capability AND the box under
+    // the desk — without one silently borrowing the other's endpoint.
+    const pick = (names) => names.map((n) => env[n]).find((v) => v);
+    const base = String(pick(brain.env.base)).replace(/\/+$/, '');
+    const key = pick(brain.env.key);
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...((env.OLLAMA_API_KEY || env.JAN_API_KEY) ? { Authorization: `Bearer ${env.OLLAMA_API_KEY || env.JAN_API_KEY}` } : {}),
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
       body: JSON.stringify({
-        model: env.OLLAMA_MODEL || env.JAN_MODEL || 'default',
+        model: pick(brain.env.model) || 'default',
         messages: chat,
         max_tokens: maxTokens,
         temperature: 0.7,

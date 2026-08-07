@@ -12,6 +12,8 @@
 // request before we spend a token — see DEPLOY.md § Launch hardening.
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
+import { redactProfile, redactState } from './redact.mjs';
+import { readCache, writeCache, cacheable } from './answercache.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
 import { pickLane, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
@@ -56,6 +58,17 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // PERSONA + VOICE are identical on every request, so they sit above the
   // cache breakpoint. Everything below it changes per turn.
   const specialist = pickSpecialist(userText ?? '');
+  // Nothing that identifies a person leaves this Worker. The profile is
+  // printed verbatim as KNOWN FACTS and the state is stringified whole, so
+  // both are filtered here — once, at the only point where every brain,
+  // present and future, is downstream of it.
+  const safeProfile = redactProfile(profile);
+  const safeState = redactState(state);
+  if (safeProfile.removed || safeState.removed) {
+    // Count only. Logging WHICH fields were dropped would put them in the log
+    // instead of the prompt, which is not an improvement.
+    console.log(`[num-ai] redacted ${safeProfile.removed + safeState.removed} identifying field(s) before the model saw them`);
+  }
   const system = [
     { type: 'text', text: PERSONA + '\n\n' + VOICE, cache_control: { type: 'ephemeral' } },
     {
@@ -65,7 +78,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         partners: grounding.partners,
         guide: grounding.guide,
         showtimes: grounding.showtimes ?? null,
-        profile,
+        profile: safeProfile.profile,
         buzz: grounding.buzz,
         services: servicesBlock(grounding.place, env ?? {}),
         style: styleBlock(state?.style),
@@ -75,7 +88,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         acceptLang,
       }),
     },
-    { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(state) },
+    { type: 'text', text: 'Current trip state (source of truth — reference ids exactly):\n' + JSON.stringify(safeState.state) },
   ];
   const brief = specialistBrief(specialist);
   if (brief) system.push({ type: 'text', text: brief });
@@ -773,6 +786,18 @@ export default {
       // Small lane: chit-chat goes to Workers AI, no Claude call at all. Any
       // wobble — HANDOFF, null, or a guard failure — falls through to the big
       // lane rather than to a worse answer.
+      // An answer we already paid for. Costs one D1 read and zero tokens, and
+      // returns in milliseconds — so it runs before the lane is even chosen.
+      // cacheable() gates the WRITE strictly; this read is keyed on the same
+      // rules, so a personal question can never match a shared entry.
+      if (cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: {} })) {
+        const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang });
+        if (hit) {
+          console.log('[num-ai] served from cache, no model called');
+          return json(200, { ...hit, actions: [], place: grounding.place?.name ?? null });
+        }
+      }
+
       const lane = pickLane(lastUser, parsed.state ?? {});
       if (lane === 'small') {
         const small = await smallReply(env, history, profile, grounding.place?.name ?? null);
@@ -916,6 +941,13 @@ export default {
       void _ms;
       // `degraded` tells the app a fallback brain answered, so it can avoid
       // treating a prose reply as if it created bookings.
+      // Pay for this answer once. cacheable() is strict — anything shaped by
+      // who asked, or carrying an action, is never stored. A degraded reply is
+      // never stored either: caching lean mode would outlive the outage that
+      // caused it.
+      if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean })) {
+        ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean }));
+      }
       return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
     } catch (err) {
       console.error('[num-ai]', err);

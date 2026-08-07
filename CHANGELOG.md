@@ -2,6 +2,30 @@
 
 Every version that has been live, newest first.
 
+## 0.8.175 — 2026-08-07 19:18 UTC
+
+(no note given)
+
+- commit `af27a47`
+
+## 0.8.174 — 2026-08-07 19:15 UTC
+
+(no note given)
+
+- commit `af27a47`
+
+## 0.8.173 — 2026-08-07 18:33 UTC
+
+(no note given)
+
+- commit `af27a47`
+
+## 0.8.172 — 2026-08-07 17:06 UTC
+
+(no note given)
+
+- commit `caea302`
+
 ## 0.8.171 — 2026-08-07 01:36 UTC
 
 (no note given)
