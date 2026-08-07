@@ -47,11 +47,19 @@ test('it never ranks', () => {
     'the reply ranks places the database does not rank');
 });
 
-test('with nothing to offer it returns null rather than an empty shell', () => {
-  // A template with no content is worse than the honest apology, so the caller
-  // keeps its existing wording in that case.
-  assert.equal(lastResort({ userText: 'dinner', grounding: { partners: [] }, place: null }), null);
-  assert.equal(lastResort({ userText: 'dinner', grounding: null, place: null }), null);
+test('NO path ends in a dead reply — not even with zero places', () => {
+  // This used to return null and hand the turn back to "say it once more",
+  // which is the dead end the whole file exists to remove. A person with no
+  // answer does not go silent; they say what they can do and ask the one
+  // question that moves it forward.
+  for (const g of [{ partners: [] }, null, { partners: [{}] }]) {
+    const out = lastResort({ userText: 'dinner tonight', grounding: g, place: null });
+    assert.ok(out && out.reply && out.reply.length > 40,
+      'a turn with no places produced no usable reply — the guest gets the apology');
+    assert.ok(!/say it (once more|again)/i.test(out.reply),
+      'the fallback tells them to repeat themselves, which does not help when a quota is exhausted');
+    assert.ok(/\?/.test(out.reply), 'it asks nothing — the conversation stops here');
+  }
 });
 
 test('intent is read well enough to change the opening line', () => {

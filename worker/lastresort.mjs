@@ -68,9 +68,36 @@ const OPENER = {
  */
 export function lastResort({ userText, grounding, place }) {
   const partners = (grounding?.partners ?? []).filter((p) => p && p.name).slice(0, 3);
-  if (!partners.length) return null;
-
   const intent = readIntent(userText);
+
+  // No partners resolved — they asked something the directory cannot answer,
+  // or grounding failed too. This used to return null and hand the turn back
+  // to "say it once more", which is the dead end this whole file exists to
+  // remove. A person with no answer does not go silent: they say what they can
+  // do and ask the one question that moves it forward. So does this.
+  if (!partners.length) {
+    const ask = {
+      car: 'Whereabouts are you, and what time do you need it?',
+      food: 'Whereabouts are you, and how many of you?',
+      night: 'Whereabouts are you, and how many of you?',
+      spa: 'Whereabouts are you staying?',
+      do: 'Whereabouts are you, and is this for today or later in the week?',
+      other: 'Tell me where you are and what you feel like, and I’ll line it up.',
+    }[intent] ?? 'Tell me where you are and what you feel like, and I’ll line it up.';
+    return {
+      reply:
+        'I’m running lean for a few minutes — the thinking half of me is catching up, ' +
+        'so I can’t book or check openings this second.\n\n' +
+        `${ask}\n\n` +
+        'Send it and I’ll have it ready the moment I’m back, which is usually a couple of minutes.',
+      card: null,
+      chips: null,
+      actions: [],
+      place: place ?? grounding?.place ?? null,
+      degraded: true,
+      lane: 'last-resort-noplaces',
+    };
+  }
   const where = place?.name || grounding?.place?.name || null;
   const names = partners.map((p) => {
     const bits = [p.name];
