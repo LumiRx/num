@@ -736,14 +736,21 @@ export default {
     const parsed = validatePayload(body);
     if (!parsed.ok) return json(parsed.status, { error: parsed.error });
 
+    // Declared OUTSIDE the try so the catch can still use them. The grounding
+    // step is the expensive half of a turn — location resolved, real partners
+    // pulled from D1 — and it completes before any model is called. Scoping it
+    // to the try meant that when every brain failed we threw away work we had
+    // already done and apologised instead of answering with it.
+    let grounding = null;
+    let lastUser = '';
     try {
       // Same brain as the texts: resolve the user's location and pull
       // verified partners from the shared num-db before Claude answers.
-      const lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+      lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
       // A real GPS fix from the device outranks the edge's IP guess. When the
       // app sends `here`, hand it to grounding as a precise, NOT-inferred
       // position — that is knowledge; request.cf is a hint.
-      const grounding = await groundRequest(env, {
+      grounding = await groundRequest(env, {
         userText: lastUser,
         statedPlace: parsed.place,
         cf: request.cf,
@@ -926,10 +933,35 @@ export default {
         console.warn('[num-ai] rescue lane also failed:', rescueErr?.message ?? rescueErr);
       }
 
-      // Both lanes down. Own it, keep it warm, and give them the one thing that
-      // actually helps — a nudge to say it again — rather than blaming their
-      // connection, which is almost never the cause and always sounds like it
-      // is their fault.
+      // Every brain is down. Before apologising, answer from what we already
+      // have: grounding resolved their location and pulled real partners from
+      // D1 before any model was called, and that data is still sitting here.
+      // Three real places beats "say it again" — especially for somebody who
+      // arrived from an ad thirty seconds ago and has no reason to come back.
+      //
+      // This makes no network call, so it cannot fail the way the models just
+      // did. It never claims to have booked anything.
+      if (err?.status !== 429) {
+        try {
+          const { lastResort } = await import('./lastresort.mjs');
+          const saved = lastResort({
+            userText: lastUser,
+            grounding,
+            place: parsed.place ?? null,
+          });
+          if (saved) {
+            console.warn('[num-ai] answered from the directory with no model');
+            return json(200, saved);
+          }
+        } catch (lastErr) {
+          console.warn('[num-ai] last resort failed:', lastErr?.message ?? lastErr);
+        }
+      }
+
+      // Nothing to offer — no partners resolved either. Own it, keep it warm,
+      // and give them the one thing that actually helps rather than blaming
+      // their connection, which is almost never the cause and always sounds
+      // like it is their fault.
       const status = err?.status === 429 ? 429 : 200;
       return json(status, {
         reply:
