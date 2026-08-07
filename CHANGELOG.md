@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.171 — 2026-08-07 01:36 UTC
+
+(no note given)
+
+- commit `cbf7d38`
+
 ## 0.8.170 — 2026-08-07 01:31 UTC
 
 (no note given)

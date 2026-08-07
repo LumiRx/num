@@ -82,12 +82,30 @@ export const BRAINS = [
     // Jan, Ollama, LM Studio, vLLM, OpenRouter, Groq, Together — all of them.
     // A Worker cannot reach localhost, so a laptop needs a tunnel; see
     // docs/brains.md before pointing this at a machine under a desk.
+    //
+    // ── WHY THIS ONE MATTERS MOST ────────────────────────────────────────
+    //
+    // Every other brain in this list can be switched off by somebody else.
+    // Anthropic bills by the token and stops at a spend cap; Workers AI meters
+    // neurons and stops at a daily allowance. On 2026-08-06 both ran out in
+    // the same window and the whole chain died with them.
+    //
+    // A self-hosted model has no quota to exhaust. It is not the best answer
+    // in the list and it is not meant to be — it is the one that is still
+    // there at 3am on the day the invoices bounce. Keep it configured even
+    // when everything else is healthy, because the day you need it is
+    // precisely the day you cannot set it up.
+    //
+    // OLLAMA_BASE_URL is accepted as an alias so nobody has to remember that
+    // the Ollama endpoint lives under a variable named after a different
+    // product. Ollama speaks the OpenAI API at /v1 — point this at
+    // https://<your-tunnel>/v1 and set OLLAMA_MODEL (e.g. llama3.1).
     id: 'jan',
-    label: 'Jan / Ollama / self-hosted',
+    label: 'Ollama / Jan / self-hosted',
     kind: 'openai-compatible',
     structured: false,
-    ready: (env) => !!env.JAN_BASE_URL,
-    note: 'Any OpenAI-compatible endpoint — Jan, Ollama, LM Studio, vLLM, OpenRouter, Groq. Set JAN_BASE_URL (+ JAN_MODEL, JAN_API_KEY).',
+    ready: (env) => !!(env.OLLAMA_BASE_URL || env.JAN_BASE_URL),
+    note: 'Any OpenAI-compatible endpoint — Ollama, Jan, LM Studio, vLLM, OpenRouter, Groq. Set OLLAMA_BASE_URL (or JAN_BASE_URL), plus OLLAMA_MODEL and optionally OLLAMA_API_KEY. No quota to run out of: this is the floor under the whole chain.',
   },
 ];
 
@@ -162,15 +180,18 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
   }
 
   if (brain.kind === 'openai-compatible') {
-    const base = String(env.JAN_BASE_URL).replace(/\/+$/, '');
+    // Alias-aware: ready() accepts either name, so the caller must too —
+    // reading only JAN_BASE_URL here would let a brain report itself ready and
+    // then fetch 'undefined/chat/completions' on the one night it is needed.
+    const base = String(env.OLLAMA_BASE_URL || env.JAN_BASE_URL).replace(/\/+$/, '');
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(env.JAN_API_KEY ? { Authorization: `Bearer ${env.JAN_API_KEY}` } : {}),
+        ...((env.OLLAMA_API_KEY || env.JAN_API_KEY) ? { Authorization: `Bearer ${env.OLLAMA_API_KEY || env.JAN_API_KEY}` } : {}),
       },
       body: JSON.stringify({
-        model: env.JAN_MODEL || 'default',
+        model: env.OLLAMA_MODEL || env.JAN_MODEL || 'default',
         messages: chat,
         max_tokens: maxTokens,
         temperature: 0.7,

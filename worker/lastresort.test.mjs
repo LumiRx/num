@@ -77,3 +77,17 @@ test('the fallback is actually wired into the failure path', () => {
   assert.match(code(index), /answered from the directory with no model/,
     'answering without a model is not logged — it would be invisible in an incident');
 });
+
+test('the self-hosted brain reads the same env names it claims to accept', () => {
+  // ready() accepts OLLAMA_BASE_URL or JAN_BASE_URL. If callProse read only
+  // one of them, the brain would report itself configured and then fetch
+  // "undefined/chat/completions" — a brain that lies about being ready is
+  // worse than one that is absent, because the chain stops looking.
+  const brains = readFileSync(join(HERE, 'brains.mjs'), 'utf8');
+  const ready = brains.slice(brains.indexOf("id: 'jan'"), brains.indexOf('];'));
+  assert.match(ready, /OLLAMA_BASE_URL \|\| env\.JAN_BASE_URL/, 'ready() no longer accepts the Ollama alias');
+  const call = brains.slice(brains.indexOf("brain.kind === 'openai-compatible'"));
+  for (const v of ['OLLAMA_BASE_URL', 'OLLAMA_MODEL', 'OLLAMA_API_KEY']) {
+    assert.ok(call.includes(v), `callProse ignores ${v} — the brain would report ready and then fail on every call`);
+  }
+});
