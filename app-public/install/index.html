@@ -166,13 +166,15 @@ h2{font-size:clamp(26px,6vw,38px);margin-bottom:14px}
    the same border language as the cards so they read as part of the page
    rather than an ad dropped into it.
 
-   Portrait on phones (a strip of two fits the thumb), landscape on desktop so
-   two 520px columns don't become 700px of scrolling. object-fit does the
-   crop, so one file serves both. */
-.photorow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(min-width:760px){.photorow{gap:16px}}
+   Both source photographs are landscape and both put people across the full
+   width of the frame, so a two-up portrait strip on a phone would crop the
+   outer faces off. One column on phones at 3:2 (the source ratio — no crop at
+   all), two columns at 4:3 from 760px up, where a 520px column can afford it.
+   object-fit handles the small desktop crop, so one file serves both. */
+.photorow{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:760px){.photorow{grid-template-columns:1fr 1fr;gap:16px}}
 .shot{margin:0;border:1px solid var(--line);border-radius:18px;overflow:hidden;
-  background:var(--pri-xl);box-shadow:var(--shadow);aspect-ratio:3/4}
+  background:var(--pri-xl);box-shadow:var(--shadow);aspect-ratio:3/2}
 @media(min-width:760px){.shot{aspect-ratio:4/3;border-radius:20px}}
 .shot img{width:100%;height:100%;object-fit:cover;display:block}
 .photocap{text-align:center;max-width:46ch;margin-left:auto;margin-right:auto}
@@ -321,22 +323,29 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   </div>
 </div>
 
-<!-- Photography note, so nobody has to guess later: these two images are
-     generated, not photographs of Num customers. They are used the way stock
-     photography is used — to set a mood — and deliberately carry no name, no
-     quote and no claim. The moment one of these faces is given a testimonial,
-     it stops being decoration and starts being a lie. Don't do that. -->
+<!-- Photography note, so nobody has to guess later.
+     Both images are LICENSED ADOBE STOCK, licensed to this account on
+     2026-08-08 under the standard licence:
+       travel-street.jpg  — Adobe Stock #122788240
+       travel-table.jpg   — Adobe Stock #621830118
+     They replaced generated images, which is why the licence IDs are written
+     down here rather than left in a receipt somewhere.
+
+     They are stock, so they are not photographs of Num customers, and they
+     deliberately carry no name, no quote and no claim. The moment one of these
+     faces is given a testimonial it stops being mood and starts being a lie.
+     Don't do that. -->
 <section class="wrap">
   <div class="photorow">
     <figure class="shot">
-      <img src="/assets/travel-friends.jpg" width="570" height="760"
+      <img src="/assets/travel-street.jpg" width="1100" height="734"
            loading="lazy" decoding="async"
-           alt="Two friends laughing as they walk down a sunlit old-town street">
+           alt="Four friends with a backpack and a camera laughing together while travelling">
     </figure>
     <figure class="shot">
-      <img src="/assets/travel-dinner.jpg" width="570" height="760"
+      <img src="/assets/travel-table.jpg" width="1100" height="733"
            loading="lazy" decoding="async"
-           alt="Friends laughing around a table of food at an outdoor restaurant in the evening">
+           alt="Friends smiling around a table of food at an outdoor rooftop dinner">
     </figure>
   </div>
   <p class="under photocap">The part of a trip worth remembering is never the booking.
