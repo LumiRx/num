@@ -304,9 +304,25 @@ export async function handlePay(request, env, path) {
         // has signed for the money. Never from a client request.
         const tierMatch = /^tier:([a-z_]{2,20})$/.exec(ref);
         if (firstTime && tierMatch && memberId) {
-          const { grantTier } = await import('./membership.mjs');
-          const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id });
-          console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId);
+          // The signature proves Stripe took money. It does NOT prove it took
+          // the RIGHT money. checkPayment treats `tier:` as a generic bill
+          // (any positive amount passes), so before this check a direct call
+          // to /api/pay/request with ref "tier:pro" and fifty cents bought a
+          // $28.98 membership — paid, signed, and wrong. The price check
+          // belongs here because this is the only place that has both the
+          // signed amount and the authoritative price list.
+          const { grantTier, tiers } = await import('./membership.mjs');
+          const { tierPaidRight } = await import('./preflight.mjs');
+          const owed = tiers(env)[tierMatch[1]]?.price_cents;
+          const paidRight = tierPaidRight(s, owed);
+          if (!paidRight) {
+            // Money was taken and the tier is withheld — that needs a human,
+            // loudly, because the guest did pay SOMETHING.
+            console.error(`[pay] TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} usd. Grant refused; refund ${id} and find out which client built this session.`);
+          } else {
+            const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id });
+            console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId);
+          }
         }
 
         const packMatch = /^stars:(\d{1,7})$/.exec(ref);
@@ -500,7 +516,10 @@ export async function handlePay(request, env, path) {
       const out = await requestPayment(env, {
         memberId: clip(b.me, 40),
         amountCents: b.amount_cents,
-        currency: b.currency ?? 'usd',
+        // The VALIDATED currency. verdict.currency comes back from
+        // checkPayment's allowlist; b.currency raw from the client was the
+        // 97%-discount hole (tier priced in US cents, charged as satang).
+        currency: verdict.currency ?? 'usd',
         description: clip(b.description, 200),
         ref: clip(b.ref, 60),
         link: clip(b.link, 40),

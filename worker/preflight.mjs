@@ -23,15 +23,28 @@
 /** Star packs. The single source of price truth for anything Stars-related. */
 export const STAR_PACKS = Object.freeze({ 500: 15000, 1000: 29500, 5000: 142500 });
 
-/** Nothing we sell legitimately costs less than this or more than this. */
-const MIN_CENTS = 50;          // Stripe's own floor for USD
-const MAX_CENTS = 2_000_000;   // $20,000 — above this, a human looks first
+/**
+ * The currencies we accept, each with its own floor and ceiling.
+ *
+ * The bounds MUST be per-currency: `amount_cents` means hundredths of
+ * whatever the currency is, so 2,000,000 is $20,000 in USD and about $570 in
+ * THB satang. One shared ceiling calibrated for dollars would refuse a
+ * perfectly normal ฿30,000 dinner for eight — and one shared floor would let
+ * through charges Stripe itself rejects.
+ *
+ * More importantly: BEFORE this table existed, `currency` was passed from
+ * the client straight to Stripe with no check at all. A tier priced as 898
+ * (US cents, $8.98) charged with currency 'thb' becomes ฿8.98 — about 25
+ * US cents. Same integer, 97% discount. The currency is part of the price
+ * and gets exactly the same scrutiny as the number.
+ */
+export const CURRENCIES = Object.freeze({
+  usd: { min: 50, max: 2_000_000, symbol: '$', name: 'US dollars' },       // Stripe's USD floor · $20k ceiling
+  thb: { min: 2_000, max: 70_000_000, symbol: '฿', name: 'Thai baht' },    // ฿20 floor · ฿700k (~$20k) ceiling
+});
 
-// Thousands separators matter here: "$142500" and "$1,425.00" are the same
-// number and only one of them is readable at a glance when someone is deciding
-// whether a charge is right.
-const money = (cents) =>
-  `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (cents, currency = 'usd') =>
+  `${CURRENCIES[currency]?.symbol ?? '$'}${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
  * The verdict shape every caller gets back.
@@ -52,6 +65,28 @@ const fail = (reason, correction = null) => ({ ok: false, reason, correction });
 export function checkPayment(intent = {}) {
   const ref = String(intent.ref ?? '');
   const claimed = Number(intent.amount_cents);
+
+  // The currency is checked FIRST, because every bound below depends on it.
+  // Unknown currency is a refusal, not a default: silently falling back to
+  // USD would re-open the exact confusion this exists to close.
+  const currency = String(intent.currency ?? 'usd').toLowerCase();
+  const cur = CURRENCIES[currency];
+  if (!cur) {
+    return fail(
+      `We take ${Object.values(CURRENCIES).map((c) => c.name).join(' and ')} — not "${String(intent.currency)}".`,
+      { currency: 'usd', says: 'Charge it in US dollars?' },
+    );
+  }
+
+  // Anything priced from OUR list is priced in US cents. Accepting the same
+  // integer under another currency is the 97%-discount hole — so our own
+  // SKUs are pinned to USD no matter what the client sent.
+  if ((/^(stars|tier):/).test(ref) && currency !== 'usd') {
+    return fail(
+      'Memberships and Stars are priced in US dollars.',
+      { currency: 'usd', says: 'Continue in USD?' },
+    );
+  }
 
   // ── Stars: priced entirely by us ───────────────────────────────────────
   const pack = /^stars:(\d{1,7})$/.exec(ref);
@@ -98,19 +133,19 @@ export function checkPayment(intent = {}) {
     return fail('A payment needs a positive amount.');
   }
   const rounded = Math.round(claimed);
-  if (rounded < MIN_CENTS) {
+  if (rounded < cur.min) {
     return fail(
-      `${money(rounded)} is below the ${money(MIN_CENTS)} minimum a card payment can take.`,
-      { amount_cents: MIN_CENTS, says: `The smallest card payment is ${money(MIN_CENTS)}.` },
+      `${money(rounded, currency)} is below the ${money(cur.min, currency)} minimum a card payment can take.`,
+      { amount_cents: cur.min, says: `The smallest card payment is ${money(cur.min, currency)}.` },
     );
   }
-  if (rounded > MAX_CENTS) {
+  if (rounded > cur.max) {
     return fail(
-      `${money(rounded)} is over the ${money(MAX_CENTS)} ceiling — that needs a human to approve.`,
-      { amount_cents: MAX_CENTS, says: `Anything above ${money(MAX_CENTS)} goes through us directly.` },
+      `${money(rounded, currency)} is over the ${money(cur.max, currency)} ceiling — that needs a human to approve.`,
+      { amount_cents: cur.max, says: `Anything above ${money(cur.max, currency)} goes through us directly.` },
     );
   }
-  return pass(rounded);
+  return { ...pass(rounded), currency };
 }
 
 /**
@@ -121,6 +156,21 @@ export function checkPayment(intent = {}) {
  * have, the correction is the amount they could actually move, which is the
  * difference between "declined" and "you can send ★40 of that now".
  */
+/**
+ * Did a signed Stripe session pay the RIGHT money for a tier?
+ *
+ * Pure so it can be tested as behaviour rather than as source text — the
+ * first guard on this was a regex over pay.mjs, and a `true ||` mutation
+ * sailed straight past it. A signature proves money moved; this proves the
+ * right money moved, and it is the only check standing between fifty cents
+ * and a $28.98 membership.
+ */
+export function tierPaidRight(session, owedCents) {
+  return Number.isFinite(owedCents)
+    && Number(session?.amount_total) === owedCents
+    && String(session?.currency ?? '').toLowerCase() === 'usd';
+}
+
 export function checkStars({ amount, available, label = 'move', max = 1_000_000 } = {}) {
   const n = Math.floor(Number(amount));
   if (!Number.isFinite(n) || n <= 0) return fail(`How many Stars should I ${label}?`);
