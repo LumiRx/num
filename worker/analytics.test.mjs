@@ -131,7 +131,10 @@ test('every /go/ code lands on a real page with a full UTM triple', () => {
   // page and became wrong the moment Reddit was pointed at the app itself. The
   // list stays explicit on purpose: adding a destination that ad money flows
   // to should cost one deliberate line here, not happen by accident.
-  const LIVE_SURFACES = ['/watch/', '/'];
+  // '/install/' added 2026-08-08 with the Reddit change. Deliberate line, as
+  // intended — and it earns it: app-public/install/index.html is a real page,
+  // asserted below so this list can never point at a 404.
+  const LIVE_SURFACES = ['/watch/', '/', '/install/'];
   for (const [, code, dest] of codes) {
     const path = dest.split('?')[0];
     assert.ok(LIVE_SURFACES.includes(path),
