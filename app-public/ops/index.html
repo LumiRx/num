@@ -173,8 +173,10 @@
     <div class="mark"><b>N</b><i></i></div>
     <h2>NUM Ops</h2>
     <p>Admin key required.</p>
-    <input id="key" type="password" autocomplete="new-password" name="num-ops-admin-key" placeholder="Admin key" aria-label="Admin key">
-    <button id="signin">Sign in</button>
+    <form id="gateform">
+      <input id="key" type="password" autofocus autocomplete="new-password" name="num-ops-admin-key" placeholder="Admin key" aria-label="Admin key">
+      <button id="signin" type="submit">Sign in</button>
+    </form>
     <div class="err" id="err"></div>
   </div>
 </div>
@@ -510,7 +512,7 @@ setInterval(refresh, 3600_000);
 setTimeout(refresh, 120_000);
 
 async function boot() {
-  if (!S.key) { $('gate').hidden = false; $('app').hidden = true; return; }
+  if (!S.key) { $('gate').hidden = false; $('app').hidden = true; setTimeout(() => $('key').focus(), 50); return; }
   try {
     S.data = await load();
     $('gate').hidden = true; $('app').hidden = false;
@@ -542,6 +544,18 @@ const complain = (msg) => {
   box.classList.remove('shake'); void box.offsetWidth; // restart the animation
   box.classList.add('shake');
 };
+$('gateform').addEventListener('submit', (e) => e.preventDefault());
+// Typing before clicking must still work: the input autofocuses, and if focus
+// is ANYWHERE else on the gate, Enter and stray typing are pulled back into
+// the field. The empty-and-unfocused field was the last truly silent path —
+// someone opens the page, types into nothing, presses Enter into nothing,
+// and reads a working page as broken. Watched happen 8 Aug via screenshot:
+// no focus ring, empty field, "it does nothing when i press enter."
+document.addEventListener('keydown', (e) => {
+  if ($('gate').hidden) return;
+  if (document.activeElement !== $('key') && e.key.length === 1) { $('key').focus(); }
+  if (e.key === 'Enter') { e.preventDefault(); $('signin').click(); }
+});
 $('signin').onclick = async () => {
   const key = $('key').value.trim();
   if (!key) { complain('The key field is empty — click it, then type the key.'); return; }

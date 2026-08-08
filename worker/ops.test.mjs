@@ -136,3 +136,13 @@ test('the first sign-in after a deploy survives the service-worker swap', () => 
   const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
   assert.match(page, /catch \{ await new Promise/, 'the sign-in retry is gone — the first attempt after every deploy fails again');
 });
+
+test('typing works the instant the gate opens — no click required', () => {
+  // The last silent path: no autofocus and an Enter listener bound only to
+  // the input. Open page → type into nothing → Enter into nothing → silence.
+  // Seen in a screenshot: empty field, no focus ring, "it does nothing".
+  const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
+  assert.match(page, /<form id="gateform">/, 'the gate lost its form — Enter only works when the input has focus');
+  assert.match(page, /autofocus/, 'the key input no longer autofocuses — typing before clicking goes nowhere');
+  assert.match(page, /document\.addEventListener\('keydown'/, 'stray typing is no longer pulled into the field');
+});
