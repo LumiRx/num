@@ -146,3 +146,14 @@ test('typing works the instant the gate opens — no click required', () => {
   assert.match(page, /autofocus/, 'the key input no longer autofocuses — typing before clicking goes nowhere');
   assert.match(page, /document\.addEventListener\('keydown'/, 'stray typing is no longer pulled into the field');
 });
+
+test('a post-login failure is never reported as a login failure', () => {
+  // "The password is correct but it doesn't take me into the dashboard."
+  // Sign-in succeeded; the overview fetch or the render failed; the catch
+  // re-showed the gate with no message — success-then-crash was pixel-
+  // identical to rejection, and the debugging went to the password for hours.
+  const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
+  assert.match(page, /Sign-in was fine/, 'a load failure after login is silent again — it will be misread as a password problem');
+  assert.match(page, /dashboard data failed to load \(HTTP/, 'the overview error hides its status and body again');
+  assert.match(page, /the dashboard failed to draw/, 'a render crash is reported as a login failure again');
+});

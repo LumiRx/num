@@ -243,9 +243,16 @@ const ICON = {
 
 async function load() {
   const r = await fetch(`/api/admin/overview?days=${S.days}`, { headers: { 'X-Admin-Session': S.key } });
-  if (r.status === 401) { S.key = ''; sessionStorage.removeItem('num_ops'); throw new Error('unauthorized'); }
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
+  if (r.status === 401) { S.key = ''; sessionStorage.removeItem('num_ops'); throw new Error('the session was not accepted — sign in again'); }
+  // The error CARRIES THE BODY. "HTTP 500" tells nobody anything; the worker's
+  // own error text names the failing query or line.
+  if (!r.ok) throw new Error(`the dashboard data failed to load (HTTP ${r.status}): ${(await r.text()).slice(0, 300)}`);
+  const d = await r.json();
+  // A render crash after a successful login used to land in the same catch as
+  // a bad password — sign-in "failed" while the server had answered perfectly.
+  // Rendering INSIDE load's caller kept that ambiguity; parse here so JSON
+  // problems are named as what they are.
+  return d;
 }
 
 /* ── charts ───────────────────────────────────────────────────────────────
@@ -517,9 +524,18 @@ async function boot() {
     S.data = await load();
     $('gate').hidden = true; $('app').hidden = false;
     $('who').textContent = S.data.operator?.signed_in_as || 'admin';
-    render();
+    // render() runs INSIDE the try on purpose — but its failure must not be
+    // reported as a login failure. Tell the truth about which step died.
+    try { render(); } catch (re) {
+      $('view').innerHTML = '<div class="empty">Signed in fine — the dashboard failed to draw: ' +
+        esc(re?.message ?? re) + '. This is a page bug, not your password.</div>';
+    }
   } catch (e) {
     $('gate').hidden = false; $('app').hidden = true;
+    // The one message that ends the "correct password, no dashboard" mystery:
+    // if we HAD a key and still landed here, the login worked and something
+    // after it broke — say so, with the reason, where it cannot be missed.
+    if ($('err')) $('err').textContent = 'Sign-in was fine — ' + (e?.message ?? e);
     $('err').textContent = e.message === 'unauthorized' ? 'Key rejected.' : 'Could not load: ' + e.message;
   }
 }
