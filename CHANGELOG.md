@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.196 — 2026-08-08 22:42 UTC
+
+(no note given)
+
+- commit `539e254`
+
 ## 0.8.195 — 2026-08-08 21:27 UTC
 
 install page: licensed stock photography

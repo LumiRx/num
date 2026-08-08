@@ -73,3 +73,19 @@ test('the session survives a browser that refuses cookies', () => {
   assert.match(page, /history\.replaceState\(null, '', '\/ops\/'\)/,
     'the token lingers in the address bar and browser history after use');
 });
+
+test('the business page sells the moment, honestly', () => {
+  // The rate card was accurate and inert. The story is: a guest asks, NUM
+  // answers with three names, you are in the answer or you are not — and the
+  // proof is a counter the merchant can audit. Every claim on the page must
+  // stay true to the running system: the conversation shown is one NUM
+  // actually produced, the impressions rule (card/named only) matches
+  // impressions.mjs, and nothing promises placement money can buy.
+  const biz = readFileSync(join(HERE, '..', 'public', 'business', 'index.html'), 'utf8');
+  assert.match(biz, /NUM will answer with three names/, 'the hero lost the moment — back to the rate card');
+  assert.match(biz, /my group wants somewhere lively for dinner in kata/, 'the real conversation is gone — the page tells instead of showing');
+  assert.match(biz, /somebody else&#039;s is|somebody else's is/, 'the turn — the reason to care — is gone');
+  assert.match(biz, /survives the audit/, 'the honest-counter promise is gone; the differentiator with proof became a claim without it');
+  assert.match(biz, /passed over is not counted/i, 'the impressions rule on the page no longer matches what impressions.mjs actually records');
+  assert.ok(!/pay to rank|boost your position|top of the list/i.test(biz), 'the page implies placement can be bought — the one promise that must never appear');
+});
