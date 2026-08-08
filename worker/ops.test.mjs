@@ -112,3 +112,18 @@ test('the dashboard shows real money, chain health, and keeps itself current', (
   assert.match(page, /setInterval\(refresh, 3600_000\)/, 'the hourly refresh is gone — the dashboard goes stale silently');
   assert.match(page, /\.catch\(\(\) => \{\}\)/, 'a failed refresh can throw — one blip logs the operator out of a working view');
 });
+
+test('the sign-in gate can never do nothing', () => {
+  // "I typed my password and nothing happened." The handler returned silently
+  // on an empty field, and Chrome's autofill overlay can make an empty field
+  // look filled — so pressing Enter did literally nothing, which reads as a
+  // broken console and cost a debugging session. Every path must speak.
+  const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
+  assert.ok(!/if \(!key\) return;/.test(page),
+    'the silent empty-field return is back — Enter on an empty field will do nothing again');
+  assert.match(page, /The key field is empty/, 'an empty submit no longer explains itself');
+  assert.match(page, /Wrong password\./, 'a 401 no longer says plainly that the password is wrong');
+  assert.match(page, /autocomplete="new-password"/,
+    'the input invites saved-credential autofill again — Chrome will keep stuffing a stale key into it');
+  assert.match(page, /shake/, 'the failure state lost its visual punch — small red text was missable once already');
+});

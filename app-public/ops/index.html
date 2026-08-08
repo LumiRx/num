@@ -150,7 +150,10 @@
   .gate input:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:transparent}
   .gate button{width:100%;padding:12px;border:0;border-radius:10px;background:var(--ink);color:#fff;
                font:600 15px inherit;cursor:pointer}
-  .err{color:var(--ember);font-size:13px;margin-top:12px;min-height:18px}
+  .err{color:var(--ember);font-size:14.5px;font-weight:700;margin-top:12px;min-height:20px}
+  .gate input.bad{outline:2px solid var(--ember);outline-offset:-1px;border-color:transparent}
+  @keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(3px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
+  .gate .box.shake{animation:shake .45s}
 
   @media (max-width:860px){
     .shell{grid-template-columns:1fr}
@@ -170,7 +173,7 @@
     <div class="mark"><b>N</b><i></i></div>
     <h2>NUM Ops</h2>
     <p>Admin key required.</p>
-    <input id="key" type="password" autocomplete="current-password" placeholder="Admin key" aria-label="Admin key">
+    <input id="key" type="password" autocomplete="new-password" name="num-ops-admin-key" placeholder="Admin key" aria-label="Admin key">
     <button id="signin">Sign in</button>
     <div class="err" id="err"></div>
   </div>
@@ -527,10 +530,22 @@ async function boot() {
  * `payload.signature` — so a raw key failed before it was ever compared to
  * ADMIN_KEY. Every attempt returned "Key rejected", which reads as a wrong
  * password and sent us rotating a secret that was fine. */
+// EVERY press of Enter or Sign in produces something visible. The old
+// handler returned silently on an empty field — and Chrome's autofill overlay
+// can make an empty field LOOK filled, so "I typed my password and nothing
+// happened" was this exact line. A form that can do nothing at all is
+// indistinguishable from a broken one, because it is one.
+const complain = (msg) => {
+  $('err').textContent = msg;
+  $('key').classList.add('bad');
+  const box = document.querySelector('.gate .box');
+  box.classList.remove('shake'); void box.offsetWidth; // restart the animation
+  box.classList.add('shake');
+};
 $('signin').onclick = async () => {
   const key = $('key').value.trim();
-  if (!key) return;
-  $('err').textContent = 'Checking…';
+  if (!key) { complain('The key field is empty — click it, then type the key.'); return; }
+  $('signin').disabled = true; $('signin').textContent = 'Checking…';
   try {
     const r = await fetch('/api/admin/session', {
       method: 'POST',
@@ -538,17 +553,20 @@ $('signin').onclick = async () => {
       body: JSON.stringify({ key }),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { $('err').textContent = d.error || 'That key does not match.'; return; }
+    if (!r.ok) { complain(r.status === 401 ? 'Wrong password.' : (d.error || `Sign-in failed (HTTP ${r.status}).`)); return; }
     S.key = d.token;
     sessionStorage.setItem('num_ops', d.token);
     $('key').value = '';
     $('err').textContent = '';
     boot();
   } catch (e) {
-    $('err').textContent = 'Could not reach the sign-in endpoint: ' + (e?.message ?? e);
+    complain('Could not reach the sign-in endpoint: ' + (e?.message ?? e));
+  } finally {
+    $('signin').disabled = false; $('signin').textContent = 'Sign in';
   }
 };
 $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('signin').click(); });
+$('key').addEventListener('input', () => { $('key').classList.remove('bad'); $('err').textContent = ''; });
 $('refresh').onclick = async () => { try { S.data = await load(); render(); } catch { boot(); } };
 boot();
 </script>
