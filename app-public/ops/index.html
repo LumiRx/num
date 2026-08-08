@@ -546,12 +546,22 @@ $('signin').onclick = async () => {
   const key = $('key').value.trim();
   if (!key) { complain('The key field is empty — click it, then type the key.'); return; }
   $('signin').disabled = true; $('signin').textContent = 'Checking…';
+  // One silent retry. Every deploy swaps the service worker in under this
+  // page, and the swap aborts whichever fetch is in flight — so the FIRST
+  // sign-in attempt after opening the page can die with "Failed to fetch"
+  // while the second sails through. Watched happen live on 8 Aug: the same
+  // POST failed from the button and returned 401 from the console seconds
+  // later. The person who opens the page and types immediately always hits
+  // the doomed attempt; this retry means they never see it.
+  const post = () => fetch('/api/admin/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  });
   try {
-    const r = await fetch('/api/admin/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
-    });
+    let r;
+    try { r = await post(); }
+    catch { await new Promise((res) => setTimeout(res, 800)); r = await post(); }
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { complain(r.status === 401 ? 'Wrong password.' : (d.error || `Sign-in failed (HTTP ${r.status}).`)); return; }
     S.key = d.token;

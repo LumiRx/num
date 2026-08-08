@@ -127,3 +127,12 @@ test('the sign-in gate can never do nothing', () => {
     'the input invites saved-credential autofill again — Chrome will keep stuffing a stale key into it');
   assert.match(page, /shake/, 'the failure state lost its visual punch — small red text was missable once already');
 });
+
+test('the first sign-in after a deploy survives the service-worker swap', () => {
+  // Each deploy replaces the SW under the open page, aborting the in-flight
+  // POST — so the first attempt died with "Failed to fetch" and the second
+  // worked. Observed live, both halves, minutes apart. One silent retry
+  // makes the difference invisible.
+  const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
+  assert.match(page, /catch \{ await new Promise/, 'the sign-in retry is gone — the first attempt after every deploy fails again');
+});
