@@ -190,9 +190,9 @@ footer a{text-decoration:underline;text-underline-offset:3px}
 
   <div class="herogrid">
     <div>
-      <span class="eyebrow">● Free · no signup to start</span>
+      <span class="eyebrow" id="eyebrow">● Free · no signup to start</span>
       <h1>Ask for anything.<br><em>Num sorts it.</em></h1>
-      <p class="lede">A table tonight. A car at 6am. A whole day you haven't planned yet.
+      <p class="lede" id="lede">A table tonight. A car at 6am. A whole day you haven't planned yet.
         One thread, no forms — and it remembers what you like.</p>
       <a class="cta" href="#install">Add Num to your home screen</a>
       <p class="under">Works on iPhone and Android. 10 seconds, nothing to download from a store.</p>
@@ -260,7 +260,7 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   <p class="kicker">Try one of these first</p>
   <h2>Things people actually ask</h2>
   <p class="sub">Real requests, in plain words. There's no syntax to learn.</p>
-  <div class="chips">
+  <div class="chips" id="chips">
     <span class="chip">Dinner tonight, 2 people, somewhere with a view</span>
     <span class="chip">Car to the airport at 5:30am</span>
     <span class="chip">It's raining — what's good indoors nearby?</span>
@@ -392,6 +392,48 @@ footer a{text-decoration:underline;text-underline-offset:3px}
 <div class="dock"><a class="cta" href="#install">Add Num to your home screen</a></div>
 
 <script>
+/* ── Who just arrived? ────────────────────────────────────────────────────
+   The same ad money buys two quite different visitors. Someone tagged
+   phuket-* is mid-trip or booked, and generic copy wastes the one thing we
+   can prove — real venues, real local knowledge, on the ground. Someone on
+   global-pretrip is still choosing a country, and naming Phuket at them is a
+   narrower promise than the product makes.
+
+   So the page adapts, and GLOBAL IS THE DEFAULT. This runs after paint and
+   only ever rewrites text: if the script never executes, or the campaign tag
+   is missing, or someone arrives from a link we have never seen, the page
+   still reads correctly and still converts. Personalisation that can leave a
+   visitor staring at an empty headline is worse than none. */
+(function () {
+  var q = new URLSearchParams(location.search);
+  var hint = (q.get('city') || q.get('dest') || q.get('utm_campaign') || '').toLowerCase();
+  var VARIANTS = {
+    phuket: {
+      eyebrow: '● Live in Phuket · free to ask',
+      lede: 'A table in Bang Tao tonight. A driver to the airport at 6am. A whole day you '
+          + "haven't planned yet. One thread, no forms — and it remembers what you like.",
+      chips: ['Dinner tonight in Bang Tao, 2 people', 'Car to Phuket airport at 5:30am',
+        "It's raining — what's good indoors near me?", 'Best breakfast in Patong',
+        'Plan my Saturday — beaches and food', 'A massage today, near my hotel',
+        'Longtail to Phi Phi tomorrow', 'Where do locals actually eat here?']
+    }
+  };
+  var v = null;
+  for (var k in VARIANTS) if (hint.indexOf(k) > -1) v = VARIANTS[k];
+  if (v) {
+    var eb = document.getElementById('eyebrow'); if (eb) eb.textContent = v.eyebrow;
+    var ld = document.getElementById('lede');    if (ld) ld.textContent = v.lede;
+    var ch = document.getElementById('chips');
+    if (ch) ch.innerHTML = v.chips.map(function (c) {
+      /* textContent via a node, never innerHTML of the string itself — these
+         come from the URL's neighbourhood and one day someone will put a
+         quote in a campaign name. */
+      var s = document.createElement('span'); s.className = 'chip'; s.textContent = c;
+      return s.outerHTML;
+    }).join('');
+  }
+})();
+
 /* Show the reader THEIR platform's steps first. Getting this wrong is the
    whole reason installs fail: iPhone users sent to a Chrome menu that does not
    exist simply give up, and we never find out. Everything stays clickable, so

@@ -79,6 +79,30 @@ test('the install page exists, has no video wall, and asks above the fold', () =
   }
 });
 
+test('the page still reads correctly with no campaign tag and no JavaScript', () => {
+  // The hero adapts to the visitor (phuket vs global). Adaptive copy is where
+  // landing pages quietly break: the variant is applied by replacing text, so
+  // a script that throws, a campaign tag that never arrives, or a link from
+  // somewhere unexpected must all leave a page that still sells.
+  //
+  // Hence: the global copy is what ships in the HTML, and the script only ever
+  // overwrites it. This test pins that direction — if someone later empties
+  // the markup and renders the hero from JS, this fails.
+  const page = readFileSync(join(HERE, '..', 'app-public', 'install', 'index.html'), 'utf8');
+
+  const hero = page.slice(page.indexOf('<h1>'), page.indexOf('</h1>'));
+  assert.ok(hero.replace(/<[^>]+>/g, '').trim().length > 10,
+    'the headline is empty in the served HTML — it is being rendered by script');
+
+  const lede = page.slice(page.indexOf('id="lede"'), page.indexOf('id="lede"') + 400);
+  assert.ok(lede.replace(/<[^>]+>/g, '').trim().length > 40,
+    'the hero paragraph ships empty — a visitor with no JS sees nothing');
+
+  // At least one example ask must exist in the markup, not only in the variant.
+  assert.match(page, /class="chip">[^<]{10,}/,
+    'the example asks are script-only — they vanish if the variant code fails');
+});
+
 test('an unknown code still lands somewhere real', () => {
   // A typo on a poster should cost attribution, never a visitor.
   assert.match(index, /GO\[[^\]]+\]\s*;[\s\S]{0,400}?to \?\? '\/watch\/'/,
