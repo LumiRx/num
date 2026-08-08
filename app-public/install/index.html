@@ -194,8 +194,16 @@ footer a{text-decoration:underline;text-underline-offset:3px}
       <h1>Ask for anything.<br><em>Num sorts it.</em></h1>
       <p class="lede" id="lede">A table tonight. A car at 6am. A whole day you haven't planned yet.
         One thread, no forms — and it remembers what you like.</p>
-      <a class="cta" href="#install">Add Num to your home screen</a>
-      <p class="under">Works on iPhone and Android. 10 seconds, nothing to download from a store.</p>
+      <!-- THE THREAD FIRST, THE INSTALL SECOND.
+           Num sells itself in one message and cannot sell itself in a
+           screenshot, so the cheapest possible action is the primary one: type
+           something and watch it answer. Asking a stranger to install anything
+           before they have seen it work spends trust we have not earned yet —
+           and the install ask does not disappear, it just waits until the
+           product has made the argument. -->
+      <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-hero">Ask Num something</a>
+      <a class="cta ghost" href="#install" style="margin-top:10px">Or add it to your home screen</a>
+      <p class="under">Free, no signup. Works in your browser right now.</p>
     </div>
 
     <div class="phone" aria-label="Example conversation with Num">
@@ -389,7 +397,7 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   </p>
 </footer>
 
-<div class="dock"><a class="cta" href="#install">Add Num to your home screen</a></div>
+<div class="dock"><a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-dock">Ask Num something</a></div>
 
 <script>
 /* ── Who just arrived? ────────────────────────────────────────────────────
@@ -460,6 +468,9 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     deferred = e;
+    /* Only the buttons that ask for an install. The hero CTA now opens the
+       thread, and hijacking it with a native install sheet would be a bait —
+       the person asked to try Num, not to install it. */
     [].slice.call(document.querySelectorAll('.cta[href="#install"]')).forEach(function (btn) {
       btn.addEventListener('click', function (ev) {
         if (!deferred) return;              // fall through to the written steps
