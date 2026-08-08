@@ -50,6 +50,15 @@ export function readIntent(text) {
   return 'other';
 }
 
+/** What we promise to finish, in the guest's own terms. Never a generic list. */
+const FINISH = {
+  food: 'book the table',
+  night: 'get you on the list',
+  car: 'sort the car',
+  spa: 'book the treatment',
+  do: 'get it booked',
+};
+
 const OPENER = {
   food: 'Here’s where I’d point you for food right now',
   night: 'Here’s where I’d point you tonight',
@@ -75,15 +84,24 @@ export function lastResort({ userText, grounding, place }) {
   // to "say it once more", which is the dead end this whole file exists to
   // remove. A person with no answer does not go silent: they say what they can
   // do and ask the one question that moves it forward. So does this.
-  if (!partners.length) {
+  // An unrecognised ask must NOT be answered with a list of whatever is
+  // nearby. "Let's plan the horse races this weekend in Delmar" came back as
+  // three Los Angeles restaurants and a sports bar, because `other` still fell
+  // through to the partner list. A confident list of irrelevant places reads
+  // as a system that did not listen — far worse than admitting it is limited
+  // and asking. Only a recognised category may print places.
+  if (!partners.length || intent === 'other') {
     const ask = {
       car: 'Whereabouts are you, and what time do you need it?',
       food: 'Whereabouts are you, and how many of you?',
       night: 'Whereabouts are you, and how many of you?',
       spa: 'Whereabouts are you staying?',
       do: 'Whereabouts are you, and is this for today or later in the week?',
-      other: 'Tell me where you are and what you feel like, and I’ll line it up.',
-    }[intent] ?? 'Tell me where you are and what you feel like, and I’ll line it up.';
+      // A question, not a statement. "Tell me what you feel like" reads as a
+      // dead end; a guest closes the app. An actual question gets answered,
+      // and the answer lands the moment a brain is free again.
+      other: 'Where are you, and what are you after?',
+    }[intent] ?? 'Where are you, and what are you after?';
     return {
       reply:
         'I’m running lean for a few minutes — the thinking half of me is catching up, ' +
@@ -118,9 +136,13 @@ export function lastResort({ userText, grounding, place }) {
       // The honesty line. It says what is true — the thinking part is down, the
       // directory is not — without asking them to do anything useless like
       // "try again", and without pretending a booking happened.
+      // The closing line has to name what THEY asked for. It used to promise
+      // "the table and the car" on every reply, so a guest asking for a
+      // massage was told their table was coming — a small wrongness that
+      // undoes the honesty the rest of the message is built on.
       '\n\nI’m running lean for a few minutes so I can’t book or check openings ' +
       'right this second — but these are real and they’re close. Ask me again shortly ' +
-      'and I’ll sort the table and the car properly.',
+      `and I’ll ${FINISH[intent] ?? 'sort it properly'}.`,
     card: null,
     chips: null,
     actions: [],

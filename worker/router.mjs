@@ -153,3 +153,65 @@ export function guardReply(text) {
   const usable = cleaned.length > 1400 && isCleanProse(truncated) ? truncated : null;
   return { ok: false, cleaned: usable };
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Which Claude answers.
+ *
+ * Opus ran on every big-lane turn, including "what time is it in Phuket".
+ * That is not generosity, it is not looking: the same answer comes back from
+ * a cheaper model, and the budget spent on it is budget unavailable for the
+ * turn that plans somebody's evening.
+ *
+ * The rule is not "spend less". It is spend on the turns that deserve it.
+ *
+ * ── FAILS TOWARD QUALITY ────────────────────────────────────────────────
+ *
+ * A classifier that guesses wrong in the cheap direction produces a bad
+ * answer to a question somebody cared about. Guessing wrong in the expensive
+ * direction costs a few cents. So this returns the strong model unless the
+ * ask is *clearly* simple — silence, ambiguity, and anything unrecognised all
+ * escalate. Cheap is opt-in, never the default.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** Anything touching money, a commitment, or more than one step. */
+const DESERVES_THE_BEST = new RegExp(
+  [
+    // Money and commitment. Never economise on a turn that can cost a guest.
+    'book|booking|reserve|reservation|pay|paid|price|cost|charge|refund|cancel|deposit|bill|invoice',
+    // Planning — the thing a frontier model is actually better at.
+    'plan|itinerary|schedule|day trip|week|tomorrow|tonight then|after that|and then',
+    // Comparison and judgement.
+    'compare|versus| vs |better|worth it|should i|which one|recommend|instead',
+    // Groups: more constraints to hold at once.
+    'we are|we have|our group|party of|kids|children|family|wheelchair|allerg',
+    // Trouble. A guest with a problem gets the best we have, always.
+    'wrong|broken|late|missing|complain|help me|stuck|lost|emergency|hospital|police',
+  ].join('|'),
+  'i',
+);
+
+/** Short, single-fact lookups where a mid model is genuinely as good. */
+const SIMPLE_LOOKUP = /^(what|where|when|who|how far|how long|is|are|does|do)\b/i;
+
+/**
+ * Pick the model for this turn.
+ *
+ * `NUM_MODEL` still overrides everything — a single secret puts the whole
+ * product back on one model in under a minute, which is what you want at 2am
+ * when a routing change is the suspect.
+ */
+export function pickModel(text, state = {}, env = {}) {
+  if (env.NUM_MODEL) return env.NUM_MODEL;
+  const strong = env.NUM_MODEL_STRONG || 'claude-opus-5';
+  const easy = env.NUM_MODEL_EASY || 'claude-sonnet-5';
+  const s = typeof text === 'string' ? text : '';
+
+  // A live trip means there is context to get wrong. Never economise on it.
+  if (state?.bookings?.length || state?.party?.id || state?.tripCheck) return strong;
+  if (!s.trim()) return strong;
+  if (s.length > 120) return strong;
+  if (DESERVES_THE_BEST.test(s)) return strong;
+  // Only now, having ruled out everything that matters, may it be cheap.
+  if (SIMPLE_LOOKUP.test(s.trim()) && s.length <= 80) return easy;
+  return strong;
+}

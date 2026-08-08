@@ -123,3 +123,29 @@ test('the independent-quota brain outranks the ones sharing a pool', () => {
   assert.ok(brains.indexOf("id: 'hosted'") < brains.indexOf("id: 'gpt-oss-120b'"),
     'the hosted brain sits below Workers AI — it would only be tried after the shared pool is already exhausted');
 });
+
+test('an ask we do not understand is never answered with a list of whatever is nearby', () => {
+  // "Let's plan the horse races this weekend in Delmar" came back as three Los
+  // Angeles restaurants and a sports bar. A confident list of irrelevant
+  // places reads as a system that did not listen — much worse than admitting
+  // the limit and asking.
+  const out = lastResort({ userText: "let's plan the horse races this weekend in delmar", grounding: GROUNDING, place: null });
+  for (const wrong of ['Baan Rim Pa', 'Suay Restaurant', 'Kan Eang']) {
+    assert.ok(!out.reply.includes(wrong),
+      'an unrecognised ask was answered with an unrelated partner list');
+  }
+  assert.match(out.reply, /\?/, 'it neither answered nor asked — the guest is stuck');
+});
+
+test('the closing line names what the guest actually asked for', () => {
+  // Every reply used to promise "the table and the car". A guest asking for a
+  // massage was told their table was coming, which undoes the honesty the rest
+  // of the message is built on.
+  const spa = lastResort({ userText: 'book me a massage nearby tomorrow', grounding: GROUNDING, place: null });
+  assert.ok(!/table/i.test(spa.reply), 'a massage request was promised a table');
+  assert.ok(!/\bcar\b/i.test(spa.reply), 'a massage request was promised a car');
+  assert.match(spa.reply, /treatment/i, 'the closing line no longer names what was asked for');
+
+  const car = lastResort({ userText: 'i need a driver to the airport', grounding: GROUNDING, place: null });
+  assert.ok(!/table/i.test(car.reply), 'a car request was promised a table');
+});

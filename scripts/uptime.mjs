@@ -51,6 +51,30 @@ export const TARGETS = [
     downIfBodyMatches: /"verdict"\s*:\s*"down"/,
     why: 'the internal dependency checks, as seen from outside the building',
   },
+  {
+    name: 'ask',
+    url: 'https://app.itsnum.com/api/num',
+    method: 'POST',
+    // "my" forces this past the answer cache (cacheable() refuses first-person
+    // asks), so every probe exercises the full model path — grounding, prompt,
+    // brain, impressions, guard. That is the point: on 6–7 Aug every GET here
+    // was green while every actual QUESTION was being answered by the
+    // fallback. The three probes above ask "is the server up?"; this one asks
+    // the only question a guest asks — "does it work?"
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'my group needs dinner ideas in patong tonight' }] }),
+    marker: '"reply"',
+    // Degraded IS the outage. A fallback answer with degraded:true is the
+    // product limping — invisible to every status-code check, and exactly the
+    // signal that was missing for two days.
+    downIfBodyMatches: /"degraded"\s*:\s*true/,
+    downReason: 'the concierge is answering from a fallback, not a brain',
+    downRemedy:
+      'POST /api/num returned degraded:true — every brain failed or the main path threw. ' +
+      'Tail the worker and look for "[num-ai]": if the error is a ReferenceError/TypeError it is a CODE BUG ' +
+      '(see the THIS IS A CODE BUG log line), not quota. Check num_brain_events in D1 for real brain failures. ' +
+      'An empty events table + degraded answers = the bug is in index.mjs, not the brains.',
+    why: 'a real question through the real model path — the only probe that measures what a guest experiences',
+  },
 ];
 
 const UA = 'num-uptime/1.0 (+https://itsnum.com)';
@@ -90,8 +114,8 @@ export function evaluate(target, result) {
   }
 
   if (target.downIfBodyMatches && target.downIfBodyMatches.test(body)) {
-    return { ok: false, reason: 'health endpoint reports verdict: down',
-      remedy: `${target.url} is reachable but reporting itself unhealthy. Open it directly — the detail field names the failing check.` };
+    return { ok: false, reason: target.downReason ?? 'health endpoint reports verdict: down',
+      remedy: target.downRemedy ?? `${target.url} is reachable but reporting itself unhealthy. Open it directly — the detail field names the failing check.` };
   }
 
   return { ok: true, reason: `HTTP ${status}` };
@@ -101,8 +125,16 @@ async function probe(target) {
   try {
     const res = await fetch(target.url, {
       redirect: 'manual',
-      headers: { 'User-Agent': UA, 'Cache-Control': 'no-cache' },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      method: target.method ?? 'GET',
+      headers: {
+        'User-Agent': UA,
+        'Cache-Control': 'no-cache',
+        ...(target.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(target.body ? { body: target.body } : {}),
+      // A model turn takes seconds where a static fetch takes milliseconds.
+      // The ask probe measuring the real path must be allowed the real time.
+      signal: AbortSignal.timeout(target.method === 'POST' ? 30000 : TIMEOUT_MS),
     });
     return {
       status: res.status,

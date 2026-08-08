@@ -16,7 +16,7 @@ import { redactProfile, redactState } from './redact.mjs';
 import { readCache, writeCache, cacheable } from './answercache.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
-import { pickLane, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
+import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
 import { handleSocialSafe } from './social.mjs';
 import { handleEvents, handleEventPage } from './events.mjs';
 import { handleConsole, logUsage } from './console.mjs';
@@ -99,9 +99,12 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // the beach in Malibu for six". Headroom is cheaper than a dead end. Trimming
   // cost belongs in the prompt that tells the model to keep payloads lean, not
   // in a ceiling that cuts it off mid-sentence.
+  // Opus for the turns that deserve it, Sonnet for one-line lookups. Fails
+  // toward Opus on anything ambiguous — see router.pickModel.
+  const model = pickModel(userText, state, env ?? {});
   const call = (maxTokens) =>
     client.messages.create({
-      model: env?.NUM_MODEL || DEFAULT_MODEL,
+      model,
       max_tokens: maxTokens,
       system,
       output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
@@ -889,7 +892,12 @@ export default {
         card: result.card,
         memberId: parsed.state?.me?.id ?? null,
         dest: grounding.place?.slug ?? null,
-        asked: userText,
+        // `lastUser`, NOT `userText`. `userText` is a parameter of askNum and
+        // does not exist in this scope — referencing it threw a ReferenceError
+        // on every big-lane request, AFTER the model had already produced a
+        // good answer, and the catch below quietly replaced it with the
+        // directory fallback. Days of "the chat is down" were this line.
+        asked: lastUser,
       }));
       // Output guard: never let leaked JSON scaffolding reach the user. One
       // corrective retry, then salvage, then the safe fallback.
@@ -951,6 +959,21 @@ export default {
       return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
     } catch (err) {
       console.error('[num-ai]', err);
+      // A ReferenceError or TypeError is OUR bug, not an outage. The two look
+      // identical from here — both land in this catch and both get the polite
+      // fallback — and that is exactly how `asked: userText` survived for days
+      // looking like a quota problem while every brain was answering perfectly.
+      //
+      // The guest still gets the fallback; there is nothing better to give
+      // them mid-request. But the log must not let a programming error wear an
+      // outage's clothes, so it says so in terms no one can skim past.
+      if (err instanceof ReferenceError || err instanceof TypeError || err instanceof SyntaxError) {
+        console.error(
+          `[num-ai] THIS IS A CODE BUG, NOT AN OUTAGE — ${err.name}: ${err.message}. ` +
+          'The brains are probably fine. Fix the line in the stack above; do not go looking at quota.',
+          err.stack,
+        );
+      }
       // A guest never hears "the kitchen is broken". If the big model failed
       // for any reason, try the cheap one — it cannot book anything, but it can
       // hold the conversation open, which is the whole job at this moment.
@@ -959,7 +982,13 @@ export default {
         const guard = rescue ? guardReply(rescue) : { ok: false };
         if (guard.ok && !/\bHANDOFF\b/.test(guard.cleaned) && !soundsLikeASwitchboard(guard.cleaned)) {
           ctx.waitUntil(logUsage(env, { lane: 'rescue', model: 'workers-ai', place: parsed.place ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
-          return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: parsed.place ?? null });
+          // `degraded: true` matters more here than anywhere else. This lane
+          // only runs when the main path has already failed, and without the
+          // flag its answer is indistinguishable from a healthy one. On
+          // 6–7 Aug it returned "Kata Beach is a fave." with degraded absent,
+          // which read as a working concierge having an off day — and sent two
+          // days of debugging toward quota instead of toward the real bug.
+          return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: parsed.place ?? null, degraded: true, brain: 'rescue' });
         }
       } catch (rescueErr) {
         console.warn('[num-ai] rescue lane also failed:', rescueErr?.message ?? rescueErr);

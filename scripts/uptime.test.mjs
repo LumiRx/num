@@ -120,3 +120,31 @@ test('the workflow runs on a schedule, not only on push', () => {
   assert.match(wf, /^\s+- cron: '[^']+'$/m, 'no cron expression');
   assert.match(wf, /^\s{2}workflow_dispatch:$/m, 'cannot be run by hand during an incident');
 });
+
+// ── the synthetic ask ─────────────────────────────────────────────────────
+//
+// On 6–7 Aug every GET probe was green while every actual question was being
+// answered by the fallback: a ReferenceError fired after the model had already
+// answered, and `degraded: true` rode back in a 200. Status-code monitoring
+// cannot see that. Only asking a real question can.
+
+const ask = TARGETS.find((t) => t.name === 'ask');
+
+test('the monitor asks a real question, not just GETs', () => {
+  assert.ok(ask, 'the synthetic ask target is gone — the monitor is back to measuring servers instead of answers');
+  assert.equal(ask.method, 'POST', 'the ask probe no longer POSTs — it cannot reach the model path');
+  assert.match(ask.body, /"my /, 'the probe question lost its first-person marker — the answer cache will serve it and the model path goes unmeasured');
+});
+
+test('a degraded answer is an outage, even inside a 200', () => {
+  // The exact body shape from the two lost days.
+  const v = evaluate(ask, res({ body: '{"reply":"Here is what is near you...","degraded":true,"lane":"last-resort"}' }));
+  assert.equal(v.ok, false, 'degraded:true passed the monitor — the two-day outage would be invisible again');
+  assert.match(v.remedy, /CODE BUG/i, 'the remedy no longer warns that this can be a code bug rather than quota');
+  assert.match(v.remedy, /num_brain_events/, 'the remedy no longer points at the table that settles code-bug vs outage');
+});
+
+test('a healthy answer passes', () => {
+  const v = evaluate(ask, res({ body: '{"reply":"Issara on Kata Beach — lively, a kilometre away.","card":null}' }));
+  assert.equal(v.ok, true, 'a working answer failed the probe — it would alert on every healthy turn');
+});

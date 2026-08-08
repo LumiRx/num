@@ -1,12 +1,12 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.175",
+  "version": "0.8.179",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "node --test worker/*.test.mjs src/lib/*.test.mjs scripts/*.test.mjs",
+    "test": "eslint worker scripts server && node --test worker/*.test.mjs src/lib/*.test.mjs scripts/*.test.mjs",
     "uptime": "node scripts/uptime.mjs",
     "preview": "vite preview",
     "ai": "node server/index.mjs",
@@ -16,7 +16,8 @@
     "release:ship": "node scripts/release.mjs ship",
     "release:rollback": "node scripts/release.mjs rollback",
     "test:availability": "node worker/availability.test.mjs",
-    "test:invites": "node scripts/test-invites.mjs"
+    "test:invites": "node scripts/test-invites.mjs",
+    "lint": "eslint worker scripts server"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -28,6 +29,8 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.8.1",
+    "globals": "^17.9.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   }
