@@ -306,6 +306,14 @@ function liteLogin(err = '') {
   </form>`);
 }
 
+/** Rows or empty — a missing table renders as an honest empty state. */
+async function rows(env, sql, ...binds) {
+  try { return (await env.DB.prepare(sql).bind(...binds).all()).results ?? []; }
+  catch { return []; }
+}
+
+const TABS = ['overview', 'asks', 'guests', 'business', 'money', 'places', 'infra'];
+
 async function liteConsole(env, req, url) {
   // WHO: a posted key, or a still-valid token in ?s=.
   let token = null;
@@ -325,6 +333,8 @@ async function liteConsole(env, req, url) {
   }
 
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 30));
+  const tab = TABS.includes(url.searchParams.get('tab')) ? url.searchParams.get('tab') : 'overview';
+  const since = `datetime('now','-${days} days')`;
   const ovUrl = new URL(req.url); ovUrl.searchParams.set('days', String(days));
   // The same truth every other view reads — parsed back out of the existing
   // endpoint rather than re-implemented, so the numbers cannot drift.
@@ -332,21 +342,22 @@ async function liteConsole(env, req, url) {
   const app = d.app ?? {}, rev = d.revenue ?? {}, chain = d.chain ?? {}, ai = d.ai ?? {}, m = d.money ?? {};
 
   const link = (q) => `/api/admin/console?s=${encodeURIComponent(token)}${q}`;
+
+  const nav = TABS.map((t) =>
+    t === tab ? `<b>${H(t)}</b>` : `<a href="${link(`&tab=${t}&days=${days}`)}">${H(t)}</a>`).join(' · ');
+  const head = `<h1>NUM Ops</h1><p class="sub">${nav}</p>
+    <p class="sub">rendered ${H(new Date().toISOString().slice(0, 16).replace('T', ' '))} UTC · last ${days} days ·
+      <a href="${link(`&tab=${tab}&days=${days}`)}">refresh</a> ·
+      window: <a href="${link(`&tab=${tab}&days=7`)}">7d</a> / <a href="${link(`&tab=${tab}&days=30`)}">30d</a> / <a href="${link(`&tab=${tab}&days=90`)}">90d</a></p>`;
   const card = (label, value, sub, warn = false) =>
     `<div class="card${warn ? ' warn' : ''}"><b>${H(value)}</b>${H(label)}<br><span>${H(sub)}</span></div>`;
+  const tbl2 = (heads, rws, empty) =>
+    `<table><tr>${heads.map((h) => `<th>${H(h)}</th>`).join('')}</tr>${rws.length ? rws.join('') : `<tr><td colspan="${heads.length}">${H(empty)}</td></tr>`}</table>`;
 
-  const payRows = (rev.recent ?? []).map((r) =>
-    `<tr><td>${H(r.ref || r.id || '—')}</td><td>${r.currency === 'thb' ? '฿' : '$'}${NUM((r.amount_cents ?? 0) / 100)}${r.mode === 'stripe-sub' ? ' /mo' : ''}</td><td class="${r.state === 'paid' ? 'ok' : r.state === 'created' ? '' : 'bad'}">${H(r.state)}</td><td>${H(r.created_at ?? '')}</td></tr>`).join('')
-    || '<tr><td colspan="4">No payments yet.</td></tr>';
-  const memberRows = (app.recent ?? []).slice(0, 10).map((r) =>
-    `<tr><td>${H(r.name || '—')}</td><td>${H(r.phone || '—')}</td><td class="${r.phone_verified ? 'ok' : ''}">${r.phone_verified ? 'verified' : 'unverified'}</td><td>${H(r.dest || '—')}</td><td>${H(r.created_at ?? '')}</td></tr>`).join('')
-    || '<tr><td colspan="5">Nobody yet.</td></tr>';
+  let body = '';
 
-  return liteShell(`
-    <h1>NUM Ops</h1><p class="sub">Rendered ${H(new Date().toISOString().slice(0, 16).replace('T', ' '))} UTC · last ${days} days ·
-      <a href="${link(`&days=${days}`)}">refresh</a> ·
-      window: <a href="${link('&days=7')}">7d</a> / <a href="${link('&days=30')}">30d</a> / <a href="${link('&days=90')}">90d</a></p>
-    <div class="cards">
+  if (tab === 'overview') {
+    body = `<div class="cards">
       ${card('members', NUM(app.members), `${NUM(app.verified)} verified · ${NUM(app.active24)} active 24h`)}
       ${card('revenue USD', '$' + NUM(rev.usd), `${NUM(rev.paid_total)} paid · ${NUM(rev.paid_24h)} in 24h`)}
       ${card('revenue THB', '฿' + NUM(rev.thb), 'baht bills and tabs')}
@@ -356,13 +367,124 @@ async function liteConsole(env, req, url) {
       ${card('cache', NUM(chain.cache_hits) + ' hits', `${NUM(chain.cache_entries)} answers stored`)}
       ${card('brain failures 24h', NUM(chain.brain_fails_24h), (chain.brain_fails_24h ?? 0) === 0 ? 'every brain healthy' : 'check num_brain_state', (chain.brain_fails_24h ?? 0) > 5)}
       ${card('Stars circulating', NUM(m.circulating), m.escrow_balanced ? 'escrow balanced' : 'ESCROW DRIFT', !m.escrow_balanced)}
+    </div>`;
+  }
+
+  if (tab === 'asks') {
+    const feed = await rows(env, `SELECT text, category, dest, lane, brain, degraded, cached, ts FROM num_asks WHERE ts > ${since} ORDER BY id DESC LIMIT 50`);
+    const cats = await rows(env, `SELECT COALESCE(category,'(uncategorised)') c, COALESCE(dest,'?') dest, COUNT(*) n FROM num_asks WHERE ts > ${since} GROUP BY 1,2 ORDER BY n DESC LIMIT 15`);
+    const pain = await rows(env, `SELECT text, dest, ts FROM num_asks WHERE degraded=1 AND ts > ${since} ORDER BY id DESC LIMIT 15`);
+    const gaps = await rows(env, `SELECT summary, place, status, ts FROM feature_requests ORDER BY id DESC LIMIT 12`);
+    body = `<h2>What guests are asking (scrubbed at write — emails and numbers never stored)</h2>
+      ${tbl2(['Question', 'Cat', 'Dest', 'Answered by', 'When'], feed.map((r) =>
+        `<tr><td>${H(r.text)}</td><td>${H(r.category ?? '—')}</td><td>${H(r.dest ?? '—')}</td><td class="${r.degraded ? 'bad' : ''}">${r.cached ? 'cache' : H(r.brain ?? r.lane ?? '—')}${r.degraded ? ' (degraded)' : ''}</td><td>${H(r.ts)}</td></tr>`),
+        'No asks recorded yet — capture shipped 8 Aug, rows appear as guests talk.')}
+      <h2>Top categories by destination</h2>
+      ${tbl2(['Category', 'Dest', 'Asks'], cats.map((r) => `<tr><td>${H(r.c)}</td><td>${H(r.dest)}</td><td>${NUM(r.n)}</td></tr>`), 'Nothing yet.')}
+      <h2>Asks we failed — the roadmap</h2>
+      ${tbl2(['Question', 'Dest', 'When'], pain.map((r) => `<tr><td>${H(r.text)}</td><td>${H(r.dest ?? '—')}</td><td>${H(r.ts)}</td></tr>`), 'No degraded answers in this window.')}
+      <h2>Capability gaps the model flagged itself</h2>
+      ${tbl2(['Summary', 'Place', 'Status', 'When'], gaps.map((r) => `<tr><td>${H(r.summary)}</td><td>${H(r.place ?? '—')}</td><td>${H(r.status)}</td><td>${H(r.ts)}</td></tr>`), 'None flagged.')}`;
+  }
+
+  if (tab === 'guests') {
+    const bySource = app.by_source ?? [];
+    const hosts = await rows(env, `SELECT m.name, m.dest, COUNT(e.id) events FROM num_members m JOIN num_events e ON e.host_id = m.id GROUP BY m.id ORDER BY events DESC LIMIT 12`);
+    const tiers = await rows(env, `SELECT tier, COUNT(*) n, SUM(CASE WHEN stripe_sub IS NOT NULL THEN 1 ELSE 0 END) recurring FROM num_memberships GROUP BY tier`);
+    body = `<div class="cards">
+      ${card('members', NUM(app.members), `${NUM(app.verified)} verified`)}
+      ${card('people (deduped)', NUM(d.app?.people ?? app.members), `${NUM(d.app?.redownloads ?? 0)} reinstalls`)}
+      ${card('active 24h', NUM(app.active24), `${NUM(app.plans)} plans · ${NUM(app.events)} events`)}
+      ${card('friendships', NUM(d.app?.friendships ?? 0), 'active links')}
     </div>
-    <h2>Recent payments</h2>
-    <table><tr><th>Ref</th><th>Amount</th><th>State</th><th>When (UTC)</th></tr>${payRows}</table>
+    <h2>Signups by source (verified is the honest column)</h2>
+    ${tbl2(['Source', 'Campaign', 'Signups', 'Verified'], bySource.map((r) =>
+      `<tr><td>${H(r.source)}</td><td>${H(r.campaign || '—')}</td><td>${NUM(r.signups)}</td><td class="${(r.verified ?? 0) > 0 ? 'ok' : ''}">${NUM(r.verified ?? 0)}</td></tr>`), 'No signups in window.')}
+    <h2>Hosts — members who bring other people</h2>
+    ${tbl2(['Name', 'Dest', 'Events hosted'], hosts.map((r) => `<tr><td>${H(r.name ?? '—')}</td><td>${H(r.dest ?? '—')}</td><td>${NUM(r.events)}</td></tr>`), 'Nobody has hosted an event yet.')}
+    <h2>Membership tiers</h2>
+    ${tbl2(['Tier', 'Members', 'Auto-renewing'], tiers.map((r) => `<tr><td>${H(r.tier)}</td><td>${NUM(r.n)}</td><td>${NUM(r.recurring)}</td></tr>`), 'Free only so far.')}
     <h2>Recent members</h2>
-    <table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Dest</th><th>Joined (UTC)</th></tr>${memberRows}</table>
-    <p class="tools">Session expires in ${SESSION_HOURS}h. The full dashboard at /ops/ still works with the same key when you want charts.</p>
-  `);
+    ${tbl2(['Name', 'Phone', 'Status', 'Dest', 'Joined'], (app.recent ?? []).map((r) =>
+      `<tr><td>${H(r.name || '—')}</td><td>${H(r.phone || '—')}</td><td class="${r.phone_verified ? 'ok' : ''}">${r.phone_verified ? 'verified' : 'unverified'}</td><td>${H(r.dest || '—')}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'Nobody yet.')}`;
+  }
+
+  if (tab === 'business') {
+    const biz = d.business ?? {};
+    const leadRows = await rows(env, `SELECT name, email, dest, status, created_at FROM leads ORDER BY id DESC LIMIT 15`);
+    const refs = await rows(env, `SELECT business_name, state, created_at FROM num_biz_referrals ORDER BY id DESC LIMIT 12`);
+    const imp = await rows(env, `SELECT p.name, COUNT(*) n FROM num_place_impressions i JOIN places p ON p.id = i.place_id WHERE i.ts > strftime('%s','now') - ${days}*86400 GROUP BY p.id ORDER BY n DESC LIMIT 15`);
+    body = `<div class="cards">
+      ${card('businesses', NUM(biz.businesses), `${NUM(biz.claims)} claims · ${NUM(biz.owners)} owners`)}
+      ${card('site leads', NUM(d.site?.leads ?? 0), `${NUM(d.site?.leadsNew ?? 0)} uncontacted`, (d.site?.leadsNew ?? 0) > 0)}
+      ${card('referrals', NUM(d.app?.conversions ?? 0), 'guest-referred businesses')}
+    </div>
+    <h2>Most-recommended businesses (impressions — the number they pay for)</h2>
+    ${tbl2(['Business', 'Times put in front of a guest'], imp.map((r) => `<tr><td>${H(r.name)}</td><td>${NUM(r.n)}</td></tr>`), 'No impressions in window.')}
+    <h2>Leads</h2>
+    ${tbl2(['Name', 'Email', 'Dest', 'Status', 'When'], leadRows.map((r) =>
+      `<tr><td>${H(r.name ?? '—')}</td><td>${H(r.email ?? '—')}</td><td>${H(r.dest ?? '—')}</td><td>${H(r.status ?? 'new')}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'No leads yet.')}
+    <h2>Guest referrals of businesses</h2>
+    ${tbl2(['Business', 'State', 'When'], refs.map((r) => `<tr><td>${H(r.business_name ?? '—')}</td><td>${H(r.state)}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'None yet.')}`;
+  }
+
+  if (tab === 'money') {
+    const cashouts = await rows(env, `SELECT member_id, stars, state, created_at FROM num_cashouts ORDER BY id DESC LIMIT 10`);
+    const byDayPay = await rows(env, `SELECT date(paid_at) d, currency, COUNT(*) n, SUM(amount_cents)/100.0 amt FROM num_payments WHERE state='paid' AND paid_at > ${since} GROUP BY 1,2 ORDER BY d DESC LIMIT 20`);
+    body = `<div class="cards">
+      ${card('revenue USD', '$' + NUM(rev.usd), `${NUM(rev.paid_total)} paid`)}
+      ${card('revenue THB', '฿' + NUM(rev.thb), 'bills and tabs')}
+      ${card('subscriptions', NUM(rev.recurring), `${NUM((rev.members_paid ?? 0) - (rev.recurring ?? 0))} legacy one-off`, (rev.members_paid ?? 0) > (rev.recurring ?? 0))}
+      ${card('trouble 7d', NUM(rev.trouble_7d), 'failed / refunded / disputed', (rev.trouble_7d ?? 0) > 0)}
+      ${card('Stars circulating', NUM(m.circulating), m.escrow_balanced ? 'escrow balanced' : 'ESCROW DRIFT', !m.escrow_balanced)}
+      ${card('cashouts pending', NUM(cashouts.filter((c) => c.state === 'requested').length), 'human approval required, always')}
+    </div>
+    <h2>Paid by day</h2>
+    ${tbl2(['Day', 'Currency', 'Payments', 'Amount'], byDayPay.map((r) =>
+      `<tr><td>${H(r.d)}</td><td>${H(r.currency)}</td><td>${NUM(r.n)}</td><td>${r.currency === 'thb' ? '฿' : '$'}${NUM(r.amt)}</td></tr>`), 'Nothing paid in window.')}
+    <h2>Recent payments</h2>
+    ${tbl2(['Ref', 'Amount', 'State', 'When'], (rev.recent ?? []).map((r) =>
+      `<tr><td>${H(r.ref || r.id || '—')}</td><td>${r.currency === 'thb' ? '฿' : '$'}${NUM((r.amount_cents ?? 0) / 100)}${r.mode === 'stripe-sub' ? ' /mo' : ''}</td><td class="${r.state === 'paid' ? 'ok' : r.state === 'created' ? '' : 'bad'}">${H(r.state)}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'No payments yet.')}
+    <h2>Cash-out requests (payout desk)</h2>
+    ${tbl2(['Member', 'Stars', 'State', 'When'], cashouts.map((r) =>
+      `<tr><td>${H(r.member_id)}</td><td>${NUM(r.stars)}</td><td>${H(r.state)}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'No cash-out requests.')}`;
+  }
+
+  if (tab === 'places') {
+    const dests = await rows(env, `SELECT slug, name, country, live, place_count, last_ingest_at FROM destinations ORDER BY live DESC, place_count DESC LIMIT 40`);
+    const wantThere = await rows(env, `SELECT m.dest, COUNT(*) n FROM num_members m LEFT JOIN destinations d ON d.slug = m.dest AND d.live=1 WHERE m.dest IS NOT NULL AND d.slug IS NULL GROUP BY m.dest ORDER BY n DESC LIMIT 10`);
+    const nature = await rows(env, `SELECT dest, COUNT(*) n FROM places WHERE category IN ('Beach','Temple','Viewpoint','Waterfall','Park') GROUP BY dest ORDER BY n DESC LIMIT 10`);
+    body = `<h2>Destinations (live = approved and serving)</h2>
+    ${tbl2(['Destination', 'Country', 'Status', 'Places', 'Last ingest'], dests.map((r) =>
+      `<tr><td>${H(r.name)}</td><td>${H(r.country)}</td><td class="${r.live ? 'ok' : ''}">${r.live ? 'LIVE' : 'pending'}</td><td>${NUM(r.place_count)}</td><td>${H(r.last_ingest_at ?? '—')}</td></tr>`), 'No destinations.')}
+    <h2>Signups where we have no live coverage — the launch queue</h2>
+    ${tbl2(['Requested dest', 'Members waiting'], wantThere.map((r) => `<tr><td>${H(r.dest)}</td><td>${NUM(r.n)}</td></tr>`), 'Every member is somewhere we cover.')}
+    <h2>Nature coverage (beaches, temples, viewpoints…)</h2>
+    ${tbl2(['Destination', 'Nature places'], nature.map((r) => `<tr><td>${H(r.dest)}</td><td>${NUM(r.n)}</td></tr>`), 'Run the nature ingest for more cities.')}`;
+  }
+
+  if (tab === 'infra') {
+    const brains = await rows(env, `SELECT brain, fails, class, last_error, cooldown_until FROM num_brain_state ORDER BY fails DESC`);
+    const health = await rows(env, `SELECT verdict, detail, created_at FROM num_health ORDER BY id DESC LIMIT 8`);
+    const smsD = await rows(env, `SELECT status, COUNT(*) n FROM num_sms_delivery GROUP BY status ORDER BY n DESC LIMIT 8`);
+    const now = Math.floor(Date.now() / 1000);
+    body = `<div class="cards">
+      ${card('brain failures 24h', NUM(chain.brain_fails_24h), (chain.brain_fails_24h ?? 0) === 0 ? 'all healthy' : 'see table below', (chain.brain_fails_24h ?? 0) > 5)}
+      ${card('cache', NUM(chain.cache_hits) + ' hits', `${NUM(chain.cache_entries)} stored — every hit is a free answer`)}
+      ${card('push subs', NUM(d.reach?.push_subs ?? 0), `${NUM(d.reach?.push_dead ?? 0)} dead endpoints`)}
+    </div>
+    <h2>Brains (a cooldown in the future = currently benched)</h2>
+    ${tbl2(['Brain', 'Fails', 'Class', 'Last error', 'Benched until'], brains.map((r) =>
+      `<tr><td>${H(r.brain)}</td><td>${NUM(r.fails)}</td><td>${H(r.class ?? '—')}</td><td>${H((r.last_error ?? '').slice(0, 60))}</td><td class="${Number(r.cooldown_until) > now ? 'bad' : ''}">${Number(r.cooldown_until) > now ? H(new Date(r.cooldown_until * 1000).toISOString().slice(11, 16)) + ' UTC' : '—'}</td></tr>`), 'No brain has ever failed. Suspicious, but pleasant.')}
+    <h2>Health cron verdicts</h2>
+    ${tbl2(['Verdict', 'Detail', 'When'], health.map((r) =>
+      `<tr><td class="${r.verdict === 'down' ? 'bad' : 'ok'}">${H(r.verdict)}</td><td>${H((r.detail ?? '').slice(0, 80))}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'No cron rows — check the health worker.')}
+    <h2>SMS delivery</h2>
+    ${tbl2(['Status', 'Count'], smsD.map((r) => `<tr><td>${H(r.status)}</td><td>${NUM(r.n)}</td></tr>`), 'No SMS sent yet.')}
+    <p class="tools">External checks: the GitHub uptime probe asks a real question every 5 minutes and fails the workflow on degraded answers.</p>`;
+  }
+
+  return liteShell(head + body + `<p class="tools">Session expires in ${SESSION_HOURS}h.</p>`);
 }
 
 async function adminLogin(env, req) {

@@ -20,14 +20,24 @@ test('the right key returns the dashboard in the same response', async () => {
   const r = await handleConsole(post('k123'), env, '/admin/console');
   const html = await r.text();
   assert.equal(r.status, 200);
-  assert.ok(html.includes('Recent payments'), 'the login response does not contain the dashboard — a second round trip is back');
+  assert.ok(html.includes('revenue USD'), 'the login response does not contain the dashboard — a second round trip is back');
   assert.ok(!r.headers.get('Location'), 'the login redirects again — the class of failure this rebuild removes');
+  // Every tab reachable through the token links, each rendering its own data.
+  const s2 = /s=([^&"]+)/.exec(html)?.[1];
+  for (const [tabName, marker] of [
+    ['asks', 'What guests are asking'], ['guests', 'Signups by source'],
+    ['business', 'Most-recommended businesses'], ['money', 'Recent payments'],
+    ['places', 'the launch queue'], ['infra', 'Health cron verdicts'],
+  ]) {
+    const t = await (await handleConsole(new Request(`http://x/api/admin/console?s=${s2}&tab=${tabName}`), env, '/admin/console')).text();
+    assert.ok(t.includes(marker), `the ${tabName} tab does not render "${marker}"`);
+  }
 });
 
 test('the wrong key says Wrong password, in the page itself', async () => {
   const html = await (await handleConsole(post('nope'), env, '/admin/console')).text();
   assert.ok(html.includes('Wrong password.'), 'a wrong key fails without saying so — silence again');
-  assert.ok(!html.includes('Recent payments'), 'a wrong key rendered the dashboard');
+  assert.ok(!html.includes('revenue USD'), 'a wrong key rendered the dashboard');
 });
 
 test('the session token in the links keeps working as a GET', async () => {
@@ -40,7 +50,7 @@ test('the session token in the links keeps working as a GET', async () => {
 
 test('no session, no numbers', async () => {
   const html = await (await handleConsole(new Request('http://x/api/admin/console?s=garbage.token'), env, '/admin/console')).text();
-  assert.ok(!html.includes('Recent payments'), 'a garbage token rendered the dashboard — the console is public');
+  assert.ok(!html.includes('revenue USD'), 'a garbage token rendered the dashboard — the console is public');
 });
 
 test('hostile data renders as text, never as markup', async () => {
