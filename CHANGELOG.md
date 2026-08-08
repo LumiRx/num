@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.195 — 2026-08-08 21:27 UTC
+
+install page: licensed stock photography
+
+- commit `dd291da`
+
+## 0.8.194 — 2026-08-08 20:47 UTC
+
+install page: photography, louder home-screen ask, restored spacing
+
+- commit `e42d4ce`
+
 ## 0.8.193 — 2026-08-08 20:20 UTC
 
 (no note given)
