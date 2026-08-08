@@ -240,6 +240,80 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
   return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency };
 }
 
+/**
+ * A RECURRING checkout — Stripe owns the schedule from here.
+ *
+ * Differences from requestPayment that matter:
+ *   - mode 'subscription' with an inline recurring price. No Product to
+ *     pre-create in the dashboard; the price is stated here, by us, in USD.
+ *   - metadata rides on BOTH the session and the subscription itself
+ *     (subscription_data.metadata) — invoices reference the subscription, so
+ *     without that copy every later invoice.paid would arrive anonymous.
+ *   - payment_intent_data is NOT sent: Stripe rejects it in subscription
+ *     mode; the subscription carries the metadata instead.
+ */
+export async function requestSubscription(env, { memberId, amountCents, name, ref, successUrl, cancelUrl }) {
+  await ensure(env);
+  const mode = payMode(env);
+  if (mode !== 'stripe') {
+    return { ok: false, mode, error: 'Subscriptions need the Stripe key — a fixed link cannot recur.' };
+  }
+  const amount = Math.round(Number(amountCents));
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, mode, error: 'A positive amount is required.' };
+
+  const id = `pay_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+  const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
+  const session = await stripe(
+    env,
+    '/checkout/sessions',
+    {
+      mode: 'subscription',
+      success_url: successUrl || `${origin}/?paid=${id}`,
+      cancel_url: cancelUrl || `${origin}/?app`,
+      client_reference_id: id,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'usd',
+            unit_amount: amount,
+            recurring: { interval: 'month' },
+            product_data: { name: clip(name, 120) || 'Num membership' },
+          },
+        },
+      ],
+      metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(memberId ? { num_member: memberId } : {}) },
+      subscription_data: {
+        metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(memberId ? { num_member: memberId } : {}) },
+      },
+    },
+    id,
+  );
+
+  await env.DB?.prepare(
+    'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
+  ).bind(id, clip(memberId, 40), 'stripe-sub', clip(ref, 60), amount, 'usd', clip(name, 200), session.id, session.url).run().catch(() => {});
+
+  return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: 'usd' };
+}
+
+/**
+ * Stop a subscription AT PERIOD END. Never immediately: the member paid for
+ * the month and keeps the month. Access ends when the paid time does, which
+ * is also why this needs no membership write here — with no further
+ * invoice.paid, renews_at simply expires on its own schedule.
+ */
+export async function cancelSubscription(env, subId) {
+  if (!env.STRIPE_SECRET_KEY) return { ok: false, error: 'Stripe is not connected.' };
+  try {
+    await stripe(env, `/subscriptions/${encodeURIComponent(subId)}`, { cancel_at_period_end: true });
+    return { ok: true };
+  } catch (err) {
+    console.error('[pay] cancel failed for', subId, err?.message);
+    return { ok: false, error: 'Stripe refused the cancellation — try again, or we’ll do it by hand.' };
+  }
+}
+
 // ── Stripe webhook — "paid" is something Stripe signs, not a button press ──
 //
 // §8 of the CTO handoff: every webhook verifies a signature. Stripe signs
@@ -320,8 +394,11 @@ export async function handlePay(request, env, path) {
             // loudly, because the guest did pay SOMETHING.
             console.error(`[pay] TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} usd. Grant refused; refund ${id} and find out which client built this session.`);
           } else {
-            const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id });
-            console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId);
+            // s.subscription is present only for mode:'subscription' sessions.
+            // Storing it is what makes every later invoice.paid attributable —
+            // a renewal that can't find its member extends nothing.
+            const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
+            console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
           }
         }
 
@@ -371,6 +448,43 @@ export async function handlePay(request, env, path) {
     //
     // Stripe is the source of truth for money, so we take its word for these
     // and write down what happened rather than deciding anything ourselves.
+    // ── The renewal lifecycle. Stripe owns the schedule; we mirror it. ──────
+    //
+    // invoice.paid is the ONLY event that extends a membership, and
+    // customer.subscription.deleted is the ONLY event that ends one early.
+    // A failed renewal does neither: Stripe retries for days, the 3-day grace
+    // in renewsFrom() covers the gap, and whichever side wins — the retry or
+    // the cancellation — arrives here as one of these two events.
+    if (event.type === 'invoice.paid') {
+      const inv = event.data?.object ?? {};
+      const subId = inv.subscription || inv.parent?.subscription_details?.subscription;
+      if (subId) {
+        const periodEnd = inv.lines?.data?.[0]?.period?.end ?? null;
+        const { recordRenewal } = await import('./membership.mjs');
+        const r = await recordRenewal(env, subId, periodEnd);
+        console.log('[pay] renewal', subId, r.ok ? `extended to ${r.renews_at}` : 'MATCHED NO MEMBER');
+      }
+      return json({ received: true });
+    }
+
+    if (event.type === 'customer.subscription.deleted') {
+      const sub = event.data?.object ?? {};
+      const { lapseBySub } = await import('./membership.mjs');
+      const r = await lapseBySub(env, sub.id);
+      console.log('[pay] subscription ended', sub.id, r.ok ? '— membership lapsed' : '— no membership held it');
+      return json({ received: true });
+    }
+
+    if (event.type === 'invoice.payment_failed') {
+      const inv = event.data?.object ?? {};
+      // Log and alert, change nothing: the grace period holds the tier while
+      // Stripe retries. Lapsing here would punish a bank hiccup with an
+      // instant downgrade that un-downgrades two days later.
+      console.warn('[pay] renewal payment failed for', inv.subscription ?? 'unknown sub', '— Stripe will retry; grace covers it');
+      await alert(env, `[pay] renewal failed: ${inv.subscription ?? '?'} (${inv.customer_email ?? 'no email'})`).catch(() => {});
+      return json({ received: true });
+    }
+
     if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
       const c = event.data?.object ?? {};
       const id = c.metadata?.num_payment_id;

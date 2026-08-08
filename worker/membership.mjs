@@ -128,6 +128,9 @@ let ready = false;
 async function ensure(env) {
   if (ready || !env.DB) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // Migration, not schema: the table predates subscriptions, so the column is
+  // added to live rows. Duplicate-column on a re-run is the expected no-op.
+  await env.DB.prepare('ALTER TABLE num_memberships ADD COLUMN stripe_sub TEXT').run().catch(() => {});
   ready = true;
 }
 
@@ -215,15 +218,56 @@ export async function countUse(env, memberId, key, by = 1) {
  * payment — never from a client request, for the same reason the client can't
  * price a Star pack.
  */
-export async function grantTier(env, memberId, tier, { source = 'stripe', ref = null, months = 1 } = {}) {
+export async function grantTier(env, memberId, tier, { source = 'stripe', ref = null, months = 1, sub = null } = {}) {
   await ensure(env);
   if (!tiers(env)[tier]) return { ok: false, error: 'unknown tier' };
   const renews = new Date(Date.now() + months * 30 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
   await env.DB.prepare(
-    `INSERT INTO num_memberships (member_id, tier, renews_at, source, ref) VALUES (?1,?2,?3,?4,?5)
-     ON CONFLICT(member_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5`,
-  ).bind(memberId, tier, renews, source, ref).run();
+    `INSERT INTO num_memberships (member_id, tier, renews_at, source, ref, stripe_sub) VALUES (?1,?2,?3,?4,?5,?6)
+     ON CONFLICT(member_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5, stripe_sub=COALESCE(?6, stripe_sub)`,
+  ).bind(memberId, tier, renews, source, ref, sub).run();
   return { ok: true, tier, renews_at: renews };
+}
+
+/**
+ * Turn Stripe's period-end epoch into our renews_at — WITH three days of
+ * grace. Stripe retries a failed renewal for days; without grace the member
+ * drops to free at midnight on day 30 and is silently restored when the retry
+ * lands on day 32. Flapping entitlements read as a broken product; three days
+ * of quiet grace reads as nothing at all, which is the point.
+ */
+export function renewsFrom(periodEndEpochSeconds) {
+  const t = Number(periodEndEpochSeconds);
+  if (!Number.isFinite(t) || t <= 0) return null;
+  return new Date(t * 1000 + 3 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * A renewal invoice was PAID — extend the membership it belongs to.
+ * Keyed on the subscription id, so no metadata archaeology on the invoice:
+ * if we don't hold the sub id, we don't extend anything, loudly.
+ */
+export async function recordRenewal(env, subId, periodEndEpochSeconds) {
+  if (!subId || !env.DB) return { ok: false };
+  await ensure(env);
+  const renews = renewsFrom(periodEndEpochSeconds)
+    ?? new Date(Date.now() + 33 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
+  const r = await env.DB.prepare(
+    'UPDATE num_memberships SET renews_at=?2 WHERE stripe_sub=?1',
+  ).bind(subId, renews).run();
+  const extended = (r?.meta?.changes ?? 0) > 0;
+  if (!extended) console.error(`[membership] invoice.paid for unknown subscription ${subId} — money taken, nothing extended. Find the member and reconcile.`);
+  return { ok: extended, renews_at: renews };
+}
+
+/** The subscription died at Stripe — the membership follows it. */
+export async function lapseBySub(env, subId) {
+  if (!subId || !env.DB) return { ok: false };
+  await ensure(env);
+  const r = await env.DB.prepare(
+    "UPDATE num_memberships SET tier='free', renews_at=NULL, stripe_sub=NULL WHERE stripe_sub=?1",
+  ).bind(subId).run();
+  return { ok: (r?.meta?.changes ?? 0) > 0 };
 }
 
 export async function handleMembership(request, env, path) {
@@ -264,6 +308,12 @@ export async function handleMembership(request, env, path) {
   }
 
   // Start a subscription — priced by US, like everything else.
+  //
+  // A REAL subscription now, not a one-off wearing the word "monthly".
+  // The old path charged once, granted 30 days, and let the membership
+  // lapse silently on day 31 — every subscriber was one month of revenue.
+  // Stripe now owns the recurrence; our webhook extends on invoice.paid
+  // and lapses on customer.subscription.deleted, and nothing else.
   if (path === '/subscribe' && request.method === 'POST') {
     const b = await request.json().catch(() => ({}));
     const me = clip(b.me, 40);
@@ -271,15 +321,39 @@ export async function handleMembership(request, env, path) {
     const t = tiers(env)[tier];
     if (!me || !t || t.price_cents <= 0) return json({ ok: false, error: 'Which plan?' }, 400);
 
-    const { requestPayment } = await import('./pay.mjs');
-    const out = await requestPayment(env, {
+    const { requestSubscription } = await import('./pay.mjs');
+    const out = await requestSubscription(env, {
       memberId: me,
       amountCents: t.price_cents,          // ours, never the client's
-      currency: 'usd',
-      description: `${t.name} — monthly`,
+      name: `${t.name} — monthly`,
       ref: `tier:${tier}`,
     });
     return json(out, out.ok ? 200 : 503);
+  }
+
+  // Cancelling has to be as easy as joining, and it happens at PERIOD END —
+  // they paid for the month, they keep the month. A cancel that is hard to
+  // find doesn't retain anyone; it converts a $8.98 subscriber into a $15
+  // chargeback plus a grudge.
+  if (path === '/cancel' && request.method === 'POST') {
+    const b = await request.json().catch(() => ({}));
+    const me = clip(b.me, 40);
+    if (!me) return json({ ok: false, error: 'Who is cancelling?' }, 400);
+    const row = await env.DB.prepare('SELECT stripe_sub, tier, renews_at FROM num_memberships WHERE member_id=?1')
+      .bind(me).first();
+    if (!row?.stripe_sub) {
+      // Legacy one-off member (or already free): nothing recurs, so there is
+      // nothing to cancel at Stripe. Their access simply runs out as it
+      // always did — say that plainly instead of pretending to cancel.
+      return json({ ok: true, note: row?.renews_at
+        ? `Nothing renews automatically — your ${row.tier} access simply ends ${row.renews_at}.`
+        : 'You’re on the free tier — nothing to cancel.' });
+    }
+    const { cancelSubscription } = await import('./pay.mjs');
+    const out = await cancelSubscription(env, row.stripe_sub);
+    return json(out.ok
+      ? { ok: true, note: `Done — ${row.tier} stays active until ${row.renews_at}, then won’t charge again.` }
+      : out, out.ok ? 200 : 502);
   }
 
   return json({ error: 'not found' }, 404);
