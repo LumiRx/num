@@ -364,6 +364,18 @@ async function adminOverview(env, url, req) {
     ['airFailed', 'SELECT COUNT(*) n FROM num_air_exchanges WHERE ok=0'],
     ['sabreBookings', 'SELECT COUNT(*) n FROM num_sabre_bookings'],
     ['sabreFailed', 'SELECT COUNT(*) n FROM num_sabre_bookings WHERE ok=0'],
+    // ── real money (Stripe), distinct from the Stars economy below ─────
+    ['payPaid', "SELECT COUNT(*) n FROM num_payments WHERE state='paid'"],
+    ['payPaid24', "SELECT COUNT(*) n FROM num_payments WHERE state='paid' AND paid_at > datetime('now','-1 day')"],
+    ['payTrouble7d', "SELECT COUNT(*) n FROM num_payments WHERE state IN ('failed','refunded','disputed') AND created_at > datetime('now','-7 days')"],
+    ['revenueUsdCents', "SELECT COALESCE(SUM(amount_cents),0) n FROM num_payments WHERE state='paid' AND currency='usd'"],
+    ['revenueThbSatang', "SELECT COALESCE(SUM(amount_cents),0) n FROM num_payments WHERE state='paid' AND currency='thb'"],
+    ['membersPaidTier', "SELECT COUNT(*) n FROM num_memberships WHERE tier<>'free'"],
+    ['subsRecurring', "SELECT COUNT(*) n FROM num_memberships WHERE tier<>'free' AND stripe_sub IS NOT NULL"],
+    ['renewsIn7d', "SELECT COUNT(*) n FROM num_memberships WHERE tier<>'free' AND renews_at < datetime('now','+7 days')"],
+    // ── is the brain healthy, and is the cache earning its keep ────────
+    ['cacheEntries', 'SELECT COUNT(*) n FROM num_answer_cache'],
+    ['cacheHits', 'SELECT COALESCE(SUM(hits),0) n FROM num_answer_cache'],
     ['businesses', 'SELECT COUNT(*) n FROM businesses'],
     ['claims', 'SELECT COUNT(*) n FROM num_claims'],
     ['owners', 'SELECT COUNT(*) n FROM num_place_owners'],
@@ -376,6 +388,9 @@ async function adminOverview(env, url, req) {
       return fallback;
     }
   };
+  // num_brain_events.ts is epoch SECONDS (see brainstate.mjs) — the cutoff is
+  // computed here rather than with datetime(), which compares text.
+  COUNTS.push(['brainFails24', `SELECT COUNT(*) n FROM num_brain_events WHERE ts > ${Math.floor(Date.now() / 1000) - 86400}`]);
   const nums = await Promise.all(COUNTS.map(([, sql]) => settle(q(sql).first(), { n: 0 })));
   const c = Object.fromEntries(COUNTS.map(([k], i) => [k, nums[i]?.n ?? 0]));
 
@@ -490,6 +505,34 @@ async function adminOverview(env, url, req) {
     // equal what live errands have committed; if they ever drift, money moved
     // without an errand moving, and that is a bug you want to hear about from
     // this dashboard rather than from the person who lost the Stars.
+    // ── real money: Stripe, the rails guests and subscribers pay on ─────
+    // Separate from `money` (the Stars economy) on purpose: one is revenue,
+    // the other is a closed loop, and averaging them tells you nothing.
+    revenue: {
+      paid_total: c.payPaid,
+      paid_24h: c.payPaid24,
+      trouble_7d: c.payTrouble7d,
+      usd: Number((c.revenueUsdCents / 100).toFixed(2)),
+      thb: Number((c.revenueThbSatang / 100).toFixed(2)),
+      members_paid: c.membersPaidTier,
+      recurring: c.subsRecurring,
+      // Paid members with NO subscription lapse silently — this is the count
+      // of one-off legacy members whose access ends within a week. When
+      // recurring === members_paid this reads zero and the leak is closed.
+      renewing_or_lapsing_7d: c.renewsIn7d,
+      recent: await env.DB.prepare(
+        "SELECT id, ref, amount_cents, currency, state, mode, created_at FROM num_payments ORDER BY created_at DESC LIMIT 15",
+      ).all().then((r) => r.results ?? []).catch(() => []),
+    },
+    // ── the answer chain's own health ───────────────────────────────────
+    chain: {
+      cache_entries: c.cacheEntries,
+      cache_hits: c.cacheHits,
+      // Every row is one brain failing once in 24h. Zero is normal. A burst
+      // matches the num_brain_state cooldowns; a flood while answers look fine
+      // means the fallback is carrying the product again.
+      brain_fails_24h: c.brainFails24,
+    },
     money: {
       circulating: c.starsCirculating,
       escrow_held: c.starsEscrow,

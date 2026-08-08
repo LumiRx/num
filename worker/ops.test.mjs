@@ -95,3 +95,20 @@ test('the admin key is never persisted past the tab', () => {
   assert.ok(!/localStorage\s*\.\s*(set|get)Item/.test(script), 'the admin key is written to localStorage');
   assert.match(script, /sessionStorage/, 'the key is not kept in sessionStorage');
 });
+
+test('the dashboard shows real money, chain health, and keeps itself current', () => {
+  const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
+  const api = readFileSync(join(HERE, 'console.mjs'), 'utf8');
+  // Revenue is Stripe truth, not the Stars loop — and it must come from
+  // num_payments, whose state only a signed webhook changes.
+  assert.match(api, /FROM num_payments WHERE state='paid'/, 'revenue is no longer computed from paid payments');
+  assert.match(api, /revenue: \{/, 'the overview stopped reporting revenue');
+  assert.match(api, /brain_fails_24h/, 'brain health left the overview — the next quiet outage is invisible again');
+  for (const marker of ['Revenue (USD)', 'Revenue (THB)', 'Recent payments', 'Brain failures']) {
+    assert.ok(page.includes(marker), `the dashboard no longer shows "${marker}"`);
+  }
+  // The auto-refresh: an ops page that shows yesterday until someone reloads
+  // is a screenshot, not a dashboard.
+  assert.match(page, /setInterval\(refresh, 3600_000\)/, 'the hourly refresh is gone — the dashboard goes stale silently');
+  assert.match(page, /\.catch\(\(\) => \{\}\)/, 'a failed refresh can throw — one blip logs the operator out of a working view');
+});

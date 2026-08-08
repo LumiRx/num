@@ -418,15 +418,41 @@ const TABS = {
 
   system: ['System', 'Cost, money and the rails underneath', (d) => {
     const ai = d.ai || {}, m = d.money || {}, reach = d.reach || {}, rails = d.rails || {};
+    const rev = d.revenue || {}, chain = d.chain || {};
     const railRows = Object.entries(rails).filter(([, v]) => typeof v === 'boolean');
+    // Cache hit rate against model turns in the window: hits are answers that
+    // cost nothing. Approximate on purpose (hits are lifetime, turns are
+    // windowed) — it trends the right way, and a precise-looking wrong number
+    // would be worse.
+    const answered = (chain.cache_hits ?? 0) + (ai.turns ?? 0);
+    const hitRate = answered ? Math.round(100 * (chain.cache_hits ?? 0) / answered) : null;
     return `<div class="kpis">
+        ${kpi('Revenue (USD)', '$' + n(rev.usd ?? 0), `${n(rev.paid_total)} paid · ${n(rev.paid_24h)} in 24h`)}
+        ${kpi('Revenue (THB)', '฿' + n(rev.thb ?? 0), 'baht bills and tabs')}
+        ${kpi('Paying members', n(rev.members_paid),
+              `${n(rev.recurring)} auto-renew · ${n((rev.members_paid ?? 0) - (rev.recurring ?? 0))} legacy one-off`,
+              { alert: (rev.members_paid ?? 0) > (rev.recurring ?? 0) })}
+        ${kpi('Payment trouble · 7d', n(rev.trouble_7d), 'failed, refunded or disputed', { alert: (rev.trouble_7d ?? 0) > 0 })}
+      </div>
+      <div class="kpis">
         ${kpi('AI spend', '$' + (ai.spend_usd ?? 0).toFixed(2), `${n(ai.turns)} turns · ${ai.window_days}d window`)}
         ${kpi('Per turn', '$' + (ai.per_turn_usd ?? 0).toFixed(4), 'model cost per answer')}
+        ${kpi('Cache', hitRate == null ? '—' : hitRate + '%', `${n(chain.cache_hits)} free answers · ${n(chain.cache_entries)} stored`)}
+        ${kpi('Brain failures · 24h', n(chain.brain_fails_24h ?? 0),
+              (chain.brain_fails_24h ?? 0) === 0 ? 'every brain healthy' : 'check num_brain_state cooldowns',
+              { alert: (chain.brain_fails_24h ?? 0) > 5 })}
         ${kpi('Stars circulating', n(m.circulating),
               m.escrow_balanced ? 'escrow balanced' : 'ESCROW DRIFT — investigate', { alert: !m.escrow_balanced })}
         ${kpi('Push delivery', reach.delivery_rate == null ? '—' : Math.round(reach.delivery_rate * 100) + '%',
               `${n(reach.notifications_delivered)} of ${n(reach.notifications_queued)}`)}
       </div>` +
+      panel('Recent payments', 'Every Stripe charge, newest first. State changes only by signed webhook.',
+        tbl(['Ref', 'Amount', 'State', 'When'], rev.recent,
+          (r) => `<tr><td class="mono">${esc(r.ref || r.id || '—')}</td>
+                  <td>${r.currency === 'thb' ? '฿' : '$'}${n((r.amount_cents ?? 0) / 100)}${r.mode === 'stripe-sub' ? ' /mo' : ''}</td>
+                  <td><span class="pill ${r.state === 'paid' ? 'ok' : r.state === 'created' ? '' : 'bad'}">${esc(r.state)}</span></td>
+                  <td>${ago(r.created_at)}</td></tr>`,
+          'No payments yet.'), true) +
       (ai.by_day && ai.by_day.length
         ? panel(`AI cost · last ${ai.window_days} days`,
             'Model spend per day. The only line here that can run away from you.',
@@ -471,6 +497,14 @@ window.setDays = async (v) => {
   S.days = v;
   try { S.data = await load(); render(); } catch (e) { boot(); }
 };
+
+// The dashboard keeps itself current: a full reload of the overview every
+// hour, plus one two minutes after open (a just-opened dashboard is usually
+// being watched because something is happening). Silent on failure — a
+// refresh that throws must never log the operator out of a working view.
+const refresh = () => load().then((d) => { S.data = d; render(); }).catch(() => {});
+setInterval(refresh, 3600_000);
+setTimeout(refresh, 120_000);
 
 async function boot() {
   if (!S.key) { $('gate').hidden = false; $('app').hidden = true; return; }
