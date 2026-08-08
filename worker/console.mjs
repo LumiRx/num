@@ -258,6 +258,113 @@ const sessionValid = async (env, token) => !!(await sessionClaims(env, token));
  * is not "fix the sixth" — it is that a login's transport should be the
  * one thing in the page that cannot have a sixth.
  */
+/**
+ * NUM Ops, rendered by the Worker — the console that cannot not work.
+ *
+ * Every failure the static gate produced lived in the browser layer: a
+ * service worker serving a stale shell, a cookie a profile refused to keep,
+ * page JavaScript racing its own load. This route has none of those parts.
+ * /api/* bypasses the service worker and the asset cache by construction;
+ * the response IS the dashboard, HTML with the numbers already in it, built
+ * from the same adminOverview every other view reads.
+ *
+ * Auth: POST the key (native form), or GET with ?s=<session token>. The
+ * token appears in links so Refresh and the range switches keep working —
+ * it expires in 12 hours and grants nothing beyond this console. No cookie
+ * is required for anything.
+ */
+const H = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const NUM = (v) => Number(v ?? 0).toLocaleString('en-US');
+
+function liteShell(inner) {
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>NUM Ops</title><style>
+body{font:15px/1.5 -apple-system,system-ui,sans-serif;background:#f4f3f0;color:#141414;margin:0;padding:32px 20px;max-width:1080px;margin-inline:auto}
+h1{font-size:22px;margin:0 0 4px} .sub{color:#777;font-size:13px;margin:0 0 24px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:0 0 22px}
+.card{background:#fff;border:1px solid #e5e2dc;border-radius:12px;padding:14px 16px}
+.card b{display:block;font-size:22px;letter-spacing:-.02em} .card span{color:#777;font-size:12.5px}
+.card.warn{border-color:#c0392b} .card.warn b{color:#c0392b}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e2dc;border-radius:12px;overflow:hidden;font-size:13.5px;margin:0 0 22px}
+th{ text-align:left;padding:9px 12px;background:#faf9f7;color:#777;font-weight:600;font-size:12px}
+td{padding:9px 12px;border-top:1px solid #f0eee9} .ok{color:#1a7f37} .bad{color:#c0392b}
+h2{font-size:15px;margin:26px 0 10px}
+form{max-width:340px;margin:16vh auto 0;text-align:center}
+input{width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box}
+button{width:100%;padding:12px;margin-top:10px;border:0;border-radius:10px;background:#141414;color:#fff;font-size:15px;cursor:pointer}
+.err{color:#c0392b;font-weight:700;margin-top:12px} a{color:inherit} .tools{margin:0 0 20px;font-size:13px;color:#777}
+</style></head><body>${inner}</body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
+function liteLogin(err = '') {
+  return liteShell(`<form method="post" action="/api/admin/console">
+    <h1>NUM Ops</h1><p class="sub">Server-rendered console. One key, one page.</p>
+    <input type="password" name="key" placeholder="Admin key" autofocus required autocomplete="new-password">
+    <button type="submit">Open the console</button>
+    ${err ? `<div class="err">${H(err)}</div>` : ''}
+  </form>`);
+}
+
+async function liteConsole(env, req, url) {
+  // WHO: a posted key, or a still-valid token in ?s=.
+  let token = null;
+  if (req.method === 'POST') {
+    let key = '';
+    try { key = String((await req.formData()).get('key') ?? '').trim(); } catch { /* renders as wrong below */ }
+    if (!key || !safeEq(key, env.ADMIN_KEY)) {
+      await logAdmin(env, req, { who: null, ok: false });
+      return liteLogin('Wrong password.');
+    }
+    await logAdmin(env, req, { who: env.ADMIN_EMAIL ?? null, ok: true });
+    token = await mintSession(env, env.ADMIN_EMAIL ?? null);
+  } else {
+    const t = url.searchParams.get('s');
+    if (!(await sessionValid(env, t))) return liteLogin(t ? 'That session expired — sign in again.' : '');
+    token = t;
+  }
+
+  const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 30));
+  const ovUrl = new URL(req.url); ovUrl.searchParams.set('days', String(days));
+  // The same truth every other view reads — parsed back out of the existing
+  // endpoint rather than re-implemented, so the numbers cannot drift.
+  const d = await (await adminOverview(env, ovUrl, req)).json();
+  const app = d.app ?? {}, rev = d.revenue ?? {}, chain = d.chain ?? {}, ai = d.ai ?? {}, m = d.money ?? {};
+
+  const link = (q) => `/api/admin/console?s=${encodeURIComponent(token)}${q}`;
+  const card = (label, value, sub, warn = false) =>
+    `<div class="card${warn ? ' warn' : ''}"><b>${H(value)}</b>${H(label)}<br><span>${H(sub)}</span></div>`;
+
+  const payRows = (rev.recent ?? []).map((r) =>
+    `<tr><td>${H(r.ref || r.id || '—')}</td><td>${r.currency === 'thb' ? '฿' : '$'}${NUM((r.amount_cents ?? 0) / 100)}${r.mode === 'stripe-sub' ? ' /mo' : ''}</td><td class="${r.state === 'paid' ? 'ok' : r.state === 'created' ? '' : 'bad'}">${H(r.state)}</td><td>${H(r.created_at ?? '')}</td></tr>`).join('')
+    || '<tr><td colspan="4">No payments yet.</td></tr>';
+  const memberRows = (app.recent ?? []).slice(0, 10).map((r) =>
+    `<tr><td>${H(r.name || '—')}</td><td>${H(r.phone || '—')}</td><td class="${r.phone_verified ? 'ok' : ''}">${r.phone_verified ? 'verified' : 'unverified'}</td><td>${H(r.dest || '—')}</td><td>${H(r.created_at ?? '')}</td></tr>`).join('')
+    || '<tr><td colspan="5">Nobody yet.</td></tr>';
+
+  return liteShell(`
+    <h1>NUM Ops</h1><p class="sub">Rendered ${H(new Date().toISOString().slice(0, 16).replace('T', ' '))} UTC · last ${days} days ·
+      <a href="${link(`&days=${days}`)}">refresh</a> ·
+      window: <a href="${link('&days=7')}">7d</a> / <a href="${link('&days=30')}">30d</a> / <a href="${link('&days=90')}">90d</a></p>
+    <div class="cards">
+      ${card('members', NUM(app.members), `${NUM(app.verified)} verified · ${NUM(app.active24)} active 24h`)}
+      ${card('revenue USD', '$' + NUM(rev.usd), `${NUM(rev.paid_total)} paid · ${NUM(rev.paid_24h)} in 24h`)}
+      ${card('revenue THB', '฿' + NUM(rev.thb), 'baht bills and tabs')}
+      ${card('paying members', NUM(rev.members_paid), `${NUM(rev.recurring)} auto-renew`, (rev.members_paid ?? 0) > (rev.recurring ?? 0))}
+      ${card('payment trouble 7d', NUM(rev.trouble_7d), 'failed / refunded / disputed', (rev.trouble_7d ?? 0) > 0)}
+      ${card('AI spend', '$' + (ai.spend_usd ?? 0).toFixed(2), `${NUM(ai.turns)} turns · $${(ai.per_turn_usd ?? 0).toFixed(4)}/turn`)}
+      ${card('cache', NUM(chain.cache_hits) + ' hits', `${NUM(chain.cache_entries)} answers stored`)}
+      ${card('brain failures 24h', NUM(chain.brain_fails_24h), (chain.brain_fails_24h ?? 0) === 0 ? 'every brain healthy' : 'check num_brain_state', (chain.brain_fails_24h ?? 0) > 5)}
+      ${card('Stars circulating', NUM(m.circulating), m.escrow_balanced ? 'escrow balanced' : 'ESCROW DRIFT', !m.escrow_balanced)}
+    </div>
+    <h2>Recent payments</h2>
+    <table><tr><th>Ref</th><th>Amount</th><th>State</th><th>When (UTC)</th></tr>${payRows}</table>
+    <h2>Recent members</h2>
+    <table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Dest</th><th>Joined (UTC)</th></tr>${memberRows}</table>
+    <p class="tools">Session expires in ${SESSION_HOURS}h. The full dashboard at /ops/ still works with the same key when you want charts.</p>
+  `);
+}
+
 async function adminLogin(env, req) {
   const to = (q) => new Response(null, { status: 303, headers: { Location: `/ops/${q}` } });
   if (!env.ADMIN_KEY) return to('?err=nokey');
@@ -896,6 +1003,10 @@ export async function handleConsole(request, env, path) {
       // The only unauthenticated route: trade the key for a session.
       if (path === '/admin/session' && post) return await adminSession(env, request);
       if (path === '/admin/login' && post) return await adminLogin(env, request);
+      if (path === '/admin/console') {
+        if (!env.ADMIN_KEY) return liteLogin('No admin key is configured on this Worker.');
+        return await liteConsole(env, request, url);
+      }
       if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
       if (path === '/admin/overview') return await adminOverview(env, url, request);
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);
