@@ -114,37 +114,35 @@ test('the dashboard shows real money, chain health, and keeps itself current', (
 });
 
 test('the sign-in gate can never do nothing', () => {
-  // "I typed my password and nothing happened." The handler returned silently
-  // on an empty field, and Chrome's autofill overlay can make an empty field
-  // look filled — so pressing Enter did literally nothing, which reads as a
-  // broken console and cost a debugging session. Every path must speak.
+  // Superseded by the native-form rebuild (see gate.test.mjs for the full
+  // story): the browser now enforces the empty field (`required`), carries
+  // the submission, and follows the server's redirect. What remains to guard
+  // HERE is that the two client-side protections survived the rebuild.
   const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
-  assert.ok(!/if \(!key\) return;/.test(page),
-    'the silent empty-field return is back — Enter on an empty field will do nothing again');
-  assert.match(page, /The key field is empty/, 'an empty submit no longer explains itself');
-  assert.match(page, /Wrong password\./, 'a 401 no longer says plainly that the password is wrong');
+  assert.match(page, /required/, 'the empty field is submittable again — the browser bubble was the replacement for the silent return');
+  assert.match(page, /'Wrong password\.'/, 'err=wrong is no longer translated into words');
   assert.match(page, /autocomplete="new-password"/,
     'the input invites saved-credential autofill again — Chrome will keep stuffing a stale key into it');
-  assert.match(page, /shake/, 'the failure state lost its visual punch — small red text was missable once already');
 });
 
 test('the first sign-in after a deploy survives the service-worker swap', () => {
-  // Each deploy replaces the SW under the open page, aborting the in-flight
-  // POST — so the first attempt died with "Failed to fetch" and the second
-  // worked. Observed live, both halves, minutes apart. One silent retry
-  // makes the difference invisible.
+  // The fetch-retry is superseded: a native form submission is a NAVIGATION,
+  // and the service worker steps aside for navigations (and for all
+  // non-GETs) by design. The guard flips: no script may reintroduce a fetch
+  // into the login path, because the fetch was what the SW swap could kill.
   const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
-  assert.match(page, /catch \{ await new Promise/, 'the sign-in retry is gone — the first attempt after every deploy fails again');
+  assert.ok(!/fetch\('\/api\/admin\/session'/.test(page),
+    'the login fetch is back — the first attempt after every deploy can die with it');
 });
 
 test('typing works the instant the gate opens — no click required', () => {
-  // The last silent path: no autofocus and an Enter listener bound only to
-  // the input. Open page → type into nothing → Enter into nothing → silence.
-  // Seen in a screenshot: empty field, no focus ring, "it does nothing".
+  // Autofocus puts the cursor in the field on load; a native form makes
+  // Enter submit from the field without any listener. The document-level
+  // keydown catcher went with the rest of the script — nothing left for it
+  // to rescue.
   const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
-  assert.match(page, /<form id="gateform">/, 'the gate lost its form — Enter only works when the input has focus');
   assert.match(page, /autofocus/, 'the key input no longer autofocuses — typing before clicking goes nowhere');
-  assert.match(page, /document\.addEventListener\('keydown'/, 'stray typing is no longer pulled into the field');
+  assert.match(page, /type="submit"/, 'the button is not a submit — Enter in the field stops working');
 });
 
 test('a post-login failure is never reported as a login failure', () => {

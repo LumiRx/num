@@ -244,6 +244,43 @@ async function logAdmin(env, req, { who, ok }) {
 
 const sessionValid = async (env, token) => !!(await sessionClaims(env, token));
 
+/**
+ * The login that cannot fail silently.
+ *
+ * A real <form> posts here. The browser carries the submission itself —
+ * there is no script to race the page load, no fetch for an updating
+ * service worker to abort, no listener to miss, no autofill overlay to
+ * confuse. Wrong key → redirect back with ?err=wrong and the gate says so
+ * in words. Right key → signed HttpOnly cookie, redirect to the dashboard.
+ *
+ * Built 8 Aug 2026 after the JS gate produced five distinct flavours of
+ * silence, each diagnosed and fixed, each replaced by the next. The lesson
+ * is not "fix the sixth" — it is that a login's transport should be the
+ * one thing in the page that cannot have a sixth.
+ */
+async function adminLogin(env, req) {
+  const to = (q) => new Response(null, { status: 303, headers: { Location: `/ops/${q}` } });
+  if (!env.ADMIN_KEY) return to('?err=nokey');
+  let key = '';
+  try { key = String((await req.formData()).get('key') ?? '').trim(); } catch { /* fall through to wrong */ }
+  if (!key || !safeEq(key, env.ADMIN_KEY)) {
+    await logAdmin(env, req, { who: null, ok: false });
+    return to('?err=wrong');
+  }
+  const who = env.ADMIN_EMAIL ?? null;
+  await logAdmin(env, req, { who, ok: true });
+  const token = await mintSession(env, who);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: '/ops/?in=1',
+      // HttpOnly: no script can read or leak it. SameSite=Lax: still sent on
+      // the redirect and every same-site request, never cross-site.
+      'Set-Cookie': `num_ops_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`,
+    },
+  });
+}
+
 async function adminSession(env, req) {
   const b = await readBody(req);
   if (!env.ADMIN_KEY) return json({ error: 'No admin key is configured on this Worker yet.' }, 503);
@@ -257,8 +294,17 @@ async function adminSession(env, req) {
   return json({ token: await mintSession(env, who), who, expires_in_hours: SESSION_HOURS });
 }
 
+/** The session token from a Cookie header, or null. */
+export function sessionCookie(cookieHeader) {
+  const m = /(?:^|;\s*)num_ops_session=([^;]+)/.exec(String(cookieHeader ?? ''));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 export const isAdmin = async (env, req) =>
-  !!env.ADMIN_KEY && (await sessionValid(env, req.headers.get('X-Admin-Session')));
+  !!env.ADMIN_KEY && (
+    (await sessionValid(env, req.headers.get('X-Admin-Session')))
+    || (await sessionValid(env, sessionCookie(req.headers.get('Cookie'))))
+  );
 
 const count = async (env, sql, ...binds) => {
   try {
@@ -843,6 +889,7 @@ export async function handleConsole(request, env, path) {
     if (path.startsWith('/admin')) {
       // The only unauthenticated route: trade the key for a session.
       if (path === '/admin/session' && post) return await adminSession(env, request);
+      if (path === '/admin/login' && post) return await adminLogin(env, request);
       if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
       if (path === '/admin/overview') return await adminOverview(env, url, request);
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);

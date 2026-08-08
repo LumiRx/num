@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.190 — 2026-08-08 17:48 UTC
+
+(no note given)
+
+- commit `a3ca20d`
+
 ## 0.8.189 — 2026-08-08 16:58 UTC
 
 (no note given)
