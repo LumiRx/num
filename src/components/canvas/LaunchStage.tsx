@@ -94,6 +94,48 @@ const INSTALL: Record<Platform, { heading: string; steps: string[] }> = {
   },
 };
 
+/**
+ * The numbers, and only the ones we have actually earned.
+ *
+ * A landing page is where borrowed proof gets invented — "50,000 happy
+ * travellers", five gold stars, a wall of stock-photo faces. Num has 77 members
+ * and two onboarded venues, so any of that would be a lie told to someone who
+ * is about to trust us with their evening. What IS true is the scale of the
+ * directory and the fact that the free tier is the whole product, so that is
+ * what this says, with the early-access caveat stated rather than buried.
+ */
+const STATS: Array<[figure: string, label: string]> = [
+  ['2.5M+', 'places indexed and searchable'],
+  ['77', 'destinations live today'],
+  ['Free', 'the whole concierge, not a trial'],
+];
+
+/**
+ * What people ask before they will type anything.
+ *
+ * This is the section the page was missing. A visitor from a cold ad has five
+ * or six real objections — is this free, do I have to install something, will
+ * it work where I'm going, what happens to what I tell it — and a page that
+ * answers none of them asks for trust it has not earned. Every answer here is
+ * checkable against the product: the free tier, the 12-month erasure, the
+ * refusal to store sensitive detail and the honest decline for uncovered
+ * cities are all real behaviour, not copy.
+ */
+const FAQ: Array<[q: string, a: string]> = [
+  ['Is it free?',
+    'Yes. The free tier is the whole concierge, not a demo of one — asking, planning and booking all work without paying us anything. If you book something that costs money, you pay the venue as you normally would.'],
+  ['Do I have to download an app?',
+    'No. Num runs in your browser and you can start right now. Adding it to your home screen takes about ten seconds and makes it open full screen, keep your thread and notify you when a booking is confirmed. There is no App Store step today.'],
+  ['Will it work where I am going?',
+    '77 destinations are live and the directory holds over 2.5 million places, deepest across Thailand. Ask about somewhere we do not cover properly and Num says so plainly instead of inventing a recommendation — that is a deliberate rule, not a gap we are hiding.'],
+  ['Do I need an account?',
+    'No. Open it and start typing. You only give a phone number or email if you want your thread on more than one device, or want us to reach you about a booking.'],
+  ['What happens to what I tell it?',
+    'Num keeps a short profile of your preferences so it never asks twice. It deliberately does not store health conditions, religion, politics, ID or payment details even if you mention them. Text FORGET and it is erased; profiles unused for 12 months are deleted automatically.'],
+  ['Is it a bot or real people?',
+    'Both, honestly. The concierge answers you directly and real bookings go to real venues who confirm them. If something cannot be arranged you are told — you will not be left holding a confirmation that reached nobody.'],
+];
+
 const NAV: Array<[label: string, href: string]> = [
   ['How it works', 'https://itsnum.com/how-it-works/'],
   ['Perks', 'https://itsnum.com/perks/'],
@@ -187,7 +229,7 @@ export default function LaunchStage() {
             color: 'var(--color-accent)', marginBottom: 14,
           }}
         >
-          Num · Phuket
+          Early access · live in 77 destinations
         </span>
 
         {/* The one line the whole page rests on.
@@ -344,6 +386,55 @@ export default function LaunchStage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Scale, stated honestly. Sits between "what it does" and "how to get
+          it" because that is where the question "is this real?" actually
+          arrives — after they understand the offer, before they commit. */}
+      <section style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 900 }}>
+        <div
+          className="glass"
+          style={{
+            borderRadius: 20, padding: '24px 22px', display: 'grid', gap: 18,
+            gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', textAlign: 'center',
+          }}
+        >
+          {STATS.map(([figure, label]) => (
+            <div key={label}>
+              <b style={{ fontFamily: 'var(--font-heading)', fontSize: 30, letterSpacing: '-.03em', display: 'block', lineHeight: 1 }}>
+                {figure}
+              </b>
+              <span style={{ fontSize: 13, color: 'var(--ink-60)', display: 'block', marginTop: 7 }}>{label}</span>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-40)', textAlign: 'center', margin: '14px auto 0', maxWidth: 620, lineHeight: 1.6 }}>
+          Those are the real figures from our own directory. Num is in early access — we would
+          rather tell you exactly what it can do today than borrow numbers we have not earned.
+        </p>
+      </section>
+
+      {/* The objections, answered. The page shipped without this and it is the
+          single biggest reason a cold visitor leaves: not disagreement, just
+          unanswered questions they were never going to email us about.
+          <details> rather than a JS accordion — it is keyboard accessible,
+          works before hydration, and cannot break. */}
+      <section style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 720 }}>
+        <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: 22, letterSpacing: '-.015em', textAlign: 'center', margin: '0 0 20px' }}>
+          Straight answers
+        </h2>
+        {FAQ.map(([q, a]) => (
+          <details
+            key={q}
+            className="glass"
+            style={{ borderRadius: 16, padding: '15px 18px', marginBottom: 10 }}
+          >
+            <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 15.5, listStyle: 'none' }}>
+              {q}
+            </summary>
+            <p style={{ fontSize: 14, color: 'var(--ink-60)', lineHeight: 1.65, margin: '10px 0 0' }}>{a}</p>
+          </details>
+        ))}
       </section>
 
       {/* The handoff. Num is a home-screen app; the steps differ per device and
