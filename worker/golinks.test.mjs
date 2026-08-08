@@ -33,14 +33,50 @@ test('every destination carries its own attribution', () => {
   }
 });
 
-test('reddit lands in the app, not on the film page', () => {
+test('reddit lands somewhere it can act immediately, never back on the film', () => {
   // The creative already carries the film. Paying for a click and then asking
   // for another 30 seconds before the product is reachable loses the visitor
-  // at the exact moment of intent.
+  // at the exact moment of intent. THAT is the rule — not any one URL.
+  //
+  // This assertion used to be `match(rd.to, /^\/\?/)`, pinning Reddit to the
+  // app root. That was the right destination when the app root was the only
+  // surface with a way in. On 2026-08-08 Dre added /install/, a page whose one
+  // job is add-to-home-screen. Rewriting the assertion to the intent rather
+  // than deleting it: the destination is free to change, the rule is not.
   const rd = entries.find((e) => e.code === 'rd');
   assert.ok(rd, 'the rd campaign code is gone — 300+ live Reddit clicks point at it');
   assert.ok(!rd.to.startsWith('/watch'), 'reddit traffic is being sent back to the film page');
-  assert.match(rd.to, /^\/\?/, 'reddit should land on the app root so InstallPrompt can offer add-to-home-screen');
+
+  const ALLOWED = ['/', '/install/'];
+  assert.ok(ALLOWED.includes(rd.to.split('?')[0]),
+    `reddit points at ${rd.to.split('?')[0]} — that surface has not been shown to offer an immediate way in`);
+});
+
+test('the install page exists, has no video wall, and asks above the fold', () => {
+  // The failure this guards is specific and has happened: paid traffic landing
+  // on a page that looks fine and cannot be acted on. A missing file, a video
+  // added later, or a CTA that drifts below the fold each reproduce it.
+  const page = readFileSync(join(HERE, '..', 'app-public', 'install', 'index.html'), 'utf8');
+
+  assert.ok(!/<video|<iframe/i.test(page),
+    'a video or embed appeared on /install/ — that is the exact stop that cost 300 clicks');
+
+  // The ask must be reachable before anyone scrolls, and again while scrolling.
+  const firstCta = page.indexOf('class="cta"');
+  assert.ok(firstCta > -1, '/install/ has no call to action at all');
+  assert.ok(firstCta < page.indexOf('</head>') + 6000,
+    'the first CTA on /install/ has drifted too far down the document to be above the fold');
+  assert.match(page, /class="dock"/,
+    'the sticky mobile CTA is gone — Reddit traffic is overwhelmingly phones');
+
+  // Measurement, or the paid click is invisible and the funnel starts late.
+  assert.match(page, /\/api\/analytics\.js/, '/install/ is not being measured');
+
+  // Install steps for all three platforms. iPhone users sent to a Chrome menu
+  // that does not exist simply give up, and we never hear about it.
+  for (const p of ['ios', 'android', 'desktop']) {
+    assert.match(page, new RegExp(`data-p="${p}"`), `/install/ has no steps for ${p}`);
+  }
 });
 
 test('an unknown code still lands somewhere real', () => {
