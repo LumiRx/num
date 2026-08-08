@@ -52,7 +52,13 @@ h1,h2,h3{font-family:var(--disp);margin:0;letter-spacing:-.025em;font-weight:600
 p{margin:0}
 a{color:inherit;text-decoration:none}
 img,svg{max-width:100%;display:block}
-.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+/* Horizontal only, and deliberately in longhand. As a shorthand this was
+   `padding:0 20px`, which — because .wrap is a class and `section` / `footer`
+   are type selectors — beat every vertical padding those elements declared
+   and silently flattened the whole page to zero vertical rhythm. Splitting the
+   axes means .wrap owns the gutter, the element owns its own breathing room,
+   and neither can quietly cancel the other. */
+.wrap{max-width:1080px;margin:0 auto;padding-left:20px;padding-right:20px}
 .muted{color:var(--slate)}
 
 /* ── the button. One job, repeated. ─────────────────────────────────────── */
@@ -64,10 +70,30 @@ img,svg{max-width:100%;display:block}
 .cta:active{transform:translateY(0)}
 .cta.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:none}
 .cta.ghost:hover{border-color:#c9d5d9;background:#fff}
+
+/* The install ask. It is the second button on the page, so it has to earn
+   attention with weight rather than position: a live primary-coloured border
+   instead of the dead grey of a normal secondary. */
+.cta.alt{background:#fff;color:var(--ink);border:1.5px solid var(--pri);
+  box-shadow:0 6px 18px rgba(14,164,131,.13)}
+.cta.alt:hover{background:var(--pri-xl);border-color:var(--pri-d);box-shadow:0 10px 24px rgba(14,164,131,.2)}
+
+/* The one button we want people to notice from across the room. Reserved for
+   the install CTA inside the install panel — using it twice would spend it. */
+.cta.pop{font-size:17.5px;padding:19px 28px;
+  background:linear-gradient(135deg,var(--pri) 0%,#13C79C 58%,#2FD3A9 100%);
+  animation:glow 2.8s ease-in-out infinite}
+.cta.pop:hover{background:linear-gradient(135deg,var(--pri-d) 0%,var(--pri) 58%,#13C79C 100%)}
+@keyframes glow{
+  0%,100%{box-shadow:0 12px 28px rgba(14,164,131,.30)}
+  50%    {box-shadow:0 14px 40px rgba(14,164,131,.52)}
+}
+@media(prefers-reduced-motion:reduce){.cta.pop{animation:none}}
 .under{font-size:13.5px;color:var(--slate);margin-top:11px}
+.ctastack{display:flex;flex-direction:column;gap:11px;max-width:380px}
 
 /* ── hero ───────────────────────────────────────────────────────────────── */
-.hero{padding:26px 0 8px;position:relative}
+.hero{padding-top:26px;padding-bottom:56px;position:relative}
 .hero:before{content:'';position:absolute;inset:-140px 0 auto;height:420px;z-index:-1;
   background:radial-gradient(60% 70% at 50% 40%,rgba(14,164,131,.13),transparent 70%)}
 .brandbar{display:flex;align-items:center;gap:9px;margin-bottom:30px}
@@ -104,8 +130,13 @@ h1 em{font-style:normal;color:var(--pri)}
 @keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.msg{animation:none}}
 
-/* ── generic section ────────────────────────────────────────────────────── */
-section{padding:56px 0}
+/* ── section rhythm ─────────────────────────────────────────────────────────
+   Every band gets the same air and a hairline above it, so the page reads as a
+   sequence of separate ideas instead of one long undifferentiated scroll. The
+   rule sits inside .wrap, so it stops at the content width rather than running
+   edge to edge — a divider, not a seam. */
+section{padding-top:60px;padding-bottom:60px;border-top:1px solid var(--line)}
+@media(min-width:900px){section{padding-top:84px;padding-bottom:84px}}
 .kicker{font:600 12.5px var(--body);letter-spacing:.11em;text-transform:uppercase;
   color:var(--pri-d);margin-bottom:12px}
 h2{font-size:clamp(26px,6vw,38px);margin-bottom:14px}
@@ -141,16 +172,58 @@ h2{font-size:clamp(26px,6vw,38px);margin-bottom:14px}
 .stats .foot{color:#7f97a3;font-size:13.5px;margin-top:28px;
   border-top:1px solid rgba(255,255,255,.12);padding-top:18px}
 
-/* ── install ────────────────────────────────────────────────────────────── */
-.install{background:var(--pri-xl);border:1px solid #d6efe7;border-radius:22px;padding:32px 24px}
-.tabs{display:flex;gap:7px;margin-bottom:22px;flex-wrap:wrap}
+/* ── install ────────────────────────────────────────────────────────────────
+   This is the only panel on the page allowed to shout. Everything else is a
+   white card on a pale background; this one gets a gradient, a heavier border
+   and a coloured shadow so that a thumb flicking past physically stops here.
+   The excitement has to come from the treatment, not from the claims — the
+   copy inside still only promises what the app actually does. */
+.install{position:relative;overflow:hidden;
+  background:linear-gradient(158deg,#ffffff 0%,var(--pri-xl) 46%,#E4F5EE 100%);
+  border:1.5px solid #bde5d6;border-radius:26px;padding:38px 26px;
+  box-shadow:0 1px 2px rgba(10,26,36,.04),0 26px 60px rgba(14,164,131,.16)}
+.install:before{content:'';position:absolute;width:280px;height:280px;right:-90px;top:-110px;
+  background:radial-gradient(circle,rgba(14,164,131,.16),transparent 68%);pointer-events:none}
+.install>*{position:relative}
+@media(min-width:760px){.install{padding:46px 40px}}
+
+/* The badge that answers the only real objection — "how long is this going
+   to take me" — before the heading has to. */
+.flag{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:#fff;
+  font:700 12.5px var(--body);letter-spacing:.04em;text-transform:uppercase;
+  padding:7px 14px;border-radius:999px;margin-bottom:16px}
+.flag i{font-style:normal;color:#5FE0BC}
+
+/* Three bordered boxes: what you actually get for the ten seconds. Bordered
+   rather than borderless so they read as discrete things you are being
+   handed, and so the panel keeps the spacing rhythm of the rest of the page. */
+.perks{display:grid;gap:10px;margin:22px 0 26px}
+@media(min-width:640px){.perks{grid-template-columns:repeat(3,1fr)}}
+.perk{background:rgba(255,255,255,.86);border:1px solid #cfe9df;border-radius:13px;padding:15px 16px}
+.perk b{display:block;font:700 14.5px var(--body);margin-bottom:3px}
+.perk span{color:var(--slate);font-size:13.5px;line-height:1.5;display:block}
+
+.tabs{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
 .tab{background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 17px;
-  font:600 14px var(--body);color:var(--slate);cursor:pointer}
+  font:600 14px var(--body);color:var(--slate);cursor:pointer;transition:background .15s,color .15s}
 .tab[aria-selected="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
-.pane{display:none}.pane.on{display:block}
-.pane ol{margin:0;padding-left:20px;color:var(--ink2)}
+/* The steps live in their own bordered box so the instructions look like a
+   card you follow, not loose text floating on the panel background. */
+.pane{display:none}
+.pane.on{display:block;background:#fff;border:1px solid #d3ebe2;border-radius:14px;padding:22px 22px 22px 10px}
+.pane ol{margin:0;padding-left:24px;color:var(--ink2)}
 .pane li{margin-bottom:11px;font-size:15.5px}
+.pane li:last-child{margin-bottom:0}
 .pane li b{font-weight:700}
+/* Fired when someone taps an install button on a browser with no native
+   install prompt (iOS). The tap has to land somewhere, so it lands here. */
+@keyframes flash{
+  0%  {border-color:#d3ebe2;box-shadow:0 0 0 0 rgba(14,164,131,.42)}
+  35% {border-color:var(--pri);box-shadow:0 0 0 7px rgba(14,164,131,0)}
+  100%{border-color:#d3ebe2;box-shadow:0 0 0 0 rgba(14,164,131,0)}
+}
+.pane.flash{animation:flash 1.25s ease-out 2}
+@media(prefers-reduced-motion:reduce){.pane.flash{animation:none;border-color:var(--pri)}}
 
 /* ── faq ────────────────────────────────────────────────────────────────── */
 details{background:var(--card);border:1px solid var(--line);border-radius:14px;
@@ -164,10 +237,11 @@ details[open] summary:after{content:'–'}
 details p{color:var(--slate);margin-top:12px;font-size:15.5px}
 
 /* ── close + footer ─────────────────────────────────────────────────────── */
-.close{text-align:center;padding:64px 0 40px}
+.close{text-align:center;padding-top:68px;padding-bottom:52px;border-top:1px solid var(--line)}
 .close h2{margin-bottom:12px}
 .close .sub{margin:0 auto 26px}
-footer{border-top:1px solid var(--line);padding:28px 0 120px;color:var(--slate);font-size:13.5px}
+.close .ctastack{margin:0 auto}
+footer{border-top:1px solid var(--line);padding-top:30px;padding-bottom:120px;color:var(--slate);font-size:13.5px}
 footer a{text-decoration:underline;text-underline-offset:3px}
 .flinks{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px}
 
@@ -177,7 +251,16 @@ footer a{text-decoration:underline;text-underline-offset:3px}
 .dock{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:11px 16px calc(11px + env(safe-area-inset-bottom));
   background:rgba(246,250,249,.93);backdrop-filter:blur(10px);border-top:1px solid var(--line);
   display:flex;justify-content:center}
-.dock .cta{max-width:520px}
+/* Two asks in the dock: the thread takes the width, the install sits beside it
+   as a compact square. On a phone this bar is the most-seen element on the
+   page, so the home-screen ask being absent from it meant it was effectively
+   absent — but it must not crowd out the cheaper action either.
+
+   min-width:0 matters: without it a flex item refuses to shrink below its text
+   width, and on a 360–390px phone the pair overflowed the bar. */
+.dock .row{display:flex;gap:9px;width:100%;max-width:520px}
+.dock .cta{flex:1 1 auto;max-width:none;width:auto;min-width:0;white-space:nowrap;padding-left:16px;padding-right:16px}
+.dock .cta.alt{flex:0 0 auto;width:58px;padding:17px 0;font-size:19px;gap:0}
 @media(min-width:900px){.dock{display:none}footer{padding-bottom:40px}}
 </style>
 </head>
@@ -201,9 +284,11 @@ footer a{text-decoration:underline;text-underline-offset:3px}
            before they have seen it work spends trust we have not earned yet —
            and the install ask does not disappear, it just waits until the
            product has made the argument. -->
-      <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-hero">Ask Num something</a>
-      <a class="cta ghost" href="#install" style="margin-top:10px">Or add it to your home screen</a>
-      <p class="under">Free, no signup. Works in your browser right now.</p>
+      <div class="ctastack">
+        <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-hero">Ask Num something</a>
+        <a class="cta alt" href="#install">📲 Add to home screen — 10 seconds</a>
+      </div>
+      <p class="under">Free, no signup, no app store. Works in your browser right now.</p>
     </div>
 
     <div class="phone" aria-label="Example conversation with Num">
@@ -294,11 +379,17 @@ footer a{text-decoration:underline;text-underline-offset:3px}
 
 <section class="wrap" id="install">
   <div class="install">
-    <p class="kicker">Install</p>
-    <h2>Put Num on your home screen</h2>
-    <p class="sub">It's a web app, so there's nothing to download from a store and no account to
-      create. Installing means it opens full-screen, keeps your thread, and can notify you when a
-      booking is confirmed.</p>
+    <span class="flag"><i>●</i> Takes about 10 seconds</span>
+    <h2>Keep Num one tap away</h2>
+    <p class="sub">No app store, no download, no account. Add it once and Num sits on your home
+      screen like any other app — opening full-screen, with your thread exactly where you left it
+      and a ping the moment a booking is confirmed.</p>
+
+    <div class="perks">
+      <div class="perk"><b>Opens full-screen</b><span>No address bar, no browser chrome. It just looks like an app.</span></div>
+      <div class="perk"><b>Your thread stays put</b><span>Everything you've told it is still there next time you open it.</span></div>
+      <div class="perk"><b>You get told</b><span>A notification the moment a venue confirms your booking.</span></div>
+    </div>
 
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-p="ios" aria-selected="false">iPhone</button>
@@ -328,10 +419,12 @@ footer a{text-decoration:underline;text-underline-offset:3px}
       </ol>
     </div>
 
-    <p style="margin-top:26px">
-      <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-page">Open Num and ask something</a>
-    </p>
-    <p class="under">You can try it in the browser first — installing is optional.</p>
+    <div class="ctastack" style="margin-top:26px">
+      <a class="cta pop" href="#install" id="installCta">Add Num to my home screen</a>
+      <a class="cta ghost" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-page">Or just open it in my browser</a>
+    </div>
+    <p class="under">Nothing to download, nothing to sign up for. You can uninstall it by dragging
+      it off your home screen, same as any app.</p>
   </div>
 </section>
 
@@ -385,7 +478,10 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   <h2>Give it one thing to sort</h2>
   <p class="sub">Dinner tonight is a good test. If it's useful, keep it on your home screen.
     If it isn't, you've lost ten seconds.</p>
-  <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-page-footer" style="margin:0 auto">Open Num</a>
+  <div class="ctastack">
+    <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-page-footer">Open Num</a>
+    <a class="cta alt" href="#install">📲 Add to home screen — 10 seconds</a>
+  </div>
 </div>
 
 <footer class="wrap">
@@ -397,7 +493,12 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   </p>
 </footer>
 
-<div class="dock"><a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-dock">Ask Num something</a></div>
+<div class="dock">
+  <div class="row">
+    <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-dock">Ask Num something</a>
+    <a class="cta alt" href="#install" aria-label="Add Num to your home screen" title="Add to home screen">📲</a>
+  </div>
+</div>
 
 <script>
 /* ── Who just arrived? ────────────────────────────────────────────────────
@@ -468,16 +569,33 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     deferred = e;
-    /* Only the buttons that ask for an install. The hero CTA now opens the
-       thread, and hijacking it with a native install sheet would be a bait —
-       the person asked to try Num, not to install it. */
-    [].slice.call(document.querySelectorAll('.cta[href="#install"]')).forEach(function (btn) {
-      btn.addEventListener('click', function (ev) {
-        if (!deferred) return;              // fall through to the written steps
+  });
+
+  /* Only the buttons that ask for an install. The hero CTA opens the thread,
+     and hijacking it with a native install sheet would be a bait — the person
+     asked to try Num, not to install it.
+
+     Bound once at load rather than inside the beforeinstallprompt handler,
+     which is where this used to live: on iOS that event never fires, so the
+     listeners were never attached and the button was inert. Now every install
+     button always does something — the native sheet where the browser offers
+     one, and the written steps for the person's platform where it doesn't. */
+  [].slice.call(document.querySelectorAll('.cta[href="#install"]')).forEach(function (btn) {
+    btn.addEventListener('click', function (ev) {
+      if (deferred) {
         ev.preventDefault();
         deferred.prompt();
         deferred = null;
-      });
+        return;
+      }
+      /* No native prompt (iOS, or already dismissed). Send them to the steps
+         and flash the card, so a tap is never a dead tap. */
+      var pane = document.querySelector('.pane.on');
+      if (!pane) return;
+      pane.scrollIntoView({behavior: 'smooth', block: 'center'});
+      pane.classList.remove('flash');
+      void pane.offsetWidth;               // restart the animation
+      pane.classList.add('flash');
     });
   });
 
