@@ -14,7 +14,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
 import { redactProfile, redactState } from './redact.mjs';
 import { readCache, writeCache, cacheable } from './answercache.mjs';
-import { recordAsk } from './asks.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
 import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
@@ -616,14 +615,7 @@ export default {
         // InstallPrompt (see src/components/app/InstallPrompt.tsx) offers
         // add-to-home-screen 1.2s in, with the right instructions per platform
         // and never when Num is already installed.
-        // 2026-08-08, Dre's call: Reddit now lands on /install/, a funnel page
-        // whose only job is add-to-home-screen. This is NOT a return to the old
-        // mistake — the thing that lost 300 clicks was a second 30-second film
-        // before anyone could act. /install/ has no video: the button is above
-        // the fold, again in a sticky bar, and the platform-specific steps are
-        // already open to the reader's own OS. If installs per click do not
-        // beat the app-root baseline, put this back to '/?…' and say so here.
-        rd: '/install/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1',
+        rd: '/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1',
         dg: '/watch/?utm_source=google&utm_medium=demandgen&utm_campaign=global-pretrip-film1',
       };
       const to = GO[url.pathname.slice(4).replace(/\/$/, '')];
@@ -805,7 +797,6 @@ export default {
         const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang });
         if (hit) {
           console.log('[num-ai] served from cache, no model called');
-          ctx.waitUntil(recordAsk(env, { text: lastUser, dest: grounding.place?.slug ?? null, lane: 'cache', cached: true, memberId: parsed.state?.me?.id ?? null }));
           return json(200, { ...hit, actions: [], place: grounding.place?.name ?? null });
         }
       }
@@ -965,18 +956,6 @@ export default {
       if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean })) {
         ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean }));
       }
-      // The question itself, kept (scrubbed inside recordAsk). Until this
-      // line, the text only survived when a partner impression fired — the
-      // asks nobody could serve, the exact ones that write the roadmap, were
-      // the ones being dropped.
-      ctx.waitUntil(recordAsk(env, {
-        text: lastUser,
-        dest: grounding.place?.slug ?? null,
-        lane: 'big',
-        brain: _brain ?? null,
-        degraded: !!_degraded,
-        memberId: parsed.state?.me?.id ?? null,
-      }));
       return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
     } catch (err) {
       console.error('[num-ai]', err);
