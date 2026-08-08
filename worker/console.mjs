@@ -273,7 +273,13 @@ async function adminLogin(env, req) {
   return new Response(null, {
     status: 303,
     headers: {
-      Location: '/ops/?in=1',
+      // The token rides in BOTH the cookie and the fragment. The fragment
+      // (#t=…) never leaves the browser — not sent to any server, not logged
+      // anywhere — and the page stores it exactly the way the dashboard has
+      // always authenticated. Verified 8 Aug: a browser that accepted the
+      // password then silently refused the cookie; with two carriers, either
+      // one surviving signs you in.
+      Location: `/ops/?in=1#t=${encodeURIComponent(token)}`,
       // HttpOnly: no script can read or leak it. SameSite=Lax: still sent on
       // the redirect and every same-site request, never cross-site.
       'Set-Cookie': `num_ops_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`,

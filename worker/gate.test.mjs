@@ -57,3 +57,19 @@ test('a cookie that fails right after login names itself', () => {
   assert.match(api, /\/ops\/\?in=1/, 'the login redirect lost its marker — a dead cookie is indistinguishable from a first visit');
   assert.match(page, /cookie did not stick/, 'the page no longer explains a cookie failure — silence returns wearing new clothes');
 });
+
+test('the session survives a browser that refuses cookies', () => {
+  // Observed 8 Aug: password accepted (?in=1 reached), cookie set by the
+  // server, dashboard still gated — the browser accepted the login and then
+  // silently declined to store or return the cookie. The token therefore
+  // travels twice: HttpOnly cookie AND URL fragment. The fragment never
+  // leaves the browser, and the page moves it into sessionStorage — the auth
+  // path that has worked since the dashboard shipped — then wipes it from
+  // the address bar.
+  assert.match(api, /#t=\$\{encodeURIComponent\(token\)\}/,
+    'the login redirect no longer carries the token — a cookie-refusing browser locks the admin out with a correct password');
+  assert.match(page, /location\.hash\.slice\(1\)\)\.get\('t'\)/,
+    'the page never collects the fragment token — the second carrier is dead weight');
+  assert.match(page, /history\.replaceState\(null, '', '\/ops\/'\)/,
+    'the token lingers in the address bar and browser history after use');
+});

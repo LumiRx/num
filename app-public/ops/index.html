@@ -581,8 +581,21 @@ const complain = (msg) => {
   box.classList.remove('shake'); void box.offsetWidth; // restart the animation
   box.classList.add('shake');
 };
-// The ONLY scripting the gate keeps: reporting the server's verdict. The
-// submission itself is browser-native — script-free by design.
+// Collect the session token the login redirect carried in the fragment.
+// This runs before boot(): the token goes into sessionStorage — the auth
+// path the dashboard has used from day one — and the fragment is wiped from
+// the address bar and history. No cookie required, no fetch raced, nothing
+// for a service worker or a privacy setting to eat.
+{
+  const t = new URLSearchParams(location.hash.slice(1)).get('t');
+  if (t) {
+    S.key = t;
+    sessionStorage.setItem('num_ops', t);
+    history.replaceState(null, '', '/ops/');
+  }
+}
+// The ONLY other scripting the gate keeps: reporting the server's verdict.
+// The submission itself is browser-native — script-free by design.
 {
   const err = new URLSearchParams(location.search).get('err');
   if (err) {
