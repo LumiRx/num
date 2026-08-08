@@ -40,6 +40,18 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
     // Phuket fallback surfaces as source 'default' — or 'city_centre' after
     // it backfills coordinates — and must never reach the app's brain.
     const TRUSTED = new Set(['named', 'named_area', 'shared_location', 'ip_location', 'last_seen']);
+
+    // The guest named a place we don't cover ("horse races in Delmar").
+    // Returning `none` here would be almost right — the model would answer
+    // from general knowledge — but it also hides WHY there are no partners,
+    // and the prompt would happily fall back to asserting the IP city. Pass
+    // the place through, flagged, with no partners: the model answers about
+    // the place the guest actually asked about, honestly, with nothing local
+    // attached. Never substitute where they are for where they asked.
+    if (loc?.source === 'unsupported' && loc.unsupported) {
+      return { ...none, place: { name: loc.unsupported, unsupported: true } };
+    }
+
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
     const [{ rows }, guide, buzz, showtimes] = await Promise.all([

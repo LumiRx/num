@@ -59,7 +59,18 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
   // only breaks the tie on an opening message too short to read.
   if (acceptLang) lines.push(`This device prefers ${acceptLang}. If their message leaves the language genuinely ambiguous, use it — otherwise answer in whatever they wrote.`);
   lines.push(`Today is ${dateStr}, ${timeStr}${place?.tz ? ` local time in ${place.name}` : ' UTC'}.`);
-  if (place?.name) {
+  if (place?.unsupported) {
+    // The guest named a place we don't cover. The one unforgivable move here
+    // is answering about somewhere else — a guest asking about Del Mar who
+    // gets Los Angeles restaurants has learned that Num doesn't listen. Be
+    // useful from general knowledge, be honest about what "no partners" means,
+    // and never pretend the network reaches somewhere it doesn't.
+    lines.push(
+      `The user is asking about ${place.name}. Num has NO partner network there yet — no verified places, no booking, no car. ` +
+        `Answer their question about ${place.name} as well as general knowledge allows, and say plainly (once, without apologising twice) that booking and partner perks aren't live there yet. ` +
+        `NEVER answer about a different city instead, and NEVER invent partner venues, exact prices, or opening hours for ${place.name}. Create no booking actions.`,
+    );
+  } else if (place?.name) {
     lines.push(
       `The user's current destination: ${place.label ? `${place.label}, ` : ''}${place.name}${place.country ? ', ' + place.country : ''}${place.precise ? ' (exact position known — "near me" means walking distance)' : ''}.` +
         (place.inferred

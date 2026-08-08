@@ -22,6 +22,9 @@ export const CATS = {
   spa:        ['massage','spa','นวด','สปา','массаж','спа','按摩','マッサージ'],
   bar:        ['bar','pub','drink','beer','cocktail','nightlife','club','party','บาร์','เบียร์','บันเทิง','бар','пиво','клуб','酒吧','夜生活'],
   hotel:      ['hotel','stay','room','resort','hostel','โรงแรม','ที่พัก','отель','номер','酒店','住宿','ホテル'],
+  // 'sand' is deliberately absent: detectCat matches by substring, and every
+  // "sandwich" would have become a beach ask.
+  beach:      ['beach','beaches','sunbath','sunset spot','หาด','ชายหาด','пляж','海滩','海灘','ビーチ','浜'],
   diving:     ['dive','diving','scuba','snorkel','ดำน้ำ','дайвинг','снорк','潜水','浮潜'],
   boat:       ['boat','yacht','charter','island','phi phi','similan','เรือ','เกาะ','лодка','яхта','остров','游艇','出海','离岛'],
   tour:       ['tour','trip','excursion','guide','ทัวร์','ไกด์','тур','экскурс','旅游','跟团','ツアー'],
@@ -50,11 +53,12 @@ const CATSQL = {
   spa:        ['%spa%','%massage%','%beauty%'],
   bar:        ['%bar%','%pub%','%nightlife%','%night club%','%lounge%','%brewery%'],
   hotel:      ['%hotel%','%hostel%','%guesthouse%','%guest house%','%apartment%','%resort%'],
+  beach:      ['%beach%'],
   diving:     ['%diving%','%dive%','%water%'],
   boat:       ['%boat%','%marina%','%charter%','%tour%'],
   tour:       ['%tour%','%travel%','%attraction%'],
   gym:        ['%gym%','%fitness%','%sport%','%dojo%','%training%'],
-  attraction: ['%attraction%','%museum%','%gallery%','%viewpoint%','%zoo%','%aquarium%','%theme park%','%water park%','%theatre%','%place of worship%','%amusement%','%arts centre%'],
+  attraction: ['%attraction%','%museum%','%gallery%','%viewpoint%','%zoo%','%aquarium%','%theme park%','%water park%','%theatre%','%place of worship%','%amusement%','%arts centre%','%beach%','%temple%','%waterfall%','%landmark%'],
   rental:     ['%rental%','%rent%'],
   tailor:     ['%tailor%'],
   pharmacy:   ['%pharmacy%','%drug store%','%chemist%'],
@@ -64,7 +68,7 @@ const CATSQL = {
   golf:       ['%golf%'],
 };
 // When nothing specific is asked for, show the things a concierge leads with.
-const DEFAULT_PATTERNS = ['%restaurant%','%attraction%','%spa%','%massage%','%caf%','%bar%','%museum%'];
+const DEFAULT_PATTERNS = ['%restaurant%','%attraction%','%spa%','%massage%','%caf%','%bar%','%museum%','%beach%','%viewpoint%','%temple%'];
 
 export function detectCat(text) {
   const t = (text || '').toLowerCase();
@@ -180,7 +184,11 @@ const SHORT_PLACES = {
 
 /** Trailing words that ride along with a captured place name. */
 const TRAILING_FILLER =
-  /[\s,]+(right|now|today|tonight|tomorrow|currently|please|asap|at|for|until|till|this|next|and|but|so|with|on|the|a|an|area|city|pls)$/i;
+  // The time words matter as much as the connectives: the strip runs last-word
+  // first, so "Tulum next month" only reduces if "month" strips (then "next").
+  // Without them, every "in <place> next week/month/weekend" produced a
+  // garbage place name that matched nothing and lost the guest's grounding.
+  /[\s,]+(right|now|today|tonight|tomorrow|currently|please|asap|at|for|until|till|this|next|and|but|so|with|on|the|a|an|area|city|pls|week|weeks|weekend|weekends|month|months|year|morning|afternoon|evening|night|day|days)$/i;
 
 /**
  * A place the guest states outright that they are in — covered by us or not.
@@ -280,17 +288,27 @@ export async function resolveLocation(env, { text, guest, cf }) {
     if (coords && nearest && nearest.d.slug === named.slug && nearest.km < 120) {
       out.lat = coords.lat; out.lng = coords.lng; out.precise = coords.precise; out.source = coords.source;
     }
-  } else if (nearest && nearest.km < 120) {
-    out.dest = nearest.d; out.lat = coords.lat; out.lng = coords.lng;
-    out.precise = coords.precise; out.source = coords.source;
   } else if (stated) {
     // The guest named somewhere, and it matched no destination we cover.
     // Believe them and stop here. Falling through to `last_dest` was the bug
     // that made a Phuket guest permanently a Phuket guest: once last_dest was
     // set, every later message resolved back to it no matter what they said.
+    //
+    // THIS BRANCH MUST COME BEFORE COORDINATES. It used to sit after the
+    // `nearest` check, so a guest with an IP near a covered city who named
+    // somewhere else was answered about the covered city: "let's plan the
+    // horse races this weekend in Delmar" came back as Los Angeles
+    // restaurants. The comment at the top of this function has always said
+    // "a place the guest named > where they actually are" — the order of
+    // these branches is where that promise is either kept or broken. A guest
+    // planning a trip is usually not standing in the place they're asking
+    // about; that is what planning means.
     out.unsupported = stated;
     out.source = 'unsupported';
     out.dest = dests.find(d => d.slug === guest?.last_dest) || dests.find(d => d.slug === 'phuket') || dests[0];
+  } else if (nearest && nearest.km < 120) {
+    out.dest = nearest.d; out.lat = coords.lat; out.lng = coords.lng;
+    out.precise = coords.precise; out.source = coords.source;
   } else if (guest?.last_dest) {
     out.dest = dests.find(d => d.slug === guest.last_dest) || null;
     if (out.dest) out.source = 'last_seen';

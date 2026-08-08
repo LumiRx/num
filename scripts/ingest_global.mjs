@@ -5,8 +5,9 @@
  * Source: OpenStreetMap via Overpass API (ODbL, free, no scraping).
  * Writes into the `places` table, which the console and the AI concierge both read.
  *
- * Must run on a machine with real internet + an authenticated wrangler
- * (the Cowork sandbox cannot reach overpass-api.de).
+ * Overpass is reachable from the Cowork sandbox (verified 8 Aug 2026), so
+ * `--dry` runs work there; only the wrangler write needs an authenticated
+ * machine.
  *
  *   node ingest_global.mjs                     # every destination not yet ingested
  *   node ingest_global.mjs --only=rome,paris   # just these
@@ -36,6 +37,12 @@ const REGION = flag('region');
 const FROM_JSON = flag('from-json');
 const JSON_DEST = flag('dest');
 const FORCE = has('force'), DRY = has('dry');
+// --nature: beaches, temples, waterfalls, viewpoints, parks. The main query
+// never asked for these — 14,010 Phuket places and not one beach, in a beach
+// destination. Kept as a separate mode with INSERT OR IGNORE because the main
+// ingest REPLACES on id collision, and a re-run with rating NULL would wipe
+// the Google ratings the enrichment pass paid for.
+const NATURE = has('nature');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const state = existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')) : {};
@@ -61,7 +68,12 @@ const CATMAP = {
   water_park:'Water park', golf_course:'Golf', marina:'Marina & charters',
   beach_resort:'Beach club', dance:'Nightlife', travel_agency:'Tours & travel',
   attraction_yes:'Attraction',
+  beach:'Beach', waterfall:'Waterfall', park:'Park', nature_reserve:'Nature reserve',
+  national_park:'National park', garden:'Park',
 };
+
+/** A temple is not a "Place Of Worship" to a guest planning a day. */
+const WORSHIP = { buddhist:'Temple', muslim:'Mosque', christian:'Church', hindu:'Temple', taoist:'Temple', shinto:'Shrine' };
 const titled = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 const OVERPASS_QUERY = bbox => `[out:json][timeout:180];
@@ -75,8 +87,21 @@ const OVERPASS_QUERY = bbox => `[out:json][timeout:180];
 );
 out center 20000;`;
 
+// The things people actually travel FOR. Everything the main query catches is
+// somewhere to spend money; this is the reason they came.
+const NATURE_QUERY = bbox => `[out:json][timeout:180];
+(
+  nwr["natural"="beach"]["name"](${bbox});
+  nwr["waterway"="waterfall"]["name"](${bbox});
+  nwr["amenity"="place_of_worship"]["name"](${bbox});
+  nwr["tourism"~"^(viewpoint|attraction)$"]["name"](${bbox});
+  nwr["leisure"~"^(park|nature_reserve|garden)$"]["name"](${bbox});
+  nwr["boundary"="national_park"]["name"](${bbox});
+);
+out center 20000;`;
+
 async function overpass(bbox) {
-  const body = 'data=' + encodeURIComponent(OVERPASS_QUERY(bbox.join(',')));
+  const body = 'data=' + encodeURIComponent((NATURE ? NATURE_QUERY : OVERPASS_QUERY)(bbox.join(',')));
   for (let attempt = 0; attempt < 6; attempt++) {
     const url = OVERPASS[attempt % OVERPASS.length];
     try {
@@ -110,9 +135,12 @@ function normalise(el, dest) {
   const lat = el.lat ?? el.center?.lat, lng = el.lon ?? el.center?.lon;
   if (lat == null || lng == null) return null;
 
-  const raw = t.amenity || t.tourism || t.shop || t.leisure
+  let raw = t.amenity || t.tourism || t.shop || t.leisure
+    || t.natural || t.waterway || t.boundary
     || (t.office === 'travel_agent' ? 'travel_agency' : null)
     || (t.club === 'scuba_diving' ? 'scuba_diving' : 'business');
+  // Religion decides what a place of worship IS to a visitor.
+  if (raw === 'place_of_worship') raw = null; // category set below from religion
 
   const area = t['addr:suburb'] || t['addr:district'] || t['addr:neighbourhood']
     || t['addr:quarter'] || t['addr:city'] || t['addr:town'] || null;
@@ -123,10 +151,14 @@ function normalise(el, dest) {
   const localName = Object.keys(t).filter(k => k.startsWith('name:') && k !== 'name:en')
     .map(k => t[k]).find(v => v && v !== name) || null;
 
+  const category = raw == null
+    ? (WORSHIP[t.religion] || 'Place of worship')
+    : (CATMAP[raw] || titled(raw));
+
   return {
     id: pid('osm', name, lat, lng),
     name, name_local: localName,
-    category: CATMAP[raw] || titled(raw),
+    category,
     lat: +(+lat).toFixed(5), lng: +(+lng).toFixed(5),
     cell_lat: Math.floor(lat * 10), cell_lng: Math.floor(lng * 10),
     dest: dest.slug, area, country: dest.country, region: dest.region,
@@ -153,10 +185,10 @@ function writeSql(slug, places) {
   mkdirSync(OUT, { recursive: true });
   const stmts = [];
   for (let i = 0; i < places.length; i += ROWS_PER_STMT) {
-    stmts.push(`INSERT OR REPLACE INTO places ${COLS} VALUES\n` +
+    stmts.push(`INSERT OR ${NATURE ? 'IGNORE' : 'REPLACE'} INTO places ${COLS} VALUES\n` +
       places.slice(i, i + ROWS_PER_STMT).map(tuple).join(',\n') + ';');
   }
-  const file = `${OUT}/${slug}.sql`;
+  const file = `${OUT}/${slug}${NATURE ? '-nature' : ''}.sql`;
   writeFileSync(file, stmts.join('\n\n') + '\n');
   return file;
 }
