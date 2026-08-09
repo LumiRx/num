@@ -32,6 +32,30 @@ export default function InstallPrompt() {
   const [show, setShow] = useState(false);
   const [open, setOpen] = useState(false);
   const platform = detect();
+  // Android's native install sheet, captured by the shell before React
+  // mounted (see index.html). When present, the primary button installs in
+  // ONE TAP instead of teaching a three-step dance. iOS never has it —
+  // Apple exposes no API — so the steps remain the whole story there.
+  const [native, setNative] = useState<boolean>(() => Boolean((window as any).__numInstall));
+  useEffect(() => {
+    const on = () => setNative(true);
+    const done = () => { setNative(false); setShow(false); };
+    window.addEventListener('num-installable', on);
+    window.addEventListener('num-installed', done);
+    return () => { window.removeEventListener('num-installable', on); window.removeEventListener('num-installed', done); };
+  }, []);
+  const nativeInstall = async () => {
+    const e = (window as any).__numInstall;
+    if (!e) { setOpen(true); return; }
+    (window as any).__numInstall = null;
+    setNative(false);
+    try {
+      e.prompt();
+      const c = await e.userChoice;
+      if (c?.outcome === 'accepted') setShow(false);
+      else setOpen(true); // declined the sheet — offer the manual road
+    } catch { setOpen(true); }
+  };
 
   useEffect(() => {
     const installed =
@@ -92,14 +116,14 @@ export default function InstallPrompt() {
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <div
-          {...pressable(() => setOpen((v) => !v))}
+          {...pressable(() => { if (native && !open) void nativeInstall(); else setOpen((v) => !v); })}
           className="press"
           style={{
             flex: 1, cursor: 'pointer', textAlign: 'center', borderRadius: 999, padding: '11px 14px',
             background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
           }}
         >
-          {open ? 'GOT IT' : 'SHOW ME HOW'}
+          {native && !open ? 'ADD — ONE TAP' : open ? 'GOT IT' : 'SHOW ME HOW'}
         </div>
         <div
           {...pressable(dismiss)}

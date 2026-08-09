@@ -24,6 +24,24 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Captured HERE, not in React: Chrome fires beforeinstallprompt once,
+      // early — often before the bundle has parsed. Miss it and the one-tap
+      // install is gone for the whole visit; every "Add to home screen"
+      // button falls back to a manual instruction card on the exact devices
+      // that support doing it natively. e.preventDefault() also stops
+      // Chrome's own mini-infobar so the ONLY prompt the guest sees is the
+      // one our button triggers.
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__numInstall = e;
+        window.dispatchEvent(new Event('num-installable'));
+      });
+      window.addEventListener('appinstalled', function () {
+        window.__numInstall = null;
+        window.dispatchEvent(new Event('num-installed'));
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

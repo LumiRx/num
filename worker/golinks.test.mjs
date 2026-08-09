@@ -197,3 +197,19 @@ test('the phone mockup does not swallow the page scroll', () => {
   assert.match(frames, /pointerEvents:\s*'none'/,
     'the mockup is interactive again — it will capture the wheel and the page will appear stuck');
 });
+
+test('install is one tap where the platform allows it', () => {
+  // "Can it just prompt the phone?" On Android: yes — beforeinstallprompt,
+  // captured in the SHELL because Chrome fires it once, early, often before
+  // the bundle parses. Captured late = every button demoted to an
+  // instruction card on the exact devices that support the native sheet.
+  // On iOS no API exists, so the steps remain — that is Apple, not us.
+  const shell = readFileSync(join(HERE, '..', 'index.html'), 'utf8');
+  assert.match(shell, /beforeinstallprompt/, 'the shell no longer captures the install event — one-tap is dead for the whole visit');
+  assert.match(shell, /e\.preventDefault\(\)/, 'Chrome shows its own mini-infobar over ours — two prompts fight for the same tap');
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  assert.match(stage, /promptInstall/, 'the landing CTA never uses the captured event — Android guests get instructions for a sheet that was one tap away');
+  const prompt = readFileSync(join(HERE, '..', 'src', 'components', 'app', 'InstallPrompt.tsx'), 'utf8');
+  assert.match(prompt, /ADD — ONE TAP/, 'the floating prompt lost its native path');
+  assert.match(prompt, /setOpen\(true\); \/\/ declined/, 'a declined native sheet leaves the guest with nothing — no fallback to the manual steps');
+});

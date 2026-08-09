@@ -21,7 +21,7 @@
 //     should never have to scroll past a screenshot to act.
 //   · THE DESKTOP → PHONE HANDOFF IS EXPLICIT. Num lives on a phone home
 //     screen; a laptop visitor needs telling how to get it there.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import IOSDevice from '../device/IOSDevice';
 import ConciergeApp from '../app/ConciergeApp';
 import LockScreen from './LockScreen';
@@ -156,6 +156,43 @@ function withSearch(path: string): string {
   return path + (path.includes('?') ? '&' + qs.slice(1) : qs);
 }
 
+/**
+ * One tap where the platform allows it, honest instructions where it doesn't.
+ *
+ * Android/Chrome: the shell captured beforeinstallprompt into
+ * window.__numInstall — calling prompt() opens the NATIVE install sheet, and
+ * "add to home screen" becomes literally one tap plus Add. That sheet can be
+ * shown once per captured event, so the reference is cleared after use.
+ *
+ * iOS Safari: Apple exposes NO API for this — no site can open the Add to
+ * Home Screen sheet, which is why the instruction overlay exists at all.
+ * Falling back to it is not a bug; it is the entire iOS story.
+ */
+function useNativeInstall() {
+  const [ready, setReady] = useState<boolean>(() => Boolean((window as any).__numInstall));
+  useEffect(() => {
+    const on = () => setReady(true);
+    const off = () => setReady(false);
+    window.addEventListener('num-installable', on);
+    window.addEventListener('num-installed', off);
+    return () => { window.removeEventListener('num-installable', on); window.removeEventListener('num-installed', off); };
+  }, []);
+  const promptInstall = useCallback(async () => {
+    const e = (window as any).__numInstall;
+    if (!e) return false;
+    (window as any).__numInstall = null;
+    setReady(false);
+    try {
+      e.prompt();
+      const choice = await e.userChoice;
+      return choice?.outcome === 'accepted';
+    } catch {
+      return false;
+    }
+  }, []);
+  return { ready, promptInstall };
+}
+
 export default function LaunchStage() {
   const width = useViewportWidth();
   const showLock = width >= 1180;
@@ -168,6 +205,7 @@ export default function LaunchStage() {
   const [platform] = useState(detectPlatform);
   const install = INSTALL[platform];
   const onPhone = platform !== 'desktop';
+  const { ready: nativeInstall, promptInstall } = useNativeInstall();
 
   return (
     <div
@@ -264,6 +302,16 @@ export default function LaunchStage() {
             <>
               <a
                 href="#on-your-phone"
+                onClick={(e) => {
+                  // Native path first: one tap opens the phone's own install
+                  // sheet and the guest just hits Add. Only when the platform
+                  // has no such sheet (iOS) does the link scroll to the
+                  // step-by-step card below.
+                  if (nativeInstall) {
+                    e.preventDefault();
+                    void promptInstall();
+                  }
+                }}
                 style={{
                   display: 'inline-block', textDecoration: 'none', borderRadius: 999,
                   padding: '17px 34px', fontWeight: 700, fontSize: 17, color: '#fff',
@@ -271,7 +319,7 @@ export default function LaunchStage() {
                   boxShadow: '0 12px 30px rgba(236,48,19,.38)',
                 }}
               >
-                Add Num to my home screen
+                {nativeInstall ? 'Add Num to my home screen — one tap' : 'Add Num to my home screen'}
               </a>
               <a
                 href={withSearch('/?app=1')}
