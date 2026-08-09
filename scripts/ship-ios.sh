@@ -25,11 +25,41 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SECRETS="$HOME/.secrets/appstore"
-[ -f "$SECRETS/env" ] || { echo "Missing $SECRETS/env with ASC_KEY_ID and ASC_ISSUER_ID"; exit 1; }
-# shellcheck disable=SC1091
-source "$SECRETS/env"
-[ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] || { echo "ASC_KEY_ID / ASC_ISSUER_ID not set in $SECRETS/env"; exit 1; }
-[ -f "$SECRETS/AuthKey_${ASC_KEY_ID}.p8" ] || { echo "Missing $SECRETS/AuthKey_${ASC_KEY_ID}.p8"; exit 1; }
+mkdir -p "$SECRETS"
+
+# ── self-configuring credentials ──────────────────────────────────────────
+# Hand-editing an env file failed three times running; the script now sets
+# itself up. The key id IS the filename — asking a human to retype it was
+# a transcription step with no purpose. Only the issuer id (not derivable)
+# is asked for, once, then remembered.
+
+# If the key is still sitting in Downloads, file it.
+if ! ls "$SECRETS"/AuthKey_*.p8 >/dev/null 2>&1; then
+  if ls "$HOME/Downloads"/AuthKey_*.p8 >/dev/null 2>&1; then
+    mv "$HOME/Downloads"/AuthKey_*.p8 "$SECRETS/"
+    echo "· moved API key from Downloads into $SECRETS"
+  else
+    echo "No API key found."
+    echo "App Store Connect → Users and Access → Integrations → Generate API Key"
+    echo "(role: App Manager) → Download. Then run this script again — it will"
+    echo "find the key in Downloads and file it itself."
+    exit 1
+  fi
+fi
+
+KEYFILE="$(ls "$SECRETS"/AuthKey_*.p8 | head -1)"
+ASC_KEY_ID="$(basename "$KEYFILE" .p8)"; ASC_KEY_ID="${ASC_KEY_ID#AuthKey_}"
+echo "· using key $ASC_KEY_ID"
+
+# Issuer id: read from env if saved, ask once if not.
+[ -f "$SECRETS/env" ] && source "$SECRETS/env" || true
+if [ -z "${ASC_ISSUER_ID:-}" ] || [ "$ASC_ISSUER_ID" = "PASTE_ISSUER_ID" ]; then
+  echo "Issuer ID (the long UUID at the top of the Integrations page):"
+  read -r ASC_ISSUER_ID
+  printf 'ASC_ISSUER_ID=%s\n' "$ASC_ISSUER_ID" > "$SECRETS/env"
+  echo "· saved — you will not be asked again"
+fi
+[ -n "$ASC_ISSUER_ID" ] || { echo "No issuer id — cannot upload."; exit 1; }
 
 # altool looks for keys in a fixed directory; a symlink keeps the real file
 # in ~/.secrets where it belongs.
@@ -44,10 +74,28 @@ npx cap sync ios
 
 echo "── 3/4 archive + export ────────────────────────────────"
 BUILD_DIR="$(mktemp -d)"
-xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+# Capacitor scaffolds differ by generation: CocoaPods projects build from
+# App.xcworkspace, Swift Package Manager projects (Capacitor 7+) from
+# App.xcodeproj. Detect rather than assume — this exact assumption cost a
+# failed run on 9 Aug.
+if [ -d ios/App/App.xcworkspace ]; then
+  XCTARGET=(-workspace ios/App/App.xcworkspace)
+else
+  XCTARGET=(-project ios/App/App.xcodeproj)
+fi
+# Fully headless signing: the team id is stated here (it is printed in the
+# developer portal header and inside every shipped binary — not a secret),
+# and the ASC API key authenticates xcodebuild to create/refresh the
+# provisioning profile itself. Nobody opens Xcode; nobody signs in.
+TEAM_ID="6X2UDX3SUP"   # Lumi Enterprises Corp.
+xcodebuild "${XCTARGET[@]}" -scheme App \
   -configuration Release -destination 'generic/platform=iOS' \
   -archivePath "$BUILD_DIR/Num.xcarchive" archive \
-  -allowProvisioningUpdates -quiet
+  DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+  -allowProvisioningUpdates \
+  -authenticationKeyPath "$KEYFILE" \
+  -authenticationKeyID "$ASC_KEY_ID" \
+  -authenticationKeyIssuerID "$ASC_ISSUER_ID" -quiet
 
 cat > "$BUILD_DIR/export.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -60,7 +108,10 @@ PLIST
 
 xcodebuild -exportArchive -archivePath "$BUILD_DIR/Num.xcarchive" \
   -exportOptionsPlist "$BUILD_DIR/export.plist" \
-  -exportPath "$BUILD_DIR/out" -allowProvisioningUpdates -quiet
+  -exportPath "$BUILD_DIR/out" -allowProvisioningUpdates \
+  -authenticationKeyPath "$KEYFILE" \
+  -authenticationKeyID "$ASC_KEY_ID" \
+  -authenticationKeyIssuerID "$ASC_ISSUER_ID" -quiet
 
 IPA="$(ls "$BUILD_DIR"/out/*.ipa)"
 echo "built: $IPA"
