@@ -89,3 +89,22 @@ test('the business page sells the moment, honestly', () => {
   assert.match(biz, /passed over is not counted/i, 'the impressions rule on the page no longer matches what impressions.mjs actually records');
   assert.ok(!/pay to rank|boost your position|top of the list/i.test(biz), 'the page implies placement can be bought — the one promise that must never appear');
 });
+
+test('the beaches page is citable — by engines and by answer machines', () => {
+  // GEO in practice: an AI engine cites the page that answers the question
+  // directly, in the language of the question, with structure it can parse.
+  // This page exists because the directory now genuinely holds every named
+  // beach on Phuket — the content is the database, not copywriting.
+  const pg = readFileSync(join(HERE, '..', 'public', 'phuket', 'beaches', 'index.html'), 'utf8');
+  const ld = JSON.parse(/application\/ld\+json">([\s\S]*?)<\/script>/.exec(pg)[1]);
+  const list = ld['@graph'].find((g) => g['@type'] === 'ItemList');
+  assert.ok(list.numberOfItems >= 45, 'the beach list shrank — check the nature extract');
+  assert.ok(pg.includes('Karon Beach') && pg.includes('หาดกะรน'),
+    'the bilingual names are gone — English engines or Thai searchers lose the page');
+  assert.ok(ld['@graph'].some((g) => g['@type'] === 'FAQPage'), 'the FAQ schema is gone — the direct answers AI engines lift are unstructured');
+  assert.match(pg, /red flag/i, 'the monsoon safety warning is gone — the one line on this page that protects someone');
+  const sitemap = readFileSync(join(HERE, '..', 'public', 'sitemap.xml'), 'utf8');
+  assert.ok(sitemap.includes('phuket/beaches'), 'the page is not in the sitemap — invisible to every engine');
+  const llms = readFileSync(join(HERE, '..', 'public', 'llms.txt'), 'utf8');
+  assert.ok(llms.includes('app.itsnum.com'), 'llms.txt still tells AI engines the product is LINE-only');
+});

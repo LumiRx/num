@@ -6,11 +6,18 @@
 > Businesses list free and pay 10% of a booking NUM completes, out of their side,
 > never added to the traveller's bill.
 
-Facts, as of 2026-07-31:
+Facts, as of 2026-08-08:
 
 - Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
-- Coverage: 567,793 places, 77 destinations, 38 countries.
-- Channels: LINE (@799pyrus) today. WhatsApp and WeChat in progress.
+- Coverage: 567,793 places, 77 destinations, 38 countries. This includes
+  natural attractions: for example every named beach on Phuket (49, mapped
+  with coordinates at itsnum.com/phuket/beaches/), plus temples, viewpoints
+  and waterfalls.
+- Channels: the NUM web app at app.itsnum.com (installs to the home screen, no
+  app store), and LINE (@799pyrus). SMS via +1 424 346 0888 pending carrier
+  approval. WhatsApp and WeChat in progress.
+- Payments: guests can settle bills and tabs through NUM in USD or Thai baht.
+  Memberships: free tier, Plus 8.98 USD/mo, Pro 28.98 USD/mo, auto-renewing.
 - Traveller price: free. There is no traveller subscription and no booking fee.
 - Business price: listing is free. 10% on completed bookings only. Nothing on
   walk-ins, nothing on a business's own repeat customers, no monthly minimum.
