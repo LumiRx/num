@@ -17,15 +17,26 @@
     "release:rollback": "node scripts/release.mjs rollback",
     "test:availability": "node worker/availability.test.mjs",
     "test:invites": "node scripts/test-invites.mjs",
-    "lint": "eslint worker scripts server"
+    "lint": "eslint worker scripts server",
+    "app:sync": "npm run build && npx cap sync",
+    "app:ios": "npm run app:sync && npx cap open ios",
+    "app:android": "npm run app:sync && npx cap open android"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
     "nodemailer": "^9.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

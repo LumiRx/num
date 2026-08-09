@@ -28,6 +28,8 @@ const STEPS: Record<Platform, string[]> = {
   desktop: ['Click the install icon in your address bar', 'Choose Install', 'Num opens in its own window'],
 };
 
+import { canOfferInstall } from '../../lib/native';
+
 export default function InstallPrompt() {
   const [show, setShow] = useState(false);
   const [open, setOpen] = useState(false);
@@ -58,6 +60,9 @@ export default function InstallPrompt() {
   };
 
   useEffect(() => {
+    // Inside the app-store build there is nothing to install — the prompt
+    // would be asking someone already in the app to get the app.
+    if (!canOfferInstall()) return;
     const installed =
       window.matchMedia('(display-mode: standalone)').matches ||
       (navigator as Navigator & { standalone?: boolean }).standalone === true;

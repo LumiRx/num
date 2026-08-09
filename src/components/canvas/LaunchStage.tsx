@@ -22,6 +22,7 @@
 //   · THE DESKTOP → PHONE HANDOFF IS EXPLICIT. Num lives on a phone home
 //     screen; a laptop visitor needs telling how to get it there.
 import { useCallback, useEffect, useState } from 'react';
+import { isNativeApp } from '../../lib/native';
 import IOSDevice from '../device/IOSDevice';
 import ConciergeApp from '../app/ConciergeApp';
 import LockScreen from './LockScreen';
@@ -205,6 +206,13 @@ export default function LaunchStage() {
   const [platform] = useState(detectPlatform);
   const install = INSTALL[platform];
   const onPhone = platform !== 'desktop';
+  // The app-store build never shows the landing page: someone who installed
+  // from a store did not come to be marketed to. ConciergeApp is the app.
+  useEffect(() => {
+    if (isNativeApp() && !location.search.includes('app=1')) {
+      location.replace('/?app=1');
+    }
+  }, []);
   const { ready: nativeInstall, promptInstall } = useNativeInstall();
 
   return (
