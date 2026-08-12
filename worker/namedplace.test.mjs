@@ -80,3 +80,15 @@ test('the nature ingest can never clobber an enriched row', () => {
     'the nature mode no longer uses INSERT OR IGNORE — a re-run will erase Google ratings on every collision');
   assert.match(ingest, /natural"="beach/, 'the nature query no longer asks Overpass for beaches');
 });
+
+test('the reply contract keeps Num texting, not emailing', () => {
+  // 9 Aug: real answers ran ~95 words. The cap only exists if the schema
+  // states it as a hard rule with the answer-first order.
+  const prompt = readFileSync(join(HERE, 'prompt.mjs'), 'utf8');
+  assert.match(prompt, /HARD CAP: three sentences, 40 words/,
+    'the length cap is gone — replies will drift back to paragraphs');
+  assert.match(prompt, /FIRST sentence is the answer/,
+    'answer-first ordering is gone — preamble will creep back');
+  assert.match(prompt, /At most ONE question/,
+    'the one-question rule is gone — replies will interrogate');
+});

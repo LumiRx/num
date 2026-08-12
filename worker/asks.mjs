@@ -36,6 +36,15 @@ CREATE TABLE IF NOT EXISTS num_asks (
 CREATE INDEX IF NOT EXISTS idx_num_asks_ts ON num_asks(ts);
 CREATE INDEX IF NOT EXISTS idx_num_asks_dest ON num_asks(dest, ts);
 `;
+// Added 11 Aug with the response quality control. Separate from SCHEMA
+// because the table predates it and CREATE TABLE IF NOT EXISTS will not add a
+// column to a table that already exists — the reason a migration that looks
+// applied can silently do nothing.
+//
+// Empty string, not NULL, for a clean answer: NULL would mean "never checked",
+// and the difference between "nothing wrong" and "not looked at" is the whole
+// value of the column once some rows predate the check.
+const MIGRATIONS = ['ALTER TABLE num_asks ADD COLUMN quality TEXT'];
 let ready = false;
 
 /** Emails, phones and long digit runs become placeholders, in place. */
@@ -51,7 +60,7 @@ export function scrubAsk(text) {
  * cost a guest a reply, so callers wrap this in waitUntil and every failure
  * is swallowed after one log line.
  */
-export async function recordAsk(env, { text, category = null, dest = null, lane = null, brain = null, degraded = false, cached = false, memberId = null }) {
+export async function recordAsk(env, { text, category = null, dest = null, lane = null, brain = null, degraded = false, cached = false, quality = null, memberId = null }) {
   if (!env?.DB) return;
   const t = scrubAsk(text).trim();
   if (t.length < 2) return;
@@ -61,12 +70,29 @@ export async function recordAsk(env, { text, category = null, dest = null, lane 
   try {
     if (!ready) {
       await env.DB.batch(SCHEMA.split(';').map((x) => x.trim()).filter(Boolean).map((x) => env.DB.prepare(x)));
+      // One at a time and each failure swallowed: "duplicate column name" is
+      // the expected result on every run after the first, and batching would
+      // let that expected error roll back the statements around it.
+      for (const m of MIGRATIONS) {
+        await env.DB.prepare(m).run().catch(() => {});
+      }
       ready = true;
     }
-    await env.DB.prepare(
-      'INSERT INTO num_asks (text, category, dest, lane, brain, degraded, cached, member_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)',
-    ).bind(t, category, dest, lane, brain, degraded ? 1 : 0, cached ? 1 : 0, memberId ? String(memberId).slice(0, 40) : null).run();
+    // Return the row id so the cost of THIS question can be joined to it in
+    // num_usage.ask_id. Without it, cost is knowable per day and per lane but
+    // never per kind of question — which is the only number that tells the
+    // router what to route where.
+    const res = await env.DB.prepare(
+      'INSERT INTO num_asks (text, category, dest, lane, brain, degraded, cached, quality, member_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
+    ).bind(
+      t, category, dest, lane, brain, degraded ? 1 : 0, cached ? 1 : 0,
+      // '' means checked and clean; NULL means never checked at all.
+      Array.isArray(quality) ? quality.join(',').slice(0, 200) : quality ?? null,
+      memberId ? String(memberId).slice(0, 40) : null,
+    ).run();
+    return res?.meta?.last_row_id ?? null;
   } catch (e) {
     console.warn('[asks]', e?.message ?? e);
   }
+  return null;
 }

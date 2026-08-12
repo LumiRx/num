@@ -22,6 +22,7 @@
      here is invisible and the funnel starts one step too late — at the app,
      not at the ad. Deferred so it never costs first paint. -->
 <script defer src="/api/analytics.js"></script>
+<script defer src="/num-track.js"></script>
 
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Num",
@@ -282,6 +283,32 @@ footer a{text-decoration:underline;text-underline-offset:3px}
 .dock .cta{flex:1 1 auto;max-width:none;width:auto;min-width:0;white-space:nowrap;padding-left:16px;padding-right:16px}
 .dock .cta.alt{flex:0 0 auto;width:58px;padding:17px 0;font-size:19px;gap:0}
 @media(min-width:900px){.dock{display:none}footer{padding-bottom:40px}}
+
+/* ── Desktop handoff ──────────────────────────────────────────────────────
+   Shown only where it makes sense: a QR on a phone screen is something you
+   cannot scan with the device displaying it. */
+.handoff{display:none}
+@media(min-width:760px){
+  .handoff:not([hidden]){display:grid;grid-template-columns:132px 1fr;gap:22px;align-items:center;
+    margin:22px 0 4px;padding:20px;border:1px solid var(--line,#e0ddd4);border-radius:14px;background:#fff}
+}
+.handoff-qr svg{width:132px;height:132px;display:block;border-radius:6px}
+.handoff-copy b{display:block;font-size:17px;margin-bottom:4px}
+.handoff-copy p{margin:0 0 10px;font-size:14.5px;line-height:1.55;max-width:52ch}
+.handoff-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lnk{background:none;border:0;padding:0;font:inherit;font-size:14.5px;font-weight:600;
+  color:var(--green,#1e7a4d);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.lnk:focus-visible{outline:2px solid var(--green,#1e7a4d);outline-offset:3px;border-radius:3px}
+.copied{font-size:13.5px;color:#68705f}
+.handoff-alt{font-size:13.5px;color:#68705f;margin-top:10px!important}
+
+/* ── Touch targets ────────────────────────────────────────────────────────
+   Measured at 390px: the three install tabs were 36px tall and the footer
+   links 22px, under the 44px minimum. These three tabs are the highest-stakes
+   controls on the page — choosing the wrong one is how an install fails — so
+   they are the last place to make someone aim carefully with a thumb. */
+.tab{min-height:44px;padding-top:10px;padding-bottom:10px}
+footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-height:22px}
 </style>
 </head>
 <body>
@@ -306,7 +333,7 @@ footer a{text-decoration:underline;text-underline-offset:3px}
            product has made the argument. -->
       <div class="ctastack">
         <a class="cta" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-hero">Ask Num something</a>
-        <a class="cta alt" href="#install">📲 Add to home screen — 10 seconds</a>
+        <a class="cta alt" href="#install" data-loc="hero">📲 Add to home screen — 10 seconds</a>
       </div>
       <p class="under">Free, no signup, no app store. Works in your browser right now.</p>
     </div>
@@ -468,9 +495,32 @@ footer a{text-decoration:underline;text-underline-offset:3px}
       </ol>
     </div>
 
+    <!-- ── Desktop handoff ──────────────────────────────────────────────────
+         Desktop is 13% of visitors, but the desktop pane used to send them to
+         a browser install icon — which gives them Num on the machine they are
+         about to walk away from. A traveller needs it in their pocket. The QR
+         is a static, pre-verified SVG: no library, no request, no runtime that
+         can fail, and it decodes to a URL with its own attribution so a scan
+         is never miscredited to the Reddit campaign.
+    ───────────────────────────────────────────────────────────────────────── -->
+    <div class="handoff" id="handoff" hidden>
+      <div class="handoff-qr"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" shape-rendering="crispEdges" role="img" aria-label="QR code that opens Num on your phone"><rect width="45" height="45" fill="#fff"/><path fill="#131a16" d="M2 2h7v1h-7zM10 2h1v1h-1zM12 2h1v1h-1zM14 2h4v1h-4zM19 2h1v1h-1zM25 2h1v1h-1zM28 2h3v1h-3zM32 2h1v1h-1zM36 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM11 3h2v1h-2zM15 3h2v1h-2zM18 3h2v1h-2zM21 3h1v1h-1zM26 3h1v1h-1zM30 3h1v1h-1zM32 3h2v1h-2zM36 3h1v1h-1zM42 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM11 4h1v1h-1zM17 4h2v1h-2zM22 4h2v1h-2zM25 4h3v1h-3zM31 4h2v1h-2zM34 4h1v1h-1zM36 4h1v1h-1zM38 4h3v1h-3zM42 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM10 5h2v1h-2zM13 5h4v1h-4zM18 5h4v1h-4zM23 5h4v1h-4zM28 5h1v1h-1zM30 5h2v1h-2zM33 5h2v1h-2zM36 5h1v1h-1zM38 5h3v1h-3zM42 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM10 6h2v1h-2zM13 6h2v1h-2zM17 6h1v1h-1zM19 6h2v1h-2zM22 6h4v1h-4zM27 6h4v1h-4zM33 6h1v1h-1zM36 6h1v1h-1zM38 6h3v1h-3zM42 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM10 7h3v1h-3zM14 7h5v1h-5zM20 7h5v1h-5zM27 7h1v1h-1zM32 7h2v1h-2zM36 7h1v1h-1zM42 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h1v1h-1zM26 8h1v1h-1zM28 8h1v1h-1zM30 8h1v1h-1zM32 8h1v1h-1zM34 8h1v1h-1zM36 8h7v1h-7zM10 9h7v1h-7zM19 9h2v1h-2zM23 9h4v1h-4zM30 9h3v1h-3zM34 9h1v1h-1zM2 10h1v1h-1zM6 10h1v1h-1zM8 10h3v1h-3zM12 10h5v1h-5zM19 10h1v1h-1zM21 10h4v1h-4zM26 10h1v1h-1zM30 10h2v1h-2zM34 10h6v1h-6zM42 10h1v1h-1zM2 11h2v1h-2zM5 11h2v1h-2zM9 11h2v1h-2zM12 11h1v1h-1zM14 11h2v1h-2zM17 11h2v1h-2zM20 11h1v1h-1zM25 11h3v1h-3zM29 11h3v1h-3zM36 11h4v1h-4zM42 11h1v1h-1zM3 12h1v1h-1zM5 12h1v1h-1zM8 12h2v1h-2zM12 12h5v1h-5zM18 12h1v1h-1zM20 12h1v1h-1zM22 12h1v1h-1zM24 12h4v1h-4zM29 12h1v1h-1zM32 12h1v1h-1zM34 12h4v1h-4zM42 12h1v1h-1zM3 13h3v1h-3zM12 13h1v1h-1zM19 13h1v1h-1zM21 13h3v1h-3zM25 13h2v1h-2zM28 13h8v1h-8zM39 13h1v1h-1zM2 14h2v1h-2zM5 14h4v1h-4zM10 14h6v1h-6zM17 14h3v1h-3zM23 14h4v1h-4zM29 14h3v1h-3zM34 14h1v1h-1zM37 14h1v1h-1zM41 14h1v1h-1zM2 15h3v1h-3zM6 15h2v1h-2zM9 15h3v1h-3zM14 15h1v1h-1zM17 15h2v1h-2zM21 15h3v1h-3zM27 15h2v1h-2zM31 15h1v1h-1zM33 15h1v1h-1zM38 15h4v1h-4zM3 16h2v1h-2zM7 16h3v1h-3zM11 16h3v1h-3zM16 16h4v1h-4zM22 16h2v1h-2zM27 16h3v1h-3zM31 16h1v1h-1zM33 16h1v1h-1zM35 16h2v1h-2zM38 16h2v1h-2zM42 16h1v1h-1zM6 17h1v1h-1zM12 17h1v1h-1zM17 17h1v1h-1zM19 17h1v1h-1zM23 17h1v1h-1zM26 17h1v1h-1zM29 17h3v1h-3zM33 17h2v1h-2zM38 17h2v1h-2zM42 17h1v1h-1zM2 18h2v1h-2zM6 18h1v1h-1zM8 18h1v1h-1zM11 18h1v1h-1zM14 18h4v1h-4zM19 18h1v1h-1zM21 18h2v1h-2zM24 18h2v1h-2zM31 18h1v1h-1zM37 18h1v1h-1zM39 18h1v1h-1zM41 18h2v1h-2zM2 19h1v1h-1zM6 19h2v1h-2zM11 19h1v1h-1zM13 19h3v1h-3zM17 19h1v1h-1zM20 19h1v1h-1zM23 19h3v1h-3zM27 19h6v1h-6zM34 19h5v1h-5zM42 19h1v1h-1zM4 20h1v1h-1zM8 20h1v1h-1zM10 20h1v1h-1zM15 20h1v1h-1zM18 20h2v1h-2zM22 20h1v1h-1zM25 20h2v1h-2zM29 20h2v1h-2zM32 20h1v1h-1zM34 20h1v1h-1zM37 20h1v1h-1zM39 20h2v1h-2zM42 20h1v1h-1zM3 21h1v1h-1zM10 21h6v1h-6zM18 21h3v1h-3zM24 21h3v1h-3zM28 21h2v1h-2zM34 21h1v1h-1zM37 21h1v1h-1zM39 21h1v1h-1zM41 21h2v1h-2zM2 22h2v1h-2zM7 22h5v1h-5zM13 22h2v1h-2zM16 22h1v1h-1zM18 22h1v1h-1zM20 22h2v1h-2zM24 22h1v1h-1zM26 22h3v1h-3zM30 22h1v1h-1zM34 22h2v1h-2zM37 22h1v1h-1zM39 22h1v1h-1zM41 22h1v1h-1zM2 23h1v1h-1zM5 23h1v1h-1zM7 23h1v1h-1zM9 23h1v1h-1zM12 23h1v1h-1zM14 23h1v1h-1zM16 23h2v1h-2zM19 23h1v1h-1zM25 23h1v1h-1zM27 23h1v1h-1zM29 23h2v1h-2zM32 23h1v1h-1zM35 23h4v1h-4zM42 23h1v1h-1zM5 24h4v1h-4zM10 24h1v1h-1zM14 24h2v1h-2zM17 24h1v1h-1zM20 24h1v1h-1zM22 24h1v1h-1zM24 24h2v1h-2zM27 24h1v1h-1zM29 24h1v1h-1zM31 24h1v1h-1zM35 24h1v1h-1zM40 24h1v1h-1zM42 24h1v1h-1zM2 25h4v1h-4zM10 25h1v1h-1zM13 25h2v1h-2zM17 25h1v1h-1zM19 25h1v1h-1zM21 25h3v1h-3zM25 25h2v1h-2zM28 25h2v1h-2zM31 25h1v1h-1zM34 25h1v1h-1zM36 25h2v1h-2zM42 25h1v1h-1zM2 26h3v1h-3zM6 26h3v1h-3zM13 26h1v1h-1zM15 26h1v1h-1zM17 26h3v1h-3zM22 26h3v1h-3zM26 26h1v1h-1zM31 26h1v1h-1zM33 26h3v1h-3zM41 26h1v1h-1zM2 27h1v1h-1zM6 27h1v1h-1zM11 27h1v1h-1zM15 27h1v1h-1zM17 27h2v1h-2zM22 27h2v1h-2zM25 27h1v1h-1zM27 27h4v1h-4zM34 27h5v1h-5zM40 27h1v1h-1zM42 27h1v1h-1zM3 28h1v1h-1zM6 28h3v1h-3zM10 28h1v1h-1zM15 28h1v1h-1zM19 28h2v1h-2zM22 28h1v1h-1zM24 28h3v1h-3zM28 28h3v1h-3zM34 28h1v1h-1zM42 28h1v1h-1zM2 29h1v1h-1zM4 29h4v1h-4zM9 29h1v1h-1zM11 29h1v1h-1zM13 29h2v1h-2zM19 29h2v1h-2zM22 29h2v1h-2zM25 29h2v1h-2zM28 29h1v1h-1zM31 29h5v1h-5zM39 29h1v1h-1zM42 29h1v1h-1zM2 30h1v1h-1zM5 30h4v1h-4zM10 30h1v1h-1zM13 30h1v1h-1zM15 30h5v1h-5zM22 30h3v1h-3zM28 30h2v1h-2zM31 30h1v1h-1zM35 30h2v1h-2zM42 30h1v1h-1zM2 31h1v1h-1zM4 31h2v1h-2zM9 31h1v1h-1zM11 31h2v1h-2zM14 31h1v1h-1zM16 31h2v1h-2zM21 31h1v1h-1zM23 31h2v1h-2zM26 31h2v1h-2zM30 31h1v1h-1zM32 31h3v1h-3zM38 31h1v1h-1zM42 31h1v1h-1zM4 32h1v1h-1zM6 32h4v1h-4zM12 32h2v1h-2zM17 32h3v1h-3zM21 32h1v1h-1zM25 32h4v1h-4zM30 32h2v1h-2zM34 32h2v1h-2zM37 32h1v1h-1zM42 32h1v1h-1zM4 33h2v1h-2zM9 33h3v1h-3zM13 33h5v1h-5zM19 33h5v1h-5zM25 33h1v1h-1zM31 33h2v1h-2zM35 33h1v1h-1zM38 33h2v1h-2zM41 33h2v1h-2zM2 34h2v1h-2zM7 34h2v1h-2zM11 34h3v1h-3zM15 34h1v1h-1zM19 34h1v1h-1zM22 34h3v1h-3zM28 34h2v1h-2zM31 34h1v1h-1zM33 34h7v1h-7zM41 34h1v1h-1zM10 35h1v1h-1zM13 35h1v1h-1zM15 35h6v1h-6zM25 35h1v1h-1zM28 35h3v1h-3zM32 35h3v1h-3zM38 35h1v1h-1zM41 35h2v1h-2zM2 36h7v1h-7zM10 36h3v1h-3zM14 36h1v1h-1zM16 36h3v1h-3zM20 36h1v1h-1zM22 36h4v1h-4zM27 36h5v1h-5zM33 36h2v1h-2zM36 36h1v1h-1zM38 36h2v1h-2zM42 36h1v1h-1zM2 37h1v1h-1zM8 37h1v1h-1zM11 37h1v1h-1zM14 37h1v1h-1zM16 37h1v1h-1zM21 37h1v1h-1zM23 37h1v1h-1zM26 37h2v1h-2zM31 37h4v1h-4zM38 37h2v1h-2zM2 38h1v1h-1zM4 38h3v1h-3zM8 38h1v1h-1zM10 38h1v1h-1zM18 38h1v1h-1zM21 38h2v1h-2zM26 38h2v1h-2zM29 38h2v1h-2zM32 38h8v1h-8zM2 39h1v1h-1zM4 39h3v1h-3zM8 39h1v1h-1zM11 39h2v1h-2zM14 39h2v1h-2zM20 39h1v1h-1zM23 39h3v1h-3zM28 39h3v1h-3zM34 39h1v1h-1zM37 39h1v1h-1zM41 39h1v1h-1zM2 40h1v1h-1zM4 40h3v1h-3zM8 40h1v1h-1zM11 40h1v1h-1zM13 40h2v1h-2zM16 40h2v1h-2zM25 40h5v1h-5zM31 40h1v1h-1zM33 40h1v1h-1zM35 40h1v1h-1zM39 40h1v1h-1zM42 40h1v1h-1zM2 41h1v1h-1zM8 41h1v1h-1zM11 41h1v1h-1zM13 41h2v1h-2zM16 41h2v1h-2zM22 41h2v1h-2zM25 41h2v1h-2zM31 41h1v1h-1zM33 41h2v1h-2zM36 41h2v1h-2zM39 41h1v1h-1zM41 41h2v1h-2zM2 42h7v1h-7zM10 42h1v1h-1zM12 42h5v1h-5zM18 42h2v1h-2zM21 42h5v1h-5zM29 42h1v1h-1zM31 42h2v1h-2zM34 42h2v1h-2zM37 42h2v1h-2zM41 42h1v1h-1z"/></svg></div>
+      <div class="handoff-copy">
+        <b>Num lives on your phone</b>
+        <p>That is where you will want it — at the restaurant, in the taxi, at 6am.
+           Point your camera at this and it opens there. Ten seconds.</p>
+        <div class="handoff-actions">
+          <button class="lnk" id="copyLink" type="button">Copy the link instead</button>
+          <span class="copied" id="copiedMsg" hidden>Copied — paste it into a message to yourself.</span>
+        </div>
+        <p class="handoff-alt">Staying at your desk? Num works in this browser too —
+           <a href="/?utm_source=desktop&amp;utm_medium=handoff&amp;utm_campaign=browser" data-loc="handoff-browser">open it here</a>.</p>
+      </div>
+    </div>
+
     <div class="ctastack" style="margin-top:26px">
-      <a class="cta pop" href="#install" id="installCta">Add Num to my home screen</a>
-      <a class="cta ghost" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-page">Or just open it in my browser</a>
+      <a class="cta pop" href="#install" id="installCta" data-loc="install-section">Add Num to my home screen</a>
+      <a class="cta ghost" href="/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=install-page" data-loc="browser-fallback">Or just open it in my browser</a>
     </div>
     <p class="under">Nothing to download, nothing to sign up for. You can uninstall it by dragging
       it off your home screen, same as any app.</p>
@@ -653,6 +703,46 @@ footer a{text-decoration:underline;text-underline-offset:3px}
   if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
     location.replace('/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1&utm_content=already-installed');
   }
+})();
+
+/* ── Desktop handoff ──────────────────────────────────────────────────────
+   Only runs on a real pointer + wide viewport. A phone must never be shown a
+   QR code it physically cannot scan, and a tablet in landscape is a genuine
+   edge case, so we gate on the same 760px the CSS uses rather than sniffing
+   the user agent a second time. */
+(function () {
+  var box = document.getElementById('handoff');
+  if (!box) return;
+  var wide = window.matchMedia('(min-width:760px)').matches;
+  var touch = window.matchMedia('(pointer:coarse)').matches;
+  if (!wide || touch) return;
+
+  box.hidden = false;
+  if (window.numTrack) { window.numTrack('desktop_handoff_shown'); window.numTrack('desktop_qr_shown'); }
+
+  var LINK = 'https://app.itsnum.com/install/?utm_source=desktop&utm_medium=handoff&utm_campaign=copy';
+  var btn = document.getElementById('copyLink');
+  var msg = document.getElementById('copiedMsg');
+  btn && btn.addEventListener('click', function () {
+    function done() {
+      if (msg) { msg.hidden = false; setTimeout(function () { msg.hidden = true; }, 4000); }
+      if (window.numTrack) window.numTrack('desktop_link_sent', { detail: 'copy' });
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(LINK).then(done, fallback);
+    } else { fallback(); }
+    function fallback() {
+      /* execCommand is deprecated but still the only path on older Safari and
+         on any page served without a secure context. Failing silently here
+         would leave the button looking broken. */
+      var t = document.createElement('textarea');
+      t.value = LINK; t.setAttribute('readonly',''); t.style.position='fixed'; t.style.opacity='0';
+      document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { window.prompt('Copy this link:', LINK); }
+      document.body.removeChild(t);
+    }
+  });
 })();
 </script>
 </body>

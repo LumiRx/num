@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUM in London — travel concierge for 52,451 places</title>
+<meta name="description" content="NUM knows 52,451 places in London — 17,846 restaurants, 3,509 bars and pubs, 2,676 cafes and 1,016 hotels. Ask in any language, book in one message. Free for travellers.">
+<link rel="canonical" href="https://itsnum.com/london/">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NUM">
+<meta property="og:title" content="NUM in London — travel concierge for 52,451 places">
+<meta property="og:description" content="NUM knows 52,451 places in London — 17,846 restaurants, 3,509 bars and pubs, 2,676 cafes and 1,016 hotels. Ask in any language, book in one message. Free for travellers.">
+<meta property="og:url" content="https://itsnum.com/london/">
+<meta property="og:locale" content="en_GB">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NUM — your personal AI travel concierge, by 5arz">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NUM in London — travel concierge for 52,451 places">
+<meta name="twitter:description" content="NUM knows 52,451 places in London — 17,846 restaurants, 3,509 bars and pubs, 2,676 cafes and 1,016 hotels. Ask in any language, book in one message. Free for travellers.">
+<meta name="twitter:image" content="https://itsnum.com/assets/og.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://itsnum.com/#organization","name":"NUM","alternateName":"NUM travel concierge","url":"https://itsnum.com/","email":"info@5arz.com","description":"NUM is an AI travel concierge you chat with. It plans your trip in any language and books real, verified local places across 77 destinations in 38 countries.","parentOrganization":{"@type":"Organization","name":"5arz","url":"https://5arz.com/","description":"5arz is the proof-of-human company. It verifies that a real, unique, live person is behind an account or an action."},"sameAs":["https://5arz.com/"],"contactPoint":[{"@type":"ContactPoint","email":"info@5arz.com","contactType":"customer support","availableLanguage":["en"]}]},{"@type":"WebSite","@id":"https://itsnum.com/#website","url":"https://itsnum.com/","name":"NUM","publisher":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://itsnum.com/london/#webpage","url":"https://itsnum.com/london/","name":"NUM in London — travel concierge for 52,451 places","description":"NUM knows 52,451 places in London — 17,846 restaurants, 3,509 bars and pubs, 2,676 cafes and 1,016 hotels. Ask in any language, book in one message. Free for travellers.","isPartOf":{"@id":"https://itsnum.com/#website"},"about":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en","datePublished":"2026-07-31","dateModified":"2026-07-31","breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"NUM","item":"https://itsnum.com/"},{"@type":"ListItem","position":2,"name":"Destinations","item":"https://itsnum.com/destinations/"},{"@type":"ListItem","position":3,"name":"London","item":"https://itsnum.com/london/"}]}},{"@type":"TouristDestination","@id":"https://itsnum.com/london/#destination","name":"London","alternateName":"London, United Kingdom","description":"NUM knows 52,451 places in London — 17,846 restaurants, 3,509 bars and pubs, 2,676 cafes and 1,016 hotels. Ask in any language, book in one message. Free for travellers.","url":"https://itsnum.com/london/","geo":{"@type":"GeoCoordinates","latitude":51.5074,"longitude":-0.1278},"address":{"@type":"PostalAddress","addressLocality":"London","addressCountry":"GB"},"containedInPlace":{"@type":"Country","name":"United Kingdom"},"touristType":["Leisure travellers","Solo travellers","Families","Business travellers"],"isPartOf":{"@id":"https://itsnum.com/#website"}},{"@type":"Service","@id":"https://itsnum.com/london/#service","name":"NUM travel concierge in London","serviceType":"AI travel concierge, recommendations and booking","provider":{"@id":"https://itsnum.com/#organization"},"areaServed":{"@id":"https://itsnum.com/london/#destination"},"audience":{"@type":"Audience","audienceType":"Travellers"},"availableChannel":{"@type":"ServiceChannel","name":"NUM chat","serviceUrl":"https://itsnum.com/get"},"offers":{"@type":"Offer","price":"0","priceCurrency":"GBP","description":"Free for travellers. Businesses pay 10% on completed bookings only."}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How many places does NUM know in London?","acceptedAnswer":{"@type":"Answer","text":"52,451 as of 31 July 2026 — the largest city directory NUM holds. 4,972 have a phone number on file and 7,805 have a website. Counted from the live directory, not estimated."}},{"@type":"Question","name":"Does NUM cover all of London or just the centre?","acceptedAnswer":{"@type":"Answer","text":"The directory is city-wide and held at street level, not by borough, so outer London is in it. Coverage is thickest where there is most to list, which in practice means the centre and the inner east, and thinner in residential outskirts."}},{"@type":"Question","name":"Is NUM free in London?","acceptedAnswer":{"@type":"Answer","text":"Yes. Travellers pay nothing and nothing is added to the bill. A business pays 10% of a booking NUM completes for it, out of what it already charges."}},{"@type":"Question","name":"Is every London listing verified?","acceptedAnswer":{"@type":"Answer","text":"No. 52,451 is a directory count — NUM knows the place exists, where it is and what it does. Verified means the owner has claimed the listing and passed a 5arz check. NUM says which one it is showing you every time."}},{"@type":"Question","name":"Can NUM handle a group booking?","acceptedAnswer":{"@type":"Answer","text":"It will try, and it will tell you when it cannot. Large groups usually need the venue to confirm, so NUM asks, waits, and comes back with a yes, a no or an alternative rather than a maybe."}},{"@type":"Question","name":"How do I get my London business into NUM?","acceptedAnswer":{"@type":"Answer","text":"Claim your listing. Free to list, free to stay listed, 10% only on a booking NUM sends you and you complete. Nothing on walk-ins, nothing on your own repeat customers, no monthly minimum."}}]}]}</script>
+<script src="/num-capture.js" data-page="london" defer></script>
+<style>
+.prose{max-width:72ch}
+.prose h2{margin-top:44px}
+.prose h3{margin-top:30px}
+.prose p,.prose li{color:var(--ink2);line-height:1.72}
+.prose ul{padding-left:20px}
+.prose li{margin:8px 0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px}
+.card2{background:#fff;border:1px solid var(--line);border-radius:20px;padding:26px;box-shadow:var(--shadow)}
+.card2 h3{margin:0 0 8px}
+.card2 p{margin:0;font-size:15px;color:var(--ink2)}
+.qa{border-top:1px solid var(--line);padding:22px 0}
+.qa h3{margin:0 0 8px;font-size:18px}
+.qa p{margin:0}
+pre.code{background:#0d1b24;color:#d8e6ee;border-radius:16px;padding:20px;overflow-x:auto;font-size:13px;line-height:1.65;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+code.inl{background:var(--pri-xl);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+table.tbl{width:100%;border-collapse:collapse;margin-top:24px;font-size:15px}
+table.tbl th,table.tbl td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+table.tbl th{font-weight:700;color:var(--ink)}
+table.tbl td{color:var(--ink2)}
+@media(max-width:860px){.grid3{grid-template-columns:1fr}}
+
+.dwrap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 26px;margin-top:18px}
+.dwrap a{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)}
+.dwrap a:hover{color:var(--pri)}
+.dwrap span{color:var(--ink2);font-size:13px;font-variant-numeric:tabular-nums}
+.dwrap b{font-weight:600;font-size:15px}
+.ask{background:var(--pri-xl);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:14px 0;font-size:16px;line-height:1.6}
+.ask:before{content:"\201c"}
+.ask:after{content:"\201d"}
+.stat{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin:30px 0 6px}
+.stat div{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow)}
+.stat b{display:block;font-family:'Space Grotesk',sans-serif;font-size:26px;line-height:1.1}
+.stat span{font-size:13px;color:var(--ink2)}
+@media(max-width:860px){.dwrap{grid-template-columns:1fr}.stat{grid-template-columns:repeat(2,1fr)}}
+
+</style>
+</head>
+<body>
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="/get/">Get the app</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/perks/">Perks</a>
+    <a href="/business/">For business</a>
+    <a href="/agents/">For AI agents</a>
+    <span id="signin-slot"><a href="/signin/">Sign in</a></span>
+    <a class="btn pri" href="/claim/" style="padding:10px 18px;font-size:14px">List your business</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">&#9776;</button>
+</div>
+<div class="mobile">
+  <a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a>
+  <a href="/business/">For business</a><a href="/agents/">For AI agents</a>
+  <a href="/claim/">List your business</a>
+  <a href="/signin/" id="signin-slot-m">Sign in</a>
+</div>
+</nav>
+<header class="wrap" style="padding-top:56px;padding-bottom:12px">
+  <span class="pill">England &middot; live now</span>
+  <h1 class="h1" style="margin-top:18px;max-width:20ch">52,451 London places, one message</h1>
+  <p class="sub" style="max-width:62ch">The largest directory NUM holds anywhere. Tell it the street, the hour and the budget, and it narrows 52,451 down to the one you wanted.</p>
+  <div class="cta"><a class="btn pri" href="/get/">Get NUM free</a><a class="btn ghost" href="/list-your-business/">List your London business</a></div>
+</header>
+<section class="wrap">
+<div class="stat">
+  <div><b>52,451</b><span>places in London</span></div>
+  <div><b>4,972</b><span>with a phone number on file</span></div>
+  <div><b>7,805</b><span>with a website on file</span></div>
+  <div><b>&pound;0</b><span>cost to travellers</span></div>
+</div>
+</section>
+<section class="wrap" style="padding-top:8px"><div class="prose"><p>London does not have a discovery problem. It has a filtering problem. There are 17,846 restaurants in the NUM directory for this city alone, and on any given Thursday roughly all of them are findable and roughly none of them are the answer.</p>
+<p>NUM holds 52,451 London places — the biggest single-city directory it has. 4,972 carry a phone number and 7,805 carry a website, which is how NUM turns a shortlist into a table rather than a list of pins. Every figure on this page was counted from the live directory on 31 July 2026.</p>
+<p>It costs travellers nothing, and nothing is added to your bill. A business pays 10% of a booking NUM completes for it, out of the price it already charges. NUM is paid when you actually turn up somewhere you liked, which is a narrower incentive than most of what you are used to.</p></div></section>
+<section class="wrap" style="padding-top:26px">
+<h2>What is in the London directory</h2>
+<div class="prose">
+<p>The ten largest categories NUM holds in London, counted from the live directory on
+31 July 2026. Everything else — the categories with fewer than the ten below — is
+grouped on the last row.</p>
+<table class="tbl">
+<thead><tr><th>Category</th><th>Places</th></tr></thead>
+<tbody>
+<tr><td>Restaurants</td><td>17,846</td></tr>
+<tr><td>Convenience shops</td><td>10,483</td></tr>
+<tr><td>Street food and takeaways</td><td>7,683</td></tr>
+<tr><td>Bars and pubs</td><td>3,509</td></tr>
+<tr><td>Cafes</td><td>2,676</td></tr>
+<tr><td>Beauty and spa</td><td>1,959</td></tr>
+<tr><td>Shopping</td><td>1,956</td></tr>
+<tr><td>Supermarkets</td><td>1,413</td></tr>
+<tr><td>Hotels</td><td>1,016</td></tr>
+<tr><td>Vehicle rental</td><td>815</td></tr>
+<tr><td>Everything else</td><td>3,095</td></tr>
+<tr><td><b>Total</b></td><td><b>52,451</b></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section class="wrap" style="padding-top:26px">
+<h2>Where NUM looks in London</h2>
+<div class="prose">
+<p>Soho &middot; Covent Garden &middot; Shoreditch &middot; Mayfair &middot; Camden &middot; King's Cross &middot; South Bank &middot; Borough &middot; Notting Hill &middot; Islington &middot; Peckham &middot; Hackney &middot; Westminster &middot; Kensington &middot; Canary Wharf</p>
+<p style="color:var(--ink2);font-size:14px">London listings are held at street level rather than by borough, so this is the ground NUM searches, not a count per area.</p>
+</div>
+</section>
+<section class="wrap" style="padding-top:26px">
+<h2>Things people actually ask NUM in London</h2>
+<div class="prose">
+<p>Not keywords. Whole sentences, in any language, with the constraints that make the
+answer useful — the time, the budget, the person who cannot manage stairs.</p>
+<div class="ask">Four of us, Thursday, somewhere between London Bridge and Borough, under thirty a head, and one of us does not eat gluten.</div>
+<div class="ask">I have a two hour layover turned into eight. Left luggage near St Pancras, then something to do that is not a museum.</div>
+<div class="ask">Book me a barber near Old Street that can take me before ten tomorrow, and tell me what it costs before you book it.</div>
+<p><a class="btn pri" href="/get/">Ask NUM yourself</a></p>
+</div>
+</section>
+<section class="wrap" style="padding-top:26px">
+<h2>For businesses in London</h2>
+<div class="prose">
+<p>If you run one of the 52,451 places above, it is already in the directory.
+Claiming it is free, and it stays free — there is no listing fee and no monthly minimum.
+NUM takes 10% of a booking it sends you and you complete, out of the price you already
+charge. Nothing on walk-ins. Nothing on your own repeat customers. Nothing if the booking
+does not happen.</p>
+<p>Claiming also fixes what the directory gets wrong: your hours, your phone number, what
+you actually serve, and whether you can take a table of eight at nine on a Friday. NUM
+cannot recommend what it cannot confirm, so a claimed listing is worth more than an
+unclaimed one for reasons that have nothing to do with paying us.</p>
+<p><a class="btn pri" href="/claim/">Claim your listing</a>
+<a class="btn ghost" href="/list-your-business/">How listing works</a></p>
+</div>
+</section>
+<section class="wrap" style="padding-top:26px">
+<h2>Questions about NUM in London</h2>
+<div class="qa"><h3>How many places does NUM know in London?</h3><p>52,451 as of 31 July 2026 — the largest city directory NUM holds. 4,972 have a phone number on file and 7,805 have a website. Counted from the live directory, not estimated.</p></div>
+<div class="qa"><h3>Does NUM cover all of London or just the centre?</h3><p>The directory is city-wide and held at street level, not by borough, so outer London is in it. Coverage is thickest where there is most to list, which in practice means the centre and the inner east, and thinner in residential outskirts.</p></div>
+<div class="qa"><h3>Is NUM free in London?</h3><p>Yes. Travellers pay nothing and nothing is added to the bill. A business pays 10% of a booking NUM completes for it, out of what it already charges.</p></div>
+<div class="qa"><h3>Is every London listing verified?</h3><p>No. 52,451 is a directory count — NUM knows the place exists, where it is and what it does. Verified means the owner has claimed the listing and passed a 5arz check. NUM says which one it is showing you every time.</p></div>
+<div class="qa"><h3>Can NUM handle a group booking?</h3><p>It will try, and it will tell you when it cannot. Large groups usually need the venue to confirm, so NUM asks, waits, and comes back with a yes, a no or an alternative rather than a maybe.</p></div>
+<div class="qa"><h3>How do I get my London business into NUM?</h3><p>Claim your listing. Free to list, free to stay listed, 10% only on a booking NUM sends you and you complete. Nothing on walk-ins, nothing on your own repeat customers, no monthly minimum.</p></div>
+</section>
+<section class="wrap" style="padding-top:26px">
+<h2>Elsewhere on NUM</h2>
+<div class="prose"><p><a href="/edinburgh/">Edinburgh</a> &middot; <a href="/destinations/">All 77 destinations</a> &middot; <a href="/how-it-works/">How NUM works</a> &middot; <a href="/list-your-business/">List your business</a></p></div>
+</section>
+<footer><div class="wrap">
+  <div class="frow">
+    <div>
+      <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 77 destinations across 38 countries. By 5arz.</p>
+    </div>
+    <div><h4>Product</h4><a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a><a href="/tabs/">Num Tab</a></div>
+    <div><h4>Get started</h4><a href="/claim/">List your business</a><a href="/pricing/">Pricing</a><a href="/list-your-business/">Why list with NUM</a></div>
+    <div><h4>Company</h4><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@5arz.com">info@5arz.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://5arz.com">5arz.com</a></div>
+  </div>
+  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Verified humans, real places.</span></div>
+</div></footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

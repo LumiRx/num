@@ -113,7 +113,7 @@ section.wrap:first-of-type{padding-top:34px}
 </style>
 
 <script src="/num-capture.js" data-page="landing" defer></script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://itsnum.com/#organization","name":"NUM","alternateName":"NUM travel concierge","url":"https://itsnum.com/","email":"info@5arz.com","description":"NUM is an AI travel concierge you chat with. It plans your trip in any language and books real, verified local places across 77 destinations in 38 countries.","parentOrganization":{"@type":"Organization","name":"5arz","url":"https://5arz.com/","description":"5arz is the proof-of-human company. It verifies that a real, unique, live person is behind an account or an action."},"sameAs":["https://5arz.com/"],"contactPoint":[{"@type":"ContactPoint","email":"info@5arz.com","contactType":"customer support","availableLanguage":["en"]}]},{"@type":"WebSite","@id":"https://itsnum.com/#website","url":"https://itsnum.com/","name":"NUM","publisher":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://itsnum.com/vip/#webpage","url":"https://itsnum.com/vip/","name":"Num — your VIP travel concierge","description":"Num is a travel concierge you message. It plans your day, books the table and answers in your language, in 77 destinations across 38 countries.","isPartOf":{"@id":"https://itsnum.com/#website"},"about":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en","datePublished":"2026-07-31","dateModified":"2026-07-31"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://itsnum.com/#organization","name":"NUM","alternateName":"NUM travel concierge","url":"https://itsnum.com/","email":"info@5arz.com","description":"NUM is an AI travel concierge you chat with. It plans your trip in any language and books real local places across 77 destinations in 38 countries.","parentOrganization":{"@type":"Organization","name":"5arz","url":"https://5arz.com/","description":"5arz is the proof-of-human company. It verifies that a real, unique, live person is behind an account or an action."},"sameAs":["https://5arz.com/"],"contactPoint":[{"@type":"ContactPoint","email":"info@5arz.com","contactType":"customer support","availableLanguage":["en"]}]},{"@type":"WebSite","@id":"https://itsnum.com/#website","url":"https://itsnum.com/","name":"NUM","publisher":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://itsnum.com/vip/#webpage","url":"https://itsnum.com/vip/","name":"Num — your VIP travel concierge","description":"Num is a travel concierge you message. It plans your day, books the table and answers in your language, in 77 destinations across 38 countries.","isPartOf":{"@id":"https://itsnum.com/#website"},"about":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en","datePublished":"2026-07-31","dateModified":"2026-07-31"}]}</script>
 </head>
 <body>
 
@@ -243,7 +243,7 @@ section.wrap:first-of-type{padding-top:34px}
     <div class="vstep">
       <div class="vnum">2</div>
       <h3>Ask for anything</h3>
-      <p>Dinner, a driver, a last-minute table, a pharmacy that is still open. It answers from verified places, not scraped listings.</p>
+      <p>Dinner, a driver, a last-minute table, a pharmacy that is still open. It answers from real places, not a page of ads.</p>
     </div>
     <div class="vstep">
       <div class="vnum">3</div>
@@ -267,7 +267,7 @@ section.wrap:first-of-type{padding-top:34px}
     </div>
     <div class="card hov">
       <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5v5c0 4.6 3.2 8.6 8 9.5 4.8-.9 8-4.9 8-9.5v-5Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-      <h3>Real places, verified</h3>
+      <h3>Real places, no paid rankings</h3>
       <p>Every recommendation comes from a checked record with real hours, not a listing nobody has looked at in two years.</p>
     </div>
     <div class="card hov">
@@ -354,7 +354,7 @@ window.addEventListener('num:capture', function () {
         var t = b.textContent;
         function flash(m) { b.textContent = m; setTimeout(function () { b.textContent = t; }, 1800); }
         if (navigator.share) {
-          navigator.share({ title: 'Num - your travel concierge', text: 'Num plans your trip and books real, verified places. Install it here:', url: U }).catch(function () {});
+          navigator.share({ title: 'Num - your travel concierge', text: 'Num plans your trip and books real places. Install it here:', url: U }).catch(function () {});
           return;
         }
         if (navigator.clipboard && navigator.clipboard.writeText) {

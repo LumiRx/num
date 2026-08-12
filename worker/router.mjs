@@ -13,6 +13,10 @@
 //     output occasionally leaks JSON scaffolding into the reply field
 //     ('", chips: null, actions: []}…'); the guard salvages clean prose when
 //     it can and rejects the reply when it can't.
+//
+//  3. pickModel — which Claude model answers, delegated to the Response
+//     Directing Manager (director.mjs) so the cost-vs-demand policy lives in
+//     one place and every route consults it.
 
 const HAS_DIGIT_OR_DATE = /\d|tomorrow|tonight|monday|next week|am|pm/i;
 const ACTION_VERB = /book|order|get me|reserve|hold|cancel|change|move|pay|hire|meeting|table|car|flight|hotel|transfer|club/i;
@@ -23,6 +27,8 @@ const PLACE_QUESTION = /where|recommend|best|near/i;
 // someone asking whether their trip is in order.
 const NEEDS_THE_BRAIN =
   /trip check|check my trip|am i ready|what needs me|anything i should know|invite|rsvp|event|guest list|group plan|plan with|massage|spa|ride|taxi|uber|grab|lyft|bolt|careem|delivery|deliver|eat|hungry|crypto|bitcoin|wallet|what'?s new|whats new/i;
+
+import { classifyDemand, claudeModelFor as _claudeModelFor } from './director.mjs';
 
 /**
  * Which model answers this message. 'small' ONLY when the message is short,
@@ -106,6 +112,12 @@ const LEAK_PATTERNS = [
   /"?role"?\s*[:=]/, // {"role": "assistant"…} / role = 'user'
   /\{\s*['"]?(?:reply|role)['"]?\s*:/, // a reply/role object opening mid-text
   /(?:chips|actions)['"]?\s*:\s*(?:null|\[)/, // trailing schema fields
+  // 9 Aug incident: a weak-model turn wrote its half-finished DRAFT into the
+  // reply — html artifacts and thinking-out-loud narration a person should
+  // never see. These are tells of a draft, not an answer.
+  /<br\s*\/?\s*>/i, // html linebreaks — the app renders text, the model leaked markup
+  /\b(?:produce|output|emit)\b.{0,20}\b(?:json|final answer)/i, // "let me produce final answer…"
+  /\bI need to output\b/i,
 ];
 
 const bracketCount = (s) => (s.match(/[[\]{}]/g) ?? []).length;
@@ -171,47 +183,26 @@ export function guardReply(text) {
  * direction costs a few cents. So this returns the strong model unless the
  * ask is *clearly* simple — silence, ambiguity, and anything unrecognised all
  * escalate. Cheap is opt-in, never the default.
+ *
+ * ── DELEGATES TO THE DIRECTOR ───────────────────────────────────────────
+ *
+ * The Response Directing Manager (director.mjs) is the single source of
+ * truth for which model answers which demand tier. pickModel maps its Claude
+ * result from that policy — the same classification that drives the full
+ * multi-brain chain (brains.mjs) also drives Claude-only routing.
  * ──────────────────────────────────────────────────────────────────────── */
-
-/** Anything touching money, a commitment, or more than one step. */
-const DESERVES_THE_BEST = new RegExp(
-  [
-    // Money and commitment. Never economise on a turn that can cost a guest.
-    'book|booking|reserve|reservation|pay|paid|price|cost|charge|refund|cancel|deposit|bill|invoice',
-    // Planning — the thing a frontier model is actually better at.
-    'plan|itinerary|schedule|day trip|week|tomorrow|tonight then|after that|and then',
-    // Comparison and judgement.
-    'compare|versus| vs |better|worth it|should i|which one|recommend|instead',
-    // Groups: more constraints to hold at once.
-    'we are|we have|our group|party of|kids|children|family|wheelchair|allerg',
-    // Trouble. A guest with a problem gets the best we have, always.
-    'wrong|broken|late|missing|complain|help me|stuck|lost|emergency|hospital|police',
-  ].join('|'),
-  'i',
-);
-
-/** Short, single-fact lookups where a mid model is genuinely as good. */
-const SIMPLE_LOOKUP = /^(what|where|when|who|how far|how long|is|are|does|do)\b/i;
 
 /**
  * Pick the model for this turn.
  *
- * `NUM_MODEL` still overrides everything — a single secret puts the whole
- * product back on one model in under a minute, which is what you want at 2am
- * when a routing change is the suspect.
+ * Delegates to the Response Directing Manager (director.mjs) so the
+ * cost-vs-demand policy lives in one place. `NUM_MODEL` still overrides
+ * everything — a single secret puts the whole product back on one model in
+ * under a minute, which is what you want at 2am when a routing change is the
+ * suspect.
  */
 export function pickModel(text, state = {}, env = {}) {
   if (env.NUM_MODEL) return env.NUM_MODEL;
-  const strong = env.NUM_MODEL_STRONG || 'claude-opus-5';
-  const easy = env.NUM_MODEL_EASY || 'claude-sonnet-5';
-  const s = typeof text === 'string' ? text : '';
-
-  // A live trip means there is context to get wrong. Never economise on it.
-  if (state?.bookings?.length || state?.party?.id || state?.tripCheck) return strong;
-  if (!s.trim()) return strong;
-  if (s.length > 120) return strong;
-  if (DESERVES_THE_BEST.test(s)) return strong;
-  // Only now, having ruled out everything that matters, may it be cheap.
-  if (SIMPLE_LOOKUP.test(s.trim()) && s.length <= 80) return easy;
-  return strong;
+  const { tier } = classifyDemand(text, state);
+  return _claudeModelFor(tier, env);
 }

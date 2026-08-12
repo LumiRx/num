@@ -18,6 +18,8 @@ import { recordAsk } from './asks.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
 import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
+import { direct } from './director.mjs';
+import { inspect } from './quality.mjs';
 import { handleSocialSafe } from './social.mjs';
 import { handleEvents, handleEventPage } from './events.mjs';
 import { handleConsole, logUsage } from './console.mjs';
@@ -39,6 +41,7 @@ import { handleBizReferral } from './bizreferral.mjs';
 import { markReferralEarned } from './referral.mjs';
 import { handleBizApi, bizApiIndex } from './bizapi.mjs';
 import { handleBizMcp } from './bizmcp.mjs';
+import { handlePartnerMcp, partnerIndex } from './partnermcp.mjs';
 import { recordImpressions } from './impressions.mjs';
 import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
@@ -103,14 +106,28 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // Opus for the turns that deserve it, Sonnet for one-line lookups. Fails
   // toward Opus on anything ambiguous — see router.pickModel.
   const model = pickModel(userText, state, env ?? {});
-  const call = (maxTokens) =>
+  const call = (maxTokens, m = model) =>
     client.messages.create({
-      model,
+      model: m,
       max_tokens: maxTokens,
       system,
       output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA } },
       messages,
     });
+
+  // `reply` is the first field in the schema, so even a truncated payload
+  // almost always holds a complete one. Salvaging it turns a hard failure
+  // into a slightly less useful answer.
+  const parseStructured = (text) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const salvaged = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text);
+      if (!salvaged) return null;
+      console.warn('[num-ai] salvaged a truncated reply');
+      return { reply: JSON.parse('"' + salvaged[1] + '"'), card: null, chips: null, actions: [] };
+    }
+  };
 
   let response = await call(3000);
   if (response.stop_reason === 'max_tokens') {
@@ -121,19 +138,25 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   if (response.stop_reason === 'refusal') {
     return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
   }
-  const text = response.content.find((b) => b.type === 'text')?.text ?? '';
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    // Last resort: `reply` is the first field in the schema, so even a truncated
-    // payload almost always holds a complete one. Salvaging it turns a hard
-    // failure into a slightly less useful answer — a trade worth making every
-    // single time.
-    const salvaged = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text);
-    if (!salvaged) throw new Error('reply could not be parsed or salvaged');
-    console.warn('[num-ai] salvaged a truncated reply');
-    parsed = { reply: JSON.parse('"' + salvaged[1] + '"'), card: null, chips: null, actions: [] };
+  let text = response.content.find((b) => b.type === 'text')?.text ?? '';
+  let parsed = parseStructured(text);
+  // Sanity gate — 9 Aug incident: a weak-model turn wrote its half-finished
+  // draft INTO the reply field (garbled prose, "<br>", "let me produce final
+  // answer") and the app rendered it, junk card and all. Structured output
+  // constrains the shape, not the sanity. A reply that fails the guard is
+  // DISCARDED whole — card, chips, actions too — and the turn is retried once
+  // on the strong model. Rendering junk to a guest is never on the menu.
+  if (!parsed || !guardReply(parsed.reply).ok) {
+    console.error(`[num-ai] GARBLED REPLY suppressed (model=${model}) — retrying strong`);
+    response = await call(4096, env?.NUM_MODEL_STRONG || 'claude-opus-5');
+    if (response.stop_reason !== 'refusal') {
+      text = response.content.find((b) => b.type === 'text')?.text ?? '';
+      parsed = parseStructured(text);
+    }
+    if (!parsed || !guardReply(parsed.reply).ok) {
+      console.error('[num-ai] retry ALSO garbled — clean miss beats a leak');
+      return { reply: 'I lost my thread for a second — ask me that once more?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
+    }
   }
   // usage rides back with the reply so the caller can bill it to a day. Real
   // counts, not an estimate — this is what the admin dashboard reports.
@@ -662,6 +685,13 @@ export default {
       return await handleBizApi(request, env, url.pathname.slice('/api/biz'.length));
     }
 
+    // Num for Partners — the supply side of a distribution deal. Separate from
+    // /api/biz (a business managing its OWN listing) because the trust level is
+    // different: a partner reads the whole directory for their travellers and
+    // writes nothing. See worker/partnermcp.mjs.
+    if (url.pathname === '/api/partner' || url.pathname === '/api/partner/') return partnerIndex();
+    if (url.pathname === '/api/partner/mcp') return await handlePartnerMcp(request, env);
+
     if (url.pathname.startsWith('/api/bizref')) {
       const res = await handleBizReferral(request, env, url.pathname.slice('/api/bizref'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -851,6 +881,15 @@ export default {
         } catch { /* the plan context is seasoning — never block the answer */ }
       }
 
+      // Hoisted: the quality check needs to see exactly what the model saw.
+      // A price is only defensible if it is IN here.
+      const groundingBlock = contextBlock({
+        place: grounding.place,
+        partners: grounding.partners,
+        guide: grounding.guide,
+        profile: redactProfile(profile).profile,
+        buzz: grounding.buzz,
+      });
       const startedAt = Date.now();
       // The chain, not one model. Claude first for the full concierge; if it
       // fails for any reason, an open model on Cloudflare's edge (or a
@@ -860,27 +899,21 @@ export default {
         messages: history,
         persona: PERSONA,
         voice: VOICE,
-        context: contextBlock({
-          place: grounding.place,
-          partners: grounding.partners,
-          guide: grounding.guide,
-          profile,
-          buzz: grounding.buzz,
-        }),
+        // Redacted, same as the Claude path. Found 11 Aug while auditing the
+        // Bionic seam: the structured path scrubbed the profile (safeProfile,
+        // askNum) but THIS context — the one every fallback vendor receives —
+        // passed it raw. The cheaper the model, the less we know about its
+        // operator; the fallback must see less, never more.
+        context: groundingBlock,
         style: styleBlock(parsed.state?.style),
         guard: (t) => guardReply(t),
+        // Who should answer THIS question. Money, bookings, groups and trouble
+        // go to Claude first; recommendations and lookups go to the hosted
+        // response brain, which costs 1/76th as much. The rest of the chain
+        // stays underneath either way — the director chooses the order, never
+        // the last resort.
+        directive: direct(lastUser, parsed.state, env),
       });
-      ctx.waitUntil(
-        logUsage(env, {
-          lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,
-          model: result._brain === 'claude' ? env.NUM_MODEL || DEFAULT_MODEL : result._brain,
-          specialist: result._specialist ?? null,
-          place: grounding.place?.name ?? null,
-          usage: result._usage,
-          ms: Date.now() - startedAt,
-          memberId: parsed.state?.me?.id ?? null,
-        }),
-      );
       // Somebody asked their concierge something, which is the moment a
       // referral stops being a signup and starts being a user. Runs after the
       // response is on its way, and is a no-op once already earned, so calling
@@ -927,6 +960,72 @@ export default {
             : { reply: FALLBACK_REPLY, card: null, chips: null, actions: [] };
         }
       }
+
+      // ── RESPONSE QUALITY CONTROL ───────────────────────────────────────
+      //
+      // The guard above asks "is this well-formed prose". This asks the
+      // question Dre actually posed on 11 Aug: does it ANSWER what was asked.
+      // Deterministic, so it costs nothing and cannot be down — see
+      // quality.mjs for why this is not a second model call.
+      //
+      // A hard flag (an invented price, a deflection with the answer sitting
+      // in context, a reply that is only a question) earns ONE corrective
+      // retry. If the retry is no better the original still ships: grading
+      // never produces silence. Soft flags are recorded and nothing else.
+      let quality = inspect({ ask: lastUser, reply: result.reply, context: groundingBlock });
+      if (quality.hard) {
+        try {
+          const fixed = await callNum(quality.note);
+          const fixedGuard = guardReply(fixed.reply);
+          if (fixedGuard.ok) {
+            const after = inspect({ ask: lastUser, reply: fixedGuard.cleaned, context: groundingBlock });
+            // Take the retry only if it is genuinely better. A retry that
+            // trades an invented price for an off-topic answer is not a fix.
+            if (!after.hard) {
+              result = { ...fixed, reply: fixedGuard.cleaned };
+              quality = { ...after, flags: [...after.flags, 'retried'] };
+            } else {
+              quality = { ...quality, flags: [...quality.flags, 'retry-failed'] };
+            }
+          }
+        } catch {
+          // The first answer is already good enough to send. A failed retry
+          // must never cost the guest the reply they had.
+          quality = { ...quality, flags: [...quality.flags, 'retry-error'] };
+        }
+      }
+      // The ask FIRST, then the cost that answered it, joined by ask_id.
+      // Ordered deliberately: recorded separately they are two facts about the
+      // same second that nothing can put back together, and "what did this
+      // kind of question cost" — the number that tunes the router — stays
+      // unanswerable. Both still run after the reply is on its way.
+      ctx.waitUntil(
+        recordAsk(env, {
+          text: lastUser,
+          dest: grounding.place?.slug ?? null,
+          lane: 'big',
+          brain: result._brain ?? null,
+          degraded: !!result._degraded,
+          quality: quality.flags,
+          memberId: parsed.state?.me?.id ?? null,
+        }).then((askId) =>
+          logUsage(env, {
+            lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,
+            // The MODEL, not the brain slot. `hosted` is a position in the
+            // chain; `deepseek-v4-flash` is a thing with a price. Logging the
+            // slot is why every fallback turn priced at zero.
+            model: result._brain === 'claude'
+              ? env.NUM_MODEL || DEFAULT_MODEL
+              : result._model ?? result._brain,
+            specialist: result._specialist ?? null,
+            place: grounding.place?.name ?? null,
+            usage: result._usage,
+            ms: Date.now() - startedAt,
+            memberId: parsed.state?.me?.id ?? null,
+            askId,
+          }),
+        ),
+      );
       // Capability gaps go to the team dashboard without delaying the reply.
       ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));
       // Tell the app where Num thinks the user is (drives the header) —
@@ -969,14 +1068,7 @@ export default {
       // line, the text only survived when a partner impression fired — the
       // asks nobody could serve, the exact ones that write the roadmap, were
       // the ones being dropped.
-      ctx.waitUntil(recordAsk(env, {
-        text: lastUser,
-        dest: grounding.place?.slug ?? null,
-        lane: 'big',
-        brain: _brain ?? null,
-        degraded: !!_degraded,
-        memberId: parsed.state?.me?.id ?? null,
-      }));
+      // (the ask was recorded above, with its cost joined by ask_id)
       return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
     } catch (err) {
       console.error('[num-ai]', err);

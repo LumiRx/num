@@ -54,32 +54,76 @@ async function ensureUsage(env) {
   // so existing rows survive — they simply have a null member.
   await env.DB.prepare('ALTER TABLE num_usage ADD COLUMN member_id TEXT').run().catch(() => {});
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_num_usage_member ON num_usage(member_id, day)').run().catch(() => {});
+  // What did THIS question cost, on which brain? Without a link to the ask,
+  // cost is only ever knowable per day and per lane — enough to see a bill
+  // rise, never enough to see which kind of question raised it, which is the
+  // only fact that lets the router be tuned. Migration, not a schema bump:
+  // older rows keep their null and stay countable.
+  await env.DB.prepare('ALTER TABLE num_usage ADD COLUMN ask_id INTEGER').run().catch(() => {});
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_num_usage_ask ON num_usage(ask_id)').run().catch(() => {});
   usageReady = true;
 }
 
-// Published Claude Opus prices, per million tokens. Cache reads are the reason
-// the persona sits above the breakpoint — they cost a tenth of fresh input.
-const PRICE = { in: 5, out: 25, cacheWrite: 6.25, cacheRead: 0.5 };
+// Published prices, per MILLION tokens, per model.
+//
+// Until 11 Aug this table held one entry — Claude Opus — and every other lane
+// was logged with zero tokens and zero cost. The effect was not a rounding
+// error: the two days DeepSeek carried all the traffic showed up in the ledger
+// as FREE, so a report on the outage would have concluded the cheapest days of
+// the month were the ones where the product was degraded. An unmetered lane
+// does not read as unknown, it reads as zero, and zero is a lie that flatters.
+//
+// `resolve()` falls back to the Opus row on an unrecognised model. Over-stating
+// a cost is a bad estimate; under-stating it is how a budget disappears.
+const PRICES = {
+  'claude-opus-5':   { in: 5,    out: 25,   cacheWrite: 6.25, cacheRead: 0.5 },
+  'claude-sonnet-5': { in: 3,    out: 15,   cacheWrite: 3.75, cacheRead: 0.3 },
+  // Bionic-hosted open models. Cached input is priced where the vendor
+  // publishes it; where it is not, cacheRead falls back to the input price so
+  // we never under-count.
+  'deepseek-v4-flash': { in: 0.13, out: 0.26, cacheWrite: 0.13, cacheRead: 0.028 },
+  'deepseek-v4-pro':   { in: 1.74, out: 3.48, cacheWrite: 1.74, cacheRead: 0.15 },
+  'kimi-k2.6':         { in: 0.95, out: 4.00, cacheWrite: 0.95, cacheRead: 0.16 },
+  'kimi-k3':           { in: 3.00, out: 15.0, cacheWrite: 3.00, cacheRead: 0.30 },
+  'glm-5.2':           { in: 1.50, out: 4.50, cacheWrite: 1.50, cacheRead: 0.30 },
+  // Workers AI is billed in neurons against the Cloudflare plan, not per
+  // token. Zero here is TRUE, not missing — and it is the only model where
+  // that is so.
+  'workers-ai': { in: 0, out: 0, cacheWrite: 0, cacheRead: 0 },
+};
+const PRICE = PRICES['claude-opus-5'];
+const priceFor = (model) => {
+  if (!model) return PRICE;
+  if (PRICES[model]) return PRICES[model];
+  // Workers AI models arrive as '@cf/meta/llama-…' — all neuron-billed.
+  if (String(model).startsWith('@cf/')) return PRICES['workers-ai'];
+  return PRICE;
+};
 
 /**
  * Record what a turn actually cost. Fire-and-forget via ctx.waitUntil: a
  * logging failure must never cost a user their reply.
  */
-export async function logUsage(env, { lane, model, specialist, place, usage, ms, memberId }) {
+export async function logUsage(env, { lane, model, specialist, place, usage, ms, memberId, askId = null }) {
   if (!env.DB) return;
   try {
     await ensureUsage(env);
-    const i = usage?.input_tokens ?? 0;
-    const o = usage?.output_tokens ?? 0;
+    // Two vendor shapes, one ledger. Anthropic reports input_tokens /
+    // output_tokens / cache_*; every OpenAI-compatible vendor (Bionic,
+    // DeepSeek, Groq) reports prompt_tokens / completion_tokens. Reading only
+    // the first shape is exactly why the fallback lanes logged zero.
+    const i = usage?.input_tokens ?? usage?.prompt_tokens ?? 0;
+    const o = usage?.output_tokens ?? usage?.completion_tokens ?? 0;
     const cw = usage?.cache_creation_input_tokens ?? 0;
-    const cr = usage?.cache_read_input_tokens ?? 0;
+    const cr = usage?.cache_read_input_tokens ?? usage?.prompt_tokens_details?.cached_tokens ?? 0;
+    const p = priceFor(model);
     const microUsd = Math.round(
-      ((i * PRICE.in + o * PRICE.out + cw * PRICE.cacheWrite + cr * PRICE.cacheRead) / 1_000_000) * 1_000_000,
+      ((i * p.in + o * p.out + cw * p.cacheWrite + cr * p.cacheRead) / 1_000_000) * 1_000_000,
     );
     await env.DB.prepare(
-      `INSERT INTO num_usage (day, lane, model, specialist, place, in_tokens, out_tokens, cache_write, cache_read, ms, micro_usd, member_id)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)`,
-    ).bind(new Date().toISOString().slice(0, 10), lane, model ?? null, specialist ?? null, place ?? null, i, o, cw, cr, ms ?? null, microUsd, memberId ?? null).run();
+      `INSERT INTO num_usage (day, lane, model, specialist, place, in_tokens, out_tokens, cache_write, cache_read, ms, micro_usd, member_id, ask_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`,
+    ).bind(new Date().toISOString().slice(0, 10), lane, model ?? null, specialist ?? null, place ?? null, i, o, cw, cr, ms ?? null, microUsd, memberId ?? null, askId).run();
   } catch (err) {
     console.warn('[usage]', err?.message ?? err);
   }

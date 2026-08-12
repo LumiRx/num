@@ -364,6 +364,11 @@ function airBlock(env) {
         'and shows the fares itself, so do NOT promise to "come back with numbers" and do not write prices in your reply — emit the ' +
         'action and say one short line about what you are pricing. The card appears under your message. Guess sensible IATA codes ' +
         'from city names (Paris CDG, Berlin BER); only ask if the city genuinely has several and it matters.\n' +
+        'WHERE THEY ARE FLYING FROM is the place in your context block — NOT a re-reading of their words. 9 Aug: a guest in ' +
+        'Kata, Phuket wrote "we are in kata" and was told "you\'re in Kathmandu" — a beach became a country. If what they typed ' +
+        'is a neighbourhood, beach or district, the departure airport is the one serving THAT AREA (Kata → Phuket → HKT). ' +
+        'Never resolve a place name to a distant city because the spelling is close; if you genuinely cannot tell, ask which ' +
+        'airport rather than picking one.\n' +
         'You CAN see real fares. Sabre is connected for flight shopping, so when a fare comes back from a search you may ' +
         'state the price, carrier, times and stops as FACT, with no hedging — hedging a real number reads as evasion. ' +
         'Quote the currency it came back in. Offers expire (usually ~20 minutes): if you are working from a fare that has ' +
@@ -417,16 +422,30 @@ export function servicesBlock(place, env = {}) {
     ['flight', 'flights'],
     ['hotel', 'hotels'],
   ];
+  // Shopping and booking are different permissions, and this summary line used
+  // to collapse them. With Sabre connected, `flights: HAND-OFF` sat three lines
+  // above "You CAN see real fares" — a flat contradiction, and a model reading
+  // top-down believed the first one. Caught 9 Aug 2026: the same question got
+  // live HKT→BKK fares in one session and "flights aren't something I can pull
+  // up or book directly" in the next two, which also filed a feature_request
+  // for a feature that already shipped. The summary must not contradict the
+  // detail; where we can price but not buy, the line has to say exactly that.
+  const canShop = { flight: connected(env, 'sabre_air'), hotel: connected(env, 'sabre_hotel') };
   const lines = kinds.map(([kind, label]) => {
     const { mode, options } = optionsFor(kind, { country, city: place?.name }, env);
     const names = options.map((o) => o.name + (o.note ? ` (${o.note})` : '')).join(', ');
-    return `- ${label}: ${mode === 'connected' ? 'CONNECTED — you can complete this' : 'HAND-OFF'} · ${names || 'no local provider mapped'}`;
+    const status = canShop[kind]
+      ? 'LIVE PRICES — you CAN search and quote real fares yourself (see below); only the purchase is a hand-off'
+      : mode === 'connected'
+        ? 'CONNECTED — you can complete this'
+        : 'HAND-OFF';
+    return `- ${label}: ${status} · ${names || 'no local provider mapped'}`;
   });
   return (
     'SERVICES AVAILABLE HERE (ranked by what people actually use in this country):\n' +
     lines.join('\n') +
     airBlock(env) +
-    '\n\nHAND-OFF rule: Num has no account with these companies yet, so you CANNOT place the order yourself. ' +
+    '\n\nHAND-OFF rule (applies to the lines marked HAND-OFF, never to LIVE PRICES): Num has no account with these companies yet, so you CANNOT place the order yourself. ' +
     'Do not say "booked", "on its way", or "ordered" for a hand-off. Instead: pick the ONE best provider for this exact ' +
     'request, say why it is the right one here, and emit the matching action (order_ride / order_food) — the app opens it ' +
     'prefilled with the destination so it is a single tap. Then say what you HAVE done: the venue is chosen, the address ' +

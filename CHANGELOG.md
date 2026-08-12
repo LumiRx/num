@@ -2,6 +2,96 @@
 
 Every version that has been live, newest first.
 
+## 0.8.213 — 2026-08-11 21:18 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.212 — 2026-08-11 20:27 UTC
+
+Resend email alert + brain-state quota check — silent outages now page Dre within 5 minutes
+
+- commit `b96367d`
+
+## 0.8.211 — 2026-08-11 20:24 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.210 — 2026-08-11 20:07 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.208 — 2026-08-11 19:20 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.207 — 2026-08-10 18:15 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.206 — 2026-08-10 00:34 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.205 — 2026-08-10 00:21 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.204 — 2026-08-09 23:38 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.203 — 2026-08-09 23:33 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.202 — 2026-08-09 23:24 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.201 — 2026-08-09 21:51 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.200 — 2026-08-09 20:39 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.199 — 2026-08-09 20:07 UTC
+
+(no note given)
+
+- commit `b96367d`
+
+## 0.8.198 — 2026-08-09 19:57 UTC
+
+(no note given)
+
+- commit `b96367d`
+
 ## 0.8.197 — 2026-08-09 17:30 UTC
 
 (no note given)

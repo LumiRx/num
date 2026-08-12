@@ -143,6 +143,34 @@ async function checkStorage(env) {
 }
 
 /**
+ * Brains that are standing down. A brain with class 'quota' or 'auth' means
+ * guests are being answered by fallback when they shouldn't be — the 9-10 Aug
+ * and 11 Aug outages both ran 18+ hours because nothing read this table
+ * while the product silently degraded to prose-only.
+ */
+async function checkBrains(env) {
+  try {
+    const { results } = await env.DB.prepare(
+      'SELECT brain, fails, class, last_error, cooldown_until FROM num_brain_state WHERE class IS NOT NULL AND cooldown_until > ?1 ORDER BY cooldown_until DESC',
+    ).bind(Math.floor(Date.now() / 1000)).all().catch(() => ({ results: null }));
+    const down = (results ?? []).filter((r) => String(r.class).toLowerCase() === 'quota' || String(r.class).toLowerCase() === 'auth');
+    const cooling = (results ?? []).filter((r) => !down.includes(r));
+    if (down.length) {
+      const names = down.map((r) => `${r.brain} (${r.class}${r.last_error ? ': ' + String(r.last_error).slice(0, 80) : ''})`).join('; ');
+      return {
+        ok: false,
+        down,
+        remedy: `${down.length} brain(s) are standing down with quota or auth failures: ${names}. `
+          + 'Quota: check the vendor balance and top up. Auth: mint a new key and `wrangler versions secret put`.',
+      };
+    }
+    return { ok: true, cooling: cooling.map((r) => r.brain) };
+  } catch {
+    return { ok: true };
+  }
+}
+
+/**
  * Does the front door actually open?
  *
  * WHY THIS EXISTS — 4 Aug 2026
@@ -268,6 +296,7 @@ export async function runHealth(env) {
     site_public: site,        // itsnum.com — a real cross-Worker probe
     d1_write: await checkWrite(env),
     brain: checkBrain(env),
+    brains_state: await checkBrains(env),
     payments: checkPay(env),
     sms: checkSms(env),
     push: await checkPush(env),
@@ -332,6 +361,22 @@ export async function alert(env, text) {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({ To: env.ALERT_SMS_TO, From: env.TWILIO_FROM, Body: text.slice(0, 320) }),
+    }).catch(() => {});
+  }
+  // Resend email — the handoff mandates this path so an outage that runs 18
+  // hours before a human notices (9-10 Aug, 11 Aug) is impossible again.
+  // The key lives in a separate secrets file (never Gmail); the address wakes
+  // a person, not a role account that nobody checks.
+  if (env.RESEND_API_KEY && env.ALERT_EMAIL_TO) {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: env.ALERT_EMAIL_FROM || 'Num <alerts@itsnum.com>',
+        to: env.ALERT_EMAIL_TO,
+        subject: `Num ${text.slice(0, 50)}`,
+        text,
+      }),
     }).catch(() => {});
   }
   console.warn('[health]', text);

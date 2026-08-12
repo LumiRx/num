@@ -559,6 +559,10 @@ export async function askNum(text: string) {
   push({ who: 'u', text });
   // A new question retires the last provider tray — it belonged to the old one.
   store.set({ typing: true, chips: [], handoff: null });
+  // Auto-update reads this and postpones a reload while a reply is in flight.
+  // Losing a guest's question to a background refresh is a worse bug than the
+  // one auto-update exists to fix.
+  try { document.body.dataset.numBusy = '1'; } catch { /* SSR/tests */ }
 
   const s = store.get();
   const messages = s.msgs.map((m) => ({
@@ -566,6 +570,13 @@ export async function askNum(text: string) {
     content: m.text + (m.card ? `\n[card: ${m.card.title} · ${m.card.meta} · ${m.card.tag}]` : ''),
   }));
   const state = {
+    // Who is asking. The server has always read `state.me.id` — to log which
+    // member an ask belongs to, and to bill usage — but the client never sent
+    // it, so all 142 asks on record carry member_id NULL. The consequence was
+    // not cosmetic: activation ("did a signup ever ask anything?") was
+    // unmeasurable, which is the single number that says whether the funnel
+    // works. Only the id travels; name and phone stay out of the ask log.
+    ...(s.me?.id ? { me: { id: s.me.id } } : {}),
     stars: s.stars,
     billPaid: s.billPaid,
     photosOn: s.photosOn,
@@ -641,5 +652,9 @@ export async function askNum(text: string) {
       ],
       chips: defChips(),
     }));
+  } finally {
+    // Always clears — a stuck flag would block auto-update forever, which is
+    // the failure mode that let a phone run days-old code in the first place.
+    try { delete document.body.dataset.numBusy; } catch { /* SSR/tests */ }
   }
 }

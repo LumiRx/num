@@ -228,6 +228,25 @@ export function statedPlace(text) {
   return null;
 }
 
+/**
+ * The part of a message where the guest states where they ARE.
+ *
+ * Returns just that clause, so location resolution can read it without the
+ * rest of the sentence — where the places they're asking ABOUT live. Returns
+ * null when they never said, which is the common case and must stay cheap.
+ *
+ * Deliberately narrow: only phrasings that clearly mean "this is my current
+ * position". "Heading to X" and "thinking about X" are not here-phrases, and
+ * treating them as such would be the same bug pointed the other way.
+ */
+export function herePhrase(text) {
+  const m = /\b(?:i['’]m|i am|we['’]re|we are|staying|we're staying|currently|right now)\s+(?:in|at|near)\s+([a-z][a-z'’.\- ]{0,40})/i.exec(text || '');
+  if (m) return m[0];
+  // "here in Kata" — same claim, different word order.
+  const h = /\bhere in\s+([a-z][a-z'’.\- ]{0,40})/i.exec(text || '');
+  return h ? h[0] : null;
+}
+
 /** Is this string a neighbourhood we already hold places in? */
 async function isKnownArea(env, s) {
   try {
@@ -263,12 +282,28 @@ export async function resolveLocation(env, { text, guest, cf }) {
   // is a guess, not a location.
   if (!dests.length) return { ...out, guessed: true, offline: true, dest: { slug: 'phuket', name: 'Phuket', country: 'TH', tz: 'Asia/Bangkok', lat: 7.953, lng: 98.338 } };
 
-  const named = destNamedIn(text, dests);
+  // WHERE THEY ARE vs WHERE THEY ARE GOING.
+  //
+  // `destNamedIn` scans the whole message for any city we cover, with no idea
+  // which grammatical role the name is playing. So "we are in kata — flights to
+  // bangkok on friday?" resolved the guest TO BANGKOK: the destination won
+  // because it was the only covered name in the sentence, and Kata — where
+  // they were actually standing — never reached the model at all. It then
+  // asked which airport "Kata" meant and suggested Katowice, Poland.
+  //
+  // A phrase like "we are in X" is the guest telling us where they are. That
+  // is not a hint to weigh; it is the answer. When one is present it settles
+  // the location, and any other city in the sentence is somewhere they are
+  // asking ABOUT, not standing in.
+  const here = herePhrase(text);
+  const named = (here && destNamedIn(here, dests)) || (here ? null : destNamedIn(text, dests));
 
   // A place the guest stated that we don't cover as a destination. Guarded by
   // an area lookup first: "I'm staying in Patong" names a neighbourhood, not an
   // unsupported city, and areaCenter below handles those properly.
-  let stated = named ? null : statedPlace(text);
+  // When the guest said where they are, only THAT phrase may name a place —
+  // otherwise "we are in kata … to bangkok" hands `stated` the destination.
+  let stated = named ? null : statedPlace(here ?? text);
   if (stated && await isKnownArea(env, stated)) stated = null;
 
   // Coordinates we trust: a location the guest shared on LINE in the last day,

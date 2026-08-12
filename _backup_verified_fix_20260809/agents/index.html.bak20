@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUM for AI agents — business profiles API and MCP server</title>
+<meta name="description" content="Let an AI agent create and maintain verified business profiles, promotions and specials on NUM. Free REST API, public MCP server at itsnum.com/mcp, bearer-key auth, human review before anything goes live.">
+<link rel="canonical" href="https://itsnum.com/agents/">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NUM">
+<meta property="og:title" content="NUM for AI agents — business profiles API and MCP server">
+<meta property="og:description" content="Let an AI agent create and maintain verified business profiles, promotions and specials on NUM. Free REST API, public MCP server at itsnum.com/mcp, bearer-key auth, human review before anything goes live.">
+<meta property="og:url" content="https://itsnum.com/agents/">
+<meta property="og:locale" content="en_GB">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NUM — your personal AI travel concierge, by 5arz">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NUM for AI agents — business profiles API and MCP server">
+<meta name="twitter:description" content="Let an AI agent create and maintain verified business profiles, promotions and specials on NUM. Free REST API, public MCP server at itsnum.com/mcp, bearer-key auth, human review before anything goes live.">
+<meta name="twitter:image" content="https://itsnum.com/assets/og.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://itsnum.com/#organization","name":"NUM","alternateName":"NUM travel concierge","url":"https://itsnum.com/","email":"info@5arz.com","description":"NUM is an AI travel concierge you chat with. It plans your trip in any language and books real, verified local places across 77 destinations in 38 countries.","parentOrganization":{"@type":"Organization","name":"5arz","url":"https://5arz.com/","description":"5arz is the proof-of-human company. It verifies that a real, unique, live person is behind an account or an action."},"sameAs":["https://5arz.com/"],"contactPoint":[{"@type":"ContactPoint","email":"info@5arz.com","contactType":"customer support","availableLanguage":["en"]}]},{"@type":"WebSite","@id":"https://itsnum.com/#website","url":"https://itsnum.com/","name":"NUM","publisher":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://itsnum.com/agents/#webpage","url":"https://itsnum.com/agents/","name":"NUM for AI agents — business profiles API and MCP server","description":"Let an AI agent create and maintain verified business profiles, promotions and specials on NUM. Free REST API, public MCP server at itsnum.com/mcp, bearer-key auth, human review before anything goes live.","isPartOf":{"@id":"https://itsnum.com/#website"},"about":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en","datePublished":"2026-07-31","dateModified":"2026-07-31","breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://itsnum.com/"},{"@type":"ListItem","position":2,"name":"For AI agents","item":"https://itsnum.com/agents/"}]}},{"@type":"WebAPI","@id":"https://itsnum.com/agents/#api","name":"NUM Agent API","description":"REST and MCP interface that lets AI agents create and maintain verified business profiles, promotions and specials in the NUM travel concierge directory, and read verified places across 77 destinations in 38 countries.","url":"https://itsnum.com/agents/","documentation":"https://itsnum.com/agents/","provider":{"@id":"https://itsnum.com/#organization"},"termsOfService":"https://itsnum.com/terms","endpointURL":["https://itsnum.com/api/agent","https://itsnum.com/mcp"],"endpointDescription":"https://itsnum.com/openapi.json","serviceType":"Business directory write and read API","potentialAction":[{"@type":"CreateAction","name":"Submit a business profile","target":{"@type":"EntryPoint","urlTemplate":"https://itsnum.com/api/agent/business","httpMethod":"POST","contentType":"application/json"}},{"@type":"CreateAction","name":"Submit a promotion or special","target":{"@type":"EntryPoint","urlTemplate":"https://itsnum.com/api/agent/promo","httpMethod":"POST","contentType":"application/json"}},{"@type":"SearchAction","name":"Search verified places","target":{"@type":"EntryPoint","urlTemplate":"https://itsnum.com/api/agent/search?q={search_term_string}","httpMethod":"GET"},"query-input":"required name=search_term_string"}]},{"@type":"SoftwareApplication","@id":"https://itsnum.com/agents/#mcp","name":"NUM MCP server","applicationCategory":"DeveloperApplication","operatingSystem":"Any","url":"https://itsnum.com/mcp","softwareHelp":"https://itsnum.com/agents/","publisher":{"@id":"https://itsnum.com/#organization"},"featureList":["num_search_places","num_get_place","num_submit_business","num_submit_promo","num_list_submissions"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Free to sign up and to write. Bulk directory reads are paid."}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can an AI agent create a business profile on NUM?","acceptedAnswer":{"@type":"Answer","text":"Yes. Sign the agent up at itsnum.com/api/agent/signup, get an API key, and POST a business profile to itsnum.com/api/agent/business. The submission is stored immediately and enters a review queue. A person at 5arz approves it before any traveller sees it."}},{"@type":"Question","name":"Can an agent submit a business it does not own?","acceptedAnswer":{"@type":"Answer","text":"Yes. Declare relationship as third_party. Third-party submissions are accepted and stored, but they stay invisible to travellers until a human at 5arz approves them and the business itself is verified. Nothing an agent submits goes live unreviewed."}},{"@type":"Question","name":"Does NUM have an MCP server?","acceptedAnswer":{"@type":"Answer","text":"Yes. It is at https://itsnum.com/mcp and speaks JSON-RPC 2.0 over streamable HTTP. Tools are num_search_places, num_get_place, num_submit_business, num_submit_promo and num_list_submissions. Pass your API key as a bearer token."}},{"@type":"Question","name":"What does it cost an AI agent to use NUM?","acceptedAnswer":{"@type":"Answer","text":"Writing is free: signup, submitting businesses, promotions and specials cost nothing. Reading the verified directory in bulk is paid, on the same tiers as the business dashboard — $9.99, $19.99 or $50 a month. The free tier allows 100 directory reads a day."}},{"@type":"Question","name":"How long does review take?","acceptedAnswer":{"@type":"Answer","text":"Most submissions are reviewed within one working day. You can poll GET /api/agent/submissions to see status, or supply a callback_url and NUM will POST the decision to it."}},{"@type":"Question","name":"Can an agent post ads, promotions or specials?","acceptedAnswer":{"@type":"Answer","text":"Yes, via POST /api/agent/promo. Kinds are promo, special, event and ad. Promotions attach to a business, carry a start and end time, and are reviewed the same way profiles are."}},{"@type":"Question","name":"What is the authentication scheme?","acceptedAnswer":{"@type":"Answer","text":"A bearer token. Send Authorization: Bearer numa_live_... on every request. Keys are issued at signup, are shown once, and can be rotated from GET /api/agent/me."}},{"@type":"Question","name":"Is there an OpenAPI spec?","acceptedAnswer":{"@type":"Answer","text":"Yes, at https://itsnum.com/openapi.json, with a plugin manifest at https://itsnum.com/.well-known/ai-plugin.json."}}]}]}</script>
+<script src="/num-capture.js" data-page="agents" defer></script>
+<style>
+.prose{max-width:72ch}
+.prose h2{margin-top:44px}
+.prose h3{margin-top:30px}
+.prose p,.prose li{color:var(--ink2);line-height:1.72}
+.prose ul{padding-left:20px}
+.prose li{margin:8px 0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px}
+.card2{background:#fff;border:1px solid var(--line);border-radius:20px;padding:26px;box-shadow:var(--shadow)}
+.card2 h3{margin:0 0 8px}
+.card2 p{margin:0;font-size:15px;color:var(--ink2)}
+.qa{border-top:1px solid var(--line);padding:22px 0}
+.qa h3{margin:0 0 8px;font-size:18px}
+.qa p{margin:0}
+pre.code{background:#0d1b24;color:#d8e6ee;border-radius:16px;padding:20px;overflow-x:auto;font-size:13px;line-height:1.65;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+code.inl{background:var(--pri-xl);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+table.tbl{width:100%;border-collapse:collapse;margin-top:24px;font-size:15px}
+table.tbl th,table.tbl td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+table.tbl th{font-weight:700;color:var(--ink)}
+table.tbl td{color:var(--ink2)}
+@media(max-width:860px){.grid3{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="/get/">Get the app</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/perks/">Perks</a>
+    <a href="/business/">For business</a>
+    <a href="/agents/">For AI agents</a>
+    <span id="signin-slot"><a href="/signin/">Sign in</a></span>
+    <a class="btn pri" href="/claim/" style="padding:10px 18px;font-size:14px">List your business</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">&#9776;</button>
+</div>
+<div class="mobile">
+  <a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a>
+  <a href="/business/">For business</a><a href="/agents/">For AI agents</a>
+  <a href="/claim/">List your business</a>
+  <a href="/signin/" id="signin-slot-m">Sign in</a>
+</div>
+</nav>
+<header class="wrap" style="padding-top:56px;padding-bottom:12px">
+  <span class="pill">&#10022; Open to agents</span>
+  <h1 class="h1" style="margin-top:18px;max-width:20ch">Let your AI agent run the listing.</h1>
+  <p class="sub" style="max-width:62ch">NUM has a public API and an MCP server. An agent can sign itself up, create a business profile, keep the hours and menu current, and post promotions and specials &mdash; for its own operator, or for other businesses. Everything an agent submits is reviewed by a person at 5arz before a traveller sees it.</p>
+  <div class="cta"><a class="btn pri lg" href="#quickstart">Get an API key</a><a class="btn ghost lg" href="/openapi.json">OpenAPI spec</a></div>
+</header>
+<section class="wrap" style="padding-top:8px">
+<div class="grid3">
+  <div class="card2"><h3>Free to write</h3><p>Signing up, submitting a business, updating it, and
+    posting promotions cost nothing. Reading the verified directory in bulk is the paid part.</p></div>
+  <div class="card2"><h3>Agent-submitted, human-verified</h3><p>Submissions are stored the moment they
+    arrive and are visible to you straight away. They are invisible to travellers until a person at
+    5arz approves them.</p></div>
+  <div class="card2"><h3>REST or MCP</h3><p>A plain JSON API at <code class="inl">/api/agent</code>,
+    and an MCP server at <code class="inl">/mcp</code> if your agent speaks Model Context
+    Protocol.</p></div>
+</div>
+</section>
+
+<section class="wrap" style="padding-top:52px"><div class="prose" id="quickstart">
+<h2>Quick start</h2>
+<p>Three requests: sign up, submit, check. No human in the loop to get started, no sales call, no
+waiting for a key.</p>
+
+<h3>1. Sign your agent up</h3>
+<pre class="code">curl -X POST https://itsnum.com/api/agent/signup \
+  -H 'content-type: application/json' \
+  -d '{
+    "agent_name":     "Acme Listings Bot",
+    "operator_name":  "Acme Marketing Ltd",
+    "operator_email": "ops@acme.example",
+    "homepage":       "https://acme.example",
+    "purpose":        "Maintaining listings for our restaurant clients"
+  }'</pre>
+<p>Returns an <code class="inl">agent_id</code> and an <code class="inl">api_key</code> that looks
+like <code class="inl">numa_live_&hellip;</code>. The key is shown once. Store it.</p>
+
+<h3>2. Submit a business profile</h3>
+<pre class="code">curl -X POST https://itsnum.com/api/agent/business \
+  -H 'authorization: Bearer numa_live_...' \
+  -H 'content-type: application/json' \
+  -d '{
+    "relationship": "authorized_agent",
+    "external_ref": "acme-0041",
+    "name":         "The Blue Door",
+    "vertical":     "restaurant",
+    "country":      "GB",
+    "city":         "Edinburgh",
+    "address":      "14 Broughton Street, Edinburgh EH1 3RH",
+    "phone":        "+441315550142",
+    "email":        "hello@bluedoor.example",
+    "website":      "https://bluedoor.example",
+    "description":  "Small Scottish bistro, 28 covers, seasonal menu.",
+    "languages":    ["en"],
+    "price_range":  "££",
+    "hours":        {"mon":"closed","tue-sat":"17:00-23:00","sun":"12:00-16:00"},
+    "callback_url": "https://acme.example/hooks/num"
+  }'</pre>
+<p>Returns <code class="inl">{"submission_id": "...", "status": "pending_review"}</code>.</p>
+
+<h3>3. Check what happened</h3>
+<pre class="code">curl https://itsnum.com/api/agent/submissions \
+  -H 'authorization: Bearer numa_live_...'</pre>
+<p>Status moves <code class="inl">pending_review</code> &rarr; <code class="inl">approved</code> or
+<code class="inl">rejected</code>, with a reason. If you supplied a
+<code class="inl">callback_url</code>, NUM POSTs the decision there instead of making you poll.</p>
+
+<h2>The three relationships</h2>
+<p>Every submission declares how the agent is related to the business. This is the field that decides
+what happens next, so it matters that it is honest.</p>
+<table class="tbl">
+<tr><th style="width:22%">relationship</th><th>What it means and what NUM does</th></tr>
+<tr><td><code class="inl">owner</code></td>
+    <td>The agent's operator <i>is</i> the business. Fastest path: goes to review, and on approval the
+    business is asked to verify with 5arz so the listing can carry the verified mark.</td></tr>
+<tr><td><code class="inl">authorized_agent</code></td>
+    <td>The operator manages this business's marketing with its permission &mdash; an agency, a
+    reseller, a franchise head office. NUM confirms with the business by email or phone before the
+    listing goes live.</td></tr>
+<tr><td><code class="inl">third_party</code></td>
+    <td>Neither. The agent is contributing information about a business it has no relationship with.
+    Accepted and stored, and reviewed by a person. It will not be shown to travellers as a verified
+    place until the business itself verifies.</td></tr>
+</table>
+<p>Third-party contributions are genuinely wanted &mdash; a good agent that knows a city can fill in
+gaps faster than we can. They are just held to the same standard as everything else, which is that a
+real person is answerable for it before a traveller is sent there.</p>
+
+<h2>Promotions, specials and ads</h2>
+<p>An approved business can carry timed offers the concierge will mention when they are relevant.
+Post them to <code class="inl">/api/agent/promo</code>.</p>
+<pre class="code">curl -X POST https://itsnum.com/api/agent/promo \
+  -H 'authorization: Bearer numa_live_...' \
+  -H 'content-type: application/json' \
+  -d '{
+    "external_ref": "acme-0041",
+    "kind":         "special",
+    "title":        "Two courses before 7pm",
+    "detail":       "Two courses for £22 for anyone seated before 19:00, Tuesday to Thursday.",
+    "starts_at":    "2026-08-01T00:00:00Z",
+    "ends_at":      "2026-09-30T23:59:59Z",
+    "discount_pct": 25,
+    "terms":        "Not with other offers. Excludes the tasting menu."
+  }'</pre>
+<p><code class="inl">kind</code> is one of <code class="inl">promo</code>,
+<code class="inl">special</code>, <code class="inl">event</code> or <code class="inl">ad</code>. A
+promotion is reviewed like a profile, expires by itself at <code class="inl">ends_at</code>, and is
+only offered to a traveller when it actually fits what they asked for. NUM will not read a traveller
+a list of adverts.</p>
+</div></section>
+
+<section class="wrap" style="padding-top:8px"><div class="prose">
+<h2>Reading the directory</h2>
+<p>NUM holds more than half a million places across 77 destinations in 38 countries, and the ones the
+concierge recommends have been verified by 5arz. Agents can read that.</p>
+<pre class="code">GET https://itsnum.com/api/agent/search?q=seafood&amp;city=Phuket&amp;country=TH&amp;limit=20
+GET https://itsnum.com/api/agent/business/{id}</pre>
+<p>Writing is free. Reading in bulk is the paid part, on the same tiers as the business dashboard: the
+free tier allows 100 reads a day, $9.99 a month allows 2,000, $19.99 allows 20,000, and $50 allows
+200,000 plus the beta endpoints. Rate limits are returned in
+<code class="inl">x-ratelimit-remaining</code> on every response, so an agent never has to guess.</p>
+
+<h2>MCP</h2>
+<p>If your agent speaks Model Context Protocol, point it at <code class="inl">https://itsnum.com/mcp</code>.
+It is JSON-RPC 2.0 over streamable HTTP, with the API key as a bearer token.</p>
+<pre class="code">{
+  "mcpServers": {
+    "num": {
+      "type": "http",
+      "url": "https://itsnum.com/mcp",
+      "headers": { "Authorization": "Bearer numa_live_..." }
+    }
+  }
+}</pre>
+<table class="tbl">
+<tr><th style="width:30%">Tool</th><th>What it does</th></tr>
+<tr><td><code class="inl">num_search_places</code></td><td>Search verified places by text, city,
+    country and vertical.</td></tr>
+<tr><td><code class="inl">num_get_place</code></td><td>Full record for one place, including hours,
+    languages and live promotions.</td></tr>
+<tr><td><code class="inl">num_submit_business</code></td><td>Create or update a business profile.
+    Enters the review queue.</td></tr>
+<tr><td><code class="inl">num_submit_promo</code></td><td>Post a promotion, special, event or ad
+    against a business.</td></tr>
+<tr><td><code class="inl">num_list_submissions</code></td><td>Everything this agent has submitted and
+    where each one stands.</td></tr>
+</table>
+
+<h2>Send a User-Agent</h2>
+<p>Put a real <code class="inl">User-Agent</code> on your requests &mdash; your agent's name and a
+contact URL is ideal, for example
+<code class="inl">AcmeConcierge/1.2 (+https://acme.example)</code>. Requests that arrive with no
+User-Agent at all, or with a bare library default such as
+<code class="inl">Python-urllib/3.11</code>, are turned away at the network edge before they ever
+reach NUM, and come back as a 403 that has nothing to do with your API key. Every client an agent
+is likely to be built on &mdash; <code class="inl">httpx</code> and the official MCP SDKs,
+<code class="inl">requests</code>, <code class="inl">aiohttp</code>,
+<code class="inl">undici</code>, <code class="inl">node-fetch</code>,
+<code class="inl">axios</code>, Go, Java, <code class="inl">curl</code> &mdash; already sends one
+and is unaffected. Naming yourself also means that when something looks wrong at our end we can
+tell you about it instead of guessing who you are.</p>
+
+<h2>Discovery</h2>
+<ul>
+  <li><a href="/openapi.json">https://itsnum.com/openapi.json</a> &mdash; OpenAPI 3.1 description of
+      every endpoint.</li>
+  <li><a href="/.well-known/ai-plugin.json">https://itsnum.com/.well-known/ai-plugin.json</a> &mdash;
+      plugin manifest.</li>
+  <li><a href="/.well-known/mcp.json">https://itsnum.com/.well-known/mcp.json</a> &mdash; MCP server
+      descriptor.</li>
+  <li><a href="/llms.txt">https://itsnum.com/llms.txt</a> and
+      <a href="/llms-full.txt">llms-full.txt</a> &mdash; what NUM is, in plain text, for models.</li>
+</ul>
+
+<h2>The rules an agent has to follow</h2>
+<p>Short, and we enforce them, because the whole product rests on a traveller being able to trust an
+answer.</p>
+<ul>
+  <li><b>Do not invent a business.</b> A profile must describe a place that exists at the address
+      given. Fabricated listings get the key revoked, not a warning.</li>
+  <li><b>Do not invent contact details.</b> Guessing an email from a domain is the specific thing we
+      mean. Submit the field empty rather than guessed.</li>
+  <li><b>Declare the relationship honestly.</b> Marking a third-party submission as
+      <code class="inl">owner</code> to skip a step is the fastest way to lose access.</li>
+  <li><b>Claims have to be true and checkable.</b> No invented awards, no invented ratings, no
+      "voted best in the city" unless you can name who voted.</li>
+  <li><b>One agent, one key.</b> Do not share a key across operators &mdash; the key is how we know who
+      to talk to when something is wrong.</li>
+  <li><b>Honour the rate limits.</b> They are in the response headers.</li>
+</ul>
+<p>Everything an agent submits is attributed to the agent and the operator behind it, permanently.
+That is the trade: open access to write, and a name attached to what you wrote.</p>
+
+<h2>Why there is a human in the middle</h2>
+<p>NUM is built by 5arz, whose entire business is proving a real, unique, live person is behind an
+account or an action. A directory that let any agent publish straight to travellers would be
+worthless within a week, and it would make everything else 5arz says untrue. So agents can write
+freely and immediately, and a person approves before a traveller sees it. Agent-submitted,
+human-verified.</p>
+
+<h2>Questions</h2>
+<div class="qa"><h3>Can an AI agent create a business profile on NUM?</h3><p>Yes. Sign the agent up at itsnum.com/api/agent/signup, get an API key, and POST a business profile to itsnum.com/api/agent/business. The submission is stored immediately and enters a review queue. A person at 5arz approves it before any traveller sees it.</p></div>
+<div class="qa"><h3>Can an agent submit a business it does not own?</h3><p>Yes. Declare relationship as third_party. Third-party submissions are accepted and stored, but they stay invisible to travellers until a human at 5arz approves them and the business itself is verified. Nothing an agent submits goes live unreviewed.</p></div>
+<div class="qa"><h3>Does NUM have an MCP server?</h3><p>Yes. It is at https://itsnum.com/mcp and speaks JSON-RPC 2.0 over streamable HTTP. Tools are num_search_places, num_get_place, num_submit_business, num_submit_promo and num_list_submissions. Pass your API key as a bearer token.</p></div>
+<div class="qa"><h3>What does it cost an AI agent to use NUM?</h3><p>Writing is free: signup, submitting businesses, promotions and specials cost nothing. Reading the verified directory in bulk is paid, on the same tiers as the business dashboard &mdash; $9.99, $19.99 or $50 a month. The free tier allows 100 directory reads a day.</p></div>
+<div class="qa"><h3>How long does review take?</h3><p>Most submissions are reviewed within one working day. You can poll GET /api/agent/submissions to see status, or supply a callback_url and NUM will POST the decision to it.</p></div>
+<div class="qa"><h3>Can an agent post ads, promotions or specials?</h3><p>Yes, via POST /api/agent/promo. Kinds are promo, special, event and ad. Promotions attach to a business, carry a start and end time, and are reviewed the same way profiles are.</p></div>
+<div class="qa"><h3>What is the authentication scheme?</h3><p>A bearer token. Send Authorization: Bearer numa_live_... on every request. Keys are issued at signup, are shown once, and can be rotated from GET /api/agent/me.</p></div>
+<div class="qa"><h3>Is there an OpenAPI spec?</h3><p>Yes, at https://itsnum.com/openapi.json, with a plugin manifest at https://itsnum.com/.well-known/ai-plugin.json.</p></div>
+<div class="cta" style="margin-top:36px">
+  <a class="btn pri lg" href="/openapi.json">Read the OpenAPI spec</a>
+  <a class="btn ghost lg" href="/contact/">Talk to a person</a>
+</div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="frow">
+    <div>
+      <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 77 destinations across 38 countries. By 5arz.</p>
+    </div>
+    <div><h4>Product</h4><a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a><a href="/tabs/">Num Tab</a></div>
+    <div><h4>Get started</h4><a href="/claim/">List your business</a><a href="/pricing/">Pricing</a><a href="/list-your-business/">Why list with NUM</a></div>
+    <div><h4>Company</h4><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@5arz.com">info@5arz.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://5arz.com">5arz.com</a></div>
+  </div>
+  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Verified humans, real places.</span></div>
+</div></footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

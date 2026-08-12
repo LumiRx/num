@@ -157,10 +157,28 @@ function proseSystem({ persona, voice, context, style }) {
     voice,
     context,
     style,
-    'IMPORTANT — you are answering while the main system is unavailable. You can recommend, explain, compare and plan, and you should do all of that well. ' +
-      'You CANNOT book, hold, cancel, or change anything, and you must not imply that you have. No "I\'ve booked", no "that\'s held", no confirmation numbers. ' +
-      'If they want something actually booked, say plainly that you will get it locked in shortly and ask them to say the word again in a minute. ' +
-      'Reply in plain prose. Never output JSON, brackets, or role labels.',
+    // The response brain's whole brief. It is NOT a degraded stand-in any
+    // more — from 11 Aug it answers the everyday turn by design, so this text
+    // is the product's voice for most guests, most of the time. Written as
+    // rules a cheaper model can follow literally, because a cheaper model
+    // follows literally: every line is an instruction, not a sentiment.
+    [
+      'YOU ARE NUM. Answer as the concierge, in first person. Never mention models, systems, brains, fallbacks, or that anything is unavailable — a guest asked a friend for a recommendation, not a status page.',
+      '',
+      'LENGTH — HARD CAP: three sentences, 40 words, for any ordinary ask. The FIRST sentence is the answer: the pick, the time, the yes or no. Never open with preamble ("Great question", "Let me help you with that", "You\'re in Kata and hungry"). At most ONE question, and only if you need it to act.',
+      '',
+      'RECOMMENDATIONS ARE THE EXCEPTION — give THREE options, always. When they ask where to eat, drink, go, swim or stay, name three real places from the verified block, each on its own short line with the one detail that separates it (distance, rating, or the thing they asked for). Then say which ONE you would pick and why, in a single line. Three gives them a choice; one pick means they never have to think. Under 70 words even so — a list is not permission to ramble. If the verified block holds fewer than three, give what it holds and say plainly that is all you have there.',
+      '',
+      'GROUND TRUTH — the VERIFIED NEARBY PARTNERS block above is the only place names may come from. Use their details exactly. NEVER invent or half-remember a place, address, phone number, price, or opening hour. If the block is empty, say you do not have verified places there and recommend nothing specific — an honest gap beats an invented address, always.',
+      '',
+      'NUMBERS — quote a rating, distance or price ONLY if it appears in the context above, verbatim. No "around", no "about", no estimates. A traveller budgets on your numbers.',
+      '',
+      'WHAT YOU CANNOT DO: book, hold, cancel, change, charge, or issue a ticket. Never imply you have. No "I\'ve booked", no "that\'s held", no confirmation numbers. If they want something actually booked, say you will get it locked in shortly and ask them to say the word again in a minute.',
+      '',
+      'FORMAT: plain prose. No JSON, no brackets, no markdown headers, no bullet lists, no role labels, no emoji. Reply in the language the guest wrote in.',
+      '',
+      'ONE GOOD PICK beats three hedged ones. Name it, give the single detail that makes it right for them (distance, or rating, or the thing they asked for), offer the next step in six words or fewer.',
+    ].join('\n'),
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -193,15 +211,19 @@ function extractText(res) {
   return '';
 }
 
-/** Workers AI and OpenAI-compatible endpoints both take chat messages. */
-async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
+/** Workers AI and OpenAI-compatible endpoints both take chat messages.
+ *  `model` overrides the brain's default — used by the director for per-class
+ *  model selection (flash for bulk, kimi for harder prose). */
+async function callProse(env, brain, { messages, system, maxTokens = 700, model = null }) {
   const chat = [{ role: 'system', content: system }, ...messages.slice(-8)];
 
   if (brain.kind === 'workers-ai') {
     const res = await env.AI.run(brain.model, { messages: chat, max_tokens: maxTokens });
     const text = extractText(res);
     if (!text) throw new Error(`${brain.id} returned nothing (keys: ${Object.keys(res ?? {}).join(',') || 'none'})`);
-    return text;
+    // Workers AI is neuron-billed, not token-billed: no usage to report, and
+    // that zero is true rather than missing.
+    return { text, usage: null, model: brain.model };
   }
 
   if (brain.kind === 'openai-compatible') {
@@ -214,6 +236,13 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
     const pick = (names) => names.map((n) => env[n]).find((v) => v);
     const base = String(pick(brain.env.base)).replace(/\/+$/, '');
     const key = pick(brain.env.key);
+    // Guest conversations and a bearer key travel in this request. Over http
+    // they travel readable — one mistyped secret away from broadcasting every
+    // ask in cleartext. Localhost is the only exception (the box under the
+    // desk); everything remote is https or it is nothing.
+    if (!/^https:\/\//.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/.test(base)) {
+      throw new Error(`${brain.id} base URL must be https (or localhost) — refusing to send guest data in cleartext`);
+    }
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -221,7 +250,7 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
         ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
       body: JSON.stringify({
-        model: pick(brain.env.model) || 'default',
+        model: model || pick(brain.env.model) || 'default',
         messages: chat,
         max_tokens: maxTokens,
         temperature: 0.7,
@@ -233,7 +262,9 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
     const body = await res.json();
     const text = body?.choices?.[0]?.message?.content ?? '';
     if (!text) throw new Error(`${brain.id} returned nothing`);
-    return String(text).trim();
+    // The vendor's own token counts. Dropping these on the floor is why every
+    // DeepSeek day cost $0.00 in our ledger — see console.mjs PRICES.
+    return { text, usage: body?.usage ?? null, model: body?.model ?? model ?? pick(brain.env.model) ?? null };
   }
 
   throw new Error(`${brain.id} has no prose path`);
@@ -245,8 +276,14 @@ async function callProse(env, brain, { messages, system, maxTokens = 700 }) {
  * `structuredCall` is the Claude path and is only attempted for brains that
  * can actually produce the schema. Everything else falls back to prose, which
  * is the difference between a degraded answer and a dead end.
+ *
+ * `directive` is an optional Response Directing Manager result (director.mjs)
+ * that names which model the hosted brain should use per class. When a
+ * directive is present and the hosted brain answers, it picks the model from
+ * the directive's first step — letting the director's cost-vs-demand policy
+ * select flash for the bulk, kimi for harder prose, without a deploy.
  */
-export async function ask(env, { structuredCall, messages, persona, voice, context, style, guard }) {
+export async function ask(env, { structuredCall, messages, persona, voice, context, style, guard, directive = null }) {
   const tried = [];
   // Prefer brains that are not currently standing down. A brain that just
   // returned "out of credit" will still be out of credit four seconds later,
@@ -255,8 +292,29 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
   // brainstate.plan(); refusing to try them would turn a partial outage into
   // a total one of our own making.
   const state = await loadBrainState(env);
-  const { order, healthy, cooling } = planChain(chain(env), state);
+  const { order: healthOrder, healthy, cooling } = planChain(chain(env), state);
   if (cooling && !healthy) console.warn(`[brains] every brain is cooling (${cooling}) — trying anyway`);
+
+  // THE DIRECTOR DECIDES WHO ANSWERS FIRST — but never who answers LAST.
+  //
+  // A directive names the brains this class of question should go to, cheapest
+  // capable first: recommendations to the hosted response brain, money and
+  // bookings straight to Claude. Its steps go to the front of the order.
+  //
+  // Everything else stays behind them, in health order, as a backstop. That is
+  // deliberate and it is the whole safety property: the director can be wrong,
+  // a vendor can be down, a model name can be retired — and the guest still
+  // gets an answer, because the rest of the chain is still there underneath.
+  // A router that can strand a turn is worse than no router.
+  let order = healthOrder;
+  if (directive?.steps?.length) {
+    const wanted = [];
+    for (const step of directive.steps) {
+      const b = healthOrder.find((x) => x.id === step.brain);
+      if (b && !wanted.includes(b)) wanted.push(b);
+    }
+    order = [...wanted, ...healthOrder.filter((b) => !wanted.includes(b))];
+  }
 
   for (const brain of order) {
     const started = Date.now();
@@ -266,8 +324,17 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
         await recordBrainSuccess(env, brain.id, state);
         return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started };
       }
-      const text = await callProse(env, brain, { messages, system: proseSystem({ persona, voice, context, style }) });
-      const clean = guard ? guard(text) : { ok: true, cleaned: text };
+      // The director may name a model for this brain (per-class override).
+      // Match the FIRST step naming this brain — not step 0. With the chain
+      // reordered, the brain now being tried may be the directive's second or
+      // third choice (flash bounced, kimi's turn), and reading step 0 would
+      // send the escalation back to the model that just failed.
+      const modelOverride =
+        brain.kind === 'openai-compatible'
+          ? (directive?.steps ?? []).find((s2) => s2.brain === brain.id)?.model ?? null
+          : null;
+      const prose = await callProse(env, brain, { messages, system: proseSystem({ persona, voice, context, style }), model: modelOverride });
+      const clean = guard ? guard(prose.text) : { ok: true, cleaned: prose.text };
       if (!clean.ok) throw new Error(`${brain.id} output failed the guard`);
       await recordBrainSuccess(env, brain.id, state);
       return {
@@ -279,6 +346,10 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
         _degraded: true,
         _tried: tried,
         _ms: Date.now() - started,
+        // Carried so the caller can meter a fallback turn exactly as it meters
+        // a Claude turn. Same ledger, same units, one truth.
+        _usage: prose.usage,
+        _model: prose.model,
       };
     } catch (err) {
       const noted = await recordBrainFailure(env, brain.id, err);
@@ -321,12 +392,12 @@ export async function probe(env) {
     }
     const t0 = Date.now();
     try {
-      const text = await callProse(env, brain, {
+      const probe = await callProse(env, brain, {
         messages: [{ role: 'user', content: 'Say hello in under 10 words.' }],
         system: 'You are a warm concierge. Reply in under 10 words, plain prose.',
         maxTokens: 40,
       });
-      out.push({ id: brain.id, ready: true, ok: true, ms: Date.now() - t0, sample: text.slice(0, 90) });
+      out.push({ id: brain.id, ready: true, ok: true, ms: Date.now() - t0, sample: probe.text.slice(0, 90) });
     } catch (err) {
       out.push({ id: brain.id, ready: true, ok: false, ms: Date.now() - t0, error: String(err?.message ?? err).slice(0, 140) });
     }
@@ -340,7 +411,12 @@ export const roster = (env) =>
     id: b.id,
     label: b.label,
     kind: b.kind,
-    model: b.model ?? null,
+    // A model NAME is identity, not a secret — and for env-configured brains
+    // it was invisible: /api/brains said `model: null` for `hosted`, so during
+    // the 10 Aug outage nobody could say WHICH vendor was answering guests
+    // without reading Cloudflare secrets nobody can read. The key stays
+    // secret; who we are talking to must never be.
+    model: b.model ?? (b.env?.model ? (b.env.model.map((n) => env[n]).find((v) => v) ?? null) : null),
     structured: b.structured,
     ready: b.ready(env),
     note: b.note ?? null,

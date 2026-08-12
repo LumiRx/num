@@ -23,8 +23,10 @@ Facts, as of 2026-08-08:
   walk-ins, nothing on a business's own repeat customers, no monthly minimum.
 - Optional dashboards: 9.99 USD, 19.99 USD and 50 USD per month. Cancel monthly;
   the listing stays live either way.
-- "Verified" means a human at 5arz confirmed a real, unique, live person is behind
-  the account. It is not a review score and not a self-declaration.
+- "Verified" describes a person or a claimed listing, never a place. A verified
+  guest is a traveller 5arz confirmed is a unique real person. A verified
+  listing is one whose owner proved control of the contact already published
+  on it. Unclaimed listings are mapped, not verified. It is not a review score.
 - AI agents can register and submit business data through a public API and an MCP
   server. Third-party submissions are stored but stay invisible to travellers
   until a human at 5arz approves them.
@@ -32,10 +34,10 @@ Facts, as of 2026-08-08:
 ## Main pages
 
 - [Home](https://itsnum.com/): what NUM is and how to start.
-- [How it works](https://itsnum.com/how-it-works/): chat, plan, book, verified places only.
+- [How it works](https://itsnum.com/how-it-works/): chat, plan, book, real places only.
 - [Get the app](https://itsnum.com/app/): add NUM on LINE or to a phone home screen.
 - [Destinations](https://itsnum.com/destinations/): all 77 destinations with place counts.
-- [Perks](https://itsnum.com/perks/): what members get at verified places.
+- [Perks](https://itsnum.com/perks/): what members get at partner places.
 
 ## For businesses
 

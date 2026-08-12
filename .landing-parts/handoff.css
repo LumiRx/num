@@ -1,0 +1,18 @@
+
+/* ── Desktop handoff ──────────────────────────────────────────────────────
+   Shown only where it makes sense: a QR on a phone screen is something you
+   cannot scan with the device displaying it. */
+.handoff{display:none}
+@media(min-width:760px){
+  .handoff:not([hidden]){display:grid;grid-template-columns:132px 1fr;gap:22px;align-items:center;
+    margin:22px 0 4px;padding:20px;border:1px solid var(--line,#e0ddd4);border-radius:14px;background:#fff}
+}
+.handoff-qr svg{width:132px;height:132px;display:block;border-radius:6px}
+.handoff-copy b{display:block;font-size:17px;margin-bottom:4px}
+.handoff-copy p{margin:0 0 10px;font-size:14.5px;line-height:1.55;max-width:52ch}
+.handoff-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lnk{background:none;border:0;padding:0;font:inherit;font-size:14.5px;font-weight:600;
+  color:var(--green,#1e7a4d);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.lnk:focus-visible{outline:2px solid var(--green,#1e7a4d);outline-offset:3px;border-radius:3px}
+.copied{font-size:13.5px;color:#68705f}
+.handoff-alt{font-size:13.5px;color:#68705f;margin-top:10px!important}

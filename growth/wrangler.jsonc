@@ -73,6 +73,16 @@
     // with "/get*" — both need the slash.
     { "pattern": "itsnum.com/r/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/go/*", "zone_name": "itsnum.com" },
-    { "pattern": "itsnum.com/stop/*", "zone_name": "itsnum.com" }
+    { "pattern": "itsnum.com/stop/*", "zone_name": "itsnum.com" },
+    // Venue check-in. Printed on a card that sits on a counter, so it is as
+    // short as a real URL gets and must never move: reprinting every venue's
+    // card is not a deploy, it is a courier. Same slash rule as /r/ and /go/.
+    { "pattern": "itsnum.com/v/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/venue/*", "zone_name": "itsnum.com" },
+    // The business-facing code manager. /biz/ does not collide with /business*
+    // (num-biz-site) — the slash is what separates them, same rule as /r/.
+    { "pattern": "itsnum.com/biz/*", "zone_name": "itsnum.com" },
+    // The public offers page — the URL marketing points traveller demand at.
+    { "pattern": "itsnum.com/tonight*", "zone_name": "itsnum.com" }
   ]
 }

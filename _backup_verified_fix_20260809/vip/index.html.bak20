@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Num — your VIP travel concierge</title>
+<meta name="description" content="Num is a travel concierge you message. It plans your day, books the table and answers in your language, in 77 destinations across 38 countries.">
+<link rel="canonical" href="https://itsnum.com/vip/">
+<meta name="theme-color" content="#F6FAF9">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://itsnum.com/vip/">
+<meta property="og:title" content="Num — your VIP travel concierge">
+<meta property="og:description" content="Message it once. It plans the day, books the table and keeps the whole trip in one thread.">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://itsnum.com/assets/og.jpg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+
+<style>
+/* ── /vip: page-local only. Palette, type scale, buttons, cards, nav, footer and
+      rhythm all come from site.css so this page reads as part of itsnum.com
+      rather than a separate landing page. Nothing below redefines a colour
+      site.css already owns.
+
+      Class names here are deliberately prefixed or unusual. site.css already
+      owns .signup (a two-column wizard grid) and .step (a keyframe animation),
+      and reusing either name silently breaks the page. ─────────────────────── */
+
+/* icons are drawn, never typed. site.css sizes the .ic tile but not the svg
+   inside it, so without this every icon fills its tile as a black block. */
+.ic svg{width:22px;height:22px;fill:none;stroke:var(--pri-d);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ic.amber svg{stroke:#B07A22}
+.trust svg{width:15px;height:15px;fill:none;stroke:var(--pri);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* hero-grid keeps site.css's align-items:center so the copy sits against the
+   middle of the taller capture card, exactly like the homepage hero.
+   The 24px sides are NOT decoration: <header class="wrap hero"> hits two equal
+   class selectors, and site.css declares .hero after .wrap, so .hero's shorthand
+   zeroes the gutter and the hero runs edge-to-edge on a phone. Restate it. */
+.hero{padding:64px 24px 48px}
+section[id]{scroll-margin-top:80px}
+
+/* site.css sets section{padding:64px 0}, but .wrap{padding:0 24px} is a class
+   selector and outranks a bare element selector, so <section class="wrap">
+   renders with ZERO vertical padding and every section collides into the next
+   kicker. Restore the rhythm without disturbing the 24px gutter. */
+section.wrap{padding-top:58px;padding-bottom:58px}
+section.wrap:first-of-type{padding-top:34px}
+.sechead{max-width:64ch}
+.sechead .h2{margin-top:10px}
+
+/* ── the capture card ─────────────────────────────────────────────────────── */
+.getcard{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px;box-shadow:var(--shadow-lg)}
+.getcard h2{font-family:var(--disp);font-size:21px;margin:0;letter-spacing:-.015em;color:var(--ink)}
+.getcard .gsub{font-size:14.5px;color:var(--slate);margin:8px 0 18px;line-height:1.55}
+.getcard .btn{width:100%;box-sizing:border-box}
+.fld{width:100%;box-sizing:border-box;font-family:var(--body);font-size:15px;padding:13px 14px;
+  border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);margin-bottom:10px;transition:.15s}
+.fld::placeholder{color:#9AA9B0}
+.fld:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-l)}
+.fhint{font-size:12px;color:#8A9BA3;margin:-4px 0 12px;line-height:1.5}
+.optin{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--slate);line-height:1.5;margin:12px 0 14px;cursor:pointer}
+.optin input{margin-top:2px;accent-color:var(--pri);flex:none;width:15px;height:15px}
+.msg{font-size:13.5px;margin:12px 0 0;color:var(--pri-d);font-weight:600;min-height:18px}
+.msg[data-num-state="error"]{color:#B4442F}
+.orsep{display:flex;align-items:center;gap:12px;margin:18px 0 14px;color:#93A3AA;font-size:12px;
+  letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+.orsep::before,.orsep::after{content:"";flex:1;height:1px;background:var(--line)}
+.doneic{width:46px;height:46px;border-radius:14px;background:var(--pri-l);display:flex;align-items:center;justify-content:center;margin:0 0 14px}
+.doneic svg{width:24px;height:24px;fill:none;stroke:var(--pri-d);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.doneh{font-family:var(--disp);font-size:20px;margin:0;letter-spacing:-.015em;color:var(--ink)}
+.qrwhite{margin:16px 0 0;display:flex;justify-content:center}
+.qrwhite img{width:120px;height:120px;image-rendering:pixelated;border:1px solid var(--line);border-radius:14px;padding:8px;background:#fff}
+.fine{font-size:11.5px;color:#93A3AA;margin:14px 0 0;line-height:1.5}
+.fine a{color:#93A3AA;text-decoration:underline}
+
+/* ── what people ask it ───────────────────────────────────────────────────── */
+.asks{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+@media(max-width:880px){.asks{grid-template-columns:1fr}}
+.ask{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;box-shadow:var(--shadow)}
+.qq{background:var(--pri-l);color:var(--pri-d);border-radius:14px 14px 14px 4px;padding:11px 14px;
+  font-size:14.5px;font-weight:700;display:inline-block;line-height:1.45}
+.ans{margin:13px 0 0;font-size:14.5px;color:var(--slate);line-height:1.6}
+
+/* ── three steps. NOT .step — site.css owns that name for the wizard. ─────── */
+.vsteps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+@media(max-width:880px){.vsteps{grid-template-columns:1fr}}
+.vstep{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:var(--shadow)}
+.vnum{width:34px;height:34px;border-radius:10px;background:var(--pri);color:#fff;font-family:var(--disp);
+  font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px;margin-bottom:14px}
+.vstep h3{font-family:var(--disp);font-size:18px;margin:0 0 8px;letter-spacing:-.01em}
+.vstep p{margin:0;font-size:14.5px;color:var(--slate);line-height:1.6}
+
+/* ── close. Same gradient family as .ctaband in site.css, widened for the QR. ─ */
+.vband{background:linear-gradient(120deg,#0E5B52,var(--ink));color:#fff;border-radius:26px;padding:44px 40px;
+  display:grid;grid-template-columns:1fr auto;gap:36px;align-items:center}
+@media(max-width:780px){.vband{grid-template-columns:1fr;text-align:center;justify-items:center;padding:36px 24px}}
+.vband h2{color:#fff;margin:0}
+.vband p{color:#bcd8cf;margin:12px 0 22px;font-size:16px;line-height:1.55;max-width:46ch}
+@media(max-width:780px){.vband p{margin-inline:auto}}
+.bandbtns{display:flex;gap:12px;flex-wrap:wrap}
+@media(max-width:780px){.bandbtns{justify-content:center}}
+.qrbox{background:#fff;padding:12px;border-radius:16px;line-height:0}
+.qrbox img{width:136px;height:136px;image-rendering:pixelated;display:block}
+.qrcap{color:#9FBDBA;font-size:12px;text-align:center;margin-top:10px;letter-spacing:.04em}
+</style>
+
+<script src="/num-capture.js" data-page="landing" defer></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://itsnum.com/#organization","name":"NUM","alternateName":"NUM travel concierge","url":"https://itsnum.com/","email":"info@5arz.com","description":"NUM is an AI travel concierge you chat with. It plans your trip in any language and books real, verified local places across 77 destinations in 38 countries.","parentOrganization":{"@type":"Organization","name":"5arz","url":"https://5arz.com/","description":"5arz is the proof-of-human company. It verifies that a real, unique, live person is behind an account or an action."},"sameAs":["https://5arz.com/"],"contactPoint":[{"@type":"ContactPoint","email":"info@5arz.com","contactType":"customer support","availableLanguage":["en"]}]},{"@type":"WebSite","@id":"https://itsnum.com/#website","url":"https://itsnum.com/","name":"NUM","publisher":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://itsnum.com/vip/#webpage","url":"https://itsnum.com/vip/","name":"Num — your VIP travel concierge","description":"Num is a travel concierge you message. It plans your day, books the table and answers in your language, in 77 destinations across 38 countries.","isPartOf":{"@id":"https://itsnum.com/#website"},"about":{"@id":"https://itsnum.com/#organization"},"inLanguage":"en","datePublished":"2026-07-31","dateModified":"2026-07-31"}]}</script>
+</head>
+<body>
+
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="/get/">Get the app</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/perks/">Perks</a>
+    <a href="/business/">For business</a>
+    <a href="/agents/">For AI agents</a>
+    <span id="signin-slot"><a href="/signin/">Sign in</a></span>
+    <a class="btn pri" href="#start" style="padding:10px 18px;font-size:14px">Get the app</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">&#9776;</button>
+</div>
+<div class="mobile">
+  <a href="#start"><b>Get the app</b></a>
+  <a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a>
+  <a href="/business/">For business</a><a href="/agents/">For AI agents</a>
+  <a href="/claim/">List your business</a>
+  <a href="/signin/">Sign in</a>
+</div>
+</nav>
+
+<header class="wrap hero" id="start">
+  <div class="hero-grid">
+    <div>
+      <span class="pill">VIP travel concierge</span>
+      <h1 class="h1" style="margin-top:18px">Your concierge for the city you just landed&nbsp;in.</h1>
+      <p class="sub">Message Num once. It plans the day, books the table and keeps the whole trip in one thread &mdash; in your language, at any hour.</p>
+      <div class="trust">
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>77 destinations, 38 countries</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Every place verified</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>16 languages</span>
+      </div>
+    </div>
+
+    <div class="getcard">
+      <h2>Get your concierge</h2>
+      <p class="gsub">Add your email and the install link appears right here.</p>
+
+      <div id="su-form">
+        <form data-num-capture data-source="vip-landing" data-done="You are in.">
+          <input class="fld" type="email" name="email" autocomplete="email" placeholder="Email address" required>
+          <input class="fld" type="text" name="name" autocomplete="given-name" placeholder="First name (optional)">
+          <input class="fld" type="tel" name="phone" autocomplete="tel" placeholder="Mobile number (optional)">
+          <p class="fhint">Add your mobile and Num will message you the moment WhatsApp opens in your country.</p>
+
+          <label class="optin">
+            <input type="checkbox" name="marketing_ok" value="1">
+            <span>Email me travel notes from Num and tell me when it opens in a new country. I can stop any time.</span>
+          </label>
+
+          <button class="btn pri lg" type="submit">Get my link</button>
+          <p class="msg" data-num-msg></p>
+        </form>
+
+        <div class="orsep">or start now</div>
+        <a class="btn ghost lg" href="https://line.me/R/ti/p/@799pyrus">Message Num on LINE</a>
+      </div>
+
+      <div id="su-done" hidden>
+        <div class="doneic"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <h3 class="doneh">You are in. Here is your link.</h3>
+        <p class="gsub">Open it on the phone you travel with, or scan the code.</p>
+        <a class="btn pri lg" href="/get/">Get the app</a>
+        <div class="qrwhite"><img src="/app/qr-get.png" alt="QR code to install Num" width="120" height="120"></div>
+        <div class="orsep">or message it now</div>
+        <a class="btn ghost lg" href="https://line.me/R/ti/p/@799pyrus">Message Num on LINE</a>
+      </div>
+
+      <p class="fine">We use your details to hand you the app link and to answer you. Nothing else. <span style="white-space:nowrap"><a href="/privacy/">Privacy</a> &middot; <a href="/terms/">Terms</a></span></p>
+    </div>
+  </div>
+</header>
+
+<!-- REAL PEOPLE, REAL PLACES -->
+<section class="wrap">
+  <div class="sechead" style="max-width:620px">
+    <span class="kicker">Real travellers</span>
+    <h2 class="h2">The trips it is already running.</h2>
+    <p class="lead">Beach towns, capitals and the islands in between. Seventy-seven destinations, thirty-eight countries, one thread.</p>
+  </div>
+  <div class="people">
+    <img src="/assets/p1.jpg" alt="Two travellers laughing over a phone on a beach town street">
+    <img src="/assets/p2.jpg" alt="A traveller planning the evening from the sand">
+    <img src="/assets/p3.jpg" alt="Friends looking out over the rice terraces while they plan the day">
+  </div>
+</section>
+
+<!-- WHAT PEOPLE ASK IT -->
+<section class="wrap">
+  <div class="sechead">
+    <span class="kicker">What people actually ask it</span>
+    <h2 class="h2">Say it the way you would say it to a person.</h2>
+    <p class="lead">No menus, no filters, no ten tabs open at midnight. One message.</p>
+  </div>
+  <div class="asks">
+    <div class="ask">
+      <span class="qq">Just landed in Phuket. Dinner tonight, somewhere quiet.</span>
+      <p class="ans">Three within ten minutes of you, all open now and all verified this month. Want me to hold 8pm at the first one?</p>
+    </div>
+    <div class="ask">
+      <span class="qq">Book the same place as last time, table for four.</span>
+      <p class="ans">Done. Friday 7.30pm, confirmed under your name, and it is on your calendar. Your driver knows the address.</p>
+    </div>
+    <div class="ask">
+      <span class="qq">Anything worth doing before my flight tomorrow?</span>
+      <p class="ans">Two, both on the airport road. I checked their opening hours against your 2pm departure so you are not cutting it fine.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="wrap">
+  <div class="sechead">
+    <span class="kicker">How it works</span>
+    <h2 class="h2">Three steps, then it runs the trip.</h2>
+  </div>
+  <div class="vsteps">
+    <div class="vstep">
+      <div class="vnum">1</div>
+      <h3>Tell it where you are</h3>
+      <p>Type the city, or let it read your location. It switches to the place you are standing in, not the place you booked from.</p>
+    </div>
+    <div class="vstep">
+      <div class="vnum">2</div>
+      <h3>Ask for anything</h3>
+      <p>Dinner, a driver, a last-minute table, a pharmacy that is still open. It answers from verified places, not scraped listings.</p>
+    </div>
+    <div class="vstep">
+      <div class="vnum">3</div>
+      <h3>It handles the rest</h3>
+      <p>Booking, confirmation, calendar, the address in the local language for the driver. You get one thread, start to finish.</p>
+    </div>
+  </div>
+</section>
+
+<!-- INSIDE THE APP -->
+<section class="wrap">
+  <div class="sechead">
+    <span class="kicker">Inside the app</span>
+    <h2 class="h2">Built for the way a trip actually goes.</h2>
+  </div>
+  <div class="grid g3" style="margin-top:28px">
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-4-.9L3 21l1.9-4.9A8.4 8.4 0 0 1 4 11.5a8.4 8.4 0 0 1 8.5-8.4A8.4 8.4 0 0 1 21 11.5Z"/></svg></div>
+      <h3>One thread for the whole trip</h3>
+      <p>Flights, dinners, drivers and plans in a single conversation you can scroll back through.</p>
+    </div>
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5v5c0 4.6 3.2 8.6 8 9.5 4.8-.9 8-4.9 8-9.5v-5Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <h3>Real places, verified</h3>
+      <p>Every recommendation comes from a checked record with real hours, not a listing nobody has looked at in two years.</p>
+    </div>
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="5" width="18" height="16" rx="3"/><path d="m9 15 2 2 4-4"/></svg></div>
+      <h3>Bookings without the back and forth</h3>
+      <p>It contacts the place, confirms the time and puts it in your calendar. You approve, it does the chasing.</p>
+    </div>
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3.5"/><path d="M22 20v-2a4 4 0 0 0-3-3.9M16.5 3.6a4 4 0 0 1 0 6.8"/></svg></div>
+      <h3>Plans you build with friends</h3>
+      <p>Share a plan, everyone adds to it, Num keeps one version. Invite anyone by text &mdash; no account needed to see it.</p>
+    </div>
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 0-5 5c0 1.6-.6 2.7-1.4 3.6A4.6 4.6 0 0 0 4 14.6 4.4 4.4 0 0 0 8.4 19H12"/><path d="M12 3a5 5 0 0 1 5 5c0 1.6.6 2.7 1.4 3.6A4.6 4.6 0 0 1 20 14.6 4.4 4.4 0 0 1 15.6 19H12"/><path d="M12 3v18"/></svg></div>
+      <h3>It remembers what you like</h3>
+      <p>Window table, no coriander, always a driver after 10pm. Say it once and it holds for every trip after.</p>
+    </div>
+    <div class="card hov">
+      <div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg></div>
+      <h3>Any language, any hour</h3>
+      <p>Ask in yours, it speaks to the restaurant in theirs. Sixteen languages, and it does not sleep when you land at 3am.</p>
+    </div>
+  </div>
+  <p style="margin-top:20px;font-size:14.5px;color:var(--slate)">There are twelve more. <a href="/app/" style="color:var(--pri-d);font-weight:700">See everything the app does</a></p>
+</section>
+
+<!-- CLOSE -->
+<section class="wrap">
+  <div class="vband">
+    <div>
+      <h2 class="h2">Land somewhere new. Have someone there already.</h2>
+      <p>Free to start. Works on every phone. Scan the code or send yourself the link.</p>
+      <div class="bandbtns">
+        <a class="btn pri lg" href="/get/">Get the app</a>
+        <a class="btn light lg" href="https://line.me/R/ti/p/@799pyrus">Message Num on LINE</a>
+        <button class="btn light lg" type="button" data-share>Share the link</button>
+      </div>
+    </div>
+    <div>
+      <div class="qrbox"><img src="/app/qr-get.png" alt="QR code to install Num" width="136" height="136"></div>
+      <div class="qrcap">Point your camera here</div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="frow">
+    <div>
+      <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 77 destinations across 38 countries. By 5arz.</p>
+    </div>
+    <div><h4>Product</h4><a href="/get/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a></div>
+    <div><h4>Get started</h4><a href="#start">Get your concierge</a><a href="/claim/">List your business</a><a href="/pricing/">Pricing</a><a href="/tabs/">Num Tab for venues</a></div>
+    <div><h4>Company</h4><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@5arz.com">info@5arz.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://5arz.com">5arz.com</a></div>
+  </div>
+  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Verified humans, real places.</span></div>
+</div></footer>
+
+<script src="/assets/site.js"></script>
+<script>
+/* No .reveal anywhere on this page, deliberately. Paid traffic lands here cold
+   and every element has to be on screen the instant the page paints; .reveal
+   sets opacity:0 and waits for script. Nothing here is worth that risk. */
+
+/* /api/capture writes the row and returns; it does not send mail. So the page
+   itself has to be the receipt — hand over the install link on the spot rather
+   than promising an inbox we do not deliver to. */
+window.addEventListener('num:capture', function () {
+  var f = document.getElementById('su-form'), d = document.getElementById('su-done');
+  if (!f || !d) return;
+  f.hidden = true;
+  d.hidden = false;
+  try { d.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+});
+
+/* Share the install link. */
+(function () {
+  var U = 'https://itsnum.com/get';
+  var nodes = document.querySelectorAll('[data-share]');
+  for (var i = 0; i < nodes.length; i++) {
+    (function (b) {
+      b.addEventListener('click', function () {
+        var t = b.textContent;
+        function flash(m) { b.textContent = m; setTimeout(function () { b.textContent = t; }, 1800); }
+        if (navigator.share) {
+          navigator.share({ title: 'Num - your travel concierge', text: 'Num plans your trip and books real, verified places. Install it here:', url: U }).catch(function () {});
+          return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(U).then(function () { flash('Link copied'); }, function () { flash(U); });
+          return;
+        }
+        flash(U);
+      });
+    })(nodes[i]);
+  }
+})();
+
+/* This page is the destination for paid traffic and it now carries a full site
+   nav, so people leave it. Without this the campaign tag dies at the first hop
+   and the conversion is recorded as direct. Carry the query across every
+   internal link so per-channel numbers survive the whole funnel. */
+(function () {
+  var q = location.search;
+  if (!q || q.length < 2) return;
+  var params = new URLSearchParams(q), carry = new URLSearchParams();
+  params.forEach(function (v, k) {
+    if (/^(utm_|gclid|fbclid|ttclid|msclkid|ref$)/i.test(k)) carry.set(k, v);
+  });
+  var tail = carry.toString();
+  if (!tail) return;
+  document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+    var h = a.getAttribute('href');
+    if (!h || h.charAt(0) !== '/' || h.indexOf('#') === 0) return;
+    a.setAttribute('href', h + (h.indexOf('?') === -1 ? '?' : '&') + tail);
+  });
+})();
+</script>
+
+</body>
+</html>

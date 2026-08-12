@@ -26,5 +26,9 @@ test('both reply paths keep the question', () => {
   const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
   const hits = index.match(/recordAsk\(env/g) ?? [];
   assert.ok(hits.length >= 2, 'a reply path drops the question again — cache hits or model answers are invisible to the Asks view');
-  assert.match(index, /degraded: !!_degraded/, 'asks no longer carry whether the answer was degraded — the quality signal is gone');
+  // Variable name changed on 11 Aug when recordAsk moved above logUsage so the
+  // two could be joined by ask_id; the REQUIREMENT is unchanged — an ask that
+  // does not record whether its answer was degraded loses the quality signal.
+  assert.match(index, /degraded: !!(result\._degraded|_degraded)/,
+    'asks no longer carry whether the answer was degraded — the quality signal is gone');
 });

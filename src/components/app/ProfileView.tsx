@@ -305,6 +305,8 @@ export default function ProfileView() {
 
       <VersionLine />
 
+      <SourcesLine />
+
       <div style={{ padding: '4px 12px 0' }}>
         <div
           {...pressable(save)}
@@ -453,6 +455,34 @@ function VersionLine() {
           v{stale} IS OUT — TAP TO UPDATE
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where the places come from.
+ *
+ * Num's directory is built on OpenStreetMap, which is ODbL-licensed: using the
+ * data obliges us to say so wherever it is used. The website already carries
+ * this in /privacy and /terms — but a guest inside the app is not reading our
+ * privacy page, and the licence follows the data, not the domain. So it lives
+ * here too: quiet, permanent, and honest about whose work this is built on.
+ */
+function SourcesLine() {
+  return (
+    <div style={{ padding: '8px 14px 0', textAlign: 'center' }}>
+      <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
+        Places from{' '}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: 'var(--ink-40)', textDecoration: 'underline' }}
+        >
+          © OpenStreetMap contributors
+        </a>{' '}
+        (ODbL), Google, and Num&rsquo;s own verification.
+      </div>
     </div>
   );
 }
