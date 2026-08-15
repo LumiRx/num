@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handlePartnerMcp, partnerFrom, partnerIndex, ATTRIBUTION } from './partnermcp.mjs';
+import { handlePartnerMcp, partnerFrom, partnerIndex, ATTRIBUTION, TOOLS_FOR_TEST } from './partnermcp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const post = (body, headers = {}) =>
@@ -32,14 +32,27 @@ test('every tool description states a refusal, not just a capability', async () 
   // integration is broken. Limits belong in the description.
   const j = await rpcJson(await handlePartnerMcp(post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), {}));
   const tools = j.result.tools;
-  assert.equal(tools.length, 4, 'the partner tool set changed — update the integration doc before shipping this');
+  assert.equal(tools.length, 6, 'the partner tool set changed — update the integration doc before shipping this');
   for (const t of tools) {
     assert.ok(t.description.length > 120, `${t.name}: description too thin to choose from`);
     assert.match(t.description, /NEVER|never|not|MUST|only/,
       `${t.name}: says what it does but not what it refuses`);
   }
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['concierge_answer', 'list_destinations', 'place_details', 'search_places']);
+  assert.deepEqual(names,
+    ['booking_link', 'concierge_answer', 'list_destinations', 'open_places', 'place_details', 'search_places']);
+});
+
+test('the booking tool forbids the one sentence that would matter', () => {
+  // An agent that renders a prefilled link as "Table booked" sends somebody to
+  // a restaurant that is not expecting them. The prohibition has to be in the
+  // description, because that is the only part of this file the agent reads.
+  const t = TOOLS_FOR_TEST.find((x) => x.name === 'booking_link');
+  assert.match(t.description, /does NOT make a reservation/);
+  assert.match(t.description, /MUST NOT tell a traveller a table is held/);
+  const open = TOOLS_FOR_TEST.find((x) => x.name === 'open_places');
+  assert.match(open.description, /NOT an empty city/,
+    'nothing warns that thin hours coverage looks identical to a shut city');
 });
 
 test('unknown tools and bad JSON fail politely, never silently', async () => {
@@ -70,7 +83,8 @@ test('attribution is one string, used everywhere', () => {
   const literals = src.match(/© OpenStreetMap contributors/g) ?? [];
   assert.equal(literals.length, 1,
     'the attribution string is duplicated — one copy will drift out of date and the drifted one will ship');
-  for (const fn of ['list_destinations', 'search_places', 'place_details', 'concierge_answer']) {
+  for (const fn of ['list_destinations', 'search_places', 'place_details', 'concierge_answer',
+                    'open_places', 'booking_link']) {
     assert.ok(src.includes(fn), `${fn} vanished from the handler`);
   }
 });
@@ -85,7 +99,7 @@ test('the partner surface is wired into the worker', () => {
 test('the front door tells an engineer everything needed to start', async () => {
   const j = JSON.parse(await partnerIndex().text());
   assert.match(j.mcp, /POST \/api\/partner\/mcp/);
-  assert.equal(j.tools.length, 4);
+  assert.equal(j.tools.length, 6);
   assert.match(j.auth, /Unkeyed calls work/,
     'the index no longer says evaluation is possible without a key — that is the whole point of it');
   assert.ok(j.contact, 'no contact route for a partner who gets stuck');

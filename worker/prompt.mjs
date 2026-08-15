@@ -103,9 +103,17 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
         partners
           .map(
             (b) =>
-              `- ${b.name}${b.name_local && b.name_local !== b.name ? ` (${b.name_local})` : ''} — ${b.category}${b.area ? `, ${b.area}` : ''}${b.km != null ? `, ${b.km < 1 ? Math.round(b.km * 1000) + ' m' : b.km + ' km'} away` : ''}${b.rating ? `, ${b.rating}★ (${b.reviews} reviews)` : ''}${b.phone ? `, ${b.phone}` : ''}`,
+              `- ${b.name}${b.name_local && b.name_local !== b.name ? ` (${b.name_local})` : ''} — ${b.category}${b.area ? `, ${b.area}` : ''}${b.km != null ? `, ${b.km < 1 ? Math.round(b.km * 1000) + ' m' : b.km + ' km'} away` : ''}${b.rating ? `, ${b.rating}★ (${b.reviews} reviews)` : ''}${b.phone ? `, ${b.phone}` : ''}` +
+              // OPEN NOW, and its absence. Three states, written as three
+              // things: open, closed, or nothing at all. Silence means we do
+              // not know — which the rule below turns into "I'd call first"
+              // rather than a confident claim in either direction.
+              (b.open_now === true ? ', OPEN NOW' : b.open_now === false ? ', CLOSED NOW' : '') +
+              (b.booking_platform && b.booking_ref ? `, bookable via ${b.booking_platform}` : ''),
           )
-          .join('\n'),
+          .join('\n') +
+        '\nOPENING HOURS RULE: say a place is open or closed ONLY where the line above says OPEN NOW or CLOSED NOW. Where it says neither, we have not verified their hours — recommend it normally and, if the timing matters, add that it is worth ringing ahead. Never infer hours from the category or the time of day. If everything nearby is marked CLOSED NOW, say so plainly and offer the best option for when it opens.' +
+        '\nBOOKING RULE: "bookable via" means Num can hand them a booking page with the party size and time already filled in — offer it. It does NOT mean Num has booked anything. Never say a table is held or confirmed until the guest completes it.',
     );
   }
   if (guide) lines.push(`Destination notes:\n${guide}`);

@@ -7,6 +7,7 @@
  * functions) after a cheap grid-cell bounding-box prefilter, so a "near me"
  * lookup touches a few hundred rows instead of the whole table.
  */
+import { openNow } from '../worker/hours.mjs';
 
 // ---------------------------------------------------------------- categories
 
@@ -370,7 +371,7 @@ export async function resolveLocation(env, { text, guest, cf }) {
 // rather than matching on a name later. Names collide across cities ('The
 // Bridge' exists in most of them) and a merchant's impression count has to be
 // right or it is worse than absent.
-const SELECT_COLS = 'id, name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license';
+const SELECT_COLS = 'id, name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license, alive, hours_mask, booking_platform, booking_ref';
 
 /**
  * Ranking blends quality and distance rather than sorting on either alone —
@@ -399,7 +400,14 @@ async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, 
           cos(radians(?1))*cos(radians(lat))*cos(radians(lng)-radians(?2))
           + sin(radians(?1))*sin(radians(lat))))), 2) AS km
       FROM places
-      WHERE cell_lat BETWEEN ?3 AND ?4 AND cell_lng BETWEEN ?5 AND ?6${cat}
+      -- alive = 0 means we FETCHED the venue's own website and found a dead
+      -- domain, a 404, or a parked page. That is positive evidence the
+      -- business has gone, so it is excluded here rather than merely ranked
+      -- down: no amount of star rating makes a shuttered restaurant a good
+      -- recommendation. NULL is unknown and stays eligible — most of the
+      -- directory has never been checked, and hiding it would empty the map.
+      WHERE (alive IS NULL OR alive = 1)
+        AND cell_lat BETWEEN ?3 AND ?4 AND cell_lng BETWEEN ?5 AND ?6${cat}
     ) WHERE km <= ${Number(radiusKm)} ORDER BY ${SCORE} DESC LIMIT ${Math.max(1, limit | 0)}`;
   const binds = [
     lat, lng,
@@ -439,7 +447,28 @@ export async function nearbyPlaces(env, loc, text, limit = 8) {
       rows = rows.concat(wide.filter(r => !seen.has(r.name))).slice(0, limit);
     }
   } catch (e) { console.log('nearbyPlaces', String(e)); }
-  return { cat, rows, near };
+  return { cat, rows: withOpenState(rows, loc?.dest?.tz), near };
+}
+
+/**
+ * Tag each row open / closed / unknown, and push the definitely-closed to
+ * the back.
+ *
+ * Three states, and the third one is load-bearing. Los Angeles has hours for
+ * 3,798 of 90,263 places; if unknown were treated as closed the city would
+ * look empty, and if it were treated as open we would send people to locked
+ * doors. So unknown keeps its rank and simply says nothing.
+ *
+ * Only a KNOWN-closed place is demoted, and it is demoted rather than
+ * dropped — "Bestia is superb but shut until 5" is a genuinely useful answer,
+ * and at 11pm a whole city of closed restaurants is still the honest picture.
+ * Dropping them would leave a guest staring at an empty reply.
+ */
+export function withOpenState(rows, tz) {
+  if (!Array.isArray(rows) || !rows.length) return rows ?? [];
+  const tagged = rows.map((r) => ({ ...r, open_now: tz ? openNow(r.hours_mask, tz) : null }));
+  const closed = tagged.filter((r) => r.open_now === false);
+  return closed.length ? [...tagged.filter((r) => r.open_now !== false), ...closed] : tagged;
 }
 
 /** Per-destination briefing notes, editable in D1 without a deploy. */

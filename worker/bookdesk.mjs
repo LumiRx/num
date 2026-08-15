@@ -47,10 +47,21 @@ CREATE TABLE IF NOT EXISTS num_booking_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_bookreq_member ON num_booking_requests(member_id, created_at);
 `;
+// Added 15 Aug with commission capture. The table only ever held a venue NAME,
+// which is enough to text somebody and not nearly enough to bill them: the
+// category sets the rate, and business_id says whose invoice it lands on.
+// Separate from SCHEMA because CREATE TABLE IF NOT EXISTS will not add a
+// column to a table that already exists — the reason a migration that looks
+// applied can silently do nothing.
+const MIGRATIONS = ['ALTER TABLE num_booking_requests ADD COLUMN place_id TEXT'];
 let ready = false;
 async function ensure(env) {
   if (ready || !env.DB) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // One at a time, each failure swallowed: "duplicate column name" is the
+  // expected result on every run after the first, and batching would let that
+  // expected error roll back the statements around it.
+  for (const m of MIGRATIONS) await env.DB.prepare(m).run().catch(() => {});
   ready = true;
 }
 
@@ -93,11 +104,15 @@ export async function handleBooking(request, env, path) {
     const id = `bk_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
     const partySize = Math.min(Math.max(Number(b.party_size) || 2, 1), 40);
     await env.DB.prepare(
-      `INSERT INTO num_booking_requests (id, member_id, venue_name, venue_phone, party_size, on_date, at_time, note, plan_id)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
+      `INSERT INTO num_booking_requests (id, member_id, venue_name, venue_phone, party_size, on_date, at_time, note, plan_id, place_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`,
     ).bind(
       id, me, venue, clip(b.venue_phone, 20), partySize,
       clip(b.on_date, 20), clip(b.at_time, 8), clip(b.note, 200), clip(b.plan_id, 40),
+      // Optional and best-effort. Without it the booking still works and
+      // simply bills at the cheapest flat rate — an unidentified venue must
+      // under-bill, never guess a percentage.
+      clip(b.place_id, 120),
     ).run();
 
     // Text the venue, if we have a number for it. If we don't, the request
@@ -138,6 +153,34 @@ export async function handleBooking(request, env, path) {
     ).bind(id, verdict).run();
     const row = await env.DB.prepare('SELECT * FROM num_booking_requests WHERE id=?1').bind(id).first();
     if (!row) return json({ error: 'not found' }, 404);
+
+    // MONEY, exactly once, and only on a confirmation that actually flipped.
+    //
+    // `flip.meta.changes > 0` is the idempotency guard and it is the whole
+    // safety property here: this URL lives in an SMS on a stranger's phone. It
+    // gets tapped twice, forwarded to a colleague, and prefetched by link
+    // previewers. Accruing outside this branch would bill a merchant three
+    // times for one table, and they would find out before we did.
+    //
+    // Awaited, not deferred: this route returns an HTML page rather than
+    // finishing a guest's request, so there is no latency to protect, and a
+    // ledger write that races the response is a ledger write that sometimes
+    // does not happen. `accrue` never throws — a booking must complete even
+    // if the money line fails.
+    if (flip.meta.changes > 0 && verdict === 'confirmed') {
+      const { accrue } = await import('./commission.mjs');
+      const place = row.place_id
+        ? await env.DB.prepare('SELECT id, name, category, business_id, dest FROM places WHERE id=?1')
+            .bind(row.place_id).first().catch(() => null)
+        : null;
+      await accrue(env, {
+        bookingId: id,
+        place: place ?? { name: row.venue_name },
+        venueName: row.venue_name,
+        memberId: row.member_id,
+        dest: place?.dest ?? null,
+      });
+    }
 
     if (flip.meta.changes > 0) {
       const { notify } = await import('./push.mjs');

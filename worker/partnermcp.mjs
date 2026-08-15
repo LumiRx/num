@@ -118,7 +118,51 @@ const TOOLS = [
       properties: { place_id: { type: 'string', description: 'From search_places.' } },
     },
   },
+  {
+    name: 'open_places',
+    description:
+      'Places that are OPEN RIGHT NOW in a destination, computed in the destination\'s own timezone. ' +
+      'Businesses whose own website is a dead domain or a 404 are excluded entirely — they have closed down. ' +
+      'IMPORTANT: only venues whose opening hours Num has verified can appear here, so a short list means thin ' +
+      'hours coverage, NOT an empty city. Never tell a traveller "nothing is open" on the strength of this tool; ' +
+      'say that these are the ones Num can confirm are open. Use search_places for the full directory.',
+    inputSchema: {
+      type: 'object',
+      required: ['destination'],
+      properties: {
+        destination: { type: 'string', description: 'Destination slug, e.g. "los-angeles".' },
+        category: { type: 'string', description: 'Exact category, e.g. "Restaurant". Omit for all.' },
+        near: { type: 'string', description: 'Neighbourhood, e.g. "Silver Lake".' },
+        bookable_only: { type: 'boolean', description: 'Only venues Num can hand off a booking page for.' },
+        limit: { type: 'integer', description: 'Max results, 1–50. Default 20.' },
+      },
+    },
+  },
+  {
+    name: 'booking_link',
+    description:
+      'A booking page for one place with the party size, date and time ALREADY FILLED IN. ' +
+      'This does NOT make a reservation and Num does not hold a table — the traveller completes it on the venue\'s ' +
+      'own platform (OpenTable, Resy, Tock, SevenRooms, Square and others). The response always carries ' +
+      '`booked: false` and `mode: "deeplink"`. You MUST NOT render this as a confirmation, and you MUST NOT tell a ' +
+      'traveller a table is held. If the venue has no booking platform the response says so and returns the phone ' +
+      'number instead — offer that rather than implying it cannot be visited.',
+    inputSchema: {
+      type: 'object',
+      required: ['place_id'],
+      properties: {
+        place_id: { type: 'string', description: 'From search_places or open_places.' },
+        party: { type: 'integer', description: 'Number of covers, 1–20.' },
+        date: { type: 'string', description: 'YYYY-MM-DD.' },
+        time: { type: 'string', description: 'HH:MM, 24-hour, local to the venue.' },
+      },
+    },
+  },
 ];
+
+// Exported for tests only: the descriptions ARE the contract with a calling
+// agent, so they are asserted on directly rather than through a live handshake.
+export const TOOLS_FOR_TEST = TOOLS;
 
 /* ── partner identity ──────────────────────────────────────────────────────
  * A key identifies WHICH partner is asking, so usage can be attributed and a
@@ -196,9 +240,37 @@ async function callTool(env, request, name, args) {
     return { destinations: rows.results ?? [], attribution: ATTRIBUTION };
   }
 
+  // Open now, and bookable — both delegate to the same handlers the public
+  // REST endpoints use. One implementation, so the MCP and the HTTP surface
+  // cannot drift into disagreeing about whether a restaurant is open.
+  if (name === 'open_places') {
+    const u = new URL('/api/open', new URL(request.url).origin);
+    u.searchParams.set('dest', String(args.destination || '').toLowerCase());
+    u.searchParams.set('open', 'now');
+    if (args.category) u.searchParams.set('category', args.category);
+    if (args.near) u.searchParams.set('near', args.near);
+    if (args.bookable_only) u.searchParams.set('bookable', '1');
+    u.searchParams.set('limit', String(Math.min(Math.max(Number(args.limit) || 20, 1), 50)));
+    const { handleOpen } = await import('./openapi.mjs');
+    return await (await handleOpen(new Request(u, { method: 'GET' }), env)).json();
+  }
+
+  if (name === 'booking_link') {
+    const { handleBookLink } = await import('./openapi.mjs');
+    const req = new Request(new URL('/api/book/link', new URL(request.url).origin), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ place_id: args.place_id, party: args.party, date: args.date, time: args.time }),
+    });
+    return await (await handleBookLink(req, env)).json();
+  }
+
   if (name === 'search_places') {
     const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 20);
-    const where = ['p.dest = ?1'];
+    // Same exclusion as the guest path: a venue whose own site is a dead
+    // domain has closed, and a partner shipping it to a traveller is our
+    // mistake landing in someone else's product.
+    const where = ['p.dest = ?1', '(p.alive IS NULL OR p.alive = 1)'];
     const bind = [String(args.destination || '').toLowerCase()];
     if (args.category) { where.push('p.category = ?' + (bind.length + 1)); bind.push(args.category); }
     if (args.near) { where.push('p.area LIKE ?' + (bind.length + 1) + ' COLLATE NOCASE'); bind.push('%' + args.near + '%'); }

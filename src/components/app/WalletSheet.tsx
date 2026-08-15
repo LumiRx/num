@@ -6,6 +6,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack, requestCashout } from '../../lib/concierge';
+import { canOfferSubscription } from '../../lib/native';
 import { TabStarter } from './TabSheet';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
@@ -71,6 +72,20 @@ export default function WalletSheet() {
           Earn it, spend it, cash it out<br />friends see plans, never stars
         </div>
       </div>
+      {/* NOT ON iOS. Stars are currency spent inside the app — errands, tabs,
+          bounties — so selling them here is digital content under App Store
+          guideline 3.1.1 and must go through IAP. Our own App Review notes
+          state "the app sells NO digital content"; with STARS_SALE_OK on and
+          this panel rendering $150–$1,425 packs, that sentence stopped being
+          true and a reviewer would have read it next to the packs. A false
+          statement to App Review costs far more than a rejection.
+
+          `canOfferSubscription()` already gates the membership card for the
+          same reason on the same platform, so this reuses it rather than
+          inventing a second notion of "may we sell here". Web and Android are
+          unaffected; the wallet still shows the balance, the ledger and
+          cash-out everywhere. */}
+      {canOfferSubscription() && (
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ink-08)' }}>
         <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)', marginBottom: 8 }}>TOP UP — INSTANT</div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -100,6 +115,7 @@ export default function WalletSheet() {
           Stars you buy spend inside Num — errands, tabs, bookings. Stars you <strong>earn</strong> can be cashed out to 5arz.
         </div>
       </div>
+      )}
       {/* EARNED — the money side. Shown only when there is something to show,
           so it never nags a traveller who has never run an errand. */}
       {!!out && out.cashable > 0 && (

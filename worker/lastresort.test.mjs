@@ -13,7 +13,14 @@ import { lastResort, readIntent } from './lastresort.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
-const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+// Strip comments before matching, so prose about the code cannot satisfy an
+// assertion about the code. Line comments go FIRST: on 11 Aug a `//` comment
+// mentioning a path with a wildcard contained the two characters that open a
+// block comment, and stripping blocks first swallowed 193 lines of real
+// source — including the very declaration the test below exists to protect.
+// The test failed, correctly-looking, on code that was fine.
+const code = (s) =>
+  s.replace(/(^|[^:])\/\/.*$/gm, '$1').replace(/\/\*[\s\S]*?\*\//g, '');
 
 const GROUNDING = {
   place: { name: 'Phuket' },

@@ -42,6 +42,7 @@ import { markReferralEarned } from './referral.mjs';
 import { handleBizApi, bizApiIndex } from './bizapi.mjs';
 import { handleBizMcp } from './bizmcp.mjs';
 import { handlePartnerMcp, partnerIndex } from './partnermcp.mjs';
+import { handleOpen, handleBookLink, handlePlatforms } from './openapi.mjs';
 import { recordImpressions } from './impressions.mjs';
 import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
@@ -655,6 +656,13 @@ export default {
       return Response.redirect(new URL(to ?? '/watch/', url.origin).toString(), 302);
     }
 
+    // These two must be tested BEFORE the `/api/book` prefix below, or that
+    // prefix swallows them and bookdesk 404s on paths it has never heard of.
+    // It did exactly that between being written and being caught, which is
+    // the standing hazard of prefix routing: a new sibling route is dead on
+    // arrival and nothing fails loudly enough to notice.
+    if (url.pathname === '/api/book/link') return await handleBookLink(request, env);
+    if (url.pathname === '/api/book/platforms') return handlePlatforms();
     if (url.pathname.startsWith('/api/book')) {
       const { handleBooking } = await import('./bookdesk.mjs');
       const res = await handleBooking(request, env, url.pathname.slice('/api/book'.length) || '/');
@@ -689,6 +697,10 @@ export default {
     // /api/biz (a business managing its OWN listing) because the trust level is
     // different: a partner reads the whole directory for their travellers and
     // writes nothing. See worker/partnermcp.mjs.
+    // Open businesses. The two booking siblings (link, platforms) are routed
+    // far earlier, above the /api/book prefix that would otherwise swallow
+    // them.
+    if (url.pathname === '/api/open') return await handleOpen(request, env);
     if (url.pathname === '/api/partner' || url.pathname === '/api/partner/') return partnerIndex();
     if (url.pathname === '/api/partner/mcp') return await handlePartnerMcp(request, env);
 

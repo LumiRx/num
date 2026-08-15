@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { CheckIcon } from '../../lib/icons';
+import { canOfferSubscription } from '../../lib/native';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -116,7 +117,19 @@ export default function MembershipCard() {
         </div>
       )}
 
-      {!open && current === 'free' && (
+      {/* iOS SELLS NOTHING. Our App Review notes state, in these words, that
+          there is "no purchase surface in the app" on iOS and that this is
+          "enforced in code, not by policy: canOfferSubscription() in
+          src/lib/native.ts returns false on iOS". Until 15 Aug that function
+          existed and NOTHING CALLED IT — the whole pricing ladder rendered on
+          iOS. We had described an enforcement to Apple that was not wired.
+          A rejection is recoverable; telling App Review something untrue is
+          the thing to avoid.
+
+          A member who already subscribed on the web still sees their tier —
+          `current` is read from the account, and the paid rows below are the
+          only part that is a SALE. */}
+      {!open && current === 'free' && canOfferSubscription() && (
         <div
           {...pressable(() => setOpen(true))}
           style={{ cursor: 'pointer', marginTop: 12, fontSize: 11, fontWeight: 800, letterSpacing: '.07em', color: 'var(--color-accent-700)' }}
@@ -125,7 +138,7 @@ export default function MembershipCard() {
         </div>
       )}
 
-      {(open || current !== 'free') && (
+      {(open || current !== 'free') && canOfferSubscription() && (
         <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
           {paid.map((t) => {
             const on = t.id === current;
