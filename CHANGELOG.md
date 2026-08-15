@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.216 — 2026-08-15 23:15 UTC
+
+(no note given)
+
+- commit `bec8eaa`
+
 ## 0.8.215 — 2026-08-15 23:12 UTC
 
 (no note given)
