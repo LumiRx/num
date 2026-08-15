@@ -97,6 +97,19 @@ const priceFor = (model) => {
   if (PRICES[model]) return PRICES[model];
   // Workers AI models arrive as '@cf/meta/llama-…' — all neuron-billed.
   if (String(model).startsWith('@cf/')) return PRICES['workers-ai'];
+  // VENDOR-PREFIXED NAMES. Bionic echoes the model back as
+  // 'deepseek/deepseek-v4-flash' — namespace first — while the price table is
+  // keyed on the bare name. Exact-match alone therefore missed it and fell
+  // through to the Opus default, which priced the first live DeepSeek turn at
+  // $0.026 instead of $0.0007: a 37× overstatement, on the one number the
+  // router is judged by. The router looked like it had saved nothing.
+  //
+  // Falling back to the most expensive price is still the right default for a
+  // genuinely unknown model — an under-count hides real spend. But a name we
+  // DO know, wearing a namespace, is not unknown.
+  const bare = String(model).split('/').pop();
+  if (PRICES[bare]) return PRICES[bare];
+  console.warn(`[usage] no price for model "${model}" — charging at the default rate`);
   return PRICE;
 };
 

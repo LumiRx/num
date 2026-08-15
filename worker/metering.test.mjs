@@ -69,3 +69,20 @@ test('one ask makes one row', () => {
   assert.ok(!/brain: _brain \?\? null/.test(i),
     'the duplicate recordAsk for the big lane is back — asks will double-count');
 });
+
+test('a vendor-prefixed model is priced as itself, not as Opus', async () => {
+  // Bionic echoes the model back namespaced: 'deepseek/deepseek-v4-flash'.
+  // The price table is keyed on the bare name, so exact-match alone fell
+  // through to the Opus default and priced the first live DeepSeek turn at
+  // $0.026 instead of $0.0007 — a 37× overstatement on the single number the
+  // whole router is judged by. It made a working router look like it had
+  // saved nothing.
+  const src = readFileSync(join(HERE, 'console.mjs'), 'utf8');
+  assert.match(src, /const bare = String\(model\)\.split\('\/'\)\.pop\(\);/,
+    'the namespace strip is gone — prefixed models price at the Opus rate again');
+  assert.match(src, /if \(PRICES\[bare\]\) return PRICES\[bare\];/);
+  // And a genuinely unknown model must still cost the MOST, never the least:
+  // an under-count hides real spend, which is the worse direction to be wrong.
+  assert.match(src, /no price for model .* charging at the default rate/,
+    'an unpriced model is now silent — spend on a new vendor would vanish from the ledger');
+});
