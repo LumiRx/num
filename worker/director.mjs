@@ -55,15 +55,52 @@ export const MODEL_COSTS = Object.freeze({
 
 /** Money, a commitment, trouble, or a group — never economise on these. */
 const CRITICAL =
-  /book|booking|reserve|reservation|pay|paid|price|cost|charge|refund|cancel|deposit|bill|invoice|wrong|broken|late|missing|complain|help me|stuck|lost|emergency|hospital|police|we are|we have|our group|party of|kids|children|family|wheelchair|allerg/i;
+  // `how much` / `how many baht` added 15 Aug. Widening the MODERATE pattern
+  // to recognise category nouns ("spa", "dinner") pulled "how much is the spa
+  // package" into the cheap lane — a PRICE question answered by a prose brain
+  // that cannot see a verified figure. The money guard has to name the way
+  // people actually ask what something costs, not only the word "cost".
+  /book|booking|reserve|reservation|pay|paid|price|cost|charge|refund|cancel|deposit|bill|invoice|how much|how many (?:baht|dollars?|usd|thb|euros?)|wrong|broken|late|missing|complain|help me|stuck|lost|emergency|hospital|police|we are|we have|our group|party of|kids|children|family|wheelchair|allerg/i;
 
 /** Multi-step planning / arranging / itinerary — a frontier model is better at holding it together. */
 const COMPLEX =
   /plan|itinerary|schedule|arrange|organi[sz]e|coordinate|day trip|tonight then|after that|and then|give me .{8,}(?:and|,)|(?:hotel|flight|transfer|rides?hare|dinner).{0,30}(?:and|,)/i;
 
-/** Recommendations, comparisons and research lookups — the bulk, served cheaply. */
-const MODERATE =
-  /recommend|best|where should i|which|compare|versus| vs |better|worth it|should i|instead|near|movies|showtimes|what'?s on|playing/i;
+/**
+ * Recommendations, comparisons and research lookups — the bulk, served cheaply.
+ *
+ * ── WIDENED 15 AUG, ON EVIDENCE ──────────────────────────────────────────
+ *
+ * The first version only recognised a question SHAPE — "where should I…",
+ * "which…", "recommend…". Checked against the live table the day the router
+ * shipped, "dinner ideas in patong tonight" classified as `unrecognised —
+ * fail toward quality` and went to Opus at $0.076. So did the uptime probe,
+ * which is 65% of all recorded traffic.
+ *
+ * That is the failure mode of a fail-safe default: it is invisible. Nothing
+ * errors, every answer is good, and the bill quietly stays where it was.
+ * A router only saves money on the phrasings it actually recognises, and
+ * real guests do not phrase things like a test suite — they say "dinner
+ * ideas", "somewhere to eat", "anywhere good for coffee", "food near me".
+ *
+ * These additions are all NOUN-led asks for a suggestion. The escalating
+ * patterns above still win — they are tested first — so widening this cannot
+ * pull money, bookings, groups or trouble down into the cheap lane. What it
+ * changes is only the boundary between "cheap" and "expensive-by-default",
+ * and on that boundary the honest bias is toward recognising the ask.
+ */
+const MODERATE = new RegExp([
+  // question shapes
+  'recommend|best|where should i|which|compare|versus| vs |better|worth it|should i|instead|near',
+  // things to do
+  'movies|showtimes|what\'?s on|playing|things to do|what to do|to see|attractions?',
+  // asking for options by noun — the shape the first version missed entirely
+  'ideas?|options?|suggestions?|somewhere|anywhere|any good|what\'?s good|top \\d',
+  // meals and drinks, named directly
+  'breakfast|brunch|lunch|dinner|eat|food|restaurants?|caf[eé]s?|coffee|bars?|drinks?',
+  // the other categories guests ask for by name
+  'beach(?:es)?|spa|massage|market|temple|viewpoint|nightlife|shopping',
+].join('|'), 'i');
 
 /** Short, single-fact lookups where a mid model is genuinely as good. */
 const SIMPLE = /^(what|where|when|who|how far|how long|is|are|does|do)\b/i;

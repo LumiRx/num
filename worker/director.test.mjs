@@ -255,3 +255,49 @@ test('classifyDemand is imported by router.mjs', async () => {
   assert.match(router, /from ['"].\/director\.mjs['"]/,
     'router.mjs does not import the director — pickModel is not delegating');
 });
+
+// ── widened 15 Aug, on live evidence ─────────────────────────────────────
+//
+// The router shipped and the bill did not move. The classifier only knew
+// question SHAPES ("where should I…"), so "dinner ideas in patong tonight" —
+// which is 65% of all recorded traffic — read as `unrecognised` and escalated
+// to Opus. A fail-safe default is invisible when it is wrong: nothing errors,
+// every answer is good, and the money quietly stays where it was.
+
+test('the phrasings real guests actually use reach the cheap lane', () => {
+  const env = { NUM_LLM_BASE_URL: 'https://x/v1', NUM_LLM_MODEL: 'deepseek-v4-flash' };
+  for (const q of [
+    'my group needs dinner ideas in patong tonight', // the uptime probe
+    'dinner ideas in patong tonight',
+    'somewhere to eat near kata',
+    'anywhere good for coffee',
+    'best beach for sunset',
+    'things to do tomorrow',
+    'food near me',
+    'massage recommendations',
+  ]) {
+    assert.equal(direct(q, {}, env).steps[0].brain, 'hosted',
+      `"${q}" escalated to Claude — the router saves nothing on phrasings it does not recognise`);
+  }
+});
+
+test('widening the cheap lane did not leak a money question into it', () => {
+  // Adding category nouns ("spa", "dinner") to MODERATE pulled "how much is
+  // the spa package" down with them, on the first attempt. A price answered
+  // by a prose brain that cannot see a verified figure is the exact failure
+  // the money guard exists to prevent.
+  const env = { NUM_LLM_BASE_URL: 'https://x/v1', NUM_LLM_MODEL: 'deepseek-v4-flash' };
+  for (const q of [
+    'how much is the spa package',
+    'how much for a taxi to the airport',
+    'how many baht is a massage',
+    'what does a car to the airport cost',
+    'book us a table at 8',
+    'my flight got cancelled',
+    'can you pay the deposit',
+    'plan saturday with 6 friends',
+  ]) {
+    assert.equal(direct(q, {}, env).steps[0].brain, 'claude',
+      `"${q}" was routed to the cheap brain — money, bookings, groups and trouble must always start on Claude`);
+  }
+});
