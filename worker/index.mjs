@@ -701,6 +701,13 @@ export default {
     // far earlier, above the /api/book prefix that would otherwise swallow
     // them.
     if (url.pathname === '/api/open') return await handleOpen(request, env);
+    // Self-serve signup and usage BEFORE the /api/partner index and MCP
+    // routes — same prefix-shadowing hazard as /api/book/link, avoided this
+    // time instead of found in production.
+    if (url.pathname === '/api/partner/signup' || url.pathname === '/api/partner/usage') {
+      const { handlePartnerSignup } = await import('./partnersignup.mjs');
+      return await handlePartnerSignup(request, env);
+    }
     if (url.pathname === '/api/partner' || url.pathname === '/api/partner/') return partnerIndex();
     if (url.pathname === '/api/partner/mcp') return await handlePartnerMcp(request, env);
 

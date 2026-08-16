@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NUM Partner API — self-serve keys for AI agents and travel platforms</title>
+<meta name="description" content="Sign up in one call, get an API key instantly, and give your agent or platform verified local places, open-now answers, prefilled booking links and full concierge answers across 77 destinations. Free tier, no sales call.">
+<link rel="canonical" href="https://app.itsnum.com/partners/">
+<meta property="og:title" content="NUM Partner API — instant keys for AI agents">
+<meta property="og:description" content="Verified places, open-now, booking links and concierge answers. Free 1,000 calls/month, key issued instantly.">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebAPI","name":"NUM Partner API",
+ "description":"Verified local places, live open-now status, prefilled booking links and AI concierge answers for travel platforms and AI agents.",
+ "documentation":"https://app.itsnum.com/api/partner",
+ "provider":{"@type":"Organization","name":"Num","url":"https://itsnum.com"},
+ "offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},
+   {"@type":"Offer","name":"Directory","price":"0.02","priceCurrency":"USD","description":"per call"},
+   {"@type":"Offer","name":"Concierge","price":"0.10","priceCurrency":"USD","description":"per call"},
+   {"@type":"Offer","name":"Platform","price":"1500","priceCurrency":"USD","description":"per month to 100k calls + 20% rev-share"}]}
+</script>
+<style>
+:root{--bg:#faf7f2;--ink:#1d1a17;--ink2:#5c554e;--accent:#e8542f;--card:#fff;--line:rgba(29,26,23,.09)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.wrap{max-width:880px;margin:0 auto;padding:48px 20px 90px}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;margin:14px 0 12px}
+.kicker{color:var(--accent);font-weight:800;letter-spacing:.14em;font-size:12px}
+.lead{color:var(--ink2);font-size:17px;line-height:1.65;max-width:640px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin:34px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card h3{margin:0 0 6px;font-size:16px}.card p{margin:0;color:var(--ink2);font-size:14px;line-height:1.6}
+.price{font-family:'Space Grotesk';font-weight:700;font-size:20px}
+.tag{display:inline-block;background:rgba(232,84,47,.1);color:var(--accent);font-weight:800;font-size:11px;letter-spacing:.08em;border-radius:999px;padding:3px 10px;margin-bottom:8px}
+form{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin:26px 0;max-width:520px}
+label{display:block;font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin:12px 0 5px}
+input,textarea{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;background:#fdfcfa}
+button{margin-top:16px;width:100%;border:0;border-radius:12px;padding:13px;font:inherit;font-weight:800;color:#fff;background:linear-gradient(90deg,#e8542f,#d3372c);cursor:pointer}
+pre{background:#211d1a;color:#f5efe8;border-radius:12px;padding:14px;overflow:auto;font-size:12.5px;line-height:1.55}
+.ok{background:#0e2a1b;color:#c9f4d9;border-radius:12px;padding:16px;font-size:14px;line-height:1.6;display:none}
+.ok code{display:block;background:#08170f;border-radius:8px;padding:10px;margin:8px 0;word-break:break-all;font-size:13px}
+.err{color:#c02c17;font-size:13px;margin-top:10px;display:none}
+a{color:var(--accent)}
+.small{font-size:12.5px;color:var(--ink2);line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">NUM · PARTNER API</div>
+  <h1>Give your agent a local concierge.<br>Key issued in one call.</h1>
+  <p class="lead">Verified places across 77 destinations, live open-now status, booking links with the party size already filled in, and full concierge answers — over plain HTTPS or MCP. No sales call, no waitlist: sign up below and the key is in the response.</p>
+
+  <div class="grid">
+    <div class="card"><div class="tag">FREE</div><div class="price">$0</div><p>1,000 calls a month. Every tool, full directory. Attribution required wherever results are shown.</p></div>
+    <div class="card"><div class="tag">DIRECTORY</div><div class="price">$0.02 <span style="font-size:12px">/call</span></div><p>search_places, open_places, place_details — ranked, verified, timezone-aware.</p></div>
+    <div class="card"><div class="tag">CONCIERGE</div><div class="price">$0.10 <span style="font-size:12px">/call</span></div><p>concierge_answer: ask like a traveller, get the whole product in one response.</p></div>
+    <div class="card"><div class="tag">PLATFORM</div><div class="price">$1,500 <span style="font-size:12px">/mo</span></div><p>Up to 100k calls + 20% rev-share on bookings your traffic originates.</p></div>
+  </div>
+
+  <h2>Get a key</h2>
+  <form id="f">
+    <label for="c">COMPANY OR AGENT NAME</label>
+    <input id="c" required minlength="2" maxlength="80" placeholder="LetsGo2Trip">
+    <label for="e">CONTACT EMAIL</label>
+    <input id="e" type="email" required placeholder="you@company.com">
+    <label for="u">WHAT ARE YOU BUILDING? (OPTIONAL)</label>
+    <textarea id="u" rows="2" maxlength="300" placeholder="A trip-planning agent for…"></textarea>
+    <button type="submit">Issue my key</button>
+    <div class="err" id="err"></div>
+    <p class="small">The key is shown once and emailed to you. We store only a hash. Re-signing up with the same email rotates it.</p>
+  </form>
+  <div class="ok" id="ok"></div>
+
+  <h2>Then call it</h2>
+  <pre>curl -X POST https://app.itsnum.com/api/partner/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-Partner-Key: YOUR_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+    "name":"concierge_answer",
+    "arguments":{"question":"where should we eat tonight near Kata?","destination":"phuket"}}}'</pre>
+  <p class="small">Six tools: <b>concierge_answer</b>, <b>search_places</b>, <b>open_places</b>, <b>booking_link</b>, <b>place_details</b>, <b>list_destinations</b>. Human-readable index at <a href="https://app.itsnum.com/api/partner">/api/partner</a> · usage at <a href="https://app.itsnum.com/api/partner/usage">/api/partner/usage</a> with your key header. Booking links are prefilled hand-offs, never claimed reservations — the response always says <code>booked:false</code> until a real reservation API stands behind it.</p>
+
+  <p class="small">Place data © OpenStreetMap contributors (ODbL) and Google, verified by Num. Attribution travels with every payload and must be displayed.</p>
+</div>
+<script>
+document.getElementById('f').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const err = document.getElementById('err'); err.style.display = 'none';
+  const btn = ev.target.querySelector('button'); btn.disabled = true; btn.textContent = 'Issuing…';
+  try {
+    const r = await fetch('/api/partner/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: document.getElementById('c').value,
+        email: document.getElementById('e').value,
+        use: document.getElementById('u').value,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || 'Signup failed — try again in a moment.');
+    const ok = document.getElementById('ok');
+    ok.innerHTML = '<b>You are in, ' + j.partner_id.split('_')[0] + '.</b> This key is shown once — it is also in your inbox.'
+      + '<code>' + j.key + '</code>'
+      + 'Send it as the <b>X-Partner-Key</b> header. Free tier: 1,000 calls/month. '
+      + '<a style="color:#8fe3ae" href="https://app.itsnum.com/api/partner">Read the docs →</a>';
+    ok.style.display = 'block';
+    ev.target.style.display = 'none';
+    ok.scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    err.textContent = e.message; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Issue my key';
+  }
+});
+</script>
+</body>
+</html>
