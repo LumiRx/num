@@ -2,10 +2,11 @@
 // asks and displays. Anything that looks like arithmetic on a balance here
 // would be a bug waiting to happen.
 import { store } from './store';
+import { apiUrl } from '../lib/apibase';
 
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/social' + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+  const res = await fetch(apiUrl('/api/social') + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((body as { error?: string }).error || `stars ${res.status}`);
   return body as T;

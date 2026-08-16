@@ -49,5 +49,8 @@ test('an update never interrupts a guest mid-question', () => {
 test('the version check bypasses every cache', () => {
   // Asking the browser cache what the server is running defeats the point.
   const au = src('src/lib/autoupdate.ts');
-  assert.match(au, /'\/api\/version', \{ cache: 'no-store' \}/, 'the version probe can be served from cache');
+  // Wrapped in apiUrl() on 15 Aug so the native shell reaches production
+  // rather than its own bundle; the cache option is the part under test.
+  assert.match(au, /apiUrl\('\/api\/version'\), \{ cache: 'no-store' \}/,
+    'the version probe can be served from cache');
 });

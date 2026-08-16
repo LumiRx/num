@@ -5,9 +5,10 @@
 import { store } from './store';
 import type { EventGuest, NumEvent } from './types';
 import { smsLink, whatsappLink } from './services';
+import { apiUrl } from '../lib/apibase';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/events' + path, {
+  const res = await fetch(apiUrl('/api/events') + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });

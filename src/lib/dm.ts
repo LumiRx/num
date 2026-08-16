@@ -16,6 +16,7 @@
 //     is not a conversation. Only the thread you are actually looking at pays
 //     the 5s cost, and it stops the moment the tab is hidden.
 import { store } from './store';
+import { apiUrl } from '../lib/apibase';
 
 const IDLE_MS = 5_000;
 
@@ -45,7 +46,7 @@ export interface DmPeer {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/dm' + path, {
+  const res = await fetch(apiUrl('/api/dm') + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });

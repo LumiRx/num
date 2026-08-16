@@ -44,7 +44,16 @@ CREATE INDEX IF NOT EXISTS idx_num_asks_dest ON num_asks(dest, ts);
 // Empty string, not NULL, for a clean answer: NULL would mean "never checked",
 // and the difference between "nothing wrong" and "not looked at" is the whole
 // value of the column once some rows predate the check.
-const MIGRATIONS = ['ALTER TABLE num_asks ADD COLUMN quality TEXT'];
+const MIGRATIONS = [
+  'ALTER TABLE num_asks ADD COLUMN quality TEXT',
+  // Added 15 Aug. member_id is NULL on ~99% of asks because almost nobody
+  // asking Num is a member — which is the right product decision and was a
+  // measurement disaster: every question arrived from an indistinguishable
+  // NULL, so "did anyone come back" had no answer. A SEPARATE column, not a
+  // fallback into member_id: anything joining member_id to num_members must
+  // keep meaning what it says.
+  'ALTER TABLE num_asks ADD COLUMN anon_id TEXT',
+];
 let ready = false;
 
 /** Emails, phones and long digit runs become placeholders, in place. */
@@ -60,7 +69,7 @@ export function scrubAsk(text) {
  * cost a guest a reply, so callers wrap this in waitUntil and every failure
  * is swallowed after one log line.
  */
-export async function recordAsk(env, { text, category = null, dest = null, lane = null, brain = null, degraded = false, cached = false, quality = null, memberId = null }) {
+export async function recordAsk(env, { text, category = null, dest = null, lane = null, brain = null, degraded = false, cached = false, quality = null, memberId = null, anonId = null }) {
   if (!env?.DB) return;
   const t = scrubAsk(text).trim();
   if (t.length < 2) return;
@@ -83,12 +92,15 @@ export async function recordAsk(env, { text, category = null, dest = null, lane 
     // never per kind of question — which is the only number that tells the
     // router what to route where.
     const res = await env.DB.prepare(
-      'INSERT INTO num_asks (text, category, dest, lane, brain, degraded, cached, quality, member_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
+      'INSERT INTO num_asks (text, category, dest, lane, brain, degraded, cached, quality, member_id, anon_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)',
     ).bind(
       t, category, dest, lane, brain, degraded ? 1 : 0, cached ? 1 : 0,
       // '' means checked and clean; NULL means never checked at all.
       Array.isArray(quality) ? quality.join(',').slice(0, 200) : quality ?? null,
       memberId ? String(memberId).slice(0, 40) : null,
+      // Shape-checked, not trusted: the client sends this, so a crafted
+      // request must not be able to write arbitrary text into the table.
+      /^a_[a-z0-9]{8,64}$/.test(String(anonId ?? '')) ? String(anonId) : null,
     ).run();
     return res?.meta?.last_row_id ?? null;
   } catch (e) {

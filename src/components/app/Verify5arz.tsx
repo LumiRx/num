@@ -12,6 +12,7 @@
 // reflect it immediately and it survives reload via the normal profile load.
 import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
+import { apiUrl } from '../../lib/apibase';
 
 declare global {
   interface Window {
@@ -25,7 +26,7 @@ type Outcome =
 
 async function fetchClientId(): Promise<string | null> {
   try {
-    const r = await fetch('/api/version');
+    const r = await fetch(apiUrl('/api/version'));
     const d = await r.json();
     return d?.google_client_id ?? null;
   } catch {
@@ -68,7 +69,7 @@ export default function Verify5arz() {
           setBusy(true);
           setOutcome(null);
           try {
-            const r = await fetch('/api/social/verify/5arz', {
+            const r = await fetch(apiUrl('/api/social/verify/5arz'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ me: me.id, google_id_token: resp.credential }),

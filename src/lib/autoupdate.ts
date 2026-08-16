@@ -38,6 +38,7 @@
  * worse bug than the one this fixes.
  */
 import { VERSION } from './version';
+import { apiUrl } from '../lib/apibase';
 
 const RELOADED = 'num_autoupdate_reloaded';
 const EVERY_MS = 15 * 60 * 1000;
@@ -59,7 +60,7 @@ async function nudgeWorker(): Promise<void> {
  */
 async function serverVersion(): Promise<string | null> {
   try {
-    const res = await fetch('/api/version', { cache: 'no-store' });
+    const res = await fetch(apiUrl('/api/version'), { cache: 'no-store' });
     if (!res.ok) return null;
     const { version } = (await res.json()) as { version?: string };
     return version && version !== VERSION ? version : null;

@@ -3,9 +3,10 @@
 // dash.
 import { store } from './store';
 import type { InboxRequests } from './types';
+import { apiUrl } from '../lib/apibase';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/social' + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+  const res = await fetch(apiUrl('/api/social') + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((body as { error?: string }).error || `requests ${res.status}`);
   return body as T;

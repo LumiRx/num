@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState, createContext, useContext } from 'react';
 import { pressable } from '../../lib/a11y';
 import { ChevronRightIcon, XIcon } from '../../lib/icons';
+import { apiUrl } from '../../lib/apibase';
 
 const TOKEN_KEY = 'num-admin-session';
 const PAYOUT_TOKEN_KEY = 'num-payout-session';
@@ -352,7 +353,7 @@ export default function AdminView() {
     if (!key.trim()) return;
     setBusy(true);
     try {
-      const res = await fetch('/api/admin/session', {
+      const res = await fetch(apiUrl('/api/admin/session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: key.trim() }),
@@ -392,7 +393,7 @@ export default function AdminView() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/admin/overview?days=${days}`, { headers: { 'X-Admin-Session': token } });
+      const res = await fetch(apiUrl(`/api/admin/overview?days=${days}`), { headers: { 'X-Admin-Session': token } });
       if (res.status === 401) {
         // Expired or revoked — drop it rather than retrying forever.
         localStorage.removeItem(TOKEN_KEY);

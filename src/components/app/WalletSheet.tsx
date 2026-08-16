@@ -10,6 +10,7 @@ import { canOfferSubscription } from '../../lib/native';
 import { TabStarter } from './TabSheet';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
+import { apiUrl } from '../../lib/apibase';
 
 // No PACKS constant here on purpose. The wallet used to carry its own copy of
 // the prices, which is two sources of truth for a number an attacker would
@@ -32,13 +33,13 @@ export default function WalletSheet() {
 
   useEffect(() => {
     if (!open) return;
-    void fetch('/api/pay/status').then((r) => r.json()).then(setPay).catch(() => setPay(null));
+    void fetch(apiUrl('/api/pay/status')).then((r) => r.json()).then(setPay).catch(() => setPay(null));
     // Pulled on every open. A wallet is read precisely when someone doubts
     // what it says, so a cached one is worth very little.
     void refreshActivity();
     const me = store.get().me;
     if (me) {
-      void fetch(`/api/cashout/quote?me=${encodeURIComponent(me.id)}`)
+      void fetch(apiUrl(`/api/cashout/quote?me=${encodeURIComponent(me.id)}`))
         .then((r) => r.json())
         .then(setOut)
         .catch(() => setOut(null));

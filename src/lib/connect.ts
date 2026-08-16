@@ -24,6 +24,7 @@
 import { store } from './store';
 import { pickContacts, contactsSupported, mirrorPlanDate } from './social';
 import type { Connections } from './types';
+import { apiUrl } from '../lib/apibase';
 
 const setConn = (key: keyof Connections, on: boolean, detail?: string) =>
   store.set((s) => ({
@@ -126,7 +127,7 @@ async function connectEmail(): Promise<void> {
 /** Num's number, fetched from the server so app and worker never disagree. */
 async function connectTexts(): Promise<void> {
   try {
-    const r = await fetch('/api/version');
+    const r = await fetch(apiUrl('/api/version'));
     const d = (await r.json()) as { sms_number?: string | null };
     if (d.sms_number) {
       setConn('texts', true, `Text ${d.sms_number} — it reaches your Num`);

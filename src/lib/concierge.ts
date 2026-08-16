@@ -2,6 +2,7 @@
 // Concierge.dc.html. Every flow here is scripted demo behavior; the public
 // surface (sendChip, openVoice, payBill, buyPack…) is the seam where a real
 // agent backend would slot in later.
+import { anonId } from './anon';
 import { store } from './store';
 import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
 import { demoState } from './data';
@@ -13,6 +14,7 @@ import { observeUserMessage, styleForRequest, tripCheck } from './prefs';
 import { trackOnce } from './track';
 import type { ServiceHandoff, AppState } from './types';
 import type { Booking, Chip, Meeting, Msg } from './types';
+import { apiUrl } from '../lib/apibase';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
 let voiceT1: ReturnType<typeof setTimeout> | undefined;
@@ -86,7 +88,7 @@ export async function requestCashout(stars: number) {
   const me = store.get().me;
   if (!me || stars <= 0) return;
   try {
-    const r = await fetch('/api/cashout/request', {
+    const r = await fetch(apiUrl('/api/cashout/request'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ me: me.id, stars }),
@@ -122,7 +124,7 @@ export async function buyPack(n: number, cents: number, _label?: string) {
   store.set({ bought: 'Opening secure checkout…' });
   clearTimeout(boughtTimer);
   try {
-    const r = await fetch('/api/pay/request', {
+    const r = await fetch(apiUrl('/api/pay/request'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -204,7 +206,7 @@ async function submitVoice() {
   recChunks = [];
   try {
     if (blob.size < 1500) { store.set({ voice: 0 }); return; } // a tap, not speech
-    const r = await fetch('/api/voice/transcribe', { method: 'POST', body: blob });
+    const r = await fetch(apiUrl('/api/voice/transcribe'), { method: 'POST', body: blob });
     const d = await r.json();
     const text = (d?.text ?? d?.transcript ?? '').trim();
     store.set({ voice: 0 });
@@ -577,6 +579,11 @@ export async function askNum(text: string) {
     // unmeasurable, which is the single number that says whether the funnel
     // works. Only the id travels; name and phone stay out of the ask log.
     ...(s.me?.id ? { me: { id: s.me.id } } : {}),
+    // And when they are NOT a member — which is almost everyone — an opaque
+    // device id, so two questions from the same person are recognisable as
+    // such. Without it every ask arrived from NULL and "did anyone come back"
+    // was unanswerable. Random bytes, no PII; see lib/anon.ts.
+    anon: anonId(),
     stars: s.stars,
     billPaid: s.billPaid,
     photosOn: s.photosOn,
@@ -602,7 +609,7 @@ export async function askNum(text: string) {
   trackOnce('first-ask', 'first_ask');
 
   try {
-    const res = await fetch('/api/num', {
+    const res = await fetch(apiUrl('/api/num'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // `here` is a REAL device fix and outranks anything inferred. Sending

@@ -1011,7 +1011,21 @@ export default {
       // same second that nothing can put back together, and "what did this
       // kind of question cost" — the number that tunes the router — stays
       // unanswerable. Both still run after the reply is on its way.
-      ctx.waitUntil(
+      // THE MONITOR IS NOT A GUEST.
+      //
+      // scripts/uptime.mjs asks a real question through the real model path
+      // every five minutes, deliberately — it is the only check that measures
+      // what a visitor experiences, and it caught a two-day outage every
+      // status-code check missed. But it is not a person, and on 15 Aug its
+      // one string was 183 of 283 recorded questions: 65% of everything Num
+      // had ever been asked. Every funnel number, every cost-per-ask, every
+      // "what do people want" answer was computed against a robot asking the
+      // same thing about Patong.
+      //
+      // So it still runs the full path and still costs a model call; it just
+      // stops writing to the tables we make decisions from.
+      const isProbe = request.headers.get('X-Num-Probe') === '1';
+      if (!isProbe) ctx.waitUntil(
         recordAsk(env, {
           text: lastUser,
           dest: grounding.place?.slug ?? null,
@@ -1020,6 +1034,7 @@ export default {
           degraded: !!result._degraded,
           quality: quality.flags,
           memberId: parsed.state?.me?.id ?? null,
+          anonId: parsed.state?.anon ?? null,
         }).then((askId) =>
           logUsage(env, {
             lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,

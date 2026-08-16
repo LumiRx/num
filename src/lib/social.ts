@@ -11,15 +11,37 @@ import { resumeDm } from './dm';
 import { askNum } from './concierge';
 import { track } from './track';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
+import { apiUrl } from '../lib/apibase';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/social' + path, {
+  const res = await fetch(apiUrl('/api/social') + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
-  const body = await res.json().catch(() => ({}));
+  // NOT `.catch(() => ({}))`.
+  //
+  // That swallow is what turned a network misconfiguration into
+  // `undefined is not an object (evaluating 'r.mr.name')` on the first
+  // TestFlight build. The native shell resolved a relative /api path against
+  // its own bundle, the SPA fallback returned index.html with status 200,
+  // JSON.parse threw, the catch produced `{}`, and `signUp` then read
+  // `out.me.name` on undefined — two frames and one screen away from the
+  // actual cause, with a message naming a minified variable.
+  //
+  // A response that is not JSON is a failure. Saying so here costs one line
+  // and saves an evening.
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new Error(
+      res.ok
+        ? "Couldn't reach Num — the server answered with something unexpected."
+        : `social ${res.status}`,
+    );
+  }
   if (!res.ok) throw new Error((body as { error?: string }).error || `social ${res.status}`);
   return body as T;
 }
@@ -70,7 +92,7 @@ export function bootSocial(): void {
     });
     history.replaceState(null, '', window.location.pathname);
     // Put a name to the code: "Pay them" is not a confirmation.
-    void fetch(`/api/social/who?id=${encodeURIComponent(payTo)}`)
+    void fetch(apiUrl(`/api/social/who?id=${encodeURIComponent(payTo)}`))
       .then((r) => (r.ok ? r.json() : null))
       .then((w) => {
         if (w?.name) store.set((st) => ({ payOpen: st.payOpen ? { ...st.payOpen, toName: w.name } : st.payOpen }));
@@ -131,7 +153,7 @@ export function bootSocial(): void {
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
   if (!installed && (connectTo || token)) {
-    void fetch('/api/social/pair/mint', {
+    void fetch(apiUrl('/api/social/pair/mint'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(connectTo ? { connect_to: connectTo } : { token }),
@@ -209,6 +231,14 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
     method: 'POST',
     body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place, utm }),
   });
+  // Belt and braces. The fetch layer above now refuses a non-JSON response,
+  // but `out.me` is dereferenced four times below and a signup that half-works
+  // is the worst screen in the product to be stuck on — you cannot get past
+  // it, and the error names a minified variable. If the server ever returns a
+  // shape we do not expect, say so in words.
+  if (!out?.me?.id) {
+    throw new Error("Couldn't finish signing you up — Num didn't send an account back. Try again in a moment.");
+  }
   // The "add my name & number" prompt has done its job — leave it up and it
   // reads as if nothing happened.
   store.set((s) => ({
@@ -320,7 +350,7 @@ export async function unfriend(id: string, block = false): Promise<string | null
   const me = store.get().me;
   if (!me) return null;
   try {
-    const out = await fetch('/api/account/unfriend', {
+    const out = await fetch(apiUrl('/api/account/unfriend'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ me: me.id, id, block }),
@@ -337,7 +367,7 @@ export async function removePlan(planId: string): Promise<string | null> {
   const me = store.get().me;
   if (!me) return null;
   try {
-    const out = await fetch('/api/account/plan/remove', {
+    const out = await fetch(apiUrl('/api/account/plan/remove'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ me: me.id, plan_id: planId }),
@@ -366,7 +396,7 @@ export async function deleteAccount(confirm = false): Promise<{
   const me = store.get().me;
   if (!me) return null;
   try {
-    const out = await fetch('/api/account/delete', {
+    const out = await fetch(apiUrl('/api/account/delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ me: me.id, ...(confirm ? { confirm: 'DELETE' } : {}) }),
@@ -416,7 +446,7 @@ export async function redeemPairCode(code: string): Promise<string | null> {
   const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   if (!me || clean.length < 6) return 'Enter the six characters from the link.';
   try {
-    const r = await fetch('/api/social/pair/redeem', {
+    const r = await fetch(apiUrl('/api/social/pair/redeem'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ me: me.id, code: clean }),
@@ -658,7 +688,7 @@ export async function setAttendee(
   const me = store.get().me;
   if (!me) return { ok: false, message: 'Add your name and number first.' };
   try {
-    const res = await fetch('/api/social/plan/item/attendees', {
+    const res = await fetch(apiUrl('/api/social/plan/item/attendees'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -670,7 +700,17 @@ export async function setAttendee(
         ...(opts?.remove ? { remove: true } : {}),
       }),
     });
-    const body = (await res.json().catch(() => ({}))) as { error?: string; attendees?: PlanItem['attendees']; party_size?: number };
+    // Same swallow as the one that hid the TestFlight signup crash, found by
+    // the test that pins it. Harmless-looking here because nothing is
+    // dereferenced deeply — but "the server sent HTML" and "the server sent
+    // {}" are different facts, and collapsing them means an RSVP silently
+    // does nothing while reporting success.
+    let body: { error?: string; attendees?: PlanItem['attendees']; party_size?: number };
+    try {
+      body = (await res.json()) as typeof body;
+    } catch {
+      return { ok: false, message: 'That didn’t go through — Num didn’t answer properly. Try again?' };
+    }
     if (!res.ok) return { ok: false, message: body.error ?? 'That didn’t go through.' };
     // Patch the item in place rather than re-syncing the whole plan: the
     // answer we just got back IS the truth, and a full sync would make a tap

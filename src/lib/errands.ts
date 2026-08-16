@@ -6,9 +6,10 @@
 // disagreement about money is the one bug nobody forgives.
 import { store } from './store';
 import { refreshStars } from './stars';
+import { apiUrl } from '../lib/apibase';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/errands' + path, {
+  const res = await fetch(apiUrl('/api/errands') + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });

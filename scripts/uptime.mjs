@@ -128,6 +128,12 @@ async function probe(target) {
       method: target.method ?? 'GET',
       headers: {
         'User-Agent': UA,
+        // Names this request as the monitor so the Worker keeps it OUT of the
+        // analytics tables. It still runs the full model path — that is the
+        // whole point of this probe — it just does not pretend to be a guest.
+        // Before this, one string was 65% of every question Num had ever been
+        // asked, and every funnel number was computed against it.
+        'X-Num-Probe': '1',
         'Cache-Control': 'no-cache',
         ...(target.body ? { 'Content-Type': 'application/json' } : {}),
       },

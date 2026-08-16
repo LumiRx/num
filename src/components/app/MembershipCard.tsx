@@ -14,6 +14,7 @@ import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { CheckIcon } from '../../lib/icons';
 import { canOfferSubscription } from '../../lib/native';
+import { apiUrl } from '../../lib/apibase';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -55,11 +56,11 @@ export default function MembershipCard() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    void fetch('/api/membership/tiers').then((r) => r.json()).then((d) => setTiers(d.tiers)).catch(() => {});
+    void fetch(apiUrl('/api/membership/tiers')).then((r) => r.json()).then((d) => setTiers(d.tiers)).catch(() => {});
   }, []);
   useEffect(() => {
     if (!me?.id) return;
-    void fetch(`/api/membership/me?me=${encodeURIComponent(me.id)}`)
+    void fetch(apiUrl(`/api/membership/me?me=${encodeURIComponent(me.id)}`))
       .then((r) => r.json()).then(setMine).catch(() => {});
   }, [me?.id]);
 
@@ -74,7 +75,7 @@ export default function MembershipCard() {
     setBusy(tier);
     setNote(null);
     try {
-      const out = await fetch('/api/membership/subscribe', {
+      const out = await fetch(apiUrl('/api/membership/subscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ me: me.id, tier }),

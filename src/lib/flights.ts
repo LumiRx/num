@@ -7,6 +7,7 @@
 // happily repeat it, and will just as happily repeat it tomorrow when it is
 // not — so the number never travels through the model at all.
 import { store } from './store';
+import { apiUrl } from '../lib/apibase';
 
 export interface FlightOffer {
   id: string;
@@ -60,7 +61,7 @@ export async function runFlightSearch(q: FlightQuery): Promise<void> {
 
   store.set({ flightSearching: true });
   try {
-    const res = await fetch('/api/sabre/flights', {
+    const res = await fetch(apiUrl('/api/sabre/flights'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -111,7 +112,7 @@ export async function checkOffer(o: FlightOffer, q: FlightQuery): Promise<{ ok: 
   }));
 
   try {
-    const res = await fetch('/api/sabre/flight-check', {
+    const res = await fetch(apiUrl('/api/sabre/flight-check'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

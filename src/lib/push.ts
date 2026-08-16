@@ -6,6 +6,7 @@
 // launch — it asks when there is something worth being told about.
 import { store } from './store';
 import { openDm } from './dm';
+import { apiUrl } from '../lib/apibase';
 
 // Not a secret: the browser needs it to encrypt the subscription to us.
 const VAPID_PUBLIC = 'BGfIJ2Yj82iiRSVBUi97G8nmxi9WT6uWxgqApr0EqEzrhiu0FSnD7hnnONE0qHgO72cvIwb3JaqDfSAOJs3St1U';
@@ -49,7 +50,7 @@ export async function enablePush(): Promise<{ ok: boolean; message: string }> {
     (await reg.pushManager.getSubscription()) ??
     (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(VAPID_PUBLIC) }));
 
-  const res = await fetch('/api/push/subscribe', {
+  const res = await fetch(apiUrl('/api/push/subscribe'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ me: me.id, subscription: sub.toJSON() }),
@@ -64,7 +65,7 @@ export async function disablePush(): Promise<void> {
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
   if (sub) {
-    await fetch('/api/push/unsubscribe', {
+    await fetch(apiUrl('/api/push/unsubscribe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint: sub.endpoint }),

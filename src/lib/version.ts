@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/apibase';
 // What this copy of the app actually is. Stamped at build time by vite.config.
 //
 // It exists because "the user is seeing the old copy" is impossible to diagnose
@@ -19,7 +20,7 @@ export const versionLine = `v${VERSION} · ${SHA} · ${BUILT}`;
  */
 export async function checkForUpdate(): Promise<{ stale: boolean; server: string } | null> {
   try {
-    const res = await fetch('/api/version', { cache: 'no-store' });
+    const res = await fetch(apiUrl('/api/version'), { cache: 'no-store' });
     if (!res.ok) return null;
     const { version } = (await res.json()) as { version: string };
     return { stale: !!version && version !== VERSION, server: version };

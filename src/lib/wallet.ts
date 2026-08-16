@@ -5,6 +5,7 @@
 // people open to ask "what happened to my money?" answered with fiction, and
 // the price shown wasn't necessarily the price charged.
 import { store } from './store';
+import { apiUrl } from '../lib/apibase';
 
 /** One line in the money story — a Star move or a card payment. */
 export interface Activity {
@@ -81,7 +82,7 @@ export async function refreshActivity(): Promise<void> {
   const me = store.get().me;
   if (!me) return;
   try {
-    const out = await fetch(`/api/pay/activity?me=${encodeURIComponent(me.id)}`)
+    const out = await fetch(apiUrl(`/api/pay/activity?me=${encodeURIComponent(me.id)}`))
       .then((r) => r.json()) as { activity?: Activity[] };
     store.set({ activity: out.activity ?? [] });
   } catch {

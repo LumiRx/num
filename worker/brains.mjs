@@ -147,16 +147,88 @@ export function chain(env) {
 }
 
 /**
+ * Read a hosted brain's reply, whether or not it came back as JSON.
+ *
+ * ── WHAT A CHEAP BRAIN IS TRUSTED TO PRODUCE ─────────────────────────────
+ *
+ * Only two fields: `reply` and `chips`. That is a deliberate boundary, not a
+ * limitation we ran out of time to lift.
+ *
+ *   reply  — prose. Already guarded downstream.
+ *   chips  — follow-up suggestions. Pure text, no side effects, and the one
+ *            thing everyday turns were actually losing.
+ *
+ * NOT `card`: every card tag in REPLY_SCHEMA is a booking state — confirmed,
+ * hold, deposit, paid. A recommendation turn has `card: null` even on Claude,
+ * so there was never anything to lose there, and letting a prose model mint a
+ * "confirmed" card would be the worst bug this product could ship.
+ *
+ * NOT `actions`: actions cause things to happen — AiR calls, bookings,
+ * reminders. A brain answering on the cheap lane must not be able to reach
+ * them. That is a security boundary, and it stays where it is.
+ *
+ * ── TOLERANT BY CONSTRUCTION ─────────────────────────────────────────────
+ *
+ * Vendors that ignore `response_format` return prose; vendors that honour it
+ * sometimes wrap JSON in a code fence anyway. Both are handled, and anything
+ * unparseable falls back to "the whole text is the reply" — the behaviour
+ * from before this existed. There is no input to this function that loses a
+ * guest their answer.
+ */
+export function readHosted(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return { reply: '', chips: null };
+  // A fenced block is the single most common shape when a model is asked for
+  // JSON and also told to be conversational.
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(raw);
+  const candidate = (fenced ? fenced[1] : raw).trim();
+  if (!candidate.startsWith('{')) return { reply: raw, chips: null };
+  let j;
+  try {
+    j = JSON.parse(candidate);
+  } catch {
+    return { reply: raw, chips: null };
+  }
+  if (!j || typeof j !== 'object') return { reply: raw, chips: null };
+  const reply = typeof j.reply === 'string' && j.reply.trim() ? j.reply.trim() : null;
+  // JSON that parsed but carries no reply is worse than no JSON: returning it
+  // would show a guest an empty bubble. Keep the raw text instead.
+  if (!reply) return { reply: raw, chips: null };
+  const chips = Array.isArray(j.chips)
+    ? j.chips
+        .map((c) => (typeof c === 'string'
+          ? { id: c.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40), label: c.slice(0, 40) }
+          : c && typeof c.label === 'string'
+            ? { id: String(c.id ?? c.label).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40), label: String(c.label).slice(0, 40) }
+            : null))
+        .filter(Boolean)
+        .slice(0, 4)
+    : null;
+  return { reply, chips: chips?.length ? chips : null };
+}
+
+/**
  * What a prose brain is allowed to be. It has the voice and the local
  * knowledge but none of the machinery, so the one thing it must never do is
  * imply a booking exists.
  */
-function proseSystem({ persona, voice, context, style }) {
+function proseSystem({ persona, voice, context, style, json = false }) {
   return [
     persona,
     voice,
     context,
     style,
+    // Asked for LAST, so a model that only reads the tail of a long system
+    // block still sees it. Chips are optional on purpose: a model that
+    // returns `{"reply": "..."}` alone is correct, and demanding four chips
+    // produces four bad ones.
+    json
+      ? 'OUTPUT FORMAT: reply with a single JSON object and nothing else — no code fence, no commentary.\n' +
+        '{"reply": "<your answer, following every rule below>", "chips": [{"id":"short-slug","label":"Under 22 chars"}]}\n' +
+        'The `reply` string is the whole message the guest reads; every length, honesty and format rule below applies to it exactly as if you were writing it directly.\n' +
+        '`chips` are up to 3 tappable follow-ups — the obvious next thing THIS guest would ask, e.g. "Book a table", "Somewhere cheaper", "How do I get there". Omit chips entirely rather than pad with generic ones.\n' +
+        'Never put JSON, brackets or field names inside the `reply` string itself.'
+      : '',
     // The response brain's whole brief. It is NOT a degraded stand-in any
     // more — from 11 Aug it answers the everyday turn by design, so this text
     // is the product's voice for most guests, most of the time. Written as
@@ -214,7 +286,7 @@ function extractText(res) {
 /** Workers AI and OpenAI-compatible endpoints both take chat messages.
  *  `model` overrides the brain's default — used by the director for per-class
  *  model selection (flash for bulk, kimi for harder prose). */
-async function callProse(env, brain, { messages, system, maxTokens = 700, model = null }) {
+async function callProse(env, brain, { messages, system, maxTokens = 700, model = null, wantJson = false }) {
   const chat = [{ role: 'system', content: system }, ...messages.slice(-8)];
 
   if (brain.kind === 'workers-ai') {
@@ -254,6 +326,11 @@ async function callProse(env, brain, { messages, system, maxTokens = 700, model 
         messages: chat,
         max_tokens: maxTokens,
         temperature: 0.7,
+        // JSON mode where the vendor supports it. Every OpenAI-compatible
+        // provider that implements `response_format` ignores it harmlessly
+        // when it does not, and the parse below tolerates plain prose either
+        // way — so this can never cost a guest an answer. See `wantJson`.
+        ...(wantJson ? { response_format: { type: 'json_object' } } : {}),
       }),
       // A brain behind a home tunnel must never hold a user's turn hostage.
       signal: AbortSignal.timeout(20_000),
@@ -333,17 +410,45 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
         brain.kind === 'openai-compatible'
           ? (directive?.steps ?? []).find((s2) => s2.brain === brain.id)?.model ?? null
           : null;
-      const prose = await callProse(env, brain, { messages, system: proseSystem({ persona, voice, context, style }), model: modelOverride });
-      const clean = guard ? guard(prose.text) : { ok: true, cleaned: prose.text };
+      // JSON only from the hosted lane. Workers AI models are small enough
+      // that asking for a wrapper reliably costs more answers than it gains
+      // chips, so they stay on plain prose.
+      const wantJson = brain.kind === 'openai-compatible';
+      const prose = await callProse(env, brain, {
+        messages,
+        system: proseSystem({ persona, voice, context, style, json: wantJson }),
+        model: modelOverride,
+        wantJson,
+      });
+      const read = wantJson ? readHosted(prose.text) : { reply: prose.text, chips: null };
+      const clean = guard ? guard(read.reply) : { ok: true, cleaned: read.reply };
       if (!clean.ok) throw new Error(`${brain.id} output failed the guard`);
       await recordBrainSuccess(env, brain.id, state);
       return {
         reply: clean.cleaned,
         card: null,
-        chips: null,
+        chips: read.chips,
         actions: [],
         _brain: brain.id,
-        _degraded: true,
+        // DEGRADED MEANS "THIS TURN NEEDED SOMETHING WE COULD NOT DO", not
+        // "a brain other than Claude answered".
+        //
+        // The distinction became load-bearing the moment the router started
+        // sending everyday traffic here on purpose. The uptime probe treats
+        // `degraded: true` as an outage (`downIfBodyMatches` in
+        // scripts/uptime.mjs) — so leaving this hard-coded true would have
+        // paged us on every correctly-routed recommendation, forever, from
+        // the first minute the router worked. A monitor that cries wolf on
+        // success is worse than no monitor: it trains you to ignore it on the
+        // night it is right.
+        //
+        // Cards and actions only exist on booking, money, group and trouble
+        // turns, and the director sends every one of those to Claude first.
+        // So a turn that reached this lane and got prose + chips got
+        // everything it was ever going to need. A turn that landed here
+        // BECAUSE Claude failed did not — and the director's tier is how we
+        // tell those two apart.
+        _degraded: !directive || directive.tier === 'critical' || directive.tier === 'complex',
         _tried: tried,
         _ms: Date.now() - started,
         // Carried so the caller can meter a fallback turn exactly as it meters

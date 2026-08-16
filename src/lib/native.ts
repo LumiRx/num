@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/apibase';
 /**
  * One question, answered once: is this the web app, or the app-store app?
  *
@@ -60,7 +61,7 @@ export async function registerNativePush(memberId: string | null): Promise<void>
     const perm = await PushNotifications.requestPermissions();
     if (perm.receive !== 'granted') return;
     PushNotifications.addListener('registration', (token) => {
-      void fetch('/api/push/native', {
+      void fetch(apiUrl('/api/push/native'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: token.value, platform: nativePlatform(), me: memberId }),

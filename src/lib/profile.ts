@@ -6,11 +6,12 @@
 // photo is 3-5MB and would blow the row, the request and the D1 write limit.
 import { store } from './store';
 import type { Member } from './types';
+import { apiUrl } from '../lib/apibase';
 
 const AVATAR_PX = 160;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch('/api/social' + path, {
+  const res = await fetch(apiUrl('/api/social') + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
@@ -102,7 +103,7 @@ export async function businessOverview(): Promise<BusinessOverview | null> {
   const me = store.get().me;
   if (!me) return null;
   try {
-    const res = await fetch(`/api/business/overview?me=${encodeURIComponent(me.id)}`);
+    const res = await fetch(apiUrl(`/api/business/overview?me=${encodeURIComponent(me.id)}`));
     if (!res.ok) return null;
     return (await res.json()) as BusinessOverview;
   } catch {
@@ -113,7 +114,7 @@ export async function businessOverview(): Promise<BusinessOverview | null> {
 export async function businessUpdate(placeId: string, patch: { phone?: string; website?: string; area?: string }): Promise<boolean> {
   const me = store.get().me;
   if (!me) return false;
-  const res = await fetch('/api/business/update', {
+  const res = await fetch(apiUrl('/api/business/update'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ me: me.id, place_id: placeId, ...patch }),
