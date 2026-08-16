@@ -30,12 +30,71 @@ type CapacitorGlobal = {
 const cap = (): CapacitorGlobal | undefined =>
   (window as Window & { Capacitor?: CapacitorGlobal }).Capacitor;
 
-/** True inside the app-store build, false in any browser or PWA. */
-export const isNativeApp = (): boolean => Boolean(cap()?.isNativePlatform?.());
+/**
+ * The native shell's own origin, independent of the bridge.
+ *
+ * ── WHY THIS SECOND SIGNAL EXISTS ────────────────────────────────────────
+ *
+ * 15 Aug 2026, first TestFlight build: the "Tap Share, then Add to Home
+ * Screen" card — web-only by definition — rendered INSIDE the iOS app. That
+ * card only shows when `canOfferInstall()` is true, so `Capacitor` was not
+ * answering. Either the bridge had not injected yet or it was not there at
+ * all; from the app's point of view the difference does not matter.
+ *
+ * What did matter is everything downstream. A false negative here does not
+ * just show one wrong card: `apiUrl()` stops rewriting and every API call
+ * hits the local bundle, and `canOfferSubscription()` returns true so the
+ * Star packs and the pricing ladder render on iOS — the exact App Store 3.1.1
+ * problem we had just closed. One undetected platform silently reopened three
+ * separate bugs.
+ *
+ * A bundled Capacitor app serves its own files from `capacitor://localhost`
+ * (iOS) or `http://localhost` / `https://localhost` (Android). A real browser
+ * on a real phone is never on those origins — nobody reaches app.itsnum.com
+ * and lands on `localhost`. So the origin is a second, independent witness
+ * that cannot be early, cannot fail to inject, and needs no runtime at all.
+ *
+ * Either signal is enough. Two independent ways to be right beats one way to
+ * be silently wrong.
+ */
+const nativeOrigin = (): boolean => {
+  try {
+    const { protocol, hostname } = window.location;
+    if (protocol === 'capacitor:' || protocol === 'ionic:') return true;
+    // localhost over http(s) means the shell is serving the bundle. A dev
+    // server is the one other thing on this origin, which is why the
+    // Vite-injected DEV flag excludes it.
+    return (hostname === 'localhost' || hostname === '127.0.0.1') && !import.meta.env?.DEV;
+  } catch {
+    return false;
+  }
+};
 
-/** 'ios' | 'android' | 'web' */
-export const nativePlatform = (): 'ios' | 'android' | 'web' =>
-  cap()?.getPlatform?.() ?? 'web';
+/** True inside the app-store build, false in any browser or PWA. */
+export const isNativeApp = (): boolean => Boolean(cap()?.isNativePlatform?.()) || nativeOrigin();
+
+/**
+ * 'ios' | 'android' | 'web'
+ *
+ * Falls back to the user agent when the bridge is silent but the origin says
+ * native — otherwise a shell whose bridge has not answered reads as 'web' and
+ * the iOS purchase gate opens. Guessing 'ios' from an iPhone UA inside a
+ * native origin is safe in the direction that matters: the cost of wrongly
+ * saying iOS is one hidden upgrade card; the cost of wrongly saying web is an
+ * App Store rejection and a false statement in our review notes.
+ */
+export const nativePlatform = (): 'ios' | 'android' | 'web' => {
+  const fromBridge = cap()?.getPlatform?.();
+  if (fromBridge) return fromBridge;
+  if (!nativeOrigin()) return 'web';
+  try {
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+    if (/Android/i.test(ua)) return 'android';
+  } catch { /* fall through */ }
+  // Native origin, unknown device: assume the strictest storefront.
+  return 'ios';
+};
 
 /** Install-to-home-screen UI: web-only by definition. */
 export const canOfferInstall = (): boolean => !isNativeApp();

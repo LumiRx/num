@@ -1,7 +1,7 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.220",
+  "version": "0.8.221",
   "type": "module",
   "scripts": {
     "dev": "vite",

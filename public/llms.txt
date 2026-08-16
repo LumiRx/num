@@ -2,14 +2,14 @@
 
 > NUM is an AI travel concierge, run by 5arz. A traveller messages it in ordinary
 > language and it answers with real local places and books one for them. It covers
-> 567,793 places in 77 destinations across 38 countries. It is free for travellers.
+> 2,529,721 places in 77 destinations across 38 countries. It is free for travellers.
 > Businesses list free and pay 10% of a booking NUM completes, out of their side,
 > never added to the traveller's bill.
 
 Facts, as of 2026-08-08:
 
 - Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
-- Coverage: 567,793 places, 77 destinations, 38 countries. This includes
+- Coverage: 2,529,721 places, 77 destinations, 38 countries. This includes
   natural attractions: for example every named beach on Phuket (49, mapped
   with coordinates at itsnum.com/phuket/beaches/), plus temples, viewpoints
   and waterfalls.

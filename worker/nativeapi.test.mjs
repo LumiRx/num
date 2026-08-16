@@ -54,7 +54,8 @@ test('the native origin is baked in, never read at runtime', () => {
 test('the web build is untouched', () => {
   // Same-origin, same cookies, same relative URLs as before.
   const s = readFileSync(join(SRC, 'lib', 'apibase.ts'), 'utf8');
-  assert.match(s, /if \(!isNative\(\)\) return p;/,
+  // Renamed 15 Aug when apibase stopped keeping its own copy of the check.
+  assert.match(s, /if \(!isNativeApp\(\)\) return p;/,
     'the browser build now rewrites its own URLs — that is a cross-origin change nobody asked for');
   assert.match(s, /if \(\/\^https\?:\\\/\\\/\/i\.test\(p\)\) return p;/,
     'an already-absolute URL is being rewritten');
@@ -78,4 +79,44 @@ test('signup refuses to continue without an account', () => {
   const s = readFileSync(join(SRC, 'lib', 'social.ts'), 'utf8');
   assert.match(s, /if \(!out\?\.me\?\.id\) \{/);
   assert.match(s, /didn't send an account back/);
+});
+
+// ── the bridge is not the only witness ───────────────────────────────────
+//
+// The first TestFlight build rendered the "Tap Share, then Add to Home
+// Screen" card INSIDE the iOS app. That card is web-only by definition, so
+// `Capacitor.isNativePlatform()` was answering false — bridge missing or not
+// yet injected. A false negative there does not cost one wrong card: it also
+// stops apiUrl() rewriting (every API call hits the local bundle) and opens
+// canOfferSubscription() (Star packs and the pricing ladder render on iOS,
+// reopening the 3.1.1 problem). One undetected platform, three live bugs.
+
+test('native is detected by origin as well as by the bridge', () => {
+  const s = readFileSync(join(SRC, 'lib', 'native.ts'), 'utf8');
+  assert.match(s, /protocol === 'capacitor:'/,
+    'the capacitor:// origin check is gone — a silent bridge reads as web again');
+  assert.match(s, /isNativeApp = \(\): boolean => Boolean\(cap\(\)\?\.isNativePlatform\?\.\(\)\) \|\| nativeOrigin\(\)/,
+    'isNativeApp no longer ORs the two signals');
+  assert.match(s, /hostname === 'localhost'/);
+  assert.match(s, /!import\.meta\.env\?\.DEV/,
+    'the dev-server exclusion is gone — `vite dev` on localhost would now claim to be a native app');
+});
+
+test('an unanswered bridge on a native origin does not open the iOS purchase gate', () => {
+  // Wrongly saying iOS costs one hidden upgrade card. Wrongly saying web
+  // costs an App Store rejection and a false statement in our review notes.
+  const s = readFileSync(join(SRC, 'lib', 'native.ts'), 'utf8');
+  assert.match(s, /if \(!nativeOrigin\(\)\) return 'web';/);
+  assert.match(s, /\/iPhone\|iPad\|iPod\/i\.test\(ua\)/, 'the UA fallback is gone');
+  assert.match(s, /return 'ios';\s*\n\};/,
+    'an unknown device on a native origin no longer defaults to the strictest storefront');
+});
+
+test('there is exactly one definition of "are we native"', () => {
+  // Two independent notions of the same fact means one is wrong and nobody
+  // notices. apibase.ts had its own copy and it disagreed in production.
+  const a = readFileSync(join(SRC, 'lib', 'apibase.ts'), 'utf8');
+  assert.match(a, /import \{ isNativeApp \} from '\.\/native';/);
+  assert.ok(!/isNativePlatform/.test(a.replace(/^\s*(\/\/|\*).*$/gm, '')),
+    'apibase.ts re-implemented the Capacitor check — keep one definition in native.ts');
 });

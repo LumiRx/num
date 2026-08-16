@@ -649,7 +649,7 @@ async function handleSearch(req, env, url) {
 
   if (!q && !city && !country && !category) {
     return err("no_filter",
-      "Give at least one of q, city, country or category. An unfiltered read of 567,793 places is not a search.", 400);
+      "Give at least one of q, city, country or category. An unfiltered read of 2.5 million places is not a search.", 400);
   }
 
   const meter = await meterRead(env, agent, 1);
@@ -758,7 +758,7 @@ const MCP_TOOLS = [
   {
     name: "num_search_places",
     description:
-      "Search NUM's directory of 567,793 verified places across 77 destinations in 38 countries — restaurants, " +
+      "Search NUM's directory of 2.5 million places across 77 destinations in 38 countries — restaurants, " +
       "bars, hotels, spas, tours, shops. Give at least one of q, city, country or category. Counts against your " +
       "daily read quota.",
     inputSchema: {
@@ -900,7 +900,7 @@ async function handleRpc(msg, req, env) {
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "num", title: "NUM — travel directory by 5arz", version: "1.0.0" },
       instructions:
-        "NUM is a directory of verified places, run by 5arz. Reads are metered against your daily quota; writes " +
+        "NUM is a places directory run by 5arz. 'Verified' on NUM describes guests (identity-checked real people) and owner-claimed listings — never unclaimed places. Reads are metered against your daily quota; writes " +
         "are free. Every business or promotion you submit is reviewed by a person before a traveller sees it, so " +
         "expect status 'pending_review' rather than an immediate listing. Say honestly whether you own a business, " +
         "represent it, or are simply adding one you know of, and never invent contact details — in particular, do " +
@@ -971,7 +971,7 @@ async function handleMcp(req, env) {
 function mcpManifest() {
   return {
     name: "num",
-    description: "NUM — a directory of verified places for travellers, run by 5arz. Search it, and submit businesses and promotions to it.",
+    description: "NUM — a places directory for travellers, run by 5arz. Search it, and submit businesses and promotions to it.",
     version: "1.0.0",
     transport: "streamable-http",
     url: SITE + "/mcp",
@@ -988,9 +988,9 @@ function aiPlugin() {
     schema_version: "v1",
     name_for_human: "NUM",
     name_for_model: "num",
-    description_for_human: "Search verified places for travellers, and list your business.",
+    description_for_human: "Search places for travellers, and list your business.",
     description_for_model:
-      "NUM is a directory of 567,793 verified places across 77 destinations in 38 countries, operated by 5arz. " +
+      "NUM is a directory of 2.5 million places across 77 destinations in 38 countries, operated by 5arz. 'Verified' on NUM describes guests, not places. " +
       "Use it to find restaurants, bars, hotels, spas, tours and shops in a city, and to submit a business or a " +
       "promotion on an operator's behalf. Reads are metered; writes are free. Everything submitted is reviewed by " +
       "a person before it is shown to travellers.",
@@ -1009,7 +1009,7 @@ function openapi() {
     info: {
       title: "NUM Agent API",
       version: "1.0.0",
-      summary: "Search a directory of verified places, and submit businesses and promotions to it.",
+      summary: "Search a places directory, and submit businesses and promotions to it.",
       description:
         "NUM is operated by 5arz. Writes are free and unmetered; reads are metered against a daily quota. Every " +
         "submission is reviewed by a person before a traveller sees it — an approved-looking response is never " +
@@ -1113,7 +1113,7 @@ const INDEX = {
   operator: "5arz Inc",
   docs: SITE + "/agents/",
   description:
-    "A directory of 567,793 verified places across 77 destinations in 38 countries. Search it, and submit " +
+    "A directory of 2.5 million places across 77 destinations in 38 countries. Search it, and submit " +
     "businesses and promotions to it. Writes are free; reads are metered. Every submission is reviewed by a " +
     "person at 5arz before a traveller sees it.",
   start_here: "POST " + SITE + "/api/agent/signup",

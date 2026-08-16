@@ -35,15 +35,15 @@
  * build changes — same-origin, same cookies, same relative URLs as before.
  */
 
-/** True when running inside the Capacitor shell rather than a browser tab. */
-const isNative = (): boolean => {
-  try {
-    const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-    return Boolean(cap?.isNativePlatform?.());
-  } catch {
-    return false;
-  }
-};
+// ONE definition of "are we native", not two.
+//
+// This file had its own copy of the Capacitor check, and on the first
+// TestFlight build that check returned false — the bridge was not answering.
+// Two independent notions of the same fact means one of them is wrong and
+// nobody notices, so this now defers to lib/native.ts, which corroborates the
+// bridge with the window origin (`capacitor://localhost`). See the long note
+// there for why the origin is the more reliable of the two witnesses.
+import { isNativeApp } from './native';
 
 /**
  * The origin the native app talks to.
@@ -68,6 +68,6 @@ export const API_ORIGIN =
 export function apiUrl(path: string): string {
   const p = String(path ?? '');
   if (/^https?:\/\//i.test(p)) return p;
-  if (!isNative()) return p;
+  if (!isNativeApp()) return p;
   return API_ORIGIN.replace(/\/+$/, '') + (p.startsWith('/') ? p : `/${p}`);
 }
