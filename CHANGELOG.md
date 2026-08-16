@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.220 — 2026-08-16 00:13 UTC
+
+(no note given)
+
+- commit `2cfa2e8`
+
 ## 0.8.219 — 2026-08-15 23:37 UTC
 
 (no note given)
