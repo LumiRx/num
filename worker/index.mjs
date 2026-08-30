@@ -60,6 +60,7 @@ import { blockFor as viatorBlock } from './viator.mjs';
 import { carLink, carBlock } from './localrent.mjs';
 import { blockFor as eventsBlockFor } from './events.tm.mjs';
 import { luggageLink, luggageBlock, wantsLuggage } from './luggage.mjs';
+import { policyFor, policyBrief, screen as screenReply, substituteFor } from './geopolicy.mjs';
 import { tagged } from './affiliate.mjs';
 import { logHandoffs } from './affiliateclicks.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
@@ -120,6 +121,12 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   ];
   const brief = specialistBrief(specialist);
   if (brief) system.push({ type: 'text', text: brief });
+  // Where the traveller is standing changes what may be said. Pushed near the
+  // end so it sits AFTER the specialist brief that might otherwise cheerfully
+  // recommend a bar, and screened again after generation — a prompt is a
+  // request, the screen is the gate.
+  const geo = policyBrief(policyFor(grounding?.place?.country_code));
+  if (geo) system.push({ type: 'text', text: geo });
   // Real tours for the turns that are actually about doing something. Gated on
   // intent inside blockFor, and it swallows every failure — a slow or broken
   // Viator must never cost somebody their reply, it just means Num answers
@@ -208,9 +215,36 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
       return { reply: 'I lost my thread for a second — ask me that once more?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
     }
   }
+  // ── THE LAST GATE ──────────────────────────────────────────────────────
+  //
+  // The system prompt is where the model is TOLD what it may say; this is
+  // where we find out whether it listened. In the Gulf that difference is not
+  // stylistic: naming a bar in Riyadh or surfacing an LGBTQ venue in either
+  // country is a criminal offence under the Saudi Anti-Cyber Crime Law and
+  // UAE Federal Decree-Law 34/2021, and the exposure lands on Num.
+  //
+  // The substitution is deliberate rather than a bare refusal. Somebody asked
+  // a real question; they get the true reason and somewhere else to go.
+  const reply = normalizeReply(parsed);
+  const policy = policyFor(grounding?.place?.country_code);
+  if (policy) {
+    const verdict = screenReply(reply.reply, policy);
+    if (!verdict.ok) {
+      console.log(`[geopolicy] ${policy.country}/${verdict.rule} caught after generation: ${verdict.sentence}`);
+      return {
+        ...reply,
+        reply: substituteFor(verdict.rule),
+        // The card and actions came from the same turn that produced the
+        // blocked line, so they are not to be trusted either.
+        card: null, actions: [],
+        _usage: response.usage, _specialist: specialist, _blocked: verdict.rule,
+      };
+    }
+  }
+
   // usage rides back with the reply so the caller can bill it to a day. Real
   // counts, not an estimate — this is what the admin dashboard reports.
-  return { ...normalizeReply(parsed), _usage: response.usage, _specialist: specialist };
+  return { ...reply, _usage: response.usage, _specialist: specialist };
 }
 
 /**
