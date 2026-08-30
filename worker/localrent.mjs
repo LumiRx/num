@@ -78,7 +78,11 @@ const COVERAGE_RAW = Object.freeze({
   // where somebody who cannot take a hire car on the boat picks one up.
   thailand: 'bangkok chiang-rai chiangmai krabi pattaya phuket samui surat-thani',
   turkey: 'adana afyonkarahisar alanya ankara antakya antalya belek bodrum dalaman denizli didim erzurum fethiye gaziantep istanbul izmir kalkan kayseri kemer konya kusadasi malatya marmaris side trabzon tuzla',
-  uae: 'abu-dhabi dubai ras-al-khaimah sharjah',
+  // All seven emirates, each fetched and confirmed a real page on 30 Aug 2026
+  // — Ajman, Fujairah and Al Ain are absent from their sitemap and serve
+  // proper pages anyway, the same subset problem Surat Thani exposed. They
+  // matter because these are exactly NUM's seven live UAE destinations.
+  uae: 'abu-dhabi ajman al-ain dubai fujairah ras-al-khaimah sharjah',
   vietnam: 'hanoi nha-trang',
 });
 

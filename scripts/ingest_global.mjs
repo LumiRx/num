@@ -22,6 +22,7 @@ import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { DESTINATIONS, bySlug } from './destinations.mjs';
+import { localName as pickLocalName } from './localname.ingest.mjs';
 
 const DB = 'num-db';
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
@@ -148,8 +149,11 @@ function normalise(el, dest) {
   const address = [t['addr:housenumber'], t['addr:street'], t['addr:postcode'], t['addr:city']]
     .filter(Boolean).join(' ') || null;
 
-  const localName = Object.keys(t).filter(k => k.startsWith('name:') && k !== 'name:en')
-    .map(k => t[k]).find(v => v && v !== name) || null;
+  // Ask for the destination's OWN language and verify the script, rather than
+  // taking whichever `name:*` tag the contributor happened to add first.
+  // See scripts/localname.ingest.mjs — the old one-liner put Russian names on
+  // Dubai venues, and 31% of our Gulf local names were unusable because of it.
+  const localName = pickLocalName(t, dest.country, name);
 
   const category = raw == null
     ? (WORSHIP[t.religion] || 'Place of worship')

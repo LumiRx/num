@@ -27,6 +27,11 @@ export const CITIES = Object.freeze({
   bangkok: 'bangkok',
   edinburgh: 'edinburgh',
   'los-angeles': 'los-angeles',
+  // UAE, checked 30 Aug 2026. Only these two exist — Sharjah, Ajman, Al Ain,
+  // Ras Al Khaimah and Fujairah all 404, so they fall back to the generic
+  // referral rather than getting a broken city page with our code on it.
+  dubai: 'dubai',
+  'abu-dhabi': 'abu-dhabi',
 });
 
 export const luggageReady = (env) => !!env?.BOUNCE_REF;

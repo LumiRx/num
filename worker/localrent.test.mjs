@@ -166,3 +166,22 @@ test('the gate leaves the ride specialist alone', () => {
     'thanks',
   ]) assert.equal(WANTS_CAR.test(q), false, `false positive: ${q}`);
 });
+
+// ── UAE LAUNCH ───────────────────────────────────────────────────────────
+//
+// All seven emirates were fetched on 30 Aug 2026 and all seven are real
+// Localrent pages, though only four were in the original registry entry.
+// These are exactly NUM's seven live UAE destinations, so a gap here is a
+// dead rail in a market we are switching on.
+test('every live UAE destination resolves to its own Localrent page', () => {
+  const cities = {
+    Dubai: 'dubai', 'Abu Dhabi': 'abu-dhabi', Sharjah: 'sharjah', 'Al Ain': 'al-ain',
+    Ajman: 'ajman', 'Ras Al Khaimah': 'ras-al-khaimah', Fujairah: 'fujairah',
+  };
+  for (const [name, slug] of Object.entries(cities)) {
+    assert.deepEqual(locate({ country_code: 'AE', name }), { country: 'uae', city: slug }, name);
+    const u = new URL(carLink(ENV, { country_code: 'AE', name }));
+    assert.equal(u.pathname, `/en/uae/${slug}/`);
+    assert.equal(u.searchParams.get(MARKER_PARAM), '12345');
+  }
+});

@@ -72,3 +72,19 @@ test('the block sends them to their hotel first', () => {
 test('no link means no block', () => {
   assert.equal(luggageBlock(null, { name: 'Phuket' }), '');
 });
+
+// Bounce has city pages for Dubai and Abu Dhabi and NOT for the other five
+// emirates — checked by fetch on 30 Aug 2026. The five must degrade to the
+// generic referral rather than 404 with our code attached.
+test('UAE splits correctly between real city pages and the fallback', () => {
+  for (const name of ['Dubai', 'Abu Dhabi']) {
+    const u = new URL(luggageLink(ENV, { name }));
+    assert.equal(u.origin, 'https://bounce.com', `${name} should get a city page`);
+    assert.match(u.pathname, /^\/city\//);
+  }
+  for (const name of ['Sharjah', 'Ajman', 'Al Ain', 'Ras Al Khaimah', 'Fujairah']) {
+    const u = luggageLink(ENV, { name });
+    assert.ok(!u.includes('/city/'), `${name} has no Bounce page and must fall back`);
+    assert.match(u, /^https:\/\/go\.bounce\.com\//);
+  }
+});
