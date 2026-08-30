@@ -9,6 +9,15 @@
 // Upgrades are framed as ceilings lifting, never as features unlocking, because
 // that is what they actually are. Nothing in the free tier gets taken away to
 // create a reason to pay.
+//
+// TRAVEL IS NEVER A PAID BENEFIT AND MUST NEVER BE ADVERTISED AS ONE.
+// Fare search, the priority lane and concierge booking are true on every tier
+// (worker/membership.mjs UNGATED), so `highlights` can never surface them as a
+// difference — and the three lines that used to name them are gone from this
+// file so a future table change cannot bring the copy back. A paid tier that
+// advertises travel access is a "seller of travel discount program" under
+// California B&P §17550.27(a)(1), which carries a $100,000 bond it is not
+// possible for Num to post lawfully. See HQ COMPLIANCE_GUARDRAILS.md.
 import { useEffect, useState } from 'react';
 import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
@@ -41,9 +50,10 @@ function highlights(t: Tier, free: Tier | undefined): string[] {
   };
   limit('plans_max', 'Unlimited plans', (n) => `${n} plans at once`);
   limit('deep_research_monthly', 'Unlimited deep research', (n) => `${n} deep searches a month`);
-  if (e.priority_queue && !f.priority_queue) out.push('First in line when everyone asks at once');
-  if (e.flight_search && !f.flight_search) out.push('Live fare search');
-  if (e.concierge_booking && !f.concierge_booking) out.push('Num books on your behalf');
+  if (e.early_features && !f.early_features) out.push('New things first');
+  // NOTHING ABOUT TRAVEL GOES HERE. See the header note: a paid tier may not
+  // advertise a travel benefit. If a new capability is travel-shaped, it goes
+  // in worker/membership.mjs UNGATED and never on this list.
   return out;
 }
 
@@ -99,7 +109,7 @@ export default function MembershipCard() {
 
       <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>
         {current === 'free'
-          ? 'The concierge, your plans and your people are yours — free, no trial, no countdown. Paying only lifts the ceilings.'
+          ? 'The concierge, your plans, your people and live fare search are yours — free, no trial, no countdown. Paying only lifts the ceilings.'
           : currentTier?.blurb}
       </div>
 

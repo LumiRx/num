@@ -18,6 +18,11 @@
 // Anything else is manual review. A listing is never transferred on a code
 // alone, and a contested listing always goes to a human.
 import { generateCode, hashCode, safeEqual, normalisePhone, uid, domainOf, sameDomain, isFreeMail, maskPhone, maskEmail } from '../claim/verify.mjs';
+// Same promotion every claim door on Num runs once a code checks out — see
+// claim/onboard.mjs's own doc comment. Without it a business is verified but
+// inert: no commission rate, no timezone, no feature flags.
+import { onboardStatements } from '../claim/onboard.mjs';
+import { senderParams } from './twiliosender.mjs';
 
 const CODE_TTL_MIN = 20;
 const LINK_TTL_MIN = 60;
@@ -244,7 +249,10 @@ async function verify(env, req) {
 
 /** Create the business, record the owner, and burn the proof. */
 async function grant(env, claim) {
-  const place = await env.DB.prepare('SELECT id, name, category, dest, phone FROM places WHERE id=?1').bind(claim.place_id).first();
+  const place = await env.DB.prepare(
+    `SELECT id, name, category, dest, phone, country, area, address, lat, lng, website, email
+       FROM places WHERE id=?1`,
+  ).bind(claim.place_id).first();
   const businessId = uid('biz');
   await env.DB.batch([
     env.DB.prepare("INSERT INTO businesses (id, name, kind, category, territory, status, onboarded_by, created_at) VALUES (?1,?2,'venue',?3,?4,'active','app-claim',datetime('now'))")
@@ -256,6 +264,7 @@ async function grant(env, claim) {
     env.DB.prepare('UPDATE places SET business_id=?2 WHERE id=?1').bind(claim.place_id, businessId),
     env.DB.prepare("UPDATE num_app_claims SET state='verified', verified_at=datetime('now'), code_hash=NULL, code_salt=NULL, link_token=NULL WHERE id=?1")
       .bind(claim.id),
+    ...(await onboardStatements(env, businessId, place, 'app-claim:' + claim.channel)),
   ]);
 
   // ── The onboarding actually completes now ──────────────────────────────
@@ -343,12 +352,17 @@ async function status(env, url) {
 // ── delivery ──────────────────────────────────────────────────────────────
 
 async function sendSms(env, to, body) {
-  if (!env.TWILIO_SID || !env.TWILIO_TOKEN || !env.TWILIO_FROM) return { ok: false, error: 'no_sms_provider' };
+  // Sender comes from twiliosender.mjs: the Messaging Service that carries the
+  // approved A2P campaign when one is configured, the bare number otherwise.
+  // A US long code inherits campaign approval through the SERVICE, not on its
+  // own — sending `From: <number>` is why every real send returned 30034.
+  const sender = senderParams(env);
+  if (!env.TWILIO_SID || !env.TWILIO_TOKEN || !sender) return { ok: false, error: 'no_sms_provider' };
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_SID}/Messages.json`, {
       method: 'POST',
       headers: { Authorization: 'Basic ' + btoa(`${env.TWILIO_SID}:${env.TWILIO_TOKEN}`), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ To: to, From: env.TWILIO_FROM, Body: body }),
+      body: new URLSearchParams({ To: to, ...sender, Body: body }),
     });
     return res.ok ? { ok: true } : { ok: false, error: 'sms_failed' };
   } catch {

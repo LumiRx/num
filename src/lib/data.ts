@@ -87,12 +87,17 @@ function baseState() {
     bought: '',
     starMoves: [],
     payOpen: null,
+    passengerOpen: false,
     connectTo: null,
     pairCode: null,
     flightOffers: null,
     flightSearching: false,
     flightError: null,
     errandDraft: null,
+    bookDraft: null,
+    bookRequests: [],
+    travelDraft: null,
+    travelReferrals: [],
     tabOpen: null,
     tabId: null,
     errandsOpen: false,
@@ -200,7 +205,15 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    // A table request restored from localStorage would show "waiting on the
+    // venue" for a venue that answered yesterday. It is server truth and it is
+    // re-read on open; a proposal nobody sent is not worth surviving a reload.
+    bookDraft, bookRequests,
+    // Same reasoning for the travel pair: a referral restored from
+    // localStorage would show "waiting on the agency" for an agency that
+    // quoted yesterday, and a handoff nobody sent is not worth a reload.
+    travelDraft, travelReferrals,
     // Conversations are server truth. A thread restored from localStorage
     // would show messages that may since have been read somewhere else, and
     // unread badges that no longer exist.

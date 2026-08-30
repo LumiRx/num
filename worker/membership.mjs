@@ -16,6 +16,31 @@
 // ten deep searches this month, here's when they reset" is a limit. "Num
 // doesn't answer questions unless you pay" is a broken promise.
 //
+// ── TRAVEL IS NOT GATEABLE. THIS ONE IS LAW, NOT TASTE ───────────────────
+//
+// `flight_search`, `priority_queue` and `concierge_booking` were paid-tier
+// entitlements until 18 Aug 2026. That made the paid tiers a "seller of travel
+// discount program" under California B&P §17550.27(a)(1) — a travel benefit
+// "not made generally available to the public" — which drags in §17550.27(b):
+//
+//   (b)(1) the seller must be a DULY REGISTERED seller of travel. Num operates
+//          as an exempt agent of a registered agency, so it cannot satisfy
+//          this at any price. Compliance was IMPOSSIBLE, not expensive.
+//   (b)(2) the annual charge may not exceed $150. The top tier at $28.98/mo
+//          is $347.76/yr.
+//   (b)(3) no automatic renewal. Both tiers are Stripe subscriptions.
+//   (b)(9) a $100,000 surety bond.
+//
+// Ungating all three removes the "not generally available" element, so
+// §17550.27 is never engaged and the $100,000 question never arises. The paid
+// tiers sell LIMITS, DEPTH and SPEED — which is what the design rule above
+// said they should sell in the first place.
+//
+// UNGATED is enforced below in `tiers()` and again in `may()`, and it survives
+// the MEMBERSHIP_TIERS override, because the override is a way to re-gate
+// travel from a dashboard with no deploy and no review.
+//   See HQ/divisions/num/COMPLIANCE_GUARDRAILS.md and REFERRAL_STRUCTURE_ANALYSIS.md §8.1.
+//
 // ── Why entitlements and not `if (tier === 'pro')` ───────────────────────
 //
 // Feature checks scattered as tier comparisons rot the moment tiers change,
@@ -34,6 +59,13 @@
 // here, or override with MEMBERSHIP_TIERS (JSON) without a deploy.
 import { STAR_PACKS } from './preflight.mjs';
 
+/**
+ * Capabilities that must be TRUE on every tier, including the free one and
+ * including anything MEMBERSHIP_TIERS tries to say. See the §17550.27 note
+ * above. Adding a travel capability? It goes here, not behind a price.
+ */
+export const UNGATED = Object.freeze(['flight_search', 'priority_queue', 'concierge_booking']);
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
@@ -48,7 +80,7 @@ const DEFAULT_TIERS = {
   free: {
     name: 'Num',
     price_cents: 0,
-    blurb: 'The concierge, your plans, your people. No trial, no countdown.',
+    blurb: 'The concierge, your plans, your people, live fares. No trial, no countdown.',
     entitlements: {
       concierge: true,          // the core promise — never gated
       plans: true,
@@ -59,16 +91,19 @@ const DEFAULT_TIERS = {
       plans_max: 3,             // a limit, not a lock
       friends_max: null,
       deep_research_monthly: 3,
-      priority_queue: false,
-      flight_search: false,
-      concierge_booking: false,
+      // All three are law, not generosity — see UNGATED and the §17550.27
+      // note at the top of this file. `tiers()` forces them true anyway; they
+      // are written out here so the table reads honestly.
+      priority_queue: true,
+      flight_search: true,
+      concierge_booking: true,
       early_features: false,
     },
   },
   plus: {
     name: 'Num Plus',
     price_cents: 898,
-    blurb: 'More room, more research, first in line when everyone asks at once.',
+    blurb: 'More room, more research, the long thinking.',
     entitlements: {
       concierge: true, plans: true, friends: true, errands: true, tabs: true, voice: true,
       plans_max: 25,
@@ -76,14 +111,14 @@ const DEFAULT_TIERS = {
       deep_research_monthly: 40,
       priority_queue: true,
       flight_search: true,
-      concierge_booking: false,
+      concierge_booking: true,
       early_features: true,
     },
   },
   pro: {
     name: 'Num Pro',
     price_cents: 2898,
-    blurb: 'Everything, no ceilings, and Num books on your behalf.',
+    blurb: 'Everything, no ceilings, and the deepest research Num can run.',
     entitlements: {
       concierge: true, plans: true, friends: true, errands: true, tabs: true, voice: true,
       plans_max: null,
@@ -97,15 +132,40 @@ const DEFAULT_TIERS = {
   },
 };
 
+/**
+ * Force the ungated capabilities true on every tier, whatever the table says.
+ *
+ * This is not belt and braces over our own constant — it is the guard on
+ * MEMBERSHIP_TIERS. That override exists so prices can move without a deploy,
+ * which means it can also re-gate travel without a deploy, without a review,
+ * and without anyone noticing until a regulator does. So the override may set
+ * any price and any limit, and it may not take travel away from a free member.
+ */
+function ungate(table) {
+  const out = {};
+  for (const [id, t] of Object.entries(table ?? {})) {
+    out[id] = { ...t, entitlements: { ...(t?.entitlements ?? {}) } };
+    for (const cap of UNGATED) {
+      if (out[id].entitlements[cap] !== true) {
+        if (out[id].entitlements[cap] !== undefined) {
+          console.warn(`[membership] MEMBERSHIP_TIERS tried to gate ${cap} on "${id}" — forced open (B&P §17550.27)`);
+        }
+        out[id].entitlements[cap] = true;
+      }
+    }
+  }
+  return out;
+}
+
 export function tiers(env) {
-  if (!env?.MEMBERSHIP_TIERS) return DEFAULT_TIERS;
+  if (!env?.MEMBERSHIP_TIERS) return ungate(DEFAULT_TIERS);
   try {
     const parsed = JSON.parse(env.MEMBERSHIP_TIERS);
-    return parsed && typeof parsed === 'object' ? parsed : DEFAULT_TIERS;
+    return parsed && typeof parsed === 'object' ? ungate(parsed) : ungate(DEFAULT_TIERS);
   } catch {
     // A malformed override must not silently hand out the wrong plan.
     console.warn('[membership] MEMBERSHIP_TIERS is not valid JSON — using defaults');
-    return DEFAULT_TIERS;
+    return ungate(DEFAULT_TIERS);
   }
 }
 
@@ -160,6 +220,9 @@ export async function tierOf(env, memberId) {
  */
 export async function may(env, memberId, capability, { count = null } = {}) {
   const t = await tierOf(env, memberId);
+  // Second lock on the same door. `tiers()` already forces these open; this
+  // answers correctly even if a caller hands `may` a hand-built table.
+  if (UNGATED.includes(capability)) return { ok: true, tier: t, ungated: true };
   const all = tiers(env);
   const ent = all[t]?.entitlements ?? {};
   const value = ent[capability];
@@ -283,7 +346,10 @@ export async function handleMembership(request, env, path) {
         id, name: t.name, price_cents: t.price_cents, blurb: t.blurb, entitlements: t.entitlements,
       })),
       star_packs: STAR_PACKS,
-      principle: 'The concierge, plans and friends are free forever. Paying raises limits and unlocks what costs us to run.',
+      principle: 'The concierge, plans, friends and live fare search are free forever. Paying raises limits, depth and speed.',
+      // Said out loud on the public price list, because it is the fact the
+      // whole structure rests on: no travel benefit is reserved for payers.
+      ungated: UNGATED,
     });
   }
 

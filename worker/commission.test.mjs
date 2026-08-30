@@ -48,12 +48,23 @@ function db() {
   };
 }
 
-test('a reservation is a flat fee, not a percentage', () => {
-  // 10% of a $300 dinner is $30 for a table the venue might have filled
-  // anyway. Nobody signs that twice. The industry pays $1–3 per cover.
-  assert.equal(RATES.reservation.flat_cs, 200);
-  assert.equal(RATES.reservation.bp, undefined,
-    'reservations grew a percentage rate — that is the pricing mistake this file exists to avoid');
+test('a reservation carries both numbers, and the flat fee is the floor', () => {
+  // Changed 26 Aug 2026. This used to assert reservations had NO percentage,
+  // on the reasoning that 10% of a $300 dinner is $30 for a table the venue
+  // might have filled anyway. That reasoning still holds — and it is why the
+  // $2 line is still here — but it was being argued against a promise NUM had
+  // already made in public: the business page, the merchant invite and the
+  // Thai rate card all said 10%. Two prices in public and one in the ledger is
+  // worse than either price.
+  //
+  // So: 10% where there is a bill to take ten percent of, $2 where there is
+  // not. Both must exist. Deleting either one re-creates a bug we have had.
+  assert.equal(RATES.reservation.bp, 1000, 'the published rate is 10%');
+  assert.equal(RATES.reservation.flat_cs, 200,
+    'the flat floor went — a venue that never reports a bill would be free');
+  // $1–3 per cover is what OpenTable and TheFork charge. A floor outside that
+  // band is a number we invented and a merchant cannot check.
+  assert.ok(RATES.reservation.flat_cs >= 100 && RATES.reservation.flat_cs <= 300);
 });
 
 test('a sale is a percentage, inside its market band', () => {
@@ -142,7 +153,9 @@ test('only a confirmation that actually flipped is billed', () => {
 
 test('terms read as a sentence a merchant can check', () => {
   const t = termsText();
-  assert.match(t, /\$2 per confirmed booking/);
+  // Both numbers on the reservation line, since both can appear on an invoice.
+  assert.match(t, /reservation: 10% of the bill/);
+  assert.match(t, /\$2 per confirmed table/);
   assert.match(t, /only on bookings the venue confirms/);
 });
 

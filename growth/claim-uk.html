@@ -202,7 +202,11 @@
   // digits and the punctuation real business names actually use, replace
   // everything else. Control characters can't survive this by construction.
   // It is also only ever assigned via textContent / .value, never innerHTML.
-  var NAME_OK = /[^\p{L}\p{N} '&.,()\/+-]/gu;
+  // \p{M} matters as much as \p{L}: Thai, Arabic, Devanagari and decomposed
+  // Vietnamese write vowels and tones as combining marks, and a letters-only
+  // whitelist silently deletes them — greeting an owner with their own name
+  // misspelled.
+  var NAME_OK = /[^\p{L}\p{M}\p{N} '&.,()\/+-]/gu;
   function cleanName(s) {
     if (!s) return "";
     try { s = s.replace(NAME_OK, " "); }

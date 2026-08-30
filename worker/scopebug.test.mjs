@@ -29,10 +29,22 @@ const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
  */
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-/** The body of `async fetch(request, env, ctx)`, where `userText` does not exist. */
+/**
+ * The body of the /api/num handler, where `userText` does not exist.
+ *
+ * Until 29 Aug 2026 this lived inline in `async fetch(request, env, ctx)`,
+ * which is why the anchor used to be that string. It was extracted into a
+ * standalone `handleNum(request, env, ctx)` (worker/index.mjs) so
+ * worker/partnermcp.mjs's concierge_answer could call it directly instead of
+ * fetch()-ing this Worker's own public hostname — see the 18 Aug 2026 note on
+ * handleNum for why a same-zone self-fetch is a bug, not a style choice.
+ * fetch() now just delegates to it. The bug this file guards against, and
+ * everything below that checks for it, lives in handleNum, not in fetch —
+ * so that is what this must read.
+ */
 function fetchHandler(src) {
-  const start = src.indexOf('async fetch(request, env, ctx)');
-  assert.ok(start > 0, 'the fetch handler could not be located — this guard is not running');
+  const start = src.indexOf('export async function handleNum(request, env, ctx)');
+  assert.ok(start > 0, 'the /api/num handler (handleNum) could not be located — this guard is not running');
   return code(src.slice(start));
 }
 

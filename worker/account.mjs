@@ -68,6 +68,109 @@ async function unfriend(env, req) {
 }
 
 /**
+ * REPORTING SOMEBODY — Apple guideline 1.2, and the right thing anyway.
+ *
+ * Num carries user-generated content between members: direct messages
+ * (`num_dms`), comments on shared plans (`planComment`), and the name, bio and
+ * avatar on a profile a friend can see. Guideline 1.2 asks an app with UGC for
+ * four things. We had three: blocking works and is enforced on every path that
+ * writes a friendship row (worker/block.test.mjs), the contact address is
+ * published in the privacy policy, and there is no public feed to filter.
+ *
+ * The missing one was a way to REPORT. Our own App Review notes claimed
+ * "report/block via the shield icon in chat" — there was no shield icon and no
+ * report. That is worse than the gap: a reviewer who reads the notes goes
+ * looking for the control, does not find it, and now has a reason to distrust
+ * everything else the notes say.
+ *
+ * Blocking and reporting are deliberately NOT the same act. Blocking is "I do
+ * not want to hear from this person" and is instant and private. Reporting is
+ * "somebody should look at this" and creates a record we are accountable for.
+ * A person may want either, or both, so `block` is a separate flag rather than
+ * an assumption — though the UI offers it ticked, because somebody upset
+ * enough to report is rarely happy to keep receiving messages meanwhile.
+ *
+ * What we do NOT do is tell the subject. A report that notifies the person
+ * being reported is a retaliation risk, and the silence is the whole point.
+ */
+const REPORT_REASONS = new Set(['harassment', 'spam', 'impersonation', 'inappropriate', 'other']);
+
+async function report(env, req) {
+  const b = await readBody(req);
+  const me = clip(b.me, 40);
+  const them = clip(b.id, 40);
+  const reason = clip(b.reason, 40);
+  const note = String(b.note ?? '').trim().slice(0, 500);
+
+  if (!me || !them) return json({ error: 'Who are you reporting?' }, 400);
+  if (me === them) return json({ error: 'You cannot report yourself.' }, 400);
+  if (!REPORT_REASONS.has(reason)) {
+    return json({ error: 'Pick a reason so we know what to look for.' }, 400);
+  }
+
+  // Both sides must be real. A report naming a member id that does not exist is
+  // either a bug or someone probing the endpoint, and neither should land in
+  // the register a moderator works through.
+  const reporter = await env.DB.prepare('SELECT id FROM num_members WHERE id=?1').bind(me).first();
+  if (!reporter) return json({ error: 'sign up first' }, 404);
+  const subject = await env.DB.prepare('SELECT id FROM num_members WHERE id=?1').bind(them).first();
+  if (!subject) return json({ error: 'We could not find that person.' }, 404);
+
+  // One open report per pair. Somebody hitting the button five times is upset,
+  // not five times as wronged, and five identical rows make the queue harder to
+  // work rather than louder.
+  const existing = await env.DB.prepare(
+    "SELECT id FROM num_reports WHERE reporter_id=?1 AND subject_id=?2 AND state='open'",
+  ).bind(me, them).first().catch(() => null);
+
+  if (existing) {
+    // Somebody coming back to the same open case is usually ADDING something —
+    // it got worse, or they remembered a detail. Dropping the new note on the
+    // floor because a row already exists would lose exactly the information a
+    // moderator needs most, so the latest detail wins while the case stays one
+    // case. An empty note never overwrites a filled one.
+    if (note) {
+      await env.DB.prepare('UPDATE num_reports SET note=?1, reason=?2 WHERE id=?3')
+        .bind(note, reason, existing.id).run().catch(() => {});
+    }
+  } else {
+    await env.DB.prepare(
+      'INSERT INTO num_reports (id, reporter_id, subject_id, context, reason, note) VALUES (?1,?2,?3,?4,?5,?6)',
+    ).bind(
+      `rep_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`,
+      me, them, clip(b.context, 24) || 'profile', reason, note || null,
+    ).run();
+  }
+
+  // Blocking on the same action, when asked for. Reuses the one block table
+  // every friendship path already consults, so a report that blocks is as
+  // final as a block that does not report.
+  let blocked = false;
+  if (b.block) {
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO num_blocks (member_id, blocked_id, created_at) VALUES (?1,?2,datetime('now'))",
+    ).bind(me, them).run().catch(() => {});
+    await env.DB.prepare(
+      'DELETE FROM num_links WHERE (a_id=?1 AND b_id=?2) OR (a_id=?2 AND b_id=?1)',
+    ).bind(me, them).run().catch(() => {});
+    blocked = true;
+  }
+
+  console.warn(`[report] ${me} -> ${them} (${reason})${blocked ? ' +block' : ''}`);
+
+  return json({
+    ok: true,
+    reported: true,
+    blocked,
+    // A promise we can keep. No case number we do not staff, no SLA we have not
+    // resourced — just what actually happens next.
+    note: blocked
+      ? 'Reported, and they’re blocked — they can’t message you or add you again. Someone reviews every report.'
+      : 'Reported. Someone reviews every report, and they are not told who raised it.',
+  });
+}
+
+/**
  * Delete a plan, or leave one.
  *
  * The owner deletes it for everyone; a member leaves it for themselves. Those
@@ -244,7 +347,16 @@ export async function handleAccount(request, env, path) {
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS num_blocks (member_id TEXT NOT NULL, blocked_id TEXT NOT NULL, created_at TEXT, PRIMARY KEY (member_id, blocked_id))',
   ).run().catch(() => {});
+  // The report register. Apple guideline 1.2 requires a way to REPORT
+  // objectionable content, not only to block its author — see report() below.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS num_reports (
+       id TEXT PRIMARY KEY, reporter_id TEXT NOT NULL, subject_id TEXT NOT NULL,
+       context TEXT NOT NULL, reason TEXT NOT NULL, note TEXT,
+       state TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  ).run().catch(() => {});
 
+  if (path === '/report' && post) return await report(env, request);
   if (path === '/unfriend' && post) return await unfriend(env, request);
   if (path === '/plan/remove' && post) return await planRemove(env, request);
   if (path === '/delete' && post) return await accountDelete(env, request);

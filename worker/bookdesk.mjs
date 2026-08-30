@@ -26,9 +26,47 @@
 // yesterday's link cannot un-confirm a table, because Stripe taught us that
 // at-least-once delivery is a property of the universe, not of Stripe.
 
+// The venue's number is the whole mechanism — an unreachable number turns a
+// closed loop back into advice. normalisePhone is the one the rest of the
+// Worker already uses (social.mjs, events.mjs, claim.mjs) and it is
+// deliberately reused rather than re-implemented here: a second phone parser
+// is a second set of rules about what "+66 81" means, and the two drift.
+import { senderParams } from './twiliosender.mjs';
+
+import { normalisePhone } from '../claim/verify.mjs';
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
+
+/**
+ * The venue number, in the only form Twilio will dial: E.164, leading `+`.
+ *
+ * normalisePhone keeps the digits of a bare national number ("2125551234")
+ * without inventing a country code, so this insists on the `+` on top of it —
+ * the same two-step social.mjs does at signup, and for the same reason. A bare
+ * ten-digit US number and a bare nine-digit Thai number are indistinguishable
+ * to a parser and are two different restaurants on two different continents.
+ * Guessing +1 because most of the directory is American would text a stranger
+ * in Ohio about a table in Phuket, so a number without a country code is
+ * REFUSED, loudly, at the moment it is typed — not silently saved and then
+ * discovered to be undialable at the one moment it mattered.
+ *
+ *   "+66 81 234 5678" → "+66812345678"   (Thai, already international)
+ *   "+1 (212) 555-1234" → "+12125551234"
+ *   "0066812345678"   → "+66812345678"   (00 is the other international prefix)
+ *   "212-555-1234"    → null             (which country?)
+ *   "call the front desk" → null
+ */
+export function venueE164(raw) {
+  if (!raw) return null;
+  // 00 is how most of the world writes the international prefix on a business
+  // card. normalisePhone strips punctuation and keeps a leading '+' but knows
+  // nothing about 00, so it is translated before it gets there.
+  const s = String(raw).trim().replace(/[^\d+]/g, '');
+  const p = normalisePhone(/^00\d/.test(s) ? `+${s.slice(2)}` : s);
+  return p && p.startsWith('+') ? p : null;
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS num_booking_requests (
@@ -74,18 +112,129 @@ async function sign(env, id, verdict) {
   return [...new Uint8Array(mac)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * WHO WE ARE ALLOWED TO TEXT, AND WHY THIS IS NOT OPTIONAL.
+ *
+ * `venue_phone` arrives in the REQUEST BODY. Any caller could post any number
+ * and this worker would text it — an open SMS relay wearing a booking desk as
+ * a hat. Even used exactly as intended it is no better: the numbers come from
+ * OpenStreetMap and Google Places, which is to say from a map, which is to say
+ * from nobody who ever agreed to hear from us.
+ *
+ * That matters in three separate directions and only one of them is legal:
+ *
+ *  1. THE A2P REGISTRATION. The campaign we are about to file tells a carrier
+ *     that recipients are venues who have a relationship with NUM and gave us
+ *     their number. Filing that while this code texts numbers scraped off a
+ *     map is a false statement to a carrier — the kind that gets a brand
+ *     struck rather than a campaign rejected, and it would be found by the
+ *     first audit that pulls a sample and asks where the number came from.
+ *  2. TCPA. The day one of those "venue" numbers turns out to be a US mobile,
+ *     an unconsented automated text is $500–$1,500 of statutory damages, per
+ *     message, and no amount of good intent is a defence.
+ *  3. THE GUEST. A text that a carrier filters still returns 201 from Twilio,
+ *     so the guest is told "the venue has it" when nobody has it.
+ *
+ * So the register is the gate: a row in `num_sms_consent` for this exact E.164
+ * number, not revoked. That table is written by the /sms opt-in page, which
+ * stores the verbatim consent wording, its version, the IP and the timestamp —
+ * the evidence an audit actually asks for.
+ *
+ * TODAY THAT MEANS ZERO PARTNER TEXTS, because no venue has opted in yet. That
+ * is the honest state of the world and it is strictly better than the
+ * alternative: `/request` still records the booking and the desk still works it
+ * by hand, which is what was really happening anyway. What changes is that we
+ * stop claiming a text went out, and stop sending one we cannot defend.
+ *
+ * The unlock is a venue opt-in path, not a loosening of this check.
+ */
+async function partnerMayBeTexted(env, to) {
+  if (!to) return { ok: false, reason: 'no_number' };
+  try {
+    const row = await env.DB.prepare(
+      'SELECT revoked_at FROM num_sms_consent WHERE phone = ?1',
+    ).bind(to).first();
+    if (!row) return { ok: false, reason: 'no_consent_on_file' };
+    if (row.revoked_at) return { ok: false, reason: 'consent_revoked' };
+    return { ok: true, reason: 'consented' };
+  } catch (e) {
+    // The consent register lives with the opt-in page and may not exist in a
+    // fresh environment. FAIL CLOSED. An unreadable register is not permission;
+    // the failure mode of guessing "yes" here is the one this whole function
+    // exists to prevent.
+    console.warn('[bookdesk] consent lookup failed, refusing to text', e?.message ?? e);
+    return { ok: false, reason: 'consent_register_unavailable' };
+  }
+}
+
+/**
+ * Every partner message carries the brand and the way out. Both are carrier
+ * requirements for a registered campaign, and both are things a person who did
+ * not expect this text needs in the message itself rather than on a website
+ * they would have to go and find.
+ */
+const PARTNER_SMS_FOOTER = '\n\nNUM booking desk. Reply STOP to opt out, HELP for help.';
+
 async function smsPartner(env, to, text) {
-  if (!env.TWILIO_SID || !env.TWILIO_TOKEN || !env.TWILIO_FROM || !to) return false;
+  // See twiliosender.mjs: a US long code inherits A2P campaign approval
+  // through its Messaging Service, never on its own. `From: <number>` is what
+  // earned 30034 on every real send between 5 and 21 Aug 2026.
+  const sender = senderParams(env);
+  if (!env.TWILIO_SID || !env.TWILIO_TOKEN || !sender || !to) return false;
+
+  // The gate, before the credentials are ever spent.
+  const consent = await partnerMayBeTexted(env, to);
+  if (!consent.ok) {
+    console.warn(`[bookdesk] not texting ${to}: ${consent.reason}`);
+    return false;
+  }
+
   const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_SID}/Messages.json`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${btoa(`${env.TWILIO_SID}:${env.TWILIO_TOKEN}`)}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ To: to, From: env.TWILIO_FROM, Body: text }),
+    body: new URLSearchParams({
+      To: to,
+      ...sender,
+      Body: text + PARTNER_SMS_FOOTER,
+      // Same reasoning as claim/verify.mjs:189. Twilio answers 201 the instant
+      // it queues a message; only the receipt says whether a carrier took it.
+      // Without this, `texted: true` below means "we asked", and the guest is
+      // told the venue has their table on the strength of it.
+      StatusCallback: 'https://app.itsnum.com/api/sms/status',
+    }),
   }).catch(() => null);
   return !!r?.ok;
 }
+
+/**
+ * The kill switch, in the same shape as SABRE_BOOKING_ENABLED
+ * (sabre-booking.mjs:135): an explicit string, default OFF.
+ *
+ * It gates the ASK and nothing else. `/answer` and `/mine` stay open however
+ * this is set, deliberately: the confirm links already live in text messages
+ * on phones we do not control, and a venue that taps CONFIRM after someone
+ * pulled the switch must still be able to answer — otherwise a guest is left
+ * waiting on a table that a restaurant believes it has given them. Turning
+ * bookdesk off means "stop asking", never "stop listening".
+ *
+ * `wrangler secret put BOOKDESK_ENABLED` takes effect without a deploy, which
+ * is what makes this a kill switch rather than a release note.
+ */
+export const bookdeskEnabled = (env) => env?.BOOKDESK_ENABLED === 'true';
+
+/**
+ * The SMS gate, reachable from a test.
+ *
+ * Exported deliberately and narrowly. `smsPartner` is the one function in this
+ * file where being wrong is a false statement to a carrier and a TCPA exposure
+ * rather than a bug, so "who will this text, and what does it put in the body"
+ * has to be assertable by running it — not by reading it and hoping. Nothing
+ * in the request path imports this; see worker/bookdesk.consent.test.mjs.
+ */
+export const __testables = { smsPartner, partnerMayBeTexted, PARTNER_SMS_FOOTER };
 
 export async function handleBooking(request, env, path) {
   await ensure(env);
@@ -94,6 +243,14 @@ export async function handleBooking(request, env, path) {
 
   // ── Guest asks for a table ───────────────────────────────────────────
   if (path === '/request' && request.method === 'POST') {
+    // 503, not 404: the endpoint exists and is switched off, and the app shows
+    // the guest a sentence rather than a broken button.
+    if (!bookdeskEnabled(env)) {
+      return json({
+        error: 'The booking desk is closed right now — I’ll give you the number and the link instead.',
+        disabled: true,
+      }, 503);
+    }
     const b = await request.json().catch(() => ({}));
     const me = clip(b.me, 40);
     const venue = clip(b.venue_name, 120);
@@ -101,13 +258,28 @@ export async function handleBooking(request, env, path) {
     const member = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(me).first();
     if (!member) return json({ error: 'sign up first' }, 404);
 
+    // A number we cannot dial is refused here rather than stored. Without a
+    // country code we would either not text at all (and the guest would be
+    // told "the venue has it" when nobody has it) or text the wrong country.
+    // No number at all is a legitimate, honest state — the desk works it by
+    // hand — so only a number that was SUPPLIED and is unusable is an error.
+    const venuePhone = venueE164(b.venue_phone);
+    if (b.venue_phone && !venuePhone) {
+      return json({
+        error: 'That venue number needs its country code — start it with + (like +66, +1 or +44).',
+        bad_phone: true,
+      }, 400);
+    }
+
     const id = `bk_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
     const partySize = Math.min(Math.max(Number(b.party_size) || 2, 1), 40);
     await env.DB.prepare(
       `INSERT INTO num_booking_requests (id, member_id, venue_name, venue_phone, party_size, on_date, at_time, note, plan_id, place_id)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`,
     ).bind(
-      id, me, venue, clip(b.venue_phone, 20), partySize,
+      // The E.164 form is what is STORED, so a retry from the desk months
+      // later dials the same number the first text went to.
+      id, me, venue, venuePhone, partySize,
       clip(b.on_date, 20), clip(b.at_time, 8), clip(b.note, 200), clip(b.plan_id, 40),
       // Optional and best-effort. Without it the booking still works and
       // simply bills at the cheapest flat rate — an unidentified venue must
@@ -119,12 +291,12 @@ export async function handleBooking(request, env, path) {
     // still exists — the concierge (or Dre, in the pilot) works the phone and
     // answers through the same link a partner would have tapped.
     let texted = false;
-    if (b.venue_phone) {
+    if (venuePhone) {
       const yes = await sign(env, id, 'confirmed');
       const no = await sign(env, id, 'declined');
       texted = await smsPartner(
         env,
-        clip(b.venue_phone, 20),
+        venuePhone,
         `Num booking request: table for ${partySize}, ${b.on_date ?? 'tonight'}${b.at_time ? ` ${b.at_time}` : ''}, ` +
         `for ${member.name ?? 'a guest'}.${b.note ? ` (${clip(b.note, 80)})` : ''}\n` +
         `CONFIRM: ${origin}/api/book/answer?id=${id}&v=confirmed&t=${yes}\n` +
@@ -170,7 +342,10 @@ export async function handleBooking(request, env, path) {
     if (flip.meta.changes > 0 && verdict === 'confirmed') {
       const { accrue } = await import('./commission.mjs');
       const place = row.place_id
-        ? await env.DB.prepare('SELECT id, name, category, business_id, dest FROM places WHERE id=?1')
+        // `country` is load-bearing: commission.mjs applies per-country rates
+        // off it (Thailand bills 10% of the bill rather than a flat fee), and
+        // a missing country silently falls back to the default line.
+        ? await env.DB.prepare('SELECT id, name, category, business_id, dest, country FROM places WHERE id=?1')
             .bind(row.place_id).first().catch(() => null)
         : null;
       await accrue(env, {

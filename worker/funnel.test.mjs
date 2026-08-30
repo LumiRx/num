@@ -28,9 +28,17 @@ test('the tracker is loaded on the pages visitors actually land on', () => {
   const landing = readFileSync(root('public', 'index.html'), 'utf8');
   assert.match(landing, /num-track\.js/,
     'the landing page loads no funnel tracking — every ad click after this is unmeasurable again');
-  const app = readFileSync(root('index.html'), 'utf8');
-  assert.match(app, /num-track\.js/,
+  // The app shell loads the tracker from src/lib/analyticsLoader.ts through
+  // apiUrl(), not from a tag. A bare /num-track.js in index.html resolves
+  // against capacitor://localhost in the bundled iOS app, so it loaded a
+  // stale copy from whenever the binary was cut — or nothing. Assert the
+  // outcome, not the tag.
+  const loader = readFileSync(root('src', 'lib', 'analyticsLoader.ts'), 'utf8');
+  assert.match(loader, /apiUrl\(\s*['"]\/num-track\.js['"]\s*\)/,
     'the app shell loads no funnel tracking — activation cannot be observed');
+  const main = readFileSync(root('src', 'main.tsx'), 'utf8');
+  assert.match(main, /loadAnalytics\(\)/,
+    'nothing calls loadAnalytics — the app shell tracks nothing');
 });
 
 test('the landing origin can actually serve the file it references', () => {

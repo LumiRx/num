@@ -26,8 +26,25 @@
  * need your surname to find you a table.
  */
 
-/** Key names that identify a person rather than describe a preference. */
-const IDENTIFYING = /(phone|mobile|tel\b|whatsapp|email|e-?mail|passport|surname|last_?name|full_?name|first_?name|\bname\b|dob|birth|address|room|card|payment|ssn|nric|nationality|license|licence)/i;
+/**
+ * Key names that identify a person rather than describe a preference.
+ *
+ * The second group was added on 2026-08-18 with `num_passengers`
+ * (worker/passengers.mjs). It is not a tidy-up: `given_name`, `family_name` and
+ * `born_on` were all falling straight through. `\bname\b` does not match
+ * `given_name`, because `_` is a word character and there is therefore no word
+ * boundary before `name`; and `birth` does not match `born_on`. So the three
+ * fields that make up a travel document were the three this denylist did not
+ * cover, which is exactly the failure mode the comment above warns about — a
+ * new field flowing through because nobody remembered the list.
+ *
+ * `title` is deliberately absent. A plan has a title, an item has a title, and
+ * redacting those would strip the concierge of the thing it is reasoning about.
+ * The passenger honorific never reaches a prompt because nothing puts a
+ * passenger record into `profile` or `state` in the first place — and if
+ * anything ever does, `born_on` and `family_name` beside it will fire.
+ */
+const IDENTIFYING = /(phone|mobile|tel\b|whatsapp|email|e-?mail|passport|surname|last_?name|full_?name|first_?name|\bname\b|dob|birth|address|room|card|payment|ssn|nric|nationality|license|licence|given_?name|family_?name|born_?on|date_of_birth|\bgender\b|travel_?document|identity_document|unique_identifier)/i;
 
 /** Values that look like an identifier no matter what the key is called. */
 const LOOKS_IDENTIFYING = [

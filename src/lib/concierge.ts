@@ -428,9 +428,13 @@ interface NumAction {
   type:
     | 'add_booking' | 'update_booking' | 'add_meeting' | 'remember' | 'invite'
     | 'plan_create' | 'plan_add' | 'service' | 'create_event'
-    | 'errand' | 'flight_search';
+    | 'errand' | 'flight_search' | 'book_table' | 'travel_referral';
   booking?: Booking;
   errand?: AppState['errandDraft'];
+  /** book_table — the proposal, not a sent request. */
+  request?: AppState['bookDraft'];
+  /** travel_referral — the trip to hand an agency, proposed and unsent. */
+  referral?: AppState['travelDraft'];
   search?: FlightQuery;
   id?: string;
   patch?: Partial<Booking>;
@@ -511,6 +515,19 @@ function applyAction(a: NumAction) {
     // because a sentence sounded like a request is a liability. The sheet
     // opens pre-filled and the person taps the button that names the number.
     store.set({ errandsOpen: true, errandDraft: a.errand });
+  } else if (a.type === 'book_table' && a.request?.venue_name) {
+    // The model PROPOSES a table; it never asks for one. Sending texts a real
+    // restaurant a real guest's name and party — a commitment to a third party
+    // who is not in this app and cannot un-hear it. The sheet opens with the
+    // venue, the party and the hour in full, and the person taps SEND.
+    store.set({ bookDraft: a.request });
+  } else if (a.type === 'travel_referral' && a.referral) {
+    // The model PROPOSES a handoff; it never makes one. Sending puts a named
+    // traveller's dates and contact details into a third-party travel agency's
+    // inbox — a disclosure the member makes, not one a sentence may make for
+    // them. The sheet opens with the whole request in full and the person taps
+    // SEND. Num presents; the agency quotes, takes payment and issues.
+    store.set({ travelDraft: a.referral });
   } else if (a.type === 'flight_search' && a.search?.fromCode) {
     void runFlightSearch(a.search);
   } else if (a.type === 'service' && a.kind && a.options?.length) {

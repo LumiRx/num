@@ -1,0 +1,78 @@
+# MCP integrity — the check that does not live inside the thing it checks.
+#
+# Same shape and same reasoning as uptime.yml, one level up. uptime.yml asks
+# "is the front door open?". This asks the question that stayed unasked for a
+# week on 5arz: "is the door we are ADVERTISING the door that exists?"
+#
+# Four artefacts have to agree — the tool array in the source, what the live
+# server answers to tools/list, the listing an agent discovers us through, and
+# the page an engineer reads — and every advertised tool has to actually
+# answer. Each one is edited at a different time by a different reflex, and
+# every drift between them is invisible from inside the thing that drifted.
+#
+# WHY IT ALSO RUNS ON A SCHEDULE AND NOT ONLY ON PUSH: three of the four
+# artefacts can change with no commit at all. Someone edits the registry entry.
+# A listing endpoint starts returning a 500. A tool keeps being listed and
+# stops working — which is exactly what /api/partner/mcp's concierge_answer
+# did. A push-only check would have been green throughout.
+#
+# HOW THE ALERT REACHES A HUMAN: the job exits non-zero, GitHub marks the run
+# failed, and GitHub emails the repo owner. No secret, no third-party account.
+# The check needs no credentials by design — every surface it probes is public,
+# and a check that needs a secret is a check that cannot run here.
+#
+# The same two ways uptime.yml can quietly stop apply here: `schedule:` only
+# runs from the default branch, and GitHub disables scheduled workflows in a
+# repo with no commit activity for 60 days. Read that file's header before
+# trusting this one's silence.
+name: mcp-integrity
+
+on:
+  schedule:
+    # Hourly. Drift is not an outage — nobody needs to know inside five
+    # minutes — but a week is how long the last one lasted, and an hour is
+    # close enough to "the same day someone shipped it" to still be useful.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  # A change to any of the four artefacts re-runs it immediately, so the
+  # feedback lands while the person who caused it is still looking.
+  push:
+    paths:
+      - 'worker/partnermcp.mjs'
+      - 'worker/bizmcp.mjs'
+      - 'worker/conciergemcp.mjs'
+      - 'worker/bizapi.mjs'
+      - 'agents/worker.js'
+      - 'public/agents/index.html'
+      - 'public/partners/index.html'
+      - 'public/business/index.html'
+      - 'public/llms-full.txt'
+      - 'scripts/mcp-integrity.mjs'
+      - '.github/workflows/mcp-integrity.yml'
+  pull_request:
+    paths:
+      - 'worker/*mcp.mjs'
+      - 'agents/worker.js'
+      - 'scripts/mcp-integrity.mjs'
+
+concurrency:
+  group: mcp-integrity
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No install step, same as uptime.yml: the checker uses only built-in
+      # fetch, so there is no dependency tree that can break the monitor on a
+      # day the registry is having a bad time.
+      - name: Source, live, listing, docs and a real call to every tool
+        run: node scripts/mcp-integrity.mjs

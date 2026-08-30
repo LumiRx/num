@@ -171,6 +171,50 @@ export const TOOLS_FOR_TEST = TOOLS;
  * partner evaluating an integration should never have to email anyone to see
  * whether it returns anything useful. The friction belongs at the money, not
  * at the demo.
+ *
+ * ── PUBLIC BY DECISION, 18 Aug 2026 ──────────────────────────────────────
+ *
+ * Reviewed and KEPT OPEN. This is a read-only, no-PII, attribution-carrying
+ * directory surface; requiring a key to see whether it returns anything useful
+ * would cost more integrations than it protects. Three conditions make that a
+ * decision rather than an accident, and all three are enforced in code below
+ * and asserted in partnermcp.test.mjs:
+ *
+ *   1. READ ONLY. Nothing on this surface writes, books, charges, or accepts
+ *      personal data. The moment a tool here can do any of those it moves to
+ *      /api/concierge/mcp, which is keyed with no anonymous path at all. That
+ *      is why `request_table` is NOT in the array above — see conciergemcp.mjs.
+ *   2. RATE LIMITED, WITH A NUMBER. The index used to say "rate-limited" and
+ *      nothing else. A partner cannot write a retry policy against an
+ *      adjective, and nobody could tell whether the sentence was still true.
+ *      It now states 12/min per IP unkeyed, and the limiter that enforces it
+ *      lives ten lines below the sentence that promises it.
+ *   3. DISCOVERY IS NEVER THROTTLED. initialize and tools/list stay open at any
+ *      rate. An agent that cannot complete a handshake reports the server as
+ *      down, and a limiter that produces false outage reports is removed by the
+ *      next person on call.
+ *
+ * If this ever needs to close, close it by flipping unkeyed calls to a refusal
+ * here — not by quietly deleting the sentence from the index.
+ *
+ * ── WHY THIS ROUTE LIMITS ITSELF ─────────────────────────────────────────
+ *
+ * index.mjs applies a blanket 12/min-per-IP gate to every POST /api/*. That is
+ * the right default and the wrong rule for an MCP endpoint, in three ways:
+ *
+ *   • IT THROTTLES THE HANDSHAKE. initialize and tools/list are POSTs. An agent
+ *     doing discovery competes with its own tool calls for the same 12.
+ *   • ITS 429 IS NOT JSON-RPC. The blanket gate answers `{"error":"You're going
+ *     faster than I can keep up"}` — no `jsonrpc`, no `id`. An MCP client
+ *     cannot match that to a pending request, so a throttle reads as a
+ *     protocol fault: "Num is broken", not "slow down".
+ *   • IT BUCKETS A PAYING PARTNER WITH AN ANONYMOUS ONE. A signed partner calls
+ *     from one server IP at production volume and gets the ceiling built for
+ *     unattributed evaluation traffic. The friction lands precisely where this
+ *     file says it must not.
+ *
+ * So index.mjs exempts the MCP routes and each one limits itself, on the same
+ * Cloudflare binding, with the scope its own trust level deserves.
  * ---------------------------------------------------------------------- */
 export function partnerFrom(request) {
   const key = request.headers.get('X-Partner-Key') || '';
@@ -179,12 +223,144 @@ export function partnerFrom(request) {
 }
 
 /**
+ * The limit, applied to work and never to discovery.
+ *
+ * Two scopes on two bindings, because a signed partner and an anonymous one
+ * are not the same caller:
+ *
+ *   unkeyed → RATE_LIMITER, keyed on the caller IP: 12/min, the same ceiling
+ *             every other unauthenticated POST on this Worker gets.
+ *   keyed   → PARTNER_LIMITER, keyed on the PARTNER, not the IP: an integration
+ *             runs from one server address, so an IP-scoped bucket would
+ *             throttle a whole platform's travellers as if they were one
+ *             person. Attribution is what makes a bigger bucket safe to give:
+ *             we can see who spent it.
+ *
+ * Reuses guard.mjs rather than growing a second limiter. Two limiters means two
+ * sets of counters and, eventually, two different answers to "are we limited?"
+ * — which is the drift this whole day was about.
+ */
+export async function enforcePartnerLimit(env, request, partner) {
+  const { enforceRateLimit } = await import('./guard.mjs');
+  return partner.keyed
+    ? await enforceRateLimit(env, `partner:${partner.id}`, 'PARTNER_LIMITER')
+    : await enforceRateLimit(env, request.headers.get('CF-Connecting-IP') ?? 'unknown', 'RATE_LIMITER');
+}
+
+/**
+ * A throttle, in the shape an MCP client can act on.
+ *
+ * -32003 plus an HTTP 429 and Retry-After: the JSON-RPC error is what the model
+ * reads and can wait on, the status and header are for the proxies and the
+ * humans reading logs. The blanket gate in index.mjs returns a bare
+ * `{"error": …}` with no envelope, which an MCP client cannot correlate to its
+ * request at all — that is the bug this shape exists to avoid repeating.
+ */
+export function throttled(id, limit, keyed) {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0', id,
+      error: {
+        code: -32003,
+        message: keyed
+          ? `Your partner key is over its per-minute ceiling. Retry in ${limit.retryAfter}s. Nothing was changed.`
+          : `Unkeyed partner traffic is limited to ${LIMIT_UNKEYED_PER_MIN} calls a minute per IP. ` +
+            `Retry in ${limit.retryAfter}s, or send an X-Partner-Key for an attributed quota ` +
+            '(POST /api/partner/signup). Nothing was changed.',
+      },
+    }),
+    { status: 429, headers: { ...CORS, 'Retry-After': String(limit.retryAfter) } },
+  );
+}
+
+/**
+ * The MONTHLY quota, which until now existed only as a number on a dashboard.
+ *
+ * ── THE GAP THIS CLOSES ──────────────────────────────────────────────────
+ *
+ * `num_partner_keys.monthly_limit` has been stored since signup shipped, shown
+ * on GET /api/partner/usage as `remaining`, and quoted in the welcome email as
+ * "Free tier: 1,000 calls/month". Nothing anywhere read it. A grep for it
+ * returned a schema default, a tier table, and two lines of display code.
+ *
+ * So the free tier was unlimited, and a paid tier could not mean anything —
+ * which matters now rather than academically: LetsGo2Trip's term 10 proposes a
+ * flat monthly fee, and a flat fee buys a ceiling. If the ceiling is not
+ * enforced, the fee is buying a sentence.
+ *
+ * ── WHY IT SHIPS SWITCHED OFF ────────────────────────────────────────────
+ *
+ * Turning on a limit that has never once been applied is how an integration
+ * that was working on Tuesday returns 429s on Wednesday, during exactly the
+ * period a new partner is building against us and forming a view of whether
+ * we are reliable. So the counting and the reporting go live now and the
+ * REFUSAL waits for `PARTNER_QUOTA_ENFORCED='true'` — the same deliberate
+ * switch bookdesk.mjs uses, for the same reason.
+ *
+ * Until then an over-quota call is answered and logged loudly, so the number
+ * is real before it is binding.
+ */
+export const quotaEnforced = (env) => env?.PARTNER_QUOTA_ENFORCED === 'true';
+
+/**
+ * Calls this key has made in the current calendar month, and its ceiling.
+ * Returns null when there is nothing to check — unkeyed traffic is governed by
+ * the per-minute limiter alone, and no database means no counting.
+ */
+export async function monthlyUsage(env, partner) {
+  if (!env?.DB || !partner?.keyed) return null;
+  try {
+    const month = new Date().toISOString().slice(0, 7);
+    const row = await env.DB.prepare(
+      `SELECT k.monthly_limit AS ceiling,
+              (SELECT COUNT(*) FROM num_partner_calls c
+                WHERE c.partner = k.id AND c.ts >= ?2) AS used
+         FROM num_partner_keys k WHERE k.id = ?1`,
+    ).bind(partner.id, `${month}-01`).first();
+    if (!row) return null;
+    return { used: Number(row.used ?? 0), ceiling: Number(row.ceiling ?? 0), month };
+  } catch (e) {
+    // Counting must never cost somebody an answer.
+    console.warn('[partner-mcp] quota read failed', e?.message ?? e);
+    return null;
+  }
+}
+
+/** The 429 an over-quota partner gets, in the shape an MCP client can act on. */
+export function overQuota(id, usage) {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0', id,
+      error: {
+        code: -32003,
+        message: `Your key has used ${usage.used} of ${usage.ceiling} calls for ${usage.month}. `
+          + 'Nothing was changed. Raise the ceiling at https://app.itsnum.com/api/partner.',
+      },
+    }),
+    { status: 429, headers: { ...CORS, 'Retry-After': '3600' } },
+  );
+}
+
+export const LIMIT_UNKEYED_PER_MIN = 12;
+
+/**
+ * The public description of that limit, exported so partnerIndex() cannot
+ * describe a policy the code does not implement. The number in the sentence and
+ * the number in the limiter are the same constant.
+ */
+export const UNKEYED_POLICY =
+  'Optional X-Partner-Key. Unkeyed calls work so you can evaluate before you sign anything: ' +
+  'discovery (initialize, tools/list) is never throttled, and unkeyed tools/call is limited to ' +
+  `${LIMIT_UNKEYED_PER_MIN} per minute per IP and is unattributed. Send a key for a partner-scoped ` +
+  'ceiling and an attributed monthly quota — POST /api/partner/signup.';
+
+/**
  * Record what a partner asked for. This is the rev-share ledger's raw material
  * and the reason the deal can be settled on evidence rather than assertion —
  * both sides read the same counter.
  * Fail-soft on purpose: a logging failure must never cost a partner an answer.
  */
-async function logPartnerCall(env, partner, tool, ok) {
+export async function logPartnerCall(env, partner, tool, ok) {
   if (!env.DB || !partner.keyed) return;
   try {
     await env.DB.prepare(
@@ -216,20 +392,8 @@ const publicPlace = (r) => ({
   distance_m: r.distance_m ?? undefined,
 });
 
-async function callTool(env, request, name, args) {
+async function callTool(env, request, name, args, ctx) {
   const base = new URL(request.url).origin;
-  // Forward the caller's IP so the concierge's rate limiter buckets partner
-  // traffic per client. Without it every partner in the world shares one
-  // 'unknown' bucket and the busiest one throttles everybody else.
-  const fwd = (path, body) =>
-    fetch(new URL(path, base), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'CF-Connecting-IP': request.headers.get('CF-Connecting-IP') ?? 'partner',
-      },
-      body: JSON.stringify(body),
-    });
 
   if (name === 'list_destinations') {
     const rows = await env.DB.prepare(
@@ -304,9 +468,16 @@ async function callTool(env, request, name, args) {
     // Reuse the guest path rather than reimplementing it. Two code paths to the
     // same answer drift, and a partner would be the last to notice.
     //
-    // The endpoint is `/api/num` — the concierge's only POST route. Worth
-    // stating because the first draft of this file guessed `/api/ask`, which
-    // would have 404'd on the most important tool in the integration.
+    // Calls handleNum() (worker/index.mjs) directly, in-process, with a
+    // synthetic Request — the same direct-import pattern open_places and
+    // booking_link already use for openapi.mjs — instead of fetch()-ing
+    // '/api/num'. A fetch() back to this Worker's own public hostname loops
+    // through the Cloudflare edge, which answers a same-zone self-fetch with
+    // an instant 522: measured on 18 Aug 2026, this exact call site failed for
+    // every caller, deterministically, in under a second, while tools/list
+    // stayed green the whole time (worker/partnermcp.test.mjs recorded it). A
+    // synthetic Request handed straight to handleNum() never leaves the
+    // isolate, so there is no subrequest to loop back through.
     //
     // The guest's own question carries the location when they gave one ("we
     // are in kata"); prepending the partner's `near`/`destination` hint keeps
@@ -317,15 +488,39 @@ async function callTool(env, request, name, args) {
       ? `I'm in ${hint}. ${question}`
       : question;
 
-    const r = await fwd('/api/num', {
-      messages: [{ role: 'user', content }],
-      state: {},
-      profile: { locale: args.language || null },
+    const { handleNum } = await import('./index.mjs');
+    const req = new Request(new URL('/api/num', base), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Same reason every other tool here forwards it: without it every
+        // partner in the world shares one 'unknown' rate-limit bucket and the
+        // busiest one throttles everybody else.
+        'CF-Connecting-IP': request.headers.get('CF-Connecting-IP') ?? 'partner',
+      },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content }],
+        // `state.profile`, not a top-level `profile`: guard.mjs's
+        // validatePayload() only ever reads messages/state/place off the
+        // body and drops anything else, so a sibling `profile` key here was
+        // silently discarded on every call — the locale hint never actually
+        // reached the model. Found while rewiring this call off fwd(); fixed
+        // in the same change, not left in place to keep the diff small.
+        state: { profile: { locale: args.language || null } },
+      }),
     });
-    if (!r.ok) {
-      return { error: `Num could not answer right now (${r.status}). Nothing was changed; retry shortly.` };
+
+    let j;
+    try {
+      const res = await handleNum(req, env, ctx ?? { waitUntil() {} });
+      if (!res.ok) {
+        return { error: `Num could not answer right now (${res.status}). Nothing was changed; retry shortly.` };
+      }
+      j = await res.json();
+    } catch (e) {
+      console.log('partner concierge_answer', String(e));
+      return { error: 'Num could not answer right now. Nothing was changed; retry shortly.' };
     }
-    const j = await r.json();
 
     // The reply schema carries prose, a card, chips and actions — it does NOT
     // carry a places array. Rather than invent one, run the same directory
@@ -359,7 +554,7 @@ async function callTool(env, request, name, args) {
   return { error: `Unknown tool: ${name}` };
 }
 
-export async function handlePartnerMcp(request, env) {
+export async function handlePartnerMcp(request, env, ctx) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (request.method !== 'POST') return rpcErr(null, -32600, 'POST a JSON-RPC 2.0 request.');
 
@@ -387,8 +582,31 @@ export async function handlePartnerMcp(request, env) {
     const name = params?.name;
     const args = params?.arguments ?? {};
     if (!TOOLS.some((t) => t.name === name)) return rpcErr(id, -32602, `Unknown tool: ${name}`);
+
+    // The limit the index promises. Applied to work, never to discovery: an
+    // agent throttled during initialize reports Num as down.
+    const limit = await enforcePartnerLimit(env, request, partner);
+    if (!limit.ok) return throttled(id, limit, partner.keyed);
+    // The limiter fails open when its binding is missing or throws (guard.mjs).
+    // That is the right call for availability and the wrong thing to be silent
+    // about on a surface whose public index promises a specific number: for the
+    // duration, the promise is not being kept. Logged so it appears in the
+    // Worker tail rather than only in the absence of 429s nobody is counting.
+    if (limit.degraded) console.warn('[partner-mcp] rate limiting is DEGRADED — the published limit is not being enforced');
+
+    // The monthly ceiling. Counted always; refused only once the switch is on
+    // — see quotaEnforced() for why those are two different days.
+    const usage = await monthlyUsage(env, partner);
+    if (usage && usage.ceiling > 0 && usage.used >= usage.ceiling) {
+      if (quotaEnforced(env)) return overQuota(id, usage);
+      console.warn(
+        `[partner-mcp] ${partner.id} is OVER its monthly quota (${usage.used}/${usage.ceiling}) `
+        + 'and was served anyway — PARTNER_QUOTA_ENFORCED is not set',
+      );
+    }
+
     try {
-      const out = await callTool(env, request, name, args);
+      const out = await callTool(env, request, name, args, ctx);
       await logPartnerCall(env, partner, name, !out.error);
       return rpc(id, { content: [{ type: 'text', text: JSON.stringify(out) }] });
     } catch (e) {
@@ -408,7 +626,15 @@ export function partnerIndex() {
       service: 'Num for Partners',
       mcp: 'POST /api/partner/mcp (JSON-RPC 2.0, streamable-HTTP MCP)',
       tools: TOOLS.map((t) => ({ name: t.name, description: t.description.split('.')[0] + '.' })),
-      auth: 'Optional X-Partner-Key. Unkeyed calls work, rate-limited and unattributed, so you can evaluate before you sign anything.',
+      auth: UNKEYED_POLICY,
+      // Stated here because the refusal is the interesting part of the offer.
+      // A partner who reads "no bookings" and needs bookings finds the door in
+      // the same breath instead of concluding Num cannot do it.
+      bookings: {
+        note: 'This surface never books, charges, or accepts personal data. Confirmed bookings live on a separate keyed surface.',
+        mcp: 'POST /api/concierge/mcp (X-Partner-Key required)',
+        index: 'GET /api/concierge',
+      },
       attribution: ATTRIBUTION,
       contact: 'partners@itsnum.com',
     }, null, 2),

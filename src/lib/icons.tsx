@@ -127,6 +127,10 @@ export const UsersIcon = (p?: IconProps) =>
 export const CheckIcon = (p?: IconProps) => icon(<path d="M20 6 9 17l-5-5" />, p);
 
 export const XIcon = (p?: IconProps) => icon(<path d="M18 6 6 18M6 6l12 12" />, p);
+/** Shield — the report control. The App Review notes have promised this icon
+    since the first submission; it did not exist until 21 Aug 2026. */
+export const ShieldIcon = (p?: IconProps) =>
+  icon(<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />, p);
 
 export const ChevronDownIcon = (p?: IconProps) => icon(<path d="m6 9 6 6 6-6" />, p);
 export const ChevronLeftIcon = (p?: IconProps) => icon(<path d="m15 18-6-6 6-6" />, p);

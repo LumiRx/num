@@ -44,6 +44,18 @@
       "name": "RATE_LIMITER",
       "namespace_id": "1001",
       "simple": { "limit": 12, "period": 60 }
+    },
+    // Signed partners, scoped to the PARTNER rather than to an IP. A platform
+    // integration runs from one server address, so an IP bucket would throttle
+    // all of its travellers as though they were one person -- the friction
+    // landing on the money, which is exactly backwards. A bigger ceiling is
+    // safe here only because these calls are attributed: num_partner_calls
+    // records who spent it, so abuse has a name on it.
+    // Used by worker/partnermcp.mjs and worker/conciergemcp.mjs.
+    {
+      "name": "PARTNER_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 600, "period": 60 }
     }
   ],
   // Instant preview URL (num-app.<account>.workers.dev) — live immediately after deploy

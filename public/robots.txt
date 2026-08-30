@@ -264,6 +264,59 @@ Disallow: /claim/
 Disallow: /signin/
 Disallow: /assets/vendor/
 
+# Added 29 Aug 2026. Retrieval and agent fetchers that were not named above.
+# An unnamed agent falls through to the "User-agent: *" block below, which is
+# permissive, so this section changes nothing about access — it makes the
+# intent explicit, which is what a compliance review or a vendor allowlist
+# actually reads.
+#
+# NOT LISTED, deliberately: xAI's Grok crawler publishes no user-agent token
+# and is reported to fetch behind rotating residential IPs with spoofed Safari
+# and Chrome strings. There is nothing to allow or deny by name. Saying so
+# here is more honest than inventing a token that matches nothing.
+
+User-agent: Meta-ExternalFetcher
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
+User-agent: Google-CloudVertexBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
+User-agent: Google-NotebookLM
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
+User-agent: FirecrawlAgent
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
+User-agent: AI2Bot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
+User-agent: Ai2Bot-Dolma
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
+User-agent: Webzio-Extended
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /signin/
+
 User-agent: *
 Allow: /
 Disallow: /api/
@@ -273,4 +326,9 @@ Disallow: /claim/
 Disallow: /signin/
 Disallow: /assets/vendor/
 
+# Segmented on purpose. The hand-written pages and the generated set guides
+# are separate sitemaps so Search Console reports an indexation rate for each
+# on its own — a single blended number cannot tell you which half moved.
+Sitemap: https://itsnum.com/sitemap_index.xml
 Sitemap: https://itsnum.com/sitemap.xml
+Sitemap: https://itsnum.com/sitemap-guides.xml

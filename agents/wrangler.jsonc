@@ -28,6 +28,10 @@
     { "pattern": "itsnum.com/openapi.json*",               "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/ai-plugin.json*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/mcp.json*",       "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/.well-known/mcp-registry-auth*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/.well-known/oauth-protected-resource*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/.well-known/oauth-authorization-server*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/oauth/*", "zone_name": "itsnum.com" },
     { "pattern": "www.itsnum.com/api/agent*",              "zone_name": "itsnum.com" },
     { "pattern": "www.itsnum.com/mcp*",                    "zone_name": "itsnum.com" }
   ]

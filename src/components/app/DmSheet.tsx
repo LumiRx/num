@@ -9,7 +9,8 @@ import { pressable } from '../../lib/a11y';
 import { closeDmThread, loadDmThread, openDm, retryDm, sendDm } from '../../lib/dm';
 import { replyToInvite } from '../../lib/events';
 import { refreshRequests } from '../../lib/requests';
-import { ChevronLeftIcon, ChevronRightIcon, SendIcon, SparklesIcon, UserIcon, XIcon } from '../../lib/icons';
+import { ChevronLeftIcon, ChevronRightIcon, SendIcon, ShieldIcon, SparklesIcon, UserIcon, XIcon } from '../../lib/icons';
+import ReportSheet from './ReportSheet';
 import type { DmMessage } from '../../lib/dm';
 
 /** 'now', '4m', '2h', 'Tue' — a timestamp you read without thinking about it. */
@@ -287,6 +288,10 @@ function Conversation() {
 export default function DmSheet() {
   const open = useApp((s) => s.dmOpen);
   const withWho = useApp((s) => s.dmWith);
+  // Apple guideline 1.2 wants reporting reachable FROM the content, not buried
+  // in a settings screen. A direct message is the user-generated content here,
+  // so the control lives in this header, next to the person's name.
+  const [reporting, setReporting] = useState(false);
 
   return (
     <div
@@ -317,6 +322,17 @@ export default function DmSheet() {
           {withWho ? (withWho.name || 'A FRIEND').toUpperCase() : 'MESSAGES'}
           {!withWho && <span style={{ fontWeight: 400, opacity: 0.5 }}> · YOUR PEOPLE</span>}
         </div>
+        {withWho?.id && (
+          <div
+            {...pressable(() => setReporting(true))}
+            aria-label={`Report or block ${withWho.name ?? 'this person'}`}
+            title="Report or block"
+            className="glass press"
+            style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ShieldIcon size={15} />
+          </div>
+        )}
         <div
           {...pressable(() => store.set({ dmOpen: false, dmWith: null, dmThread: [] }))}
           aria-label="Close messages"
@@ -332,6 +348,14 @@ export default function DmSheet() {
         <div className="no-scrollbar" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1, overflowY: withWho ? 'hidden' : 'auto' }}>
           {withWho ? <Conversation /> : <PeopleList />}
         </div>
+      )}
+      {reporting && withWho?.id && (
+        <ReportSheet
+          id={withWho.id}
+          name={withWho.name}
+          context="dm"
+          onClose={() => setReporting(false)}
+        />
       )}
     </div>
   );

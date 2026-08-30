@@ -183,8 +183,30 @@ test('the add-to-home prompt exists and is mounted', () => {
   const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
   assert.match(stage, /<InstallPrompt\s*\/>/, 'InstallPrompt is not rendered — nobody is asked to install');
   const prompt = readFileSync(join(HERE, '..', 'src', 'components', 'app', 'InstallPrompt.tsx'), 'utf8');
-  assert.match(prompt, /display-mode: standalone/,
+  // The check moved into native.ts on 24 Aug 2026 rather than disappearing:
+  // the same display-mode question is now asked by isStandalone(), alongside
+  // navigator.standalone, so the in-app-browser detector can be handed a
+  // trustworthy answer. On iOS an installed PWA and a web view send identical
+  // user agents, and this is the only thing that separates them — so the
+  // guard matters MORE than it did, not less.
+  assert.match(prompt, /isStandalone\(\)/,
     'the prompt no longer checks whether Num is already installed — it would nag existing users');
+  const native = readFileSync(join(HERE, '..', 'src', 'lib', 'native.ts'), 'utf8');
+  assert.match(native, /display-mode: standalone/,
+    'isStandalone() stopped asking the display-mode question — every installed iOS user would be told to leave');
+});
+
+test('the install prompt never shows Safari steps inside a web view', () => {
+  // Measured 24 Aug 2026: 80 of 93 people who reached the app surface had no
+  // referrer and 19 tapped "open in my browser" as their FIRST action. They
+  // were inside Reddit's WKWebView being told to "Tap the Share button at the
+  // bottom of Safari" — a menu that does not exist in there.
+  const prompt = readFileSync(join(HERE, '..', 'src', 'components', 'app', 'InstallPrompt.tsx'), 'utf8');
+  const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
+  assert.match(prompt, /escapeCard\(\)/,
+    'the prompt no longer branches on the in-app browser — web-view users get impossible instructions again');
+  assert.match(stage, /escapeCard\(\)/,
+    'the landing section no longer branches — the page and the floating prompt would give two different answers');
 });
 
 test('the phone mockup does not swallow the page scroll', () => {

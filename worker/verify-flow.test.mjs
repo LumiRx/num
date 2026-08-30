@@ -60,7 +60,13 @@ test('the hash is only stored when the text actually went out', () => {
   // worst of both states.
   const f = fn('issueCode');
   const guard = f.indexOf('if (!out.ok)');
-  const write = f.indexOf('UPDATE num_members SET code_hash');
+  // The write that STORES a hash, not any statement that mentions the column.
+  // issueCode also CLEARS code_hash on the Twilio Verify path — Verify owns the
+  // code there, so a legacy pending one must not survive alongside it — and
+  // that clearing statement sits above this guard by design. Matching on the
+  // bound parameter pins this to the storing write, which is the one that must
+  // never happen before the send is known to have succeeded.
+  const write = f.indexOf('UPDATE num_members SET code_hash=?2');
   // Assert PRESENCE before ordering. `indexOf` returns -1 for a missing
   // guard, and -1 is less than any real index — so a bare `guard < write`
   // comparison passes when the check has been deleted entirely, which is the

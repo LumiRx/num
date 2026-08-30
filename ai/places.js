@@ -8,6 +8,11 @@
  * lookup touches a few hundred rows instead of the whole table.
  */
 import { openNow } from '../worker/hours.mjs';
+// The one term in the score that NUM learned rather than crawled. Imported
+// rather than copied: a rule written out twice is a rule in one file and a
+// comment in the other. See worker/learn.mjs for why it is capped, why the
+// cap is not symmetric, and why nothing money can reach may ever appear here.
+import { SCORE_TERM as NUM_RATING_TERM } from '../worker/learn.mjs';
 
 // ---------------------------------------------------------------- categories
 
@@ -371,7 +376,7 @@ export async function resolveLocation(env, { text, guest, cf }) {
 // rather than matching on a name later. Names collide across cities ('The
 // Bridge' exists in most of them) and a merchant's impression count has to be
 // right or it is worse than absent.
-const SELECT_COLS = 'id, name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license, alive, hours_mask, booking_platform, booking_ref';
+const SELECT_COLS = 'id, name, name_local, category, area, rating, reviews, phone, website, address, hours, cuisine, status, photo_url, photo_attr, photo_license, alive, hours_mask, booking_platform, booking_ref, num_rating, num_rating_n';
 
 /**
  * Ranking blends quality and distance rather than sorting on either alone —
@@ -385,6 +390,10 @@ const SCORE = `(
   + CASE WHEN status='claimed' THEN 1.5 ELSE 0 END
   + CASE WHEN website IS NOT NULL AND website<>'' THEN 0.25 ELSE 0 END
   + CASE WHEN phone IS NOT NULL AND phone<>'' THEN 0.2 ELSE 0 END
+  -- What NUM's own guests said after they went. Everything above this line
+  -- was crawled off the open web; this line is the only part of the score
+  -- NUM learned, and it is the only part that can move DOWN.
+  + ${NUM_RATING_TERM}
   - km * ?7
 )`;
 

@@ -17,7 +17,10 @@ import { readCache, writeCache, cacheable } from './answercache.mjs';
 import { recordAsk } from './asks.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
+import { formatEvents } from './cityevents.mjs';
+import { loadFacts, saveFacts } from './memory.mjs';
 import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
+import { scrubPayload as scrubTravelSpeak } from './travelspeak.mjs';
 import { direct } from './director.mjs';
 import { inspect } from './quality.mjs';
 import { handleSocialSafe } from './social.mjs';
@@ -30,6 +33,9 @@ import { handlePush, notify, pushReady } from './push.mjs';
 import { driveReady, handleDrive } from './doordash.mjs';
 import { handleSabre, sabreReady } from './sabre.mjs';
 import { bookingConfigured, handleBooking } from './sabre-booking.mjs';
+import { handleDuffelSearch, duffelCapability } from './duffel.mjs';
+import { partners as travelPartners } from './travelpartners.mjs';
+import { handlePassengersSafe, assertNoPassengerData } from './passengers.mjs';
 import { handleErrands } from './errands.mjs';
 import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
@@ -42,6 +48,7 @@ import { markReferralEarned } from './referral.mjs';
 import { handleBizApi, bizApiIndex } from './bizapi.mjs';
 import { handleBizMcp } from './bizmcp.mjs';
 import { handlePartnerMcp, partnerIndex } from './partnermcp.mjs';
+import { handleConciergeMcp, conciergeIndex } from './conciergemcp.mjs';
 import { handleOpen, handleBookLink, handlePlatforms } from './openapi.mjs';
 import { recordImpressions } from './impressions.mjs';
 import { handleAccount } from './account.mjs';
@@ -49,6 +56,12 @@ import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
 import { servicesBlock, optionsFor } from './services.mjs';
+import { blockFor as viatorBlock } from './viator.mjs';
+import { carLink, carBlock } from './localrent.mjs';
+import { blockFor as eventsBlockFor } from './events.tm.mjs';
+import { luggageLink, luggageBlock, wantsLuggage } from './luggage.mjs';
+import { tagged } from './affiliate.mjs';
+import { logHandoffs } from './affiliateclicks.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
 
 // Opus by default — it is the concierge and the concierge is the product.
@@ -56,6 +69,15 @@ import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialist
 // because the latency/cost trade against Sonnet is a business call, not a
 // technical one, and it should be flippable in a minute.
 const DEFAULT_MODEL = 'claude-opus-5';
+
+// Renting a car is a different request from ordering one with a driver, and
+// conflating them is how somebody asking for a lift to the airport gets handed
+// a week-long hire. "rent/hire a car", "self drive", "4wd" — never "a car to
+// the airport", which belongs to the ride specialist.
+// A bare 4WD/4x4/jeep is a self-drive word in a way "car" and "SUV" are not —
+// nobody orders a 4x4 with a driver to the airport. It is also how the
+// ferry-with-a-vehicle ask was actually phrased in our own data.
+const WANTS_CAR = /\b(rent(?:al|ing)?|hire|hiring)\s+(?:a\s+|an\s+)?(?:car|suv|4.?wd|jeep|van|vehicle|scooter|bike|motorbike)\b|\b(?:car|suv|4.?wd|jeep|van)\s+(?:rental|hire)\b|\bself.?drive\b|\b(?:4.?wd|4x4|jeep)\b/i;
 
 const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
 
@@ -83,6 +105,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         partners: grounding.partners,
         guide: grounding.guide,
         showtimes: grounding.showtimes ?? null,
+        events: formatEvents(grounding.events ?? []),
         profile: safeProfile.profile,
         buzz: grounding.buzz,
         services: servicesBlock(grounding.place, env ?? {}),
@@ -97,6 +120,32 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   ];
   const brief = specialistBrief(specialist);
   if (brief) system.push({ type: 'text', text: brief });
+  // Real tours for the turns that are actually about doing something. Gated on
+  // intent inside blockFor, and it swallows every failure — a slow or broken
+  // Viator must never cost somebody their reply, it just means Num answers
+  // from what it already knows about the place.
+  const activities = await viatorBlock(env ?? {}, grounding.place, userText);
+  if (activities) system.push({ type: 'text', text: activities });
+  // Car hire, when they asked for one and Localrent is actually in this
+  // country. No network call — it is a URL builder — so there is nothing to
+  // gate on latency, only on relevance. carLink returns null outside their
+  // coverage, which is the whole point: a dead link carrying our marker is
+  // worse than no link.
+  if (WANTS_CAR.test(userText ?? '')) {
+    const car = carBlock(carLink(env ?? {}, grounding.place), grounding.place);
+    if (car) system.push({ type: 'text', text: car });
+  }
+  // Real ticketed events, gated on intent and on Ticketmaster actually
+  // carrying the country. Silent in Thailand on purpose: "nothing is on
+  // tonight" would be a claim about Phuket when it is only a fact about
+  // Ticketmaster.
+  const onTonight = await eventsBlockFor(env ?? {}, grounding.place, userText);
+  if (onTonight) system.push({ type: 'text', text: onTonight });
+  // Luggage. No network call — a URL builder — so only relevance gates it.
+  if (wantsLuggage(userText ?? '')) {
+    const bags = luggageBlock(luggageLink(env ?? {}, grounding.place), grounding.place);
+    if (bags) system.push({ type: 'text', text: bags });
+  }
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
   // A structured reply is one long JSON string. If the model runs out of room
   // it stops MID-STRING, JSON.parse throws, and the user gets an error instead
@@ -239,7 +288,13 @@ async function attachPhoto(env, result, grounding) {
     // The model writes "Coffee — ARCH Cafe": drop the leading label, then use
     // the longest word as a cheap SQL prefilter and settle it in JS.
     const core = String(card.title).split(/[—–|,]/).pop().replace(/^\s*\w+\s+(?:at|@)\s+/i, '').trim();
-    const words = (core.match(/[\p{L}\p{N}]{3,}/gu) ?? []).sort((a, b) => b.length - a.length);
+    // \p{M} is not optional here. Thai, Arabic, Devanagari and decomposed
+    // Vietnamese carry vowels and tones as combining marks, so a letters-only
+    // class chops every such name into one- and two-character fragments, all
+    // of them under the {3,} floor. The result was not a worse match — it was
+    // no match at all: `words` came back empty and every Thai place card
+    // returned without a photo.
+    const words = (core.match(/[\p{L}\p{M}\p{N}]{3,}/gu) ?? []).sort((a, b) => b.length - a.length);
     if (!words.length) return result;
     const { results } = await env.DB.prepare(
       `SELECT name, photo_url, photo_attr, photo_license FROM places
@@ -266,10 +321,13 @@ async function attachPhoto(env, result, grounding) {
  * model cannot name a provider that doesn't operate in this country, and
  * cannot hand out a URL it invented.
  */
-function attachServiceOptions(env, result, grounding) {
+function attachServiceOptions(env, result, grounding, log = {}) {
+  const place = grounding.place ?? {};
+  // Every outbound link this reply will show, collected as it is built. See
+  // the note above the logHandoffs() call at the bottom for why.
+  const handed = [];
   const actions = (result.actions ?? []).map((a) => {
     if (a.type !== 'service') return a;
-    const place = grounding.place ?? {};
     const { mode, options } = optionsFor(
       a.kind,
       {
@@ -288,9 +346,574 @@ function attachServiceOptions(env, result, grounding) {
       },
       env,
     );
-    return { ...a, mode, options };
+    // Tagged LAST, on options already ordered on merit by optionsFor(). Same
+    // rule as openapi.mjs and for the same reason: there is no code path by
+    // which a referral rate can reach the ranking, and there must never be.
+    const priced = options.map((o) => {
+      const t = tagged(o.url, env, { extra: place.slug ?? null });
+      handed.push({ ...t, kind: a.kind });
+      return { ...o, url: t.url };
+    });
+    return { ...a, mode, options: priced };
   });
+  // ── WHY THE LOG LIVES HERE AND NOWHERE ELSE ──────────────────────────
+  //
+  // Until now the ONLY caller of logHandoffs was openapi.mjs — the agent
+  // surface. Every human using Num sees their deep-links through this
+  // function, and not one of those handoffs was ever recorded: the table had
+  // never been created because nothing had ever written to it. So the answer
+  // to "how much traffic do we send OpenTable" — the exact evidence an
+  // affiliate application asks for — was a shrug, on the busiest path we
+  // have.
+  //
+  // Logged whether or not a programme matched. An UNTAGGED handoff with real
+  // volume is the most valuable row in the table while NUM_AFFILIATES is
+  // still mostly empty: it is the ranked list of which programme to apply for
+  // next. Dropping it because we earned nothing on it is how that list stays
+  // a guess.
+  if (handed.length) {
+    logHandoffs(env, log.ctx, handed, {
+      surface: 'concierge',
+      memberId: log.memberId ?? null,
+      // grounding.mjs calls the destination `slug`; openapi.mjs calls the
+      // same value `dest` because that is the column name. One column, two
+      // names, and a log split across both is a log that cannot be grouped.
+      dest: place.slug ?? place.dest ?? null,
+    });
+  }
   return { ...result, actions };
+}
+
+/**
+ * Test seam. `attachServiceOptions` is the single place every human-facing
+ * deep-link is produced, so it is the single place worth asserting on — and a
+ * regex over this file would have passed happily on the day the click log had
+ * exactly one caller and it was the agent surface.
+ */
+export const __testables = { attachServiceOptions };
+
+/**
+ * Builds the one `json(status, body, extra)` response helper every route in
+ * this Worker returns through, plus a `setTravelContext` setter for it.
+ *
+ * ── THE TRAVEL-SPEAK FILTER, AT THE ONE DOOR EVERY REPLY LEAVES BY ───
+ *
+ * /api/num has eight return sites: cache hit, small lane, the main path,
+ * the rescue lane, two guard fallbacks, the 429 and the apology. A filter
+ * wired to one of them is a filter that is off six times out of eight, and
+ * the seventh is the failure path where a degraded model is MOST likely to
+ * say "I've booked that". So it sits here instead, in the helper all eight
+ * already go through, keyed on the shape of a concierge payload rather
+ * than on the route — which means the next return site added is covered on
+ * the day it is written.
+ *
+ * It REWRITES, never blocks. worker/travelspeak.mjs explains why at length;
+ * the short version is that the legal exposure is the forbidden words
+ * reaching the traveller, a deterministic rewrite removes exactly those
+ * with certainty, and a block removes the answer too.
+ *
+ * A factory, not a module-level singleton, because two independent request
+ * paths build one each: fetch()'s own preamble, and handleNum() below when
+ * it is called directly (in-process, no self-fetch) rather than through
+ * fetch() — see the 18 Aug 2026 note on handleNum for why that matters.
+ */
+function jsonFactory(cors) {
+  // What the guest actually asked this turn. Set once /api/num has parsed
+  // the body; the travel-speak filter below uses it to tell a flight from a
+  // dinner when the reply itself is ambiguous.
+  let travelContext = '';
+  const setTravelContext = (text) => { travelContext = text; };
+  const json = (status, body, extra) => {
+    let out = body;
+    if (body && typeof body === 'object' && typeof body.reply === 'string') {
+      const scrubbed = scrubTravelSpeak(body, { context: travelContext });
+      const found = scrubbed._travelspeak;
+      if (found) {
+        const { _travelspeak, ...clean } = scrubbed;
+        void _travelspeak;
+        out = clean;
+        if (found.hits.length) {
+          console.warn(
+            `[travelspeak] rewrote ${found.hits.length} travel claim(s) before send: ` +
+            found.hits.map((h) => `${h.rule}="${h.match}"`).join(', '),
+          );
+        }
+        // Soft hits are matches with no topic anywhere — never rewritten,
+        // recorded so drift is visible before it becomes an exposure.
+        if (found.soft.length) {
+          console.log(`[travelspeak] ${found.soft.length} ambiguous match(es), left alone: ` +
+            found.soft.map((h) => `${h.rule}="${h.match}"`).join(', '));
+        }
+      }
+    }
+    return new Response(JSON.stringify(out), {
+      status,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors, ...extra },
+    });
+  };
+  return { json, setTravelContext };
+}
+
+/**
+ * The /api/num handler, importable directly.
+ *
+ * Until 29 Aug 2026 this logic lived only inline in fetch()'s POST /api/num
+ * branch, which meant the only way for another Worker route to reach it was
+ * a fetch() back to this Worker's own public hostname. Cloudflare answers a
+ * same-zone self-fetch with an instant 522 (.github/workflows/uptime.yml:6
+ * already documented this), which is exactly what killed concierge_answer
+ * on the num-partners MCP surface — see worker/partnermcp.test.mjs, dated
+ * 18 Aug 2026, for the measured symptom. open_places and booking_link never
+ * had this problem because they already import their handler directly
+ * instead of fetch()-ing it; concierge_answer now does the same, importing
+ * and calling this function with a synthetic Request instead of a
+ * subrequest to app.itsnum.com.
+ *
+ * fetch()'s own POST /api/num branch is just `return await handleNum(request, env, ctx);`
+ * below — same code, same behavior, zero duplication.
+ */
+export async function handleNum(request, env, ctx) {
+  const url = new URL(request.url);
+  const cors = corsHeaders(request, url.origin);
+  const { json, setTravelContext } = jsonFactory(cors);
+
+  if (request.method !== 'POST' || url.pathname !== '/api/num') {
+    return new Response('not found', { status: 404 });
+  }
+
+  // Cheapest rejections first: size, then rate, then key, then shape.
+  const declaredSize = Number(request.headers.get('Content-Length') ?? 0);
+  if (declaredSize > LIMITS.maxBodyBytes) {
+    return json(413, { error: 'request body too large' });
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+  const limit = await enforceRateLimit(env, ip);
+  if (!limit.ok) {
+    return json(
+      429,
+      { error: limit.scope === 'ip' ? 'Too many requests — give me a moment.' : 'Num is busy right now — try again shortly.' },
+      { 'Retry-After': String(limit.retryAfter) },
+    );
+  }
+
+  if (!env.ANTHROPIC_API_KEY) {
+    return json(401, { error: 'ANTHROPIC_API_KEY not configured' });
+  }
+
+  let body;
+  try {
+    const text = await request.text();
+    if (text.length > LIMITS.maxBodyBytes) return json(413, { error: 'request body too large' });
+    body = JSON.parse(text);
+  } catch {
+    return json(400, { error: 'invalid JSON body' });
+  }
+
+  const parsed = validatePayload(body);
+  if (!parsed.ok) return json(parsed.status, { error: parsed.error });
+
+  // Declared OUTSIDE the try so the catch can still use them. The grounding
+  // step is the expensive half of a turn — location resolved, real partners
+  // pulled from D1 — and it completes before any model is called. Scoping it
+  // to the try meant that when every brain failed we threw away work we had
+  // already done and apologised instead of answering with it.
+  let grounding = null;
+  let lastUser = '';
+  try {
+    // Same brain as the texts: resolve the user's location and pull
+    // verified partners from the shared num-db before Claude answers.
+    lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+    // The last few turns, not just this one: "book it" arrives a turn after
+    // "what's the fare to Bangkok", and the word that makes it travel is in
+    // the earlier message.
+    setTravelContext(parsed.messages.slice(-4).map((m) => String(m?.content ?? '')).join('\n'));
+    // A real GPS fix from the device outranks the edge's IP guess. When the
+    // app sends `here`, hand it to grounding as a precise, NOT-inferred
+    // position — that is knowledge; request.cf is a hint.
+    // Who is asking, if anyone — a phone-verified member (num_members),
+    // not a device. Loaded in parallel with grounding so durable, per-
+    // member memory (worker/memory.mjs) never adds sequential latency.
+    const memberId = parsed.state?.me?.id ?? null;
+    const [groundResult, rememberedFacts] = await Promise.all([
+      groundRequest(env, {
+        userText: lastUser,
+        statedPlace: parsed.place,
+        cf: request.cf,
+        fix: parsed.here && Number.isFinite(parsed.here.lat) && Number.isFinite(parsed.here.lng)
+          ? { lat: parsed.here.lat, lng: parsed.here.lng }
+          : null,
+      }),
+      memberId ? loadFacts(env, memberId).catch(() => ({})) : Promise.resolve({}),
+    ]);
+    grounding = groundResult;
+
+    // The browser's own preference, as a tiebreaker only. What the person
+    // actually TYPED wins every time — somebody with an English phone asking
+    // in Thai wants Thai back — but on a first message of two words there is
+    // nothing else to go on.
+    const acceptLang = String(request.headers.get('Accept-Language') ?? '').split(',')[0].trim().slice(0, 12) || null;
+
+    // Profile + trip state carry long-term context now, so the model only
+    // needs the recent turns.
+    const history = parsed.messages.slice(-14);
+    // Server memory (worker/memory.mjs) is the FLOOR, never the ceiling: a
+    // durable fact survives losing the app, but a correction the guest
+    // just made THIS session — still only living in state.profile until
+    // the next remember action lands it server-side — always wins.
+    const profile = { ...rememberedFacts, ...(parsed.state?.profile ?? {}) };
+
+    // Small lane: chit-chat goes to Workers AI, no Claude call at all. Any
+    // wobble — HANDOFF, null, or a guard failure — falls through to the big
+    // lane rather than to a worse answer.
+    // An answer we already paid for. Costs one D1 read and zero tokens, and
+    // returns in milliseconds — so it runs before the lane is even chosen.
+    // cacheable() gates the WRITE strictly; this read is keyed on the same
+    // rules, so a personal question can never match a shared entry.
+    if (cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: {} })) {
+      const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang });
+      if (hit) {
+        console.log('[num-ai] served from cache, no model called');
+        ctx.waitUntil(recordAsk(env, { text: lastUser, dest: grounding.place?.slug ?? null, lane: 'cache', cached: true, memberId: parsed.state?.me?.id ?? null }));
+        return json(200, { ...hit, actions: [], place: grounding.place?.name ?? null });
+      }
+    }
+
+    const lane = pickLane(lastUser, parsed.state ?? {});
+    if (lane === 'small') {
+      const small = await smallReply(env, history, profile, grounding.place?.name ?? null);
+      // HANDOFF, or switchboard filler, both mean: this one deserves Claude.
+      if (small && !/\bHANDOFF\b/.test(small) && !soundsLikeASwitchboard(small)) {
+        const guard = guardReply(small);
+        if (guard.ok) {
+          // The cheap lane is the reason the bill stays sane; count how often
+          // it actually fires so that claim can be checked, not assumed.
+          ctx.waitUntil(logUsage(env, { lane: 'small', model: 'workers-ai', place: grounding.place?.name ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
+          return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: grounding.place?.name ?? null });
+        }
+      }
+    }
+
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const callNum = async (extraSystem) => {
+      try {
+        return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
+      } catch (err) {
+        // Grammar compilation is cached once it succeeds but can time out on a
+        // cold schema — one retry usually lands on the warmed cache.
+        if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
+        await new Promise((r) => setTimeout(r, 1500));
+        return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
+      }
+    };
+
+    // Group intelligence: if the conversation is happening inside a shared
+    // plan, fetch what the group needs — server-side, from consented rows
+    // only. The client names the plan; it never assembles the needs itself,
+    // because the merged list must come from consent flags the client
+    // can't forge.
+    if (parsed.state?.party?.id) {
+      try {
+        const { groupNeeds } = await import('./social.mjs');
+        const fit = await groupNeeds(env, String(parsed.state.party.id).slice(0, 40));
+        if (fit.summary) parsed.state.party.needs = fit.summary;
+      } catch { /* the plan context is seasoning — never block the answer */ }
+    }
+
+    // Hoisted: the quality check needs to see exactly what the model saw.
+    // A price is only defensible if it is IN here.
+    const groundingBlock = contextBlock({
+      place: grounding.place,
+      partners: grounding.partners,
+      guide: grounding.guide,
+      profile: redactProfile(profile).profile,
+      buzz: grounding.buzz,
+      events: formatEvents(grounding.events ?? []),
+    });
+    const startedAt = Date.now();
+    // The chain, not one model. Claude first for the full concierge; if it
+    // fails for any reason, an open model on Cloudflare's edge (or a
+    // self-hosted one) answers in prose rather than the user hitting a wall.
+    let result = await askBrains(env, {
+      structuredCall: callNum,
+      messages: history,
+      persona: PERSONA,
+      voice: VOICE,
+      // Redacted, same as the Claude path. Found 11 Aug while auditing the
+      // Bionic seam: the structured path scrubbed the profile (safeProfile,
+      // askNum) but THIS context — the one every fallback vendor receives —
+      // passed it raw. The cheaper the model, the less we know about its
+      // operator; the fallback must see less, never more.
+      context: groundingBlock,
+      style: styleBlock(parsed.state?.style),
+      guard: (t) => guardReply(t),
+      // Who should answer THIS question. Money, bookings, groups and trouble
+      // go to Claude first; recommendations and lookups go to the hosted
+      // response brain, which costs 1/76th as much. The rest of the chain
+      // stays underneath either way — the director chooses the order, never
+      // the last resort.
+      directive: direct(lastUser, parsed.state, env),
+    });
+    // Somebody asked their concierge something, which is the moment a
+    // referral stops being a signup and starts being a user. Runs after the
+    // response is on its way, and is a no-op once already earned, so calling
+    // it on every ask costs one indexed write attempt and never adds latency
+    // — cheaper than reading first to find out it has nothing to do.
+    if (parsed.state?.me?.id) {
+      ctx.waitUntil(markReferralEarned(env, parsed.state.me.id, 'first_ask'));
+    }
+    // Which businesses the guest was actually shown. Deferred, never awaited:
+    // the answer is already on its way and a merchant's analytics must never
+    // be a reason somebody waits. Only places NAMED in the reply or featured
+    // as the card are counted — being a candidate and passed over is not an
+    // impression, and inflating that number would corrupt the one figure a
+    // merchant makes decisions on.
+    ctx.waitUntil(recordImpressions(env, {
+      partners: grounding.partners,
+      reply: result.reply,
+      card: result.card,
+      memberId: parsed.state?.me?.id ?? null,
+      dest: grounding.place?.slug ?? null,
+      // `lastUser`, NOT `userText`. `userText` is a parameter of askNum and
+      // does not exist in this scope — referencing it threw a ReferenceError
+      // on every big-lane request, AFTER the model had already produced a
+      // good answer, and the catch below quietly replaced it with the
+      // directory fallback. Days of "the chat is down" were this line.
+      asked: lastUser,
+    }));
+    // Output guard: never let leaked JSON scaffolding reach the user. One
+    // corrective retry, then salvage, then the safe fallback.
+    const guard = guardReply(result.reply);
+    if (guard.ok) {
+      result = { ...result, reply: guard.cleaned };
+    } else {
+      const retry = await callNum(
+        'Your previous output leaked JSON structure into the reply field. The reply field must contain ONLY clean conversational prose.',
+      );
+      const retryGuard = guardReply(retry.reply);
+      if (retryGuard.ok) {
+        result = { ...retry, reply: retryGuard.cleaned };
+      } else {
+        const cleaned = retryGuard.cleaned ?? guard.cleaned;
+        result = cleaned
+          ? { ...retry, reply: cleaned }
+          : { reply: FALLBACK_REPLY, card: null, chips: null, actions: [] };
+      }
+    }
+
+    // ── RESPONSE QUALITY CONTROL ───────────────────────────────────────
+    //
+    // The guard above asks "is this well-formed prose". This asks the
+    // question Dre actually posed on 11 Aug: does it ANSWER what was asked.
+    // Deterministic, so it costs nothing and cannot be down — see
+    // quality.mjs for why this is not a second model call.
+    //
+    // A hard flag (an invented price, a deflection with the answer sitting
+    // in context, a reply that is only a question) earns ONE corrective
+    // retry. If the retry is no better the original still ships: grading
+    // never produces silence. Soft flags are recorded and nothing else.
+    let quality = inspect({ ask: lastUser, reply: result.reply, context: groundingBlock });
+    if (quality.hard) {
+      try {
+        const fixed = await callNum(quality.note);
+        const fixedGuard = guardReply(fixed.reply);
+        if (fixedGuard.ok) {
+          const after = inspect({ ask: lastUser, reply: fixedGuard.cleaned, context: groundingBlock });
+          // Take the retry only if it is genuinely better. A retry that
+          // trades an invented price for an off-topic answer is not a fix.
+          if (!after.hard) {
+            result = { ...fixed, reply: fixedGuard.cleaned };
+            quality = { ...after, flags: [...after.flags, 'retried'] };
+          } else {
+            quality = { ...quality, flags: [...quality.flags, 'retry-failed'] };
+          }
+        }
+      } catch {
+        // The first answer is already good enough to send. A failed retry
+        // must never cost the guest the reply they had.
+        quality = { ...quality, flags: [...quality.flags, 'retry-error'] };
+      }
+    }
+    // The ask FIRST, then the cost that answered it, joined by ask_id.
+    // Ordered deliberately: recorded separately they are two facts about the
+    // same second that nothing can put back together, and "what did this
+    // kind of question cost" — the number that tunes the router — stays
+    // unanswerable. Both still run after the reply is on its way.
+    // THE MONITOR IS NOT A GUEST.
+    //
+    // scripts/uptime.mjs asks a real question through the real model path
+    // every five minutes, deliberately — it is the only check that measures
+    // what a visitor experiences, and it caught a two-day outage every
+    // status-code check missed. But it is not a person, and on 15 Aug its
+    // one string was 183 of 283 recorded questions: 65% of everything Num
+    // had ever been asked. Every funnel number, every cost-per-ask, every
+    // "what do people want" answer was computed against a robot asking the
+    // same thing about Patong.
+    //
+    // So it still runs the full path and still costs a model call; it just
+    // stops writing to the tables we make decisions from.
+    const isProbe = request.headers.get('X-Num-Probe') === '1';
+    if (!isProbe) ctx.waitUntil(
+      recordAsk(env, {
+        text: lastUser,
+        dest: grounding.place?.slug ?? null,
+        lane: 'big',
+        brain: result._brain ?? null,
+        degraded: !!result._degraded,
+        quality: quality.flags,
+        memberId: parsed.state?.me?.id ?? null,
+        anonId: parsed.state?.anon ?? null,
+      }).then((askId) =>
+        logUsage(env, {
+          lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,
+          // The MODEL, not the brain slot. `hosted` is a position in the
+          // chain; `deepseek-v4-flash` is a thing with a price. Logging the
+          // slot is why every fallback turn priced at zero.
+          model: result._brain === 'claude'
+            ? env.NUM_MODEL || DEFAULT_MODEL
+            : result._model ?? result._brain,
+          specialist: result._specialist ?? null,
+          place: grounding.place?.name ?? null,
+          usage: result._usage,
+          ms: Date.now() - startedAt,
+          memberId: parsed.state?.me?.id ?? null,
+          askId,
+        }),
+      ),
+    );
+    // Capability gaps go to the team dashboard without delaying the reply.
+    ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));
+    // Tell the app where Num thinks the user is (drives the header) —
+    // computed server-side, never by the model.
+    // AiR actions run HERE, not on the device: they need the trust envelope,
+    // which is assembled from two databases the browser cannot see.
+    const airActions = (result.actions ?? []).filter((x) => x.type === 'air');
+    if (airActions.length && airReady(env)) {
+      const memberId = parsed.state?.me?.id ?? null;
+      const trust = await trustEnvelope(env, { memberId }).catch(() => null);
+      for (const a of airActions) {
+        try {
+          a.result = await callAir(env, a.tool, a.args, { trust, memberId, ctx });
+        } catch (err) {
+          a.error = String(err?.message ?? err).slice(0, 200);
+        }
+      }
+    } else if (airActions.length) {
+      airActions.forEach((a) => (a.error = 'AiR is not connected'));
+    }
+
+    const withPhoto = await attachPhoto(env, result, grounding);
+    const withServices = attachServiceOptions(env, withPhoto, grounding, {
+      ctx,
+      memberId: parsed.state?.me?.id ?? null,
+    });
+    // Internals never leave the Worker.
+    const { _usage, _specialist, _brain, _tried, _ms, _degraded, ...clean } = withServices;
+    void _usage;
+    void _specialist;
+    void _tried;
+    void _ms;
+    // `degraded` tells the app a fallback brain answered, so it can avoid
+    // treating a prose reply as if it created bookings.
+    // Pay for this answer once. cacheable() is strict — anything shaped by
+    // who asked, or carrying an action, is never stored. A degraded reply is
+    // never stored either: caching lean mode would outlive the outage that
+    // caused it.
+    if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean })) {
+      ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean }));
+    }
+    // Durable memory: whatever `remember` actions this turn produced,
+    // mirrored server-side (worker/memory.mjs) so they survive losing the
+    // app — a reinstall, a new phone, a browser with cleared storage.
+    // Fire-and-forget, like every other post-response write here: a fact
+    // failing to save costs nothing this turn, only a possible re-ask
+    // later, which is the status quo everywhere today.
+    if (memberId) ctx.waitUntil(saveFacts(env, memberId, clean.actions));
+    // The question itself, kept (scrubbed inside recordAsk). Until this
+    // line, the text only survived when a partner impression fired — the
+    // asks nobody could serve, the exact ones that write the roadmap, were
+    // the ones being dropped.
+    // (the ask was recorded above, with its cost joined by ask_id)
+    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
+  } catch (err) {
+    console.error('[num-ai]', err);
+    // A ReferenceError or TypeError is OUR bug, not an outage. The two look
+    // identical from here — both land in this catch and both get the polite
+    // fallback — and that is exactly how `asked: userText` survived for days
+    // looking like a quota problem while every brain was answering perfectly.
+    //
+    // The guest still gets the fallback; there is nothing better to give
+    // them mid-request. But the log must not let a programming error wear an
+    // outage's clothes, so it says so in terms no one can skim past.
+    if (err instanceof ReferenceError || err instanceof TypeError || err instanceof SyntaxError) {
+      console.error(
+        `[num-ai] THIS IS A CODE BUG, NOT AN OUTAGE — ${err.name}: ${err.message}. ` +
+        'The brains are probably fine. Fix the line in the stack above; do not go looking at quota.',
+        err.stack,
+      );
+    }
+    // A guest never hears "the kitchen is broken". If the big model failed
+    // for any reason, try the cheap one — it cannot book anything, but it can
+    // hold the conversation open, which is the whole job at this moment.
+    try {
+      const rescue = await smallReply(env, parsed.messages.slice(-4), parsed.state?.profile ?? {}, parsed.place ?? null);
+      const guard = rescue ? guardReply(rescue) : { ok: false };
+      if (guard.ok && !/\bHANDOFF\b/.test(guard.cleaned) && !soundsLikeASwitchboard(guard.cleaned)) {
+        ctx.waitUntil(logUsage(env, { lane: 'rescue', model: 'workers-ai', place: parsed.place ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
+        // `degraded: true` matters more here than anywhere else. This lane
+        // only runs when the main path has already failed, and without the
+        // flag its answer is indistinguishable from a healthy one. On
+        // 6–7 Aug it returned "Kata Beach is a fave." with degraded absent,
+        // which read as a working concierge having an off day — and sent two
+        // days of debugging toward quota instead of toward the real bug.
+        return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: parsed.place ?? null, degraded: true, brain: 'rescue' });
+      }
+    } catch (rescueErr) {
+      console.warn('[num-ai] rescue lane also failed:', rescueErr?.message ?? rescueErr);
+    }
+
+    // Every brain is down. Before apologising, answer from what we already
+    // have: grounding resolved their location and pulled real partners from
+    // D1 before any model was called, and that data is still sitting here.
+    // Three real places beats "say it again" — especially for somebody who
+    // arrived from an ad thirty seconds ago and has no reason to come back.
+    //
+    // This makes no network call, so it cannot fail the way the models just
+    // did. It never claims to have booked anything.
+    if (err?.status !== 429) {
+      try {
+        const { lastResort } = await import('./lastresort.mjs');
+        const saved = lastResort({
+          userText: lastUser,
+          grounding,
+          place: parsed.place ?? null,
+        });
+        if (saved) {
+          console.warn('[num-ai] answered from the directory with no model');
+          return json(200, saved);
+        }
+      } catch (lastErr) {
+        console.warn('[num-ai] last resort failed:', lastErr?.message ?? lastErr);
+      }
+    }
+
+    // Nothing to offer — no partners resolved either. Own it, keep it warm,
+    // and give them the one thing that actually helps rather than blaming
+    // their connection, which is almost never the cause and always sounds
+    // like it is their fault.
+    const status = err?.status === 429 ? 429 : 200;
+    return json(status, {
+      reply:
+        err?.status === 429
+          ? 'You’ve got me moving faster than I can keep up — give me a few seconds and ask me again.'
+          : 'That one slipped away from me — entirely my end, nothing to do with you. Say it once more and I’ll pick it straight up.',
+      card: null,
+      chips: null,
+      actions: [],
+      place: parsed.place ?? null,
+      degraded: true,
+    });
+  }
 }
 
 export default {
@@ -303,11 +926,12 @@ export default {
     // and which the release script polls to decide whether a deploy landed.
     // A cached version string makes that check confidently wrong, which is
     // worse than having no check at all.
-    const json = (status, body, extra) =>
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors, ...extra },
-      });
+    //
+    // json/setTravelContext come from jsonFactory(cors) — the same factory
+    // handleNum() below builds its own copy from, so a synthetic call into
+    // handleNum (concierge_answer, partnermcp.mjs) gets identical travel-speak
+    // scrubbing, CORS and no-store behavior without duplicating this logic.
+    const { json, setTravelContext } = jsonFactory(cors);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
@@ -335,7 +959,22 @@ export default {
       // the delivery failures we most need to see.
       const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound'
         || url.pathname === '/api/sms/status';
-      if (!isWebhook) {
+      // The MCP endpoints limit themselves, and must. Everything about the
+      // blanket gate is wrong for JSON-RPC:
+      //   • It throttles the HANDSHAKE. initialize and tools/list are POSTs, so
+      //     an agent discovering the server competes with its own tool calls
+      //     for the same twelve.
+      //   • Its 429 body is `{"error": …}` with no `jsonrpc` and no `id`. An MCP
+      //     client cannot correlate that to a pending request; a throttle
+      //     therefore reads as a protocol fault, and the partner reports Num as
+      //     broken rather than as busy.
+      //   • It buckets a signed partner's production traffic — one server, one
+      //     IP — with anonymous evaluation traffic.
+      // partnermcp.mjs and conciergemcp.mjs apply the same limiter with the
+      // scope each trust level deserves, and answer in JSON-RPC. Do NOT add a
+      // route here without giving it a limiter of its own.
+      const isSelfLimitedMcp = url.pathname === '/api/partner/mcp' || url.pathname === '/api/concierge/mcp';
+      if (!isWebhook && !isSelfLimitedMcp) {
         const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
         // The admin door gets its own, much smaller bucket: a password guess
         // is not a user action and there is no legitimate reason to make more
@@ -378,7 +1017,14 @@ export default {
       }
       const member = url.searchParams.get('member');
       if (!member) return json(400, { error: 'member required' });
-      return json(200, await trustEnvelope(env, { memberId: member }));
+      const envelope = await trustEnvelope(env, { memberId: member });
+      // The envelope is assembled from num_members and the 5arz ledger and has
+      // never contained a passenger field. This asserts that rather than
+      // assuming it: /api/trust hands a named member's data to a third party
+      // holding a static shared secret, and it is the one route where a future
+      // "while we're here, send the traveller details too" would look helpful.
+      assertNoPassengerData(envelope, 'GET /api/trust');
+      return json(200, envelope);
     }
 
     if (url.pathname === '/api/air') {
@@ -409,6 +1055,25 @@ export default {
           // Shopping, not booking — the name says so on purpose.
           flight_shopping: sabreReady(env),
           booking: bookingConfigured(env),
+          // Duffel, reported as the two separate permissions it actually is.
+          // `search` is whether a fare can be priced; `commit` is one of
+          // 'no_token' | 'locked' | 'live' and is derived from the same gate
+          // the code path uses, so it cannot claim a lock that is not there.
+          // `estate` is read off the token prefix, so it cannot disagree with
+          // the credential — a 'live' estate means real inventory.
+          // This is additive: `booking` above is Sabre's flag and is untouched.
+          duffel: duffelCapability(env),
+          // The referral rail: whether the desk is switched on, and how many
+          // agencies are configured to receive a handoff. Both matter and they
+          // fail differently — a live switch with zero partners routes nothing,
+          // and configured partners behind a dead switch send nothing.
+          travel_referral: {
+            enabled: env.TRAVEL_REFERRAL_ENABLED === 'true',
+            // ACTIVE partners only. A configured-but-switched-off agency can
+            // receive nothing, and a count that includes it reads as coverage
+            // that does not exist.
+            partners: travelPartners(env).filter((p) => p.active).length,
+          },
           email: !!env.EMAIL,
           payments: payMode(env),
           voice_in: voiceReady(env),
@@ -505,6 +1170,37 @@ export default {
       const res = await handleInboxRead(request, env);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
+    }
+
+    // The connector pipeline. Admin-only, because the pipeline names which
+    // partners we have applied to and which we have written off — commercially
+    // sensitive in a way the health endpoint is not.
+    //
+    // `live` here is derived from the same ADAPTERS.ready(env) the concierge
+    // consults, so this endpoint cannot tell the operator a rail is connected
+    // while Num is still handing it off. That is the whole point of it.
+    if (url.pathname === '/api/connectors') {
+      if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...cors },
+        });
+      }
+      const { pipeline, actionable, gaps } = await import('./connectors.mjs');
+      const { ADAPTERS } = await import('./services.mjs');
+      return new Response(
+        JSON.stringify(
+          {
+            live: pipeline(env, ADAPTERS).filter((c) => c.state === 'live').map((c) => c.id),
+            next: actionable(env, ADAPTERS).map((c) => ({ id: c.id, state: c.state, power: c.power, do: c.next })),
+            cannot_transact: gaps(env, ADAPTERS).map((g) => g.category),
+            all: pipeline(env, ADAPTERS),
+          },
+          null,
+          2,
+        ),
+        { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors } },
+      );
     }
 
     // Deep health. Point an uptime checker at /api/health — it answers 503
@@ -656,16 +1352,51 @@ export default {
       return Response.redirect(new URL(to ?? '/watch/', url.origin).toString(), 302);
     }
 
-    // These two must be tested BEFORE the `/api/book` prefix below, or that
+    // These three must be tested BEFORE the `/api/book` prefix below, or that
     // prefix swallows them and bookdesk 404s on paths it has never heard of.
     // It did exactly that between being written and being caught, which is
     // the standing hazard of prefix routing: a new sibling route is dead on
     // arrival and nothing fails loudly enough to notice.
+    //
+    // `/api/booking` (Sabre air, sabre-booking.mjs) was the third victim and
+    // went unnoticed longer than the other two, because it is a PREFIX rather
+    // than an exact path and so did not look like a sibling. It is one: the
+    // string '/api/booking/status' begins with the bookdesk prefix, so every
+    // request to it reached bookdesk as the path 'ing/status' and came back
+    // {"error":"not found"} with a 404. Its own block still stands further
+    // down where the other /api/* prefixes live; this is the rescue, in the
+    // same shape as the two above — longest prefix first.
+    //
+    // The rule, stated once so the next sibling is not born dead: any route
+    // whose path begins with '/api/book' must be matched HERE, above the
+    // bookdesk prefix. worker/bookdesk.wiring.test.mjs drives real requests at
+    // all four and fails if one of them starts answering bookdesk's 404.
     if (url.pathname === '/api/book/link') return await handleBookLink(request, env);
     if (url.pathname === '/api/book/platforms') return handlePlatforms();
+    if (url.pathname.startsWith('/api/booking')) {
+      const res = await handleBooking(request, env, url.pathname.slice('/api/booking'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
     if (url.pathname.startsWith('/api/book')) {
       const { handleBooking } = await import('./bookdesk.mjs');
       const res = await handleBooking(request, env, url.pathname.slice('/api/book'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Travel referrals — Num hands a qualified request to an agency, the agency
+    // quotes, takes the traveller's payment and issues the confirmation.
+    // Deliberately NOT under /api/book (which is bookdesk's restaurant loop)
+    // and NOT under /api/booking (which is Sabre air): three different
+    // counterparties, three prefixes, no shadowing. `/api/trust` is an exact
+    // match far above and shares no prefix with this one.
+    //
+    // Lazily imported for the same reason bookdesk is — it pulls in the mail
+    // templates and the ledger, and a chat request should not pay for them.
+    if (url.pathname.startsWith('/api/travel')) {
+      const { handleTravelReferral } = await import('./travelreferral.mjs');
+      const res = await handleTravelReferral(request, env, url.pathname.slice('/api/travel'.length) || '/', ctx);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
@@ -687,6 +1418,13 @@ export default {
     // Num for Business: public API + MCP. Mounted here rather than on its own
     // Worker so it shares the D1 binding and the claim/verify code; the paths
     // are chosen so it can be lifted to api.itsnum.com without renaming.
+    // The human surface, ABOVE the API routes because '/api/biz/console'
+    // would otherwise be read as an API path and answered with a JSON 404 —
+    // the same prefix-shadowing that cost bookdesk a working feature for days.
+    if (url.pathname === '/api/biz/console') {
+      const { handleBizConsole } = await import('./bizconsole.mjs');
+      return await handleBizConsole(request, env, url);
+    }
     if (url.pathname === '/api/biz' || url.pathname === '/api/biz/') return bizApiIndex();
     if (url.pathname === '/api/biz/mcp') return await handleBizMcp(request, env);
     if (url.pathname.startsWith('/api/biz/')) {
@@ -704,12 +1442,29 @@ export default {
     // Self-serve signup and usage BEFORE the /api/partner index and MCP
     // routes — same prefix-shadowing hazard as /api/book/link, avoided this
     // time instead of found in production.
+    // The partner settlement feed. Above the /api/partner index below, and
+    // above the MCP route, because both are prefix-adjacent and a settlement
+    // posted to the wrong handler comes back as a JSON-RPC parse error rather
+    // than as anything a finance team could act on.
+    if (url.pathname === '/api/partner/reconcile') {
+      const { handleReconcile } = await import('./handoff.mjs');
+      const res = await handleReconcile(request, env);
+      return res;
+    }
     if (url.pathname === '/api/partner/signup' || url.pathname === '/api/partner/usage') {
       const { handlePartnerSignup } = await import('./partnersignup.mjs');
       return await handlePartnerSignup(request, env);
     }
     if (url.pathname === '/api/partner' || url.pathname === '/api/partner/') return partnerIndex();
-    if (url.pathname === '/api/partner/mcp') return await handlePartnerMcp(request, env);
+    if (url.pathname === '/api/partner/mcp') return await handlePartnerMcp(request, env, ctx);
+
+    // Num Concierge — the third trust level. /api/biz writes a business's own
+    // listing, /api/partner reads the directory for a partner's travellers,
+    // and this one can make a real venue's phone ring. Separate route because
+    // it is the only one of the three with no anonymous path.
+    // See worker/conciergemcp.mjs for why request_table is not a partner tool.
+    if (url.pathname === '/api/concierge' || url.pathname === '/api/concierge/') return conciergeIndex(env);
+    if (url.pathname === '/api/concierge/mcp') return await handleConciergeMcp(request, env);
 
     if (url.pathname.startsWith('/api/bizref')) {
       const res = await handleBizReferral(request, env, url.pathname.slice('/api/bizref'.length) || '/');
@@ -741,14 +1496,47 @@ export default {
       return res;
     }
 
-    if (url.pathname.startsWith('/api/booking')) {
-      const res = await handleBooking(request, env, url.pathname.slice('/api/booking'.length) || '/');
+    // /api/booking (Sabre air) is routed ABOVE the /api/book prefix — see the
+    // comment there. Leaving a second copy here would look like the live one
+    // and never run.
+
+    if (url.pathname.startsWith('/api/sabre')) {
+      const res = await handleSabre(request, env, url.pathname.slice('/api/sabre'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
 
-    if (url.pathname.startsWith('/api/sabre')) {
-      const res = await handleSabre(request, env, url.pathname.slice('/api/sabre'.length) || '/');
+    // Duffel — SEARCH ONLY, and by construction rather than by convention.
+    //
+    // It sits beside /api/sabre because it answers the same question, and it
+    // routes to handleDuffelSearch rather than handleDuffel because the
+    // difference between those two names is the difference between quoting a
+    // fare and spending somebody's money. handleDuffelSearch serves three
+    // read-only paths and 404s the rest, so POST /api/duffel/order never
+    // reaches createOrder — and if this line were ever changed to point at
+    // handleDuffel, `permitted` would still refuse the commit. Both halves are
+    // driven through this router in worker/duffel.test.mjs.
+    //
+    // Prefix safety, per the /api/book lesson above: no other registered
+    // prefix is a prefix of '/api/duffel' and '/api/duffel' is a prefix of no
+    // other, so this cannot be shadowed and cannot shadow.
+    if (url.pathname.startsWith('/api/duffel')) {
+      const res = await handleDuffelSearch(request, env, url.pathname.slice('/api/duffel'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Passenger records — the identity data an airline requires and Num had
+    // never held. Its own prefix, its own module, its own schema file, because
+    // it is the most sensitive table in num-db and it should be obvious in a
+    // router which requests can touch it. Members-only: the handler resolves
+    // `me` against num_members and scopes every read and write to the owner.
+    //
+    // Nothing here is reachable from the concierge or from a model. It is a
+    // form the traveller fills in, and worker/redact.mjs keeps its fields out
+    // of any prompt if one ever finds its way into `state`.
+    if (url.pathname.startsWith('/api/passengers')) {
+      const res = await handlePassengersSafe(request, env, url.pathname.slice('/api/passengers'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
@@ -773,416 +1561,17 @@ export default {
       return res;
     }
 
+    // The route-table probe (worker/routetable.test.mjs) reads this exact
+    // guard, at this exact indentation, to find /api/num — it is written as a
+    // negation (a fall-through 404) rather than a positive match, which is the
+    // one dispatch shape the router's positive-match reader cannot see on its
+    // own. handleNum() carries the identical check too, since it is also
+    // reachable directly (concierge_answer, worker/partnermcp.mjs) with a
+    // synthetic Request that never passed through this dispatcher at all.
     if (request.method !== 'POST' || url.pathname !== '/api/num') {
       return new Response('not found', { status: 404 });
     }
-
-    // Cheapest rejections first: size, then rate, then key, then shape.
-    const declaredSize = Number(request.headers.get('Content-Length') ?? 0);
-    if (declaredSize > LIMITS.maxBodyBytes) {
-      return json(413, { error: 'request body too large' });
-    }
-
-    const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-    const limit = await enforceRateLimit(env, ip);
-    if (!limit.ok) {
-      return json(
-        429,
-        { error: limit.scope === 'ip' ? 'Too many requests — give me a moment.' : 'Num is busy right now — try again shortly.' },
-        { 'Retry-After': String(limit.retryAfter) },
-      );
-    }
-
-    if (!env.ANTHROPIC_API_KEY) {
-      return json(401, { error: 'ANTHROPIC_API_KEY not configured' });
-    }
-
-    let body;
-    try {
-      const text = await request.text();
-      if (text.length > LIMITS.maxBodyBytes) return json(413, { error: 'request body too large' });
-      body = JSON.parse(text);
-    } catch {
-      return json(400, { error: 'invalid JSON body' });
-    }
-
-    const parsed = validatePayload(body);
-    if (!parsed.ok) return json(parsed.status, { error: parsed.error });
-
-    // Declared OUTSIDE the try so the catch can still use them. The grounding
-    // step is the expensive half of a turn — location resolved, real partners
-    // pulled from D1 — and it completes before any model is called. Scoping it
-    // to the try meant that when every brain failed we threw away work we had
-    // already done and apologised instead of answering with it.
-    let grounding = null;
-    let lastUser = '';
-    try {
-      // Same brain as the texts: resolve the user's location and pull
-      // verified partners from the shared num-db before Claude answers.
-      lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-      // A real GPS fix from the device outranks the edge's IP guess. When the
-      // app sends `here`, hand it to grounding as a precise, NOT-inferred
-      // position — that is knowledge; request.cf is a hint.
-      grounding = await groundRequest(env, {
-        userText: lastUser,
-        statedPlace: parsed.place,
-        cf: request.cf,
-        fix: parsed.here && Number.isFinite(parsed.here.lat) && Number.isFinite(parsed.here.lng)
-          ? { lat: parsed.here.lat, lng: parsed.here.lng }
-          : null,
-      });
-
-      // The browser's own preference, as a tiebreaker only. What the person
-      // actually TYPED wins every time — somebody with an English phone asking
-      // in Thai wants Thai back — but on a first message of two words there is
-      // nothing else to go on.
-      const acceptLang = String(request.headers.get('Accept-Language') ?? '').split(',')[0].trim().slice(0, 12) || null;
-
-      // Profile + trip state carry long-term context now, so the model only
-      // needs the recent turns.
-      const history = parsed.messages.slice(-14);
-      const profile = parsed.state?.profile ?? {};
-
-      // Small lane: chit-chat goes to Workers AI, no Claude call at all. Any
-      // wobble — HANDOFF, null, or a guard failure — falls through to the big
-      // lane rather than to a worse answer.
-      // An answer we already paid for. Costs one D1 read and zero tokens, and
-      // returns in milliseconds — so it runs before the lane is even chosen.
-      // cacheable() gates the WRITE strictly; this read is keyed on the same
-      // rules, so a personal question can never match a shared entry.
-      if (cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: {} })) {
-        const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang });
-        if (hit) {
-          console.log('[num-ai] served from cache, no model called');
-          ctx.waitUntil(recordAsk(env, { text: lastUser, dest: grounding.place?.slug ?? null, lane: 'cache', cached: true, memberId: parsed.state?.me?.id ?? null }));
-          return json(200, { ...hit, actions: [], place: grounding.place?.name ?? null });
-        }
-      }
-
-      const lane = pickLane(lastUser, parsed.state ?? {});
-      if (lane === 'small') {
-        const small = await smallReply(env, history, profile, grounding.place?.name ?? null);
-        // HANDOFF, or switchboard filler, both mean: this one deserves Claude.
-        if (small && !/\bHANDOFF\b/.test(small) && !soundsLikeASwitchboard(small)) {
-          const guard = guardReply(small);
-          if (guard.ok) {
-            // The cheap lane is the reason the bill stays sane; count how often
-            // it actually fires so that claim can be checked, not assumed.
-            ctx.waitUntil(logUsage(env, { lane: 'small', model: 'workers-ai', place: grounding.place?.name ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
-            return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: grounding.place?.name ?? null });
-          }
-        }
-      }
-
-      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-      const callNum = async (extraSystem) => {
-        try {
-          return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
-        } catch (err) {
-          // Grammar compilation is cached once it succeeds but can time out on a
-          // cold schema — one retry usually lands on the warmed cache.
-          if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
-          await new Promise((r) => setTimeout(r, 1500));
-          return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
-        }
-      };
-
-      // Group intelligence: if the conversation is happening inside a shared
-      // plan, fetch what the group needs — server-side, from consented rows
-      // only. The client names the plan; it never assembles the needs itself,
-      // because the merged list must come from consent flags the client
-      // can't forge.
-      if (parsed.state?.party?.id) {
-        try {
-          const { groupNeeds } = await import('./social.mjs');
-          const fit = await groupNeeds(env, String(parsed.state.party.id).slice(0, 40));
-          if (fit.summary) parsed.state.party.needs = fit.summary;
-        } catch { /* the plan context is seasoning — never block the answer */ }
-      }
-
-      // Hoisted: the quality check needs to see exactly what the model saw.
-      // A price is only defensible if it is IN here.
-      const groundingBlock = contextBlock({
-        place: grounding.place,
-        partners: grounding.partners,
-        guide: grounding.guide,
-        profile: redactProfile(profile).profile,
-        buzz: grounding.buzz,
-      });
-      const startedAt = Date.now();
-      // The chain, not one model. Claude first for the full concierge; if it
-      // fails for any reason, an open model on Cloudflare's edge (or a
-      // self-hosted one) answers in prose rather than the user hitting a wall.
-      let result = await askBrains(env, {
-        structuredCall: callNum,
-        messages: history,
-        persona: PERSONA,
-        voice: VOICE,
-        // Redacted, same as the Claude path. Found 11 Aug while auditing the
-        // Bionic seam: the structured path scrubbed the profile (safeProfile,
-        // askNum) but THIS context — the one every fallback vendor receives —
-        // passed it raw. The cheaper the model, the less we know about its
-        // operator; the fallback must see less, never more.
-        context: groundingBlock,
-        style: styleBlock(parsed.state?.style),
-        guard: (t) => guardReply(t),
-        // Who should answer THIS question. Money, bookings, groups and trouble
-        // go to Claude first; recommendations and lookups go to the hosted
-        // response brain, which costs 1/76th as much. The rest of the chain
-        // stays underneath either way — the director chooses the order, never
-        // the last resort.
-        directive: direct(lastUser, parsed.state, env),
-      });
-      // Somebody asked their concierge something, which is the moment a
-      // referral stops being a signup and starts being a user. Runs after the
-      // response is on its way, and is a no-op once already earned, so calling
-      // it on every ask costs one indexed write attempt and never adds latency
-      // — cheaper than reading first to find out it has nothing to do.
-      if (parsed.state?.me?.id) {
-        ctx.waitUntil(markReferralEarned(env, parsed.state.me.id, 'first_ask'));
-      }
-      // Which businesses the guest was actually shown. Deferred, never awaited:
-      // the answer is already on its way and a merchant's analytics must never
-      // be a reason somebody waits. Only places NAMED in the reply or featured
-      // as the card are counted — being a candidate and passed over is not an
-      // impression, and inflating that number would corrupt the one figure a
-      // merchant makes decisions on.
-      ctx.waitUntil(recordImpressions(env, {
-        partners: grounding.partners,
-        reply: result.reply,
-        card: result.card,
-        memberId: parsed.state?.me?.id ?? null,
-        dest: grounding.place?.slug ?? null,
-        // `lastUser`, NOT `userText`. `userText` is a parameter of askNum and
-        // does not exist in this scope — referencing it threw a ReferenceError
-        // on every big-lane request, AFTER the model had already produced a
-        // good answer, and the catch below quietly replaced it with the
-        // directory fallback. Days of "the chat is down" were this line.
-        asked: lastUser,
-      }));
-      // Output guard: never let leaked JSON scaffolding reach the user. One
-      // corrective retry, then salvage, then the safe fallback.
-      const guard = guardReply(result.reply);
-      if (guard.ok) {
-        result = { ...result, reply: guard.cleaned };
-      } else {
-        const retry = await callNum(
-          'Your previous output leaked JSON structure into the reply field. The reply field must contain ONLY clean conversational prose.',
-        );
-        const retryGuard = guardReply(retry.reply);
-        if (retryGuard.ok) {
-          result = { ...retry, reply: retryGuard.cleaned };
-        } else {
-          const cleaned = retryGuard.cleaned ?? guard.cleaned;
-          result = cleaned
-            ? { ...retry, reply: cleaned }
-            : { reply: FALLBACK_REPLY, card: null, chips: null, actions: [] };
-        }
-      }
-
-      // ── RESPONSE QUALITY CONTROL ───────────────────────────────────────
-      //
-      // The guard above asks "is this well-formed prose". This asks the
-      // question Dre actually posed on 11 Aug: does it ANSWER what was asked.
-      // Deterministic, so it costs nothing and cannot be down — see
-      // quality.mjs for why this is not a second model call.
-      //
-      // A hard flag (an invented price, a deflection with the answer sitting
-      // in context, a reply that is only a question) earns ONE corrective
-      // retry. If the retry is no better the original still ships: grading
-      // never produces silence. Soft flags are recorded and nothing else.
-      let quality = inspect({ ask: lastUser, reply: result.reply, context: groundingBlock });
-      if (quality.hard) {
-        try {
-          const fixed = await callNum(quality.note);
-          const fixedGuard = guardReply(fixed.reply);
-          if (fixedGuard.ok) {
-            const after = inspect({ ask: lastUser, reply: fixedGuard.cleaned, context: groundingBlock });
-            // Take the retry only if it is genuinely better. A retry that
-            // trades an invented price for an off-topic answer is not a fix.
-            if (!after.hard) {
-              result = { ...fixed, reply: fixedGuard.cleaned };
-              quality = { ...after, flags: [...after.flags, 'retried'] };
-            } else {
-              quality = { ...quality, flags: [...quality.flags, 'retry-failed'] };
-            }
-          }
-        } catch {
-          // The first answer is already good enough to send. A failed retry
-          // must never cost the guest the reply they had.
-          quality = { ...quality, flags: [...quality.flags, 'retry-error'] };
-        }
-      }
-      // The ask FIRST, then the cost that answered it, joined by ask_id.
-      // Ordered deliberately: recorded separately they are two facts about the
-      // same second that nothing can put back together, and "what did this
-      // kind of question cost" — the number that tunes the router — stays
-      // unanswerable. Both still run after the reply is on its way.
-      // THE MONITOR IS NOT A GUEST.
-      //
-      // scripts/uptime.mjs asks a real question through the real model path
-      // every five minutes, deliberately — it is the only check that measures
-      // what a visitor experiences, and it caught a two-day outage every
-      // status-code check missed. But it is not a person, and on 15 Aug its
-      // one string was 183 of 283 recorded questions: 65% of everything Num
-      // had ever been asked. Every funnel number, every cost-per-ask, every
-      // "what do people want" answer was computed against a robot asking the
-      // same thing about Patong.
-      //
-      // So it still runs the full path and still costs a model call; it just
-      // stops writing to the tables we make decisions from.
-      const isProbe = request.headers.get('X-Num-Probe') === '1';
-      if (!isProbe) ctx.waitUntil(
-        recordAsk(env, {
-          text: lastUser,
-          dest: grounding.place?.slug ?? null,
-          lane: 'big',
-          brain: result._brain ?? null,
-          degraded: !!result._degraded,
-          quality: quality.flags,
-          memberId: parsed.state?.me?.id ?? null,
-          anonId: parsed.state?.anon ?? null,
-        }).then((askId) =>
-          logUsage(env, {
-            lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,
-            // The MODEL, not the brain slot. `hosted` is a position in the
-            // chain; `deepseek-v4-flash` is a thing with a price. Logging the
-            // slot is why every fallback turn priced at zero.
-            model: result._brain === 'claude'
-              ? env.NUM_MODEL || DEFAULT_MODEL
-              : result._model ?? result._brain,
-            specialist: result._specialist ?? null,
-            place: grounding.place?.name ?? null,
-            usage: result._usage,
-            ms: Date.now() - startedAt,
-            memberId: parsed.state?.me?.id ?? null,
-            askId,
-          }),
-        ),
-      );
-      // Capability gaps go to the team dashboard without delaying the reply.
-      ctx.waitUntil(logFeatureRequests(env, result, typeof lastUser === 'string' ? lastUser : '', grounding.place?.name ?? null));
-      // Tell the app where Num thinks the user is (drives the header) —
-      // computed server-side, never by the model.
-      // AiR actions run HERE, not on the device: they need the trust envelope,
-      // which is assembled from two databases the browser cannot see.
-      const airActions = (result.actions ?? []).filter((x) => x.type === 'air');
-      if (airActions.length && airReady(env)) {
-        const memberId = parsed.state?.me?.id ?? null;
-        const trust = await trustEnvelope(env, { memberId }).catch(() => null);
-        for (const a of airActions) {
-          try {
-            a.result = await callAir(env, a.tool, a.args, { trust, memberId, ctx });
-          } catch (err) {
-            a.error = String(err?.message ?? err).slice(0, 200);
-          }
-        }
-      } else if (airActions.length) {
-        airActions.forEach((a) => (a.error = 'AiR is not connected'));
-      }
-
-      const withPhoto = await attachPhoto(env, result, grounding);
-      const withServices = attachServiceOptions(env, withPhoto, grounding);
-      // Internals never leave the Worker.
-      const { _usage, _specialist, _brain, _tried, _ms, _degraded, ...clean } = withServices;
-      void _usage;
-      void _specialist;
-      void _tried;
-      void _ms;
-      // `degraded` tells the app a fallback brain answered, so it can avoid
-      // treating a prose reply as if it created bookings.
-      // Pay for this answer once. cacheable() is strict — anything shaped by
-      // who asked, or carrying an action, is never stored. A degraded reply is
-      // never stored either: caching lean mode would outlive the outage that
-      // caused it.
-      if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean })) {
-        ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean }));
-      }
-      // The question itself, kept (scrubbed inside recordAsk). Until this
-      // line, the text only survived when a partner impression fired — the
-      // asks nobody could serve, the exact ones that write the roadmap, were
-      // the ones being dropped.
-      // (the ask was recorded above, with its cost joined by ask_id)
-      return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
-    } catch (err) {
-      console.error('[num-ai]', err);
-      // A ReferenceError or TypeError is OUR bug, not an outage. The two look
-      // identical from here — both land in this catch and both get the polite
-      // fallback — and that is exactly how `asked: userText` survived for days
-      // looking like a quota problem while every brain was answering perfectly.
-      //
-      // The guest still gets the fallback; there is nothing better to give
-      // them mid-request. But the log must not let a programming error wear an
-      // outage's clothes, so it says so in terms no one can skim past.
-      if (err instanceof ReferenceError || err instanceof TypeError || err instanceof SyntaxError) {
-        console.error(
-          `[num-ai] THIS IS A CODE BUG, NOT AN OUTAGE — ${err.name}: ${err.message}. ` +
-          'The brains are probably fine. Fix the line in the stack above; do not go looking at quota.',
-          err.stack,
-        );
-      }
-      // A guest never hears "the kitchen is broken". If the big model failed
-      // for any reason, try the cheap one — it cannot book anything, but it can
-      // hold the conversation open, which is the whole job at this moment.
-      try {
-        const rescue = await smallReply(env, parsed.messages.slice(-4), parsed.state?.profile ?? {}, parsed.place ?? null);
-        const guard = rescue ? guardReply(rescue) : { ok: false };
-        if (guard.ok && !/\bHANDOFF\b/.test(guard.cleaned) && !soundsLikeASwitchboard(guard.cleaned)) {
-          ctx.waitUntil(logUsage(env, { lane: 'rescue', model: 'workers-ai', place: parsed.place ?? null, usage: null, ms: null, memberId: parsed.state?.me?.id ?? null }));
-          // `degraded: true` matters more here than anywhere else. This lane
-          // only runs when the main path has already failed, and without the
-          // flag its answer is indistinguishable from a healthy one. On
-          // 6–7 Aug it returned "Kata Beach is a fave." with degraded absent,
-          // which read as a working concierge having an off day — and sent two
-          // days of debugging toward quota instead of toward the real bug.
-          return json(200, { reply: guard.cleaned, card: null, chips: null, actions: [], place: parsed.place ?? null, degraded: true, brain: 'rescue' });
-        }
-      } catch (rescueErr) {
-        console.warn('[num-ai] rescue lane also failed:', rescueErr?.message ?? rescueErr);
-      }
-
-      // Every brain is down. Before apologising, answer from what we already
-      // have: grounding resolved their location and pulled real partners from
-      // D1 before any model was called, and that data is still sitting here.
-      // Three real places beats "say it again" — especially for somebody who
-      // arrived from an ad thirty seconds ago and has no reason to come back.
-      //
-      // This makes no network call, so it cannot fail the way the models just
-      // did. It never claims to have booked anything.
-      if (err?.status !== 429) {
-        try {
-          const { lastResort } = await import('./lastresort.mjs');
-          const saved = lastResort({
-            userText: lastUser,
-            grounding,
-            place: parsed.place ?? null,
-          });
-          if (saved) {
-            console.warn('[num-ai] answered from the directory with no model');
-            return json(200, saved);
-          }
-        } catch (lastErr) {
-          console.warn('[num-ai] last resort failed:', lastErr?.message ?? lastErr);
-        }
-      }
-
-      // Nothing to offer — no partners resolved either. Own it, keep it warm,
-      // and give them the one thing that actually helps rather than blaming
-      // their connection, which is almost never the cause and always sounds
-      // like it is their fault.
-      const status = err?.status === 429 ? 429 : 200;
-      return json(status, {
-        reply:
-          err?.status === 429
-            ? 'You’ve got me moving faster than I can keep up — give me a few seconds and ask me again.'
-            : 'That one slipped away from me — entirely my end, nothing to do with you. Say it once more and I’ll pick it straight up.',
-        card: null,
-        chips: null,
-        actions: [],
-        place: parsed.place ?? null,
-        degraded: true,
-      });
-    }
+    return await handleNum(request, env, ctx);
   },
 
   // Email Routing hands forwarded mail here once the itsnum.com catch-all
@@ -1208,6 +1597,18 @@ export default {
         .then((m) => m.claimSweep(env))
         .catch((e) => console.error('[claimsweep]', e?.message ?? e)),
     );
+    // Self-submitted businesses, turned into coordinates. Migration 0007 was
+    // written for this step and nothing ever performed it, so every submission
+    // has sat at `new` with null lat/lng — and `places.lat` is NOT NULL, so
+    // none of them could ever be promoted. The table was a waiting room with
+    // no door. Ten per tick, and a row it cannot place confidently stays put
+    // with a note rather than getting a guessed pin.
+    ctx.waitUntil(
+      import('./geocode.mjs')
+        .then((m) => m.geocodeSweep(env))
+        .then((r) => { if (r?.geocoded) console.log(`[geocode] ${r.geocoded}/${r.seen} placed`); })
+        .catch((e) => console.error('[geocode]', e?.message ?? e)),
+    );
     // Every signup gets researched — dossier with its own data and promo
     // options, three per tick so a backlog clears in minutes, not budgets.
     ctx.waitUntil(
@@ -1215,5 +1616,18 @@ export default {
         .then((m) => m.dossierSweep(env))
         .catch((e) => console.error('[dossier]', e?.message ?? e)),
     );
+    // Fold what guests said after they went back into what the next guest is
+    // shown. Hourly, not every five minutes: this cron fires twelve times an
+    // hour and the number it recomputes changes a few times a day, so eleven
+    // of those passes would be a write over 2.5M-row table for nothing. See
+    // worker/learn.mjs — this is the only closed loop NUM has.
+    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 5) {
+      ctx.waitUntil(
+        import('./learn.mjs')
+          .then((m) => m.rollupRatings(env))
+          .then((r) => { if (r?.places) console.log('[learn]', JSON.stringify(r)); })
+          .catch((e) => console.error('[learn]', e?.message ?? e)),
+      );
+    }
   },
 };

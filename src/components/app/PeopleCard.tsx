@@ -13,6 +13,7 @@ import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { unfriend } from '../../lib/social';
 import { UsersIcon } from '../../lib/icons';
+import ReportSheet from './ReportSheet';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -32,6 +33,10 @@ export default function PeopleCard() {
   const [block, setBlock] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Guideline 1.2 again: reporting has to be reachable from the person, not
+  // only from a conversation. Someone may never have opened a DM and still
+  // need to report a profile name, bio or avatar.
+  const [reporting, setReporting] = useState<{ id: string; name?: string | null } | null>(null);
 
   if (!friends.length) return null;
 
@@ -109,12 +114,33 @@ export default function PeopleCard() {
                   <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 7, lineHeight: 1.45, textAlign: 'center' }}>
                     They aren’t told.
                   </div>
+                  {/* Removing is a preference; reporting says a human should
+                      look. Kept visually quieter than REMOVE so the common
+                      action stays the obvious one. */}
+                  <div
+                    {...pressable(() => { if (f.id) setReporting({ id: f.id, name: f.name }); })}
+                    style={{
+                      cursor: 'pointer', marginTop: 10, textAlign: 'center',
+                      fontSize: 11, color: 'var(--ink-60)', textDecoration: 'underline',
+                    }}
+                  >
+                    Report {f.name || 'this person'}
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {reporting && (
+        <ReportSheet
+          id={reporting.id}
+          name={reporting.name}
+          context="people"
+          onClose={() => { setReporting(null); setOpenId(null); }}
+        />
+      )}
 
       {note && (
         <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.5 }}>{note}</div>

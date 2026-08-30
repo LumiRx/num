@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect NUM to Cline — MCP server for travel places — NUM</title>
+<meta name="description" content="Add NUM's travel places MCP server to Cline: https://itsnum.com/mcp, bearer token, five tools over 2,529,721 places in 77 destinations.">
+<link rel="canonical" href="https://itsnum.com/agents/cline/">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta property="og:type" content="article"><meta property="og:site_name" content="NUM">
+<meta property="og:title" content="Connect NUM to Cline — MCP server for travel places"><meta property="og:description" content="Add NUM's travel places MCP server to Cline: https://itsnum.com/mcp, bearer token, five tools over 2,529,721 places in 77 destinations.">
+<meta property="og:url" content="https://itsnum.com/agents/cline/">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"HowTo","name":"Connect NUM's MCP server to Cline","description":"Add NUM's travel places MCP server to Cline: https://itsnum.com/mcp, bearer token, five tools over 2,529,721 places in 77 destinations.","tool":[{"@type":"HowToTool","name":"Cline"}],"step":[{"@type":"HowToStep","position":1,"name":"MCP Servers → Configure → paste the block.","text":"MCP Servers → Configure → paste the block."},{"@type":"HowToStep","position":2,"name":"The server appears in the list; expand it to see the five tools.","text":"The server appears in the list; expand it to see the five tools."}]},{"@type":"SoftwareApplication","name":"NUM MCP server","applicationCategory":"DeveloperApplication","operatingSystem":"Any","url":"https://itsnum.com/mcp","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://itsnum.com/#organization"}},{"@type":"WebPage","@id":"https://itsnum.com/agents/cline/#webpage","url":"https://itsnum.com/agents/cline/","name":"Connect NUM to Cline — MCP server for travel places","description":"Add NUM's travel places MCP server to Cline: https://itsnum.com/mcp, bearer token, five tools over 2,529,721 places in 77 destinations.","isPartOf":{"@id":"https://itsnum.com/#website"},"inLanguage":"en","datePublished":"2026-08-29","dateModified":"2026-08-29"}]}</script>
+<script src="/num-capture.js" data-page="agents-cline" defer></script>
+<style>.prose{max-width:74ch}.prose h2{margin-top:40px}
+pre.code{background:#0d1b24;color:#d8e6ee;border-radius:14px;padding:18px;overflow-x:auto;
+  font-size:13px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+code.inl{background:var(--pri-xl,#f2f0ea);border:1px solid var(--line,#e0ddd4);border-radius:6px;
+  padding:1px 6px;font-size:.92em;font-family:ui-monospace,Menlo,monospace}
+.file{font-size:13px;color:var(--ink2);font-family:ui-monospace,Menlo,monospace;margin:0 0 6px}
+ol.steps{padding-left:20px}ol.steps li{margin:10px 0;line-height:1.65}
+table.tbl{width:100%;border-collapse:collapse;margin-top:18px;font-size:15px}
+table.tbl td{padding:9px 10px;border-bottom:1px solid var(--line,#e0ddd4);vertical-align:top}
+table.tbl td:first-child{font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:nowrap}
+.also{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0;padding:0;list-style:none}
+.also a{font-size:14px;text-decoration:none;border:1px solid var(--line,#e0ddd4);border-radius:999px;padding:6px 14px}
+.checked{font-size:13px;color:var(--ink2);border-left:3px solid var(--line,#e0ddd4);padding-left:12px;margin-top:26px}</style>
+</head>
+<body>
+<nav class="nav"><div class="wrap row">
+  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <div class="navlinks">
+    <a href="/what-we-do/">What we do</a><a href="/how-it-works/">How it works</a>
+    <a href="/agents/">For AI agents</a><a href="/business/">For business</a>
+    <a class="btn pri" href="https://itsnum.com/api/agent/signup" style="padding:10px 18px;font-size:14px">Get a key</a>
+  </div>
+  <button class="menu-btn" aria-label="Menu">&#9776;</button>
+</div></nav>
+<header class="wrap" style="padding-top:56px;padding-bottom:8px">
+  <span class="pill">&#10022; Cline &middot; checked 2026-08-29</span>
+  <h1 class="h1" style="margin-top:18px;max-width:20ch">NUM in Cline.</h1>
+  <p class="sub" style="max-width:64ch">Cline stores its servers in a settings file you can open from inside the extension.</p>
+</header>
+<section class="wrap prose">
+
+<h2>What you are connecting to</h2>
+<p>NUM is a directory of <b>2,529,721 real places across 77 destinations in 38 countries</b> —
+restaurants, bars, hotels, spas, tours, shops — run by 5arz. The MCP server is at
+<code class="inl">https://itsnum.com/mcp</code>. It speaks streamable HTTP and authenticates with a bearer
+token that starts <code class="inl">numa_live_</code>. Reads are metered against a daily quota;
+writes are free.</p>
+
+<table class="tbl"><tbody>
+  <tr><td>num_search_places</td><td>search 2.5M places across 77 destinations</td></tr>
+  <tr><td>num_get_place</td><td>the full record for one place</td></tr>
+  <tr><td>num_submit_business</td><td>add a business — free, unmetered, human-reviewed</td></tr>
+  <tr><td>num_submit_promo</td><td>post a promotion against a business you submitted</td></tr>
+  <tr><td>num_list_submissions</td><td>what you sent and what a reviewer decided</td></tr>
+</tbody></table>
+
+<h2>Get a token first</h2>
+<p>An agent signs itself up — there is no sales call and no waiting list.
+POST to <code class="inl">https://itsnum.com/api/agent/signup</code>, or read the
+<a href="/agents/">full contract</a> and the <a href="/openapi.json">OpenAPI spec</a>.</p>
+
+<h2>Then, in Cline</h2>
+<p class="file">cline_mcp_settings.json — open it from the MCP Servers panel</p>
+<pre class="code">{
+  &quot;mcpServers&quot;: {
+    &quot;num&quot;: {
+      &quot;type&quot;: &quot;http&quot;,
+      &quot;url&quot;: &quot;https://itsnum.com/mcp&quot;,
+      &quot;headers&quot;: {
+        &quot;Authorization&quot;: &quot;Bearer numa_live_...&quot;
+      }
+    }
+  }
+}</pre>
+<ol class="steps">
+  <li>MCP Servers → Configure → paste the block.</li>
+  <li>The server appears in the list; expand it to see the five tools.</li>
+</ol>
+
+
+<h2>What an agent may and may not do</h2>
+<p>Anything an agent submits — a business, a promotion — is <b>stored and held</b>, and a person at
+5arz reviews it before a traveller sees any of it. Nothing goes live automatically. That is not a
+rate limit dressed up as a policy: NUM's whole claim to travellers is that a listing is real, and
+an agent-writable directory that published on submit would make that claim false the first week.</p>
+<p>Placement cannot be bought, by an agent or by anyone. Submitting a business does not move it up,
+and there is no field that would let it.</p>
+
+<div class="checked">Written for Cline and checked against
+<a href="https://docs.cline.bot/mcp/configuring-mcp-servers" rel="noopener">Cline's own documentation</a> on 2026-08-29.
+Clients move their config files; if this path has changed, the two things that have not are the
+server address and the bearer token. Tell us at
+<a href="mailto:info@itsnum.com">info@itsnum.com</a> and we will fix the page.</div>
+
+<h2>Other clients</h2>
+<ul class="also">
+  <li><a href="/agents/claude-desktop/">Claude Desktop</a></li>
+  <li><a href="/agents/claude-code/">Claude Code</a></li>
+  <li><a href="/agents/cursor/">Cursor</a></li>
+  <li><a href="/agents/vs-code/">VS Code</a></li>
+  <li><a href="/agents/windsurf/">Windsurf</a></li>
+  <li><a href="/agents/zed/">Zed</a></li>
+  <li><a href="/agents/chatgpt/">ChatGPT</a></li>
+  <li><a href="/agents/n8n/">n8n</a></li>
+  <li><a href="/agents/librechat/">LibreChat</a></li>
+  <li><a href="/agents/">All of it, in one page</a></li>
+</ul>
+</section>
+<footer class="wrap" style="padding:48px 0;color:var(--ink2);font-size:14px">
+  &copy; 2026 NUM &middot; by 5arz &nbsp;&middot;&nbsp;
+  <a href="/agents/">For AI agents</a> &nbsp;&middot;&nbsp;
+  <a href="/for-ai/">Facts for answer engines</a> &nbsp;&middot;&nbsp;
+  <a href="/llms.txt">llms.txt</a>
+</footer>
+</body>
+</html>

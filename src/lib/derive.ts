@@ -297,6 +297,27 @@ export const sheetBase: CSSProperties = {
   borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
   overflow: 'hidden',
   zIndex: 60,
+  // The home indicator sits ON the bottom 34pt of the screen, and every sheet
+  // is pinned to bottom: 0 of a viewport-fit=cover web view. Without this the
+  // last control in the sheet — which on the sign-up sheet is the button that
+  // creates the account — is half under the bar that swipes you out of the
+  // app. Padding rather than `bottom`, so the glass still reaches the true
+  // edge and only the CONTENT is held clear.
+  // max(): on a device with no home indicator --sab is 0px and a sheet whose
+  // last row touches the frame looks unfinished, so keep a floor of 10px.
+  paddingBottom: 'max(var(--sab, 0px), 10px)',
+  // Focusing an input inside a scrolling sheet makes the browser scroll it
+  // into view flush against the container edge, which on a short sheet means
+  // the field lands under its own padding. Ask for a margin on both ends.
+  scrollPaddingBottom: 16,
+  scrollPaddingTop: 12,
+  // A sheet may never grow into the status bar. Every call site sets its own
+  // maxHeight as a percentage of the shell, which is fine when the keyboard
+  // is down — but --vvh shrinks the shell to the visible height when the
+  // keyboard is up, and a percentage of a short shell is short too. This is
+  // the ceiling that survives both: never taller than the shell minus the
+  // notch and a hairline of breathing room.
+  maxHeight: 'calc(100% - var(--sat, 0px) - 8px)',
   // visibility rides the same clock so a closed sheet leaves the
   // accessibility tree after the slide-out instead of lingering off-screen
   transition: 'transform .38s cubic-bezier(.32,.72,.29,.99), visibility .38s',

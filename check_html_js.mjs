@@ -11,7 +11,13 @@ let m, n = 0, bad = 0;
 while ((m = re.exec(html)) !== null) {
   const attrs = m[1] || '';
   if (/\bsrc\s*=/i.test(attrs)) continue;          // external, nothing to parse
-  if (/type\s*=\s*["']?(application\/json|text\/)/i.test(attrs)) continue;
+  // application/ld+json is JSON-LD, not JavaScript. The old pattern matched
+  // `application/json` only, so every page carrying structured data — which is
+  // all of the indexable ones — reported a SYNTAX ERROR on markup that is
+  // perfectly valid. A pre-deploy check that always fails is a check nobody
+  // reads, which is precisely how a REAL syntax error gets waved through. That
+  // is the failure this line prevents, not the JSON-LD.
+  if (/type\s*=\s*["']?(application\/(ld\+)?json|text\/)/i.test(attrs)) continue;
   n++;
   const body = m[2];
   const line = html.slice(0, m.index).split('\n').length;

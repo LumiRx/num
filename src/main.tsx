@@ -1,11 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { loadAnalytics } from './lib/analyticsLoader';
 import './styles/ds.css';
 import './styles/app.css';
 import './styles/glass.css';
 // Loaded last: a theme is nothing but token overrides on top of everything else.
 import './styles/themes.css';
+
+// Measurement is injected, never blocking — see lib/analyticsLoader.ts.
+loadAnalytics();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

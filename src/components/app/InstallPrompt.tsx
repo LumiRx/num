@@ -28,12 +28,45 @@ const STEPS: Record<Platform, string[]> = {
   desktop: ['Click the install icon in your address bar', 'Choose Install', 'Num opens in its own window'],
 };
 
-import { canOfferInstall } from '../../lib/native';
+import { canOfferInstall, escapeCard, isStandalone } from '../../lib/native';
 
-export default function InstallPrompt() {
+/**
+ * ── WHERE THIS RENDERS ────────────────────────────────────────────────────
+ *
+ * Until 25 Aug 2026 the answer was "LaunchStage only", and LaunchStage is the
+ * DESKTOP page: App.tsx sends any viewport under 720px straight to
+ * ConciergeApp. So the one surface that could actually install Num — a phone
+ * in a browser, which is very nearly all of our traffic — was the one surface
+ * that never saw this card. We were asking desktops to add Num to a home
+ * screen they do not have, and asking phones nothing at all.
+ *
+ * It now mounts on both. The props exist because the two surfaces differ in
+ * ways the card cannot guess:
+ *
+ *   suppressed — the app has sheets and overlays (the name gate among them).
+ *                A fixed card at z-60 would land on top of the very question
+ *                we need answered. Suppressing RENDER rather than unmounting
+ *                keeps the dwell timer honest across a sheet opening.
+ *   anchor     — inside the app shell the card belongs in the shell's own
+ *                stacking context, next to the thread dot, not pinned to the
+ *                browser viewport behind it.
+ *   lift       — clears that dot.
+ */
+export default function InstallPrompt({
+  suppressed = false,
+  anchor = 'fixed',
+  lift = 0,
+}: { suppressed?: boolean; anchor?: 'fixed' | 'absolute'; lift?: number } = {}) {
   const [show, setShow] = useState(false);
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const platform = detect();
+  // In an in-app browser this is a DIFFERENT card with different words. The
+  // install steps below are Safari's and Chrome's; inside Reddit or Instagram
+  // neither menu exists, and showing them there is what we did wrong until
+  // 24 Aug 2026 — 19 people tapped "open in my browser" as their first action
+  // on the page rather than follow instructions that could not be followed.
+  const escape = escapeCard();
   // Android's native install sheet, captured by the shell before React
   // mounted (see index.html). When present, the primary button installs in
   // ONE TAP instead of teaching a three-step dance. iOS never has it —
@@ -63,30 +96,131 @@ export default function InstallPrompt() {
     // Inside the app-store build there is nothing to install — the prompt
     // would be asking someone already in the app to get the app.
     if (!canOfferInstall()) return;
-    const installed =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (installed) return;
+    if (isStandalone()) return;
     try {
       if (localStorage.getItem(DISMISS_KEY)) return;
     } catch { /* private mode — showing it once is fine */ }
-    // Let the page settle before asking for anything.
-    const t = setTimeout(() => setShow(true), 1200);
-    return () => clearTimeout(t);
+
+    // ── WHEN to ask ───────────────────────────────────────────────────────
+    //
+    // It used to be 1.2 seconds. That is a stranger asking for commitment
+    // before saying anything useful, and on 24 Aug the numbers agreed: of the
+    // first seven arrivals we could measure, seven did nothing at all.
+    //
+    // Now the card waits for a sign the person is actually reading — a scroll,
+    // a tap, or fifteen seconds of dwell, whichever lands first. Someone who
+    // bounces in four seconds was never going to install; asking them only
+    // spends the one impression we get.
+    //
+    // The web-view escape card is exempt and shows immediately: it is not a
+    // request, it is a warning that this browser cannot keep their account.
+    if (escape) { setShow(true); return; }
+
+    let done = false;
+    const fire = () => {
+      if (done) return;
+      done = true;
+      setShow(true);
+      cleanup();
+    };
+    const onScroll = () => { if (window.scrollY > 120) fire(); };
+    const cleanup = () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pointerdown', fire);
+      clearTimeout(dwell);
+    };
+    const dwell = setTimeout(fire, 15000);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pointerdown', fire, { once: true });
+    return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!show) return null;
+  if (!show || suppressed) return null;
 
   const dismiss = () => {
     setShow(false);
     try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* fine */ }
   };
 
+  // ── Inside someone else's browser ──────────────────────────────────────
+  //
+  // Different card, different job. There is nothing to install from in here,
+  // so this offers the one thing that helps: the address, on their clipboard,
+  // ready to paste into a real browser. No "Add to Home Screen" language at
+  // all — that menu does not exist in a web view and naming it is what sent
+  // people looking for a Share button that was not there.
+  if (escape) {
+    return (
+      <div
+        className="glass-strong"
+        style={{
+          position: anchor, left: 12, right: 12, bottom: `calc(max(env(safe-area-inset-bottom), 14px) + ${lift}px)`,
+          zIndex: 60, borderRadius: 18, padding: 15, maxWidth: 420, margin: '0 auto',
+          boxShadow: '0 12px 40px rgba(0,0,0,.22)',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
+              {escape.eyebrow}
+            </div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15.5, marginTop: 4 }}>
+              {escape.heading}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
+              {escape.body}
+            </div>
+          </div>
+          <div
+            {...pressable(dismiss)}
+            aria-label="Dismiss"
+            style={{ flex: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, color: 'var(--ink-40)', padding: 2 }}
+          >
+            ×
+          </div>
+        </div>
+
+        <ol style={{ margin: '11px 0 0', padding: '0 0 0 18px', fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.7 }}>
+          {escape.steps.map((s: string) => <li key={s}>{s}</li>)}
+        </ol>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <div
+            {...pressable(() => {
+              // A web view cannot be told to hand a URL to the system browser,
+              // so the clipboard is the whole mechanism. If even that is
+              // blocked the steps above still stand on their own.
+              const url = 'https://app.itsnum.com/';
+              void navigator.clipboard?.writeText(url).then(
+                () => setCopied(true),
+                () => setCopied(false),
+              );
+            })}
+            className="press"
+            style={{
+              flex: 1, cursor: 'pointer', textAlign: 'center', borderRadius: 999, padding: '11px 14px',
+              background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
+            }}
+          >
+            {copied ? 'LINK COPIED' : 'COPY THE LINK'}
+          </div>
+          <div
+            {...pressable(dismiss)}
+            style={{ cursor: 'pointer', borderRadius: 999, padding: '11px 14px', fontSize: 11, fontWeight: 700, color: 'var(--ink-60)' }}
+          >
+            Later
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="glass-strong"
       style={{
-        position: 'fixed', left: 12, right: 12, bottom: 'max(env(safe-area-inset-bottom), 14px)',
+        position: anchor, left: 12, right: 12, bottom: `calc(max(env(safe-area-inset-bottom), 14px) + ${lift}px)`,
         zIndex: 60, borderRadius: 18, padding: 15, maxWidth: 420, margin: '0 auto',
         boxShadow: '0 12px 40px rgba(0,0,0,.22)',
       }}

@@ -90,7 +90,7 @@ export default function ShareSheet() {
       role="dialog"
       aria-modal="true"
       className="glass-strong"
-      style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: '88%', overflowY: 'auto' }}
+      style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(88%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />
       <div

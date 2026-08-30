@@ -254,6 +254,26 @@ export default function ProfileView() {
       <NotificationsCard />
 
       <Section title="HOW YOU TRAVEL" summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
+
+      {/* Passenger details live behind their own sheet rather than inline with
+          the preference fields above, because they are a different KIND of
+          thing: everything in HOW YOU TRAVEL is a hint that makes an answer
+          better, and this is the legal identity an airline checks at the gate.
+          Mixing them would imply the same casualness applies to both. */}
+      <div
+        {...pressable(() => store.set({ passengerOpen: true }))}
+        className="glass"
+        style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={kicker}>PASSENGER DETAILS</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
+            The passport name and date of birth an airline needs before it will issue a ticket. Only used for
+            booking, never shown to the concierge.
+          </div>
+        </div>
+        <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
+      </div>
       <Section title="SO NUM GETS YOU RIGHT" summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
 
       {/* what Num has worked out on its own */}

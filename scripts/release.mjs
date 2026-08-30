@@ -141,6 +141,30 @@ switch (cmd) {
         process.exit(1);
       }
       console.log(`  verified: production is serving ${serving}`);
+
+      // Now that the new code IS the live code, check that every MCP surface
+      // still agrees with itself. `npm test` already ran the offline half
+      // during `stage` (source ↔ docs); this is the half that needs a deployed
+      // server: live tools/list, the published listings, the registry entry,
+      // and a real call to every advertised tool.
+      //
+      // Placed AFTER the traffic flip on purpose. Before it, the live server is
+      // the old one and the check would confirm the previous release. Here, a
+      // failure is actionable in the one way that matters: `release.mjs
+      // rollback` is the next line of the message.
+      //
+      // NOT wrapped in try/catch. A drift check whose failure is swallowed is
+      // the thing that let a paid tool point at a dead endpoint for a week.
+      console.log('\n── MCP integrity: source ↔ live ↔ listing ↔ docs\n');
+      try {
+        sh('node scripts/mcp-integrity.mjs');
+      } catch {
+        console.error('\n✘ v' + pkg.version + ' is LIVE and at least one MCP surface disagrees with itself.');
+        console.error('  An agent is being advertised something this deploy does not deliver.');
+        console.error('  Fix forward, or: node scripts/release.mjs rollback');
+        console.error('  Procedure: HQ/divisions/num/MCP_INTEGRITY.md\n');
+        process.exit(1);
+      }
     } else {
       console.log(`\n── ${pct}% of traffic to the newest version, the rest stays put\n`);
       console.log('  wrangler will ask which two versions to split between.\n');

@@ -13,6 +13,15 @@ const xmlOk = () =>
     headers: { 'Content-Type': 'text/xml' },
   });
 
+/** TwiML that actually says something back. */
+const xmlReply = (body) =>
+  new Response(
+    `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${
+      String(body).replace(/[<>&'"]/g, (c) => `&#${c.charCodeAt(0)};`)
+    }</Message></Response>`,
+    { headers: { 'Content-Type': 'text/xml' } },
+  );
+
 async function validSignature(env, url, params, given) {
   if (!env.TWILIO_TOKEN || !given) return false;
   // Twilio's recipe: full URL, then each POST param appended as key+value in
@@ -67,6 +76,22 @@ export async function handleSmsInbound(request, env) {
   if (text.split(/\s+/).length === 1 && (STOP_WORDS.has(single) || START_WORDS.has(single))) {
     await applyOptOut(env, from, single);
     return xmlOk();
+  }
+
+  // HELP, answered before the message is filed as a concierge request.
+  //
+  // Same single-word rule as STOP, and for the same reason: "help me find a
+  // table for four" is a real request to a concierge and must reach the
+  // concierge, not trip a compliance auto-reply. Only a bare HELP is the
+  // keyword.
+  //
+  // Deliberately does NOT write to num_inbox and does NOT push. A keyword
+  // reply is a compliance obligation, not a conversation, and filing it as an
+  // unanswered request would leave the desk chasing a message that has already
+  // been answered.
+  if (text.split(/\s+/).length === 1 && HELP_WORDS.has(single)) {
+    console.warn(`[sms] HELP from ${from}`);
+    return xmlReply(HELP_REPLY);
   }
 
   // Whose world does this text belong to? Exact phone match, verified first.
@@ -235,6 +260,34 @@ async function retractUndeliveredCode(env, messageSid) {
 // point of that table is being able to prove what is true.
 const STOP_WORDS = new Set(['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'REVOKE', 'OPTOUT']);
 const START_WORDS = new Set(['START', 'UNSTOP', 'YES', 'OPTIN']);
+
+/**
+ * HELP — the keyword we were already promising and had never implemented.
+ *
+ * Every consent surface we own tells people to reply HELP: the /sms opt-in
+ * checkbox, the privacy policy, the terms, and the `message_flow` we are about
+ * to file with TCR. Until now the word appeared nowhere in this worker, so a
+ * carrier auditor — or a member — texting HELP got silence.
+ *
+ * That is not a missing nicety. HELP is a CTIA requirement and the message
+ * flow we file is a statement to a carrier about what our number does. A
+ * reviewer's first test of an opt-out claim is to send the keyword and see
+ * what comes back, and "nothing" reads as a program that does not honour its
+ * own disclosures.
+ *
+ * Answered here in the Worker rather than only by Advanced Opt-Out on a
+ * Messaging Service, because this holds however the console is configured, is
+ * covered by a test, and cannot be silently un-set by someone editing a
+ * dropdown.
+ *
+ * The reply must name the brand, say how to stop, and give a real contact —
+ * and it must fit one segment (160 GSM-7 characters) so it never arrives as a
+ * fragmented pair.
+ */
+const HELP_WORDS = new Set(['HELP', 'INFO']);
+export const HELP_REPLY =
+  'NUM travel concierge. Msg&data rates may apply. Msg freq varies. '
+  + 'Reply STOP to opt out. Help: info@5arz.com or itsnum.com/sms';
 
 /** Record an opt-out or opt-back-in against the consent register. */
 async function applyOptOut(env, phone, word) {

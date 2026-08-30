@@ -116,6 +116,11 @@ const TOOLS = [
   },
 ];
 
+// Exported so bizApiIndex() can publish this list instead of retyping it, and
+// so mcp-integrity.mjs and the tests can assert against the real array rather
+// than a copy of it. The name matches partnermcp.mjs on purpose.
+export const TOOLS_FOR_TEST = TOOLS;
+
 /** Build the internal Request each tool maps to, then reuse the HTTP handler. */
 function toRequest(name, a, base) {
   const auth = a.api_key ? { Authorization: `Bearer ${a.api_key}` } : {};

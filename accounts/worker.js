@@ -103,8 +103,12 @@ async function handleLogin(request, env) {
   if (account && account.status !== 'disabled') {
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + MAGIC_LINK_TTL_MS).toISOString();
-    await env.DB.prepare('INSERT INTO magic_links (token, account_id, expires_at) VALUES (?, ?, ?)')
-      .bind(token, account.id, expires).run();
+    // A same-origin return path, so an OAuth authorize request survives sign-in.
+    // Anything with a scheme or a protocol-relative "//" prefix is discarded.
+    const raw = String(body.next || '');
+    const nextPath = (raw.startsWith('/') && !raw.startsWith('//')) ? raw.slice(0, 512) : null;
+    await env.DB.prepare('INSERT INTO magic_links (token, account_id, expires_at, next_path) VALUES (?, ?, ?, ?)')
+      .bind(token, account.id, expires, nextPath).run();
     try { await sendMagicLinkEmail(env, account, token); }
     catch (e) { console.log('Resend send failed: ' + e.message); }
     if (account.status === 'pending_contact') {
@@ -135,7 +139,11 @@ async function handleVerify(env, url) {
 
   return new Response(null, {
     status: 302,
-    headers: { Location: '/console/', 'Set-Cookie': sessionCookie(sessToken, SESSION_TTL_MS / 1000) },
+    headers: {
+      Location: (link.next_path && link.next_path.startsWith('/') && !link.next_path.startsWith('//'))
+        ? link.next_path : '/console/',
+      'Set-Cookie': sessionCookie(sessToken, SESSION_TTL_MS / 1000),
+    },
   });
 }
 

@@ -13,7 +13,7 @@ Kata beach at four", "a driver to the airport at six tomorrow" — and NUM answe
 with real local places and books one for them. It holds the conversation in the
 traveller's own language and it is available at any hour.
 
-NUM is a product of 5arz Inc, a proof-of-human company. Contact info@5arz.com.
+NUM is a product of 5arz Inc, a proof-of-human company. Contact info@itsnum.com.
 
 NUM is not a review site, not a booking aggregator reselling someone else's
 inventory, and not a listings directory a business pays to appear in. It is a
@@ -172,7 +172,7 @@ buy a position in what NUM recommends.
 What happens if a booking does not happen? NUM is not paid. The fee exists only
 on a completed booking.
 
-Who owns NUM? 5arz Inc. Contact info@5arz.com.
+Who owns NUM? 5arz Inc. Contact info@itsnum.com.
 
 Where is NUM live? All 77 destinations are in the directory. The four cities in
 section 3 have full public pages.

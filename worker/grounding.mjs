@@ -4,6 +4,7 @@
 // all writes stay with the num-ai worker.
 import { resolveLocation, nearbyPlaces, destinationGuide, detectCat } from '../ai/places.js';
 import { showtimesFor } from './showtimes.mjs';
+import { cityEventsFor, wantsEvents } from './cityevents.mjs';
 
 /**
  * Resolve where the user is and pull verified partners for their ask.
@@ -17,7 +18,7 @@ import { showtimesFor } from './showtimes.mjs';
  * @returns {Promise<{place: object|null, partners: array, guide: string|null}>}
  */
 export async function groundRequest(env, { userText, statedPlace, cf, fix = null }) {
-  const none = { place: null, partners: [], guide: null, buzz: [] };
+  const none = { place: null, partners: [], guide: null, buzz: [], events: [] };
   if (!env?.DB) return none; // local dev without the binding — Claude flies on general knowledge
 
   try {
@@ -54,7 +55,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
 
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
-    const [{ rows }, guide, buzz, showtimes] = await Promise.all([
+    const [{ rows }, guide, buzz, showtimes, events] = await Promise.all([
       nearbyPlaces(env, loc, userText, 6).catch(() => ({ rows: [] })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
@@ -63,6 +64,12 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
       detectCat(userText) === 'cinema'
         ? showtimesFor(env, loc.label || loc.dest.name).catch(() => null)
         : Promise.resolve(null),
+      // Only on a "what's on" ask. Unconditional would put a festival list in
+      // front of someone who asked for a taxi, and this block competes with
+      // the partner block for the model's attention.
+      wantsEvents(userText)
+        ? cityEventsFor(env, loc.dest.slug).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     return {
@@ -70,6 +77,29 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         name: loc.dest.name,
         slug: loc.dest.slug,
         country: loc.dest.country,
+        // ── WHY BOTH country AND country_code ────────────────────────────
+        //
+        // `loc.dest.country` has always held an ISO-3166 alpha-2 code ('TH'),
+        // despite the name. Every partner rail asks for `country_code`,
+        // because that is what the field is. Publishing both keeps the older
+        // readers working and stops the next integration from reading
+        // `country`, getting 'TH', and assuming it is a country NAME.
+        country_code: loc.dest.country,
+        // ── AND WHY COORDINATES ──────────────────────────────────────────
+        //
+        // These were dropped here for a long time and it was invisible,
+        // because nothing downstream wanted them. The moment rails did, three
+        // of them failed silently and identically: Ticketmaster refused to
+        // search without a coordinate, and Viator and Localrent quietly fell
+        // back to matching place NAMES — the exact guesswork the coordinate
+        // path exists to replace.
+        //
+        // `loc.lat` is where the traveller actually is (a GPS fix, or the IP
+        // guess). `loc.dest.lat` is the city centre, which is the right
+        // fallback rather than nothing: "what is on in Edinburgh" is a
+        // perfectly good question to answer from the middle of Edinburgh.
+        lat: loc.lat ?? loc.dest.lat ?? null,
+        lng: loc.lng ?? loc.dest.lng ?? null,
         tz: loc.dest.tz,
         label: loc.label,
         precise: loc.precise,
@@ -81,6 +111,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
       guide,
       buzz,
       showtimes,
+      events,
     };
   } catch (err) {
     // Grounding is an enhancement, never a dependency — a D1 hiccup must not

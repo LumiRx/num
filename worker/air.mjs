@@ -12,6 +12,8 @@
 // Every exchange is written to num_air_exchanges (direction, body, custody_ref)
 // — a table that already existed, which tells you somebody planned for this.
 
+import { assertNoPassengerData, forbiddenValues } from './passengers.mjs';
+
 const PROTOCOL = '2024-11-05';
 
 /** Tools AiR exposes, and what each is for on our side. */
@@ -66,6 +68,22 @@ export async function callAir(env, tool, args, { trust, memberId, ctx } = {}) {
   if (!airReady(env)) throw new Error('AiR is not configured');
   const started = Date.now();
   const payload = { ...args, ...(trust ? { _num_trust: trust } : {}) };
+
+  // ── the passenger crossing rule, enforced here rather than promised ─────
+  //
+  // AiR is outside the 5arz group (CONSENT_ARCHITECTURE.md §1.2) and this is
+  // the line that puts a Num payload on somebody else's server. A passenger
+  // record — legal name, date of birth, gender marker, passport number — has
+  // no bearing on scheduling a meeting and no consent scope authorises it, so
+  // it may never be in this payload. `assertNoPassengerData` throws BEFORE the
+  // fetch, which turns a disclosure into a 500 on our own side.
+  //
+  // Two checks, because one of them is not enough. The key-shape check catches
+  // `born_on` in an obvious place; the value check catches a stored family name
+  // or date of birth copied into an innocently-named field, which is the
+  // failure a denylist of key names cannot see. The value check costs one
+  // indexed SELECT and only runs when this member has saved a passenger.
+  assertNoPassengerData(payload, 'air.callAir', { values: await forbiddenValues(env, memberId) });
 
   let out;
   let ok = 1;
@@ -140,45 +158,73 @@ export async function trustEnvelope(env, { memberId, phone }) {
     account: null,
   };
 
-  // Num side — the app's own account signals.
-  if (env.DB && memberId) {
-    const m = await env.DB.prepare('SELECT id, name, phone_verified, created_at FROM num_members WHERE id=?1')
-      .bind(memberId).first().catch(() => null);
-    if (m) {
-      t.account = {
-        age_days: m.created_at ? Math.floor((Date.now() - Date.parse(m.created_at)) / 86400_000) : null,
-        // One number, one account is enforced at write time — see worker/social.mjs.
-        phone_unique: true,
-        phone_verified: !!m.phone_verified,
-      };
-      if (m.phone_verified) t.identity = { verified: true, basis: 'sms' };
-    }
+  // ── FOUR READS, ONE ROUND TRIP'S WORTH OF WAITING ─────────────────────
+  //
+  // These four queries used to run one after another: the Num member row,
+  // then the ledger member row, then the uniqueness attestation, then the
+  // session history. Nothing in any of them feeds the next — the awaits were
+  // sequential only because that is the order they were written in, and the
+  // envelope paid four serial round trips to two databases for it.
+  //
+  // That cost was invisible while the envelope was internal. It stopped being
+  // invisible the moment a partner asked us to commit to a latency budget for
+  // issuing one (LetsGo2Trip, term 9: under 100 ms of added latency per
+  // envelope). Four serial D1 reads is the difference between comfortably
+  // inside that number and arguing about it.
+  //
+  // Each read keeps its own .catch(() => null): the envelope is assembled from
+  // whatever is available and is explicit about what it could not prove. One
+  // database being down must degrade the envelope, never fail it — a checkout
+  // that gets "unverified" still works, a checkout that gets a 500 does not.
+  const ledger = env.LEDGER;
+  const id = memberId ?? '';
+  const [m, row, uha, sessions] = await Promise.all([
+    env.DB && memberId
+      ? env.DB.prepare('SELECT id, name, phone_verified, created_at FROM num_members WHERE id=?1')
+          .bind(memberId).first().catch(() => null)
+      : null,
+    // `phone` short-circuits the ledger identity read exactly as before: a
+    // lookup by phone number is not a lookup by member id and must not be
+    // silently answered with one.
+    ledger && !phone
+      ? ledger.prepare('SELECT id, verified_at, verification_ref, country FROM members WHERE id=?1')
+          .bind(id).first().catch(() => null)
+      : null,
+    ledger
+      ? ledger.prepare("SELECT level, status, valid_until FROM uniqueness_attestations WHERE member_id=?1 AND status='active' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1")
+          .bind(id).first().catch(() => null)
+      : null,
+    ledger
+      ? ledger.prepare("SELECT COUNT(*) n, SUM(status='active') passed, SUM(status='rejected') rejected, ROUND(AVG(score_v),3) avg_score FROM verified_sessions WHERE member_id=?1")
+          .bind(id).first().catch(() => null)
+      : null,
+  ]);
+
+  // Applied in the SAME ORDER the sequential version applied them, because
+  // the order is a precedence rule and not an accident: an SMS-verified phone
+  // sets identity to `sms`, and a completed ID check OVERWRITES it with
+  // `id_check`. Swap these two and a fully verified member is reported to a
+  // partner as merely phone-verified — a quieter bug than a crash and a more
+  // expensive one, since the whole point of the envelope is that the partner
+  // can trust which basis it names.
+  if (m) {
+    t.account = {
+      age_days: m.created_at ? Math.floor((Date.now() - Date.parse(m.created_at)) / 86400_000) : null,
+      // One number, one account is enforced at write time — see worker/social.mjs.
+      phone_unique: true,
+      phone_verified: !!m.phone_verified,
+    };
+    if (m.phone_verified) t.identity = { verified: true, basis: 'sms' };
   }
-
-  // 5arz side — the earner ledger, where real verification lives.
-  if (env.LEDGER) {
-    const row = phone
-      ? null
-      : await env.LEDGER.prepare('SELECT id, verified_at, verification_ref, country FROM members WHERE id=?1')
-          .bind(memberId ?? '').first().catch(() => null);
-    if (row?.verified_at) {
-      t.identity = { verified: true, basis: 'id_check', at: row.verified_at, country: row.country ?? null };
-    }
-
-    const uha = await env.LEDGER
-      .prepare("SELECT level, status, valid_until FROM uniqueness_attestations WHERE member_id=?1 AND status='active' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1")
-      .bind(memberId ?? '').first().catch(() => null);
-    if (uha) t.uniqueness = { attested: true, level: uha.level, valid_until: uha.valid_until };
-
-    const sessions = await env.LEDGER
-      .prepare("SELECT COUNT(*) n, SUM(status='active') passed, SUM(status='rejected') rejected, ROUND(AVG(score_v),3) avg_score FROM verified_sessions WHERE member_id=?1")
-      .bind(memberId ?? '').first().catch(() => null);
-    if (sessions?.n) {
-      // Proof-of-human-work: sessions scored on focus, input consistency and
-      // probe pass rate. The rejections are the point — a screen that never
-      // rejects is not a screen.
-      t.work = { sessions: sessions.n, passed: sessions.passed, rejected: sessions.rejected, avg_score: sessions.avg_score };
-    }
+  if (row?.verified_at) {
+    t.identity = { verified: true, basis: 'id_check', at: row.verified_at, country: row.country ?? null };
+  }
+  if (uha) t.uniqueness = { attested: true, level: uha.level, valid_until: uha.valid_until };
+  if (sessions?.n) {
+    // Proof-of-human-work: sessions scored on focus, input consistency and
+    // probe pass rate. The rejections are the point — a screen that never
+    // rejects is not a screen.
+    t.work = { sessions: sessions.n, passed: sessions.passed, rejected: sessions.rejected, avg_score: sessions.avg_score };
   }
   return t;
 }

@@ -10,6 +10,8 @@
 // REMEDY — the fix, in the words of whoever has to act at 2am, not a status
 // colour. A monitor that says "degraded" and stops has moved the problem, not
 // solved it.
+import { senderParams } from './twiliosender.mjs';
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
@@ -116,6 +118,21 @@ function checkCashout(env) {
 function checkSms(env) {
   if (env.TWILIO_FROM && !env.TWILIO_TOKEN) {
     return { ok: false, remedy: 'A texting number is configured but TWILIO_TOKEN is not, so inbound signatures cannot be verified and every inbound text is rejected (403). Set TWILIO_TOKEN.' };
+  }
+  // The 30034 check. A US long code carries A2P campaign approval only through
+  // its Messaging Service; sending as a bare number is rejected by the carrier
+  // with the same error an unregistered brand gets, which is how this went
+  // unread for a month while the campaign sat approved in the console.
+  //
+  // It is a WARNING, not a failure: outside the US no campaign is needed and
+  // the bare number is correct, so this must never take the health check red
+  // for a Thailand-only deployment.
+  const svc = String(env.TWILIO_MESSAGING_SERVICE_SID || '').trim();
+  if (env.TWILIO_FROM && !svc) {
+    return { ok: true, warn: 'TWILIO_FROM is set but TWILIO_MESSAGING_SERVICE_SID is not, so US-destined texts go out as a bare number and carriers reject them with 30034 even when the A2P campaign is approved. Set the Messaging Service SID (MG…) that carries the campaign, and confirm the number is in that service\'s sender pool.' };
+  }
+  if (svc && !/^MG[0-9a-f]{32}$/i.test(svc)) {
+    return { ok: false, remedy: `TWILIO_MESSAGING_SERVICE_SID is set to something that is not a Messaging Service SID (expected MG + 32 hex, got ${svc.slice(0, 4)}…). An account SID starts AC, a campaign CM, a brand BN — check which one was pasted. Every send is falling back to the bare number.` };
   }
   return { ok: true };
 }
@@ -353,14 +370,19 @@ export async function alert(env, text) {
       body: JSON.stringify({ text }),
     }).catch(() => {});
   }
-  if (env.ALERT_SMS_TO && env.TWILIO_SID && env.TWILIO_TOKEN && env.TWILIO_FROM) {
+  // The quietest of the three senders, and the one it would hurt most to leave
+  // behind: its whole job is to tell us something broke. If it keeps sending
+  // `From: <number>` after the others move to the Messaging Service, the alert
+  // that an outage has started is the message the carrier drops.
+  const smsSender = senderParams(env);
+  if (env.ALERT_SMS_TO && env.TWILIO_SID && env.TWILIO_TOKEN && smsSender) {
     await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_SID}/Messages.json`, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${btoa(`${env.TWILIO_SID}:${env.TWILIO_TOKEN}`)}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ To: env.ALERT_SMS_TO, From: env.TWILIO_FROM, Body: text.slice(0, 320) }),
+      body: new URLSearchParams({ To: env.ALERT_SMS_TO, ...smsSender, Body: text.slice(0, 320) }),
     }).catch(() => {});
   }
   // Resend email — the handoff mandates this path so an outage that runs 18

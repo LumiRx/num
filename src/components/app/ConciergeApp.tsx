@@ -23,18 +23,22 @@ import WalletSheet from './WalletSheet';
 import BusinessSheet from './BusinessSheet';
 import EventSheet from './EventSheet';
 import PaySheet from './PaySheet';
+import PassengerSheet from './PassengerSheet';
 import TabSheet from './TabSheet';
 import ErrandSheet from './ErrandSheet';
+import BookSheet from './BookSheet';
+import TravelSheet from './TravelSheet';
 import InviteSheet from './InviteSheet';
 import PartySheet from './PartySheet';
 import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
+import InstallPrompt from './InstallPrompt';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen);
   const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
@@ -58,9 +62,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, tabOpen: null, errandsOpen: false });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
@@ -111,7 +115,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, tabOpen: null, errandsOpen: false });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -126,7 +130,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.tabOpen || s.errandsOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.passengerOpen || s.tabOpen || s.errandsOpen) closeSheets();
     // Messages are two levels deep: Escape backs out of the conversation
     // first, and only closes the surface once you are on the people list.
     else if (s.dmWith) closeDmThread();
@@ -363,6 +367,29 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <VoiceOverlay />
       <NotifBanner />
 
+      {/* "Put Num on your home screen" — on the surface that can actually do
+          it. `standalone` here means "this IS the app screen", which is the
+          phone path; the desktop launch page renders its own copy alongside
+          the marketing frame, so gating on it avoids two cards at once.
+          InstallPrompt itself still refuses to appear inside the native build
+          or an already-installed PWA, so this cannot nag someone who is done.
+          It is held back while a SHEET is up — the name gate is one of them,
+          and covering the question we most need answered would trade a signup
+          for an install, which is a bad trade in both directions.
+
+          It is NOT held back for the thread. The thread is where people
+          actually live in this app; suppressing there would mean suppressing
+          almost always, which is the bug this mount exists to fix. The card
+          sits at z-60, above the thread's z-45, lifted clear of both the
+          composer and the floating dot. */}
+      {standalone && (
+        <InstallPrompt
+          anchor="absolute"
+          lift={78}
+          suppressed={overlayOpen || profileOpen || dmOpen}
+        />
+      )}
+
       {/* sheet backdrop — mouse convenience only; keyboard users close sheets with Escape (root onKeyDown) */}
       <div
         aria-hidden="true"
@@ -375,8 +402,11 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <EventSheet />
       <BusinessSheet />
       <PaySheet />
+      <PassengerSheet />
       <TabSheet />
       <ErrandSheet />
+      <BookSheet />
+      <TravelSheet />
       <InviteSheet />
       <ShareSheet />
       <WalletSheet />

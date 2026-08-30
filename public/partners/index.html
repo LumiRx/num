@@ -81,6 +81,10 @@ a{color:var(--accent)}
     "name":"concierge_answer",
     "arguments":{"question":"where should we eat tonight near Kata?","destination":"phuket"}}}'</pre>
   <p class="small">Six tools: <b>concierge_answer</b>, <b>search_places</b>, <b>open_places</b>, <b>booking_link</b>, <b>place_details</b>, <b>list_destinations</b>. Human-readable index at <a href="https://app.itsnum.com/api/partner">/api/partner</a> · usage at <a href="https://app.itsnum.com/api/partner/usage">/api/partner/usage</a> with your key header. Booking links are prefilled hand-offs, never claimed reservations — the response always says <code>booked:false</code> until a real reservation API stands behind it.</p>
+  <p class="small">Unkeyed traffic on this read-only surface is limited to 12 <code>tools/call</code> a minute per IP and is unattributed; discovery (<code>initialize</code>, <code>tools/list</code>) is never throttled. Send a key for an attributed monthly quota.</p>
+
+  <h2>Book, don't just recommend</h2>
+  <p class="small">The directory above is read-only and open: no key, no bookings, no personal data, ever. Confirmed bookings live on a <em>separate keyed surface</em>, <code>https://app.itsnum.com/api/concierge/mcp</code> — a tool that can make a real restaurant's phone ring should not share an access policy with one that reads opening hours. Two tools: <b>request_table</b> asks a venue to hold a table for a NUM member; NUM asks, the venue decides, and the response is always <code>state:"requested"</code> with <code>booked:false</code>, never a confirmation. <b>booking_status</b> tells you what the venue decided. An <code>X-Partner-Key</code> is required on every call there and there is no anonymous path. Index at <a href="https://app.itsnum.com/api/concierge">/api/concierge</a>.</p>
 
   <p class="small">Place data © OpenStreetMap contributors (ODbL) and Google, verified by Num. Attribution travels with every payload and must be displayed.</p>
 </div>

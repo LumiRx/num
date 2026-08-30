@@ -6,11 +6,11 @@
 > Businesses list free and pay 10% of a booking NUM completes, out of their side,
 > never added to the traveller's bill.
 
-Facts, as of 2026-08-08:
+Facts, as of 2026-08-29:
 
-- Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
+- Operator: 5arz Inc. NUM is a 5arz product. Contact info@itsnum.com.
 - Coverage: 2,529,721 places, 77 destinations, 38 countries. This includes
-  natural attractions: for example every named beach on Phuket (49, mapped
+  natural attractions: for example every named beach on Phuket (51, mapped
   with coordinates at itsnum.com/phuket/beaches/), plus temples, viewpoints
   and waterfalls.
 - Channels: the NUM web app at app.itsnum.com (installs to the home screen, no
@@ -31,12 +31,41 @@ Facts, as of 2026-08-08:
   server. Third-party submissions are stored but stay invisible to travellers
   until a human at 5arz approves them.
 
+## For agents, without a second hop
+
+- MCP server: https://itsnum.com/mcp (streamable-http, bearer token)
+- MCP manifest: https://itsnum.com/.well-known/mcp.json
+- OpenAPI 3.1: https://itsnum.com/openapi.json
+- Get a token: https://itsnum.com/api/agent/signup — prefix `numa_live_`
+- Docs and quotas: https://itsnum.com/agents/
+- Per-client setup, with the exact config each one wants:
+  Claude Desktop — https://itsnum.com/agents/claude-desktop/
+  Claude Code — https://itsnum.com/agents/claude-code/
+  Cursor — https://itsnum.com/agents/cursor/
+  VS Code — https://itsnum.com/agents/vs-code/
+  Windsurf — https://itsnum.com/agents/windsurf/
+  Cline — https://itsnum.com/agents/cline/
+  Zed — https://itsnum.com/agents/zed/
+  ChatGPT — https://itsnum.com/agents/chatgpt/
+  n8n — https://itsnum.com/agents/n8n/
+  LibreChat — https://itsnum.com/agents/librechat/
+- Tools: num_search_places, num_get_place, num_submit_business,
+  num_submit_promo, num_list_submissions
+- Reads are metered against a daily quota. Writes — submitting a business or a
+  promotion — are free and unmetered, and every one is reviewed by a person
+  before a traveller sees it. Nothing an agent submits goes live automatically.
+
+    {"mcpServers":{"num":{"type":"http","url":"https://itsnum.com/mcp",
+      "headers":{"Authorization":"Bearer numa_live_..."}}}}
+
 ## Main pages
 
 - [Home](https://itsnum.com/): what NUM is and how to start.
 - [How it works](https://itsnum.com/how-it-works/): chat, plan, book, real places only.
 - [Get the app](https://itsnum.com/app/): add NUM on LINE or to a phone home screen.
 - [Destinations](https://itsnum.com/destinations/): all 77 destinations with place counts.
+- [Guides](https://itsnum.com/guides/): complete counted sets from the directory —
+  every fountain in Rome, every beach on Phuket — with coordinates.
 - [Perks](https://itsnum.com/perks/): what members get at partner places.
 
 ## For businesses

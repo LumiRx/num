@@ -22,7 +22,7 @@
 //   · THE DESKTOP → PHONE HANDOFF IS EXPLICIT. Num lives on a phone home
 //     screen; a laptop visitor needs telling how to get it there.
 import { useCallback, useEffect, useState } from 'react';
-import { isNativeApp } from '../../lib/native';
+import { isNativeApp, escapeCard } from '../../lib/native';
 import IOSDevice from '../device/IOSDevice';
 import ConciergeApp from '../app/ConciergeApp';
 import LockScreen from './LockScreen';
@@ -31,14 +31,21 @@ import type { IconProps } from '../../lib/icons';
 import { PairHandoff } from '../app/PairBridge';
 import InstallPrompt from '../app/InstallPrompt';
 
-function useViewportWidth(): number {
-  const [w, setW] = useState(() => window.innerWidth);
+/**
+ * Viewport width AND height.
+ *
+ * Height matters here as much as width: the phone mockup is 852px tall at full
+ * size, which is taller than a 13-inch laptop viewport, so a width-only sizing
+ * rule let the mockup swallow the whole first screen.
+ */
+function useViewport(): { width: number; height: number } {
+  const [vp, setVp] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   useEffect(() => {
-    const onResize = () => setW(window.innerWidth);
+    const onResize = () => setVp({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  return w;
+  return vp;
 }
 
 const PROMISES: Array<[label: string, Icon: (p?: IconProps) => JSX.Element]> = [
@@ -195,16 +202,29 @@ function useNativeInstall() {
 }
 
 export default function LaunchStage() {
-  const width = useViewportWidth();
+  const { width, height } = useViewport();
   const showLock = width >= 1180;
   // Below this the two frames stop fitting side by side; one honestly-sized
   // frame beats two clipped ones.
-  const frameW = width < 900 ? 340 : 393;
+  // Sized against the VIEWPORT HEIGHT as well as the width. A 393×852 frame is
+  // taller than most laptop viewports on its own, so the mockup filled the
+  // screen, pushed every word below it off-screen, and left a slab of empty
+  // space beside it on the way down. Capping at 62vh keeps the phone a
+  // showcase rather than the whole page.
+  const frameW = Math.min(width < 900 ? 320 : 372, Math.round((height * 0.62) / (852 / 393)));
   const frameH = Math.round(frameW * (852 / 393));
   // Read once on mount: the platform cannot change mid-visit, and calling
   // navigator during render would make this component non-deterministic.
   const [platform] = useState(detectPlatform);
-  const install = INSTALL[platform];
+  // Inside an in-app browser the per-platform steps below are wrong — they
+  // name Safari's Share menu and Chrome's ⋮ menu, and a web view has neither.
+  // The escape card supplies the steps that ARE possible from in there, and
+  // this section swaps to them so the page and the floating prompt cannot
+  // give one person two different answers.
+  const escape = escapeCard();
+  const install = escape
+    ? { heading: escape.heading, steps: escape.steps }
+    : INSTALL[platform];
   const onPhone = platform !== 'desktop';
   // The app-store build never shows the landing page: someone who installed
   // from a store did not come to be marketed to. ConciergeApp is the app.
@@ -214,6 +234,24 @@ export default function LaunchStage() {
     }
   }, []);
   const { ready: nativeInstall, promptInstall } = useNativeInstall();
+
+  // ── Asking to install is an ACTION, not a scroll ────────────────────────
+  //
+  // Both install buttons used to be `href="#on-your-phone"`, so tapping the
+  // primary call to action moved the page down to a small grey card. That is
+  // not what the button says it does, and on the one device where we CAN open
+  // the real OS install sheet we were declining to.
+  //
+  // Now: fire the platform's own prompt where one exists, and everywhere else
+  // open a sheet that states the steps at a size someone can follow while
+  // holding the phone. The anchor stays as the href so a middle-click, a
+  // no-JS visitor and the keyboard all still reach the instructions.
+  const [showSteps, setShowSteps] = useState(false);
+  const startInstall = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (nativeInstall) { void promptInstall(); return; }
+    setShowSteps(true);
+  };
 
   return (
     <div
@@ -234,6 +272,72 @@ export default function LaunchStage() {
     >
       <div className="aurora-layer" aria-hidden="true" />
       <InstallPrompt />
+
+      {/* The install steps, as a sheet you cannot miss.
+          Replaces scrolling someone to a small card at the foot of the page.
+          Big type on purpose: this is read once, at arm's length, while the
+          reader is holding the phone they are trying to change. */}
+      {showSteps && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={install.heading}
+          onClick={() => setShowSteps(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: 20,
+            background: 'rgba(24,16,12,.55)', backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--paper, #fffaf7)', borderRadius: 26, padding: '30px 28px 26px',
+              maxWidth: 460, width: '100%', boxShadow: '0 30px 80px rgba(0,0,0,.35)',
+              textAlign: 'left',
+            }}
+          >
+            <h2
+              style={{
+                fontFamily: 'var(--font-heading)', fontWeight: 800,
+                fontSize: 'clamp(23px, 5vw, 30px)', letterSpacing: '-.02em',
+                margin: '0 0 18px', lineHeight: 1.15,
+              }}
+            >
+              {install.heading}
+            </h2>
+            <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 14 }}>
+              {install.steps.map((s: string, i: number) => (
+                <li key={s} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flex: 'none', width: 32, height: 32, borderRadius: 999,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'linear-gradient(135deg,#ff6a3d,#ec3013)', color: '#fff',
+                      fontWeight: 800, fontSize: 15,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.42, paddingTop: 3 }}>{s}</span>
+                </li>
+              ))}
+            </ol>
+            <button
+              type="button"
+              onClick={() => setShowSteps(false)}
+              style={{
+                marginTop: 24, width: '100%', border: 0, cursor: 'pointer',
+                borderRadius: 999, padding: '15px 20px', fontWeight: 800, fontSize: 16,
+                background: 'var(--ink)', color: 'var(--paper, #fff)',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Navigation. The old page had none: someone who landed here from an ad
           and wanted to know who we are had no way out except the back button,
@@ -310,16 +414,7 @@ export default function LaunchStage() {
             <>
               <a
                 href="#on-your-phone"
-                onClick={(e) => {
-                  // Native path first: one tap opens the phone's own install
-                  // sheet and the guest just hits Add. Only when the platform
-                  // has no such sheet (iOS) does the link scroll to the
-                  // step-by-step card below.
-                  if (nativeInstall) {
-                    e.preventDefault();
-                    void promptInstall();
-                  }
-                }}
+                onClick={startInstall}
                 style={{
                   display: 'inline-block', textDecoration: 'none', borderRadius: 999,
                   padding: '17px 34px', fontWeight: 700, fontSize: 17, color: '#fff',
@@ -355,6 +450,7 @@ export default function LaunchStage() {
               </a>
               <a
                 href="#on-your-phone"
+                onClick={startInstall}
                 className="glass"
                 style={{
                   display: 'inline-block', textDecoration: 'none', borderRadius: 999,
@@ -501,17 +597,43 @@ export default function LaunchStage() {
         id="on-your-phone"
         className="glass"
         style={{
-          position: 'relative', zIndex: 1, maxWidth: 560, width: '100%',
-          borderRadius: 20, padding: '22px 24px', textAlign: 'left', scrollMarginTop: 24,
+          position: 'relative', zIndex: 1, maxWidth: 620, width: '100%',
+          borderRadius: 26, padding: '34px 32px 30px', textAlign: 'left', scrollMarginTop: 24,
         }}
       >
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: 18, margin: '0 0 10px', letterSpacing: '-.01em' }}>
+        {/* Sized to be read, not skimmed past. This is the last thing on the
+            page and the single action the whole page is asking for; at 18px
+            with 14.5px grey steps it read as a footnote to its own headline. */}
+        <h2
+          style={{
+            fontFamily: 'var(--font-heading)', fontWeight: 800,
+            fontSize: 'clamp(24px, 3.4vw, 34px)', margin: '0 0 20px',
+            letterSpacing: '-.02em', lineHeight: 1.12,
+          }}
+        >
           {install.heading}
         </h2>
-        <ol style={{ margin: 0, paddingLeft: 20, fontSize: 14.5, lineHeight: 1.75, color: 'var(--ink-60)' }}>
-          {install.steps.map((s) => <li key={s}>{s}</li>)}
+        <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 16 }}>
+          {install.steps.map((s: string, i: number) => (
+            <li key={s} style={{ display: 'flex', gap: 15, alignItems: 'flex-start' }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  flex: 'none', width: 34, height: 34, borderRadius: 999,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(135deg,#ff6a3d,#ec3013)', color: '#fff',
+                  fontWeight: 800, fontSize: 16,
+                }}
+              >
+                {i + 1}
+              </span>
+              <span style={{ fontSize: 'clamp(17px, 2vw, 19px)', fontWeight: 600, lineHeight: 1.45, paddingTop: 4 }}>
+                {s}
+              </span>
+            </li>
+          ))}
         </ol>
-        <p style={{ fontSize: 13, color: 'var(--ink-40)', margin: '14px 0 0' }}>
+        <p style={{ fontSize: 14, color: 'var(--ink-40)', margin: '20px 0 0', lineHeight: 1.6 }}>
           No app store, nothing to download. Num is a website that keeps your thread,
           so it works the moment you open it — adding it to your home screen just
           makes it open like an app.

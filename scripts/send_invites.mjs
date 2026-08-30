@@ -32,7 +32,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { generateInvite, riskOf, excludeReason, normaliseCategory } from './invite_gen.mjs';
+import { generateInvite, riskOf, excludeReason, normaliseCategory, isFreemail } from './invite_gen.mjs';
 
 /* ── config ─────────────────────────────────────────────────────────────── */
 
@@ -46,37 +46,8 @@ const SHEET     = 'campaign/invite_approval_sheet.html';
 const DELAY_MS  = 1300;
 const TIER_RANK = { ok: 0, care: 1, hold: 2 };
 
-/* One-address-per-domain stops us mailing twelve inboxes at one hotel group.
-   It must NOT apply to freemail: 3,287 of the businesses on this list run on
-   gmail alone, and treating those as one organisation would send exactly one
-   of them and silently skip the rest — forever, since the skipped ones never
-   enter the ledger and so come back unchanged on every future run. */
-const FREEMAIL = new Set([
-  // global
-  'gmail','googlemail','hotmail','outlook','live','msn','yahoo','ymail','rocketmail',
-  'aol','icloud','me','mac','protonmail','proton','tutanota','zoho','fastmail','mail','email','gmx',
-  // DE / AT / CH
-  'web','t-online','freenet','arcor','bluewin','sunrise','hispeed','aon','utanet','chello','a1',
-  // FR
-  'orange','wanadoo','free','laposte','sfr','neuf','bbox',
-  // IT
-  'libero','virgilio','alice','tiscali','tin','fastwebnet','inwind',
-  // CZ / HU / HR
-  'seznam','centrum','volny','atlas','email','freemail','citromail','net','vip',
-  // PT / ES
-  'sapo','clix','netcabo','iol','telefonica','terra',
-  // NL / BE
-  'ziggo','kpnmail','hetnet','planet','telenet','skynet','home',
-  // SE / DK / IS / NO
-  'telia','bredband','comhem','spray','bahnhof','simnet','internet',
-  // GB / IE
-  'btinternet','sky','virginmedia','talktalk','ntlworld','blueyonder','eircom',
-  // APAC
-  'naver','daum','hanmail','qq','163','126','sina','foxmail','bigpond','xtra',
-]);
-
-/** gmail.com, hotmail.co.uk, t-online.de → true. accor.com, auchan.pt → false. */
-const isFreemail = d => FREEMAIL.has(String(d || '').toLowerCase().split('.')[0]);
+// FREEMAIL / isFreemail moved to invite_gen.mjs on 26 Aug so the automated
+// worker drain (growth/invitecron.mjs) reads the identical list.
 
 /* ── args ───────────────────────────────────────────────────────────────── */
 

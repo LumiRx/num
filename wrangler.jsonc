@@ -38,6 +38,14 @@
     // page. Cloudflare rejects "?" inside a route pattern (the API refuses the whole
     // route set), so there is no route-level fix. Hence /signin below: a real path
     // is routable, a query flag is not. Never put a "?" in a pattern here.
+    // /sitemap.xml is claimed EXPLICITLY because num-biz-site (deployed 9 Aug,
+    // source not in this repo) also answers it with an 8-URL list hardcoded in
+    // its bundle. That list was silently the sitemap Google reads — 19 of our
+    // 27 live pages, including every destination page, /vip/ and /hosts/, were
+    // missing from it. An exact-path route beats a prefix route, so this line
+    // is what makes public/sitemap.xml the real one. Do not remove it without
+    // first checking what num-biz-site still serves.
+    { "pattern": "itsnum.com/sitemap.xml", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/signin*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/console*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/privacy*", "zone_name": "itsnum.com" },

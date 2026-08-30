@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>Confirm your listing — NUM</title>
-<meta name="description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card. 10% only on bookings that complete.">
+<meta name="description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card.">
 <style>
   :root{
     --ink:#12161c; --muted:#5b6673; --line:#e3e7ec; --bg:#fbfcfd;
@@ -19,23 +19,35 @@
     font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     -webkit-font-smoothing:antialiased; padding:0 0 56px;
   }
+  /* Thai needs more leading than Latin and must never be letter-spaced. */
+  body.th{font-family:"Noto Sans Thai",Garuda,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;line-height:1.68;letter-spacing:0}
+  body.th h1,body.th h2{letter-spacing:0;line-height:1.45}
   .wrap{max-width:560px;margin:0 auto;padding:0 20px}
-  header{padding:26px 0 8px}
+  header{padding:26px 0 8px;display:flex;align-items:center;gap:12px}
   .brand{font-weight:700;letter-spacing:-.02em;font-size:19px}
   .brand span{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
+  .langs{margin-left:auto;font-size:14px}
+  .langs button{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:4px 7px;border-radius:7px;width:auto;margin:0}
+  .langs button[aria-current="true"]{background:#eef3f1;color:var(--accent-ink);font-weight:700}
   h1{font-size:26px;line-height:1.2;letter-spacing:-.02em;margin:18px 0 6px;font-weight:700}
   h1 .biz{display:block;color:var(--accent-ink)}
-  .lede{color:var(--muted);margin:0 0 22px;font-size:16px}
+  .lede{color:var(--muted);margin:0 0 18px;font-size:16px}
   .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 20px;margin:0 0 18px}
   .card h2{font-size:15px;margin:0 0 12px;letter-spacing:-.01em;font-weight:700}
   .facts{list-style:none;margin:0;padding:0}
   .facts li{padding:9px 0 9px 26px;position:relative;border-bottom:1px solid var(--line);font-size:15px}
   .facts li:last-child{border-bottom:0;padding-bottom:0}
   .facts li::before{content:"";position:absolute;left:2px;top:16px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  body.th .facts li::before{top:14px}
   .facts b{font-weight:700}
-  .money{background:#f2f8f5;border-color:#cfe3da}
-  .money .num{font-size:30px;font-weight:700;letter-spacing:-.03em;color:var(--accent-ink);display:block;line-height:1.1}
-  .money .num small{font-size:15px;font-weight:400;color:var(--muted);letter-spacing:0}
+  /* The price, small and above the form rather than a wall of text before it. */
+  .money{background:#f2f8f5;border:1px solid #cfe3da;border-radius:var(--radius);padding:14px 16px;margin:0 0 18px}
+  .money .head{font-size:15px;font-weight:700;color:var(--accent-ink);margin:0 0 8px}
+  .money ul{list-style:none;margin:0;padding:0}
+  .money li{font-size:15px;padding:3px 0 3px 20px;position:relative}
+  .money li::before{content:"";position:absolute;left:3px;top:11px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  body.th .money li::before{top:12px}
+  .money b{font-weight:700}
   label{display:block;font-weight:600;font-size:14px;margin:16px 0 6px}
   label .opt{font-weight:400;color:var(--muted)}
   input[type=text],input[type=tel],input[type=email]{
@@ -44,6 +56,37 @@
   }
   input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
   .hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+  /* Listing picker. A claim that is not bound to a real listing is a name in a
+     box: no coordinates, no map pin, nothing to verify against. The picker is
+     an offer, never a gate — if nothing matches, the typed name is submitted
+     and the claim still lands. */
+  .pick{position:relative}
+  .pick-list{
+    position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px;
+    list-style:none;background:#fff;border:1px solid #c9d0d8;border-radius:10px;
+    box-shadow:0 10px 26px rgba(20,30,40,.14);max-height:274px;overflow-y:auto;
+  }
+  .pick-list li{margin:0}
+  .pick-opt{
+    display:block;width:100%;margin:0;padding:10px 11px;border:0;border-radius:7px;
+    background:none;color:var(--ink);font:inherit;font-size:15px;text-align:left;cursor:pointer;
+    letter-spacing:normal;
+  }
+  .pick-opt:hover,.pick-opt[aria-selected="true"]{background:#f0f5f8}
+  .pick-opt b{display:block;font-weight:600}
+  .pick-opt span{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+  .picked{
+    display:flex;gap:9px;align-items:flex-start;margin:8px 0 0;padding:10px 12px;
+    background:#f2f8f5;border:1px solid #cfe3da;border-radius:9px;font-size:14px;line-height:1.45;
+  }
+  .picked .x{
+    flex:0 0 auto;width:auto;margin:0;padding:2px 8px;font-size:13px;font-weight:600;
+    background:none;color:var(--accent-ink);border:1px solid #cfe3da;border-radius:7px;
+  }
+  .picked .x:hover{background:#e3efe9}
+  /* The self-description block, for a business we hold no listing for. */
+  .newbiz{margin:14px 0 0;padding:2px 14px 16px;background:#f7f9fa;border:1px solid var(--line);border-radius:10px}
+  .newbiz-head{margin:14px 0 0;font-size:14px;line-height:1.5;color:var(--muted)}
   .optin{display:flex;gap:10px;align-items:flex-start;margin:20px 0 0;padding:13px;background:#f7f9fa;border:1px solid var(--line);border-radius:9px}
   .optin input{margin:2px 0 0;width:18px;height:18px;flex:0 0 auto;accent-color:var(--accent)}
   .optin label{margin:0;font-weight:400;font-size:14px;line-height:1.45;color:var(--ink)}
@@ -55,6 +98,21 @@
   button[disabled]{opacity:.55;cursor:default}
   .under{font-size:13px;color:var(--muted);text-align:center;margin:12px 0 0}
   .err{background:#fff4f4;border:1px solid #f0c8c8;color:#8a1f1f;padding:11px 12px;border-radius:9px;font-size:14px;margin:16px 0 0}
+  .okbox{background:#f2f8f5;border:1px solid #cfe3da;color:var(--accent-ink);padding:12px 13px;border-radius:9px;font-size:15px;line-height:1.5;margin:16px 0 0}
+  /* Proving ownership, on the screen that used to be the end of the road. */
+  .verify{border:1px solid #cfe3da;background:#fbfdfc}
+  .chan{display:block;width:100%;margin:8px 0 0;padding:13px 14px;text-align:left;
+    background:#fff;color:var(--ink);border:1px solid #c9d0d8;border-radius:10px;
+    font:inherit;font-size:15px;cursor:pointer;letter-spacing:normal}
+  .chan:hover{border-color:var(--accent);background:#fff}
+  .chan[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .chan b{display:block;font-weight:600}
+  .chan span{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+  details{margin:0 0 18px}
+  details>summary{cursor:pointer;font-size:15px;font-weight:600;color:var(--accent-ink);padding:12px 2px;list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::after{content:" ▾";color:var(--muted)}
+  details[open]>summary::after{content:" ▴"}
   footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
   footer a{color:var(--muted)}
   .done .tick{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 0 16px}
@@ -66,12 +124,12 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NUM">
 <meta property="og:title" content="Confirm your listing — NUM">
-<meta property="og:description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card. 10% only on bookings that complete.">
+<meta property="og:description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card.">
 <meta property="og:url" content="https://itsnum.com/claim/">
 <meta property="og:locale" content="en_GB">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Confirm your listing — NUM">
-<meta name="twitter:description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card. 10% only on bookings that complete.">
+<meta name="twitter:description" content="Confirm your business listing on NUM. Nothing to list, no subscription, no card.">
 <meta property="og:image" content="https://itsnum.com/assets/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -80,70 +138,108 @@
 <body>
 <div class="wrap">
 
-  <header><div class="brand">NUM<span>by 5arz</span></div></header>
+  <header>
+    <div class="brand">NUM<span>by 5arz</span></div>
+    <!-- Each button is labelled in its own language, never in English. A
+         person who cannot read English cannot find "Indonesian" in a list
+         written in English, which is the one case the switcher exists for. -->
+    <div class="langs" id="langs">
+      <button type="button" data-lang="th" lang="th">ไทย</button>
+      <button type="button" data-lang="id" lang="id">Bahasa</button>
+      <button type="button" data-lang="en">EN</button>
+    </div>
+  </header>
 
   <!-- ============ FORM VIEW ============ -->
   <main id="view-form">
 
-    <h1>Confirm your listing<span class="biz" id="h-biz">on NUM</span></h1>
-    <p class="lede" id="lede">
-      We drafted this listing from public information. It is not live, and it
-      won&rsquo;t go live until you confirm it below.
-    </p>
+    <h1 id="t-h1">Confirm your listing<span class="biz" id="h-biz">on NUM</span></h1>
+    <p class="lede" id="lede"></p>
 
-    <div class="card money">
-      <h2>The money, in full</h2>
-      <span class="num">10%<small> &mdash; on bookings that complete. Nothing else.</small></span>
-      <ul class="facts" style="margin-top:14px">
-        <li><b>Nothing to list.</b> No signup fee, no subscription, no monthly.</li>
-        <li><b>No card, ever.</b> There is no card field on this page and there
-            won&rsquo;t be one later.</li>
-        <li><b>10% only when a booking completes</b> through NUM and the guest turns
-            up. Invoiced weekly. That is the only money that changes hands.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2>What happens if you&rsquo;re listed</h2>
-      <ul class="facts">
-        <li>A visitor messages NUM in their own language &mdash; any language &mdash;
-            and asks a normal question. NUM answers with a short list of real,
-            checked places, and can book one.</li>
-        <li><b>Bookings arrive as a message on the phone you already carry.</b> You
-            tap accept or decline. Nothing to download, nothing to log into.</li>
-        <li>You set your own hours and how much you can take.</li>
-        <li>You can take your listing down at any time.</li>
-      </ul>
+    <!-- Price first, but four lines rather than a page of them: an owner has to
+         be able to see the whole cost before the first input, on one phone
+         screen, or they will not start typing. -->
+    <div class="money">
+      <div class="head" id="m-head"></div>
+      <ul id="m-list"></ul>
     </div>
 
     <form id="claim-form" novalidate>
       <div class="card">
-        <h2>Two minutes and you&rsquo;re done</h2>
+        <h2 id="t-formhead">Two minutes and you&rsquo;re done</h2>
 
-        <label for="business_name">Business name</label>
-        <input id="business_name" name="business_name" type="text" required
-               autocomplete="organization" placeholder="Your business name">
-        <p class="hint" id="hint-biz">Correct it if we got it wrong.</p>
+        <label for="business_name" id="l-biz">Business name</label>
+        <div class="pick">
+          <input id="business_name" name="business_name" type="text" required
+                 autocomplete="organization"
+                 role="combobox" aria-expanded="false" aria-autocomplete="list"
+                 aria-controls="biz-list">
+          <ul id="biz-list" class="pick-list hidden" role="listbox"
+              aria-label="Matching listings"></ul>
+        </div>
+        <div id="biz-picked" class="picked hidden">
+          <span id="biz-picked-text"></span>
+          <button type="button" class="x" id="biz-clear">Not this one</button>
+        </div>
+        <p class="hint" id="hint-biz"></p>
 
-        <label for="contact_name">Your name</label>
+        <!-- For a business we do not already hold. Hidden while a listing is
+             bound, because then we have all of this and better. -->
+        <div id="newbiz" class="newbiz hidden">
+          <p class="newbiz-head" id="t-newbiz"></p>
+
+          <!-- The name as it is actually written on the shopfront. A great
+               many businesses have two names — one on the sign in the local
+               script, one for foreigners — and until now we could only hold
+               the second. `lang` and `dir` are set from the chosen language at
+               runtime so the field renders and types right-to-left where that
+               is what the owner needs. -->
+          <label for="name_local" id="l-localname">Name in your own language <span class="opt"></span></label>
+          <input id="name_local" name="name_local" type="text" autocomplete="off">
+          <p class="hint" id="hint-localname"></p>
+
+          <label for="address" id="l-address">Address</label>
+          <input id="address" name="address" type="text"
+                 autocomplete="street-address">
+
+          <label for="website" id="l-website">Website <span class="opt"></span></label>
+          <input id="website" name="website" type="url"
+                 autocomplete="url" inputmode="url" placeholder="myplace.com">
+
+          <label for="category" id="l-category">What kind of place <span class="opt"></span></label>
+          <input id="category" name="category" type="text" list="cat-list"
+                 autocomplete="off">
+          <datalist id="cat-list">
+            <option value="Restaurant"></option>
+            <option value="Café"></option>
+            <option value="Bar"></option>
+            <option value="Hotel"></option>
+            <option value="Spa &amp; massage"></option>
+            <option value="Tour or activity"></option>
+            <option value="Shop"></option>
+            <option value="Transport"></option>
+          </datalist>
+        </div>
+
+        <label for="contact_name" id="l-contact">Your name</label>
         <input id="contact_name" name="contact_name" type="text" required
-               autocomplete="name" placeholder="Who we should ask for">
+               autocomplete="name">
 
-        <label for="phone">Mobile number</label>
+        <label for="phone" id="l-phone">Mobile number</label>
         <input id="phone" name="phone" type="tel" required
-               autocomplete="tel" inputmode="tel" placeholder="e.g. 07700 900123">
-        <p class="hint">
-          This is where bookings arrive, as a text. That is what the number is for.
-          We will not publish it, sell it or pass it on.
-        </p>
+               autocomplete="tel" inputmode="tel" placeholder="081 234 5678">
+        <p class="hint" id="hint-phone"></p>
 
-        <label for="email">Email <span class="opt">(optional)</span></label>
+        <label for="line_id" id="l-line" class="hidden">LINE ID <span class="opt"></span></label>
+        <input id="line_id" name="line_id" type="text" class="hidden" autocomplete="off">
+
+        <label for="email" id="l-email">Email <span class="opt">(optional)</span></label>
         <input id="email" name="email" type="email"
-               autocomplete="email" inputmode="email" placeholder="you@yourplace.co.uk">
+               autocomplete="email" inputmode="email">
 
         <div class="optin">
           <input type="checkbox" id="marketing_ok" name="marketing_ok" value="1">
-          <label for="marketing_ok">
+          <label for="marketing_ok" id="l-optin">
             Separately from bookings, you can text or email me occasionally about
             NUM &mdash; how it&rsquo;s going in my area, what visitors are asking
             for. Not required, and you can stop it any time.
@@ -153,39 +249,65 @@
         <div id="form-error" class="err hidden" role="alert"></div>
 
         <button type="submit" id="submit-btn">Confirm this listing</button>
-        <p class="under">No card. You can change or remove anything afterwards.</p>
+        <p class="under" id="t-under">No card. You can change or remove anything afterwards.</p>
       </div>
     </form>
+
+    <!-- The long version, for anyone who wants it, after the form rather than
+         in front of it. -->
+    <details>
+      <summary id="t-more">What happens if you&rsquo;re listed</summary>
+      <div class="card" style="margin-top:0">
+        <ul class="facts" id="more-list"></ul>
+      </div>
+    </details>
   </main>
 
   <!-- ============ SUCCESS VIEW ============ -->
   <main id="view-done" class="hidden done">
     <div class="tick" aria-hidden="true">&#10003;</div>
-    <h1>That&rsquo;s it &mdash; we&rsquo;ve got it<span class="biz" id="d-biz"></span></h1>
-    <div class="card">
-      <h2>What happens next</h2>
-      <ol>
-        <li>A person from our team checks the listing against public records and
-            gets in touch on the number you gave us. Usually within one working day.</li>
-        <li>Once it&rsquo;s checked, your listing goes live with a
-            <b>Verified real</b> badge, and NUM can recommend and book into it.</li>
-        <li>Bookings arrive as a text on your phone. You accept or decline.</li>
-      </ol>
-      <p class="hint" style="margin-top:14px">
-        Nothing is charged at any point in this. The first money that ever changes
-        hands is 10% of a booking that has already completed.
-      </p>
+    <h1 id="t-doneh1">That&rsquo;s it &mdash; we&rsquo;ve got it<span class="biz" id="d-biz"></span></h1>
+
+    <!-- Prove it now, if the listing carries a contact we can send to.
+         Until 26 Aug 2026 this screen was the end of the road: the claim sat
+         in a table nothing read and the venue waited for a phone call. The
+         verification behind this card already existed, unrouted. -->
+    <div class="card verify hidden" id="verify-card">
+      <h2 id="t-verifyh">Prove it is yours now</h2>
+      <p class="hint" id="t-verifywhy"></p>
+
+      <div id="verify-channels"></div>
+
+      <label for="vf-email" id="l-vfemail" class="hidden">Your address at this domain</label>
+      <input id="vf-email" type="email" class="hidden" autocomplete="email"
+             inputmode="email">
+
+      <button type="button" id="verify-send" class="hidden">Send me the code</button>
+
+      <div id="verify-code-step" class="hidden">
+        <label for="vf-code" id="l-vfcode">Enter the code</label>
+        <input id="vf-code" type="text" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" placeholder="000000">
+        <p class="hint" id="t-vfsent"></p>
+        <button type="button" id="verify-check">Confirm</button>
+      </div>
+
+      <div id="verify-error" class="err hidden" role="alert"></div>
+      <div id="verify-ok" class="okbox hidden" role="status"></div>
     </div>
-    <p class="under" style="text-align:left">
-      Something not right? Reply to the email we sent you, or write to
-      <a href="mailto:info@5arz.com">info@5arz.com</a>, and a person answers.
-    </p>
+
+    <div class="card">
+      <h2 id="t-nexth">What happens next</h2>
+      <ol id="done-list"></ol>
+      <p class="hint" id="t-donefoot" style="margin-top:14px"></p>
+    </div>
+    <p class="under" id="t-donehelp" style="text-align:left"></p>
   </main>
 
   <footer>
-    NUM is a travel concierge, built by 5arz.<br>
+    <span id="t-foot">NUM is a travel concierge, built by 5arz.</span><br>
     <span id="legal-line"></span><br>
-    <a href="/privacy/">Privacy &amp; where your details came from</a>
+    <a href="/privacy/" id="t-priv">Privacy &amp; where your details came from</a>
   </footer>
 
 </div>
@@ -194,14 +316,15 @@
 (function () {
   "use strict";
 
-  // ---- config ------------------------------------------------------------
-  // Both routes are served by the num-growth worker. If Rick mounts it on a
-  // different prefix, change these two and nothing else.
   var ENDPOINT  = "/api/claims";
   var EVENT_URL = "/api/ev";
-  var LEGAL_LINE = "5arz Inc · info@5arz.com · +1 754 444 8885";
+  // Must match the line in the outreach email and in growth/worker.js. A
+  // business checking whether the email that brought them here is real reads
+  // the two side by side; a different address or a different reply-to on the
+  // landing page is exactly the tell that says "phishing".
+  var LEGAL_LINE =
+    "5arz Inc · 16192 Coastal Highway, Lewes, DE 19958 · info@itsnum.com · +1 754 444 8885";
 
-  // ---- helpers -----------------------------------------------------------
   function $(id) { return document.getElementById(id); }
 
   function qp(name) {
@@ -211,47 +334,493 @@
     } catch (e) { return ""; }
   }
 
-  // The business name arrives from an email merge field, so treat it as
-  // hostile. Whitelist rather than blacklist: keep letters (any alphabet),
-  // digits and the punctuation real business names actually use, replace
-  // everything else. Control characters can't survive this by construction.
-  // It is also only ever assigned via textContent / .value, never innerHTML.
-  var NAME_OK = /[^\p{L}\p{N} '&.,()\/+-]/gu;
+  // The business name arrives from an email merge field or a printed QR, so
+  // treat it as hostile. Whitelist rather than blacklist: keep letters (any
+  // alphabet, Thai included), digits and the punctuation real business names
+  // use, replace everything else. Only ever assigned via textContent / .value.
+  // \p{M} matters here as much as \p{L}: Thai writes vowels and tones as
+  // combining marks, so a letters-only whitelist quietly deletes them and
+  // greets a Phuket owner with their own name misspelled.
+  var NAME_OK = /[^\p{L}\p{M}\p{N} '&.,()\/+-]/gu;
   function cleanName(s) {
     if (!s) return "";
     try { s = s.replace(NAME_OK, " "); }
-    catch (e) { s = s.replace(/[^A-Za-z0-9 '&.,()\/+-]/g, " "); } // no \p support
+    catch (e) { s = s.replace(/[^A-Za-z0-9 '&.,()\/+-]/g, " "); }
     s = s.replace(/\s+/g, " ").trim();
     return s.length > 80 ? s.slice(0, 80) : s;
   }
 
-  // ---- prefill -----------------------------------------------------------
-  var biz   = cleanName(qp("b") || qp("business") || qp("name"));
-  var token = qp("t") || qp("ref") || qp("token") || "";
-  var refc  = qp("r") || qp("code") || "";
-
-  if (biz) {
-    $("h-biz").textContent = "for " + biz;
-    $("business_name").value = biz;
-    $("lede").textContent =
-      "We drafted a listing for " + biz + " from public information. It is not " +
-      "live, and it won't go live until you confirm it below.";
-  } else {
-    // No name in the link. Say so rather than pretending we know them.
-    $("h-biz").textContent = "on NUM";
-    $("hint-biz").textContent =
-      "We couldn't read your business name from the link — please type it in.";
+  function tz() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; }
+    catch (e) { return ""; }
   }
 
+  // ---- where and in what language --------------------------------------
+  // Country is only ever taken from an explicit ?c= — the one our own printed
+  // QR codes carry. Everything else is a guess, and the worker has Cloudflare's
+  // real geo, which beats any guess this page could make. Sending a guessed
+  // country would override something more accurate than itself.
+  var ISO = (function () {
+    var c = qp("c") || qp("country");
+    return /^[A-Za-z]{2}$/.test(c) ? c.toUpperCase() : "";
+  })();
+
+  // Every language this page speaks. English is last and is the fallback, so
+  // adding a language means adding one entry here and one COPY block — not
+  // touching the detection logic.
+  //
+  // `dir` is carried per language rather than assumed: the day this list gets
+  // Arabic or Hebrew, the form has to lay out right-to-left, and a page that
+  // half-remembers to do that is worse than one that never tried.
+  var LANGS = [
+    { code: "th", dir: "ltr", iso: ["TH"], tz: ["Asia/Bangkok"], nav: /\bth\b|^th-|-TH\b/i },
+    { code: "id", dir: "ltr", iso: ["ID"],
+      tz: ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "Asia/Pontianak"],
+      nav: /\b(id|in)\b|^(id|in)-|-ID\b/i },
+    { code: "en", dir: "ltr", iso: [], tz: [], nav: /.^/ }
+  ];
+  function langDef(code) {
+    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === code) return LANGS[i];
+    return LANGS[LANGS.length - 1];
+  }
+
+  // Language is a display choice, so guessing is fine here. Order matters:
+  // an explicit ?lang= beats a remembered choice, which beats the country on
+  // our own printed code, which beats the browser, which beats the clock.
+  var LANG = (function () {
+    var l = (qp("lang") || qp("l")).toLowerCase();
+    var i;
+    for (i = 0; i < LANGS.length; i++) if (LANGS[i].code === l) return l;
+
+    try {
+      var saved = localStorage.getItem("num_claim_lang");
+      for (i = 0; i < LANGS.length; i++) if (LANGS[i].code === saved) return saved;
+    } catch (e) {}
+
+    for (i = 0; i < LANGS.length; i++) {
+      if (ISO && LANGS[i].iso.indexOf(ISO) !== -1) return LANGS[i].code;
+    }
+    var nav = (navigator.language || "") + " " + (navigator.languages || []).join(" ");
+    for (i = 0; i < LANGS.length; i++) {
+      if (LANGS[i].nav.test(nav)) return LANGS[i].code;
+    }
+    var zone = tz();
+    for (i = 0; i < LANGS.length; i++) {
+      if (LANGS[i].tz.indexOf(zone) !== -1) return LANGS[i].code;
+    }
+    return "en";
+  })();
+
+  // Which rate card to show. Display only — the money a venue is actually
+  // billed is decided server-side by the place's own country, not by this page.
+  var RATES = (ISO === "TH" || (!ISO && LANG === "th" && tz() === "Asia/Bangkok")) ? "th" : "intl";
+
+  // ---- copy -------------------------------------------------------------
+  var COPY = {
+    en: {
+      h1: "Confirm your listing",
+      bizFor: function (b) { return "for " + b; },
+      bizNone: "on NUM",
+      lede: function (b) {
+        return b
+          ? "We drafted a listing for " + b + " from public information. It is not live, and it won't go live until you confirm it below."
+          : "We drafted this listing from public information. It is not live, and it won't go live until you confirm it below.";
+      },
+      hintBizOk: "Correct it if we got it wrong.",
+      hintBizNone: "We couldn't read your business name from the link — please type it in.",
+      pickedIs: "Matched to the listing we hold:",
+      pickNo: "Not this one",
+      pickTaken: "already confirmed",
+      verifyH: "Prove it is yours now",
+      verifyWhy: "We send a code to the contact already published on your listing — not to one you type in. That is what proves the listing is yours, and it takes about a minute.",
+      verifySend: "Send me the code",
+      verifyCode: "Enter the code",
+      verifyCheck: "Confirm",
+      verifySent: function (x) { return "We sent it to " + x + ". It is good for 10 minutes."; },
+      verifyDomEmail: "Your address at this domain",
+      verifyDone: "Verified. This listing is yours — we will send your dashboard link to the same contact.",
+      verifyLater: "Or skip this — a person from our team will check it by hand instead.",
+      newbizHead: "We don't have a listing for you yet. Tell us where you are and we'll build one.",
+      lAddress: "Address",
+      lWebsite: "Website",
+      lCategory: "What kind of place",
+      phAddress: "Street, area, city",
+      phCategory: "Restaurant, hotel, spa…",
+      lLocalName: "Name in your own language",
+      phLocalName: "If your sign says it differently",
+      hintLocalName: "We show this exactly as you write it to guests who read your language.",
+      formhead: "Two minutes and you're done",
+      lBiz: "Business name",
+      lContact: "Your name",
+      lPhone: "Mobile number",
+      lLine: "LINE ID",
+      lEmail: "Email",
+      opt: "(optional)",
+      phBiz: "Your business name",
+      phContact: "Who we should ask for",
+      phEmail: "you@yourplace.com",
+      hintPhone: "This is where bookings arrive, as a text. That is what the number is for. We will not publish it, sell it or pass it on.",
+      optin: "Separately from bookings, you can text or email me occasionally about NUM — how it's going in my area, what visitors are asking for. Not required, and you can stop it any time.",
+      submit: "Confirm this listing",
+      sending: "Sending…",
+      under: "No card. You can change or remove anything afterwards.",
+      more: "What happens if you're listed",
+      moreList: [
+        "A visitor messages NUM in their own language — any language — and asks a normal question. NUM answers with a short list of real, checked places, and can book one.",
+        "<b>Bookings arrive as a message on the phone you already carry.</b> You tap accept or decline. Nothing to download, nothing to log into.",
+        "You set your own hours and how much you can take.",
+        "You can take your listing down at any time."
+      ],
+      errBiz: "Please tell us the business name.",
+      errContact: "Please tell us your name, so we know who to ask for.",
+      errPhone: "Please give a mobile number we can reach you on — that's where bookings arrive.",
+      errEmail: "That email address doesn't look right. Leave it blank if you'd rather not.",
+      errSend: "That didn't send — the problem is on our side, not yours. Please try once more, or just reply to the email we sent you and a person will sort it out.",
+      doneH1: "That's it — we've got it",
+      nextH: "What happens next",
+      doneList: [
+        "A person from our team checks the listing against public records and gets in touch on the number you gave us. Usually within one working day.",
+        "Once it's checked, your listing goes live with a <b>Verified real</b> badge, and NUM can recommend and book into it.",
+        "Bookings arrive as a text on your phone. You accept or decline."
+      ],
+      doneFoot: "Nothing is charged at any point in this. The first money that ever changes hands is the fee on a booking that has already completed.",
+      doneHelp: 'Something not right? Write to <a href="mailto:info@itsnum.com">info@itsnum.com</a> and a person answers.',
+      foot: "NUM is a travel concierge, built by 5arz.",
+      priv: "Privacy &amp; where your details came from"
+    },
+    // Indonesian. Added 26 Aug 2026 for Bali — the first place a business
+    // asked to register itself rather than being found by us.
+    //
+    // Not machine-default politeness: "Bapak/Ibu" is right for a letter to a
+    // stranger and wrong on a form, and "Anda" throughout would read stiff to
+    // a warung owner. This is written the way a Balinese business is actually
+    // spoken to.
+    id: {
+      h1: "Konfirmasi data usaha Anda",
+      bizFor: function (b) { return "untuk " + b; },
+      bizNone: "di NUM",
+      lede: function (b) {
+        return b
+          ? "Kami sudah menyiapkan data " + b + " dari informasi publik. Belum aktif, dan tidak akan aktif sampai Anda konfirmasi di bawah."
+          : "Kami menyiapkan data ini dari informasi publik. Belum aktif, dan tidak akan aktif sampai Anda konfirmasi di bawah.";
+      },
+      hintBizOk: "Kalau ada yang salah, silakan perbaiki.",
+      hintBizNone: "Kami tidak bisa membaca nama usaha dari tautan — mohon ketik sendiri.",
+      pickedIs: "Cocok dengan data yang kami punya:",
+      pickNo: "Bukan yang ini",
+      pickTaken: "sudah dikonfirmasi",
+      verifyH: "Buktikan sekarang bahwa ini milik Anda",
+      verifyWhy: "Kami kirim kode ke kontak yang sudah tercantum di data usaha Anda — bukan ke kontak yang Anda ketik. Itulah yang membuktikan usaha ini milik Anda, dan hanya butuh sekitar satu menit.",
+      verifySend: "Kirim kodenya",
+      verifyCode: "Masukkan kode",
+      verifyCheck: "Konfirmasi",
+      verifySent: function (x) { return "Sudah kami kirim ke " + x + ". Berlaku 10 menit."; },
+      verifyDomEmail: "Alamat email Anda di domain ini",
+      verifyDone: "Terverifikasi. Data usaha ini milik Anda — tautan dasbor kami kirim ke kontak yang sama.",
+      verifyLater: "Atau lewati saja — tim kami akan memeriksanya secara manual.",
+      newbizHead: "Kami belum punya data usaha Anda. Beri tahu lokasinya, nanti kami buatkan.",
+      lAddress: "Alamat",
+      lWebsite: "Situs web",
+      lCategory: "Jenis usaha",
+      phAddress: "Jalan, kelurahan, kota",
+      phCategory: "Restoran, hotel, spa…",
+      lLocalName: "Nama dalam bahasa Anda",
+      phLocalName: "Kalau tertulis berbeda di papan nama",
+      hintLocalName: "Kami tampilkan nama ini apa adanya kepada tamu yang membaca bahasa Anda.",
+      formhead: "Dua menit, selesai",
+      lBiz: "Nama usaha",
+      lContact: "Nama Anda",
+      lPhone: "Nomor HP",
+      lLine: "LINE ID",
+      lEmail: "Email",
+      opt: "(opsional)",
+      phBiz: "Nama usaha Anda",
+      phContact: "Siapa yang kami tanyakan",
+      phEmail: "anda@usahaanda.com",
+      hintPhone: "Pesanan masuk ke nomor ini lewat SMS. Itu gunanya. Nomor ini tidak kami publikasikan, tidak kami jual, dan tidak kami berikan ke pihak lain.",
+      optin: "Terpisah dari pesanan, NUM boleh sesekali mengirim SMS atau email — perkembangan di daerah saya, apa yang dicari wisatawan. Tidak wajib, dan bisa dihentikan kapan saja.",
+      submit: "Konfirmasi data ini",
+      sending: "Mengirim…",
+      under: "Tanpa kartu. Semuanya bisa diubah atau dihapus setelah ini.",
+      more: "Apa yang terjadi kalau usaha Anda terdaftar",
+      moreList: [
+        "Wisatawan bertanya ke NUM dengan bahasanya sendiri — bahasa apa pun — dengan pertanyaan biasa. NUM menjawab dengan daftar pendek tempat nyata yang sudah dicek, dan bisa langsung memesan.",
+        "<b>Pesanan masuk sebagai pesan di HP yang sudah Anda pegang.</b> Tinggal terima atau tolak. Tidak ada aplikasi yang perlu diunduh, tidak ada akun yang perlu dibuka.",
+        "Jam buka dan berapa banyak yang sanggup Anda terima, Anda sendiri yang tentukan.",
+        "Anda bisa menghapus data usaha Anda kapan saja."
+      ],
+      errBiz: "Mohon isi nama usaha.",
+      errContact: "Mohon isi nama Anda, supaya kami tahu harus mencari siapa.",
+      errPhone: "Mohon beri nomor HP yang bisa kami hubungi — ke situlah pesanan masuk.",
+      errEmail: "Alamat email itu sepertinya kurang tepat. Boleh dikosongkan kalau tidak mau mengisi.",
+      errSend: "Belum terkirim — masalahnya di sisi kami, bukan di sisi Anda. Mohon coba sekali lagi, atau balas saja email kami dan akan ditangani orang.",
+      doneH1: "Selesai — sudah kami terima",
+      nextH: "Langkah berikutnya",
+      doneList: [
+        "Tim kami mengecek data ini terhadap catatan publik lalu menghubungi nomor yang Anda berikan. Biasanya dalam satu hari kerja.",
+        "Setelah dicek, data usaha Anda aktif dengan tanda <b>Terverifikasi</b>, dan NUM bisa merekomendasikan serta menerima pesanan ke tempat Anda.",
+        "Pesanan masuk sebagai SMS di HP Anda. Anda terima atau tolak."
+      ],
+      doneFoot: "Tidak ada biaya apa pun di seluruh proses ini. Uang pertama yang berpindah adalah komisi atas pesanan yang sudah benar-benar selesai.",
+      doneHelp: 'Ada yang kurang tepat? Kirim ke <a href="mailto:info@itsnum.com">info@itsnum.com</a> dan akan dijawab orang.',
+      foot: "NUM adalah pemandu perjalanan, dibuat oleh 5arz.",
+      priv: "Privasi &amp; dari mana data Anda kami peroleh"
+    },
+    th: {
+      h1: "ยืนยันร้านของคุณ",
+      bizFor: function (b) { return b; },
+      bizNone: "บน NUM",
+      lede: function (b) {
+        return "เราเตรียมข้อมูลร้านไว้จากข้อมูลสาธารณะแล้ว ยังไม่เปิดใช้งาน จนกว่าคุณจะยืนยันด้านล่าง";
+      },
+      hintBizOk: "ถ้าชื่อไม่ถูก แก้ได้เลย",
+      hintBizNone: "เราอ่านชื่อร้านจากลิงก์ไม่ได้ กรุณาพิมพ์ชื่อร้าน",
+      pickedIs: "ตรงกับข้อมูลร้านที่เรามี:",
+      pickNo: "ไม่ใช่ร้านนี้",
+      pickTaken: "ยืนยันแล้ว",
+      verifyH: "ยืนยันตอนนี้ว่าเป็นร้านของคุณ",
+      verifyWhy: "เราส่งรหัสไปที่ช่องทางที่ประกาศไว้ในข้อมูลร้านอยู่แล้ว ไม่ใช่ช่องทางที่คุณพิมพ์เอง นั่นคือสิ่งที่พิสูจน์ว่าร้านนี้เป็นของคุณ ใช้เวลาประมาณหนึ่งนาที",
+      verifySend: "ส่งรหัสให้ฉัน",
+      verifyCode: "กรอกรหัส",
+      verifyCheck: "ยืนยัน",
+      verifySent: function (x) { return "ส่งไปที่ " + x + " แล้ว ใช้ได้ 10 นาที"; },
+      verifyDomEmail: "อีเมลของคุณที่โดเมนนี้",
+      verifyDone: "ยืนยันแล้ว ร้านนี้เป็นของคุณ เราจะส่งลิงก์แดชบอร์ดไปที่ช่องทางเดิม",
+      verifyLater: "หรือข้ามไปก่อนก็ได้ ทีมงานจะตรวจสอบให้เอง",
+      newbizHead: "เรายังไม่มีข้อมูลร้านของคุณ บอกที่ตั้งไว้ แล้วเราจะสร้างให้",
+      lAddress: "ที่อยู่",
+      lWebsite: "เว็บไซต์",
+      lCategory: "ประเภทร้าน",
+      phAddress: "ถนน ตำบล จังหวัด",
+      phCategory: "ร้านอาหาร โรงแรม สปา…",
+      lLocalName: "ชื่อร้านภาษาไทย",
+      phLocalName: "ถ้าป้ายหน้าร้านเขียนต่างจากนี้",
+      hintLocalName: "เราจะแสดงชื่อนี้ตามที่คุณเขียน ให้ลูกค้าที่อ่านภาษาไทย",
+      formhead: "ใช้เวลา 2 นาที",
+      lBiz: "ชื่อร้าน",
+      lContact: "ชื่อคุณ",
+      lPhone: "เบอร์มือถือ",
+      lLine: "ไลน์ไอดี",
+      lEmail: "อีเมล",
+      opt: "(ไม่บังคับ)",
+      phBiz: "ชื่อร้านของคุณ",
+      phContact: "ให้เราถามหาใคร",
+      phEmail: "you@yourplace.com",
+      hintPhone: "การจองจะส่งเข้าเบอร์นี้เป็นข้อความ เราไม่เผยแพร่ ไม่ขาย ไม่ส่งต่อให้ใคร",
+      optin: "นอกจากเรื่องการจอง ให้ NUM ส่งข่าวถึงฉันได้เป็นครั้งคราว เช่น ในย่านนี้เป็นอย่างไร นักท่องเที่ยวกำลังหาอะไร ไม่บังคับ และหยุดรับเมื่อไหร่ก็ได้",
+      submit: "ยืนยันร้านนี้",
+      sending: "กำลังส่ง…",
+      under: "ไม่ต้องใช้บัตร แก้ไขหรือลบร้านทีหลังได้ตลอด",
+      more: "ถ้าร้านคุณอยู่ในระบบ จะเป็นอย่างไร",
+      moreList: [
+        "นักท่องเที่ยวทักหา NUM เป็นภาษาของเขา ภาษาไหนก็ได้ NUM ตอบเป็นรายชื่อร้านจริงที่ตรวจแล้ว และจองให้ได้เลย",
+        "<b>การจองเข้ามือถือที่คุณใช้อยู่</b> กดรับหรือปฏิเสธ ไม่ต้องโหลดแอป ไม่ต้องล็อกอิน",
+        "คุณกำหนดเองว่าเปิดกี่โมง และรับได้กี่โต๊ะ",
+        "เอาร้านออกจากระบบเมื่อไหร่ก็ได้"
+      ],
+      errBiz: "กรุณากรอกชื่อร้าน",
+      errContact: "กรุณากรอกชื่อคุณ เราจะได้ถามหาถูกคน",
+      errPhone: "กรุณากรอกเบอร์มือถือที่ติดต่อได้ การจองจะส่งเข้าเบอร์นี้",
+      errEmail: "อีเมลดูไม่ถูกต้อง ถ้าไม่สะดวก เว้นว่างไว้ได้",
+      errSend: "ส่งไม่สำเร็จ เป็นปัญหาทางฝั่งเรา ไม่ใช่ของคุณ กรุณาลองอีกครั้ง หรือติดต่อ info@itsnum.com แล้วจะมีคนดูแลให้",
+      doneH1: "เรียบร้อย เราได้รับแล้ว",
+      nextH: "ขั้นตอนต่อไป",
+      doneList: [
+        "ทีมงานจะตรวจข้อมูลร้านกับข้อมูลสาธารณะ แล้วติดต่อกลับตามเบอร์ที่คุณให้ไว้ ปกติภายใน 1 วันทำการ",
+        "เมื่อตรวจเรียบร้อย ร้านคุณจะขึ้นระบบพร้อมตรา <b>ยืนยันแล้ว</b> และ NUM จะแนะนำและจองเข้าร้านคุณได้",
+        "การจองจะเข้ามือถือคุณเป็นข้อความ กดรับหรือปฏิเสธ"
+      ],
+      doneFoot: "ขั้นตอนนี้ไม่มีการเก็บเงินใดๆ เงินก้อนแรกที่เกิดขึ้นคือค่าธรรมเนียมจากการจองที่สำเร็จแล้วเท่านั้น",
+      doneHelp: 'มีอะไรไม่ถูกต้อง ติดต่อ <a href="mailto:info@itsnum.com">info@itsnum.com</a> แล้วจะมีคนตอบ',
+      foot: "NUM คือผู้ช่วยด้านการท่องเที่ยว โดยบริษัท 5arz",
+      priv: "ความเป็นส่วนตัว และที่มาของข้อมูลคุณ"
+    }
+  };
+
+  // The rate card, per market. Thailand is 10% of the bill collected through
+  // NUM's payment code; everywhere else is still the flat per-table fee.
+  var MONEY = {
+    intl: {
+      en: {
+        head: "The money, in full",
+        list: [
+          "<b>Nothing to list.</b> No signup fee, no subscription, no monthly.",
+          "<b>No card, ever.</b> There is no card field on this page and there won't be one later.",
+          "<b>A table costs you $2 flat</b> — however big the bill. A $300 dinner still costs you $2.",
+          "<b>Rooms and appointments are 15%</b>, activities 20%, delivery 10% — of the booking value, and only when it is sold and paid through NUM.",
+          "<b>Only on bookings NUM completes</b> and the guest turns up. Invoiced. Nothing on no-shows, nothing on walk-ins, nothing on your own regulars."
+        ]
+      },
+      th: null,
+      // Indonesia is on the international rate card, so the numbers are the
+      // English ones — only the words change.
+      id: {
+        head: "Rincian biayanya",
+        list: [
+          "<b>Tidak ada biaya pendaftaran.</b> Tanpa biaya daftar, tanpa langganan, tanpa bulanan.",
+          "<b>Tidak pernah pakai kartu.</b> Di halaman ini tidak ada kolom kartu, dan nanti pun tidak akan ada.",
+          "<b>Satu meja biayanya $2 flat</b> — berapa pun tagihannya. Makan malam $300 tetap $2.",
+          "<b>Kamar dan janji temu 15%</b>, aktivitas 20%, pengantaran 10% — dari nilai pesanan, dan hanya bila dijual serta dibayar lewat NUM.",
+          "<b>Hanya untuk pesanan yang NUM selesaikan</b> dan tamunya benar-benar datang. Ditagih terpisah. Tidak ada biaya untuk yang batal datang, untuk tamu yang datang sendiri, atau untuk pelanggan tetap Anda."
+        ]
+      }
+    },
+    th: {
+      th: {
+        head: "ค่าใช้จ่ายทั้งหมด",
+        list: [
+          "<b>ลงร้านฟรี ระบบจองฟรี คิวอาร์รับเงินฟรี</b> ไม่มีค่าสมัคร ไม่มีรายเดือน",
+          "<b>ไม่ต้องใช้บัตร</b> หน้านี้ไม่มีช่องกรอกบัตร และจะไม่มีในภายหลัง",
+          "<b>เราคิด 10% เฉพาะบิลของลูกค้าที่เราส่งให้</b> และมาที่ร้านจริงเท่านั้น",
+          "<b>ห้องพักและนัดหมาย 15%</b> เฉพาะที่ขายและจ่ายผ่าน NUM",
+          "<b>ลูกค้าของคุณเอง ลูกค้าประจำ ลูกค้าไม่มา ไม่คิดเงิน</b> เงินค่าอาหารเข้าบัญชีร้านเต็มจำนวน เราวางบิลแยกทีหลัง"
+        ]
+      },
+      en: {
+        head: "The money, in full",
+        list: [
+          "<b>Free to list, free bookings, free payment QR.</b> No signup fee, no monthly.",
+          "<b>No card, ever.</b> There is no card field on this page and there won't be one later.",
+          "<b>10% only on bills from guests NUM sent you</b>, who actually turned up.",
+          "<b>Rooms and appointments are 15%</b> — only when sold and paid through NUM.",
+          "<b>Your own customers, regulars and no-shows are free.</b> The bill goes straight into your account in full; NUM invoices its fee separately."
+        ]
+      }
+    }
+  };
+
+  // ---- prefill -----------------------------------------------------------
+  var biz    = cleanName(qp("b") || qp("business") || qp("name"));
+  var token  = qp("t") || qp("ref") || qp("token") || "";
+  var refc   = qp("r") || qp("code") || "";
+  var dest   = (qp("d") || qp("dest")).toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
+  var placeId= qp("p").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  // Was hardcoded to "invite-uk", which labelled every signup anywhere in the
+  // world as a UK invite. It now says where the person actually came from.
+  var src    = (qp("s") || qp("source")).replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 60);
+
+  var T, M;
+  // Set by the listing picker below, called by apply() so the confirmation chip
+  // follows a language switch instead of staying in whichever language it was
+  // first drawn in.
+  var pickRefresh = null;
+
+  function setText(id, s) { var el = $(id); if (el) el.textContent = s; }
+  function setHTML(id, s) { var el = $(id); if (el) el.innerHTML = s; }
+  function fill(id, items, tag) {
+    var el = $(id);
+    if (!el) return;
+    el.innerHTML = "";
+    items.forEach(function (t) {
+      var li = document.createElement(tag || "li");
+      li.innerHTML = t;                 // authored copy above, never user input
+      el.appendChild(li);
+    });
+  }
+
+  function apply(lang) {
+    T = COPY[lang] || COPY.en;
+    M = (MONEY[RATES] && MONEY[RATES][lang]) || MONEY[RATES].en || MONEY.intl.en;
+
+    document.documentElement.lang = lang;
+    document.body.classList.toggle("th", lang === "th");
+    try { localStorage.setItem("num_claim_lang", lang); } catch (e) {}
+
+    Array.prototype.forEach.call($("langs").querySelectorAll("button"), function (b) {
+      b.setAttribute("aria-current", b.getAttribute("data-lang") === lang ? "true" : "false");
+    });
+
+    // h1 keeps its <span class="biz"> child, so write the text node only
+    var h1 = $("t-h1");
+    h1.firstChild.nodeValue = T.h1;
+    $("h-biz").textContent = biz ? T.bizFor(biz) : T.bizNone;
+    $("lede").textContent = T.lede(biz);
+    $("hint-biz").textContent = biz ? T.hintBizOk : T.hintBizNone;
+
+    setText("m-head", M.head);
+    fill("m-list", M.list);
+
+    setText("t-formhead", T.formhead);
+    setText("l-biz", T.lBiz);
+    setText("l-contact", T.lContact);
+    setText("l-phone", T.lPhone);
+    setText("hint-phone", T.hintPhone);
+    setText("t-more", T.more);
+    fill("more-list", T.moreList);
+
+    if (pickRefresh) pickRefresh();
+
+    setText("t-newbiz", T.newbizHead);
+    // The local-name field is tagged with the language it is for, so a browser
+    // offers the right keyboard and a screen reader announces it in the right
+    // voice — and so it lays out right-to-left the day this list gets a
+    // right-to-left language.
+    var def = langDef(lang);
+    $("name_local").setAttribute("lang", lang);
+    $("name_local").setAttribute("dir", def.dir);
+    $("l-localname").firstChild.nodeValue = T.lLocalName + " ";
+    $("l-localname").querySelector(".opt").textContent = T.opt;
+    $("name_local").placeholder = T.phLocalName;
+    setText("hint-localname", T.hintLocalName);
+    // In English there is no "your own language" to offer — the field would be
+    // asking an English speaker to retype what they already typed.
+    var localOn = lang !== "en";
+    $("l-localname").classList.toggle("hidden", !localOn);
+    $("name_local").classList.toggle("hidden", !localOn);
+    $("hint-localname").classList.toggle("hidden", !localOn);
+
+    setText("l-address", T.lAddress);
+    $("l-website").firstChild.nodeValue = T.lWebsite + " ";
+    $("l-website").querySelector(".opt").textContent = T.opt;
+    $("l-category").firstChild.nodeValue = T.lCategory + " ";
+    $("l-category").querySelector(".opt").textContent = T.opt;
+    $("address").placeholder = T.phAddress;
+    $("category").placeholder = T.phCategory;
+
+    $("business_name").placeholder = T.phBiz;
+    $("contact_name").placeholder = T.phContact;
+    $("email").placeholder = T.phEmail;
+
+    // LINE is how a Thai business is actually reached; email mostly is not.
+    var lineOn = (lang === "th" || RATES === "th");
+    $("l-line").classList.toggle("hidden", !lineOn);
+    $("line_id").classList.toggle("hidden", !lineOn);
+    $("l-line").firstChild.nodeValue = T.lLine + " ";
+    $("l-line").querySelector(".opt").textContent = T.opt;
+    $("l-email").firstChild.nodeValue = T.lEmail + " ";
+    $("l-email").querySelector(".opt").textContent = T.opt;
+
+    setText("l-optin", T.optin);
+    if (!sending) $("submit-btn").textContent = T.submit;
+    setText("t-under", T.under);
+
+    h1 = $("t-doneh1");
+    h1.firstChild.nodeValue = T.doneH1;
+    setText("t-nexth", T.nextH);
+    fill("done-list", T.doneList);
+    setText("t-donefoot", T.doneFoot);
+    setHTML("t-donehelp", T.doneHelp);
+    setText("t-foot", T.foot);
+    setHTML("t-priv", T.priv);
+  }
+
+  if (biz) $("business_name").value = biz;
   $("legal-line").textContent = LEGAL_LINE;
 
+  var sending = false;
+  apply(LANG);
+
+  $("langs").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-lang]");
+    if (!b) return;
+    apply(b.getAttribute("data-lang"));
+    logEvent("claim_lang", { lang: b.getAttribute("data-lang") });
+  });
+
   // ---- first-party arrival log -------------------------------------------
-  // Deliberately no cookie and no third-party tag on this page. The worker
-  // logs the arrival server-side and derives a short-lived pseudonymous
-  // visitor id itself, so nothing is stored on the visitor's device and PECR
-  // reg 6 is not engaged. That is also why this page carries no cookie
-  // banner: a banner on a page that sets no cookies is noise, and it teaches
-  // people to dismiss the banner that does matter.
+  // No cookie and no third-party tag on this page. The worker logs the arrival
+  // server-side and derives a short-lived pseudonymous visitor id itself, so
+  // nothing is stored on the visitor's device and PECR reg 6 is not engaged.
   function logEvent(name, extra) {
     try {
       var body = JSON.stringify(Object.assign({
@@ -274,13 +843,343 @@
       }
     } catch (e) { /* analytics must never break the form */ }
   }
-  logEvent("claim_view");
+  logEvent("claim_view", { lang: LANG, rates: RATES });
+
+  // ---- listing picker ----------------------------------------------------
+  // Why this exists: until now every claim stored place_id NULL, so a claim was
+  // a business name in a text box — no coordinates, nothing to put on a map,
+  // nothing to check a verification code against, and no way to credit whoever
+  // brought the venue in. Binding the claim to a row in `places` is what makes
+  // the rest of it possible.
+  //
+  // Two paths reach a bound claim. An emailed or QR'd link already carries ?p=
+  // and is exact, so it never queries anything. This picker is the walk-in
+  // path: someone typing the address in cold.
+  //
+  // It is an offer, never a gate. If we hold no listing for them — and for most
+  // of the world we do not — the typed name goes through exactly as before and
+  // the claim lands unbound. Blocking a real business because our data is
+  // incomplete would be trading a customer for a foreign key.
+  (function () {
+    var input   = $("business_name");
+    var list    = $("biz-list");
+    var chip    = $("biz-picked");
+    var chipTxt = $("biz-picked-text");
+    var clearBtn= $("biz-clear");
+    if (!input || !list) return;
+
+    var rows = [];        // what the last lookup returned
+    var cur  = -1;        // keyboard cursor into rows
+    var pickedName = "";  // what the chip is currently saying
+    var timer = null;
+    var ctrl  = null;     // in-flight lookup, so a slow reply cannot overwrite
+    var lastQ = "";       // a fast one that came after it
+
+    function hideList() {
+      list.innerHTML = "";
+      list.classList.add("hidden");
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      rows = [];
+      cur = -1;
+    }
+
+    // The self-description block appears only once we have actually looked and
+    // come back with nothing. Showing it before then would ask an owner whose
+    // listing we hold to retype an address we already have — and showing it
+    // from the first keystroke would make the form look twice as long as it is
+    // at the exact moment someone decides whether to start.
+    var newbiz = $("newbiz");
+    function showNewbiz(on) {
+      if (newbiz) newbiz.classList.toggle("hidden", !on);
+    }
+
+    function showChip(name) {
+      pickedName = name;
+      chipTxt.textContent = T.pickedIs + " " + name;
+      clearBtn.textContent = T.pickNo;
+      chip.classList.remove("hidden");
+      showNewbiz(false);
+    }
+
+    function unbind() {
+      placeId = "";
+      pickedName = "";
+      chip.classList.add("hidden");
+    }
+
+    // Called by apply() on a language switch.
+    pickRefresh = function () { if (pickedName) showChip(pickedName); };
+
+    function choose(i) {
+      var r = rows[i];
+      if (!r) return;
+      placeId = String(r.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+      input.value = r.name;
+      showChip(r.name);
+      hideList();
+      logEvent("claim_place_picked", { dest: dest });
+      $("contact_name").focus();
+    }
+
+    function render() {
+      list.innerHTML = "";
+      if (!rows.length) return hideList();
+
+      rows.forEach(function (r, i) {
+        var li = document.createElement("li");
+        var b  = document.createElement("button");
+        b.type = "button";
+        b.className = "pick-opt";
+        b.id = "biz-opt-" + i;
+        b.setAttribute("role", "option");
+        b.setAttribute("aria-selected", "false");
+
+        // textContent throughout. These strings come out of a database that was
+        // populated by crawling the open web; they are not ours and are never
+        // treated as markup.
+        var nm = document.createElement("b");
+        nm.textContent = r.name + (r.taken ? " · " + T.pickTaken : "");
+        var wh = document.createElement("span");
+        wh.textContent = [r.where, r.category].filter(Boolean).join(" · ");
+
+        b.appendChild(nm);
+        if (wh.textContent) b.appendChild(wh);
+        b.addEventListener("mousedown", function (e) { e.preventDefault(); });
+        b.addEventListener("click", function () { choose(i); });
+        li.appendChild(b);
+        list.appendChild(li);
+      });
+
+      list.classList.remove("hidden");
+      input.setAttribute("aria-expanded", "true");
+    }
+
+    function move(delta) {
+      if (!rows.length) return;
+      var opts = list.querySelectorAll(".pick-opt");
+      if (cur >= 0 && opts[cur]) opts[cur].setAttribute("aria-selected", "false");
+      cur = (cur + delta + rows.length) % rows.length;
+      if (opts[cur]) {
+        opts[cur].setAttribute("aria-selected", "true");
+        input.setAttribute("aria-activedescendant", opts[cur].id);
+        if (opts[cur].scrollIntoView) opts[cur].scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function look(q) {
+      // Three characters and a known destination, matching what the endpoint
+      // will answer. Anything shorter is a prefix scan of a whole city.
+      if (!dest || q.length < 3) return hideList();
+      if (q === lastQ) return;
+      lastQ = q;
+
+      try { if (ctrl) ctrl.abort(); } catch (e) {}
+      var opts = {};
+      try { ctrl = new AbortController(); opts.signal = ctrl.signal; }
+      catch (e) { ctrl = null; }
+
+      fetch(ENDPOINT + "/lookup?d=" + encodeURIComponent(dest) +
+            "&q=" + encodeURIComponent(q), opts)
+        .then(function (res) { return res.ok ? res.json() : { places: [] }; })
+        .then(function (j) {
+          // The visitor kept typing while this was in the air. Their newer
+          // query owns the list; this reply is stale and must not paint over it.
+          if (input.value.trim() !== q) return;
+          rows = (j && j.places) || [];
+          cur = -1;
+          render();
+          // We looked, and we hold nothing for them. Offer to build it.
+          if (!rows.length) showNewbiz(true);
+        })
+        // A failed lookup is silent by design: the form still works without it.
+        .catch(function () {});
+    }
+
+    input.addEventListener("input", function () {
+      // Whatever was bound is no longer what is in the box.
+      if (placeId) unbind();
+      var q = input.value.trim();
+      clearTimeout(timer);
+      timer = setTimeout(function () { look(q); }, 260);
+    });
+
+    input.addEventListener("keydown", function (e) {
+      if (list.classList.contains("hidden")) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+      else if (e.key === "Enter" && cur >= 0) { e.preventDefault(); choose(cur); }
+      else if (e.key === "Escape") { e.preventDefault(); hideList(); }
+    });
+
+    input.addEventListener("blur", function () { setTimeout(hideList, 120); });
+
+    clearBtn.addEventListener("click", function () {
+      // "Not this one" means the listing we hold is not theirs — so from here
+      // they are a business we do not have, and the fields to say so appear.
+      unbind();
+      showNewbiz(true);
+      input.focus();
+      input.select();
+    });
+
+    // Arrived from an email or a printed code: already bound, nothing to look
+    // up. Show what it is bound to so the person can say it is wrong.
+    //
+    // No dest means the lookup can never run — a printed flyer with no ?d=,
+    // or someone who typed the address in. Offer the fields straight away
+    // rather than leaving them with a name box and no way to say where they
+    // are.
+    if (placeId && biz) showChip(biz);
+    else if (!dest) showNewbiz(true);
+  })();
+
+  // ---- proving it is yours -----------------------------------------------
+  //
+  // The screen after the form used to say "a person will check this" and stop.
+  // The verification behind it — code to the contact ALREADY PUBLISHED on the
+  // listing, never one typed into the form — was written weeks ago and left
+  // with no route. This is the front of it.
+  //
+  // Everything here is best-effort. A venue that cannot verify, or does not
+  // want to, still has a claim on file and still gets the human check. The
+  // card simply does not appear.
+  var vClaimId = null, vChannel = null, vDomain = "";
+
+  function vShow(id, on) { var el = $(id); if (el) el.classList.toggle("hidden", !on); }
+  function vErr(msg) {
+    var el = $("verify-error");
+    el.textContent = msg;
+    el.classList.remove("hidden");
+  }
+  function vClearErr() { $("verify-error").classList.add("hidden"); }
+
+  function startVerify(pid, leadId, typedEmail) {
+    fetch(ENDPOINT + "/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ place_id: pid, lead_id: leadId, email: typedEmail })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        // No verifiable channel means the listing carries no published
+        // contact we can reach. That is our data gap, not their failure, so
+        // the card stays hidden and the human check stands.
+        if (!j || !j.ok || !j.channels || !j.channels.length) return;
+        var usable = j.channels.filter(function (c) { return c.channel !== "manual"; });
+        if (!usable.length) return;
+
+        vClaimId = j.claim_id;
+        $("t-verifyh").textContent = T.verifyH;
+        $("t-verifywhy").textContent = j.note || T.verifyWhy;
+        renderChannels(usable);
+        vShow("verify-card", true);
+        logEvent("claim_verify_offered", { dest: dest });
+      })
+      .catch(function () {});
+  }
+
+  function renderChannels(list) {
+    var box = $("verify-channels");
+    box.innerHTML = "";
+    list.forEach(function (c) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "chan";
+      b.setAttribute("aria-pressed", "false");
+      // textContent: `display` is a masked contact out of a crawled row.
+      var t = document.createElement("b");
+      t.textContent = c.label || c.channel;
+      var d = document.createElement("span");
+      d.textContent = c.display || "";
+      b.appendChild(t);
+      if (d.textContent) b.appendChild(d);
+      b.addEventListener("click", function () { pickChannel(c, box); });
+      box.appendChild(b);
+    });
+    if (list.length === 1) pickChannel(list[0], box);
+  }
+
+  function pickChannel(c, box) {
+    vChannel = c.channel;
+    vDomain = c.display || "";
+    Array.prototype.forEach.call(box.querySelectorAll(".chan"), function (el, i) {
+      el.setAttribute("aria-pressed", String(el.querySelector("b").textContent === (c.label || c.channel)));
+    });
+    // Only the domain channel asks for anything: the mailbox is theirs to
+    // name, but it has to sit on the business's own domain.
+    var dom = c.channel === "email_domain";
+    $("l-vfemail").textContent = T.verifyDomEmail;
+    vShow("l-vfemail", dom);
+    vShow("vf-email", dom);
+    if (dom) $("vf-email").placeholder = "you@" + String(c.display || "").replace(/^@/, "");
+    $("verify-send").textContent = T.verifySend;
+    vShow("verify-send", true);
+    vClearErr();
+  }
+
+  $("verify-send").addEventListener("click", function () {
+    if (!vClaimId || !vChannel) return;
+    vClearErr();
+    var btn = $("verify-send");
+    btn.disabled = true;
+    fetch(ENDPOINT + "/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        claim_id: vClaimId, channel: vChannel, email: $("vf-email").value.trim()
+      })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (o) {
+        btn.disabled = false;
+        if (!o.j || !o.j.ok) {
+          // A missing provider is a configuration gap on our side. Say what
+          // actually happens next rather than "try again", which would be a
+          // lie about a permanent failure.
+          vErr((o.j && (o.j.message || o.j.error)) || T.errSend);
+          if (o.j && o.j.fallback === "manual") vShow("verify-channels", false);
+          return;
+        }
+        $("l-vfcode").textContent = T.verifyCode;
+        $("verify-check").textContent = T.verifyCheck;
+        $("t-vfsent").textContent = T.verifySent(o.j.sent_to || "");
+        vShow("verify-code-step", true);
+        vShow("verify-send", false);
+        vShow("verify-channels", false);
+        $("vf-code").focus();
+        logEvent("claim_code_sent", { dest: dest });
+      })
+      .catch(function () { btn.disabled = false; vErr(T.errSend); });
+  });
+
+  $("verify-check").addEventListener("click", function () {
+    if (!vClaimId) return;
+    vClearErr();
+    var btn = $("verify-check");
+    btn.disabled = true;
+    fetch(ENDPOINT + "/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claim_id: vClaimId, code: $("vf-code").value })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        btn.disabled = false;
+        if (!j || !j.ok) { vErr((j && j.error) || T.errSend); return; }
+        $("verify-ok").textContent = T.verifyDone;
+        vShow("verify-ok", true);
+        vShow("verify-code-step", false);
+        vShow("verify-channels", false);
+        logEvent("claim_verified", { dest: dest });
+      })
+      .catch(function () { btn.disabled = false; vErr(T.errSend); });
+  });
 
   // ---- submit ------------------------------------------------------------
   var form = $("claim-form");
   var btn  = $("submit-btn");
   var errBox = $("form-error");
-  var sending = false;
 
   function showError(msg) {
     errBox.textContent = msg;
@@ -298,30 +1197,41 @@
       business_name: $("business_name").value.trim(),
       contact_name:  $("contact_name").value.trim(),
       phone:         $("phone").value.trim(),
+      line_id:       $("line_id").value.trim(),
       email:         $("email").value.trim(),
       marketing_ok:  $("marketing_ok").checked ? 1 : 0,
-      // Store the exact wording they were shown, not a bare boolean. A tick
-      // box with no record of what it said is not evidence of consent.
+      // Store the exact wording they were shown, not a bare boolean. A tick box
+      // with no record of what it said is not evidence of consent — and the
+      // wording differs by language, so the language they read matters.
       consent_text:  $("marketing_ok").checked
         ? document.querySelector('label[for="marketing_ok"]').textContent.replace(/\s+/g, " ").trim()
         : "",
       ref_code:      refc,
       invite_token:  token.slice(0, 64),
-      source:        "invite-uk" + (token ? ":" + token.slice(0, 40) : "")
+      country:       ISO,
+      dest:          dest,
+      place_id:      placeId,
+      // Only meaningful when place_id is empty: a business telling us where it
+      // is because we hold no listing for it. The server ignores these when a
+      // listing is bound, since it already has better.
+      address:       $("address").value.trim(),
+      website:       $("website").value.trim(),
+      category:      $("category").value.trim(),
+      // The name as written on the sign, in the owner's own script. Sent as
+      // typed — no transliteration, no "correction". It is their name.
+      name_local:    $("name_local").value.trim(),
+      lang:          document.documentElement.lang || LANG,
+      source:        src || (token ? "invite:" + token.slice(0, 40) : "claim")
     };
 
-    if (!payload.business_name) return showError("Please tell us the business name.");
-    if (!payload.contact_name)  return showError("Please tell us your name, so we know who to ask for.");
-    if (payload.phone.replace(/[^\d]/g, "").length < 7) {
-      return showError("Please give a mobile number we can reach you on — that's where bookings arrive.");
-    }
-    if (payload.email && payload.email.indexOf("@") === -1) {
-      return showError("That email address doesn't look right. Leave it blank if you'd rather not.");
-    }
+    if (!payload.business_name) return showError(T.errBiz);
+    if (!payload.contact_name)  return showError(T.errContact);
+    if (payload.phone.replace(/[^\d]/g, "").length < 7) return showError(T.errPhone);
+    if (payload.email && payload.email.indexOf("@") === -1) return showError(T.errEmail);
 
     sending = true;
     btn.disabled = true;
-    btn.textContent = "Sending…";
+    btn.textContent = T.sending;
 
     fetch(ENDPOINT, {
       method: "POST",
@@ -332,22 +1242,22 @@
       if (!res.ok) throw new Error("HTTP " + res.status);
       return res.json().catch(function () { return {}; });
     })
-    .then(function () {
-      logEvent("claim_done");
+    .then(function (j) {
+      logEvent("claim_done", { lang: document.documentElement.lang });
       $("d-biz").textContent = payload.business_name ? "— " + payload.business_name : "";
       $("view-form").classList.add("hidden");
       $("view-done").classList.remove("hidden");
       window.scrollTo(0, 0);
+      // If the claim is bound to a real listing, offer to prove it now rather
+      // than ending on "someone will call you". Needs the lead id the server
+      // just returned, so the proof can be tied back to the form submission.
+      if (placeId) startVerify(placeId, (j && j.id) || null, payload.email);
     })
     .catch(function () {
       sending = false;
       btn.disabled = false;
-      btn.textContent = "Confirm this listing";
-      showError(
-        "That didn't send — the problem is on our side, not yours. Please try " +
-        "once more, or just reply to the email we sent you and a person will " +
-        "sort it out."
-      );
+      btn.textContent = T.submit;
+      showError(T.errSend);
     });
   });
 })();

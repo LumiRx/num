@@ -59,13 +59,131 @@ export function safeEqual(a, b) {
 }
 
 /** E.164-ish normaliser: strips punctuation, keeps a leading +. */
-export function normalisePhone(raw) {
+/**
+ * ONE NUMBER, ONE STRING. This is what identity hangs on.
+ *
+ * The old version returned `(plus ? '+' : '') + digits` — it preserved the
+ * ABSENCE of a plus and validated only that there were 7 to 15 digits, with no
+ * country rule at all. Two consequences, both of which were live in production
+ * until 2026-08-21:
+ *
+ *  1. DUPLICATE ACCOUNTS. `num_members.phone` is UNIQUE, but `4437079219` and
+ *     `+14437079219` are different strings, so the constraint never fired.
+ *     Isaiah Rich held two accounts. So did Rebekah. Each of them signed up
+ *     once as far as they knew, typed their number slightly differently the
+ *     second time, and got a stranger's empty version of their own app.
+ *  2. UNDIALABLE NUMBERS ON FILE. `+1989128566684` — thirteen digits after the
+ *     +1, when NANP is exactly ten — was accepted and stored at 13:14 on
+ *     2026-08-21 by live code. It can never receive a verification code and
+ *     can never receive a booking text.
+ *
+ * It also silently broke sign-in recovery. "Does this number already have an
+ * account?" is decided by an exact match on the stored string, so somebody who
+ * signed up as `3107387319` and later typed `+1 310 738 7319` did not get
+ * their account back — they got a THIRD one.
+ *
+ * ── WHY A DEFAULT REGION AND NOT A GUESS ─────────────────────────────────
+ *
+ * A bare ten-digit number is ambiguous: `4437079219` is a Maryland mobile in
+ * the US and nothing at all in Thailand. Guessing a country code is how you
+ * text a stranger on another continent — the exact mistake worker/bookdesk.mjs
+ * documents at length.
+ *
+ * So the country is PASSED IN, not inferred: callers hand us the region from
+ * `CF-IPCountry` on the request, which is where the person actually is. With
+ * no region and no plus, we refuse rather than guess. Refusing is honest and
+ * recoverable; guessing is neither.
+ *
+ * Twilio Verify is strict E.164 and answers error 60200 to anything else, so
+ * this is also the gate that has to hold before OTP can move off Programmable
+ * Messaging.
+ */
+
+/**
+ * National number lengths for the regions Num actually serves.
+ *
+ * MOBILE AND LANDLINE LENGTHS BOTH BELONG HERE. The first cut of this table
+ * listed only mobile lengths and refused every Thai landline — `076 360 333`
+ * is an 8-digit national number, and Phuket restaurants are landlines, so it
+ * would have broken the exact venues the booking desk exists to call. The
+ * backfill planner's tests caught it; nothing about a phone-shaped signup
+ * would have.
+ */
+const REGIONS = {
+  US: { cc: '1', nat: [10] },
+  CA: { cc: '1', nat: [10] },
+  GB: { cc: '44', nat: [9, 10] },      // 9 for some landlines, 10 for mobiles
+  TH: { cc: '66', nat: [8, 9] },       // 8 landline, 9 mobile
+  AU: { cc: '61', nat: [9] },
+  SG: { cc: '65', nat: [8] },
+  AE: { cc: '971', nat: [8, 9] },
+};
+
+/** Country code -> allowed total digit counts, for validating a +number. */
+const CC_LENGTHS = {
+  1: [11],
+  44: [11, 12],
+  66: [10, 11],
+  61: [11],
+  65: [10],
+  971: [11, 12],
+};
+
+export function normalisePhone(raw, region) {
   if (!raw) return null;
   const s = String(raw).trim().replace(/[^\d+]/g, '');
-  const plus = s.startsWith('+');
   const digits = s.replace(/\D/g, '');
-  if (digits.length < 7 || digits.length > 15) return null;
-  return (plus ? '+' : '') + digits;
+  if (!digits) return null;
+
+  // Already carries a country code.
+  if (s.startsWith('+')) {
+    if (digits.length < 8 || digits.length > 15) return null;
+    // Validate against the country code when we know it. An unknown country
+    // passes on length alone rather than being rejected — Num serves 38 of
+    // them and this table is deliberately not a phone-number library.
+    for (const [cc, lens] of Object.entries(CC_LENGTHS)) {
+      if (!digits.startsWith(cc)) continue;
+
+      // TRUNK ZERO AFTER THE COUNTRY CODE, stripped before anything is judged.
+      //
+      // People copy the country code from one place and their number from
+      // another, and the number they copy is written the way their own country
+      // writes it — trunk prefix still on the front. `+44` + `07391794169` is
+      // a real member's real mobile, stored 2026-08-14, one character from
+      // working.
+      //
+      // Stripped UNCONDITIONALLY rather than only as a repair for a bad
+      // length, because in Thailand both readings pass the length gate:
+      // `+66` + `081234567` is eleven digits (valid) and so is the number it
+      // was meant to be. Length cannot separate them — but the rule can. A
+      // trunk prefix exists for domestic dialling only; no national number in
+      // any of these countries begins with 0. So a leading zero after the
+      // country code is always the prefix, never the number.
+      const nsn = digits.slice(cc.length).replace(/^0+/, '');
+      const full = cc + nsn;
+
+      if (!lens.includes(full.length)) return null;
+      // UK, one extra rule, because length alone let a dead number through.
+      // A 9-digit national number is geographic and starts 1 or 2; mobiles are
+      // always 10 digits starting 7. `+44 656612406` satisfies the length gate
+      // and is not an assignable range — it is on file for a real member who
+      // can never receive a code.
+      if (cc === '44' && full.length === 11 && !/^44[12]/.test(full)) return null;
+      return `+${full}`;
+    }
+    return `+${digits}`;
+  }
+
+  // No plus. The region decides, and without one we refuse.
+  const r = REGIONS[String(region ?? '').toUpperCase()];
+  if (!r) return null;
+
+  // Strip a trunk prefix ("0" in the UK, TH, AU) before matching.
+  const nat = digits.replace(/^0+/, '');
+  if (r.nat.includes(nat.length)) return `+${r.cc}${nat}`;
+  // Someone typed their own country code without the plus: 14437079219.
+  if (digits.startsWith(r.cc) && r.nat.includes(digits.length - r.cc.length)) return `+${digits}`;
+  return null;
 }
 
 /** Registrable-ish domain: strips scheme, www, path, and a leading label. */
@@ -162,6 +280,92 @@ export async function logEvent(env, claimId, event, detail, ip) {
  * pluggable: Twilio if its secrets exist, else email via Resend, else (dev
  * only) log. It NEVER silently pretends to have sent something.
  */
+/**
+ * TWILIO VERIFY — the way out of A2P for verification codes.
+ *
+ * Twilio's own A2P page: "If you're only using 10DLC numbers to send user
+ * verification text messages, you can use Twilio Verify rather than registering
+ * for A2P 10DLC." Verify traffic is EXEMPT from 10DLC.
+ *
+ * That matters here more than it sounds. On 2026-08-21 `num_sms_delivery`
+ * showed every real send failing with carrier error 30034 — an unregistered
+ * campaign — including Andre's own number. One SMS had ever been delivered, to
+ * Twilio's magic test number, which never touches a carrier. 129 members, 42
+ * numbers on file, two verified, and both of those predate the current sender.
+ * Sign-in was not underperforming; it was closed.
+ *
+ * A2P registration is still needed for everything else Num sends — the
+ * concierge thread, venue booking requests — and that is 10 to 15 days away.
+ * Verify moves the ONE message that gates sign-in off that path entirely.
+ *
+ * It also deletes code rather than adding it. Verify generates the code,
+ * tracks its ten-minute expiry, rate-limits sends and checks, and runs fraud
+ * detection. `generateCode`, `hashCode`, the `code_hash` / `code_salt` /
+ * `code_expires` / `attempts` columns and the resend cooldown all become
+ * Twilio's problem once traffic is fully across.
+ *
+ * OFF UNTIL CONFIGURED. Without `VERIFY_SERVICE_SID` these return null and
+ * every caller falls back to the Programmable Messaging path, unchanged. That
+ * is what makes this safe to deploy before the Twilio service exists.
+ */
+export const verifyConfigured = (env) =>
+  Boolean(env?.VERIFY_SERVICE_SID && env?.TWILIO_SID && env?.TWILIO_TOKEN);
+
+const verifyAuth = (env) => 'Basic ' + btoa(`${env.TWILIO_SID}:${env.TWILIO_TOKEN}`);
+const verifyUrl = (env, leaf) =>
+  `https://verify.twilio.com/v2/Services/${env.VERIFY_SERVICE_SID}/${leaf}`;
+
+/**
+ * Ask Verify to send a code. Returns null when Verify is not configured, so
+ * the caller knows to use the old path rather than treating it as a failure.
+ */
+export async function verifySend(env, to, channel = 'sms') {
+  if (!verifyConfigured(env)) return null;
+  const res = await fetch(verifyUrl(env, 'Verifications'), {
+    method: 'POST',
+    headers: { Authorization: verifyAuth(env), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ To: to, Channel: channel }),
+  }).catch((e) => ({ ok: false, _err: e?.message }));
+
+  const body = await res.json?.().catch(() => ({})) ?? {};
+  if (!res.ok) {
+    // Verify's codes are not Messaging's. 60200 is a malformed number — which
+    // is why the E.164 backfill had to land before this could be switched on.
+    const map = {
+      60200: 'That number is not in a form we can text — check the country code.',
+      60203: 'Too many codes sent to that number. Try again in a few minutes.',
+      60212: 'Verification is misconfigured on our side. Nothing you did.',
+      60410: 'We cannot text that country yet.',
+    };
+    return { ok: false, code: body.code ?? null, error: map[body.code] ?? body.message ?? 'Could not send a code.' };
+  }
+  // `pending` means it is on its way. Verify never returns the code itself.
+  return { ok: true, status: body.status, sid: body.sid ?? null };
+}
+
+/**
+ * Check a code against Verify.
+ *
+ * A WRONG CODE DOES NOT THROW — it comes back 200 with status "pending", which
+ * is the single easiest thing to get wrong in this API and would let anybody in
+ * with any code. Only `approved` is a pass, and it is tested for explicitly.
+ */
+export async function verifyCheck(env, to, code) {
+  if (!verifyConfigured(env)) return null;
+  const res = await fetch(verifyUrl(env, 'VerificationCheck'), {
+    method: 'POST',
+    headers: { Authorization: verifyAuth(env), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ To: to, Code: String(code ?? '') }),
+  }).catch(() => null);
+
+  // A 404 means there is no pending verification — expired, already used, or
+  // never sent. Indistinguishable from a wrong code to the person, and it must
+  // not read as success.
+  if (!res || !res.ok) return { ok: false, approved: false };
+  const body = await res.json().catch(() => ({}));
+  return { ok: true, approved: body.status === 'approved', status: body.status };
+}
+
 export async function sendCode(env, { channel, to, code, businessName }) {
   const text =
     `${code} is your NUM verification code for ${businessName || 'your business'}. ` +

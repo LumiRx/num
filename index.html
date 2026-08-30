@@ -20,8 +20,13 @@
       <!-- Cloudflare Web Analytics, via the worker so the token is config.
          Deferred and last: measurement must never cost the app a millisecond
          of first paint. -->
-    <script defer src="/api/analytics.js"></script>
-    <script defer src="/num-track.js"></script>
+    <!-- Analytics and the tracker are loaded from main.tsx via apiUrl(), NOT with a
+         bare absolute path. On iOS the web view origin is capacitor://localhost, so
+         `/api/analytics.js` resolves against the LOCAL BUNDLE and 404s — the same
+         class of bug documented at length in src/lib/apibase.ts, in the one place
+         apiUrl() cannot reach because it is static HTML rather than JS. A bare tag
+         here also makes Vite warn that it cannot bundle a non-module script.
+         See src/lib/analyticsLoader.ts. -->
   </head>
   <body>
     <div id="root"></div>

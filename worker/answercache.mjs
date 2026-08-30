@@ -35,7 +35,12 @@
 export function normalize(text) {
   return String(text ?? '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    // \p{M} belongs with \p{L}: in Thai, Arabic, Hindi and decomposed
+    // Vietnamese the vowels and tones ARE combining marks. Dropping them does
+    // not just mangle the key — it collapses distinct questions onto the same
+    // one, and this is a cache. Two different questions sharing a key means
+    // the second person is served the answer to the first person's question.
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
     // Filler that changes the typing and not the question.
     .replace(/\b(the|a|an|is|are|whats|what|s|please|pls|can|you|i|me|my|do|does|any|some|good|for|to|of|in|at|on|near|around)\b/g, ' ')
     .replace(/\s+/g, ' ')

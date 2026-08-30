@@ -1,6 +1,8 @@
 // Domain model for Num — ported from the Concierge.dc.html prototype state.
 import type { TabState } from './tabs';
 import type { Errand } from './errands';
+import type { TableDraft, TableRequest } from './bookdesk';
+import type { TravelDraft, TravelReferral } from './travel';
 import type { FlightOffer, FlightQuery } from './flights';
 import type { DmMessage, DmPeer } from './dm';
 
@@ -338,6 +340,14 @@ export interface AppState {
   /** A scanned pay request waiting for confirmation. */
   payOpen: { to: string; toName?: string; amount?: number; note?: string } | null;
 
+  /**
+   * The passenger-details sheet. A boolean and nothing else — the records
+   * themselves are NEVER held in AppState, because AppState is persisted to
+   * localStorage and stringified into the concierge prompt. See
+   * src/lib/passengers.ts.
+   */
+  passengerOpen: boolean;
+
   /** The live tab on screen, or null. Server truth — never computed here. */
   tabOpen: TabState | null;
   /** The tab to reopen on next launch, so a night out survives a reload. */
@@ -424,6 +434,25 @@ export interface AppState {
   flightError: string | null;
   /** An errand the concierge proposed — pre-fills the sheet, never posts. */
   errandDraft: { title: string; detail?: string | null; where_from?: string | null; deliver_to: string; bounty: number; spend_cap: number } | null;
+
+  /**
+   * A table the concierge proposed asking for. Non-null opens BookSheet and
+   * NOTHING has been sent — the guest taps the button. Same rule as
+   * errandDraft, for a stronger reason: this one texts a third party.
+   */
+  bookDraft: TableDraft | null;
+  /** Table requests and what the venues said. Server truth, display only. */
+  bookRequests: TableRequest[];
+
+  /**
+   * A trip the concierge proposed handing to a travel agency. Non-null opens
+   * TravelSheet and NOTHING has been sent — the member taps the button. Same
+   * rule as bookDraft, and one step stronger: this hands a named traveller's
+   * contact details to a third-party company.
+   */
+  travelDraft: TravelDraft | null;
+  /** Referrals and what the agencies said. Server truth, display only. */
+  travelReferrals: TravelReferral[];
 
   inviteOpen: InviteDraft | null;
   partyOpen: boolean;

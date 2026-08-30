@@ -31,15 +31,23 @@
   // one step happening twice. Derived, so adding a page needs no edit here.
   var PAGE = (function () {
     var h = location.hostname, p = location.pathname;
-    if (h.indexOf('app.') === 0) return 'app';
+    // PATH BEFORE HOST. The host test used to come first, so every visit to
+    // app.itsnum.com/install — a completely different, static page — was
+    // recorded as 'app' and became indistinguishable from the React app.
+    // Two pages sharing one name means neither has a readable funnel: the
+    // scrolls and CTA taps of one were being counted against the arrivals of
+    // the other. Found 25 Aug 2026 while trying to explain why 101 arrivals
+    // produced two events.
     if (p.indexOf('/install') === 0) return 'install';
     if (p.indexOf('/business') === 0) return 'business';
+    if (h.indexOf('app.') === 0) return 'app';
     return 'landing';
   })();
 
   // Event names the worker will accept. Kept here so a typo fails loudly in the
   // console during development instead of dissolving into an "ignored" 200.
   var KNOWN = [
+    'page_view', 'primary_cta_click',
     'install_cta_click', 'install_tab_view', 'install_prompt_shown',
     'install_accepted', 'install_dismissed', 'app_launched_standalone',
     'open_in_browser_click', 'first_message_sent', 'watch_film_click',
@@ -111,6 +119,13 @@
 
   window.numTrack = track;   // for the app shell to call first_message_sent
 
+  // --- arrival --------------------------------------------------------------
+  // Fired before anything else, because until 24 Aug 2026 this file had no
+  // arrival event at all. The earliest thing it could record was scroll_50, so
+  // every funnel built on it started halfway down the page and no rate on this
+  // surface had a denominator. `once` because a rate needs people, not scrolls.
+  once('page_view');
+
   // --- install intent -------------------------------------------------------
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a, button');
@@ -122,8 +137,19 @@
       track('install_cta_click', { detail: a.dataset.loc || label });
     } else if (a.classList.contains('tab') && a.dataset.p) {
       track('install_tab_view', { detail: a.dataset.p });
-    } else if (/open it in my browser|Open Num|Ask Num something/i.test(label)) {
+    } else if (/open it in my browser/i.test(label)) {
+      // GENUINELY leaving for the system browser. Nothing else belongs here.
       track('open_in_browser_click', { detail: label });
+    } else if (/Open Num|Ask Num something/i.test(label)) {
+      // The primary call to action — "I want to use this".
+      //
+      // These used to fire open_in_browser_click, and it cost us a wrong
+      // conclusion in a written report: all 25 of those events carried the
+      // label "Ask Num something", and they were read as 25 people fleeing an
+      // in-app browser. They were the opposite — the most interested people on
+      // the page, tapping the button that means yes. An event whose name says
+      // the reverse of what happened is worse than no event at all.
+      track('primary_cta_click', { detail: label });
     } else if (href.indexOf('/watch') === 0) {
       track('watch_film_click');
     }

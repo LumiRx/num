@@ -56,6 +56,31 @@ const pass = (amountCents, note = null) => ({ ok: true, amount_cents: amountCent
 const fail = (reason, correction = null) => ({ ok: false, reason, correction });
 
 /**
+ * TRAVEL NEVER SETTLES THROUGH NUM.
+ *
+ * California B&P §17550.15(b) puts "all sums received" for travel services
+ * into a trust obligation, and §17550.11 sizes the surety bond to whatever
+ * that trust must hold. Num's bond is $0 for exactly one reason: it receives
+ * nothing for travel. The traveller pays the registered agency directly
+ * (§17550.20(g)(5)), and Num is paid a commission by the agency, later, out of
+ * the agency's own money.
+ *
+ * So this is the one refusal in the file with no `correction`: there is no
+ * amount, no currency and no Star balance that makes it acceptable. Every
+ * money path in the Worker runs through checkPayment, which makes this the
+ * place where "Num never holds traveller funds" stops being a policy document
+ * and becomes a branch.
+ *
+ * Restaurants are NOT travel. "travel services" under §17550.9 is
+ * transportation and lodging; a table is neither, `bookdesk` bills the venue,
+ * and `table:` / `tab:` / `errand:` refs pass straight through.
+ */
+export const TRAVEL_REF = /^(?:flight|flights|air|airfare|airline|ticket|tickets|eticket|e-ticket|hotel|hotels|room|rooms|lodging|stay|cruise|ferry|rail|train|transfer|transfers|itinerary|trip|tour|tours|travel|pnr|sabre|duffel|letsgo2trip)\b/i;
+
+/** Is this reference asking Num to take money for travel? */
+export const isTravelRef = (ref) => TRAVEL_REF.test(String(ref ?? '').trim());
+
+/**
  * Check a payment before a Stripe session exists.
  *
  * `intent` is what the client asked for. Everything about the MONEY is
@@ -65,6 +90,15 @@ const fail = (reason, correction = null) => ({ ok: false, reason, correction });
 export function checkPayment(intent = {}) {
   const ref = String(intent.ref ?? '');
   const claimed = Number(intent.amount_cents);
+
+  // FIRST, before currency, before amount, before anything. A travel payment
+  // is not a payment with a problem to correct — it is a payment Num is not
+  // allowed to be part of at all. See TRAVEL_REF above.
+  if (isTravelRef(ref) || isTravelRef(intent.purpose)) {
+    return fail(
+      'Num doesn’t take payment for travel — the travel partner charges you directly and issues the ticket.',
+    );
+  }
 
   // The currency is checked FIRST, because every bound below depends on it.
   // Unknown currency is a refusal, not a default: silently falling back to
@@ -171,7 +205,14 @@ export function tierPaidRight(session, owedCents) {
     && String(session?.currency ?? '').toLowerCase() === 'usd';
 }
 
-export function checkStars({ amount, available, label = 'move', max = 1_000_000 } = {}) {
+export function checkStars({ amount, available, label = 'move', max = 1_000_000, purpose = null } = {}) {
+  // Stars are money Num already took. Spending them on travel is receiving a
+  // sum for travel services with a delay in the middle — §17550.15(b) does not
+  // care about the delay. STAR_POLICY.never_spends_on says this in words; this
+  // line is the one that holds.
+  if (isTravelRef(purpose)) {
+    return fail('Stars don’t settle travel — the travel partner charges you directly for that.');
+  }
   const n = Math.floor(Number(amount));
   if (!Number.isFinite(n) || n <= 0) return fail(`How many Stars should I ${label}?`);
   if (n > max) {

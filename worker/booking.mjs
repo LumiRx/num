@@ -136,7 +136,164 @@ export const PLATFORMS = {
     pattern: /toasttab\.com\/(?:local\/)?([\w-]+)/i,
     link: (ref) => `https://www.toasttab.com/${ref}`,
   },
+
+  /* ─────────────────────────── HOTELS ────────────────────────────────
+   *
+   * kind: 'stay'. Every one of these is the hotel's OWN booking engine, which
+   * is the entire point: the guest completes on the hotel's page, the
+   * reservation lands in the hotel's own system, the hotel pays no OTA
+   * commission, and NUM holds no money at any point. That last property is
+   * what keeps a seller-of-travel bond at zero (Cal. B&P §17550.11) and it is
+   * the same promise made to LetsGo2Trip. A deep link preserves it; an API
+   * that books on the hotel's behalf does not.
+   *
+   * ── WHY MOST OF THESE DO NOT PREFILL DATES ────────────────────────
+   *
+   * Only entries with a `dates` function prefill. The others deliberately
+   * return a bare property link.
+   *
+   * Every one of these engines is a single-page app that answers HTTP 200 to
+   * any query string at all — including invented parameter names. So "the URL
+   * loaded" is NOT evidence the dates were understood, and guessing
+   * `checkInDate` when the engine wants `dateFrom` produces a page that opens
+   * cleanly on today's date while the traveller believes they are looking at
+   * their weekend. A link that opens unfilled is honest; one that is
+   * confidently prefilled with the wrong week is not.
+   *
+   * So `dates` is added ONLY for an engine whose parameters have been observed
+   * on a live hotel page. SynXis below is the worked example — its full
+   * parameter set was read straight off a Bath hotel's booking button.
+   * ------------------------------------------------------------------ */
+
+  synxis: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Sabre's booking engine. Needs BOTH hotel and chain, so the ref carries
+    // them as "hotel:chain" — a hotel id alone lands on a chain picker.
+    pattern: /be\.synxis\.com\/[^"'\s]*?hotel=(\d+)[^"'\s]*?chain=(\d+)|be\.synxis\.com\/[^"'\s]*?chain=(\d+)[^"'\s]*?hotel=(\d+)/i,
+    ref: (m) => (m[1] ? `${m[1]}:${m[2]}` : `${m[4]}:${m[3]}`),
+    link: (ref, o) => {
+      const [hotel, chain] = String(ref).split(':');
+      const u = new URL('https://be.synxis.com/');
+      u.searchParams.set('hotel', hotel);
+      if (chain) u.searchParams.set('chain', chain);
+      u.searchParams.set('level', 'hotel');
+      u.searchParams.set('locale', 'en-GB');
+      return u.toString();
+    },
+    // Observed live: ?hotel=5160&chain=32565&arrive=…&depart=…&adult=2&rooms=1
+    dates: (u, o) => {
+      u.searchParams.set('arrive', o.checkin);
+      u.searchParams.set('depart', o.checkout);
+      if (o.adults) u.searchParams.set('adult', String(o.adults));
+      u.searchParams.set('rooms', String(o.rooms || 1));
+    },
+  },
+
+  mews: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /app\.mews\.com\/distributor\/([0-9a-f-]{36})/i,
+    link: (ref) => `https://app.mews.com/distributor/${ref}`,
+    // Mews's documented distributor convention.
+    dates: (u, o) => {
+      u.searchParams.set('mewsStart', o.checkin);
+      u.searchParams.set('mewsEnd', o.checkout);
+      if (o.adults) u.searchParams.set('mewsAdultCount', String(o.adults));
+    },
+  },
+
+  siteminder: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /(?:direct-book\.com|book-directonline\.com)\/properties\/([\w-]+)/i,
+    link: (ref) => `https://direct-book.com/properties/${ref}`,
+  },
+
+  cloudbeds: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Two shapes in the wild: the reservation page and the embeddable widget
+    // (hotels.cloudbeds.com/widget/load/<ref>/horiz). Mono Suites in Edinburgh
+    // publishes only the widget form, so a pattern that knows one and not the
+    // other silently classes a connectable hotel as unreachable.
+    pattern: /hotels\.cloudbeds\.com\/(?:en\/)?(?:reservation|widget\/load)\/([\w-]+)/i,
+    link: (ref) => `https://hotels.cloudbeds.com/reservation/${ref}`,
+  },
+
+  littlehotelier: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /(?:app\.)?littlehotelier\.com\/(?:properties\/)?([\w-]+)/i,
+    link: (ref) => `https://app.littlehotelier.com/properties/${ref}`,
+  },
+
+  eviivo: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /(?:bookings|book)\.eviivo\.com\/([\w-]+)/i,
+    link: (ref) => `https://bookings.eviivo.com/${ref}`,
+  },
+
+  guestline: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Guestline is regionalised: booking.eu.guestline.app, book.guestline.app,
+    // bookings.guestline.com. Frederick House in Edinburgh sits on the .eu
+    // host, which a fixed-hostname pattern misses entirely.
+    pattern: /(?:[\w.]*\.)?guestline\.(?:app|com)\/([\w-]+)\b/i,
+    link: (ref) => `https://booking.eu.guestline.app/${ref}/availability`,
+  },
+
+  travelclick: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /reservations\.travelclick\.com\/(\d+)/i,
+    link: (ref) => `https://reservations.travelclick.com/${ref}`,
+  },
+
+  freetobook: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /(?:www\.)?freetobook\.com\/([\w-]+)/i,
+    link: (ref) => `https://www.freetobook.com/${ref}`,
+  },
+
+  profitroom: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /booking\.profitroom\.com\/(?:[a-z]{2}\/)?([\w-]+)/i,
+    link: (ref) => `https://booking.profitroom.com/en/${ref}/home`,
+  },
+
+  roomraccoon: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    pattern: /([\w-]+)\.roomraccoon\.co(?:m|\.uk)/i,
+    link: (ref) => `https://${ref}.roomraccoon.com`,
+  },
 };
+
+/** The engines whose date parameters have been confirmed on a live page. */
+export const PREFILLS_DATES = Object.entries(PLATFORMS)
+  .filter(([, p]) => typeof p.dates === 'function')
+  .map(([id]) => id);
+
+/** Every stay engine NUM can deep-link into. */
+export const STAY_PLATFORMS = Object.entries(PLATFORMS)
+  .filter(([, p]) => p.kind === 'stay')
+  .map(([id]) => id);
 
 /** Read a page's outbound links and name the booking platform, if any. */
 export function detectBooking(html, pageUrl = '') {
@@ -144,7 +301,9 @@ export function detectBooking(html, pageUrl = '') {
   for (const [id, p] of Object.entries(PLATFORMS)) {
     const m = p.pattern.exec(hay);
     if (!m) continue;
-    const ref = (m[1] || m[2] || '').trim();
+    // SynXis needs two numbers (hotel AND chain), so a platform may supply its
+    // own ref builder. Everything else keeps the first captured group.
+    const ref = String(p.ref ? p.ref(m) : (m[1] || m[2] || '')).trim();
     // Platform front pages ("resy.com/cities/la") are not a venue.
     if (!ref || ref.length < 2 || /^(www|cities|reservations|book|explore|local|r)$/i.test(ref)) continue;
     return { platform: id, ref, kind: p.kind, mode: p.mode };
@@ -169,8 +328,40 @@ export function bookingLink(place, when = {}) {
     time: /^\d{2}:\d{2}$/.test(when.time ?? '') ? when.time : null,
   };
   o.datetime = o.date && o.time ? `${o.date}T${o.time}` : null;
+  // Stay parameters. A restaurant asks for a party and a time; a hotel asks
+  // for two dates. Both live on the same object so one link() signature serves
+  // every platform.
+  const ymd = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v ?? '') ? v : null);
+  o.checkin = ymd(when.checkin);
+  o.checkout = ymd(when.checkout);
+  o.adults = when.adults && Number(when.adults) > 0 ? Math.min(Number(when.adults), 12) : null;
+  o.rooms = when.rooms && Number(when.rooms) > 0 ? Math.min(Number(when.rooms), 5) : null;
   try {
-    return { label: p.label, kind: p.kind, mode: p.mode, url: p.link(place.booking_ref, o) };
+    let url = p.link(place.booking_ref, o);
+    // Dates are added ONLY by an engine that has published or demonstrated its
+    // parameter names. Checkout must be after checkin — an inverted pair is a
+    // caller bug, and silently sending it produces a booking page for the
+    // wrong week rather than an error anyone would notice.
+    //
+    // Computed ONCE. This used to be the same expression written twice, here
+    // and in the `dated` flag below, which is two places to change and one to
+    // forget — and forgetting the second is the version where NUM tells a
+    // guest "dates already filled in" over a link that has none.
+    const dated = !!(p.dates && o.checkin && o.checkout && o.checkout > o.checkin);
+    if (dated) {
+      const u = new URL(url);
+      p.dates(u, o);
+      url = u.toString();
+    }
+    return {
+      label: p.label,
+      kind: p.kind,
+      mode: p.mode,
+      url,
+      // The caller can tell a guest "dates already filled in" only when this
+      // is true. Saying it otherwise is the small lie that costs a booking.
+      dated,
+    };
   } catch {
     return null;
   }

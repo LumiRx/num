@@ -2,6 +2,42 @@
 
 Every version that has been live, newest first.
 
+## 0.8.227 — 2026-08-30 00:36 UTC
+
+merge business-data systems onto canonical tables
+
+- commit `e535d71`
+
+## 0.8.226 — 2026-08-29 23:32 UTC
+
+console: submissions review queue for self-registered businesses
+
+- commit `146ea35`
+
+## 0.8.225 — 2026-08-29 22:46 UTC
+
+mcp-integrity: give concierge_answer's smoke check real headroom (60s)
+
+- commit `8fa73fc`
+
+## 0.8.224 — 2026-08-29 22:25 UTC
+
+partnermcp: fix concierge_answer 522, extract handleNum
+
+- commit `8757e10`
+
+## 0.8.223 — 2026-08-29 16:13 UTC
+
+concierge: durable memory, formatting, topic focus, contact fallback
+
+- commit `265c04f`
+
+## 0.8.222 — 2026-08-16 20:47 UTC
+
+(no note given)
+
+- commit `d0027a6`
+
 ## 0.8.221 — 2026-08-16 00:17 UTC
 
 (no note given)

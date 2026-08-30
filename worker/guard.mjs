@@ -79,13 +79,19 @@ function retryAfterFor(times, now) {
  *
  * @returns {Promise<{ok: true} | {ok: false, retryAfter: number, scope: 'ip'|'global'}>}
  */
-export async function enforceRateLimit(env, ip) {
+export async function enforceRateLimit(env, ip, bindingName = 'RATE_LIMITER') {
   const local = rateLimit(ip);
   if (!local.ok) return local;
 
-  const limiter = env?.RATE_LIMITER;
+  const limiter = env?.[bindingName];
   if (!limiter?.limit) {
-    console.warn('[guard] RATE_LIMITER binding missing — per-IP limiting is degraded');
+    console.warn(`[guard] ${bindingName} binding missing — per-IP limiting is degraded`);
+    // Fails OPEN, on purpose: a limiter outage must not take the product down.
+    // `degraded` is returned rather than swallowed so a caller who advertises a
+    // specific limit to a third party can tell that it is not currently being
+    // enforced. Nothing read this flag until the partner surface did — before
+    // that, "we are rate limited" and "the binding is missing" were the same
+    // observable.
     return { ok: true, degraded: true };
   }
 
@@ -96,7 +102,7 @@ export async function enforceRateLimit(env, ip) {
     // A limiter outage must not take the API down with it; the local brake
     // and the Anthropic spend cap remain in force. Log it — silent failure
     // here means we think we're protected when we aren't.
-    console.warn('[guard] RATE_LIMITER.limit threw — per-IP limiting is degraded:', err?.message ?? err);
+    console.warn(`[guard] ${bindingName}.limit threw — per-IP limiting is degraded:`, err?.message ?? err);
     return { ok: true, degraded: true };
   }
   return { ok: true };
@@ -171,9 +177,17 @@ export function corsHeaders(request, selfOrigin) {
   const origin = request.headers.get('Origin');
   const allowed =
     origin &&
-    (origin === selfOrigin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    (origin === selfOrigin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || /^(capacitor|ionic):\/\/localhost$/.test(origin));
   return {
-    'Access-Control-Allow-Headers': 'Content-Type',
+    // X-Partner-Key belongs here for the same reason Content-Type does: it is
+    // a header a browser will actually send. The partner surfaces authenticate
+    // with it (/api/partner/usage, /api/partner/reconcile), and a preflight
+    // that omits it means any browser dashboard built against those endpoints
+    // fails at the OPTIONS, before the request the developer is debugging is
+    // ever sent. Server-to-server callers never preflight and so never see it,
+    // which is exactly why this stayed invisible: the integration works and
+    // the console does not.
+    'Access-Control-Allow-Headers': 'Content-Type, X-Partner-Key',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
     ...(allowed ? { 'Access-Control-Allow-Origin': origin } : {}),

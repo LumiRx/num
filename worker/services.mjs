@@ -288,6 +288,70 @@ export const ADAPTERS = {
     ready: (env) => !!(env.SABRE_CLIENT_ID && env.SABRE_CLIENT_SECRET),
     needs: 'SABRE_CLIENT_ID + SABRE_CLIENT_SECRET',
   },
+  // Duffel: the token has been present for a while and nothing declared it, so
+  // `connected()` said no while the code said yes. Registered as a SHOPPING
+  // rail deliberately. Duffel is technically capable of issuing — unlike Sabre
+  // — but whether Num ever becomes the merchant of record on a ticket is a
+  // legal decision (see the §17550 note below), not a consequence of holding
+  // an access token. Until that decision is made, this searches.
+  duffel: {
+    kind: 'flight_shop',
+    label: 'Duffel (flights — search; issuing is a separate decision)',
+    ready: (env) => !!env.DUFFEL_ACCESS_TOKEN,
+    needs: 'DUFFEL_ACCESS_TOKEN',
+  },
+
+  // Localrent: local-supplier car hire. A LINK rail, not a search one — they
+  // have no API at all (verified from inside a live partner account), so Num
+  // sees no prices and no availability. The kind says 'car_link' rather than
+  // 'car' so nothing downstream can mistake an attributed URL for a booking.
+  localrent: {
+    kind: 'car_link',
+    label: 'Localrent (car hire — attributed deep link, no prices)',
+    ready: (env) => !!env.LOCALRENT_MARKER,
+    needs: 'LOCALRENT_MARKER',
+  },
+
+  // Geoapify: addresses into coordinates, for the submissions queue. Not a
+  // consumer-facing rail at all — it is infrastructure, and the kind says so.
+  geoapify: {
+    kind: 'geocoder',
+    label: 'Geoapify (geocoding — self-submitted places)',
+    ready: (env) => !!env.GEOAPIFY_KEY,
+    needs: 'GEOAPIFY_KEY',
+  },
+
+  // Ticketmaster Discovery: what is on. A SEARCH rail — Discovery reads, it
+  // cannot sell. Their Partner API does checkout and their own docs say it is
+  // "restricted to companies with whom Ticketmaster has existing, official
+  // distribution relationships", which we are not.
+  ticketmaster: {
+    kind: 'event_shop',
+    label: 'Ticketmaster Discovery (events — search only, US/UK/EU)',
+    ready: (env) => !!env.TICKETMASTER_API_KEY,
+    needs: 'TICKETMASTER_API_KEY',
+  },
+
+  // Bounce: luggage storage, an attributed link and nothing more.
+  bounce: {
+    kind: 'luggage_link',
+    label: 'Bounce (luggage storage — attributed link)',
+    ready: (env) => !!env.BOUNCE_REF,
+    needs: 'BOUNCE_REF',
+  },
+
+  // Viator: tours, day trips and the "what is there to do here" question. Like
+  // Sabre this is a SHOPPING rail, and the kind says so — 'activity_shop', not
+  // 'activity'. Basic Access searches and attributes; the traveller buys on
+  // Viator's page. Naming it 'activity' would let anyConnected() tell the
+  // prompt we can complete a booking we cannot make.
+  viator: {
+    kind: 'activity_shop',
+    label: 'Viator (tours & activities — search and attributed link)',
+    ready: (env) => !!env.VIATOR_API_KEY,
+    needs: 'VIATOR_API_KEY',
+  },
+
   sabre_hotel: {
     kind: 'stay_shop',
     label: 'Sabre (hotel rates — quotes only)',
@@ -398,14 +462,24 @@ function airBlock(env) {
     'a bag from a hotel — emit an errand action {title, detail, where_from, deliver_to, bounty, spend_cap}. Someone nearby goes and ' +
     'gets it. PROPOSE the bounty in your reply and say plainly that posting holds those Stars until it arrives; the app puts the ' +
     'form in front of them pre-filled and THEY tap post. Never speak as though it is already posted.\n' +
+    // THE HANDOFF, NOT THE PURCHASE.
+    //
+    // This block used to read "Num can create bookings and issue tickets …
+    // say clearly that you can book it". That is the operative sentence of
+    // California B&P §17550.1(a) — "advertises that he or she can or may
+    // arrange" — spoken by Num on every travel turn the flag was on. Num does
+    // not issue and does not take the money; the registered partner does, and
+    // the traveller pays them directly (§17550.20(g)(5)). The safeguard that
+    // mattered here — nothing happens without a person tapping — is kept.
     (canBook
-      ? 'BOOKING EXISTS BUT IS NOT YOURS TO TRIGGER. Num can create bookings and issue tickets, and that happens only when a ' +
-        'PERSON confirms it — never as a side effect of a conversation, never because the traveller sounded keen, never ' +
-        'because you decided it was obviously what they wanted. Your job is to get them to the edge of it: the exact fare, ' +
-        'the exact times, what it costs, what it includes, and what happens if they change their mind. Then say clearly ' +
-        'that you can book it and ask them to confirm. Treat "yes, book it" as the start of a confirmation, not the end — ' +
-        'the app puts the final commit in front of them. Until they have been through that, the booking does not exist and ' +
-        'you must not speak as though it does.\n'
+      ? 'THE PURCHASE IS NOT YOURS AND IT IS NOT NUM\u2019S. A travel partner issues the ticket and charges the traveller ' +
+        'directly; Num does not issue, does not hold a seat, and never takes the money. So your job ends at the edge of it: ' +
+        'the exact fare as the search returned it, the exact times, what it includes, and what happens if they change their ' +
+        'mind. Then say plainly that the partner can issue it and offer to take them there \u2014 "I don\u2019t issue ' +
+        'tickets, they do; here\u2019s the page for this fare" \u2014 and let the app put that handoff in front of them. ' +
+        'Nothing moves without a PERSON tapping it: never as a side effect of a conversation, never because the traveller ' +
+        'sounded keen, never because you decided it was obviously what they wanted. Until they are on the partner\u2019s ' +
+        'own page, nothing exists, and you must not speak as though it does.\n'
       : '') +
     'If the KNOWN FACTS carry an airline status or hotel programme, weigh it openly against the fare and say why — status ' +
     'on the route is often worth more than the cheapest fare, and sometimes it plainly is not.'
@@ -451,4 +525,75 @@ export function servicesBlock(place, env = {}) {
     'prefilled with the destination so it is a single tap. Then say what you HAVE done: the venue is chosen, the address ' +
     'is ready, the timing works. If the user wants us to handle it end to end, emit a feature_request as well.'
   );
+}
+
+/**
+ * Every host Num can hand a guest to, and how it reaches them.
+ *
+ * ── WHY THIS EXISTS ──────────────────────────────────────────────────────
+ *
+ * Affiliate programmes are applied for one at a time, and the first thing
+ * every application form asks is which of their properties you send traffic
+ * to and from where. That answer was buried in `BY_COUNTRY`, `TRAVEL`,
+ * `AIRLINES` and `HOTEL_GROUPS` — four tables nobody could read at once — so
+ * the working answer was "the big ones, probably".
+ *
+ * This walks the REAL link builders, exactly as `optionsFor()` does, and
+ * returns the hosts they actually produce. Not a hand-kept list: a list that
+ * cannot drift from the code, because it is the code's own output.
+ *
+ * Pair it with the click log (`num_affiliate_clicks`) and the two together are
+ * the whole picture: this is who we COULD earn on, that is who we actually
+ * send. Ranked by the second, worked through in order, is the application
+ * queue.
+ *
+ * @returns {Array<{host, providers: string[], kinds: string[], countries: string[], sample: string}>}
+ *          sorted by reach (countries × kinds), widest first.
+ */
+export function handoffHosts() {
+  const ctx = {
+    to: 'Kata Beach', toLat: 7.82, toLng: 98.3, q: 'dinner', city: 'Phuket',
+    from: 'Phuket', fromCode: 'HKT', toCode: 'BKK', depart: '2026-09-01', ret: '2026-09-08',
+    checkin: '2026-09-01', checkout: '2026-09-08', adults: 2,
+  };
+  const hosts = new Map();
+  const add = (host, provider, kind, country, url) => {
+    if (!host) return;
+    const e = hosts.get(host) ?? { host, providers: new Set(), kinds: new Set(), countries: new Set(), sample: url };
+    e.providers.add(provider);
+    if (kind) e.kinds.add(kind);
+    if (country) e.countries.add(country);
+    hosts.set(host, e);
+  };
+  const hostOf = (url) => {
+    try { return new URL(String(url)).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; }
+  };
+
+  const countries = [...Object.keys(BY_COUNTRY), 'XX']; // XX exercises FALLBACK
+  for (const country of countries) {
+    for (const kind of ['ride', 'food', 'table', 'wellness']) {
+      for (const o of optionsFor(kind, { ...ctx, country }, {}).options) {
+        add(hostOf(o.url), o.id, kind, country, o.url);
+      }
+    }
+  }
+  for (const kind of Object.keys(TRAVEL)) {
+    for (const o of optionsFor(kind, ctx, {}).options) add(hostOf(o.url), o.id, kind, '*', o.url);
+  }
+  // Airline and hotel-group sites are handed out by the prompt when somebody
+  // holds status, so they are traffic we send even though optionsFor() never
+  // names them. Leaving them out is how a programme with real volume stays
+  // invisible.
+  for (const [id, a] of Object.entries(AIRLINES)) add(hostOf(a.url), id, 'airline', '*', a.url);
+  for (const [id, h] of Object.entries(HOTEL_GROUPS)) add(hostOf(h.url), id, 'stay', '*', h.url);
+
+  return [...hosts.values()]
+    .map((e) => ({
+      host: e.host,
+      providers: [...e.providers].sort(),
+      kinds: [...e.kinds].sort(),
+      countries: [...e.countries].sort(),
+      sample: e.sample,
+    }))
+    .sort((a, b) => b.countries.length * b.kinds.length - a.countries.length * a.kinds.length || a.host.localeCompare(b.host));
 }

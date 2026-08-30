@@ -35,7 +35,8 @@
  */
 import { openNow, hoursLeft } from './hours.mjs';
 import { bookingLink, PLATFORMS } from './booking.mjs';
-import { tag } from './affiliate.mjs';
+import { tagged } from './affiliate.mjs';
+import { logHandoffs } from './affiliateclicks.mjs';
 import { ATTRIBUTION, partnerFrom } from './partnermcp.mjs';
 
 const CORS = {
@@ -162,7 +163,7 @@ export async function handleOpen(request, env) {
  * Returns a URL. It does NOT reserve anything, and says so in the response so
  * a calling product cannot honestly render "Booked".
  */
-export async function handleBookLink(request, env) {
+export async function handleBookLink(request, env, ctx = null) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (request.method !== 'POST') return json({ error: 'POST a JSON body.' }, 405);
   if (!env.DB) return json({ error: 'Directory unavailable.' }, 503);
@@ -179,7 +180,18 @@ export async function handleBookLink(request, env) {
   // Tagged LAST, on a URL already chosen on merit. See affiliate.mjs — there
   // is no path by which a referral rate can reach the ranking, and there must
   // never be one.
-  if (link) link.url = tag(link.url, env, { extra: r.dest });
+  //
+  // And LOGGED, whether or not a programme matched. An untagged handoff is the
+  // evidence for which programme to apply for next; dropping it because we
+  // earned nothing on it is how the list of what to sign up for stays a guess.
+  if (link) {
+    const t = tagged(link.url, env, { extra: r.dest });
+    link.url = t.url;
+    logHandoffs(env, ctx, [{ ...t, kind: r.booking_platform || 'table' }], {
+      surface: 'book_link',
+      dest: r.dest ?? null,
+    });
+  }
   if (!link) {
     // An honest refusal beats a dead button. The phone number is the real
     // fallback and most venues in the directory have one.

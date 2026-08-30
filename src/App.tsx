@@ -8,16 +8,36 @@ import PrototypeCanvas from './components/canvas/PrototypeCanvas';
 import LaunchStage from './components/canvas/LaunchStage';
 import ConciergeApp from './components/app/ConciergeApp';
 import AdminView from './components/app/AdminView';
+import { isNativeApp } from './lib/native';
 
 function useStandalone(): boolean {
+  // THE INSTALLED APP IS ALWAYS THE APP. Never the launch stage.
+  //
+  // This used to be `forced || narrow`, where narrow meant innerWidth < 720.
+  // On a phone that is true and everything worked, which is why it survived.
+  // On an iPad it is FALSE — and the bundled app has no `?app` in its URL
+  // (the origin is capacitor://localhost/), so `forced` is false too. The app
+  // fell through to `<LaunchStage />`: a reviewer installing Num on an iPad
+  // got the marketing pitch page and no product at all.
+  //
+  // The target declares iPad, Mac (Designed for iPad) and Apple Vision as
+  // supported destinations, every one of them wider than 720, so this was not
+  // a corner case — it was three of the four devices Apple could have chosen
+  // to review on, and a guaranteed 2.1 rejection on any of them.
+  //
+  // Viewport width is a fine signal for a BROWSER, where a wide window really
+  // does mean "show the marketing site". It is meaningless inside an installed
+  // binary: somebody who downloaded the app wants the app at every width.
+  const native = isNativeApp();
   const forced = new URLSearchParams(window.location.search).has('app');
   const [narrow, setNarrow] = useState(() => window.innerWidth < 720);
   useEffect(() => {
+    if (native) return;
     const onResize = () => setNarrow(window.innerWidth < 720);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, []);
-  return forced || narrow;
+  }, [native]);
+  return native || forced || narrow;
 }
 
 export default function App() {
@@ -36,9 +56,15 @@ export default function App() {
   // constantly while the keyboard animates and carries no size information).
   useEffect(() => {
     if (!standalone) return;
-    const vv = window.visualViewport;
-    if (!vv) return;
     const root = document.documentElement;
+    // The document-scroll lock goes on BEFORE the visualViewport guard, and
+    // comes off in the same cleanup. It is a different concern from keyboard
+    // sizing: sizing needs visualViewport, but "the page must not scroll"
+    // holds on any browser, and a shell that can be dragged out from under
+    // the status bar is broken whether or not the API exists.
+    root.classList.add('num-standalone');
+    const vv = window.visualViewport;
+    if (!vv) return () => root.classList.remove('num-standalone');
     const KEYBOARD_MIN = 120; // smaller gaps are browser chrome, not a keyboard
     let pinned = -1;
     let raf = 0;
@@ -69,6 +95,7 @@ export default function App() {
       cancelAnimationFrame(raf);
       vv.removeEventListener('resize', onResize);
       root.style.removeProperty('--vvh');
+      root.classList.remove('num-standalone');
     };
   }, [standalone]);
 

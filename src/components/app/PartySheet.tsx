@@ -143,7 +143,7 @@ export default function PartySheet() {
     <div
       ref={ref}
       className="glass-strong"
-      style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)', maxHeight: '86%', overflowY: 'auto' }}
+      style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)', maxHeight: 'min(86%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />
       <div

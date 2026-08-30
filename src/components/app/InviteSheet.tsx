@@ -8,6 +8,7 @@ import { normalisePhone } from '../../lib/phone';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
 import { contactsSupported, mintInvite, pickContacts, shareInvite, signUp, verifyCode, whoIsOnNum } from '../../lib/social';
+import { canOfferInstall } from '../../lib/native';
 
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -40,10 +41,22 @@ const helpText: React.CSSProperties = { fontSize: 10.5, color: 'var(--color-neut
  * a menu item that does not exist.
  */
 function AddToHomeScreen() {
-  const installed =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  if (installed) return null;
+  // canOfferInstall(), NOT a display-mode media query.
+  //
+  // `(display-mode: standalone)` is a PWA question, and the App Store build is
+  // not a PWA — it is a WKWebView serving a bundle from capacitor://localhost,
+  // where that query is false and `navigator.standalone` is undefined. So this
+  // card, whose entire subject is "here is how to install Num", rendered
+  // INSIDE the installed app. src/lib/native.ts was written on 15 Aug to fix
+  // exactly this and canOfferInstall() is the answer it exports; this call
+  // site was simply never moved over.
+  //
+  // Two things went wrong because of it, and the second is the one Andre saw:
+  // it tells a TestFlight tester to go and install the app they are holding,
+  // AND it adds roughly 200px directly above the sign-up button — on a screen
+  // whose remaining height is already halved by the keyboard, that is the
+  // difference between the button being reachable and the form looking broken.
+  if (!canOfferInstall()) return null;
 
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
@@ -97,6 +110,17 @@ export default function InviteSheet() {
   /** null = unknown / no number yet; true = they're already a member. */
   const [onNum, setOnNum] = useState<boolean | null>(null);
   const [code, setCode] = useState('');
+  /**
+   * The number a sign-in code was just sent to, or null.
+   *
+   * Non-null means we are on the SECOND outcome of `POST /api/social/me`:
+   * this number already has an account, the server has texted it a code, and
+   * it has deliberately told us NOTHING else — no member, no id (see the
+   * three-outcome contract in `lib/social.ts`). So this screen has to stand on
+   * its own: there is no `me` to hang a verify box off, which is why the box
+   * below is not the one in the signed-in branch.
+   */
+  const [recoverPhone, setRecoverPhone] = useState<string | null>(null);
   // Null until we have heard from the server; false once it has told us there
   // is no SMS provider. Never assumed true — showing a verification step that
   // cannot work is the failure this replaces.
@@ -155,7 +179,24 @@ export default function InviteSheet() {
     setBusy(true);
     try {
       const out = await signUp(name.trim(), tidy ?? undefined);
-      // Honest about what actually happened to the number.
+
+      // OUTCOME 2 — the number is already on Num. Not an error, not a new
+      // account: a sign-in that needs the code we just texted. Stay on this
+      // sheet and swap it for the code step; closing it here would drop the
+      // person into the app with no account and no idea a code was sent.
+      if (out.outcome === 'code_sent') {
+        setRecoverPhone(out.phone ?? tidy ?? null);
+        setCode('');
+        setAccountNote(
+          out.verification?.channel === 'review'
+            ? 'Enter the sign-in code from App Store Connect.'
+            : 'That number already has an account — I have texted it a six-digit code.',
+        );
+        return;
+      }
+
+      // OUTCOME 1 — a new account. Honest about what actually happened to the
+      // number.
       setSmsOn(!!out.verification?.sent);
       setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
       // Cold first run: they came to try the app, not to invite someone. Get
@@ -170,10 +211,28 @@ export default function InviteSheet() {
   };
 
   const doVerify = async () => {
+    if (code.trim().length < 4) {
+      setAccountNote('Type the six digits from the text and I’ll check them.');
+      return;
+    }
     setBusy(true);
     try {
-      setAccountNote((await verifyCode(code.trim())) ? 'Number verified.' : 'That code didn’t match.');
+      // The number is passed only on the recovery path, where there is no
+      // member id to present — that is what makes the server release the
+      // account. `verifyCode` refuses to send both.
+      const ok = await verifyCode(code.trim(), recoverPhone ?? undefined);
+      if (ok && recoverPhone) {
+        // `signUp` never ran on this device, so this is where the account
+        // actually arrives. social.ts has already adopted it and closed the
+        // sheet; all that is left is not to contradict it.
+        setRecoverPhone(null);
+        setAccountNote(null);
+        return;
+      }
+      setAccountNote(ok ? 'Number verified.' : 'That code didn’t match.');
     } catch (err) {
+      // The server's own sentence — "that code expired — ask for a new one",
+      // "too many attempts" — is better than any guess we could make here.
       setAccountNote(err instanceof Error ? err.message : 'That code didn’t match.');
     } finally {
       setBusy(false);
@@ -202,7 +261,7 @@ export default function InviteSheet() {
     <div
       ref={ref}
       className="glass-strong"
-      style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)', maxHeight: '86%', overflowY: 'auto' }}
+      style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)', maxHeight: 'min(86%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />
       <div
@@ -216,6 +275,40 @@ export default function InviteSheet() {
 
       {/* 1 — you need an account before you can invite anyone. */}
       {!me ? (
+        recoverPhone ? (
+          /* 1b — this number already has an account. One code away from all of
+             it. Deliberately its own screen: the verify box in the signed-in
+             branch needs a `me`, and on this path there is not one yet. */
+          <div style={{ padding: 16 }}>
+            <div style={label}>WELCOME BACK</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
+              That number already has an account
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 5, lineHeight: 1.55 }}>
+              Nothing is lost and nothing was started from scratch. I have sent a six-digit code to{' '}
+              {recoverPhone.slice(-4).padStart(7, '•')} — type it in and your friends, plans and Stars come straight back.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <input
+                style={{ ...field, flex: 1 }}
+                placeholder="6-digit code"
+                inputMode="numeric"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+              <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px', opacity: busy ? 0.5 : 1 }}>
+                {busy ? '…' : 'CHECK'}
+              </div>
+            </div>
+            {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
+            <div
+              {...pressable(() => { setRecoverPhone(null); setCode(''); setAccountNote(null); })}
+              style={{ ...helpText, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              That is not my number — go back
+            </div>
+          </div>
+        ) : (
         <div style={{ padding: 16 }}>
           {/* First run and "I'm about to invite someone" are different moments
               and deserve different words — nothing is being sent on a cold open. */}
@@ -258,6 +351,7 @@ export default function InviteSheet() {
               browser — once installed, telling someone to install is noise. */}
           <AddToHomeScreen />
         </div>
+        )
       ) : (
         <>
           {/* 2 — verify the number, ONLY when SMS is actually switched on.

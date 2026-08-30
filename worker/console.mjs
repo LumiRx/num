@@ -12,6 +12,7 @@
 // Claude call writes its real token counts to num_usage, so spend is measured
 // rather than estimated.
 import { maskPhone } from '../claim/verify.mjs';
+import { DESTINATIONS } from '../scripts/destinations.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -347,6 +348,18 @@ table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e2
 th{ text-align:left;padding:9px 12px;background:#faf9f7;color:#777;font-weight:600;font-size:12px}
 td{padding:9px 12px;border-top:1px solid #f0eee9} .ok{color:#1a7f37} .bad{color:#c0392b}
 h2{font-size:15px;margin:26px 0 10px}
+/* Day-by-day bars. A number tells you today; a shape tells you the direction,
+   which is the only thing a morning check is actually for. Pure CSS — a chart
+   library on an ops page is a dependency that can break the page it explains. */
+.spark{display:flex;align-items:flex-end;gap:3px;height:44px;margin:2px 0 6px}
+.spark i{flex:1;background:#141414;border-radius:2px 2px 0 0;min-height:2px;opacity:.85}
+.spark i.zero{background:#ddd9d2;opacity:1}
+.spark i.hi{background:#1a7f37}
+.daytbl td.n{text-align:right;font-variant-numeric:tabular-nums}
+.daytbl td.dim{color:#aaa}
+.stale{background:#fff;border:1px solid #c0392b;border-left-width:4px;border-radius:12px;padding:14px 16px;margin:0 0 22px}
+.stale b{display:block;font-size:20px;color:#c0392b;letter-spacing:-.02em}
+.stale span{color:#777;font-size:12.5px}
 form{max-width:340px;margin:16vh auto 0;text-align:center}
 input{width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box}
 button{width:100%;padding:12px;margin-top:10px;border:0;border-radius:10px;background:#141414;color:#fff;font-size:15px;cursor:pointer}
@@ -364,12 +377,30 @@ function liteLogin(err = '') {
 }
 
 /** Rows or empty — a missing table renders as an honest empty state. */
+/**
+ * A panel's query, returning [] rather than taking the whole console down.
+ *
+ * The empty array is deliberate — one broken panel must not blank the page —
+ * but until 26 Aug 2026 the catch was SILENT, and that silence is why four
+ * panels sat empty for weeks with nobody able to tell "no data" from "wrong
+ * column name". Three of them were querying created_at on tables whose column
+ * is `at`, `ts` and `requested_at`; the fourth asked num_biz_referrals for
+ * business_name, which is called biz_name.
+ *
+ * The worst of them was not even blank. The money tab counts pending cashouts
+ * by filtering the rows this returns, so a failed query rendered "0 pending" —
+ * not "unknown", but an affirmative statement that nobody was waiting to be
+ * paid.
+ */
 async function rows(env, sql, ...binds) {
   try { return (await env.DB.prepare(sql).bind(...binds).all()).results ?? []; }
-  catch { return []; }
+  catch (e) {
+    console.warn('[console.rows] query failed:', e?.message ?? e, '::', sql.slice(0, 200));
+    return [];
+  }
 }
 
-const TABS = ['overview', 'asks', 'guests', 'business', 'money', 'places', 'infra'];
+const TABS = ['overview', 'growth', 'asks', 'guests', 'business', 'money', 'places', 'infra'];
 
 async function liteConsole(env, req, url) {
   // WHO: a posted key, or a still-valid token in ?s=.
@@ -427,6 +458,91 @@ async function liteConsole(env, req, url) {
     </div>`;
   }
 
+  if (tab === 'growth') {
+    // Everything here comes from adminOverview so the console and the JSON API
+    // cannot disagree — the drift between "what the dashboard says" and "what
+    // the endpoint returns" is how a number stops being trusted.
+    const g = d.growth ?? { series: [], verification: {}, funnel: [] };
+    const rowsAsc = [...(g.series ?? [])].reverse();
+    const v = g.verification ?? {};
+    const { signinFunnel, signinReasons } = await import('./signinlog.mjs');
+    const [signin, reasons] = await Promise.all([signinFunnel(env, days), signinReasons(env, days)]);
+
+    const bars = (key, hiKey) => {
+      const max = Math.max(1, ...rowsAsc.map((r) => r[key] ?? 0));
+      return `<div class="spark">${rowsAsc.map((r) => {
+        const n = r[key] ?? 0;
+        const cls = n === 0 ? 'zero' : (hiKey && r[hiKey] > 0 ? 'hi' : '');
+        return `<i class="${cls}" style="height:${Math.round((n / max) * 100)}%" title="${H(r.day)}: ${NUM(n)}"></i>`;
+      }).join('')}</div>`;
+    };
+    const sum = (key) => rowsAsc.reduce((a, r) => a + (r[key] ?? 0), 0);
+
+    // The first thing on the page, and red, because it is the number that
+    // decides whether any of the rest matters. A funnel can look healthy all
+    // the way down and still convert nobody into a person we can reach.
+    const stale = v.days_since_verified == null
+      ? ''
+      : `<div class="stale">
+           <b>${NUM(v.days_since_verified)} days since anyone completed sign-in</b>
+           last verified ${H(v.last_verified ?? '—')}<br>
+           <span>${NUM(v.stuck_with_phone)} gave a number and never verified ·
+             ${NUM(v.anon_no_phone)} never gave one ·
+             ${NUM(v.total)} rows total</span>
+         </div>`;
+
+    body = `${v.days_since_verified > 2 ? stale : ''}
+      <div class="cards">
+        ${card('visitors', NUM(sum('visitors')), `${NUM(rowsAsc.at(-1)?.visitors ?? 0)} today · last ${days} days`)}
+        ${card('signups', NUM(sum('signups')), `${NUM(sum('verified'))} verified · ${NUM(sum('anon'))} never gave a number`, sum('verified') === 0)}
+        ${card('asks', NUM(sum('asks')), `${NUM(sum('unattributed'))} unattributed`)}
+        ${card('people asking', NUM(Math.max(...rowsAsc.map((r) => r.askers ?? 0), 0)), 'busiest single day')}
+      </div>
+
+      <h2>Visitors — unique per day</h2>${bars('visitors')}
+      <h2>Signups — green where at least one verified</h2>${bars('signups', 'verified')}
+      <h2>Asks — attributed and not</h2>${bars('asks')}
+
+      <h2>Day by day</h2>
+      <table class="daytbl"><tr>
+        <th>Day</th><th>Visitors</th><th>Web events</th><th>Signups</th>
+        <th>Verified</th><th>No phone</th><th>Asks</th><th>Askers</th><th>Unattributed</th></tr>
+        ${[...rowsAsc].reverse().map((r) => `<tr>
+          <td>${H(r.day)}</td>
+          <td class="n">${NUM(r.visitors)}</td>
+          <td class="n dim">${NUM(r.events)}</td>
+          <td class="n">${NUM(r.signups)}</td>
+          <td class="n ${r.verified > 0 ? 'ok' : (r.signups > 0 ? 'bad' : 'dim')}">${NUM(r.verified)}</td>
+          <td class="n dim">${NUM(r.anon)}</td>
+          <td class="n">${NUM(r.asks)}</td>
+          <td class="n">${NUM(r.askers)}</td>
+          <td class="n dim">${NUM(r.unattributed)}</td>
+        </tr>`).join('')}
+      </table>
+
+      <h2>Sign-in — the step everything else feeds</h2>
+      <p class="tools">sent vs entered is the diagnostic. Sent high and entered zero is a product
+        problem; sent zero is a provider problem. They need different people.</p>
+      ${tbl2(['Day', 'Send attempts', 'Codes sent', 'Codes entered', 'Verified'], signin.map((r) =>
+        `<tr><td>${H(r.day)}</td><td>${NUM(r.send_attempts)}</td>
+             <td class="${r.sent > 0 ? '' : 'bad'}">${NUM(r.sent)}</td>
+             <td>${NUM(r.entered)}</td>
+             <td class="${r.verified > 0 ? 'ok' : 'bad'}">${NUM(r.verified)}</td></tr>`),
+        'No sign-in attempts recorded — instrumentation shipped 23 Aug, rows appear as people try.')}
+      ${reasons.length ? `<h2>Why they failed</h2>${tbl2(['Stage', 'Outcome', 'Reason', 'Via', 'Count'], reasons.map((r) =>
+        `<tr><td>${H(r.stage)}</td><td class="bad">${H(r.outcome)}</td><td>${H(r.reason)}</td><td>${H(r.via)}</td><td>${NUM(r.n)}</td></tr>`), '')}` : ''}
+
+      <h2>Website funnel — people, not page views</h2>
+      ${tbl2(['Step', 'People', 'Events'], (g.funnel ?? []).map((r) =>
+        `<tr><td>${H(r.event)}</td><td>${NUM(r.v)}</td><td>${NUM(r.n)}</td></tr>`),
+        'No web events in this window.')}
+
+      <h2>Where signups came from</h2>
+      ${tbl2(['Source', 'Campaign', 'Signups', 'Verified'], (app.by_source ?? []).map((r) =>
+        `<tr><td>${H(r.source)}</td><td>${H(r.campaign || '—')}</td><td>${NUM(r.signups)}</td><td class="${r.verified > 0 ? 'ok' : 'bad'}">${NUM(r.verified)}</td></tr>`),
+        'No signups in this window.')}`;
+  }
+
   if (tab === 'asks') {
     const feed = await rows(env, `SELECT text, category, dest, lane, brain, degraded, cached, ts FROM num_asks WHERE ts > ${since} ORDER BY id DESC LIMIT 50`);
     const cats = await rows(env, `SELECT COALESCE(category,'(uncategorised)') c, COALESCE(dest,'?') dest, COUNT(*) n FROM num_asks WHERE ts > ${since} GROUP BY 1,2 ORDER BY n DESC LIMIT 15`);
@@ -469,7 +585,7 @@ async function liteConsole(env, req, url) {
   if (tab === 'business') {
     const biz = d.business ?? {};
     const leadRows = await rows(env, `SELECT name, email, dest, status, created_at FROM leads ORDER BY id DESC LIMIT 15`);
-    const refs = await rows(env, `SELECT business_name, state, created_at FROM num_biz_referrals ORDER BY id DESC LIMIT 12`);
+    const refs = await rows(env, `SELECT biz_name AS business_name, state, created_at FROM num_biz_referrals ORDER BY created_at DESC LIMIT 12`);
     const imp = await rows(env, `SELECT p.name, COUNT(*) n FROM num_place_impressions i JOIN places p ON p.id = i.place_id WHERE i.ts > strftime('%s','now') - ${days}*86400 GROUP BY p.id ORDER BY n DESC LIMIT 15`);
     body = `<div class="cards">
       ${card('businesses', NUM(biz.businesses), `${NUM(biz.claims)} claims · ${NUM(biz.owners)} owners`)}
@@ -486,7 +602,7 @@ async function liteConsole(env, req, url) {
   }
 
   if (tab === 'money') {
-    const cashouts = await rows(env, `SELECT member_id, stars, state, created_at FROM num_cashouts ORDER BY id DESC LIMIT 10`);
+    const cashouts = await rows(env, `SELECT member_id, stars, state, requested_at AS created_at FROM num_cashouts ORDER BY rowid DESC LIMIT 10`);
     const byDayPay = await rows(env, `SELECT date(paid_at) d, currency, COUNT(*) n, SUM(amount_cents)/100.0 amt FROM num_payments WHERE state='paid' AND paid_at > ${since} GROUP BY 1,2 ORDER BY d DESC LIMIT 20`);
     body = `<div class="cards">
       ${card('revenue USD', '$' + NUM(rev.usd), `${NUM(rev.paid_total)} paid`)}
@@ -522,8 +638,14 @@ async function liteConsole(env, req, url) {
 
   if (tab === 'infra') {
     const brains = await rows(env, `SELECT brain, fails, class, last_error, cooldown_until FROM num_brain_state ORDER BY fails DESC`);
-    const health = await rows(env, `SELECT verdict, detail, created_at FROM num_health ORDER BY id DESC LIMIT 8`);
+    const health = await rows(env, `SELECT verdict, detail, at AS created_at FROM num_health ORDER BY id DESC LIMIT 8`);
     const smsD = await rows(env, `SELECT status, COUNT(*) n FROM num_sms_delivery GROUP BY status ORDER BY n DESC LIMIT 8`);
+    // The only closed loop NUM has, shown as numbers rather than asserted as a
+    // capability. A learning system nobody can inspect is a learning system
+    // nobody can catch being wrong — and until 26 Aug 2026 the honest number
+    // here was zero, because nothing NUM recorded changed anything NUM did.
+    const learn = await import('./learn.mjs')
+      .then((m) => m.learningState(env)).catch(() => null);
     const now = Math.floor(Date.now() / 1000);
     body = `<div class="cards">
       ${card('brain failures 24h', NUM(chain.brain_fails_24h), (chain.brain_fails_24h ?? 0) === 0 ? 'all healthy' : 'see table below', (chain.brain_fails_24h ?? 0) > 5)}
@@ -538,6 +660,17 @@ async function liteConsole(env, req, url) {
       `<tr><td class="${r.verdict === 'down' ? 'bad' : 'ok'}">${H(r.verdict)}</td><td>${H((r.detail ?? '').slice(0, 80))}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'No cron rows — check the health worker.')}
     <h2>SMS delivery</h2>
     ${tbl2(['Status', 'Count'], smsD.map((r) => `<tr><td>${H(r.status)}</td><td>${NUM(r.n)}</td></tr>`), 'No SMS sent yet.')}
+    <h2>What NUM has learned (worker/learn.mjs)</h2>
+    ${learn ? tbl2(['Measure', 'Value'], [
+      ['Ratings collected from guests', NUM(learn.ratings_collected)],
+      ['Places carrying at least one', NUM(learn.places_with_a_rating)],
+      [`Places actually moving the ranking (needs ${learn.min_ratings_to_count})`, NUM(learn.places_changing_the_ranking)],
+      ['Last rollup', H(learn.last_rollup ?? 'never')],
+    ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`), '')
+      : '<p class="tools">Learning state unavailable.</p>'}
+    <p class="tools">The only part of the ranking NUM learned rather than crawled.
+    A place moves up here because people who went said it was good, and for no
+    other reason — worker/learn.test.mjs fails the build if money can reach it.</p>
     <p class="tools">External checks: the GitHub uptime probe asks a real question every 5 minutes and fails the workflow on degraded answers.</p>`;
   }
 
@@ -660,7 +793,7 @@ async function adminOverview(env, url, req) {
     ['members24h', "SELECT COUNT(*) n FROM num_members WHERE created_at > datetime('now','-1 day')"],
     // ── what they ask, and how they reach us ──────────────────────────
     ['questions', 'SELECT COUNT(*) n FROM num_usage'],
-    ['questions24h', "SELECT COUNT(*) n FROM num_usage WHERE created_at > datetime('now','-1 day')"],
+    ['questions24h', "SELECT COUNT(*) n FROM num_usage WHERE ts > datetime('now','-1 day')"],
     ['textsIn', "SELECT COUNT(*) n FROM num_inbox WHERE kind='sms'"],
     ['emailsIn', "SELECT COUNT(*) n FROM num_inbox WHERE kind='email'"],
     ['friendships', "SELECT COUNT(*) n FROM num_links WHERE state='active'"],
@@ -801,6 +934,88 @@ async function adminOverview(env, url, req) {
   const turns = (usageByDay.results ?? []).reduce((n, r) => n + (r.turns ?? 0), 0);
 
   return json({
+    // ── GROWTH, DAY BY DAY ────────────────────────────────────────────
+    //
+    // Every other number on this page is a TOTAL. A total cannot answer the
+    // only question worth asking in the morning — "is it going up?" — and
+    // answering that from the totals means asking someone to remember
+    // yesterday's, which nobody does. So: one row per day, four series, and a
+    // verification-health block that says out loud how long it has been since
+    // anybody completed sign-in.
+    //
+    // Each series is its own statement. D1 caps the terms in a compound
+    // SELECT, and a correlated subquery per day per metric hit that ceiling
+    // immediately — which is also why these are stitched in JS below rather
+    // than joined in SQL.
+    growth: await (async () => {
+      const days = Math.max(1, Math.min(90, Number(since) || 14));
+      const win = `-${days} days`;
+      const [signups, visitors, asks, health] = await Promise.all([
+        settle(q(`SELECT substr(created_at,1,10) day, COUNT(*) signups,
+                         SUM(phone_verified) verified,
+                         SUM(CASE WHEN phone IS NULL THEN 1 ELSE 0 END) anon
+                    FROM num_members WHERE created_at > datetime('now','${win}')
+                   GROUP BY day`).all(), { results: [] }),
+        settle(q(`SELECT substr(created_at,1,10) day, COUNT(DISTINCT visitor_id) visitors, COUNT(*) events
+                    FROM num_web_events WHERE created_at > datetime('now','${win}')
+                   GROUP BY day`).all(), { results: [] }),
+        // Attributed asks only. Before anon_id shipped, unattributed rows
+        // were counted as usage and flattered the number badly — 20 to 48 a
+        // day of monitors and probes reading as people. A metric that counts
+        // our own health checks as demand is worse than no metric.
+        settle(q(`SELECT substr(ts,1,10) day, COUNT(*) asks,
+                         COUNT(DISTINCT COALESCE(member_id, anon_id)) askers,
+                         SUM(CASE WHEN member_id IS NULL AND anon_id IS NULL THEN 1 ELSE 0 END) unattributed
+                    FROM num_asks WHERE ts > datetime('now','${win}')
+                   GROUP BY day`).all(), { results: [] }),
+        settle(q(`SELECT (SELECT MAX(created_at) FROM num_members WHERE phone_verified=1) last_verified,
+                         (SELECT COUNT(*) FROM num_members WHERE phone IS NOT NULL AND phone_verified=0) stuck,
+                         (SELECT COUNT(*) FROM num_members WHERE phone IS NULL) anon,
+                         (SELECT COUNT(*) FROM num_members) total`).first(), null),
+      ]);
+
+      const by = (rows, key) => Object.fromEntries((rows.results ?? []).map((r) => [r[key ?? 'day'], r]));
+      const S = by(signups), V = by(visitors), A = by(asks);
+      const series = [];
+      for (let i = 0; i < days; i++) {
+        const day = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        series.push({
+          day,
+          signups: S[day]?.signups ?? 0,
+          verified: S[day]?.verified ?? 0,
+          anon: S[day]?.anon ?? 0,
+          visitors: V[day]?.visitors ?? 0,
+          events: V[day]?.events ?? 0,
+          asks: A[day]?.asks ?? 0,
+          askers: A[day]?.askers ?? 0,
+          unattributed: A[day]?.unattributed ?? 0,
+        });
+      }
+
+      // Days since anyone completed sign-in. THE number to look at first: the
+      // whole funnel above it can be healthy and none of it converts to a
+      // person we can reach.
+      const lastVerified = health?.last_verified ?? null;
+      const daysSince = lastVerified
+        ? Math.floor((Date.now() - Date.parse(lastVerified.replace(' ', 'T') + 'Z')) / 86400_000)
+        : null;
+
+      return {
+        series,
+        verification: {
+          last_verified: lastVerified,
+          days_since_verified: daysSince,
+          stuck_with_phone: health?.stuck ?? 0,
+          anon_no_phone: health?.anon ?? 0,
+          total: health?.total ?? 0,
+        },
+        funnel: (await settle(
+          q(`SELECT event, COUNT(*) n, COUNT(DISTINCT visitor_id) v
+               FROM num_web_events WHERE created_at > datetime('now','${win}')
+              GROUP BY event ORDER BY v DESC LIMIT 20`).all(), { results: [] },
+        )).results ?? [],
+      };
+    })(),
     app: {
       members: c.members, verified: c.verified, active24: c.active24,
       plans: c.plans, planItems: c.planItems, events: c.events, guests: c.guests, rsvpYes: c.rsvpYes,
@@ -1166,6 +1381,155 @@ async function adminResolve(env, req) {
   return json({ ok: true });
 }
 
+/**
+ * The review queue for num_place_submissions — businesses the /claim/ form
+ * heard from that `places` never held (worker/migrations/0007_place_submissions.sql).
+ * Until this queue existed, nothing else in the codebase ever read this
+ * table: a submission landed in 'new' and stayed there forever, with no one
+ * able to see it, let alone finish it. Confirmed live 29 Aug 2026 — Fingal
+ * Hotel's own submission had been sitting untouched since the moment it was
+ * filed.
+ *
+ * Every row gets a free, cheap dedup hint: an EXACT phone match against
+ * `places`. That alone catches the case that surfaced this — a submission
+ * for a business already on Num, filed as if it were new, because whoever
+ * filled in the form did not pick the existing listing — with no geocoding
+ * required to see it.
+ */
+async function adminSubmissions(env, url) {
+  const statusParam = clip(url.searchParams.get('status'), 20);
+  const statuses = statusParam ? [statusParam] : ['new', 'geocoded'];
+  const placeholders = statuses.map((_, i) => `?${i + 1}`).join(',');
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, name_local, address, website, category, phone, email,
+            country, dest, claim_id, status, place_id, review_note, created_at
+       FROM num_place_submissions
+      WHERE status IN (${placeholders})
+      ORDER BY created_at ASC LIMIT 200`,
+  ).bind(...statuses).all();
+
+  const withHints = await Promise.all((results ?? []).map(async (r) => {
+    let match = null;
+    if (r.phone) {
+      match = await env.DB.prepare(
+        `SELECT id, name, dest, area, country, phone, email, website, status
+           FROM places WHERE phone = ?1 LIMIT 1`,
+      ).bind(r.phone).first().catch(() => null);
+    }
+    if (!match && r.name) {
+      match = await env.DB.prepare(
+        `SELECT id, name, dest, area, country, phone, email, website, status
+           FROM places WHERE lower(name) = lower(?1) AND (?2 = '' OR country = ?2) LIMIT 1`,
+      ).bind(r.name, r.country || '').first().catch(() => null);
+    }
+    return { ...r, possible_match: match || null };
+  }));
+
+  return json({ submissions: withHints, count: withHints.length });
+}
+
+/**
+ * Resolve a submission onto a `places` row that already exists — the Fingal
+ * Hotel case. Never writes a new places row; only ever points the submission
+ * (and, if it arrived on one, the claim that produced it) at a listing that
+ * is already there, so the business can claim that listing the normal way —
+ * a code sent to the contact already published on it.
+ */
+async function adminSubmissionLink(env, req) {
+  const b = await readBody(req);
+  const id = clip(b.submission_id ?? b.id, 64);
+  const placeId = clip(b.place_id, 64);
+  if (!id || !placeId) return json({ error: 'submission_id and place_id are both required' }, 400);
+
+  const sub = await env.DB.prepare(
+    'SELECT id, claim_id, status FROM num_place_submissions WHERE id=?1',
+  ).bind(id).first();
+  if (!sub) return json({ error: 'no such submission' }, 404);
+  if (sub.status === 'promoted' || sub.status === 'duplicate') {
+    return json({ error: `already resolved as ${sub.status}` }, 409);
+  }
+  const place = await env.DB.prepare('SELECT id FROM places WHERE id=?1').bind(placeId).first();
+  if (!place) return json({ error: 'no such place' }, 404);
+
+  const who = clip(b.by, 60) || 'admin';
+  const work = [
+    env.DB.prepare(
+      `UPDATE num_place_submissions SET status='duplicate', place_id=?2, reviewed_at=datetime('now'),
+              review_note=?3 WHERE id=?1`,
+    ).bind(id, placeId, `linked by ${who}`),
+  ];
+  if (sub.claim_id) {
+    work.push(
+      env.DB.prepare('UPDATE claims SET place_id=?2 WHERE id=?1 AND place_id IS NULL').bind(sub.claim_id, placeId),
+    );
+  }
+  await env.DB.batch(work);
+
+  return json({ ok: true, submission_id: id, place_id: placeId, status: 'duplicate' });
+}
+
+/**
+ * Promote a submission into a real, findable `places` row — for the business
+ * this table exists for: one nothing had crawled. Coordinates are required
+ * and never invented here; places.lat/lng are NOT NULL and a wrong pin is a
+ * wrong "what's near me" answer for as long as the row exists (see 0007's
+ * own Gulf-of-Guinea warning). `dest` must be one of Num's own destination
+ * slugs (scripts/destinations.mjs), not free text — it is how the concierge,
+ * the map and every ingester key a place.
+ */
+async function adminSubmissionPromote(env, req) {
+  const b = await readBody(req);
+  const id = clip(b.submission_id ?? b.id, 64);
+  const lat = Number(b.lat);
+  const lng = Number(b.lng);
+  const dest = clip(b.dest, 40);
+  if (!id) return json({ error: 'submission_id is required' }, 400);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return json({ error: 'lat and lng are required and must be real coordinates' }, 400);
+  }
+  const destRow = DESTINATIONS.find((d) => d.slug === dest);
+  if (!destRow) {
+    return json({ error: `dest must be one of Num's destination slugs, e.g. "${DESTINATIONS[0].slug}"` }, 400);
+  }
+
+  const sub = await env.DB.prepare('SELECT * FROM num_place_submissions WHERE id=?1').bind(id).first();
+  if (!sub) return json({ error: 'no such submission' }, 404);
+  if (sub.status === 'promoted' || sub.status === 'duplicate') {
+    return json({ error: `already resolved as ${sub.status}` }, 409);
+  }
+
+  const placeId = `p_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+  const who = clip(b.by, 60) || 'admin';
+  const work = [
+    env.DB.prepare(
+      `INSERT INTO places (id,name,name_local,category,lat,lng,cell_lat,cell_lng,dest,country,
+                            phone,website,email,address,source,status)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'self_submitted','unclaimed')`,
+    ).bind(
+      placeId, sub.name, sub.name_local, sub.category, lat, lng,
+      Math.floor(lat * 10), Math.floor(lng * 10), dest, sub.country,
+      sub.phone, sub.website, sub.email, sub.address,
+    ),
+    env.DB.prepare(
+      `UPDATE num_place_submissions SET status='promoted', place_id=?2, reviewed_at=datetime('now'),
+              review_note=?3 WHERE id=?1`,
+    ).bind(id, placeId, `promoted by ${who}`),
+  ];
+  if (sub.claim_id) {
+    work.push(
+      env.DB.prepare('UPDATE claims SET place_id=?2 WHERE id=?1 AND place_id IS NULL').bind(sub.claim_id, placeId),
+    );
+  }
+  await env.DB.batch(work);
+
+  return json({ ok: true, submission_id: id, place_id: placeId, status: 'promoted' });
+}
+
+// Exported so the behavioral test can call these directly, the same way
+// bizconsole.mjs's __testables does, instead of re-deriving an admin
+// session token just to exercise the logic.
+export const __testables = { adminSubmissions, adminSubmissionLink, adminSubmissionPromote };
+
 // ── router ────────────────────────────────────────────────────────────────
 
 export async function handleConsole(request, env, path) {
@@ -1191,6 +1555,9 @@ export async function handleConsole(request, env, path) {
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);
       if (path === '/admin/claims/contacted' && post) return await adminClaimContacted(env, request);
       if (path === '/admin/resolve' && post) return await adminResolve(env, request);
+      if (path === '/admin/submissions' && !post) return await adminSubmissions(env, url);
+      if (path === '/admin/submissions/link' && post) return await adminSubmissionLink(env, request);
+      if (path === '/admin/submissions/promote' && post) return await adminSubmissionPromote(env, request);
       return json({ error: 'not found' }, 404);
     }
     return json({ error: 'not found' }, 404);

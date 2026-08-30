@@ -12,14 +12,29 @@ import { askNum } from './concierge';
 import { track } from './track';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 import { apiUrl } from '../lib/apibase';
+import { isNativeApp } from './native';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(apiUrl('/api/social') + path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  // The address is worked out once and then named in every diagnostic below.
+  // The entire class of failure this file has already survived is "the app
+  // asked the wrong place", and a log that does not say WHERE it asked cannot
+  // tell you that. It costs one variable.
+  const url = apiUrl('/api/social') + path;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch (err) {
+    // Nothing answered at all: offline, DNS, TLS, or a shell pointed at an
+    // origin that does not exist. Safari rejects this with "Load failed",
+    // which names nothing at all, so we say the address out loud instead.
+    console.warn('[social] no response', { url, origin: window.location.origin, err });
+    throw new Error(`Couldn't reach Num — nothing answered at ${url}. Check your connection and try again.`);
+  }
   // NOT `.catch(() => ({}))`.
   //
   // That swallow is what turned a network misconfiguration into
@@ -32,17 +47,41 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   //
   // A response that is not JSON is a failure. Saying so here costs one line
   // and saves an evening.
+  //
+  // The body is read as TEXT first so that when it is not JSON we can still
+  // show what it was. `res.json()` throws away the thing you most need to see.
+  const raw = await res.text();
   let body: unknown;
   try {
-    body = await res.json();
+    body = JSON.parse(raw);
   } catch {
+    // Three facts identify this in one glance: the address we used, the origin
+    // we used it FROM — `capacitor://localhost` is the whole bug — and the
+    // first line of what came back, which on the TestFlight build was
+    // `<!doctype html>`.
+    console.warn('[social] not JSON', {
+      url,
+      origin: window.location.origin,
+      status: res.status,
+      contentType: res.headers.get('content-type'),
+      head: raw.slice(0, 120),
+    });
     throw new Error(
       res.ok
-        ? "Couldn't reach Num — the server answered with something unexpected."
+        ? "Couldn't reach Num — the server answered with something unexpected. That is the app asking the wrong address, not anything you did; the console has the address it used."
         : `social ${res.status}`,
     );
   }
-  if (!res.ok) throw new Error((body as { error?: string }).error || `social ${res.status}`);
+  if (!res.ok) {
+    // The server writes these sentences for people — "That number is already
+    // on Num, and I can't text a code to it right now. Message us and we'll
+    // get you back in." — so they pass through untouched. Rewording them here
+    // would leave two versions of one message to keep in step, and the one the
+    // user sees would be the one nobody edits.
+    const said = (body as { error?: string }).error;
+    console.warn('[social] error', { url, status: res.status, body });
+    throw new Error(said || `Num couldn't finish that one (${res.status}). Try again in a moment.`);
+  }
   return body as T;
 }
 
@@ -148,7 +187,14 @@ export function bootSocial(): void {
   // consume it. We park it server-side and show a short code to carry across.
   // Refusing to act is the correct behaviour here: acting would silently do
   // the wrong thing, which is worse than asking for one more tap.
+  // isNativeApp() is the third arm, and it is not optional. The App Store
+  // build is a WKWebView on capacitor://localhost — not a PWA — so BOTH of
+  // the checks above are false inside it. Without this arm the installed iOS
+  // app treats itself as "a Safari tab", refuses to accept the invite that
+  // opened it, and shows a carry-across pair code to somebody who is already
+  // exactly where the code was going to send them.
   const installed =
+    isNativeApp() ||
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
@@ -210,11 +256,131 @@ export function bootSocial(): void {
 
 // ── identity ───────────────────────────────────────────────────────────────
 
+/**
+ * THE THREE-OUTCOME CONTRACT for `POST /api/social/me`.
+ *
+ * Written out here, in full, because getting it wrong is not a cosmetic bug:
+ * it is the first screen of the app refusing to let anybody past it.
+ *
+ *   200  { me, ref, link, verification }        A NEW number. The account
+ *                                               exists and its id is in hand.
+ *
+ *   202  { recovery: 'code_sent', phone,        An EXISTING number. There is
+ *          verification, next }                 NO member and NO id in this
+ *                                               body, deliberately — see
+ *                                               below. The right screen is
+ *                                               "enter the code", and the
+ *                                               identity arrives from
+ *                                               POST /verify { phone, code }.
+ *
+ *   4xx/5xx { error: '<a whole sentence>' }     A real failure. 409 the number
+ *                                               is verified on another device,
+ *                                               503 the code could not be
+ *                                               texted (A2P 10DLC, today),
+ *                                               400 a name or country code is
+ *                                               missing. `api()` above throws
+ *                                               the server's sentence as-is.
+ *
+ * WHY THE 202 CARRIES NO ID. `worker/social.mjs` used to hand the whole
+ * account back to whoever typed the number — no code, no text to the owner,
+ * and the id it returned is the credential on every other route (Stars, DMs,
+ * payment history, deletion). That is SEC-001 × SEC-006, and the fix is that
+ * an unverified number is a CLAIM until a code proves it. So anything
+ * bearer-shaped in the 202 would be the hole reopened.
+ *
+ * The cost of a client that does not know this: `signUp()` used to throw
+ * "Couldn't finish signing you up" whenever `me.id` was absent, so the moment
+ * the server fix deploys EVERY returning number — Andre's, the App Review
+ * demo account's, every one of the 125 members reinstalling — hits a hard
+ * error on the first screen. That is what this file now handles.
+ *
+ * Server side, verbatim: `worker/social.mjs` `me()` (the `holder` branch) and
+ * `verifyMe()`. Written up in `HQ/divisions/num/SEC-001_REMEDIATION.md` §3 and
+ * `HQ/divisions/num/APP_REVIEW_RECOVERY.md` §3.
+ */
+interface Verification {
+  sent: boolean;
+  reason?: string;
+  note?: string;
+  /** 'sms' normally; 'review' for the App Store Connect grant. */
+  channel?: string;
+  expires_in_min?: number;
+}
+
 interface MeResponse {
   me: Member;
   ref: string;
   link: string;
-  verification: { sent: boolean; reason?: string; note?: string } | null;
+  verification: Verification | null;
+}
+
+/** The 202. No `me`, no `id`, no `ref`, no `link` — by design, not by omission. */
+interface RecoveryResponse {
+  recovery: 'code_sent';
+  recovered?: boolean;
+  phone?: string;
+  verification: Verification | null;
+  next?: string;
+}
+
+/**
+ * Which of the two GOOD outcomes happened. Failures throw, with a sentence.
+ *
+ * A discriminated union rather than an optional `me`, so that a caller cannot
+ * quietly read `.me` on the recovery answer and get `undefined` — which is the
+ * exact shape of the bug this replaces.
+ */
+export type SignUpResult =
+  | { outcome: 'account'; me: Member; ref: string; link: string; verification: Verification | null }
+  | { outcome: 'code_sent'; phone: string | null; verification: Verification | null };
+
+/**
+ * The number we are in the middle of recovering.
+ *
+ * Recovery is the one flow where the client has NO member id to present —
+ * that is the entire point of the server fix — so the number has to survive
+ * the hop from `signUp()` to `verifyCode()`. Module state rather than store
+ * state because it is not part of a saved identity: it is a pending proof,
+ * and if the app is reloaded halfway the right thing is to ask for the number
+ * again rather than to resume something nobody re-typed.
+ */
+let recoveringPhone: string | null = null;
+
+/** The number a code was sent to, if a code screen should be up. */
+export function pendingRecovery(): string | null {
+  return recoveringPhone;
+}
+
+/**
+ * Take on an identity the server has just released, and put the app into the
+ * state a signed-in device is in.
+ *
+ * Shared by recovery and by the App Review grant, because "we now know who
+ * this is" has exactly one correct set of consequences and having two copies
+ * of them is how one of them goes stale.
+ */
+function adoptMember(m: Member): void {
+  store.set((s) => ({
+    me: m,
+    chips: s.chips.filter((c) => c.id !== 'signup'),
+    // The sheet has done its job. Leaving it up after a successful sign-in
+    // reads as if the code was not accepted.
+    inviteOpen: null,
+    threadOpen: true,
+    msgs: [
+      ...s.msgs,
+      {
+        who: 'c' as const,
+        text: `Welcome back, ${m.name ?? 'you'}. That is your own account — nothing was started from scratch, and your friends, plans and Stars are all where you left them.`,
+      },
+    ],
+  }));
+  void refreshFriends();
+  void refreshPlans();
+  void syncPlan();
+  void refreshRequests();
+  void refreshStars();
+  resumeDm();
 }
 
 /**
@@ -222,15 +388,41 @@ interface MeResponse {
  * provider is configured; where none is, the number is saved but explicitly
  * NOT treated as verified — see the note we surface to the user.
  */
-export async function signUp(name: string, phone?: string): Promise<MeResponse> {
+export async function signUp(name: string, phone?: string): Promise<SignUpResult> {
   // The ad that brought them travels with the signup — this is the moment
   // attribution becomes a conversion instead of a pageview.
   let utm: unknown = null;
   try { utm = JSON.parse(localStorage.getItem('num-utm') ?? 'null'); } catch { /* fine */ }
-  const out = await api<MeResponse>('/me', {
+  const out = await api<Partial<MeResponse> & Partial<RecoveryResponse>>('/me', {
     method: 'POST',
     body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place, utm }),
   });
+  // OUTCOME 2 — this number is already on Num, so this is a sign-IN.
+  //
+  // The server has texted a code to the number ON FILE and told us nothing
+  // else: no member, no id. That is not a failure and it must not read like
+  // one. The person is not locked out, they are one code away from everything
+  // they already had, and the words below are the ones they need to see
+  // BEFORE the code box appears.
+  //
+  // Checked before `out.me` is touched, because on this path there is no
+  // `out.me` to touch.
+  if (out?.recovery === 'code_sent') {
+    recoveringPhone = out.phone ?? phone ?? null;
+    narrate(
+      out.verification?.channel === 'review'
+        ? 'That number already has an account here. Enter the sign-in code and I will bring it back.'
+        : 'That number is already on Num — which means you have an account, not that you are locked out.\n\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.',
+    );
+    // Not `sign_up`: nobody signed up, somebody came back. Counting a
+    // recovery as a fresh signup would inflate the exact number the ad
+    // budget is judged against.
+    track('signup_recovery', { method: 'phone' });
+    return { outcome: 'code_sent', phone: recoveringPhone, verification: out.verification ?? null };
+  }
+
+  // OUTCOME 1 — a new number, and an account to go with it.
+  //
   // Belt and braces. The fetch layer above now refuses a non-JSON response,
   // but `out.me` is dereferenced four times below and a signup that half-works
   // is the worst screen in the product to be stuck on — you cannot get past
@@ -239,10 +431,14 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
   if (!out?.me?.id) {
     throw new Error("Couldn't finish signing you up — Num didn't send an account back. Try again in a moment.");
   }
+  // Pinned to a local, because TypeScript widens a narrowed property back to
+  // `Member | undefined` inside the callbacks below — and `out.me!` would be a
+  // promise to the compiler that only this line can keep.
+  const account: Member = out.me;
   // The "add my name & number" prompt has done its job — leave it up and it
   // reads as if nothing happened.
   store.set((s) => ({
-    me: out.me,
+    me: account,
     chips: s.chips.filter((c) => c.id !== 'signup'),
     msgs: [
       ...s.msgs,
@@ -250,8 +446,8 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
         who: 'c' as const,
         // Acknowledge the person, not the transaction — then ask the one
         // question that unlocks everything else.
-        text: `Good to meet you, ${out.me.name ?? 'you'}.${
-          out.me.phone ? '\n\nYour number’s tucked away — friends can find you now, and I’ll tell you if anything moves.' : ''
+        text: `Good to meet you, ${account.name ?? 'you'}.${
+          account.phone ? '\n\nYour number’s tucked away — friends can find you now, and I’ll tell you if anything moves.' : ''
         }\n\nSo, where in the world are you, and where are you headed next?`,
       },
     ],
@@ -263,7 +459,7 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
   // a form. `first_ask` below is the one that proves they found the product
   // useful. Send both and judge on the second.
   track('sign_up', {
-    method: out.me.phone ? 'phone' : 'name_only',
+    method: account.phone ? 'phone' : 'name_only',
     // Recovery returns an existing account rather than creating one. Counting
     // it as a fresh signup would inflate exactly the number we spend against.
     recovered: !!(out as { recovered?: boolean }).recovered,
@@ -276,7 +472,7 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
     void fetch(`${CLAIM}/ref/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: refCode, token: inviteToken, signup_id: out.me.id }),
+      body: JSON.stringify({ code: refCode, token: inviteToken, signup_id: account.id }),
     }).catch(() => {});
   }
   if (inviteToken) await acceptInvite(inviteToken);
@@ -285,23 +481,70 @@ export async function signUp(name: string, phone?: string): Promise<MeResponse> 
   // A `?dm=` link that landed before this device had an account — now it does,
   // so open the conversation they were sent here for.
   resumeDm();
-  return out;
+  return {
+    outcome: 'account',
+    me: account,
+    ref: out.ref ?? account.ref ?? '',
+    link: out.link ?? '',
+    verification: out.verification ?? null,
+  };
 }
 
-export async function verifyCode(code: string): Promise<boolean> {
+/**
+ * Type the code in. Two callers, two proofs, one endpoint.
+ *
+ *   have an id  → { id, code }     the ordinary case: proving the number
+ *                                  attached to an account we already hold.
+ *   no id       → { phone, code }  recovery. The number and the code ARE the
+ *                                  proof of possession, and this response is
+ *                                  the only place the server will release the
+ *                                  member id (`worker/social.mjs` `verifyMe`).
+ *
+ * The two must never be sent together. The server picks the phone path only
+ * when there is no id in the body —
+ * `byPhone = !clip(b.id, 40) && !!normalisePhone(b.phone)` — so including a
+ * stale id silently puts us back on the id path and 404s.
+ */
+export async function verifyCode(code: string, phone?: string): Promise<boolean> {
   const me = store.get().me;
-  if (!me) return false;
-  const out = await api<{ ok?: boolean }>('/verify', { method: 'POST', body: JSON.stringify({ id: me.id, code }) });
-  if (out.ok) {
+  const recovering = me ? null : (phone ?? recoveringPhone);
+  if (!me && !recovering) return false;
+  const out = await api<{
+    ok?: boolean;
+    already?: boolean;
+    recovered?: boolean;
+    review_access?: boolean;
+    phone_verified?: boolean;
+    me?: Member;
+    ref?: string;
+  }>('/verify', {
+    method: 'POST',
+    body: JSON.stringify(me ? { id: me.id, code } : { phone: recovering, code }),
+  });
+  if (!out.ok) return false;
+  if (out.me?.id) {
+    // RECOVERY, second half. This is where the identity is finally released,
+    // so this is the only moment the client can learn who it is. Storing it
+    // anywhere else — or not at all — means a code screen that succeeds into
+    // an app with no account, which looks exactly like a failure.
+    recoveringPhone = null;
+    adoptMember(out.me);
+    track('sign_up', { method: 'phone', recovered: true });
+  } else {
     store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
-    // THE conversion, once SMS is on: a verified phone is the strongest signal
-    // an ad channel can be judged by. Until A2P clears it cannot fire at all,
-    // which is why `sign_up` and `first_ask` exist below — a campaign
-    // optimising toward an event that never happens is optimising toward
-    // nothing.
-    track('verified_signup', { method: 'sms' });
   }
-  return !!out.ok;
+  // THE conversion, once SMS is on: a verified phone is the strongest signal
+  // an ad channel can be judged by. Until A2P clears it cannot fire at all,
+  // which is why `sign_up` and `first_ask` exist below — a campaign
+  // optimising toward an event that never happens is optimising toward
+  // nothing.
+  //
+  // Read from the response rather than assumed: `{ ok: true, already: true }`
+  // means the number was ALREADY verified (no new conversion), and the App
+  // Review grant deliberately does not set `phone_verified` at all (no claim
+  // about a number we never texted).
+  if (out.phone_verified) track('verified_signup', { method: 'sms' });
+  return true;
 }
 
 /** Consent, second half: accepting is what turns a link active both ways. */
@@ -359,6 +602,59 @@ export async function unfriend(id: string, block = false): Promise<string | null
     return out.note ?? null;
   } catch {
     return 'Couldn’t do that just now — try again.';
+  }
+}
+
+/** Why somebody is being reported. Matches REPORT_REASONS in worker/account.mjs. */
+export type ReportReason = 'harassment' | 'spam' | 'impersonation' | 'inappropriate' | 'other';
+
+export const REPORT_REASONS: { id: ReportReason; label: string }[] = [
+  { id: 'harassment', label: 'Harassment or abuse' },
+  { id: 'spam', label: 'Spam or scam' },
+  { id: 'impersonation', label: 'Pretending to be someone else' },
+  { id: 'inappropriate', label: 'Inappropriate content' },
+  { id: 'other', label: 'Something else' },
+];
+
+/**
+ * Report somebody, and block them at the same time if asked.
+ *
+ * Apple guideline 1.2 requires an app carrying user-generated content to offer
+ * a way to report it, not only a way to block its author. Num carries DMs,
+ * plan comments, and profile names and bios that friends can see, so it is a
+ * UGC app whether or not it feels like one.
+ *
+ * Separate from `unfriend(id, block)` on purpose. Removing somebody is a
+ * private preference; reporting them says a human should look. Conflating the
+ * two would mean either every block raises a case nobody asked for, or a
+ * genuine report quietly does nothing.
+ */
+export async function reportMember(
+  id: string,
+  reason: ReportReason,
+  opts: { note?: string; block?: boolean; context?: string } = {},
+): Promise<string | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch(apiUrl('/api/account/report'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        me: me.id,
+        id,
+        reason,
+        note: opts.note ?? '',
+        block: !!opts.block,
+        context: opts.context ?? 'profile',
+      }),
+    }).then((r) => r.json()) as { ok?: boolean; note?: string; error?: string };
+    // A block changes who is on the People shelf, so the list has to catch up
+    // or the person they just blocked is still sitting there.
+    if (opts.block) await refreshFriends();
+    return out.note ?? out.error ?? null;
+  } catch {
+    return 'Couldn’t send that just now — try again.';
   }
 }
 

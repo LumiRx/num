@@ -13,6 +13,8 @@
 // num_ai_submissions with status 'pending' and stay invisible to travellers
 // until a person at 5arz approves them. Agent-submitted, human-verified.
 
+import { oauthRoutes, verifyAccessToken, unauthorized } from "./oauth.js";
+
 const SITE = "https://itsnum.com";
 
 // reads per UTC day. Mirrors the dashboard tiers on /pricing/.
@@ -98,14 +100,27 @@ function hostOf(u) {
 
 async function authenticate(req, env) {
   const h = req.headers.get("authorization") || "";
-  const m = h.match(/^Bearer\s+(numa_live_[a-f0-9]{48})$/i);
-  if (!m) return { error: err("unauthorized", "Send Authorization: Bearer numa_live_... Get a key from POST " + SITE + "/api/agent/signup", 401) };
-  const hash = await sha256(m[1]);
-  const a = await env.DB.prepare(
-    "SELECT id, agent_name, operator_name, operator_email, homepage, key_prefix, tier, status, " +
-    "created_at, last_seen_at, rotated_at FROM num_ai_agents WHERE key_hash=?1"
-  ).bind(hash).first();
-  if (!a) return { error: err("unauthorized", "That key is not recognised. Keys are shown once at signup; if it is lost, sign up again.", 401) };
+  const bearer = h.match(/^Bearer\s+(\S+)$/i);
+  if (!bearer) {
+    return { error: unauthorized(
+      "Send Authorization: Bearer <token>. Either a key from POST " + SITE + "/api/agent/signup, " +
+      "or an OAuth 2.1 access token — see " + SITE + "/.well-known/oauth-protected-resource.") };
+  }
+  const cred = bearer[1];
+
+  // Two credential types share this door: the original numa_live_ keys, and OAuth
+  // access tokens. OAuth tokens resolve to the same agent row, so quota, tier and
+  // every downstream handler behave identically.
+  let a = null;
+  if (/^numa_live_[a-f0-9]{48}$/i.test(cred)) {
+    a = await env.DB.prepare(
+      "SELECT id, agent_name, operator_name, operator_email, homepage, key_prefix, tier, status, " +
+      "created_at, last_seen_at, rotated_at FROM num_ai_agents WHERE key_hash=?1"
+    ).bind(await sha256(cred)).first();
+  } else {
+    a = await verifyAccessToken(cred, env);
+  }
+  if (!a) return { error: unauthorized("That credential is not recognised, has expired, or was issued for another server.") };
   if (a.status === "banned") return { error: err("forbidden", "This agent has been suspended for breaking the submission rules at " + SITE + "/agents/. Contact info@5arz.com.", 403) };
   if (a.status === "paused") return { error: err("forbidden", "This agent is paused. Contact info@5arz.com.", 403) };
 
@@ -757,6 +772,8 @@ const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MCP_TOOLS = [
   {
     name: "num_search_places",
+    title: "Search places",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     description:
       "Search NUM's directory of 2.5 million places across 77 destinations in 38 countries — restaurants, " +
       "bars, hotels, spas, tours, shops. Give at least one of q, city, country or category. Counts against your " +
@@ -774,6 +791,8 @@ const MCP_TOOLS = [
   },
   {
     name: "num_get_place",
+    title: "Get place details",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     description: "Full record for one place by place_id. Counts against your daily read quota.",
     inputSchema: {
       type: "object",
@@ -783,6 +802,8 @@ const MCP_TOOLS = [
   },
   {
     name: "num_submit_business",
+    title: "Submit a business for review",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     description:
       "Submit a business to NUM. Free and unmetered. The submission is reviewed by a person at 5arz before any " +
       "traveller sees it — nothing you send goes live automatically. Say honestly whether you own the business, " +
@@ -812,6 +833,8 @@ const MCP_TOOLS = [
   },
   {
     name: "num_submit_promo",
+    title: "Submit a promotion for review",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     description:
       "Post a promotion, special, event or ad against a business you already submitted. Free and unmetered, and " +
       "reviewed by a person before it is shown to anyone.",
@@ -834,6 +857,8 @@ const MCP_TOOLS = [
   },
   {
     name: "num_list_submissions",
+    title: "List your submissions",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     description: "Everything you have submitted and what a reviewer decided. Free and unmetered.",
     inputSchema: {
       type: "object",
@@ -924,6 +949,10 @@ async function handleRpc(msg, req, env) {
     let res, body;
     try {
       res = await callTool(name, args, req, env);
+      // A missing or bad credential has to surface as a transport-level 401 carrying
+      // WWW-Authenticate, not as a 200 JSON-RPC envelope — that header is the only
+      // thing that tells an MCP client to start the OAuth flow (RFC 9728 5.1).
+      if (res.status === 401) return res;
       body = await res.json();
     } catch (e) {
       return rpcErr(id, -32603, "Tool failed: " + (e && e.message ? e.message : String(e)));
@@ -1146,10 +1175,21 @@ export default {
     if (m === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
     try {
+      // ---- OAuth 2.1 (authorization server + RFC 9728 metadata) ----
+      const oa = await oauthRoutes(p, req, env);
+      if (oa) return oa;
+
       // ---- discovery, all public ----
       if (p === "/openapi.json") return json(openapi());
       if (p === "/.well-known/ai-plugin.json") return json(aiPlugin());
       if (p === "/.well-known/mcp.json") return json(mcpManifest());
+      // MCP Registry domain-ownership proof (com.itsnum namespace), HTTP method.
+      if (p === "/.well-known/mcp-registry-auth") {
+        return new Response("v=MCPv1; k=ed25519; p=Rz4PS0hnOA7MmKGIbnQjbHPV3As7jDXni83srIhKv6U=\n", {
+          status: 200,
+          headers: { ...CORS, "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
+        });
+      }
       if (p === "/api/agent" || p === "/api/agents") return json(INDEX);
 
       // ---- MCP ----

@@ -1,0 +1,29 @@
+The Yard is on NUM. Travellers who ask for somewhere to stay in Bath can be sent to you.
+
+The Yard in Bath already has a profile on NUM. Claim it — free.
+
+We're building the concierge travellers text when they want somewhere to stay in Bath, in whatever language they speak. The Yard in Bath is already on the map. It just isn't yours yet.
+
+We already found your own booking page (SiteMinder) at direct-book.com, so NUM can send a traveller straight there rather than to a booking site. If we have the wrong link, claiming your listing is how you correct it.
+
+WHAT A PROFILE DOES
+Traveller: "we need a room for two nights — somewhere good, not a chain"
+NUM: "The Yard in Bath — 6 minutes from you in Bath. I can hold a room for you now. Want me to?"
+That answer comes from your profile. Claimed profiles get recommended.
+
+- Free to claim, free to stay listed. No signup fee, no card.
+- Travellers find you in their own language.
+- Bookings arrive on your phone. Guests pay you directly.
+- 15% of the booking value, charged only when the booking completes.
+- Real reviews only, from verified completed bookings.
+
+Claim The Yard — free: https://itsnum.com/api/accounts/claim?t=DEMO
+Or just reply to this email and we'll set it up for you.
+
+No catch, no card, no contract. Just bookings arriving on your phone when a traveller nearby asks for you.
+
+The NUM team — 5arz
+itsnum.com · info@5arz.com
+
+You're receiving this one-time invitation because The Yard in Bath is publicly listed as a business in Bath.
+Unsubscribe and remove our listing: https://itsnum.com/api/accounts/unsubscribe?t=DEMO

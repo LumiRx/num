@@ -42,6 +42,50 @@ test('no API call is left relative — they all break inside the native shell', 
     'these resolve against capacitor://localhost on iOS and silently fetch the app bundle:\n  ' + offenders.join('\n  '));
 });
 
+// The rule above catches `fetch('/api/…')`, which is how all 39 of them were
+// written. It does not catch the four other ways to reach the network with a
+// path, and the next person to add one will not have read the August incident
+// report. So the rule is stated the other way round: an `/api/…` path in this
+// app may only ever appear as an argument to apiUrl(). One rule, no exceptions
+// list, and it fails on a form nobody has thought of yet.
+test('every /api path in the app goes through apiUrl(), whatever calls it', () => {
+  const offenders = [];
+  for (const f of walk(SRC)) {
+    if (f.endsWith('apibase.ts')) continue; // documents the bug in prose
+    const s = readFileSync(f, 'utf8')
+      // Comments talk ABOUT these paths constantly. Prose must never fail a
+      // build, and must never satisfy an assertion either.
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of s.matchAll(/(.{0,8})(['"`])(\/api\/[^'"`]*)\2/g)) {
+      if (m[1].endsWith('apiUrl(')) continue;
+      offenders.push(`${f.replace(SRC, 'src')} → ${m[3]}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'these resolve against capacitor://localhost inside the app and silently fetch the app bundle — wrap each one in apiUrl():\n  ' + offenders.join('\n  '));
+});
+
+// The lint above is only worth having if it can fail. Both directions are
+// pinned here because a guard nobody has watched fail is not a guard: the
+// first version of the store-selector test in src/lib passed against the
+// broken code it was written for.
+test('the apiUrl lint fails on a bare path and passes on a wrapped one', () => {
+  const bare = (src) => [...src
+    .replace(/^\s*\/\/.*$/gm, '')
+    .matchAll(/(.{0,8})(['"`])(\/api\/[^'"`]*)\2/g)]
+    .filter((m) => !m[1].endsWith('apiUrl('))
+    .map((m) => m[3]);
+
+  assert.deepEqual(bare("void fetch('/api/social/me', { method: 'POST' });"), ['/api/social/me']);
+  assert.deepEqual(bare("navigator.sendBeacon('/api/track', body);"), ['/api/track']);
+  assert.deepEqual(bare("const u = `/api/pay/status?id=${id}`; void fetch(u);"), ['/api/pay/status?id=${id}']);
+  assert.deepEqual(bare("new EventSource('/api/dm/stream')"), ['/api/dm/stream']);
+  assert.deepEqual(bare("void fetch(apiUrl('/api/social/me'));"), []);
+  assert.deepEqual(bare("void fetch(apiUrl(`/api/social/who?id=${encodeURIComponent(id)}`));"), []);
+  assert.deepEqual(bare("// a comment about fetch('/api/social/me') is not code"), []);
+});
+
 test('the native origin is baked in, never read at runtime', () => {
   // This ships as a binary. A wrong origin is a dead app that only a store
   // update can fix, so nothing at runtime may influence it.

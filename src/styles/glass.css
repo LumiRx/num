@@ -33,6 +33,20 @@
   --glass-dark-shine: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
+/* — safe area, named once —
+   index.html asks for viewport-fit=cover, so the web view runs edge to edge
+   and the status bar and home indicator sit ON TOP of our pixels. env() is
+   the only thing that knows how deep they are, and it is not available to
+   inline React styles as a plain number — so it is lifted into custom
+   properties here and read as var(--sat) / var(--sab) everywhere else.
+   The 0px fallbacks matter: on a browser, or an older iOS, env() resolves to
+   nothing at all and `padding: env(safe-area-inset-bottom)` is an invalid
+   declaration that silently drops the whole rule. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
 /* — containment: the app always lives inside a bounded shell — */
 html,
 body {
@@ -73,6 +87,29 @@ body {
       #14100e;
   }
 }
+/* The installed app never scrolls the DOCUMENT. Only the regions inside it
+   scroll, each in its own overflow container.
+
+   Without this, focusing an input inside a sheet lets iOS scroll the entire
+   page to reveal it — which lifts the header up under the status bar and
+   clips the top of whatever is open. The page then has no spare height to
+   scroll back with, so it simply stays wrong until the app is reopened.
+   Pinning html and body removes the document scroller entirely, so there is
+   nothing for iOS to move. The keyboard is still handled: --vvh (set in
+   App.tsx from visualViewport) shrinks the shell so the focused field ends up
+   above the keyboard rather than behind it.
+
+   Scoped to the class App.tsx sets, so the marketing pages and the desktop
+   launch stage — which genuinely need to scroll — are untouched. */
+html.num-standalone,
+html.num-standalone body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Long unbroken strings (urls, codes) must wrap, never widen the app. */
 .app-shell,
 .app-shell * {
@@ -125,7 +162,16 @@ body {
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
-  background: linear-gradient(180deg, #faf7f4 0%, #f6f1ee 100%);
+  /* Two blurred blobs pinned to opposite corners left the whole middle of a
+     long page flat and slightly grey — the part a visitor actually reads. The
+     fixed stops below give the page warmth at the top where the headline is,
+     a lift behind the mockup, and a cool settle towards the footer, so colour
+     is present the entire way down instead of only at the two ends. */
+  background:
+    radial-gradient(120% 60% at 50% 0%, #fff4ec 0%, rgba(255, 244, 236, 0) 62%),
+    radial-gradient(90% 50% at 100% 38%, #f2ecff 0%, rgba(242, 236, 255, 0) 60%),
+    radial-gradient(80% 45% at 0% 62%, #eaf3ff 0%, rgba(234, 243, 255, 0) 58%),
+    linear-gradient(180deg, #fdfaf7 0%, #f7f3f6 46%, #f2f0fa 100%);
 }
 .aurora-layer::before,
 .aurora-layer::after {

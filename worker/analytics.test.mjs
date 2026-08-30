@@ -96,9 +96,37 @@ test('the gtag stub is defined before the library finishes downloading', () => {
 test('both the app and the ad landing page load analytics', () => {
   // The landing page is where paid clicks arrive. Missing there means the
   // funnel is measured from the app onward and the ad click is invisible.
-  assert.match(appHtml, /src="\/api\/analytics\.js"/, 'the app loads no analytics');
+  //
+  // The two surfaces load it by different mechanisms ON PURPOSE, so this
+  // asserts the OUTCOME — analytics loads — not the mechanism.
+  //
+  //   watch/index.html — a plain <script src="/api/analytics.js">. It is a
+  //     static page served from one origin and there is no app around it.
+  //
+  //   the app shell — injected from src/lib/analyticsLoader.ts through
+  //     apiUrl(). A bare absolute path here resolved against
+  //     capacitor://localhost in the bundled iOS build and 404'd, so the
+  //     native app had no analytics at all from first release until 19 Aug
+  //     2026 — and Vite warned about the unbundlable script on every single
+  //     build. Asserting the tag is present is what let that survive: the
+  //     tag WAS present, and it did not work.
   assert.match(watchHtml, /src="\/api\/analytics\.js"/,
     'the ad landing page loads no analytics — paid clicks arrive unmeasured');
+
+  const loaderSrc = readFileSync(join(HERE, '..', 'src', 'lib', 'analyticsLoader.ts'), 'utf8');
+  assert.match(loaderSrc, /apiUrl\(\s*['"]\/api\/analytics\.js['"]\s*\)/,
+    'the app loads no analytics — analyticsLoader no longer requests /api/analytics.js');
+  assert.match(loaderSrc, /from '\.\/apibase'/,
+    'the loader builds its own URL instead of going through apiUrl — native will 404 again');
+
+  const main = readFileSync(join(HERE, '..', 'src', 'main.tsx'), 'utf8');
+  assert.match(main, /loadAnalytics\(\)/,
+    'main.tsx never calls loadAnalytics — the loader exists but nothing runs it');
+
+  // And the thing that actually broke: no bare absolute /api/ script tag may
+  // come back into the app shell, because it cannot work on native.
+  assert.doesNotMatch(appHtml, /<script[^>]+src="\/api\//,
+    'a bare /api/ script tag is back in index.html — it will 404 in the iOS bundle');
 });
 
 test('analytics stays config, never a hardcoded ID in the repo', () => {

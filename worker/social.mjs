@@ -15,12 +15,13 @@
 //   2. A plan is real before a reservation is. Items start as ideas, and the
 //      same row becomes the booking when it firms up, so nobody has to wait
 //      for a confirmation to start planning together.
-import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode } from '../claim/verify.mjs';
+import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode, verifyConfigured, verifySend, verifyCheck } from '../claim/verify.mjs';
 import { notify } from './push.mjs';
 import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
 import { markReferralEarned } from './referral.mjs';
+import { logSignin } from './signinlog.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
@@ -243,6 +244,126 @@ async function flagCollision(env, { kind, value, existing, attempted, req }) {
   }
 }
 
+// ── App Review access ─────────────────────────────────────────────────────
+
+/**
+ * ONE account, ONE code, ONE expiry date — and none of the three are in this
+ * file.
+ *
+ * Why this exists. Num has exactly one way in: a name and a phone number, and
+ * the number is proved by an SMS code. There is no email, no password, no
+ * social login — `review@itsnum.com` is a mailbox, not a credential, and
+ * nothing in the app has ever accepted one. So an App Review reviewer opening
+ * a fresh install has the same problem a member with a new phone has, and
+ * since A2P 10DLC is unregistered every SMS we hand Twilio comes back 30034.
+ * The recovery branch above fails closed on exactly that, which is correct for
+ * a stranger holding somebody's number and fatal for the one person Apple
+ * sends to check the app works.
+ *
+ * So the reviewer gets a code that does not travel by SMS. It travels in the
+ * App Review Information panel of App Store Connect, which is the same place
+ * Apple already expects the demo password to live.
+ *
+ * What keeps this from being a back door:
+ *
+ *   · It is not a bypass of `/verify`. It is a second *source* for the one
+ *     code `/verify` already demands. `/me` still returns no member ID, and
+ *     the ID is still released only by `/verify`, still only against a code.
+ *   · It is bound to one phone number, given as a Worker secret. A caller
+ *     cannot steer it: the number is compared to the grant, never taken from
+ *     the request, so presenting the reviewer code against anybody else's
+ *     number matches nothing and falls through to the ordinary path.
+ *   · It can be pinned harder still — set `REVIEW_DEMO_MEMBER` to the demo
+ *     account's id and a match on the number alone is not enough.
+ *   · Reading this source tells an attacker the mechanism and nothing usable.
+ *     The phone, the code and the deadline are secrets; without all three the
+ *     function below returns null and the branches never run.
+ *   · It expires by wall clock, not by anybody remembering. `REVIEW_ACCESS_UNTIL`
+ *     in the past is the same as no grant at all.
+ *   · It is revoked in one command — delete any one of the secrets.
+ *   · A short code is refused rather than accepted: a mistyped 6-digit secret
+ *     would be a guessable password on a known account, so anything under
+ *     REVIEW_MIN_CODE_LEN turns the grant OFF instead of weakening it.
+ *   · Every use — offered, wrong, capped, granted — writes a row to
+ *     `num_identity_signals`, so "did anyone use this, and when" is a query.
+ *
+ * Against the SEC-001 threat model: the attacker there needs only a phone
+ * number that exists on Num, and gets a member ID for it. This grant gives an
+ * attacker who has read every line of the repo nothing at all for any number
+ * except one we chose, and for that one only if they also hold a secret that
+ * lives in App Store Connect. It does not widen SEC-001 (an ID is still a
+ * credential — that is Phase 0+1 of the capability work, not this), and it
+ * does not reopen SEC-006: no unverified number gets its account handed back
+ * without a code, and the code for 124 of 125 members still has to arrive by
+ * SMS.
+ *
+ * DEFAULT: OFF. `wrangler.app.jsonc` sets none of these.
+ */
+/**
+ * Where the person actually is, for turning a bare national number into E.164.
+ *
+ * Cloudflare gives us `CF-IPCountry` on every request. That is a fact about the
+ * connection rather than a guess about the number, which is the distinction
+ * that matters: a bare `4437079219` is a Maryland mobile if you are in the US
+ * and nothing at all if you are in Bangkok, and inventing the difference is how
+ * you text a stranger on another continent.
+ *
+ * `XX` is Cloudflare's value for "unknown", and `T1` is Tor. Both become
+ * undefined, which makes normalisePhone refuse the number rather than guess —
+ * the person is then asked for the country code, which is a recoverable
+ * inconvenience instead of an unrecoverable wrong number.
+ */
+function regionOf(req) {
+  const cc = req?.headers?.get?.('CF-IPCountry');
+  if (!cc || cc === 'XX' || cc === 'T1') return undefined;
+  return cc.toUpperCase();
+}
+
+const REVIEW_MIN_CODE_LEN = 8;
+
+function reviewerGrant(env) {
+  const phone = normalisePhone(env?.REVIEW_DEMO_PHONE);
+  const code = typeof env?.REVIEW_DEMO_CODE === 'string' ? env.REVIEW_DEMO_CODE.trim() : '';
+  const until = typeof env?.REVIEW_ACCESS_UNTIL === 'string' ? env.REVIEW_ACCESS_UNTIL.trim() : '';
+  // All three, or nothing. Two of three is a half-configured door and it stays shut.
+  if (!phone || !code || !until) return null;
+  if (code.length < REVIEW_MIN_CODE_LEN) return null;
+  const expires = Date.parse(until);
+  if (!Number.isFinite(expires) || expires <= Date.now()) return null;
+  return { phone, code, expires, member: clip(env?.REVIEW_DEMO_MEMBER, 40) || null };
+}
+
+/**
+ * The grant, but only for the number it names — and only for the member it
+ * names, when it names one. Returns null for everybody else, which is what
+ * makes this one account rather than a mode.
+ */
+function reviewerFor(env, phone, memberId) {
+  const g = reviewerGrant(env);
+  if (!g) return null;
+  const p = normalisePhone(phone);
+  if (!p || p !== g.phone) return null;
+  if (g.member && memberId && g.member !== memberId) return null;
+  return g;
+}
+
+/** Every touch of the grant, kept. An unused door and an abused one must not look alike. */
+async function auditReview(env, { stage, outcome, memberId, req }) {
+  try {
+    await env.DB.prepare(
+      'INSERT OR IGNORE INTO num_identity_signals (member_id, device_id, ip_hash, ua_hash, country) VALUES (?1,?2,?3,?4,?5)',
+    ).bind(
+      `review:${stage}:${outcome}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      memberId ?? null,
+      req ? await sha12(req.headers.get('CF-Connecting-IP') ?? '') : null,
+      `review-grant:${stage}:${outcome}`,
+      req?.headers.get('CF-IPCountry') ?? null,
+    ).run();
+  } catch (err) {
+    console.warn('[review] audit failed', err?.message ?? err);
+  }
+}
+
 // ── identity ──────────────────────────────────────────────────────────────
 
 /**
@@ -254,7 +375,7 @@ async function me(env, req) {
   const b = await readBody(req);
   const id = clip(b.id, 40) || uid('mem');
   const name = clip(b.name, 60);
-  const phone = normalisePhone(b.phone);
+  const phone = normalisePhone(b.phone, regionOf(req));
   // A number without a country code is unusable: it cannot be texted, it
   // cannot be matched against another member, and it silently becomes a
   // different number in another country. normalisePhone keeps the digits
@@ -294,50 +415,79 @@ async function me(env, req) {
     // the right answer to a collision is to refuse it and write it down.
     await flagCollision(env, { kind: 'phone', value: phone, existing: holder.id, attempted: id, req });
 
-    // RECOVERY. If the number on the existing account was never verified, hand
-    // that account back to whoever is asking, rather than locking them out.
+    // APP REVIEW ACCESS. The reviewer is in exactly the position this branch
+    // refuses to serve — a fresh install, holding a number that is already on
+    // an account, with no way to receive the text that would prove it. So for
+    // the ONE number named by the grant (and nobody else, ever) we say the
+    // same 202 the genuine recovery says, and let /verify judge the code. The
+    // code just came from App Store Connect instead of from Twilio.
     //
-    // This looks like a weakening and is not. The block exists to stop one
-    // person minting many accounts — but an UNVERIFIED number proves nothing
-    // in the first place: anybody could have typed it to register. Refusing
-    // the same claim on the way back in therefore stops no attacker and
-    // strands every real person who clears their storage, reinstalls, or gets
-    // a new phone. Their trip, their Stars and their friends become
-    // unreachable, with an error telling them to use a device that is the one
-    // they are holding.
+    // Note where this sits: BEFORE the phone_verified test, deliberately. The
+    // store checklist says the demo number must be verified, and a verified
+    // number closes the recovery branch for good — which would lock the
+    // reviewer out on their second device, having done everything right.
     //
-    // A VERIFIED number is different — that is a real proof and it stays shut.
-    if (!holder.phone_verified) {
-      await env.DB.prepare("UPDATE num_members SET name=COALESCE(NULLIF(?2,''), name), seen_at=datetime('now') WHERE id=?1")
-        .bind(holder.id, clip(b.name, 60) ?? '').run().catch(() => {});
-      const back = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(holder.id).first();
-      // Send them a code too.
-      //
-      // This branch used to return "welcome back" and nothing else — no code,
-      // and no other route could issue one. That made the FIRST send a person's
-      // only chance to ever verify: miss it and every return visit landed here,
-      // reassured them everything was fine, and quietly left them stranded.
-      // Recovery is exactly the moment somebody is trying again, so it is the
-      // moment most worth sending.
-      const verification = b.verify === false
-        ? { sent: false, reason: 'not_requested' }
-        : await issueCode(env, back.id, back.phone);
+    // Note what it does NOT contain: no me, no id, no ref, no link. Identical
+    // in that respect to the branch below it.
+    const reviewGrant = reviewerFor(env, phone, holder.id);
+    if (reviewGrant) {
+      await auditReview(env, { stage: 'me', outcome: 'code_pending', memberId: holder.id, req });
       return json({
-        me: {
-          id: back.id,
-          name: back.name,
-          phone: back.phone,
-          phone_verified: !!back.phone_verified,
-          name_locked: !!back.name_locked,
-          avatar: back.avatar ?? null,
-          bio: safeParse(back.bio),
-          ref: back.ref_code,
-        },
-        ref: back.ref_code,
-        link: `${appOrigin(env, req)}/r/${back.ref_code}`,
-        recovered: true,
+        recovery: 'code_sent',
+        recovered: false,
+        phone: holder.phone,
+        verification: { sent: false, channel: 'review', note: 'Enter the sign-in code from App Store Connect.' },
+        next: 'POST /api/social/verify with { phone, code } to finish signing in.',
+      }, 202);
+    }
+
+    // RECOVERY. If the number on the existing account was never verified, get
+    // that account back to whoever OWNS THE NUMBER — proved by a code sent to
+    // it — rather than locking them out and rather than handing it to whoever
+    // typed the number.
+    //
+    // The account is still recoverable without the old device. What is no
+    // longer true is that recovery is free. Two things used to make this the
+    // cheapest full account takeover in the codebase (SEC-006 × SEC-001):
+    //
+    //   · `verify: false` — a caller-supplied flag — suppressed the SMS. So
+    //     the branch could be walked in complete silence: the real owner was
+    //     never told their account had been handed over.
+    //   · The response returned `me.id`. That ID is the credential on every
+    //     other route in this file and in pay.mjs, dm.mjs and account.mjs —
+    //     Stars, tab settlement, DMs, deletion. Returning it to an
+    //     unauthenticated caller IS the takeover; nothing else was needed.
+    //
+    // So: the flag is ignored here (it is honoured only for a NEW number,
+    // below, where there is no account to take over), the text always goes,
+    // and the ID is released by /verify against the code — never by this
+    // route. Genuine recovery is one extra step and unchanged in spirit:
+    // POST /me → read the SMS → POST /verify { phone, code } → you are in.
+    //
+    // A VERIFIED number was already shut and stays shut.
+    if (!holder.phone_verified) {
+      // No write before proof. The old code wrote the CALLER's name onto the
+      // account first, which defaced a stranger's profile even when the rest
+      // of the branch failed.
+      const verification = await issueCode(env, holder.id, holder.phone);
+      if (!verification.sent) {
+        // Fail closed. We could not reach the owner, so we cannot tell them
+        // this is happening, so we do not act on it. `flagCollision` above
+        // already recorded the attempt either way.
+        return json({
+          error: 'That number is already on Num, and I can’t text a code to it right now. Message us and we’ll get you back in.',
+          number_taken: true,
+          recovery: 'unavailable',
+          verification,
+        }, 503);
+      }
+      return json({
+        recovery: 'code_sent',
+        recovered: false,
+        phone: holder.phone,
         verification,
-      });
+        next: 'POST /api/social/verify with { phone, code } to finish signing in.',
+      }, 202);
     }
 
     return json(
@@ -449,10 +599,40 @@ async function me(env, req) {
  * gets told a code is already pending.
  */
 async function issueCode(env, id, phone) {
+  // TWILIO VERIFY FIRST, when it is configured.
+  //
+  // Verify traffic is exempt from A2P 10DLC, which is the only reason a code
+  // can arrive at all today — every send through Programmable Messaging comes
+  // back 30034 from the carrier. Verify owns the code, its expiry and its rate
+  // limits, so there is nothing to store here: the check goes back to Twilio
+  // rather than to our own `code_hash`.
+  //
+  // Falls through to the old path when VERIFY_SERVICE_SID is unset, so this is
+  // safe to deploy before the Twilio service exists.
+  if (verifyConfigured(env)) {
+    const v = await verifySend(env, phone);
+    // Logged BOTH ways. A code never sent and a code sent-but-never-entered are
+    // opposite problems fixed by different people, and until this line they
+    // were indistinguishable from outside — see worker/signinlog.mjs for the
+    // seven weeks that cost.
+    if (!v.ok) {
+      await logSignin(env, { memberId: id, stage: 'send', outcome: 'failed', reason: v.code, via: 'verify' });
+      return { sent: false, reason: v.code, note: v.error };
+    }
+    await logSignin(env, { memberId: id, stage: 'send', outcome: 'ok', via: 'verify' });
+    // Clear any legacy pending code so a stale one cannot be used to sign in
+    // alongside the Verify one. Belt and braces during the cutover.
+    await env.DB.prepare(
+      'UPDATE num_members SET code_hash=NULL, code_salt=NULL, code_expires=NULL, attempts=0 WHERE id=?1',
+    ).bind(id).run().catch(() => {});
+    return { sent: true, channel: 'sms', via: 'verify', expires_in_min: 10 };
+  }
+
   const code = generateCode();
   const salt = crypto.randomUUID();
   const out = await sendCode(env, { channel: 'sms', to: phone, code, businessName: 'NUM' });
   if (!out.ok) {
+    await logSignin(env, { memberId: id, stage: 'send', outcome: 'failed', reason: out.error, via: 'sms' });
     // Honest failure: the number is on file so invites and links still work,
     // but we never claim a verification we did not get. While A2P 10DLC is
     // unapproved every send lands here.
@@ -466,6 +646,7 @@ async function issueCode(env, id, phone) {
   await env.DB.prepare(
     'UPDATE num_members SET code_hash=?2, code_salt=?3, code_expires=?4, attempts=0, code_sid=?5 WHERE id=?1',
   ).bind(id, await hashCode(code, salt), salt, new Date(Date.now() + CODE_TTL_MIN * 60_000).toISOString(), out.sid ?? null).run();
+  await logSignin(env, { memberId: id, stage: 'send', outcome: 'ok', via: 'sms' });
   return { sent: true, channel: 'sms', expires_in_min: CODE_TTL_MIN };
 }
 
@@ -506,24 +687,139 @@ async function resendCode(env, req) {
 
 async function verifyMe(env, req) {
   const b = await readBody(req);
-  const row = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(clip(b.id, 40) ?? '').first();
+  // Two ways in, and the second one is the other half of the recovery fix.
+  //
+  //   by id    — the ordinary case: a member who already has their ID and is
+  //              proving the number attached to it.
+  //   by phone — recovery. /me no longer hands the ID back for an unverified
+  //              number, so somebody coming back on a new device has exactly
+  //              two things: the number, and the code we just texted to it.
+  //              Presenting both IS the proof of possession, so this is the
+  //              one place the ID may be released.
+  const byPhone = !clip(b.id, 40) && !!normalisePhone(b.phone, regionOf(req));
+  const row = byPhone
+    ? await env.DB.prepare('SELECT * FROM num_members WHERE phone=?1').bind(normalisePhone(b.phone, regionOf(req))).first()
+    : await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(clip(b.id, 40) ?? '').first();
   if (!row) return json({ error: 'unknown member' }, 404);
-  if (row.phone_verified) return json({ ok: true, already: true });
-  if (!row.code_hash) return json({ error: 'no code pending' }, 409);
-  if (row.code_expires && new Date(row.code_expires) < new Date()) return json({ error: 'that code expired — ask for a new one' }, 410);
-  if (row.attempts >= MAX_ATTEMPTS) return json({ error: 'too many attempts' }, 429);
 
-  const supplied = String(b.code || '').replace(/\D/g, '');
-  if (!safeEqual(await hashCode(supplied, row.code_salt), row.code_hash)) {
-    await env.DB.prepare('UPDATE num_members SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
-    return json({ error: 'wrong code', attempts_left: MAX_ATTEMPTS - (row.attempts + 1) }, 400);
+  // APP REVIEW ACCESS, the other half. Only the phone path, only the number
+  // the grant names, only the code held in App Store Connect — and it changes
+  // nothing about the account it lets into. In particular it does NOT set
+  // phone_verified: that is a claim about a number we have not texted, and
+  // setting it would lock the demo account's name and shut the door behind
+  // the reviewer.
+  //
+  // It sits above the phone_verified short-circuit because that branch
+  // answers { ok: true, already: true } with no identity in it — correct for
+  // a member who already has their ID, useless to a reviewer who has never
+  // had one.
+  const reviewGrant = byPhone ? reviewerFor(env, row.phone, row.id) : null;
+  if (reviewGrant) {
+    if ((row.attempts ?? 0) >= MAX_ATTEMPTS) {
+      await auditReview(env, { stage: 'verify', outcome: 'capped', memberId: row.id, req });
+      return json({ error: 'too many attempts' }, 429);
+    }
+    // Hashed on both sides with the same salt so the comparison is
+    // constant-time AND length-blind — safeEqual bails early on a length
+    // mismatch, which would otherwise leak how long the code is.
+    const offered = String(b.code ?? '').trim();
+    const salt = 'review-grant';
+    if (!safeEqual(await hashCode(offered, salt), await hashCode(reviewGrant.code, salt))) {
+      await env.DB.prepare('UPDATE num_members SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
+      await auditReview(env, { stage: 'verify', outcome: 'wrong_code', memberId: row.id, req });
+      return json({ error: 'wrong code', attempts_left: MAX_ATTEMPTS - ((row.attempts ?? 0) + 1) }, 400);
+    }
+    await env.DB.prepare("UPDATE num_members SET attempts=0, seen_at=datetime('now') WHERE id=?1").bind(row.id).run();
+    await auditReview(env, { stage: 'verify', outcome: 'granted', memberId: row.id, req });
+    return json({
+      ok: true,
+      phone_verified: !!row.phone_verified,
+      recovered: true,
+      review_access: true,
+      me: {
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        phone_verified: !!row.phone_verified,
+        name_locked: !!row.name_locked,
+        avatar: row.avatar ?? null,
+        bio: safeParse(row.bio),
+        ref: row.ref_code,
+      },
+      ref: row.ref_code,
+    });
   }
+
+  if (row.phone_verified) return json({ ok: true, already: true });
+
+  // TWILIO VERIFY holds the code when it is configured, so the check goes back
+  // to Twilio rather than to a hash of ours. Only reached below the review
+  // grant, which is deliberately independent of any SMS provider.
+  //
+  // THE TRAP: a wrong code does NOT make Verify return an error. It answers
+  // 200 with status "pending". Testing for "not an error" would admit anybody
+  // with any code, so only `approved` passes, and verifyCheck tests for that
+  // string explicitly rather than for truthiness.
+  //
+  // Our own attempt counter still runs. Verify enforces five checks per
+  // verification, but that is per-verification, and the counter here is what
+  // makes a stream of fresh verifications against one member expensive too.
+  const viaVerify = verifyConfigured(env);
+  const note = (outcome, reason) =>
+    logSignin(env, { memberId: row.id, stage: 'check', outcome, reason, via: viaVerify ? 'verify' : 'sms' });
+  if (viaVerify) {
+    if (row.attempts >= MAX_ATTEMPTS) { await note('capped'); return json({ error: 'too many attempts' }, 429); }
+    const chk = await verifyCheck(env, row.phone, String(b.code || '').trim());
+    if (!chk?.approved) {
+      await env.DB.prepare('UPDATE num_members SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
+      // `status` separates a wrong code (pending) from a verification that
+      // expired or never started (not_found). Same 400 to the guest, very
+      // different things to go and fix.
+      await note('wrong_code', chk?.status);
+      return json({ error: 'wrong code', attempts_left: MAX_ATTEMPTS - (row.attempts + 1) }, 400);
+    }
+  } else {
+    if (!row.code_hash) { await note('failed', 'no_code_pending'); return json({ error: 'no code pending' }, 409); }
+    if (row.code_expires && new Date(row.code_expires) < new Date()) {
+      await note('expired');
+      return json({ error: 'that code expired — ask for a new one' }, 410);
+    }
+    if (row.attempts >= MAX_ATTEMPTS) { await note('capped'); return json({ error: 'too many attempts' }, 429); }
+
+    const supplied = String(b.code || '').replace(/\D/g, '');
+    if (!safeEqual(await hashCode(supplied, row.code_salt), row.code_hash)) {
+      await env.DB.prepare('UPDATE num_members SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
+      await note('wrong_code');
+      return json({ error: 'wrong code', attempts_left: MAX_ATTEMPTS - (row.attempts + 1) }, 400);
+    }
+  }
+  await note('ok');
   // Whoever referred this person has now earned it. Fire-and-forget: a
   // referral bookkeeping problem must never fail somebody's verification.
   markReferralEarned(env, row.id, 'phone_verified').catch(() => {});
   await env.DB.prepare('UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL WHERE id=?1')
     .bind(row.id).run();
-  return json({ ok: true, phone_verified: true });
+  // The ID rides back ONLY on the recovery path, and only now that the code
+  // has been presented. On the ordinary path the caller already had it, and
+  // repeating it would make this response look like a way to obtain one.
+  if (!byPhone) return json({ ok: true, phone_verified: true });
+  const back = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(row.id).first();
+  return json({
+    ok: true,
+    phone_verified: true,
+    recovered: true,
+    me: {
+      id: back.id,
+      name: back.name,
+      phone: back.phone,
+      phone_verified: true,
+      name_locked: !!back.name_locked,
+      avatar: back.avatar ?? null,
+      bio: safeParse(back.bio),
+      ref: back.ref_code,
+    },
+    ref: back.ref_code,
+  });
 }
 
 // ── invites ───────────────────────────────────────────────────────────────

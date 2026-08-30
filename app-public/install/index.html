@@ -22,6 +22,7 @@
      here is invisible and the funnel starts one step too late — at the app,
      not at the ad. Deferred so it never costs first paint. -->
 <script defer src="/api/analytics.js"></script>
+<script src="/installguide.js"></script>
 <script defer src="/num-track.js"></script>
 
 <script type="application/ld+json">
@@ -265,6 +266,18 @@ details p{color:var(--slate);margin-top:12px;font-size:15.5px}
 footer{border-top:1px solid var(--line);padding-top:30px;padding-bottom:120px;color:var(--slate);font-size:13.5px}
 footer a{text-decoration:underline;text-underline-offset:3px}
 .flinks{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px}
+
+
+/* The in-app-browser notice. Sits above everything because it is the only
+   thing on the page that matters to somebody who cannot install from here. */
+.wv{background:#fff6ed;border:1px solid #e8c9a8;border-radius:16px;padding:16px 18px;margin:0 0 22px}
+.wv .wvt{margin:0 0 12px;font-size:15px;line-height:1.6}
+.wv .wvgo{display:block;text-align:center}
+.wv .wvskip{display:block;margin-top:10px;font-size:14px;text-align:center;text-decoration:underline;text-underline-offset:3px}
+
+
+.guidehead{margin:0 0 10px;font-size:15px;line-height:1.55}
+.guidenote{display:block;margin-top:6px;font-size:13.5px;color:var(--slate)}
 
 /* ── sticky mobile bar. Reddit traffic is overwhelmingly phones, and the
       button must never be more than a thumb away. Hidden on desktop where
@@ -648,7 +661,23 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
    a wrong guess costs one tap rather than the install. */
 (function () {
   var ua = navigator.userAgent;
-  var plat = /iPad|iPhone|iPod/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : 'desktop';
+
+  /* The steps this exact device and browser needs, from installguide.js.
+     The three-way guess this replaced was wrong in five ways that each cost a
+     real install — an iPad reports itself as a Mac, Chrome on iOS cannot
+     install at all, Samsung Internet's menu is not Chrome's, desktop Safari
+     says "Dock" not "Home Screen", and Firefox cannot install a web app on
+     any desktop. The tabs stay: somebody reading this on a laptop to send to
+     their phone still wants to see the other platforms. */
+  var g = (window.numInstallGuide || function () { return null; })({
+    ua: ua,
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+    standalone: (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                window.navigator.standalone === true,
+  });
+  var plat = g
+    ? (g.platform === 'iphone' || g.platform === 'ipad' ? 'ios' : g.platform)
+    : (/iPad|iPhone|iPod/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : 'desktop');
   var tabs = [].slice.call(document.querySelectorAll('.tab'));
   var panes = [].slice.call(document.querySelectorAll('.pane'));
   function show(p) {
@@ -657,6 +686,28 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
   }
   tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.p); }); });
   show(plat);
+
+  /* Rewrite the reader's own pane with the precise steps, and say up front
+     when this browser cannot install at all — a person in Chrome on an iPhone
+     needs that as the first line, not as a caveat inside steps they are
+     unable to follow. Only the detected pane is rewritten; the other tabs
+     keep their general instructions. */
+  if (g && g.steps.length) {
+    var mine = document.querySelector('.pane[data-p="' + plat + '"]');
+    if (mine) {
+      var ol = mine.querySelector('ol');
+      if (ol) ol.innerHTML = g.steps.map(function (x) { return '<li>' + x + '</li>'; }).join('');
+      if (g.headline) {
+        var hd = document.createElement('p');
+        hd.className = 'guidehead';
+        hd.innerHTML = '<b>' + g.headline + '</b>' +
+          (g.canInstall ? '' : ' \u2014 not from this browser') +
+          (g.note ? '<span class="guidenote">' + g.note + '</span>' : '');
+        mine.insertBefore(hd, mine.firstChild);
+      }
+    }
+    if (window.numTrack) window.numTrack('install_tab_view', { detail: g.platform + '/' + g.browser });
+  }
 
   document.getElementById('y').textContent = new Date().getFullYear();
 
@@ -744,6 +795,131 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
     }
   });
 })();
+
+/* ── the in-app browser, which is where nearly all of this traffic actually is
+   ─────────────────────────────────────────────────────────────────────────────
+
+   Measured 29 Aug 2026 on the `global-pretrip-film1` cohort: 1,230 people
+   landed, 27 tapped an install button, 4 ever saw an install prompt, 1
+   installed. That collapse has one cause, and it is not the copy.
+
+   Reddit — and Facebook, Instagram, TikTok, LINE — open links in an embedded
+   web view rather than in the person's browser. An embedded web view is not an
+   installable context, so `beforeinstallprompt` NEVER FIRES there. `deferred`
+   stays null, the install button falls through to the written steps, and the
+   written steps say "tap the ⋮ menu in Chrome" to somebody who is not in
+   Chrome and has no such menu. Every one of those 27 taps was answered with
+   instructions for a browser they were not using.
+
+   The second fallback was no better. "Or just open it in my browser" was a
+   plain <a href>, and a plain link inside a web view navigates INSIDE the web
+   view. Twenty-five people took the escape hatch and none of them escaped.
+
+   So:
+
+     ANDROID  an intent:// URL naming Chrome by package hands the navigation to
+              the real browser. This is the only reliable escape any platform
+              offers, and it is why Android is where this is fixable.
+     iOS      there is no supported equivalent. x-safari-https:// was never
+              public API and is unreliable. What works is telling somebody the
+              exact gesture for the app they are actually in.
+
+   And the ordering changes, which matters more than either. The concierge
+   WORKS in a web view — it is a chat. Leading with "install" spends the whole
+   ad budget on the one thing the context cannot do. Leading with "try it here"
+   spends it on the thing that works, and install becomes an offer made after
+   somebody has a reason to want it. */
+(function () {
+  var ua = navigator.userAgent || '';
+  var ios = /iPad|iPhone|iPod/.test(ua);
+  var android = /Android/.test(ua);
+
+  /* Named apps only. A generic "is this a web view" sniff catches real
+     browsers too, and telling somebody in Chrome that they are not in Chrome
+     is worse than saying nothing. */
+  var app =
+    /\bReddit\b/i.test(ua) ? 'Reddit' :
+    /FBAN|FBAV|FB_IAB/.test(ua) ? 'Facebook' :
+    /Instagram/i.test(ua) ? 'Instagram' :
+    /\bLine\//i.test(ua) ? 'LINE' :
+    /BytedanceWebview|TikTok|musical_ly/i.test(ua) ? 'TikTok' :
+    /Twitter|\bX11.*XWeb\b/i.test(ua) ? 'X' : null;
+
+  if (!app) return;
+  if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return;
+
+  /* Where we want them, with the campaign intact so the escape does not read
+     as fresh unattributed traffic on the other side. */
+  var target = location.href;
+
+  /* An intent:// URL is the handoff Android actually honours. The fallback URL
+     is what happens when Chrome is not installed — without it, a device with
+     no Chrome gets a dead tap. */
+  function chromeIntent(url) {
+    var bare = url.replace(/^https?:\/\//, '');
+    return 'intent://' + bare + '#Intent;scheme=https;package=com.android.chrome;' +
+           'S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+  }
+
+  var track = (window.numTrack || function () {});
+
+  /* The concierge itself, tagged so an escape into the chat is separable from
+     a hero tap in the report. The chat runs perfectly well inside a web view —
+     it is only INSTALLING that the context forbids — so this is the honest
+     primary action for everyone who arrives here from an app. */
+  var TRY = '/?utm_source=reddit&utm_medium=social&utm_campaign=global-pretrip-film1' +
+            '&utm_content=install-webview-' + app.toLowerCase();
+
+  var bar = document.createElement('div');
+  bar.className = 'wv';
+  bar.innerHTML = android
+    ? '<p class="wvt"><b>You are in ' + app + '’s browser.</b> Adding Num to your home ' +
+      'screen only works in Chrome — one tap and you are there, still on this page.</p>' +
+      '<a class="cta pop wvgo" href="' + chromeIntent(target).replace(/"/g, '&quot;') + '">Open in Chrome</a>' +
+      '<a class="wvskip" href="' + TRY + '">or just try Num here — it works fine in ' + app + '</a>'
+    : '<p class="wvt"><b>You are in ' + app + '’s browser.</b> iPhone can only add Num to ' +
+      'your home screen from Safari. Tap <b>' +
+      (app === 'Reddit' ? '⋯ at the top right' : 'the ⋯ or share icon') +
+      '</b>, then <b>Open in Safari</b> — you will land back on this page.</p>' +
+      '<a class="wvskip" href="' + TRY + '">or just try Num here — it works fine in ' + app + '</a>';
+
+  var host = document.querySelector('header') || document.body;
+  host.insertBefore(bar, host.firstChild);
+
+  var go = bar.querySelector('.wvgo');
+  if (go) go.addEventListener('click', function () { track('open_in_browser_click', { detail: 'chrome-intent' }); });
+  var skip = bar.querySelector('.wvskip');
+  if (skip) skip.addEventListener('click', function () { track('open_in_browser_click', { detail: 'stay-in-webview' }); });
+
+  /* The written steps are for Chrome and Safari. Inside a web view they are
+     instructions for a browser the reader is not in, so they are replaced
+     rather than left to be followed and fail. */
+  var pane = document.querySelector('.pane[data-p="' + (ios ? 'ios' : 'android') + '"] ol');
+  if (pane) {
+    pane.innerHTML = ios
+      ? '<li>Tap <b>⋯</b> at the top of ' + app + ', then <b>Open in Safari</b>.</li>' +
+        '<li>In Safari, tap the <b>Share</b> button at the bottom.</li>' +
+        '<li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>'
+      : '<li>Tap <b>Open in Chrome</b> above — you stay on this page.</li>' +
+        '<li>Chrome will offer <b>Install app</b>, or use <b>⋮ → Add to Home screen</b>.</li>' +
+        '<li>Confirm. Num opens like any other app.</li>';
+  }
+
+  /* The plain-link fallback navigated inside the web view, which is why
+     twenty-five people took it and none of them left. On Android it becomes
+     the same handoff; on iOS it stops pretending and just opens the concierge,
+     which is the thing that genuinely works here. */
+  var fb = document.querySelector('[data-loc="browser-fallback"]');
+  if (fb) {
+    if (android) {
+      fb.setAttribute('href', chromeIntent(new URL(fb.getAttribute('href'), location.href).href));
+      fb.textContent = 'Open in Chrome instead';
+    } else {
+      fb.textContent = 'Skip the install — just start using Num';
+    }
+  }
+})();
+
 </script>
 </body>
 </html>

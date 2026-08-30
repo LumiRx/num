@@ -1,4 +1,5 @@
 import { apiUrl } from '../lib/apibase';
+import { detectInAppBrowser, escapeInstruction } from './webview.mjs';
 /**
  * One question, answered once: is this the web app, or the app-store app?
  *
@@ -98,6 +99,59 @@ export const nativePlatform = (): 'ios' | 'android' | 'web' => {
 
 /** Install-to-home-screen UI: web-only by definition. */
 export const canOfferInstall = (): boolean => !isNativeApp();
+
+/** Running from the home screen, by either platform's answer. */
+export const isStandalone = (): boolean => {
+  try {
+    return (
+      window.matchMedia?.('(display-mode: standalone)').matches === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The in-app-browser question, asked once and answered here.
+ *
+ * Detection itself is a pure function of the user agent and lives in
+ * webview.mjs, where it is tested against real strings from Reddit, Instagram,
+ * LINE and the rest. This wrapper exists only to supply the one piece of state
+ * that string cannot carry: whether we are already running standalone.
+ *
+ * That distinction is not academic. On iOS an installed PWA and a WKWebView
+ * send the SAME signature — neither carries a Safari or Version token — so
+ * without the display-mode answer we would tell people who had just installed
+ * Num to go and install Num.
+ */
+export const webviewState = () =>
+  detectInAppBrowser(
+    typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    { standalone: isStandalone() },
+  );
+
+/** The named app whose browser this is, or null. */
+export const inAppBrowserName = (): string | null => webviewState().name;
+
+/**
+ * Can a home-screen install actually be completed from here?
+ *
+ * False inside any in-app browser: there is no Add to Home Screen menu in
+ * there and beforeinstallprompt never fires, so an install card would be
+ * asking for something the browser cannot do.
+ */
+export const canInstallHere = (): boolean =>
+  canOfferInstall() && webviewState().canInstallHere;
+
+/** The "get out of this web view" card, or null when we are in a real browser. */
+export const escapeCard = () =>
+  canOfferInstall()
+    ? escapeInstruction(
+        typeof navigator === 'undefined' ? '' : navigator.userAgent,
+        { standalone: isStandalone() },
+      )
+    : null;
 
 /**
  * May the UI show subscribe/upgrade offers?

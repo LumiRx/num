@@ -26,11 +26,21 @@
  *   VISITOR_SALT  secret    any long random string; rotates visitor ids daily
  *   ADMIN_KEY     secret    guards /api/admin/*
  *   SITE          var       https://itsnum.com
- *   MAIL_FROM     var       Num by 5arz <info@5arz.com>
+ *   MAIL_FROM     var       NUM <info@itsnum.com>
  *   SEND_BUDGET   var       max invites actually sent per request (rest queue)
  */
 
-const LEGAL_LINE = "5arz Inc · info@5arz.com · +1 754 444 8885";
+/**
+ * The postal address is not decoration. CAN-SPAM §7704(a)(5) requires a valid
+ * physical address in every commercial message, and it was missing from every
+ * email this worker has ever sent. Added 25 Aug 2026, confirmed by Andre.
+ */
+// Bound once, after the helpers it names are defined. Passing them in keeps
+// claimverify.mjs free of a circular import back into this file.
+let CLAIM_DEPS;
+
+const LEGAL_LINE =
+  "5arz Inc · 16192 Coastal Highway, Lewes, DE 19958 · info@itsnum.com · +1 754 444 8885";
 const BANNER_VERSION = "2026-07-31.1";
 const TERMS_VERSION = "host-2026-07-31";
 
@@ -54,7 +64,15 @@ const epoch = () => Math.floor(Date.now() / 1000);
 // Whitelist, never blacklist. Keeps letters from any alphabet, digits, and the
 // punctuation real names actually contain. Control characters cannot survive
 // this by construction, which is what stops header injection in email fields.
-const SAFE = /[^\p{L}\p{N} '&.,()\/+@_-]/gu;
+//
+// \p{M} — combining marks — is load-bearing and was missing until 25 Aug 2026.
+// Thai writes its vowels and tones as marks: ร้าน is ร + ้ + า + น, and ้ is a
+// mark, not a letter. Without \p{M} every Thai name that passed through here
+// came out mangled — "ร้าน พ.บาติก" stored as "ร าน พ.บาต ก" — and the same
+// held for Arabic, Hebrew, Devanagari and decomposed Vietnamese. It costs
+// nothing in safety: CR and LF are control characters, not marks, so the
+// header-injection property above is untouched.
+const SAFE = /[^\p{L}\p{M}\p{N} '&.,()\/+@_-]/gu;
 function clean(s, max = 200) {
   if (s == null) return "";
   let out = String(s);
@@ -62,6 +80,30 @@ function clean(s, max = 200) {
   catch (e) { out = out.replace(/[^A-Za-z0-9 '&.,()\/+@_-]/g, " "); }
   out = out.replace(/\s+/g, " ").trim();
   return out.length > max ? out.slice(0, max) : out;
+}
+
+// A website address, which clean() cannot handle: ':' is not on the whitelist
+// above, so "https://x.com" would come back as "https //x.com" — mangled into
+// something that is no longer a link. This keeps the characters a URL needs
+// and nothing else, and it refuses anything that is not plainly http(s), so a
+// javascript: or data: string can never be stored and later rendered as an
+// owner's "website".
+function cleanUrl(s, max = 200) {
+  let u = String(s == null ? "" : s).trim();
+  if (!u) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u)) {
+    if (!/^https?:\/\//i.test(u)) return "";   // mailto:, javascript:, data:, …
+  } else {
+    u = "https://" + u;                        // owners type "myplace.com"
+  }
+  let parsed;
+  try { parsed = new URL(u); } catch (e) { return ""; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+  // A hostname with no dot is not a public website; it is a typo or an
+  // intranet name, and storing it helps nobody.
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(parsed.hostname)) return "";
+  const out = parsed.toString();
+  return out.length > max ? "" : out;
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
@@ -83,6 +125,49 @@ function e164(raw, cc = "44") {
   if (d.startsWith(cc) && d.length > 10) return "+" + d;
   if (d.startsWith("0")) d = d.slice(1);
   return "+" + cc + d;
+}
+
+// Dialling codes for the countries NUM actually operates in. Deliberately not
+// exhaustive: an absent country is handled by storing the number exactly as the
+// person typed it (see localE164), which a human can still fix. Guessing is
+// what we are trying to stop.
+const DIAL = Object.freeze({
+  TH: "66", GB: "44", US: "1", CA: "1", AE: "971", SG: "65", MY: "60", ID: "62",
+  VN: "84", PH: "63", KH: "855", LA: "856", MM: "95", IN: "91", LK: "94",
+  JP: "81", KR: "82", CN: "86", HK: "852", TW: "886", AU: "61", NZ: "64",
+  FR: "33", ES: "34", IT: "39", DE: "49", PT: "351", GR: "30", NL: "31",
+  CH: "41", AT: "43", BE: "32", SE: "46", NO: "47", DK: "45", IE: "353",
+  TR: "90", MA: "212", EG: "20", ZA: "27", MX: "52", BR: "55", AR: "54",
+  MV: "960", NP: "977", QA: "974", SA: "966", BH: "973", OM: "968", KW: "965",
+});
+
+// The ISO country to read a local phone number against: what the page told us,
+// else where Cloudflare says the request came from.
+function ccOf(req, hint) {
+  const h = String(hint || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(h) && DIAL[h]) return h;
+  const g = country(req).toUpperCase();
+  return DIAL[g] ? g : "";
+}
+
+/**
+ * E.164 for a number typed by someone standing in a known country.
+ *
+ * The plain e164() above defaults to +44, which was right when every claim came
+ * from the UK. It is badly wrong anywhere else: a Phuket owner typing
+ * "081 234 5678" was being stored as +44812345678 — a real UK number belonging
+ * to a stranger, on the field the whole product uses to text them bookings.
+ *
+ * So: an explicit + or 00 always wins, then the country we actually know. If we
+ * know nothing, keep the digits exactly as typed rather than inventing a
+ * country — an unprefixed local number is recoverable, a confidently wrong one
+ * is not.
+ */
+function localE164(raw, req, hint) {
+  const s = String(raw || "").trim();
+  if (s.startsWith("+") || digits(s).startsWith("00")) return e164(s);
+  const iso = ccOf(req, hint);
+  return iso ? e164(s, DIAL[iso]) : digits(s);
 }
 
 const b64url = (buf) =>
@@ -141,6 +226,11 @@ function device(req) {
   return "desktop";
 }
 
+// Every helper the verification module borrows now exists, so bind them here
+// — after J, clean and readJSON, never before. Passing them in rather than
+// letting claimverify.mjs import this file keeps the two out of a cycle.
+CLAIM_DEPS = claimDeps({ J, clean, readJSON, sendBatch, legalLine: LEGAL_LINE });
+
 /* --------------------------------------------------------- abuse guardrail */
 
 // Per-isolate token bucket. Not a distributed rate limiter — it is a cheap
@@ -197,27 +287,37 @@ function withCors(req, res) {
   return out;
 }
 
-/* -------------------------------------------------------------------- mail */
+import * as QR from './qrsystem.mjs';
+import * as MONEY from './money.mjs';
+import * as CRYPTO from './crypto.mjs';
+import * as RPC from './rpc.mjs';
+import * as QRCHECK from './qrcheck.mjs';
+// sendBatch lives in its own module now — see resend.mjs — so the invite
+// drain (invitecron.mjs) makes the exact same Resend call this worker
+// already made for host invites, rather than a second copy that could drift.
+import { sendBatch } from './resend.mjs';
+import { drainInvites } from './invitecron.mjs';
+// Proving a business is yours, behind the door people already walk through.
+// The rules it enforces come from claim/verify.mjs — the file that was
+// written, tested, and then left with no route for three weeks.
+import {
+  claimStart, claimSend, claimVerify, claimStatus, claimDeps,
+} from './claimverify.mjs';
+// The venue's own switches. `num_business_settings` had a reader in
+// commission.mjs and a reader in aftertable.mjs and no writer anywhere, so
+// every flag it holds had been 0 for the life of every business.
+import {
+  FIELDS as SET_FIELDS, LOCKED as SET_LOCKED, TIPS_UNDERTAKING,
+  readSettings, writeSettings, settingHistory,
+} from './venuesettings.mjs';
+import { foodAndDrink } from '../worker/commission.mjs';
+// The screen after the table. worker/aftertable.mjs had rate(), tip() and
+// prioritySeating() fully written and fully tested with no call sites at all;
+// this is where the scan reaches them.
+import { issueAfter, afterState, resolveAfter, tipRail } from './aftervisit.mjs';
+import { rate as afterRate, tip as afterTip } from '../worker/aftertable.mjs';
 
-async function sendBatch(env, messages) {
-  if (!messages.length) return { ok: true, sent: 0, ids: [] };
-  if (!env.RESEND_KEY) return { ok: false, sent: 0, ids: [], error: "no RESEND_KEY" };
-  const res = await fetch("https://api.resend.com/emails/batch", {
-    method: "POST",
-    headers: {
-      authorization: "Bearer " + env.RESEND_KEY,
-      "content-type": "application/json",
-      "idempotency-key": messages[0].__idem || token(12),
-    },
-    body: JSON.stringify(messages.map(({ __idem, ...m }) => m)),
-  });
-  if (!res.ok) {
-    return { ok: false, sent: 0, ids: [], error: "resend " + res.status + " " + (await res.text()).slice(0, 300) };
-  }
-  const body = await res.json().catch(() => ({}));
-  const ids = (body.data || []).map((d) => d.id);
-  return { ok: true, sent: messages.length, ids };
-}
+/* -------------------------------------------------------------------- mail */
 
 /* ========================================================== CAPTURE ASSET */
 /**
@@ -376,8 +476,96 @@ const CAPTURE_JS = `/**
 
   var INVITE = qs("t").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
 
+  /* ── how someone got here, carried across our own pages ────────────────
+   *
+   * Everything below exists because of one measured failure. The paid Reddit
+   * campaign sent 577 people to itsnum.com/?utm_source=reddit. They clicked
+   * "Get the app" — a static /app/ link — and the campaign died on that first
+   * click. It died again on the next hop, where the "Open Num" button pointed
+   * at a hardcoded app.itsnum.com/?app. So every paid visitor who actually
+   * reached the product arrived looking like direct traffic, which is why the
+   * campaign shows zero members and why we could not say whether it worked.
+   *
+   * The ref half of this was already fixed once, with a comment on /app/
+   * describing this exact bug: "the whole chain works and then loses
+   * attribution at the final hop". The utm half was left behind.
+   *
+   * (No backticks in here, ever: this whole file is a template literal inside
+   * the worker, and one stray backtick ends the string and the deploy.)
+   */
+  var CAMPAIGN_KEYS = [
+    "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
+    "gclid", "fbclid"
+  ];
+  var CAMPAIGN_STORE = "num_campaign_v1";
+  /* Our own hosts, and only ours. app.itsnum.com is a different ORIGIN but the
+   * same product; line.me and every partner link is neither. Appending
+   * campaign data to a third-party URL would hand them our ad spend for no
+   * benefit to anyone.
+   *
+   * An exact host list rather than a pattern, for two reasons. A regex here
+   * needs backslash escapes, and THIS WHOLE FILE IS A TEMPLATE LITERAL — the
+   * backslashes are eaten before the browser ever sees them, so /itsnum\.com/
+   * ships as /itsnum.com/ and https?:\/\/ ships as https?:// which does not
+   * even parse. That mistake took the entire tracker off every page on the
+   * site for one deploy. The second reason is that it is simply more correct:
+   * an unescaped dot matches any character, so the pattern that survived would
+   * have accepted wwwXitsnum.com as ours. */
+  var OUR_HOSTS = ["itsnum.com", "www.itsnum.com", "app.itsnum.com"];
+
+  function isOurs(u) {
+    var h = String(u && u.hostname ? u.hostname : "").toLowerCase();
+    for (var i = 0; i < OUR_HOSTS.length; i++) {
+      if (h === OUR_HOSTS[i]) return true;
+    }
+    return false;
+  }
+
+  /** The campaign for this visit — from the URL, or remembered for this tab. */
+  function campaign() {
+    var out = {};
+    var found = false;
+    try {
+      var p = new URLSearchParams(location.search);
+      for (var i = 0; i < CAMPAIGN_KEYS.length; i++) {
+        var v = p.get(CAMPAIGN_KEYS[i]);
+        if (v) { out[CAMPAIGN_KEYS[i]] = v; found = true; }
+      }
+    } catch (e) { return {}; }
+
+    if (found) {
+      // sessionStorage, not local: this is "how this visit started", and it
+      // should not still be claiming credit next week. Remembering it at all
+      // means one page in the middle that forgets to pass it on — /app/ had
+      // no tracking of any kind until today — no longer breaks the chain.
+      try { sessionStorage.setItem(CAMPAIGN_STORE, JSON.stringify(out)); } catch (e) { /* private mode */ }
+      return out;
+    }
+    try {
+      var saved = sessionStorage.getItem(CAMPAIGN_STORE);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) { return {}; }
+  }
+
+  /** Append params to a href without disturbing what is already there. */
+  function appendParams(href, pairs) {
+    if (!pairs.length) return href;
+    var hash = "";
+    var h = href.indexOf("#");
+    if (h > -1) { hash = href.slice(h); href = href.slice(0, h); }
+    // String append rather than URL re-serialisation on purpose: /app/ links
+    // to app.itsnum.com/?app — a valueless param that a round trip through
+    // URLSearchParams would quietly rewrite to ?app=.
+    return href + (href.indexOf("?") > -1 ? "&" : "?") + pairs.join("&") + hash;
+  }
+
   function carryRef() {
-    if (!REF) return;
+    var camp = campaign();
+    var campKeys = [];
+    for (var key in camp) {
+      if (Object.prototype.hasOwnProperty.call(camp, key)) campKeys.push(key);
+    }
+    if (!REF && !campKeys.length) return;
 
     var links = document.querySelectorAll("a[href]");
     for (var i = 0; i < links.length; i++) {
@@ -392,13 +580,28 @@ const CAPTURE_JS = `/**
       } catch (e) {
         continue;
       }
-      if (u.origin !== location.origin) continue; // never leak a host code offsite
-      if (u.searchParams.get("ref")) continue;
+      var same = u.origin === location.origin;
+      if (!same && !isOurs(u)) continue; // never leak a host code or a campaign offsite
 
-      u.searchParams.set("ref", REF);
-      a.setAttribute("href", u.pathname + u.search + u.hash);
+      var add = [];
+      // The host code stays same-origin only, as before — it identifies a
+      // person, and the app has its own /r/ route for it.
+      if (same && REF && !u.searchParams.get("ref")) {
+        add.push("ref=" + encodeURIComponent(REF));
+      }
+      for (var k = 0; k < campKeys.length; k++) {
+        if (!u.searchParams.get(campKeys[k])) {
+          add.push(encodeURIComponent(campKeys[k]) + "=" + encodeURIComponent(camp[campKeys[k]]));
+        }
+      }
+      if (add.length) a.setAttribute("href", appendParams(href, add));
     }
 
+    // Guarded on REF. This used to be unreachable without one, because the
+    // function returned early when REF was empty; now a campaign alone gets
+    // us this far, and an empty hidden ref on every form would post "" as a
+    // host code on pages that never had one.
+    if (!REF) return;
     var forms = document.querySelectorAll("form");
     for (var f = 0; f < forms.length; f++) {
       if (forms[f].querySelector('input[name="ref"]')) continue;
@@ -419,8 +622,13 @@ const CAPTURE_JS = `/**
    * only arrival number we will ever be able to reconcile against bookings.
    */
   function logArrival() {
-    var event = ARRIVAL[CFG.page];
-    if (!event) return;
+    // Falls back to the generic arrival rather than silently logging nothing.
+    // The old behaviour meant tagging a new page did visibly nothing: /app/
+    // and /get/ — the two middle steps of the paid funnel — could have carried
+    // this script for months and still reported no arrivals, because their
+    // names were not in the map. The page name is already a column, so one
+    // generic event covers every page we add from here on.
+    var event = ARRIVAL[CFG.page] || "page_view";
 
     post(
       "/api/ev",
@@ -532,7 +740,7 @@ const CAPTURE_JS = `/**
           post("/api/ev", { event: "capture_done", page: CFG.page, ref_code: REF });
           fire("num:capture", { email: email, marketing: wantsMarketing });
         } else {
-          say(msg, "That did not go through. Email info@5arz.com and a person will sort it.", true);
+          say(msg, "That did not go through. Email info@itsnum.com and a person will sort it.", true);
         }
       });
     });
@@ -823,9 +1031,30 @@ const WORKER = {
 
       if (p === "/api/ev" && req.method === "POST")
         return withCors(req, await ev(req, env));
+      // Matches the existing `itsnum.com/api/ev*` route, so no wrangler change
+      // is needed to ship it.
+      if (p === "/api/ev.gif" && req.method === "GET")
+        return evPixel(req, env, url);
       if (p === "/api/consent" && req.method === "POST") return consent(req, env);
       if (p === "/api/sms-optin" && req.method === "POST") return smsOptin(req, env);
       if (p === "/api/capture" && req.method === "POST") return capture(req, env);
+      // Matches the existing `itsnum.com/api/claims*` route, so no wrangler
+      // change is needed to ship it. Must be tested before "/api/claims".
+      if (p === "/api/claims/lookup" && req.method === "GET")
+        return claimsLookup(req, env, url);
+
+      // Ownership verification. All four sit under the existing
+      // `itsnum.com/api/claims*` route, so wiring them needed no new route,
+      // no second worker and no second copy of the Resend key — which is
+      // exactly why the fully-built claim worker stayed unrouted for so long.
+      if (p === "/api/claims/start" && req.method === "POST")
+        return claimStart(req, env, CLAIM_DEPS);
+      if (p === "/api/claims/send" && req.method === "POST")
+        return claimSend(req, env, CLAIM_DEPS);
+      if (p === "/api/claims/verify" && req.method === "POST")
+        return claimVerify(req, env, CLAIM_DEPS);
+      if (p === "/api/claims/status" && req.method === "GET")
+        return claimStatus(req, env, url, CLAIM_DEPS);
       if (p === "/api/claims" && req.method === "POST") return claims(req, env, ctx);
 
       if (p === "/api/host/join" && req.method === "POST") return hostJoin(req, env, ctx);
@@ -860,6 +1089,61 @@ const WORKER = {
       if (p === "/api/venue/offers/end" && req.method === "POST")
         return venueOffersEnd(req, env, url);
       if (p === "/api/venue/offers/live") return offersLive(req, env);
+      if (p === "/api/venue/pay" && req.method === "GET") return venuePayList(req, env, url);
+      if (p === "/api/venue/pay" && req.method === "POST") return venuePayCreate(req, env, url);
+      if (p === "/api/venue/pay/state" && req.method === "POST") return venuePayState(req, env, url);
+      if (p === "/api/venue/pay/bulk" && req.method === "POST") return venuePayBulk(req, env, url);
+      if (p === "/biz/pay") return venuePayPage(req, env, url);
+
+      /* ── QR system: tables, bill codes, staff, agent ───────────────────── */
+      if (p === "/api/venue/login" && req.method === "POST") return qrLoginStart(req, env);
+      if (p === "/biz/login") return qrLoginRedeem(req, env, url);
+      if (p === "/api/venue/logout" && req.method === "POST") return qrLogout(req, env);
+      if (p === "/api/venue/me") return qrMe(req, env, url);
+      if (p === "/api/venue/tables" && req.method === "GET") return qrTablesList(req, env, url);
+      if (p === "/api/venue/tables" && req.method === "POST") return qrTablesCreate(req, env, url);
+      if (p === "/api/venue/tables/state" && req.method === "POST") return qrTableState(req, env, url);
+      if (p === "/api/venue/tables/codes" && req.method === "POST") return qrIssueCodes(req, env, url);
+      if (p === "/api/venue/bill" && req.method === "POST") return qrBillCreate(req, env, url);
+      if (p === "/api/venue/bill/settle" && req.method === "POST") return qrBillSettle(req, env, url);
+      if (p === "/api/venue/bills" && req.method === "GET") return qrBillsOpen(req, env, url);
+      if (p === "/api/venue/staff" && req.method === "GET") return qrStaffList(req, env, url);
+      if (p === "/api/venue/staff" && req.method === "POST") return qrStaffAdd(req, env, url);
+      if (p === "/api/venue/staff/state" && req.method === "POST") return qrStaffState(req, env, url);
+      if (p === "/api/venue/agent" && req.method === "GET") return qrAgentLog(req, env, url);
+      if (p === "/api/venue/identity" && req.method === "GET") return qrIdentityGet(req, env, url);
+      if (p === "/api/venue/identity" && req.method === "POST") return qrIdentitySet(req, env, url);
+      if (p === "/api/venue/identity/retire" && req.method === "POST") return qrIdentityRetire(req, env, url);
+      if (p === "/api/venue/identity/preview.svg") return qrIdentityPreview(req, env, url);
+      if (p === "/biz/tables") return qrTablesPage(req, env, url);
+      if (p === "/api/venue/settings" && req.method === "GET")
+        return venueSettingsGet(req, env, url);
+      if (p === "/api/venue/settings" && req.method === "POST")
+        return venueSettingsSet(req, env, url);
+      if (p === "/biz/settings") return venueSettingsPage(req, env, url);
+      if (p === "/api/venue/statement") return venueStatement(req, env, url);
+      if (p === "/api/venue/invoice") return venueInvoiceLines(req, env, url);
+      if (p === "/api/venue/payee.svg") return payeeQrRoute(req, env, url);
+      if (p === "/biz/statement") return venueStatementPage(req, env, url);
+      if (p === "/api/admin/money") return adminMoney(req, env, url);
+      if (p === "/api/venue/chain") return venueChain(req, env, url);
+      if (p === "/api/venue/qrcheck") return venueQrCheck(req, env, url);
+      if (p === "/api/admin/chain") return adminChain(req, env, url);
+      if (p.startsWith("/api/pay/qr/")) return payQrRoute(req, env, p.slice(12));
+      if (p.startsWith("/api/pay/emv/")) return payEmvRoute(req, env, p.slice(13));
+      if (p === "/api/admin/pay/meter") return adminPayMeter(req, env);
+      if (p.startsWith("/a/")) return afterPage(req, env, p.slice(3));
+      if (p.startsWith("/api/after/rate") && req.method === "POST")
+        return afterRateRoute(req, env);
+      if (p.startsWith("/api/after/tip") && req.method === "POST")
+        return afterTipRoute(req, env);
+      if (p.startsWith("/api/after/") && req.method === "GET")
+        return afterStateRoute(req, env, p.slice(11));
+      if (p.startsWith("/p/")) {
+        const rest = p.slice(3);
+        return rest.endsWith("/go") ? payGo(req, env, rest.slice(0, -3))
+                                    : payLanding(req, env, rest);
+      }
       if (p === "/tonight" || p.startsWith("/tonight/")) return tonightPage(req, env, url);
       if (p.startsWith("/v/")) return venueLanding(req, env, p.slice(3));
       if (p.startsWith("/r/")) return referral(req, env, url, p.slice(3));
@@ -881,6 +1165,42 @@ const WORKER = {
    */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(drainQueue(env, Number(env.SEND_BUDGET || 40)));
+    // The QR agent. Isolated from the mail drain on purpose: a failing agent
+    // pass must never stop invites going out, and a Resend outage must never
+    // stop tables getting their codes.
+    ctx.waitUntil(
+      qrRunAgent(env).catch((e) => console.log("qr agent", String(e).slice(0, 300))),
+    );
+    // The chain watcher. Isolated like everything else on this cron: an RPC
+    // outage must not stop tables getting their codes or invoices going out.
+    if (env.NUM_RPC_BASE) {
+      ctx.waitUntil(
+        chainSweep(env)
+          .then((r) => console.log("chain sweep", JSON.stringify(r).slice(0, 400)))
+          .catch((e) => console.log("chain sweep failed", String(e).slice(0, 300))),
+      );
+    }
+    // Weekly invoicing, Monday morning UTC. invoiceAll only ever picks up
+    // lines that are not already on an invoice, so a second firing in the
+    // same hour is a no-op rather than a double bill.
+    const when = new Date(event.scheduledTime || Date.now());
+    if (when.getUTCDay() === 1 && when.getUTCHours() === 2 && when.getUTCMinutes() < 15) {
+      ctx.waitUntil(
+        MONEY.invoiceAll(env)
+          .then((r) => console.log("invoice run", JSON.stringify(r).slice(0, 400)))
+          .catch((e) => console.log("invoice run failed", String(e).slice(0, 300))),
+      );
+    }
+    // The automated merchant-invite drain. See invitecron.mjs's own header
+    // for why this runs on the cron rather than as an LLM-driven loop, and
+    // why Thailand is deliberately excluded until its copy is reviewed.
+    // Isolated like everything else on this cron: a bug here must not stop
+    // tables getting their codes or host invites going out.
+    ctx.waitUntil(
+      drainInvites(env, event)
+        .then((r) => console.log("invite drain", JSON.stringify(r).slice(0, 400)))
+        .catch((e) => console.log("invite drain failed", String(e).slice(0, 300))),
+    );
   },
 };
 
@@ -910,11 +1230,33 @@ async function health(env) {
 /* ------------------------------------------------------- /api/ev  arrivals */
 
 const EVENTS = new Set([
-  "claim_view", "claim_done", "host_join_view", "host_join_done",
+  "claim_view", "claim_done", "claim_place_picked",
+  // The ownership funnel. Without these four, "how many claims turn into
+  // verified businesses" is a question with no denominator — which is how the
+  // claim form went three weeks as a dead end without it showing up anywhere.
+  "claim_verify_offered", "claim_code_sent", "claim_verified",
+  "host_join_view", "host_join_done",
   "landing_view", "capture_done", "ref_arrival", "invite_open",
   // --- install funnel (added 10 Aug 2026) ------------------------------
   // Every step between arriving and actually using Num. Before these,
   // the only thing recorded was that the page had been served.
+  // --- arrival (added 24 Aug 2026) --------------------------------------
+  // The app surface had NO arrival event. Its earliest signal was scroll_50,
+  // which means every rate we could quote for it had no denominator: 58 people
+  // scrolled halfway, out of a number nobody could name. That is not a
+  // reporting nicety — it is the reason a paid campaign could send 577 clicks
+  // and be argued about instead of measured.
+  //
+  // `page_view` rather than `app_view`: the `page` column already carries
+  // which surface it was, so one name covers app, install and business
+  // without a new constant every time a surface is added.
+  "page_view",
+  // The primary CTA — "Ask Num something" / "Open Num". Split out of
+  // open_in_browser_click on 25 Aug 2026: every one of that event's 25 rows
+  // carried the label "Ask Num something", and the name had them read as
+  // people fleeing to another browser when they were the most interested
+  // people on the page. The old name stays for genuine browser escapes only.
+  "primary_cta_click",
   "install_cta_click",      // tapped any "add to home screen" control
   "install_tab_view",       // opened the iPhone / Android / Desktop pane
   "install_prompt_shown",   // the browser beforeinstallprompt actually fired
@@ -929,6 +1271,11 @@ const EVENTS = new Set([
   "desktop_handoff_shown", "desktop_qr_shown", "desktop_link_sent",
   // --- language -----------------------------------------------------------
   "lang_offer_shown", "lang_switched",
+  // --- outbound email (added 25 Aug 2026) ---------------------------------
+  // Logged by GET /api/ev.gif, not by the tracker script: an email client has
+  // no JavaScript. `email_open` is the weakest signal we record and is treated
+  // as such everywhere downstream — see the warning on evPixel().
+  "email_open", "email_click",
 ]);
 
 async function ev(req, env) {
@@ -957,6 +1304,82 @@ async function ev(req, env) {
   ).run();
 
   return J({ ok: true });
+}
+
+/* ------------------------------------------- GET /api/ev.gif  email opens */
+
+/**
+ * A 1×1 transparent GIF that logs an open, and four rules about it.
+ *
+ * ── 1. IT MUST NEVER FAIL ────────────────────────────────────────────────
+ * Everything below is inside a try/catch that swallows, because the failure
+ * mode of an image endpoint is not a 500 the user never sees — it is a broken
+ * image icon sitting in the middle of a letter we sent to a stranger. The GIF
+ * goes back whatever happens.
+ *
+ * ── 2. NO ORIGIN CHECK ───────────────────────────────────────────────────
+ * `badOrigin` guards /api/ev because that endpoint is called by our own pages.
+ * This one is called by Gmail, Outlook and Apple's proxy servers, which send
+ * no Origin header at all. Reusing that guard here would reject every real
+ * request and pass only the fake ones.
+ *
+ * ── 3. NO EMAIL ADDRESS IN THE URL ───────────────────────────────────────
+ * `t=` is an opaque token minted per recipient at send time, never the
+ * address. A tracking URL is copied into forwards, pasted into support
+ * tickets, and logged by every hop in between; an address in it is an address
+ * leaked. The token maps back to the recipient in our own tables or nowhere.
+ *
+ * ── 4. THE NUMBER IT PRODUCES IS THE WEAKEST ONE WE HAVE ─────────────────
+ * Apple Mail Privacy Protection fetches every image in every message before
+ * the person has opened anything, from an Apple proxy IP, and Gmail proxies
+ * images through its own cache. So this over-counts, by a margin nobody can
+ * state. It is recorded because Andre asked for it and because the TREND is
+ * still readable — but `claims.source` is the number that means something,
+ * because a claim is a person who did a thing. Never quote an open rate as
+ * evidence of anything on its own.
+ */
+const PIXEL_GIF = new Uint8Array([
+  0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x21, 0xf9, 0x04, 0x01, 0x00,
+  0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+  0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
+]);
+
+const pixelResponse = () =>
+  new Response(PIXEL_GIF, {
+    status: 200,
+    headers: {
+      "content-type": "image/gif",
+      // Without this the proxy caches the first fetch and every later open of
+      // the same message is invisible.
+      "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+      "content-length": String(PIXEL_GIF.length),
+    },
+  });
+
+async function evPixel(req, env, url) {
+  try {
+    const q = url.searchParams;
+    const name = q.get("ev") === "click" ? "email_click" : "email_open";
+    const ip = req.headers.get("cf-connecting-ip") || "0";
+    // Generous: one message legitimately fetches this more than once (proxy,
+    // then client, then again when the person re-reads it days later).
+    if (!overLimit("px:" + ip, 240)) {
+      const vid = await visitorId(req, env);
+      await env.DB.prepare(
+        `INSERT INTO num_web_events
+           (visitor_id,event,page,ref_code,invite_token,utm_source,utm_medium,utm_campaign,referrer,country,device,detail,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        vid, name, "email", "", clean(q.get("t"), 64),
+        "email", "outreach", clean(q.get("c"), 60),
+        "", country(req), device(req), clean(q.get("d"), 60), now()
+      ).run();
+    }
+  } catch (e) {
+    // Deliberately silent. See rule 1.
+  }
+  return pixelResponse();
 }
 
 /* -------------------------------------------------- /api/consent  banner */
@@ -1130,6 +1553,78 @@ async function capture(req, env) {
   return J({ ok: true });
 }
 
+/* ---------------------------------------------- GET /api/claims/lookup
+   Type-ahead for the claim form, so a claim lands bound to the place it is
+   actually about instead of to a name somebody typed. Without it `place_id`
+   is NULL on every claim, which means a claim has no coordinates, and with no
+   coordinates there is nothing to draw on a map and nothing to pay a scout
+   for.
+
+   Most claims never reach here: an emailed or QR'd link already carries ?p=,
+   which is exact and costs no query at all. This is the walk-in path.
+
+   Deliberately narrow, in three ways that are all load-bearing:
+
+   1. One destination at a time, three characters minimum. `places` holds 2.5M
+      rows; idx_places_dest_name can serve a prefix inside one dest (~300 rows
+      read) and can serve nothing at all without the dest.
+   2. Prefix match, never %contains%. A leading wildcard defeats the index and
+      reads the whole city on every keystroke.
+   3. It returns only what is already painted on the shopfront — name, address,
+      category. Never phone, never email, never website. Los Angeles alone
+      holds 30,570 business email addresses in this table; a public endpoint
+      that turns a name into one of them is a scraper with a search box, not a
+      lookup. */
+async function claimsLookup(req, env, url) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("lookup:" + ip, 40)) return J({ ok: false, error: "slow_down" }, 429);
+
+  const dest = String(url.searchParams.get("d") || "")
+    .toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
+  // Not clean(): this string is never stored, never emailed and never rendered
+  // as markup — it is bound into one LIKE. Narrowing it to a punctuation
+  // whitelist only loses matches. What must go is control characters and the
+  // three LIKE metacharacters; everything a writing system uses stays.
+  const q = String(url.searchParams.get("q") || "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F]/g, " ")   // control characters
+    .replace(/[%_\\]/g, " ")                   // the LIKE metacharacters
+    .replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!dest || q.length < 3) return J({ ok: true, places: [] });
+
+  // Prefix, never %contains%: a leading wildcard cannot use
+  // idx_places_dest_name and reads the whole destination on every keystroke.
+  const like = q + "%";
+
+  let rows = [];
+  try {
+    const r = await env.DB.prepare(
+      `SELECT id, name, address, area, category, status
+         FROM places
+        WHERE dest = ? AND name LIKE ?
+        ORDER BY reviews DESC
+        LIMIT 8`
+    ).bind(dest, like).all();
+    rows = r.results || [];
+  } catch (e) {
+    // A lookup that fails must never block a claim. The form falls back to
+    // free text and the claim still lands, just without a place bound to it.
+    rows = [];
+  }
+
+  return J({
+    ok: true,
+    places: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      where: r.address || r.area || "",
+      category: r.category || "",
+      taken: r.status === "claimed" ? 1 : 0,
+    })),
+  });
+}
+
 /* ------------------------------------------------------ /api/claims  form */
 
 async function claims(req, env, ctx) {
@@ -1153,15 +1648,67 @@ async function claims(req, env, ctx) {
   const source = clean(b.source, 80) || "claim";
   const refCode = clean(b.ref_code, 40);
 
+  // Where this claim came from. Previously only num_captures held any of this,
+  // and that row is written only when an email is given — so a merchant who
+  // signed up off a printed flyer with no email left no country, no campaign
+  // and no destination anywhere. On the claims row it is always recorded.
+  const iso = ccOf(req, b.country) || country(req).toUpperCase().slice(0, 2);
+  const dest = clean(b.dest, 40).toLowerCase();
+  const placeId = clean(b.place_id, 64);
+
   // The claims table is what the existing admin console reads, so it stays the
   // system of record for "a business put its hand up". Everything else is
   // marketing state and lives alongside it.
   const ins = await env.DB.prepare(
-    `INSERT INTO claims (business_name,contact_name,phone,line_id,email,source,state,created_at)
-     VALUES (?,?,?,NULL,?,?,'new',?)`
-  ).bind(business, contact, e164(phone), email || null, source, now()).run();
+    `INSERT INTO claims (business_name,contact_name,phone,line_id,email,source,state,
+                         country,dest,place_id,created_at)
+     VALUES (?,?,?,?,?,?,'new',?,?,?,?)`
+  ).bind(
+    business, contact, localE164(phone, req, b.country),
+    // line_id has existed on this table since the beginning and was always
+    // written NULL. In Thailand LINE is how a business is actually reached, so
+    // the Thai form offers it and it is now stored.
+    clean(b.line_id, 80) || null,
+    email || null, source,
+    iso || null, dest || null, placeId || null, now()
+  ).run();
 
   const work = [];
+
+  // A business we do not already hold, describing itself.
+  //
+  // `places` covers 2.5M venues and is still not everyone. Until now an owner
+  // we had no listing for typed their name into the box and the claim landed
+  // bound to nothing: no address, no coordinates, nothing a concierge could
+  // ever recommend. Now they can tell us, and we keep what they said.
+  //
+  // It goes to num_place_submissions, NOT to `places`. places.lat/lng are NOT
+  // NULL and a typed address is not coordinates — writing 0,0 to satisfy that
+  // would put a pin in the Gulf of Guinea and into the proximity index the
+  // concierge searches. It is geocoded and reviewed first. See 0007.
+  //
+  // Only ever when nothing was picked: if the owner selected their real
+  // listing we already have all of this, better.
+  const subAddress = clean(b.address, 200);
+  const subWebsite = cleanUrl(b.website, 200);
+  // The name on the sign, in their own script. clean() keeps every letter and
+  // combining mark of every writing system, so this survives as typed —
+  // Thai tone marks, Arabic vowels, Balinese, decomposed Vietnamese and all.
+  const subLocal = clean(b.name_local, 120);
+  const subLang = /^[a-z]{2}$/.test(String(b.lang || "")) ? String(b.lang) : null;
+  if (!placeId && (subAddress || subWebsite || subLocal)) {
+    work.push(env.DB.prepare(
+      `INSERT INTO num_place_submissions
+         (id,name,name_local,lang,address,website,category,phone,email,country,dest,claim_id,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      "sub_" + token(10), business, subLocal || null, subLang,
+      subAddress || null, subWebsite || null,
+      clean(b.category, 60) || null,
+      localE164(phone, req, b.country) || null, email || null,
+      iso || null, dest || null, ins?.meta?.last_row_id ?? null, now()
+    ));
+  }
 
   if (email) {
     work.push(env.DB.prepare(
@@ -1175,7 +1722,7 @@ async function claims(req, env, ctx) {
          marketing_ok = MAX(num_captures.marketing_ok, excluded.marketing_ok),
          consent_text = CASE WHEN excluded.marketing_ok=1 THEN excluded.consent_text ELSE num_captures.consent_text END`
     ).bind(
-      "cap_" + token(8), email, lc(email), e164(phone), contact, business, vid, "claim",
+      "cap_" + token(8), email, lc(email), localE164(phone, req, b.country), contact, business, vid, "claim",
       refCode, clean(b.invite_token, 64), clean(b.utm_source, 60), clean(b.utm_medium, 60),
       clean(b.utm_campaign, 60), country(req),
       // The booking phone is service, not marketing. Only the separate tick box
@@ -1195,7 +1742,95 @@ async function claims(req, env, ctx) {
 
   if (work.length) await env.DB.batch(work);
 
+  // A business that claims its listing now hears back. Until 25 Aug 2026 it
+  // got a green screen and silence — no record in its inbox that anything had
+  // happened, nothing to forward to the owner, and no address to reply to.
+  //
+  // TRANSACTIONAL, not marketing. It is the receipt for a form they just
+  // submitted, so it does not check marketing_ok and it sells nothing. That
+  // distinction is also why it is exempt from the suppression list: someone
+  // who unsubscribed from outreach and later claims a listing still needs the
+  // confirmation for the thing they just did.
+  //
+  // waitUntil, so a Resend outage delays nothing and fails nothing. The claim
+  // is already committed by this point; the email is a courtesy on top of it.
+  if (email && ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(sendClaimWelcome(env, {
+      email, business, contact, country: iso, dest,
+    }).catch(() => {}));
+  }
+
   return J({ ok: true, id: ins.meta ? ins.meta.last_row_id : null });
+}
+
+/**
+ * The claim receipt, in the language of the country the claim came from.
+ *
+ * Thai for TH, English everywhere else — the same rule the outreach uses, and
+ * it keys off the country rather than the destination so a Thai business
+ * outside Phuket is not sent English by accident.
+ *
+ * What it deliberately does NOT say, because none of it is true yet:
+ * bookings (the desk returns 503), QR pay (num_paylinks has no rows), or any
+ * fee figure (the site and commission.mjs disagree). It says what actually
+ * happens next, which is that a human checks the claim.
+ */
+async function sendClaimWelcome(env, c) {
+  const th = String(c.country || "").toUpperCase() === "TH";
+  const name = c.contact ? c.contact.split(" ")[0] : "";
+
+  const subject = th
+    ? "ได้รับข้อมูลของ " + c.business + " แล้ว"
+    : "We have your claim for " + c.business;
+
+  const text = th
+    ? [
+        (name ? "สวัสดีคุณ " + name : "สวัสดีครับ"),
+        "",
+        "ได้รับการยืนยันร้าน " + c.business + " เรียบร้อยแล้ว ขอบคุณครับ",
+        "",
+        "ขั้นตอนต่อไป มีคนของเราตรวจสอบข้อมูลด้วยตัวเอง ไม่ใช่ระบบอัตโนมัติ",
+        "ถ้ามีอะไรไม่ตรง เราจะติดต่อกลับทางอีเมลนี้หรือทางโทรศัพท์ที่ให้ไว้",
+        "",
+        "สิ่งที่คุณทำได้ตอนนี้ ตอบอีเมลนี้กลับมาได้เลยถ้าข้อมูลร้านผิด",
+        "เวลาเปิดปิด ที่อยู่ หรือชื่อร้าน เราแก้ให้ในวันเดียวกัน",
+        "",
+        "เราจะไม่ส่งอีเมลการตลาดมาหาคุณเพราะการยืนยันร้านครั้งนี้",
+        "",
+        "Andre",
+        "NUM · 5arz Inc.",
+        LEGAL_LINE,
+      ].join("\n")
+    : [
+        (name ? "Hello " + name + "," : "Hello,"),
+        "",
+        "We have your claim for " + c.business + ". Thank you.",
+        "",
+        "What happens next: a person checks it, not a script. If anything does",
+        "not line up we will write back to this address or call the number you",
+        "gave us. If it all lines up you will not hear from us again about it,",
+        "which is the good outcome.",
+        "",
+        "What you can do now: reply to this email if anything we hold about you",
+        "is wrong — the hours, the address, the name, how you would like to be",
+        "described. We change it the same day.",
+        "",
+        "You will not be added to a marketing list because of this claim.",
+        "",
+        "Andre",
+        "NUM · 5arz Inc.",
+        LEGAL_LINE,
+      ].join("\n");
+
+  return sendBatch(env, [{
+    // One receipt per claim, even if the form is submitted twice.
+    __idem: "claimwelcome-" + lc(c.email) + "-" + (c.dest || "x"),
+    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    to: [c.email],
+    reply_to: "info@itsnum.com",
+    subject,
+    text,
+  }]);
 }
 
 /* =================================================== VIP HOST REFERRAL */
@@ -1287,9 +1922,9 @@ async function hostJoin(req, env, ctx) {
   // the programme otherwise.
   ctx.waitUntil(sendBatch(env, [{
     __idem: "hostwelcome-" + hostId,
-    from: env.MAIL_FROM || "Num by 5arz <info@5arz.com>",
+    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [email],
-    replyTo: ["info@5arz.com"],
+    replyTo: ["info@itsnum.com"],
     subject: "Your NUM link — " + code,
     text:
 `Hi ${name},
@@ -1319,7 +1954,7 @@ no cap and no clawback surprise later.
 — Viv
 NUM, by 5arz · ${LEGAL_LINE}
 Reply to this email and a person answers.`,
-    headers: { "List-Unsubscribe": "<mailto:info@5arz.com?subject=unsubscribe>" },
+    headers: { "List-Unsubscribe": "<mailto:info@itsnum.com?subject=unsubscribe>" },
     tags: [{ name: "kind", value: "host_welcome" }],
   }]));
 
@@ -1486,9 +2121,9 @@ async function drainQueue(env, budget, hostId) {
     const first = (c.host_name || "").split(" ")[0] || c.host_name || "your host";
     return {
       __idem: "hostinv-" + c.id,
-      from: env.MAIL_FROM || "Num by 5arz <info@5arz.com>",
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: [c.email],
-      replyTo: ["info@5arz.com"],
+      replyTo: ["info@itsnum.com"],
       subject: first + " sent you their little black book",
       text:
 `${c.name ? "Hi " + c.name + "," : "Hi,"}
@@ -1519,7 +2154,7 @@ you say yes above. What we hold and where it came from: ${site}/privacy
 NUM, by 5arz · ${LEGAL_LINE}
 Reply to this email and a person answers.`,
       headers: {
-        "List-Unsubscribe": "<" + site + "/stop/" + c.token + ">, <mailto:info@5arz.com?subject=unsubscribe>",
+        "List-Unsubscribe": "<" + site + "/stop/" + c.token + ">, <mailto:info@itsnum.com?subject=unsubscribe>",
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
       tags: [{ name: "kind", value: "host_invite" }, { name: "code", value: String(c.code || "none") }],
@@ -1668,7 +2303,7 @@ async function stopContact(req, env, rawToken) {
 <h1>Done — you won't hear from us</h1>
 <p>You're off the list. Nothing else needs doing, and there is no form to fill in.</p>
 <p>If this reached you by mistake and you'd like to tell us, reply to the email
-or write to info@5arz.com and a person answers.</p>`);
+or write to info@itsnum.com and a person answers.</p>`);
 }
 
 /* ---------------------------------------------- /api/admin/earnings  ledger */
@@ -2123,9 +2758,22 @@ async function venueArrive(req, env) {
     outcome: "completed", member_ref: bk.member_ref, detail: "commission_cs=" + commission,
   });
 
+  // The guest is standing here with an unlocked phone and a NUM page open.
+  // That is the only moment asking "how was it" costs them nothing, so the
+  // link is minted now rather than emailed tomorrow. num_bookings has no
+  // place_id, so it is read from the ownership table the claim flow writes.
+  const owned = await env.DB.prepare(
+    "SELECT place_id FROM num_place_owners WHERE business_id = ? LIMIT 1"
+  ).bind(venue.business_id).first().catch(() => null);
+  const afterTok = await issueAfter(env, {
+    bookingId: bk.id, businessId: venue.business_id,
+    placeId: owned?.place_id || null, memberRef: bk.member_ref,
+  });
+
   return J({
     ok: true, matched: true, completed: true,
     venue: venue.business_name, perk: venue.perk_text || null,
+    after: afterTok ? "/a/" + afterTok : null,
   });
 }
 
@@ -2668,7 +3316,7 @@ max-width:460px;margin:0 auto;padding:60px 24px}h1{color:#1f3a34;font-size:26px;
 p{color:#39423b}a{color:#1e7a4d}</style>
 <h1>That link isn't valid</h1>
 <p>Your codes page has a private key in the address. Use the link we sent you,
-or <a href="mailto:info@5arz.com?subject=Codes%20link">ask us to resend it</a>.</p>`, 401);
+or <a href="mailto:info@itsnum.com?subject=Codes%20link">ask us to resend it</a>.</p>`, 401);
   }
 
   const site = env.SITE || "https://itsnum.com";
@@ -2918,11 +3566,11 @@ async function venueIssueKey(req, env, ctx) {
   const managerUrl = `${site}/biz/codes?k=${ck}`;
   ctx.waitUntil(sendBatch(env, [{
     __idem: "venuekey-" + bizId + "-" + (minted ? "mint" : "resend"),
-    from: env.MAIL_FROM || "Num by 5arz <info@5arz.com>",
+    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [to],
-    replyTo: ["info@5arz.com"],
+    replyTo: ["info@itsnum.com"],
     subject: `Your table codes for ${biz.name}`,
-    headers: { "List-Unsubscribe": "<mailto:info@5arz.com?subject=unsubscribe>" },
+    headers: { "List-Unsubscribe": "<mailto:info@itsnum.com?subject=unsubscribe>" },
     text: `Hi,
 
 You verified control of ${biz.name} on NUM, so here is your codes page:
@@ -3194,6 +3842,9 @@ async function securitySweep(env) {
     }
   }
 
+  // 6-8 : the paylink checks live beside the paylink code (venue_pay section)
+  findings.push(...(await payFindings(env)));
+
   // store — the UNIQUE(day,kind,subject) constraint is the dedupe; a finding
   // that fired this morning does not re-alert this evening.
   const day = now().slice(0, 10);
@@ -3212,18 +3863,18 @@ async function securitySweep(env) {
   if (fresh.length) {
     await sendBatch(env, [{
       __idem: "secsweep-" + day + "-" + fresh.length,
-      from: env.MAIL_FROM || "Num by 5arz <info@5arz.com>",
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: ["info@5arz.com"],
-      replyTo: ["info@5arz.com"],
+      replyTo: ["info@itsnum.com"],
       subject: `[NUM security] ${fresh.length} new finding(s) — ${fresh.map(f => f.kind).join(", ")}`,
-      headers: { "List-Unsubscribe": "<mailto:info@5arz.com?subject=unsubscribe>" },
+      headers: { "List-Unsubscribe": "<mailto:info@itsnum.com?subject=unsubscribe>" },
       text: "New findings from the venue security sweep:\n\n" +
         fresh.map(f => `· [${f.severity}] ${f.kind} — ${f.subject}\n  ${f.evidence}`).join("\n\n") +
         "\n\nFull history: SELECT * FROM num_security_findings ORDER BY id DESC;\n" +
         "This sweep only reads logs and writes findings. It cannot change keys, codes or bookings.",
     }]);
   }
-  return { checked: 5, found: findings.length, new: fresh.length };
+  return { checked: 8, found: findings.length, new: fresh.length };
 }
 
 /* GET /api/admin/venue/security (x-admin-key) — run it on demand */
@@ -3262,7 +3913,7 @@ max-width:460px;margin:0 auto;padding:60px 24px}h1{color:#1f3a34;font-size:26px;
 p{color:#39423b}a{color:#1e7a4d}</style>
 <h1>That link isn't valid</h1>
 <p>Your codes page has a private key in the address. Use the link we sent you,
-or <a href="mailto:info@5arz.com?subject=Codes%20link">ask us to resend it</a>.</p>`, 401);
+or <a href="mailto:info@itsnum.com?subject=Codes%20link">ask us to resend it</a>.</p>`, 401);
   }
 
   const site = env.SITE || "https://itsnum.com";
@@ -3408,6 +4059,8 @@ ul{list-style:none}
 <div class="nav">
   <a class="on" href="#">Codes</a>
   <a href="/biz/visitors?k=${encodeURIComponent(url.searchParams.get("k") || "")}">Visitors</a>
+  <a href="/biz/pay?k=${encodeURIComponent(url.searchParams.get("k") || "")}">Pay</a>
+  <a href="/biz/settings?k=${encodeURIComponent(url.searchParams.get("k") || "")}">Settings</a>
   <button class="sec btn" onclick="window.print()" style="border-color:var(--pine)">Print all</button>
   <button id="rotate" class="btn sec" title="Get a fresh private link">New private link</button>
 </div>
@@ -3514,7 +4167,7 @@ async function venueVisitorsPage(req, env, url) {
   const biz = await bizAuth(env, url, req);
   if (!biz) return HTML(`<!doctype html><meta charset="utf-8"><title>Sign in — NUM</title>
 <p style="font:17px -apple-system,sans-serif;max-width:420px;margin:80px auto;color:#131a16">
-That link isn't valid. Use the link we sent you, or ask us to resend it: info@5arz.com</p>`, 401);
+That link isn't valid. Use the link we sent you, or ask us to resend it: info@itsnum.com</p>`, 401);
 
   const cat = categoryOf(biz);
   const k = encodeURIComponent(url.searchParams.get("k") || "");
@@ -3584,6 +4237,8 @@ td{padding:10px 14px;border-top:1px solid var(--line);color:#39423b}
 <div class="nav">
   <a href="/biz/codes?k=${k}">Codes</a>
   <a class="on" href="#">Visitors</a>
+  <a href="/biz/pay?k=${k}">Pay</a>
+  <a href="/biz/settings?k=${k}">Settings</a>
 </div>
 
 <div class="tiles">
@@ -3846,7 +4501,7 @@ async function venueOffersPage(req, env, url) {
   const biz = await bizAuth(env, url, req);
   if (!biz) return HTML(`<!doctype html><meta charset="utf-8"><title>Sign in — NUM</title>
 <p style="font:17px -apple-system,sans-serif;max-width:420px;margin:80px auto;color:#131a16">
-That link isn't valid. Use the link we sent you, or ask us to resend it: info@5arz.com</p>`, 401);
+That link isn't valid. Use the link we sent you, or ask us to resend it: info@itsnum.com</p>`, 401);
 
   const k = encodeURIComponent(url.searchParams.get("k") || "");
   const cat = categoryOf(biz);
@@ -3923,6 +4578,8 @@ disappears when it ends.</p>
   <a href="/biz/codes?k=${k}">Codes</a>
   <a href="/biz/visitors?k=${k}">Visitors</a>
   <a class="on" href="#">Offers</a>
+  <a href="/biz/pay?k=${k}">Pay</a>
+  <a href="/biz/settings?k=${k}">Settings</a>
 </div>
 
 <div class="chips">${chips}</div>
@@ -4015,6 +4672,1401 @@ the moment you post it, at no cost — and you can see exactly what came of it i
    queued email — the queue would simply never drain again, with no error
    anywhere. So: keep the original, chain the sweep after it, and run the
    sweep only on the hour-ish ticks so it fires ~4×/day, not 96×. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   venue_pay.js — paylink QR codes: scan at the table, pay the venue directly.
+
+   What this is NOT, by design: a payment processor. NUM never holds, routes,
+   or touches money. A paylink QR resolves to /p/<token>, a page that shows
+   who you are paying and hands you to the venue's OWN rails — either a
+   payment URL they already have (Stripe / PayPal / Square / SumUp link) or
+   their own Thai PromptPay identity rendered as a standard EMV QR their
+   guest's banking app understands. The venue's money goes to the venue.
+
+   What NUM adds is the part processors don't do: per-table identity
+   ("Table 4", "Bar seat 9"), print-ready cards, scan tracking a business can
+   read, retirement the moment a card walks off, and the same security sweep
+   that watches the check-in system. Scans are METERED (num_pay_events, one
+   billable per guest per link per 30 minutes) — but no rate exists and no
+   invoice is generated anywhere in this file. Metering is not billing.
+
+   Fraud model this is built against, because it is the attack that actually
+   happens to table QR payments: someone re-points a table's code at their own
+   account. Three answers here:
+     1 · targets are immutable — there is NO edit endpoint. Changing where a
+         paylink pays means retiring it and creating a new one, both of which
+         are key-gated and logged in num_key_events.
+     2 · the pay page names the venue in large type before any pay control:
+         a guest sitting in Morrisons Lounge looking at "Pay The Longtail
+         Bar" is a guest who stops.
+     3 · the sweep watches for scan bursts, unknown-token enumeration, and
+         traffic still arriving on retired links.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── QR encoder, version 6 / ECC level M ─────────────────────────────────────
+   A second fixed-shape encoder, deliberately SEPARATE from the proven v4-H
+   closure that draws /v/ check-in codes — sharing nothing means a change here
+   can never bend a symbol that is already printed on a thousand table cards.
+
+   Why a second shape at all: an EMV PromptPay payload runs 70–90 characters,
+   and v4-H tops out at 34. Version 6 at level M holds 106 — headroom for
+   e-wallet ids plus a fixed amount — and M (~15% recovery) is the level the
+   EMV merchant-presented spec itself recommends for payment QRs.
+
+   Correctness is demonstrated, not asserted: qr6.verify.mjs diffs this
+   encoder's module matrix cell-for-cell against the python `qrcode` reference
+   for hundreds of random EMV-shaped payloads, then decodes the rendered
+   artwork with OpenCV, then round-trips real PromptPay payloads generated by
+   the python `promptpay` package. All three must pass before deploy.        */
+const qr6m = (function () {
+  const SIZE = 41;                 // version 6: 17 + 6·4
+  const DATA_CW = 108;             // 4 blocks × 27
+  const BLOCKS = 4, BLOCK_DATA = 27, BLOCK_EC = 16;   // RS(43,27) × 4 = 172
+  const EC_LEVEL_BITS = 0b00;      // M, as it appears in the format string
+
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (function () {
+    let x = 1;
+    for (let i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  })();
+  const mul = (a, b) => (a === 0 || b === 0 ? 0 : EXP[LOG[a] + LOG[b]]);
+
+  function genPoly(n) {
+    let p = [1];
+    for (let i = 0; i < n; i++) {
+      const q = [1, EXP[i]], r = new Array(p.length + 1).fill(0);
+      for (let a = 0; a < p.length; a++) for (let b = 0; b < 2; b++) r[a + b] ^= mul(p[a], q[b]);
+      p = r;
+    }
+    return p;
+  }
+  function ecFor(data, n) {
+    const g = genPoly(n), res = new Array(data.length + n).fill(0);
+    data.forEach((v, i) => (res[i] = v));
+    for (let i = 0; i < data.length; i++) {
+      const f = res[i];
+      if (f === 0) continue;
+      for (let j = 0; j < g.length; j++) res[i + j] ^= mul(g[j], f);
+    }
+    return res.slice(data.length);
+  }
+
+  function encodeData(text) {
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.length > DATA_CW - 2) throw new Error(`payload too long for v6-M: ${bytes.length} bytes`);
+    const bits = [];
+    const push = (v, n) => { for (let i = n - 1; i >= 0; i--) bits.push((v >> i) & 1); };
+    push(0b0100, 4);               // byte mode
+    push(bytes.length, 8);         // v1–9: 8-bit length
+    bytes.forEach((b) => push(b, 8));
+    const cap = DATA_CW * 8;
+    push(0, Math.min(4, cap - bits.length));
+    while (bits.length % 8) bits.push(0);
+    const cw = [];
+    for (let i = 0; i < bits.length; i += 8) cw.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+    const PAD = [0xec, 0x11];
+    for (let i = 0; cw.length < DATA_CW; i++) cw.push(PAD[i % 2]);
+    return cw;
+  }
+
+  function finalCodewords(text) {
+    const cw = encodeData(text);
+    const dB = [], eB = [];
+    for (let i = 0; i < BLOCKS; i++) {
+      const d = cw.slice(i * BLOCK_DATA, (i + 1) * BLOCK_DATA);
+      dB.push(d); eB.push(ecFor(d, BLOCK_EC));
+    }
+    const out = [];
+    for (let i = 0; i < BLOCK_DATA; i++) for (const b of dB) out.push(b[i]);
+    for (let i = 0; i < BLOCK_EC; i++) for (const b of eB) out.push(b[i]);
+    return out;
+  }
+
+  const newMatrix = () => Array.from({ length: SIZE }, () => new Array(SIZE).fill(null));
+
+  function placeFunctionPatterns(m) {
+    const finder = (r, c) => {
+      for (let i = -1; i <= 7; i++) for (let j = -1; j <= 7; j++) {
+        const rr = r + i, cc = c + j;
+        if (rr < 0 || rr >= SIZE || cc < 0 || cc >= SIZE) continue;
+        const on = (i >= 0 && i <= 6 && (j === 0 || j === 6)) ||
+                   (j >= 0 && j <= 6 && (i === 0 || i === 6)) ||
+                   (i >= 2 && i <= 4 && j >= 2 && j <= 4);
+        m[rr][cc] = on ? 1 : 0;
+      }
+    };
+    finder(0, 0); finder(0, SIZE - 7); finder(SIZE - 7, 0);
+    for (let i = 8; i < SIZE - 8; i++) {
+      const v = i % 2 === 0 ? 1 : 0;
+      if (m[6][i] === null) m[6][i] = v;
+      if (m[i][6] === null) m[i][6] = v;
+    }
+    // version 6 has one alignment pattern clear of the finders, centred (34,34)
+    const ac = 34;
+    for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
+      m[ac + i][ac + j] = (Math.max(Math.abs(i), Math.abs(j)) !== 1) ? 1 : 0;
+    }
+    m[SIZE - 8][8] = 1;            // always-dark module (4·V+9, 8)
+  }
+
+  const FORMAT_MASK = 0b101010000010010;
+  function formatBits(mask) {
+    const data = (EC_LEVEL_BITS << 3) | mask;
+    let v = data << 10;
+    for (let i = 14; i >= 10; i--) if ((v >> i) & 1) v ^= 0b10100110111 << (i - 10);
+    return ((data << 10) | v) ^ FORMAT_MASK;
+  }
+  function placeFormat(m, mask) {
+    const f = formatBits(mask);
+    const bit = (i) => (f >> (14 - i)) & 1;     // MSB-first, as the spec walks it
+    for (let i = 0; i <= 5; i++) m[8][i] = bit(i);
+    m[8][7] = bit(6); m[8][8] = bit(7); m[7][8] = bit(8);
+    for (let i = 9; i <= 14; i++) m[14 - i][8] = bit(i);
+    for (let i = 0; i <= 6; i++) m[SIZE - 1 - i][8] = bit(i);          // 7 vertical
+    for (let i = 7; i <= 14; i++) m[8][SIZE - 15 + i] = bit(i);        // 8 horizontal
+  }
+
+  const MASKS = [
+    (r, c) => (r + c) % 2 === 0,
+    (r) => r % 2 === 0,
+    (_, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+    (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+    (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+  ];
+
+  function placeData(m, cw, mask) {
+    let bitIdx = 0;
+    const total = cw.length * 8;
+    let up = true;
+    for (let right = SIZE - 1; right > 0; right -= 2) {
+      if (right === 6) right--;
+      for (let k = 0; k < SIZE; k++) {
+        const r = up ? SIZE - 1 - k : k;
+        for (const c of [right, right - 1]) {
+          if (m[r][c] !== null) continue;
+          let v = 0;
+          if (bitIdx < total) v = (cw[bitIdx >> 3] >> (7 - (bitIdx & 7))) & 1;
+          bitIdx++;
+          m[r][c] = MASKS[mask](r, c) ? v ^ 1 : v;
+        }
+      }
+      up = !up;
+    }
+  }
+
+  /* Mask scoring — a faithful port of python-qrcode's `lost_point`, INCLUDING
+     its skip-optimizations in levels 2 and 3 (which make its scores deviate
+     slightly from a literal reading of the ISO rules). That is deliberate:
+     matching the reference's scorer means our chosen mask — and therefore the
+     entire symbol — is bit-identical to what the world's most widely deployed
+     generator would print, a population of symbols that has been decoded by
+     real phone cameras at enormous scale. qr6.verify.mjs asserts the
+     identity; a "better" scorer that ships an untested symbol is worse. */
+  function penalty(m) {
+    let p = 0;
+    // level 1 — runs of 5+ in rows and columns: (len - 2) each
+    const runs = (get) => {
+      for (let a = 0; a < SIZE; a++) {
+        let prev = get(a, 0), len = 0;
+        for (let b = 0; b < SIZE; b++) {
+          if (get(a, b) === prev) len++;
+          else { if (len >= 5) p += len - 2; len = 1; prev = get(a, b); }
+        }
+        if (len >= 5) p += len - 2;
+      }
+    };
+    runs((a, b) => m[a][b]); runs((a, b) => m[b][a]);
+    // level 2 — 2×2 blocks, with the reference's next()-skip semantics
+    for (let row = 0; row < SIZE - 1; row++) {
+      for (let col = 0; col < SIZE - 1; col++) {
+        const tr = m[row][col + 1];
+        if (tr !== m[row + 1][col + 1]) { col++; continue; }
+        if (tr !== m[row][col]) continue;
+        if (tr !== m[row + 1][col]) continue;
+        p += 3;
+      }
+    }
+    // level 3 — 1:1:3:1:1 finder-like pattern with 4-light flank, with the
+    // reference's horspool skip (advance an extra cell when cell+10 is dark)
+    const l3 = (get) => {
+      for (let a = 0; a < SIZE; a++) {
+        for (let b = 0; b < SIZE - 10; b++) {
+          if (!get(a, b + 1) && get(a, b + 4) && !get(a, b + 5) && get(a, b + 6) && !get(a, b + 9) &&
+              ((get(a, b) && get(a, b + 2) && get(a, b + 3) &&
+                !get(a, b + 7) && !get(a, b + 8) && !get(a, b + 10)) ||
+               (!get(a, b) && !get(a, b + 2) && !get(a, b + 3) &&
+                get(a, b + 7) && get(a, b + 8) && get(a, b + 10)))) p += 40;
+          if (get(a, b + 10)) b++;
+        }
+      }
+    };
+    l3((a, b) => m[a][b]); l3((a, b) => m[b][a]);
+    // level 4 — dark-proportion departure from 50%, float division as reference
+    let dark = 0;
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) dark += m[r][c];
+    p += Math.trunc(Math.abs((dark / (SIZE * SIZE)) * 100 - 50) / 5) * 10;
+    return p;
+  }
+
+  function matrixWithMask(text, mask) {
+    const m = newMatrix();
+    placeFunctionPatterns(m);
+    placeFormat(m, mask);
+    placeData(m, finalCodewords(text), mask);
+    return m;
+  }
+
+  /* The reference scores each candidate mask on a TEST-MODE matrix: format
+     info and the always-dark module blanked to light (makeImpl(test=True)).
+     Scoring the real matrix instead picks a different mask often enough to
+     ship symbols the reference would never print — so we blank the same 31
+     cells before scoring, and only the winning mask gets real format bits. */
+  function blankFormatCells(m) {
+    for (let i = 0; i <= 8; i++) { if (i !== 6) { m[8][i] = 0; m[i][8] = 0; } }
+    for (let i = 0; i <= 6; i++) m[SIZE - 1 - i][8] = 0;
+    for (let i = 7; i <= 14; i++) m[8][SIZE - 15 + i] = 0;
+    m[SIZE - 8][8] = 0;
+    return m;
+  }
+
+  function matrix(text) {
+    let bestMask = 0, bestScore = Infinity;
+    for (let mask = 0; mask < 8; mask++) {
+      const s = penalty(blankFormatCells(matrixWithMask(text, mask)));
+      if (s < bestScore) { bestScore = s; bestMask = mask; }
+    }
+    return matrixWithMask(text, bestMask);
+  }
+
+  function svg(text, { border = 3, dark = "#131a16", light = "#ffffff" } = {}) {
+    const m = matrix(text);
+    const n = SIZE + border * 2, d = [];
+    for (let r = 0; r < SIZE; r++) {
+      let c = 0;
+      while (c < SIZE) {
+        if (m[r][c]) {
+          let e = c;
+          while (e + 1 < SIZE && m[r][e + 1]) e++;
+          d.push(`M${c + border} ${r + border}h${e - c + 1}v1h-${e - c + 1}z`);
+          c = e + 1;
+        } else c++;
+      }
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" ` +
+      `shape-rendering="crispEdges" role="img" aria-label="PromptPay QR code">` +
+      `<rect width="${n}" height="${n}" fill="${light}"/>` +
+      `<path fill="${dark}" d="${d.join("")}"/></svg>`;
+  }
+
+  return { matrix, matrixWithMask, svg, SIZE };
+})();
+
+/* ── PromptPay EMV payload ───────────────────────────────────────────────────
+   EMVCo merchant-presented TLV, byte-for-byte the format the python
+   `promptpay` reference produces (verified in qr6.verify.mjs):
+     000201 · 010211(static)/010212(has amount) · 29xx merchant-account
+     [0016 A000000677010111 + proxy] · 5802TH · 5303764 · [54xx amount] ·
+     6304 + CRC-16/CCITT-FALSE, uppercase.
+   Proxy forms: phone 0812345678 → 0066812345678 (13) · tax id: 13 digits
+   as given · e-wallet: 15 digits as given.                                  */
+function promptPayProxy(idRaw) {
+  const id = String(idRaw || "").replace(/[^0-9]/g, "");
+  if (/^0\d{9}$/.test(id)) return { kind: "phone",   proxy: "0066" + id.slice(1), sub: "01" };
+  if (/^\d{13}$/.test(id)) return { kind: "tax_id",  proxy: id,                   sub: "02" };
+  if (/^\d{15}$/.test(id)) return { kind: "ewallet", proxy: id,                   sub: "03" };
+  return null;
+}
+
+function crc16ccitt(s) {
+  let crc = 0xffff;
+  for (let i = 0; i < s.length; i++) {
+    crc ^= s.charCodeAt(i) << 8;
+    for (let b = 0; b < 8; b++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+const tlv = (tag, value) => tag + String(value.length).padStart(2, "0") + value;
+
+function promptPayPayload(idRaw, amount) {
+  const p = promptPayProxy(idRaw);
+  if (!p) return null;
+  const merchant = tlv("29", tlv("00", "A000000677010111") + tlv(p.sub, p.proxy));
+  let s = tlv("00", "01") + tlv("01", amount ? "12" : "11") + merchant +
+          tlv("58", "TH") + tlv("53", "764");
+  if (amount) s += tlv("54", Number(amount).toFixed(2));
+  s += "6304";
+  return s + crc16ccitt(s);
+}
+
+/* ── validation ──────────────────────────────────────────────────────────────
+   A paylink target is the one field where bad input becomes someone else's
+   lost money, so the rules are strict and the refusals are specific.        */
+function validPayTarget(kind, raw) {
+  if (kind === "promptpay") {
+    const p = promptPayProxy(raw);
+    if (!p) return { ok: false, error: "bad_promptpay_id",
+      hint: "a Thai mobile (0812345678), 13-digit tax ID, or 15-digit e-wallet ID" };
+    return { ok: true, target: String(raw).replace(/[^0-9]/g, ""), promptpay_kind: p.kind };
+  }
+  if (kind === "crypto") {
+    // The asset is ours to choose from a verified list; the address is theirs.
+    // A wrong token contract cannot come from a merchant typing.
+    const asset = String(raw && raw.asset || "usdc-base");
+    if (!CRYPTO.ASSETS[asset]) {
+      return { ok: false, error: "unknown_asset", assets: CRYPTO.assetKeys() };
+    }
+    const addr = CRYPTO.validAddress(raw && raw.address != null ? raw.address : raw);
+    if (!addr.ok) return { ok: false, error: "bad_address", hint: addr.reason };
+    return { ok: true, target: addr.address, crypto_asset: asset };
+  }
+  if (kind === "url") {
+    const s = String(raw || "").trim();
+    if (s.length > 300) return { ok: false, error: "url_too_long" };
+    let u;
+    try { u = new URL(s); } catch (e) { return { ok: false, error: "bad_url" }; }
+    if (u.protocol !== "https:") return { ok: false, error: "https_only" };
+    if (u.username || u.password) return { ok: false, error: "no_credentials_in_url" };
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(u.hostname) || u.hostname.includes("["))
+      return { ok: false, error: "no_ip_hosts" };
+    const h = u.hostname.toLowerCase();
+    if (h === "itsnum.com" || h.endsWith(".itsnum.com"))
+      return { ok: false, error: "target_cannot_be_num" };
+    return { ok: true, target: u.href };
+  }
+  return { ok: false, error: "bad_kind", kinds: ["url", "promptpay", "crypto"] };
+}
+
+function validPayAmount(raw) {
+  if (raw == null || raw === "") return { ok: true, amount: null };
+  const n = Number(raw);
+  if (!isFinite(n) || n <= 0 || n > 1000000) return { ok: false, error: "bad_amount" };
+  return { ok: true, amount: n.toFixed(2) };
+}
+
+const PAY_CURRENCIES = ["THB", "GBP", "USD", "EUR"];
+
+/* ── event log — the meter ───────────────────────────────────────────────────
+   Every event is written; `billable` marks the ones a future invoice could
+   count. One billable per guest per link per 30 minutes: a refresh, a
+   double-scan, a flaky connection must never become two billed scans.
+   Nothing in this codebase turns the meter into a charge — that requires a
+   rate, and rates are set by a person, not by code.                         */
+async function logPayEvent(env, req, o) {
+  try {
+    let billable = 0;
+    if (o.kind === "scan" && o.active) {
+      const vid = await visitorId(req, env);
+      const dup = await env.DB.prepare(
+        `SELECT 1 FROM num_pay_events
+          WHERE token=? AND visitor_id=? AND billable=1
+            AND created_at > datetime('now','-30 minutes') LIMIT 1`
+      ).bind(o.token, vid).first();
+      billable = dup ? 0 : 1;
+      o.visitor_id = vid;
+    }
+    await env.DB.prepare(
+      `INSERT INTO num_pay_events (token,business_id,kind,billable,visitor_id,ip_hash,day,created_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).bind(o.token, o.business_id || "", o.kind, billable, o.visitor_id || null,
+           await ipHash(req), now().slice(0, 10), now()).run();
+    return billable;
+  } catch (e) { console.warn("[pay] log failed:", String(e).slice(0, 120)); return 0; }
+}
+
+/* ── GET /p/<token> — what the guest's camera opens ─────────────────────── */
+async function payLanding(req, env, tok) {
+  const ptok = clean(tok, 40).toUpperCase();
+  const link = await env.DB.prepare(
+    `SELECT l.token, l.business_id, l.label, l.kind, l.target, l.amount, l.currency,
+            l.state, l.crypto_asset, l.crypto_base_units, l.crypto_quote,
+            b.name AS business_name
+       FROM num_paylinks l JOIN businesses b ON b.id = l.business_id
+      WHERE l.token = ?`
+  ).bind(ptok).first();
+
+  if (!link) {
+    await logPayEvent(env, req, { token: ptok, business_id: "", kind: "unknown_token" });
+    return HTML(payPage({ state: "unknown" }), 404);
+  }
+  if (link.state === "revoked") {
+    await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "retired_view" });
+    return HTML(payPage({ state: "retired", venue: link.business_name }), 410);
+  }
+  await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "scan", active: true });
+  let cryptoInfo = null;
+  let walletUri = null;
+  if (link.kind === "crypto") {
+    // The quote was stamped when the code was minted. An open sticker has no
+    // quote at all — it names the asset and the guest sends what the bill says.
+    try { cryptoInfo = link.crypto_quote ? JSON.parse(link.crypto_quote) : null; } catch (e) { cryptoInfo = null; }
+    const a = CRYPTO.ASSETS[link.crypto_asset || "usdc-base"];
+    cryptoInfo = Object.assign({ asset: a?.asset || "USDC", chain: a?.label || "Base" }, cryptoInfo || {});
+    // The deep link carries what the QR cannot: the exact amount, so the
+    // guest never types a figure. Only for a bill — an open sticker has no
+    // amount to fill in.
+    walletUri = link.crypto_base_units
+      ? CRYPTO.paymentUri(link.crypto_asset || "usdc-base", link.target, BigInt(link.crypto_base_units))
+      : null;
+  }
+  return HTML(payPage({
+    state: "pay", token: ptok, venue: link.business_name, label: link.label,
+    kind: link.kind, amount: link.amount, currency: link.currency,
+    promptpayId: link.kind === "promptpay" ? link.target : null,
+    target: link.target, crypto: cryptoInfo, walletUri,
+  }));
+}
+
+/* ── GET /p/<token>/go — the tracked hop to the venue's own rails ────────── */
+async function payGo(req, env, tok) {
+  const ptok = clean(tok, 40).toUpperCase();
+  const link = await env.DB.prepare(
+    "SELECT token,business_id,kind,target,state FROM num_paylinks WHERE token=?"
+  ).bind(ptok).first();
+  if (!link || link.kind !== "url") return TEXT("not found", 404);
+  if (link.state === "revoked") return TEXT("retired", 410);
+  await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "tap_through" });
+  return new Response(null, { status: 302, headers: { location: link.target, "cache-control": "no-store" } });
+}
+
+/* ── QR artwork ──────────────────────────────────────────────────────────────
+   /api/pay/qr/<TOKEN>.svg  — the NUM link QR (camera → /p/ page), any kind.
+   /api/pay/emv/<TOKEN>.svg — the PromptPay EMV QR (banking app), promptpay
+   links only: refusing to draw it for a url-kind link means a print sheet
+   can never carry a bank-scannable code that pays nobody.
+   Both public by design — they encode what is printed on a card anyone can
+   photograph, and nothing else.                                             */
+async function payQrRoute(req, env, rest) {
+  const t = clean(String(rest || "").replace(/\.svg$/i, ""), 40).toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/.test(t)) return TEXT("bad token", 400);
+  const row = await env.DB.prepare(
+    "SELECT token, kind, target, crypto_asset, crypto_base_units FROM num_paylinks WHERE token=?"
+  ).bind(t).first();
+  if (!row) return TEXT("unknown token", 404);
+  // Crypto codes point at the /p/ page too, not at an EIP-681 URI.
+  //
+  // Two reasons, and the second is the important one. The encoders in this
+  // worker are fixed-version — qrSvg is 4-H (~34 bytes) and qr6m is 6-M
+  // (~106) — and an ERC-20 payment request is 133 bytes, so neither can hold
+  // one; encoding it threw, which is how this was found. But routing through
+  // the page is also what we would want anyway: a guest scanning a sticker
+  // with their phone camera gets the venue name, the exact amount, the
+  // network, and the warning that this cannot be undone, and taps through to
+  // their wallet from there. A bare payment URI shows them a hex address and
+  // nothing to check it against.
+  return new Response(qrSvg((env.SITE || "https://itsnum.com") + "/p/" + t), {
+    headers: { "content-type": "image/svg+xml; charset=utf-8",
+               "cache-control": "public, max-age=31536000, immutable" } });
+}
+
+async function payEmvRoute(req, env, rest) {
+  const t = clean(String(rest || "").replace(/\.svg$/i, ""), 40).toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/.test(t)) return TEXT("bad token", 400);
+  const row = await env.DB.prepare(
+    "SELECT token,kind,target,amount,state FROM num_paylinks WHERE token=?"
+  ).bind(t).first();
+  if (!row || row.kind !== "promptpay") return TEXT("unknown token", 404);
+  if (row.state === "revoked") return TEXT("retired", 410);
+  const payload = promptPayPayload(row.target, row.amount);
+  if (!payload) return TEXT("bad id", 500);
+  return new Response(qr6m.svg(payload), {
+    headers: { "content-type": "image/svg+xml; charset=utf-8",
+               "cache-control": "public, max-age=86400" } });
+}
+
+/* ── manager API (all bizAuth-gated, all logged) ─────────────────────────── */
+async function venuePayList(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
+  const { results } = await env.DB.prepare(
+    `SELECT l.token, l.label, l.kind, l.target, l.amount, l.currency, l.zone_type,
+            l.state, l.created_at, l.revoked_at,
+            (SELECT COUNT(*) FROM num_pay_events e
+              WHERE e.token = l.token AND e.kind='scan')        AS scans,
+            (SELECT COUNT(*) FROM num_pay_events e
+              WHERE e.token = l.token AND e.kind='tap_through') AS taps,
+            (SELECT MAX(created_at) FROM num_pay_events e WHERE e.token = l.token) AS last_scan
+       FROM num_paylinks l
+      WHERE l.business_id = ?
+      ORDER BY l.state = 'revoked', l.created_at`
+  ).bind(biz.id).all();
+  const month = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM num_pay_events
+      WHERE business_id=? AND kind='scan' AND day >= ?`
+  ).bind(biz.id, now().slice(0, 8) + "01").first();
+  return J({ ok: true, business: biz.name, month_scans: month?.n || 0, paylinks: results || [] });
+}
+
+async function venuePayCreate(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
+  let b;
+  try { b = await readJSON(req, 4096); } catch (e) { return J({ ok: false }, 400); }
+
+  const label = clean(b.label, 40);
+  if (!label) return J({ ok: false, error: "label_required" }, 400);
+  const kind = clean(b.kind, 12);
+  const vt = validPayTarget(kind, b.target);
+  if (!vt.ok) return J(vt, 400);
+  const va = validPayAmount(b.amount);
+  if (!va.ok) return J(va, 400);
+  const currency = PAY_CURRENCIES.includes(clean(b.currency, 3).toUpperCase())
+    ? clean(b.currency, 3).toUpperCase() : "THB";
+
+  const live = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM num_paylinks WHERE business_id=? AND state='active'"
+  ).bind(biz.id).first();
+  if ((live?.n || 0) >= MAX_ACTIVE_CODES)
+    return J({ ok: false, error: "too_many_paylinks", max: MAX_ACTIVE_CODES }, 409);
+
+  const dup = await env.DB.prepare(
+    "SELECT token FROM num_paylinks WHERE business_id=? AND state='active' AND lower(label)=lower(?)"
+  ).bind(biz.id, label).first();
+  if (dup) return J({ ok: false, error: "label_exists", token: dup.token }, 409);
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const t = newToken();
+    try {
+      await env.DB.prepare(
+        `INSERT INTO num_paylinks
+           (token,business_id,label,kind,target,promptpay_kind,amount_mode,amount,currency,zone_type,state,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?, 'active', ?)`
+      ).bind(t, biz.id, label, kind, vt.target, vt.promptpay_kind || null,
+             va.amount ? "fixed" : "open", va.amount, currency,
+             clean(b.zone_type, 20) || null, now()).run();
+      await logKeyEvent(env, req, biz.id, "ok", "paylink_create:" + label);
+      return J({ ok: true, token: t, label, kind,
+                 url: (env.SITE || "https://itsnum.com") + "/p/" + t });
+    } catch (e) { if (!String(e).includes("UNIQUE")) throw e; }
+  }
+  return J({ ok: false, error: "could_not_allocate" }, 503);
+}
+
+/* Retire / reinstate. There is deliberately no way to CHANGE a target —
+   where money goes is immutable per token. Retire it, make a new one. */
+async function venuePayState(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  const t = clean(b.token, 40).toUpperCase();
+  const to = clean(b.state, 12);
+  if (!t || !["revoked", "active"].includes(to))
+    return J({ ok: false, error: "missing_fields" }, 400);
+  const row = await env.DB.prepare(
+    "SELECT token,state,label FROM num_paylinks WHERE token=? AND business_id=?"
+  ).bind(t, biz.id).first();
+  if (!row) return J({ ok: false, error: "unknown_token" }, 404);
+  if (row.state === to) return J({ ok: true, unchanged: true, state: to });
+  await env.DB.prepare(
+    to === "revoked"
+      ? "UPDATE num_paylinks SET state='revoked', revoked_at=?, revoked_by=? WHERE token=?"
+      : "UPDATE num_paylinks SET state='active', revoked_at=NULL, revoked_by=NULL WHERE token=?"
+  ).bind(...(to === "revoked" ? [now(), "biz:" + biz.id, t] : [t])).run();
+  await logKeyEvent(env, req, biz.id, "ok", "paylink_" + to + ":" + row.label);
+  return J({ ok: true, token: t, state: to, label: row.label });
+}
+
+/* Bulk: one payment identity, a whole floor of labelled QRs.
+   { template:"bar", kind, target } or { zone_type, count, kind, target }.  */
+async function venuePayBulk(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
+  let b;
+  try { b = await readJSON(req, 4096); } catch (e) { return J({ ok: false }, 400); }
+
+  const kind = clean(b.kind, 12);
+  const vt = validPayTarget(kind, b.target);
+  if (!vt.ok) return J(vt, 400);
+  const va = validPayAmount(b.amount);
+  if (!va.ok) return J(va, 400);
+  const currency = PAY_CURRENCIES.includes(clean(b.currency, 3).toUpperCase())
+    ? clean(b.currency, 3).toUpperCase() : "THB";
+
+  let plan = [];
+  if (b.template) {
+    const tp = FLOOR_TEMPLATES[clean(b.template, 20)];
+    if (!tp) return J({ ok: false, error: "unknown_template",
+                        templates: Object.keys(FLOOR_TEMPLATES) }, 400);
+    for (const [zone, n] of Object.entries(tp.zones))
+      for (let i = 1; i <= n; i++)
+        plan.push([zone, n === 1 ? ZONE_LABEL[zone] : `${ZONE_LABEL[zone]} ${i}`]);
+  } else {
+    const zone = clean(b.zone_type, 20);
+    const count = Math.min(Math.max(1, Math.round(Number(b.count) || 0)), 100);
+    if (!ZONE_TYPES.includes(zone) || !count)
+      return J({ ok: false, error: "bad_zone_or_count", zones: ZONE_TYPES }, 400);
+    let start = Math.max(1, Math.round(Number(b.start) || 0));
+    if (!b.start) {
+      const ex = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM num_paylinks WHERE business_id=? AND zone_type=? AND state='active'"
+      ).bind(biz.id, zone).first();
+      start = (ex?.n || 0) + 1;
+    }
+    for (let i = 0; i < count; i++)
+      plan.push([zone, count === 1 && start === 1 ? ZONE_LABEL[zone]
+                                                  : `${ZONE_LABEL[zone]} ${start + i}`]);
+  }
+
+  const live = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM num_paylinks WHERE business_id=? AND state='active'"
+  ).bind(biz.id).first();
+  if ((live?.n || 0) + plan.length > MAX_ACTIVE_CODES)
+    return J({ ok: false, error: "too_many_paylinks",
+               active: live?.n || 0, requested: plan.length, max: MAX_ACTIVE_CODES }, 409);
+
+  const { results: existing } = await env.DB.prepare(
+    "SELECT lower(label) AS l FROM num_paylinks WHERE business_id=? AND state='active'"
+  ).bind(biz.id).all();
+  const have = new Set((existing || []).map((r) => r.l));
+
+  const made = [], skipped = [];
+  const site = env.SITE || "https://itsnum.com";
+  for (const [zone, label] of plan) {
+    if (have.has(label.toLowerCase())) { skipped.push(label); continue; }
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const t = newToken();
+      try {
+        await env.DB.prepare(
+          `INSERT INTO num_paylinks
+             (token,business_id,label,kind,target,promptpay_kind,amount_mode,amount,currency,zone_type,state,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?, 'active', ?)`
+        ).bind(t, biz.id, label, kind, vt.target, vt.promptpay_kind || null,
+               va.amount ? "fixed" : "open", va.amount, currency, zone, now()).run();
+        made.push({ token: t, label, zone_type: zone, url: `${site}/p/${t}` });
+        break;
+      } catch (e) { if (!String(e).includes("UNIQUE")) throw e; }
+    }
+  }
+  await logKeyEvent(env, req, biz.id, "ok", "paylink_bulk:" + made.length);
+  return J({ ok: true, created: made.length, skipped, paylinks: made });
+}
+
+/* ── GET /api/admin/pay/meter (x-admin-key) — the future invoice's source ──
+   Read-only rollup of billable scans per business per month. This is the
+   ONLY consumer of the `billable` flag, and it charges nobody: it exists so
+   that when a rate is finally set, the first invoice is computed from data
+   that was being collected honestly all along.                              */
+async function adminPayMeter(req, env) {
+  const key = req.headers.get("x-admin-key") || "";
+  if (!env.ADMIN_KEY || !sameSecret(env.ADMIN_KEY, key))
+    return J({ ok: false, error: "unauthorised" }, 401);
+  const { results } = await env.DB.prepare(
+    `SELECT e.business_id, b.name, substr(e.day,1,7) AS month,
+            SUM(e.billable) AS billable_scans,
+            SUM(CASE WHEN e.kind='scan' THEN 1 ELSE 0 END) AS raw_scans,
+            SUM(CASE WHEN e.kind='tap_through' THEN 1 ELSE 0 END) AS tap_throughs
+       FROM num_pay_events e LEFT JOIN businesses b ON b.id = e.business_id
+      WHERE e.business_id != ''
+      GROUP BY e.business_id, month
+      ORDER BY month DESC, billable_scans DESC LIMIT 200`
+  ).all();
+  return J({ ok: true, note: "meter only — no rate is set and nothing is invoiced",
+             months: results || [] });
+}
+
+/* ── security sweep additions ────────────────────────────────────────────────
+   Returns findings in the same shape securitySweep() stores; called from it.*/
+async function payFindings(env) {
+  const findings = [];
+  const q = async (sql, ...args) =>
+    (await env.DB.prepare(sql).bind(...args).all()).results || [];
+
+  // 6 · unknown pay tokens from one network — someone enumerating /p/
+  for (const r of await q(
+    `SELECT COALESCE(ip_hash,'?') AS net, COUNT(*) AS n
+       FROM num_pay_events
+      WHERE kind='unknown_token' AND created_at > datetime('now','-1 day')
+      GROUP BY ip_hash HAVING n > 30`)) {
+    findings.push({ kind: "pay_token_scanning", subject: r.net, severity: "warn",
+      evidence: `${r.n} scans of nonexistent paylinks from one network in 24h` });
+  }
+
+  // 7 · scan burst on one link — a misprint gone viral, or abuse
+  for (const r of await q(
+    `SELECT token, business_id, COUNT(*) AS n
+       FROM num_pay_events
+      WHERE kind='scan' AND created_at > datetime('now','-1 day')
+      GROUP BY token HAVING n > 300`)) {
+    findings.push({ kind: "pay_scan_burst", subject: r.business_id + "/" + r.token,
+      severity: "warn", evidence: `${r.n} scans of one paylink in 24h` });
+  }
+
+  // 8 · retired links still being scanned — old cards are still on tables,
+  //     which after a fraud-driven retirement is exactly the wrong state
+  for (const r of await q(
+    `SELECT business_id, COUNT(*) AS n
+       FROM num_pay_events
+      WHERE kind='retired_view' AND created_at > datetime('now','-1 day')
+      GROUP BY business_id HAVING n > 20`)) {
+    findings.push({ kind: "pay_retired_traffic", subject: r.business_id, severity: "warn",
+      evidence: `${r.n} scans in 24h hit retired paylinks — printed cards likely still out` });
+  }
+  return findings;
+}
+
+/* ── pages ─────────────────────────────────────────────────────────────── */
+function payShell(inner, title) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>${esc(title || "Pay — NUM")}</title>
+<style>
+body{font:17px/1.6 -apple-system,'Segoe UI',sans-serif;background:#faf8f4;color:#131a16;
+  margin:0;display:flex;justify-content:center}
+main{max-width:430px;width:100%;padding:28px 22px 40px}
+.venue{font-size:24px;font-weight:800;letter-spacing:-.3px;margin:10px 0 2px}
+.lbl{display:inline-block;font-size:14px;font-weight:600;background:#fff;
+  border:1px solid #e0ddd4;border-radius:8px;padding:2px 10px;margin-left:6px;vertical-align:3px}
+h1{font-size:20px;margin:14px 0 6px}
+.lede{color:#4a5450;margin:0 0 18px}
+.amount{font-size:34px;font-weight:800;margin:8px 0 16px}
+.btn{display:block;width:100%;text-align:center;background:#1f3a34;color:#fff;border:0;
+  border-radius:12px;padding:16px;font-size:18px;font-weight:700;text-decoration:none;box-sizing:border-box}
+.btn.ghost{background:transparent;color:#1f3a34;border:1.5px solid #1f3a34;margin-top:10px}
+.ppbox{background:#fff;border:1px solid #e0ddd4;border-radius:14px;padding:18px;margin:14px 0}
+.ppid{font-size:22px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.note{font-size:14px;color:#4a5450;margin-top:18px}
+.warn{font-size:14px;background:#fff;border:1px solid #e0ddd4;border-left:4px solid #b4552d;
+  border-radius:8px;padding:10px 12px;margin-top:16px;color:#4a5450}
+.foot{font-size:13px;color:#7a827e;margin-top:26px}
+</style></head><body><main>${inner}</main></body></html>`;
+}
+
+function payPage(o) {
+  if (o.state === "unknown") return payShell(`
+    <h1>This payment code isn't one of ours</h1>
+    <p class="lede">Nothing was charged. If this QR was on a table or a bill,
+    it did not come from NUM — please pay the venue directly and let staff know.</p>
+    <a class="btn ghost" href="https://itsnum.com/">Go to NUM</a>`, "Unknown code — NUM");
+
+  if (o.state === "retired") return payShell(`
+    <h1>This payment code has been retired</h1>
+    <p class="lede">${esc(o.venue)} replaced it. Ask staff for the current one —
+    old codes stop working the moment they're replaced, which is the point.</p>
+    <a class="btn ghost" href="https://itsnum.com/">Go to NUM</a>`, "Retired code — NUM");
+
+  const amt = o.amount ? `${esc(o.currency)} ${esc(o.amount)}` : null;
+
+  if (o.kind === "crypto") {
+    const a = o.crypto || {};
+    return payShell(`
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>Pay in ${esc(a.asset || "USDC")}</h1>
+    ${a.display ? `<div class="amount">${esc(a.display)} ${esc(a.asset || "USDC")}</div>` : ""}
+    ${amt ? `<p class="lede">Your bill is <b>${amt}</b>${a.rate ? ` — converted at ${esc(String(a.rate))} ${esc(o.currency)} to the dollar` : ""}.</p>` : ""}
+    <p class="lede">Scan with your wallet and send
+    <b>${esc(a.asset || "USDC")} on ${esc(a.chain || "Base")}</b>. The money goes
+    straight to ${esc(o.venue)}. NUM never holds it.</p>
+    <div class="ppbox">Send to<br><span class="ppid" style="font-size:13px;word-break:break-all">${esc(o.target)}</span><br>
+    <span class="note">${a.display ? `Exactly ${esc(a.display)} ${esc(a.asset)}.` : "Send the amount on your bill."}
+    Only ${esc(a.asset || "USDC")} on ${esc(a.chain || "Base")} — another network or another
+    coin may not arrive.</span></div>
+    ${o.walletUri ? `<a class="btn" href="${esc(o.walletUri)}">Open in my wallet</a>
+    <p class="note">This fills in the address and the exact amount for you, so
+    there is no figure to type.</p>` : ""}
+    <div class="warn">Crypto payments cannot be reversed. Check the address and
+    the network before you send, and if anything looks wrong — don't pay, and
+    tell staff.</div>
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`,
+      "Pay " + o.venue + " — NUM");
+  }
+
+  const inner = o.kind === "url" ? `
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>Pay ${esc(o.venue)}</h1>
+    ${amt ? `<div class="amount">${amt}</div>`
+          : `<p class="lede">The amount is on your bill — you'll confirm it on the venue's payment page.</p>`}
+    <a class="btn" href="/p/${esc(o.token)}/go" rel="noopener">Continue to payment</a>
+    <p class="note">You'll pay on ${esc(o.venue)}'s own payment page. NUM never
+    holds your money and never sees your card.</p>
+    <div class="warn">Not at ${esc(o.venue)} right now? Then this code isn't for
+    your table — don't pay, and tell staff.</div>
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>` : `
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>Pay by PromptPay</h1>
+    ${amt ? `<div class="amount">${amt}</div>` : ""}
+    <p class="lede">Open your Thai banking app and scan the <b>printed PromptPay
+    QR</b> on this card — the bank pays ${esc(o.venue)} directly.</p>
+    <div class="ppbox">PromptPay ID<br><span class="ppid">${esc(o.promptpayId)}</span><br>
+    <span class="note">You can also enter this ID in your banking app's PromptPay
+    transfer screen${amt ? ` — the amount is ${amt}` : ""}.</span></div>
+    <p class="note">Payment goes straight from your bank to ${esc(o.venue)}.
+    NUM never holds your money.</p>
+    <div class="warn">The name your banking app shows before you confirm should
+    match ${esc(o.venue)}. If it doesn't — don't pay, and tell staff.</div>
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`;
+  return payShell(inner, "Pay " + o.venue + " — NUM");
+}
+
+/* ── GET /biz/pay?k= — the manager, and the print surface ────────────────── */
+async function venuePayPage(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return HTML(payShell(`<h1>That link isn't valid</h1>
+    <p class="lede">Manager links rotate when a business asks for a new one.
+    Check the most recent email from NUM, or reply to it and we'll reissue.</p>`, "NUM"), 401);
+
+  const k = encodeURIComponent(url.searchParams.get("k") || "");
+  const { results: links } = await env.DB.prepare(
+    `SELECT l.token,l.label,l.kind,l.target,l.amount,l.currency,l.zone_type,l.state,
+            (SELECT COUNT(*) FROM num_pay_events e WHERE e.token=l.token AND e.kind='scan') AS scans
+       FROM num_paylinks l WHERE l.business_id=? ORDER BY l.state='revoked', l.created_at`
+  ).bind(biz.id).all();
+  const month = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM num_pay_events WHERE business_id=? AND kind='scan' AND day >= ?`
+  ).bind(biz.id, now().slice(0, 8) + "01").first();
+
+  const active = (links || []).filter((l) => l.state === "active");
+  const retired = (links || []).filter((l) => l.state !== "active");
+  const card = (l) => `
+    <div class="card" data-tok="${esc(l.token)}">
+      ${l.kind === "promptpay"
+        ? `<img class="emv" src="/api/pay/emv/${esc(l.token)}.svg" alt="PromptPay QR ${esc(l.label)}">
+           <div class="scanhint">Scan with your <b>banking app</b> to pay</div>
+           <img class="numqr" src="/api/pay/qr/${esc(l.token)}.svg" alt="NUM QR ${esc(l.label)}">
+           <div class="scanhint small">or camera-scan for details</div>`
+        : `<img class="emv" src="/api/pay/qr/${esc(l.token)}.svg" alt="Pay QR ${esc(l.label)}">
+           <div class="scanhint">Scan with your <b>camera</b> to pay</div>`}
+      <div class="cardlabel">${esc(biz.name)} · ${esc(l.label)}</div>
+      ${l.amount ? `<div class="cardamt">${esc(l.currency)} ${esc(l.amount)}</div>` : ""}
+    </div>`;
+
+  const row = (l) => `
+    <tr class="${l.state === 'active' ? '' : 'dead'}">
+      <td><b>${esc(l.label)}</b><br><span class="mut">${esc(l.kind === 'promptpay' ? 'PromptPay · ' + l.target : l.target)}</span></td>
+      <td>${l.amount ? esc(l.currency + " " + l.amount) : "open"}</td>
+      <td>${l.scans}</td>
+      <td>${l.state === "active"
+        ? `<button class="mini" onclick="setState('${esc(l.token)}','revoked')">Retire</button>`
+        : `<button class="mini" onclick="setState('${esc(l.token)}','active')">Reinstate</button>`}</td>
+    </tr>`;
+
+  return HTML(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Payment QRs — ${esc(biz.name)}</title>
+<style>
+:root{--paper:#faf8f4;--ink:#131a16;--pine:#1f3a34;--green:#1e7a4d;--line:#e0ddd4;--warn:#b4552d}
+body{font:16px/1.6 -apple-system,'Segoe UI',Inter,sans-serif;background:var(--paper);color:var(--ink);
+  margin:0;padding:22px 18px 60px;max-width:920px;margin-inline:auto}
+h1{font-size:22px;margin:0 0 2px}
+.sub{color:#4a5450;margin:0 0 18px;font-size:14px}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+.nav a{font-size:14px;font-weight:600;text-decoration:none;padding:7px 14px;
+  border-radius:10px;border:1.5px solid var(--pine);color:var(--pine)}
+.nav .on{background:var(--pine);color:#fff}
+.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+.count{font-weight:700}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 3px}
+input,select{width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.btn{background:var(--pine);color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:700;margin-top:12px;cursor:pointer}
+.mini{font:600 13px/1 inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}
+.mut{color:#7a827e;font-size:12px;word-break:break-all}
+.dead{opacity:.45}
+#out{font-size:14px;margin-top:10px;color:var(--warn);white-space:pre-wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.card{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:16px;text-align:center;page-break-inside:avoid}
+.card img.emv{width:180px;height:180px}
+.card img.numqr{width:74px;height:74px;margin-top:8px}
+.scanhint{font-size:13px;color:#4a5450}.scanhint.small{font-size:11px}
+.cardlabel{font-weight:800;margin-top:8px}
+.cardamt{font-weight:700;font-size:15px}
+.meter{font-size:14px;color:#4a5450}
+@media print{body{padding:0;background:#fff}
+  .tile,.nav,h1,.sub,#out,table,.noprint{display:none!important}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10mm;padding:8mm}}
+@media (max-width:520px){.grid{grid-template-columns:1fr 1fr}}
+</style></head><body>
+<h1>Payment QRs</h1>
+<p class="sub">${esc(biz.name)} · <span class="meter">${month?.n || 0} scans this month</span></p>
+<div class="nav">
+  <a href="/biz/codes?k=${k}">Codes</a>
+  <a href="/biz/visitors?k=${k}">Visitors</a>
+  <a href="/biz/offers?k=${k}">Offers</a>
+  <a class="on" href="/biz/pay?k=${k}">Pay</a>
+  <a href="/biz/settings?k=${k}">Settings</a>
+</div>
+
+<div class="tile noprint">
+  <b>Add a payment QR</b>
+  <p class="sub" style="margin-top:4px">Guests scan it, see <i>${esc(biz.name)} · the table's name</i>,
+  and pay you directly — by your own payment link, or by PromptPay from their Thai banking app.
+  NUM never touches the money. Where a code pays can never be edited: retire it and make a new
+  one, so a changed target is always a visible, logged act.</p>
+  <label>Label</label><input id="f_label" placeholder="Table 4">
+  <label>How guests pay</label>
+  <select id="f_kind">
+    <option value="promptpay">PromptPay (Thai banking apps)</option>
+    <option value="url">My payment link (Stripe, PayPal, Square…)</option>
+  </select>
+  <label id="l_target">PromptPay ID — mobile, tax ID, or e-wallet</label>
+  <input id="f_target" placeholder="0812345678">
+  <label>Fixed amount — leave empty to let the guest enter it</label>
+  <input id="f_amount" inputmode="decimal" placeholder="">
+  <button class="btn" onclick="createLink()">Create</button>
+  <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+    <b style="font-size:14px">Whole floor at once</b>
+    <p class="sub" style="margin:2px 0 8px">Uses the same payment details for every spot,
+    labelled to match your table codes.</p>
+    <select id="f_tpl">${Object.entries(FLOOR_TEMPLATES).map(([kk, v]) =>
+      `<option value="${esc(kk)}">${esc(v.label)}</option>`).join("")}</select>
+    <button class="btn" onclick="bulk()">Create floor</button>
+  </div>
+  <div id="out"></div>
+</div>
+
+<div class="tile noprint">
+  <b>Your payment QRs</b> · <span class="count">${active.length} active</span>
+  <table><tbody>${active.map(row).join("")}${retired.map(row).join("")}</tbody></table>
+</div>
+
+<div class="tile noprint"><b>Print</b>
+  <p class="sub" style="margin:4px 0 0">Cmd/Ctrl-P prints just the cards below — one per spot,
+  ready to cut. PromptPay cards carry the bank-app QR big and the camera QR small.</p>
+</div>
+<div class="grid">${active.map(card).join("")}</div>
+
+<script>
+var K=${JSON.stringify(url.searchParams.get("k") || "")};
+document.getElementById('f_kind').onchange=function(){
+  var pp=this.value==='promptpay';
+  document.getElementById('l_target').textContent=pp?'PromptPay ID — mobile, tax ID, or e-wallet':'Payment link (https)';
+  document.getElementById('f_target').placeholder=pp?'0812345678':'https://pay.example.com/yourvenue';
+};
+function post(p,b){return fetch(p+'?k='+encodeURIComponent(K),{method:'POST',
+  headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()})}
+function say(m){document.getElementById('out').textContent=m}
+function createLink(){
+  post('/api/venue/pay',{label:document.getElementById('f_label').value,
+    kind:document.getElementById('f_kind').value,
+    target:document.getElementById('f_target').value,
+    amount:document.getElementById('f_amount').value||null})
+  .then(function(r){ if(r.ok) location.reload(); else say('Could not create: '+(r.hint||r.error)) })
+}
+function bulk(){
+  post('/api/venue/pay/bulk',{template:document.getElementById('f_tpl').value,
+    kind:document.getElementById('f_kind').value,
+    target:document.getElementById('f_target').value,
+    amount:document.getElementById('f_amount').value||null})
+  .then(function(r){ if(r.ok) location.reload(); else say('Could not create: '+(r.hint||r.error)) })
+}
+function setState(t,s){ post('/api/venue/pay/state',{token:t,state:s})
+  .then(function(r){ if(r.ok) location.reload(); else say(r.error||'failed') }) }
+</script>
+</body></html>`);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VENUE SETTINGS — the three switches that were never writable.
+
+   Everything about which switches exist, what they may be set to, and what a
+   venue may not touch lives in growth/venuesettings.mjs. This file is the
+   door: authenticate, ask that module what the submission means, and say so
+   in a sentence.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Owner, or the console key acting as one. Anyone else gets a 403. */
+async function settingsWho(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return { deny: J({ ok: false, error: "unauthorised" }, 401) };
+  if (!QR.can(who.role, "settings")) return { deny: qrDeny("settings") };
+  return { who };
+}
+
+/* ── GET /api/venue/settings ─────────────────────────────────────────────── */
+async function venueSettingsGet(req, env, url) {
+  const { who, deny } = await settingsWho(req, env, url);
+  if (deny) return deny;
+  const s = await readSettings(env, who.business.id);
+  return J({
+    ok: true,
+    business: who.business.name,
+    food_and_drink: foodAndDrink(who.business),
+    settings: s,
+    history: await settingHistory(env, who.business.id, 20),
+  });
+}
+
+/* ── POST /api/venue/settings ────────────────────────────────────────────── */
+async function venueSettingsSet(req, env, url) {
+  const { who, deny } = await settingsWho(req, env, url);
+  if (deny) return deny;
+
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+
+  const out = await writeSettings(env, {
+    businessId: who.business.id,
+    patch: b || {},
+    by: who.via === "key" ? "key" : (who.name || who.userId || "staff"),
+    via: who.via,
+    ip: req.headers.get("cf-connecting-ip") || null,
+    foodAndDrink: foodAndDrink(who.business),
+  });
+  return J(out, out.ok ? 200 : 400);
+}
+
+/* ── GET /biz/settings?k= ────────────────────────────────────────────────── */
+async function venueSettingsPage(req, env, url) {
+  const { who, deny } = await settingsWho(req, env, url);
+  if (deny) {
+    return HTML(payShell(`<h1>That link isn't valid</h1>
+      <p class="lede">Settings are the owner's. If you manage this venue and
+      need a link of your own, reply to any NUM email and we'll send one.</p>`,
+      "NUM"), 401);
+  }
+
+  const k = encodeURIComponent(url.searchParams.get("k") || "");
+  const s = await readSettings(env, who.business.id);
+  const fnb = foodAndDrink(who.business);
+  const log = await settingHistory(env, who.business.id, 12);
+
+  const on = (v) => (v === 1 ? " checked" : "");
+  const money = (cs) => "$" + ((cs || 0) / 100).toFixed(2);
+
+  // A switch that would do nothing here is shown as a sentence, not as a
+  // disabled control. A greyed-out toggle invites "how do I get that", and
+  // the answer — you are not a restaurant — is better said than implied.
+  const fnbOnly = (field, body) => (fnb ? body : "");
+
+  return HTML(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Settings — ${esc(who.business.name)}</title>
+<style>
+:root{--paper:#faf8f4;--ink:#131a16;--pine:#1f3a34;--green:#1e7a4d;--line:#e0ddd4;--warn:#b4552d}
+body{font:16px/1.6 -apple-system,'Segoe UI',Inter,sans-serif;background:var(--paper);color:var(--ink);
+  margin:0;padding:22px 18px 60px;max-width:720px;margin-inline:auto}
+h1{font-size:22px;margin:0 0 2px}
+.sub{color:#4a5450;margin:0 0 18px;font-size:14px}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+.nav a{font-size:14px;font-weight:600;text-decoration:none;padding:7px 14px;
+  border-radius:10px;border:1.5px solid var(--pine);color:var(--pine)}
+.nav .on{background:var(--pine);color:#fff}
+.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.row{display:flex;gap:12px;align-items:flex-start}
+.row input[type=checkbox]{width:22px;height:22px;margin-top:3px;flex:0 0 auto;accent-color:var(--pine)}
+.name{font-weight:700}
+.why{color:#4a5450;font-size:14px;margin:3px 0 0}
+label.amt{display:block;font-size:13px;font-weight:600;margin:12px 0 3px}
+input[type=number]{width:140px;box-sizing:border-box;font:inherit;padding:9px;
+  border:1px solid var(--line);border-radius:9px;background:#fff}
+.btn{background:var(--pine);color:#fff;border:0;border-radius:10px;padding:12px 20px;
+  font-size:15px;font-weight:700;cursor:pointer}
+.locked{background:#f4f2ec;border:1px dashed var(--line)}
+.locked dt{font-weight:700;font-size:14px;margin-top:8px}
+.locked dd{margin:0;color:#4a5450;font-size:14px}
+#out{font-size:14px;margin-top:12px;white-space:pre-wrap}
+#out.bad{color:var(--warn)}#out.good{color:var(--green)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:7px 6px;border-top:1px solid var(--line);vertical-align:top}
+.mut{color:#7a827e}
+</style></head><body>
+<h1>Settings</h1>
+<p class="sub">${esc(who.business.name)}${who.via === "key" ? "" : " · signed in as " + esc(who.name || "")}</p>
+<div class="nav">
+  <a href="/biz/codes?k=${k}">Codes</a>
+  <a href="/biz/visitors?k=${k}">Visitors</a>
+  <a href="/biz/offers?k=${k}">Offers</a>
+  <a href="/biz/pay?k=${k}">Pay</a>
+  <a class="on" href="/biz/settings?k=${k}">Settings</a>
+</div>
+
+<div class="tile">
+  <div class="row">
+    <input type="checkbox" id="f_bill_value"${on(s.f_bill_value)}>
+    <div><div class="name">${esc(SET_FIELDS.f_bill_value.label)}</div>
+      <p class="why">${esc(SET_FIELDS.f_bill_value.why)}</p></div>
+  </div>
+</div>
+
+${fnbOnly("priority", `<div class="tile">
+  <div class="row">
+    <input type="checkbox" id="f_priority_seating"${on(s.f_priority_seating)}>
+    <div><div class="name">${esc(SET_FIELDS.f_priority_seating.label)}</div>
+      <p class="why">${esc(SET_FIELDS.f_priority_seating.why)}</p></div>
+  </div>
+  <label class="amt">Most a guest may be asked for — up to $20.00</label>
+  <input type="number" id="priority_max_cs_dollars" min="0" max="20" step="0.5"
+         value="${((s.priority_max_cs || 0) / 100).toFixed(2)}">
+  <p class="why">You keep ${(s.priority_share_bps ?? 4000) / 100}% of it.</p>
+</div>
+
+<div class="tile">
+  <div class="row">
+    <input type="checkbox" id="f_tips"${on(s.f_tips)}>
+    <div><div class="name">${esc(SET_FIELDS.f_tips.label)}</div>
+      <p class="why">${esc(TIPS_UNDERTAKING)}</p>
+      <p class="why">NUM takes nothing from a tip and never holds one — it moves
+      on your rail, not ours.${s.tips_terms_at
+        ? " You accepted this on " + esc(new Date(s.tips_terms_at * 1000).toISOString().slice(0, 10)) + "."
+        : ""}</p></div>
+  </div>
+</div>`)}
+
+${fnb ? "" : `<div class="tile"><p class="why">Priority seating and tipping are for
+  places that seat people at tables — bars and restaurants. They are not shown
+  here because they would not do anything.</p></div>`}
+
+<button class="btn" onclick="save()">Save</button>
+<div id="out"></div>
+
+<div class="tile locked" style="margin-top:22px">
+  <b>Your agreement with NUM</b>
+  <p class="why" style="margin-top:2px">These are not settings. They are the terms
+  you were quoted, and only NUM can move them — reply to any NUM email to talk
+  about it.</p>
+  <dl>
+    <dt>Commission</dt><dd>${((s.commission_bp ?? 1000) / 100)}% of a reported bill</dd>
+    <dt>Per confirmed table</dt><dd>${money(s.booking_fee_cs)} when the bill isn't reported</dd>
+    <dt>Your share of a priority fee</dt><dd>${(s.priority_share_bps ?? 4000) / 100}%</dd>
+  </dl>
+</div>
+
+${log.length ? `<div class="tile"><b>What has changed</b>
+  <table><tbody>${log.map((r) => `<tr>
+    <td>${esc(r.field)}</td><td>${esc(String(r.was ?? "—"))} → <b>${esc(String(r.now))}</b></td>
+    <td class="mut">${esc(r.changed_by || "")}<br>${esc(String(r.created_at || "").slice(0, 16))}</td>
+  </tr>`).join("")}</tbody></table></div>` : ""}
+
+<script>
+var K=${JSON.stringify(url.searchParams.get("k") || "")};
+var FNB=${fnb ? "true" : "false"};
+function el(id){return document.getElementById(id)}
+function say(m,good){var o=el('out');o.textContent=m;o.className=good?'good':'bad'}
+function save(){
+  var body={f_bill_value:el('f_bill_value').checked?1:0};
+  if(FNB){
+    var d=parseFloat(el('priority_max_cs_dollars').value||'0');
+    if(!isFinite(d)||d<0)d=0;
+    body.priority_max_cs=Math.round(d*100);
+    body.f_priority_seating=el('f_priority_seating').checked?1:0;
+    body.f_tips=el('f_tips').checked?1:0;
+    // The checkbox IS the acceptance: it sits directly under the undertaking,
+    // so ticking it is the act of agreeing to it.
+    if(body.f_tips===1)body.tips_terms=1;
+  }
+  fetch('/api/venue/settings?k='+encodeURIComponent(K),{method:'POST',
+    headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+  .then(function(r){return r.json()}).then(function(r){
+    if(!r.ok)return say(r.error||'Could not save',false);
+    if(r.refused&&r.refused.length)
+      return say(r.refused.map(function(x){return x.reason}).join('\\n\\n'),false);
+    say(r.changed.length?'Saved. '+r.changed.length+' change'+(r.changed.length>1?'s':'')+'.':'Nothing to change.',true);
+    if(r.changed.length)setTimeout(function(){location.reload()},900);
+  }).catch(function(){say('Could not reach NUM. Try again.',false)});
+}
+</script>
+</body></html>`);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AFTER THE VISIT — how was it, and would you like to leave something.
+
+   Reached from the completing scan (venueArrive) at /a/<token>. The rules
+   live in worker/aftertable.mjs and growth/aftervisit.mjs; this is the door
+   and the page.
+
+   Two things are load-bearing and neither is obvious from the markup:
+
+     · NUM records a tip and does not carry one. The button that says "leave
+       something" writes a row and then sends the guest to the VENUE'S OWN
+       payment link. Money in transit for someone else is money transmission.
+     · The tip prompt appears only where the venue switched tipping on and
+       accepted the undertaking that it reaches the staff. A venue that has
+       not is never mentioned to the guest as one that takes tips.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const AFTER_CHIPS_CS = Object.freeze([200, 500, 1000, 2000]);
+
+/* ── GET /api/after/<token> ──────────────────────────────────────────────── */
+async function afterStateRoute(req, env, token) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const st = await afterState(env, token);
+  return J(st, st.ok ? 200 : 404);
+}
+
+/* ── POST /api/after/rate ────────────────────────────────────────────────── */
+async function afterRateRoute(req, env) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("after:" + ip, 30)) return J({ ok: false, error: "slow_down" }, 429);
+
+  let b;
+  try { b = await readJSON(req, 4096); } catch (e) { return J({ ok: false }, 400); }
+
+  const row = await resolveAfter(env, b.token);
+  if (!row || row.expired) return J({ ok: false, error: row ? "expired" : "unknown" }, 404);
+
+  const r = await afterRate(env, {
+    bookingId: row.booking_id,
+    businessId: row.business_id,
+    placeId: row.place_id,
+    memberRef: row.member_ref,
+    stars: b.stars,
+    // Not run through clean(): a guest's sentence about their evening is prose,
+    // and clean() would strip the punctuation out of it. aftertable.rate()
+    // caps the length, and nothing renders it as markup.
+    comment: b.comment == null ? null : String(b.comment).slice(0, 2000),
+    lang: clean(b.lang, 8) || null,
+  });
+  return r ? J({ ok: true, rated: r.stars }) : J({ ok: false, error: "nothing_said" }, 400);
+}
+
+/* ── POST /api/after/tip ─────────────────────────────────────────────────── */
+async function afterTipRoute(req, env) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("after:" + ip, 30)) return J({ ok: false, error: "slow_down" }, 429);
+
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+
+  const row = await resolveAfter(env, b.token);
+  if (!row || row.expired) return J({ ok: false, error: row ? "expired" : "unknown" }, 404);
+
+  // The venue's switch, checked server-side. The page hides the prompt when
+  // tipping is off, but a hidden control is a suggestion, not a rule.
+  const st = await afterState(env, b.token);
+  if (!st.ok || !st.tips) return J({ ok: false, error: "tips_not_offered" }, 409);
+
+  const rail = st.rail || { rail: "venue", url: null };
+  const t = await afterTip(env, {
+    bookingId: row.booking_id,
+    businessId: row.business_id,
+    placeId: row.place_id,
+    amountCs: b.amount_cs,
+    forWhom: b.for_whom == null ? null : String(b.for_whom).slice(0, 120),
+    rail: rail.rail,
+    railRef: rail.token || null,
+  });
+  if (!t) return J({ ok: false, error: "bad_amount" }, 400);
+
+  // NUM has recorded it. Where it is actually PAID is the venue's own link,
+  // or the server's hand.
+  return J({ ok: true, amount_cs: t.amount_cs, rail: t.rail, pay: rail.url || null });
+}
+
+/* ── GET /a/<token> — the page ───────────────────────────────────────────── */
+async function afterPage(req, env, token) {
+  const st = await afterState(env, token);
+
+  if (!st.ok) {
+    return HTML(payShell(st.error === "expired"
+      ? `<h1>This link has expired</h1>
+         <p class="lede">Feedback links last three days. If something needs
+         saying, the venue would still like to hear it — and so would we, at
+         <a href="mailto:info@itsnum.com">info@itsnum.com</a>.</p>
+         <a class="btn ghost" href="https://itsnum.com/">Go to NUM</a>`
+      : `<h1>We don't recognise this link</h1>
+         <p class="lede">Nothing was charged and nothing was recorded. If it
+         came from a table at a venue, tell staff — it did not come from us.</p>
+         <a class="btn ghost" href="https://itsnum.com/">Go to NUM</a>`,
+      "NUM"), st.error === "expired" ? 410 : 404);
+  }
+
+  const chips = AFTER_CHIPS_CS.map((cs) =>
+    `<button type="button" class="chip" data-cs="${cs}">$${(cs / 100).toFixed(0)}</button>`).join("");
+
+  const tipBlock = st.tips ? `
+  <div class="sect" id="tipsect">
+    <h2>Leave something for the server?</h2>
+    <p class="lede small">It is theirs. NUM takes nothing from it and never
+    holds it — ${st.rail.url
+      ? "the next screen is " + esc(st.venue) + "'s own payment page."
+      : "tell your server, or add it to the bill."}</p>
+    <div class="chips">${chips}<button type="button" class="chip" data-cs="other">Other</button></div>
+    <input id="tipamt" type="number" min="0" step="0.5" inputmode="decimal"
+           placeholder="Amount" style="display:none">
+    <input id="forwhom" maxlength="60" placeholder="Who served you? (optional)">
+    <button class="btn" id="tipbtn">Leave it</button>
+  </div>` : "";
+
+  return HTML(payShell(`
+  <div class="venue">${esc(st.venue)}</div>
+  <h1>How was it?</h1>
+  <p class="lede">Only NUM sees this until there are enough ratings to show an
+  average, and a rating can never be bought.</p>
+
+  <div class="stars" id="stars">
+    ${[1, 2, 3, 4, 5].map((n) =>
+      `<button type="button" class="star" data-n="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}
+  </div>
+  <textarea id="comment" rows="3" placeholder="Anything you'd tell a friend? (optional)"></textarea>
+  <button class="btn" id="ratebtn">Send</button>
+  ${tipBlock}
+  <div id="out" class="note"></div>
+  <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>
+
+<style>
+.stars{display:flex;gap:6px;margin:6px 0 14px}
+.star{font-size:38px;line-height:1;background:none;border:0;padding:0 2px;cursor:pointer;
+  color:#d8d3c8}
+.star.on{color:#e0a83a}
+textarea,input{width:100%;box-sizing:border-box;font:inherit;padding:11px;
+  border:1px solid #e0ddd4;border-radius:10px;background:#fff;margin-bottom:10px}
+.sect{margin-top:30px;border-top:1px solid #e0ddd4;padding-top:20px}
+h2{font-size:18px;margin:0 0 4px}
+.small{font-size:14px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
+.chip{font:600 16px/1 inherit;padding:12px 16px;border-radius:10px;
+  border:1.5px solid #1f3a34;background:#fff;color:#1f3a34;cursor:pointer}
+.chip.on{background:#1f3a34;color:#fff}
+.done{color:#1e7a4d}
+</style>
+<script>
+var T=${JSON.stringify(st.token)};
+var stars=0, cs=0;
+function el(i){return document.getElementById(i)}
+function say(m,good){var o=el('out');o.textContent=m;o.className='note'+(good?' done':'')}
+Array.prototype.forEach.call(document.querySelectorAll('.star'),function(b){
+  b.onclick=function(){
+    stars=+b.dataset.n;
+    Array.prototype.forEach.call(document.querySelectorAll('.star'),function(x){
+      x.className='star'+(+x.dataset.n<=stars?' on':'');
+    });
+  };
+});
+el('ratebtn').onclick=function(){
+  var c=el('comment').value.trim();
+  if(!stars&&!c)return say('Tap a star, or write a line — either is enough.',false);
+  fetch('/api/after/rate',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({token:T,stars:stars||null,comment:c||null,
+      lang:(navigator.language||'').slice(0,5)})})
+   .then(function(r){return r.json()}).then(function(r){
+     say(r.ok?'Thank you — that reached them.':'Could not send that. Try again.',r.ok);
+   }).catch(function(){say('Could not reach NUM. Try again.',false)});
+};
+var tipbtn=el('tipbtn');
+if(tipbtn){
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'),function(b){
+    b.onclick=function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.chip'),function(x){x.className='chip'});
+      b.className='chip on';
+      if(b.dataset.cs==='other'){el('tipamt').style.display='block';el('tipamt').focus();cs=0}
+      else{el('tipamt').style.display='none';cs=+b.dataset.cs}
+    };
+  });
+  tipbtn.onclick=function(){
+    var amt=cs||Math.round(parseFloat(el('tipamt').value||'0')*100);
+    if(!(amt>0))return say('Pick an amount first.',false);
+    fetch('/api/after/tip',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({token:T,amount_cs:amt,for_whom:el('forwhom').value||null})})
+     .then(function(r){return r.json()}).then(function(r){
+       if(!r.ok)return say('Could not record that. Try again.',false);
+       if(r.pay){say('Recorded. Taking you to the payment page…',true);
+                 setTimeout(function(){location.href=r.pay},700);}
+       else say('Recorded. Hand it to your server or add it to the bill — it is theirs.',true);
+     }).catch(function(){say('Could not reach NUM. Try again.',false)});
+  };
+}
+</script>`, "How was it? — " + st.venue));
+}
+
 const _origScheduled = WORKER.scheduled;
 WORKER.scheduled = async (event, env, ctx) => {
   await _origScheduled.call(WORKER, event, env, ctx);
@@ -4023,3 +6075,1020 @@ WORKER.scheduled = async (event, env, ctx) => {
   if (min < 15 && hr % 6 === 0) ctx.waitUntil(securitySweep(env));
 };
 export default WORKER;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QR SYSTEM — tables, the codes on them, who may issue them, and the agent.
+
+   Two ways in, deliberately:
+
+     • a STAFF SESSION, from an emailed magic link. Carries a person and a
+       role, so every bill code says who made it. This is the normal path.
+     • the venue's CONSOLE KEY (?k=), which already exists and already works.
+       Kept as the owner's break-glass: it needs no email, no inbox and no
+       session, which is what day one in Phuket actually looks like.
+
+   The key path is treated as `owner` with no user id — actions taken that way
+   are attributed to "key", not to a person, and the log says so.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const QR_COOKIE = "num_biz";
+
+function qrCookie(req, name) {
+  const raw = req.headers.get("cookie") || "";
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return "";
+}
+
+/**
+ * Resolve who is asking. Returns null when nobody legitimate is.
+ * `{ business, role, userId, via }` — userId is null on the key path.
+ */
+async function qrWho(req, env, url) {
+  const sid = qrCookie(req, QR_COOKIE);
+  if (sid) {
+    const s = await QR.sessionUser(env, sid);
+    if (s) {
+      return {
+        business: { id: s.business_id, name: s.business_name },
+        role: s.role, userId: s.user_id, via: "session", name: s.name || s.email,
+      };
+    }
+  }
+  const biz = await bizAuth(env, url, req);
+  if (biz) return { business: biz, role: "owner", userId: null, via: "key", name: "console key" };
+  return null;
+}
+
+function qrDeny(action) {
+  return J({ ok: false, error: "not_allowed", need: action }, 403);
+}
+
+/* ── sign in ─────────────────────────────────────────────────────────────── */
+
+async function qrLoginStart(req, env) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("bizlogin:" + ip, 6)) return J({ ok: false, error: "slow_down" }, 429);
+
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+
+  const out = await QR.startLogin(env, b.email, { ip });
+  // The reply is identical whether or not the address is real. Anything else
+  // turns this endpoint into a directory of which venues are on NUM.
+  if (!out.ok) return J({ ok: false, error: "bad_email" }, 400);
+  if (!out.sent) return J({ ok: true, sent: true });
+
+  const link = (env.SITE || "https://itsnum.com") + "/biz/login?t=" + out.token;
+  const who = out.user;
+  await sendBatch(env, [{
+    from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+    to: b.email,
+    subject: "Sign in to " + (who.business_name || "your NUM console"),
+    html:
+      '<p style="font:16px/1.5 -apple-system,Helvetica,Arial,sans-serif">' +
+      "Tap to sign in to <b>" + esc(who.business_name || "your venue") + "</b> on NUM.</p>" +
+      '<p><a href="' + esc(link) + '" style="display:inline-block;background:#0f5c4a;color:#fff;' +
+      'padding:13px 20px;border-radius:9px;font:600 16px -apple-system,Helvetica,Arial,sans-serif;' +
+      'text-decoration:none">Open my console</a></p>' +
+      '<p style="font:13px/1.5 -apple-system,Helvetica,Arial,sans-serif;color:#5b6673">' +
+      "This link works once and expires in 20 minutes. If you did not ask for it, ignore it — " +
+      "nothing happens until it is opened.</p>",
+  }]).catch(() => {});
+
+  return J({ ok: true, sent: true });
+}
+
+async function qrLoginRedeem(req, env, url) {
+  const out = await QR.redeemLogin(env, url.searchParams.get("t") || "");
+  if (!out.ok) {
+    return new Response(
+      qrShell("<h1>That link did not work</h1><p>" + esc(out.reason) +
+        '</p><p><a href="/biz/tables">Ask for a new one</a></p>', "Sign in"),
+      { status: 400, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
+    );
+  }
+  // Host-only cookie, not readable by script, not sent cross-site.
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: "/biz/tables",
+      "cache-control": "no-store",
+      "set-cookie": QR_COOKIE + "=" + encodeURIComponent(out.sid) +
+        "; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax",
+    },
+  });
+}
+
+async function qrLogout(req, env) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const sid = qrCookie(req, QR_COOKIE);
+  if (sid) await QR.endSession(env, sid);
+  return J({ ok: true }, 200, {
+    "set-cookie": QR_COOKIE + "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+  });
+}
+
+async function qrMe(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  return J({
+    ok: true, business: who.business.name, business_id: who.business.id,
+    role: who.role, via: who.via, name: who.name, can: QR.CAN[who.role] || [],
+  });
+}
+
+/* ── tables ──────────────────────────────────────────────────────────────── */
+
+async function qrTablesList(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  return J({ ok: true, business: who.business.name, role: who.role,
+             tables: await QR.listTables(env, who.business.id) });
+}
+
+async function qrTablesCreate(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "tables")) return qrDeny("tables");
+  let b;
+  try { b = await readJSON(req, 8192); } catch (e) { return J({ ok: false }, 400); }
+
+  const made = await QR.createTables(env, who.business.id, b);
+  if (!made.ok) return J(made, 400);
+  // Give them their codes now rather than waiting for the next agent pass —
+  // a manager who just defined a floor wants to print today.
+  const codes = await QR.ensureTableCodes(env, who.business.id, { issuedBy: who.userId || "key" });
+  await logKeyEvent(env, req, who.business.id, "ok", "tables_create:" + made.created.length);
+  return J({ ok: true, ...made, codes });
+}
+
+async function qrTableState(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "tables")) return qrDeny("tables");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  const out = await QR.setTableActive(env, who.business.id, String(b.id || ""), !!b.active);
+  return J(out.ok ? { ok: true } : { ok: false, error: "unknown_table" }, out.ok ? 200 : 404);
+}
+
+async function qrIssueCodes(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "stickers")) return qrDeny("stickers");
+  const out = await QR.ensureTableCodes(env, who.business.id, { issuedBy: who.userId || "key" });
+  return J({ ok: true, ...out });
+}
+
+/* ── bills ───────────────────────────────────────────────────────────────── */
+
+async function qrBillCreate(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "bill")) return qrDeny("bill");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+
+  const out = await QR.billForTable(env, {
+    businessId: who.business.id,
+    resourceId: b.resource_id ? String(b.resource_id) : null,
+    amount: b.amount,
+    bookingId: b.booking_id ? String(b.booking_id).slice(0, 64) : null,
+    issuedBy: who.userId || "key",
+  });
+  if (!out.ok) return J(out, 400);
+  await logKeyEvent(env, req, who.business.id, "ok", "bill_create:" + out.token);
+  return J(out);
+}
+
+async function qrBillSettle(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "settle")) return qrDeny("settle");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  const out = await QR.settleBill(env, who.business.id, b.token, { settledBy: who.userId || "key" });
+  return J(out, out.ok ? 200 : 404);
+}
+
+async function qrBillsOpen(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  return J({ ok: true, bills: await QR.openBills(env, who.business.id) });
+}
+
+/* ── staff ───────────────────────────────────────────────────────────────── */
+
+async function qrStaffList(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "staff")) return qrDeny("staff");
+  return J({ ok: true, staff: await QR.listStaff(env, who.business.id) });
+}
+
+async function qrStaffAdd(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "staff")) return qrDeny("staff");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  const out = await QR.addStaff(env, who.business.id, b);
+  if (out.ok) await logKeyEvent(env, req, who.business.id, "ok", "staff_add:" + out.role);
+  return J(out, out.ok ? 200 : 400);
+}
+
+async function qrStaffState(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "staff")) return qrDeny("staff");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  // An owner locking themselves out by disabling their own row is a support
+  // ticket we do not need. The console key remains as a way back in, but say no.
+  if (who.userId && String(b.id) === who.userId && b.status === "disabled") {
+    return J({ ok: false, error: "cannot_disable_yourself" }, 400);
+  }
+  const out = await QR.setStaffStatus(env, who.business.id, String(b.id || ""), String(b.status || ""));
+  return J(out, out.ok ? 200 : 400);
+}
+
+/* ── the agent's own log ─────────────────────────────────────────────────── */
+
+async function qrAgentLog(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  return J({ ok: true, runs: await QR.agentLog(env, { businessId: who.business.id, limit: 60 }) });
+}
+
+async function qrRunAgent(env) {
+  const out = await QR.runAgent(env);
+  console.log("qr agent", JSON.stringify(out));
+  return out;
+}
+
+/* ── the console page ────────────────────────────────────────────────────── */
+
+function qrShell(inner, title) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>${esc(title)} — NUM</title><style>
+:root{--ink:#12161c;--muted:#5b6673;--line:#e3e7ec;--bg:#fbfcfd;--accent:#0f5c4a;--accent-ink:#0b3f33}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:0 0 60px}
+.wrap{max-width:760px;margin:0 auto;padding:0 18px}
+header{display:flex;align-items:center;gap:10px;padding:22px 0 10px}
+.brand{font-weight:700;font-size:19px;letter-spacing:-.02em}
+.brand span{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
+.who{margin-left:auto;font-size:13px;color:var(--muted);text-align:right}
+h1{font-size:24px;letter-spacing:-.02em;margin:14px 0 4px}
+h2{font-size:12px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin:26px 0 8px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px;margin:0 0 14px}
+.muted{color:var(--muted);font-size:14px}
+label{display:block;font-weight:600;font-size:13px;margin:12px 0 5px}
+input,select{width:100%;padding:11px 12px;font-size:16px;border:1px solid #c9d0d8;border-radius:9px;font-family:inherit;background:#fff}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+button{margin-top:14px;padding:12px 16px;font:600 15px inherit;background:var(--accent);color:#fff;border:0;border-radius:9px;cursor:pointer;font-family:inherit}
+button.ghost{background:#fff;color:var(--accent-ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 6px;border-bottom:1px solid var(--line)}
+td{padding:9px 6px;border-bottom:1px solid #f0f2f4;vertical-align:middle}
+td.r{text-align:right;white-space:nowrap}
+a{color:var(--accent-ink)}
+.qr{width:74px;height:74px;display:block}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#eef3f1;color:var(--accent-ink)}
+.pill.off{background:#f4f0ee;color:#8c5a2f}
+.out{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;word-break:break-word}
+.big{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink)}
+</style></head><body><div class="wrap">${inner}</div></body></html>`;
+}
+
+/**
+ * One page for the whole floor: define tables, print their stickers, put an
+ * amount on a table, close a bill, add staff, and read what the agent did.
+ *
+ * Everything is fetched by the page rather than rendered server-side, because
+ * this screen sits open on a phone behind a bar all evening and re-rendering
+ * the floor plan on every tap is the wrong shape for that.
+ */
+async function qrTablesPage(req, env, url) {
+  const who = await qrWho(req, env, url);
+
+  if (!who) {
+    return new Response(qrShell(`
+<header><div class="brand">NUM<span>by 5arz</span></div></header>
+<h1>Sign in</h1>
+<p class="muted">We email you a link. No password.</p>
+<div class="card">
+  <label for="e">Your email</label>
+  <input id="e" type="email" inputmode="email" autocomplete="email" placeholder="you@yourplace.com">
+  <button id="go">Email me a link</button>
+  <div class="out" id="out"></div>
+</div>
+<script>
+var b=document.getElementById('go');
+b.onclick=function(){
+  b.disabled=true;b.textContent='Sending…';
+  fetch('/api/venue/login',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({email:document.getElementById('e').value.trim()})})
+   .then(function(r){return r.json()})
+   .then(function(j){
+     document.getElementById('out').textContent = j.ok
+       ? 'If that address is on a venue here, the link is on its way. It works once and lasts 20 minutes.'
+       : 'That email address does not look right.';
+     b.disabled=false;b.textContent='Email me a link';
+   })
+   .catch(function(){document.getElementById('out').textContent='Could not send. Try again.';
+     b.disabled=false;b.textContent='Email me a link';});
+};
+</script>`, "Sign in"), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  }
+
+  const k = url.searchParams.get("k") || "";
+  const isOwner = QR.can(who.role, "staff");
+  const canTables = QR.can(who.role, "tables");
+
+  return new Response(qrShell(`
+<header>
+  <div class="brand">NUM<span>by 5arz</span></div>
+  <div class="who">${esc(who.business.name)}<br>${esc(who.name)} · ${esc(who.role)}</div>
+</header>
+
+<h1>Tables &amp; codes</h1>
+<p class="muted">Each table carries one sticker to pay and one code to check in. Both are printed once and never change.</p>
+
+<div id="idcard"></div>
+
+<p class="muted"><a href="/biz/statement" id="stmt">What you owe NUM &rarr;</a></p>
+
+<h2>Put an amount on a table</h2>
+<div class="card">
+  <div class="row">
+    <div><label for="bt">Table</label><select id="bt"></select></div>
+    <div><label for="ba">Amount</label><input id="ba" inputmode="decimal" placeholder="2400"></div>
+  </div>
+  <button id="bill">Make the paying QR</button>
+  <div id="billout" class="out"></div>
+</div>
+
+<h2>Open bills</h2>
+<div class="card"><table><thead><tr><th>Table</th><th>Amount</th><th>Code</th><th></th></tr></thead>
+<tbody id="bills"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+
+${canTables ? `
+<h2>Your floor</h2>
+<div class="card">
+  <div class="row">
+    <div><label for="pfx">Name them</label><input id="pfx" value="Table"></div>
+    <div><label for="from">From</label><input id="from" inputmode="numeric" value="1"></div>
+    <div><label for="to">To</label><input id="to" inputmode="numeric" value="12"></div>
+  </div>
+  <button id="mk">Create tables and their codes</button>
+  <div id="mkout" class="out"></div>
+</div>` : ""}
+
+<div class="card"><table><thead><tr><th>Table</th><th>Pay sticker</th><th>Check-in</th><th></th></tr></thead>
+<tbody id="tables"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+
+${isOwner ? `
+<h2>Staff</h2>
+<div class="card">
+  <div class="row">
+    <div><label for="se">Email</label><input id="se" type="email" placeholder="waiter@yourplace.com"></div>
+    <div><label for="sr">Can</label><select id="sr">
+      <option value="staff">Put amounts on tables</option>
+      <option value="manager">That, plus the floor plan</option>
+      <option value="owner">Everything, including staff</option>
+      <option value="readonly">Look only</option>
+    </select></div>
+  </div>
+  <button id="sadd">Add them</button>
+  <div id="sout" class="out"></div>
+</div>
+<div class="card"><table><thead><tr><th>Who</th><th>Can</th><th></th></tr></thead>
+<tbody id="staff"></tbody></table></div>` : ""}
+
+<h2>What the agent did</h2>
+<div class="card"><table><thead><tr><th>When</th><th>Task</th><th>What</th></tr></thead>
+<tbody id="agent"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody></table></div>
+
+<p class="muted" style="margin-top:22px">
+  <button class="ghost" id="out-btn" style="margin:0">Sign out</button>
+</p>
+
+<script>
+var K=${JSON.stringify(k)};
+function q(p){return p+(K?(p.indexOf('?')<0?'?':'&')+'k='+encodeURIComponent(K):'')}
+function get(p){return fetch(q(p),{credentials:'same-origin'}).then(function(r){return r.json()})}
+function post(p,b){return fetch(q(p),{method:'POST',credentials:'same-origin',
+  headers:{'content-type':'application/json'},body:JSON.stringify(b||{})}).then(function(r){return r.json()})}
+function el(t,txt){var e=document.createElement(t);if(txt!=null)e.textContent=txt;return e}
+function td(txt,cls){var e=el('td',txt);if(cls)e.className=cls;return e}
+
+function drawTables(rows){
+  var tb=document.getElementById('tables');tb.textContent='';
+  var sel=document.getElementById('bt');sel.textContent='';
+  if(!rows.length){tb.appendChild(el('tr')).appendChild(td('No tables yet.','muted')).colSpan=4;return}
+  rows.forEach(function(r){
+    var tr=el('tr');
+    var n=td('');n.appendChild(el('b',r.name));
+    if(!r.active)n.appendChild(el('span',' off')).className='pill off';
+    tr.appendChild(n);
+    ['sticker','checkin'].forEach(function(kind){
+      var c=el('td');
+      if(r[kind]){
+        var img=el('img');img.className='qr';img.loading='lazy';
+        img.src=(kind==='sticker'?'/api/pay/qr/':'/api/venue/qr/')+encodeURIComponent(r[kind])+'.svg';
+        img.alt=kind+' code for '+r.name;
+        c.appendChild(img);
+        c.appendChild(el('div',r[kind])).className='muted';
+      } else { c.appendChild(el('span','—')).className='muted' }
+      tr.appendChild(c);
+    });
+    tr.appendChild(td(r.open_bills?r.open_bills+' open':'','r muted'));
+    tb.appendChild(tr);
+    if(r.active){var o=el('option',r.name);o.value=r.id;sel.appendChild(o)}
+  });
+}
+
+function drawBills(rows){
+  var tb=document.getElementById('bills');tb.textContent='';
+  if(!rows.length){var tr=el('tr');var c=td('Nothing open.','muted');c.colSpan=4;tr.appendChild(c);tb.appendChild(tr);return}
+  rows.forEach(function(r){
+    var tr=el('tr');
+    tr.appendChild(td(r.table_name||r.label||'—'));
+    tr.appendChild(td(r.amount+' '+r.currency));
+    tr.appendChild(td(r.token));
+    var c=el('td');c.className='r';
+    var b=el('button','Paid');b.className='ghost';b.style.margin='0';
+    b.onclick=function(){b.disabled=true;post('/api/venue/bill/settle',{token:r.token}).then(refresh)};
+    c.appendChild(b);tr.appendChild(c);
+    tb.appendChild(tr);
+  });
+}
+
+function drawAgent(rows){
+  var tb=document.getElementById('agent');tb.textContent='';
+  if(!rows.length){var tr=el('tr');var c=td('Nothing yet — it runs every 15 minutes.','muted');c.colSpan=3;tr.appendChild(c);tb.appendChild(tr);return}
+  rows.slice(0,25).forEach(function(r){
+    var tr=el('tr');
+    tr.appendChild(td(new Date(r.ran_at*1000).toLocaleString()));
+    tr.appendChild(td(r.task+' · '+r.action));
+    tr.appendChild(td((r.detail||'')+(r.ref?' ('+r.ref+')':'')));
+    tb.appendChild(tr);
+  });
+}
+
+function drawStaff(rows){
+  var tb=document.getElementById('staff');if(!tb)return;tb.textContent='';
+  rows.forEach(function(r){
+    var tr=el('tr');
+    tr.appendChild(td((r.name?r.name+' · ':'')+r.email));
+    tr.appendChild(td(r.role+(r.status==='active'?'':' · disabled')));
+    var c=el('td');c.className='r';
+    var b=el('button',r.status==='active'?'Disable':'Enable');b.className='ghost';b.style.margin='0';
+    b.onclick=function(){b.disabled=true;
+      post('/api/venue/staff/state',{id:r.id,status:r.status==='active'?'disabled':'active'}).then(refresh)};
+    c.appendChild(b);tr.appendChild(c);tb.appendChild(tr);
+  });
+}
+
+
+function drawIdentity(j){
+  var box=document.getElementById('idcard'); if(!box) return; box.textContent='';
+  if(j.has_identity){
+    var d=el('div');d.className='card';
+    d.appendChild(el('h2','Where your money goes')).style.margin='0 0 6px';
+    var t=el('div',(j.kind==='promptpay'?'PromptPay ':(j.kind==='crypto'?(j.asset_label||'Crypto')+' · ':''))+j.target);
+    if(j.kind==='crypto')t.style.wordBreak='break-all';
+    t.style.fontWeight='700';d.appendChild(t);
+    d.appendChild(el('div','Paid bank to bank, straight into this account. NUM never holds it.')).className='muted';
+    d.appendChild(el('div','This cannot be edited. To change bank account, retire the codes and set a new one — every sticker must be reprinted.')).className='muted';
+    box.appendChild(d);
+    return;
+  }
+  var c=el('div');c.className='card';
+  c.appendChild(el('h1','Where should your money go?')).style.margin='0 0 4px';
+  var lead='Add this once and every table can be printed.';
+  if(j.tables_waiting) lead=j.tables_waiting+' table'+(j.tables_waiting===1?'':'s')+' are waiting on this. Nothing can be paid until it is set.';
+  c.appendChild(el('p',lead)).className='muted';
+  if(!j.can_set){ c.appendChild(el('p','Ask the owner to set this.')).className='muted'; box.appendChild(c); return }
+
+  var lk=el('label','How do you want to be paid');lk.htmlFor='kind';c.appendChild(lk);
+  var sel=el('select');sel.id='kind';
+  [['promptpay','PromptPay — Thai bank'],['crypto','USDC on Base — crypto wallet']].forEach(function(o){
+    var op=el('option',o[1]);op.value=o[0];sel.appendChild(op)});
+  c.appendChild(sel);
+
+  var l=el('label','Your PromptPay ID');l.htmlFor='pp';c.appendChild(l);
+  var i=el('input');i.id='pp';i.inputMode='numeric';
+  i.placeholder='Thai mobile, 13-digit tax ID, or 15-digit e-wallet';
+  c.appendChild(i);
+  sel.onchange=function(){
+    var crypto = sel.value === 'crypto';
+    l.textContent = crypto ? 'Your wallet address' : 'Your PromptPay ID';
+    i.placeholder = crypto ? '0x…  — the address USDC should arrive at' :
+      'Thai mobile, 13-digit tax ID, or 15-digit e-wallet';
+    i.inputMode = crypto ? 'text' : 'numeric';
+    i.value='';o.textContent='';
+  };
+  var b=el('button','Check it');c.appendChild(b);
+  var o=el('div');o.className='out';o.id='idout';c.appendChild(o);
+  box.appendChild(c);
+
+  b.onclick=function(){
+    o.textContent='';
+    post('/api/venue/identity',{kind:sel.value,target:i.value.trim()}).then(function(r){
+      if(!r.ok){o.textContent=r.hint||r.error||'That does not look right.';return}
+      o.textContent='';
+      var img=el('img');
+      img.src=q('/api/venue/identity/preview.svg')+(K?'&':'?')+'kind='+encodeURIComponent(sel.value)+
+              '&target='+encodeURIComponent(r.target);
+      img.style.width='200px';img.style.height='200px';img.style.display='block';img.style.margin='8px 0';
+      var warn=el('p',r.check);warn.style.fontWeight='700';
+      o.appendChild(warn);o.appendChild(img);
+      var yes=el('button','Yes — that is my account');
+      var no=el('button','No, let me retype it');no.className='ghost';no.style.marginLeft='8px';
+      o.appendChild(yes);o.appendChild(no);
+      no.onclick=function(){o.textContent=''};
+      yes.onclick=function(){
+        yes.disabled=true;no.disabled=true;yes.textContent='Saving…';
+        post('/api/venue/identity',{kind:sel.value,target:r.target,confirm:true}).then(function(f){
+          if(!f.ok){o.textContent=f.reason||'Could not save that.';return}
+          o.textContent='Saved. '+(f.codes&&f.codes.stickers.length||0)+' table sticker(s) printed.';
+          refresh();
+        });
+      };
+    });
+  };
+}
+
+function refresh(){
+  get('/api/venue/identity').then(function(j){if(j.ok)drawIdentity(j)});
+  get('/api/venue/tables').then(function(j){if(j.ok)drawTables(j.tables||[])});
+  get('/api/venue/bills').then(function(j){if(j.ok)drawBills(j.bills||[])});
+  get('/api/venue/agent').then(function(j){if(j.ok)drawAgent(j.runs||[])});
+  ${isOwner ? "get('/api/venue/staff').then(function(j){if(j.ok)drawStaff(j.staff||[])});" : ""}
+}
+refresh();
+if(K)document.getElementById('stmt').href='/biz/statement?k='+encodeURIComponent(K);
+
+document.getElementById('bill').onclick=function(){
+  var o=document.getElementById('billout');o.textContent='';
+  post('/api/venue/bill',{resource_id:document.getElementById('bt').value,
+                          amount:document.getElementById('ba').value}).then(function(j){
+    if(!j.ok){o.textContent=j.reason||j.error||'Could not make that code.';return}
+    o.textContent='';
+    var img=el('img');img.src='/api/pay/qr/'+encodeURIComponent(j.token)+'.svg';
+    img.style.width='190px';img.style.height='190px';img.style.display='block';
+    o.appendChild(el('div',j.amount+' '+j.currency)).className='big';
+    o.appendChild(el('div', j.booking ? ('Booking '+j.booking.short_code+' · '+j.booking.party_size+' guests — NUM earns its 10% on this one') : 'No booking on this table — walk-in, nothing charged')).className='muted';
+    o.appendChild(img);
+    o.appendChild(el('div',j.url));
+    document.getElementById('ba').value='';
+    refresh();
+  });
+};
+
+${canTables ? `
+document.getElementById('mk').onclick=function(){
+  var o=document.getElementById('mkout');o.textContent='Working…';
+  post('/api/venue/tables',{prefix:document.getElementById('pfx').value,
+                            from:document.getElementById('from').value,
+                            to:document.getElementById('to').value}).then(function(j){
+    if(!j.ok){o.textContent=j.reason||'Could not create those.';return}
+    var blocked=(j.codes&&j.codes.blocked||[]).length;
+    o.textContent='Added '+j.created.length+', already there '+j.skipped.length+
+      (blocked?' — '+blocked+' have no pay sticker yet because this venue has no payment code to copy.':'');
+    refresh();
+  });
+};` : ""}
+
+${isOwner ? `
+document.getElementById('sadd').onclick=function(){
+  var o=document.getElementById('sout');o.textContent='';
+  post('/api/venue/staff',{email:document.getElementById('se').value.trim(),
+                           role:document.getElementById('sr').value}).then(function(j){
+    o.textContent=j.ok?'Added. They sign in at /biz/tables with their email.':(j.reason||'Could not add them.');
+    if(j.ok)document.getElementById('se').value='';
+    refresh();
+  });
+};` : ""}
+
+document.getElementById('out-btn').onclick=function(){
+  post('/api/venue/logout').then(function(){location.href='/biz/tables'});
+};
+</script>`, "Tables & codes"), {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/* ── the payment identity: where this venue's money goes ─────────────────── */
+
+async function qrIdentityGet(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  const id = await QR.identityOf(env, who.business.id);
+  return J({
+    ok: true,
+    has_identity: !!id,
+    // The owner set this and has to be able to check it. Masking the very
+    // thing they are verifying is how a wrong account number survives.
+    kind: id?.kind || null,
+    target: id?.target || null,
+    promptpay_kind: id?.promptpay_kind || null,
+    crypto_asset: id?.crypto_asset || null,
+    asset_label: id?.crypto_asset ? CRYPTO.ASSETS[id.crypto_asset]?.label || null : null,
+    currency: id?.currency || null,
+    token: id?.token || null,
+    tables_waiting: await QR.tablesWaiting(env, who.business.id),
+    can_set: QR.can(who.role, "stickers"),
+  });
+}
+
+/**
+ * Two steps on purpose.
+ *
+ * Without `confirm`, this validates and hands back what the money would do —
+ * nothing is written. The console shows the resulting PromptPay QR and asks
+ * the owner to scan it with their own banking app and check the name their
+ * bank displays. A mistyped digit is a valid PromptPay id belonging to a
+ * stranger, and once it is on a printed sticker the venue's takings go to
+ * that stranger until somebody notices.
+ *
+ * With `confirm: true`, it is written, and it cannot be edited afterwards.
+ */
+async function qrIdentitySet(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "stickers")) return qrDeny("stickers");
+
+  let b;
+  try { b = await readJSON(req, 4096); } catch (e) { return J({ ok: false }, 400); }
+
+  const kind = clean(b.kind, 12) || "promptpay";
+  // A crypto target is an address plus one of our verified assets, so it
+  // arrives as an object rather than a bare string.
+  const raw = kind === "crypto" ? { address: b.target, asset: b.asset } : b.target;
+  const vt = validPayTarget(kind, raw);
+  if (!vt.ok) return J(vt, 400);
+
+  const currency = PAY_CURRENCIES.includes(clean(b.currency, 3).toUpperCase())
+    ? clean(b.currency, 3).toUpperCase() : "THB";
+
+  if (!b.confirm) {
+    const checks = {
+      promptpay: "Scan this with your own banking app. It must show YOUR account name. If it shows anyone else, the number is wrong.",
+      crypto: "Send yourself a small test amount first and confirm it arrives. Crypto payments cannot be reversed — there is nobody to call.",
+      url: "Open this link yourself and check it is your own payment page.",
+    };
+    return J({
+      ok: true, preview: true, kind, target: vt.target,
+      promptpay_kind: vt.promptpay_kind || null,
+      crypto_asset: vt.crypto_asset || null,
+      asset_label: vt.crypto_asset ? CRYPTO.ASSETS[vt.crypto_asset].label : null,
+      currency,
+      check: checks[kind] || checks.url,
+    });
+  }
+
+  const out = await QR.setIdentity(env, who.business.id, {
+    kind, target: vt.target, promptpayKind: vt.promptpay_kind || null,
+    cryptoAsset: vt.crypto_asset || null,
+    currency, issuedBy: who.userId || "key",
+  });
+  if (!out.ok) return J(out, 409);
+  await logKeyEvent(env, req, who.business.id, "ok", "identity_set:" + kind);
+  return J(out);
+}
+
+async function qrIdentityRetire(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  // Retiring pulls every sticker in the venue. That is an owner's decision.
+  if (!QR.can(who.role, "staff")) return qrDeny("staff");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  if (!b.confirm) return J({ ok: false, error: "confirm_required" }, 400);
+
+  const out = await QR.retireIdentity(env, who.business.id, { by: who.userId || "key" });
+  await logKeyEvent(env, req, who.business.id, "ok", "identity_retire:" + out.retired + "+" + out.cancelled_bills);
+  return J(out);
+}
+
+/**
+ * The PromptPay QR for a target that has NOT been saved yet, so an owner can
+ * check it against their own bank before it is committed to a sticker.
+ *
+ * Authenticated, because an open EMV generator is a gift to anyone building a
+ * convincing fake payment page. It renders only what the caller typed and
+ * stores nothing.
+ */
+async function qrIdentityPreview(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return TEXT("unauthorised", 401);
+  const kind = clean(url.searchParams.get("kind"), 12) || "promptpay";
+  const target = url.searchParams.get("target") || "";
+
+  // A wallet cannot read a PromptPay payload and a bank cannot read an
+  // address, so the preview has to render whichever rail is being set up.
+  if (kind === "crypto") {
+    const addr = CRYPTO.addressQrText(target);
+    if (!addr) return TEXT("bad address", 400);
+    return new Response(qrSvg(addr), {
+      headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+
+  const vt = validPayTarget("promptpay", target);
+  if (!vt.ok) return TEXT("bad id", 400);
+  const payload = promptPayPayload(vt.target, null);
+  if (!payload) return TEXT("bad id", 400);
+  return new Response(qr6m.svg(payload), {
+    headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MONEY — what a venue owes, how it pays, and who gets paid afterwards.
+
+   The guest's money never comes near this code. It went bank to bank at the
+   table. What lives here is the 10% NUM invoices afterwards, and the host's
+   share of what NUM actually collected.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function adminOk(env, url, req) {
+  const key = url.searchParams.get("key") || req.headers.get("x-admin-key") || "";
+  return !!env.ADMIN_KEY && sameSecret(env.ADMIN_KEY, key);
+}
+
+/** The QR a venue scans to pay NUM. Rendered only for a real, configured payee. */
+async function payeeQrRoute(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return TEXT("unauthorised", 401);
+  const p = MONEY.payee(env);
+  if (!p.ok) return TEXT("no payee configured", 503);
+  const want = clean(url.searchParams.get("m"), 12) || p.methods[0].kind;
+  const m = p.methods.find((x) => x.kind === want) || p.methods[0];
+  const amt = url.searchParams.get("amount") || null;
+
+  if (m.kind === "crypto") {
+    // The invoice is in the venue's currency; NUM is paid the same figure in
+    // the stablecoin, quoted here at the configured rate.
+    const ccy = clean(url.searchParams.get("currency"), 3).toUpperCase() || "THB";
+    const minor = Math.round(Number(amt) * 100);
+    const qte = Number.isFinite(minor) && minor > 0
+      ? CRYPTO.quote(env, m.asset_key, minor, ccy) : { ok: false };
+    const text = qte.ok
+      ? CRYPTO.paymentUri(m.asset_key, m.address, BigInt(qte.base_units))
+      : CRYPTO.addressQrText(m.address);
+    if (!text) return TEXT("bad payee", 500);
+    return new Response(qrSvg(text), {
+      headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+
+  const payload = promptPayPayload(m.promptpay, amt);
+  if (!payload) return TEXT("bad payee", 500);
+  return new Response(qr6m.svg(payload), {
+    headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+async function venueStatement(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const [open, invoices] = await Promise.all([
+    MONEY.owed(env, who.business.id),
+    MONEY.invoicesFor(env, who.business.id),
+  ]);
+  const p = MONEY.payee(env);
+  return J({
+    ok: true,
+    business: who.business.name,
+    // Not yet invoiced — this week so far.
+    running: { total_cs: open.total_cs, currency: open.currency, lines: open.billable.length,
+               awaiting: open.awaiting },
+    invoices,
+    pay_to: p.ok ? { name: p.name, promptpay: p.promptpay, methods: p.methods } : null,
+    pay_to_error: p.ok ? null : p.reason,
+  });
+}
+
+async function venueInvoiceLines(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  const id = clean(url.searchParams.get("id"), 40);
+  // Scope the lookup to the venue: an invoice id is guessable enough that
+  // "SELECT by id" alone would hand one venue another's takings.
+  const inv = await env.DB.prepare(
+    "SELECT id, amount_cs, currency, state, period_start, period_end, due_at, paid_at" +
+    " FROM num_invoices WHERE id = ?1 AND business_id = ?2"
+  ).bind(id, who.business.id).first();
+  if (!inv) return J({ ok: false, error: "unknown_invoice" }, 404);
+  return J({ ok: true, invoice: inv, lines: await MONEY.invoiceLines(env, inv.id) });
+}
+
+/* ── admin: cut the invoices, record the money, pay the hosts ────────────── */
+
+async function adminMoney(req, env, url) {
+  if (!adminOk(env, url, req)) return J({ ok: false, error: "unauthorised" }, 401);
+  const action = clean(url.searchParams.get("do"), 24);
+
+  if (req.method === "GET" && (!action || action === "open")) {
+    const { results } = await env.DB.prepare(
+      `SELECT i.id, i.business_id, b.name AS business, i.period_start, i.period_end,
+              i.currency, i.amount_cs, i.line_count, i.state, i.issued_at, i.due_at
+         FROM num_invoices i LEFT JOIN businesses b ON b.id = i.business_id
+        WHERE i.state = 'open' ORDER BY i.issued_at LIMIT 200`
+    ).all();
+    return J({ ok: true, open: results || [] });
+  }
+
+  let b = {};
+  if (req.method === "POST") { try { b = await readJSON(req, 4096); } catch (e) { b = {}; } }
+
+  if (action === "run") return J(await MONEY.invoiceAll(env));
+
+  if (action === "pay") {
+    const out = await MONEY.payInvoice(env, clean(b.id, 40), {
+      ref: clean(b.ref, 80) || null,
+      amountCs: Number.isFinite(Number(b.amount_cs)) ? Number(b.amount_cs) : null,
+    });
+    return J(out, out.ok ? 200 : 400);
+  }
+
+  if (action === "payouts") {
+    return J(await MONEY.buildPayoutRun(env, {
+      currency: clean(b.currency, 3).toUpperCase() || null,
+      minMinor: Math.max(0, Math.round(Number(b.min_minor) || 0)),
+    }));
+  }
+
+  if (action === "payouts_sent") {
+    const out = await MONEY.markPayoutSent(env, clean(b.id, 40), { ref: clean(b.ref, 80) || null });
+    return J(out, out.ok ? 200 : 400);
+  }
+
+  return J({ ok: false, error: "unknown_action",
+             actions: ["open", "run", "pay", "payouts", "payouts_sent"] }, 400);
+}
+
+/* ── the venue's statement page ──────────────────────────────────────────── */
+
+async function venueStatementPage(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) {
+    return new Response(qrShell(
+      '<h1>Sign in</h1><p><a href="/biz/tables">Open your console</a></p>', "Statement"),
+      { status: 401, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  }
+  const k = url.searchParams.get("k") || "";
+  return new Response(qrShell(`
+<header>
+  <div class="brand">NUM<span>by 5arz</span></div>
+  <div class="who">${esc(who.business.name)}<br>${esc(who.name)} · ${esc(who.role)}</div>
+</header>
+<h1>What you owe NUM</h1>
+<p class="muted">10% of bills from guests NUM sent you. Your own customers, walk-ins and
+no-shows are never on this page. The food money already went straight to your account.</p>
+
+<div class="card" id="running"><span class="muted">Loading…</span></div>
+
+<h2>Invoices</h2>
+<div class="card"><table><thead><tr><th>Week</th><th>Amount</th><th>State</th><th></th></tr></thead>
+<tbody id="inv"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+<div id="detail"></div>
+<p class="muted"><a href="/biz/tables${k ? "?k=" + encodeURIComponent(k) : ""}">&larr; Back to tables</a></p>
+
+<script>
+var K=${JSON.stringify(k)};
+function q(p){return p+(K?(p.indexOf('?')<0?'?':'&')+'k='+encodeURIComponent(K):'')}
+function get(p){return fetch(q(p),{credentials:'same-origin'}).then(function(r){return r.json()})}
+function el(t,x){var e=document.createElement(t);if(x!=null)e.textContent=x;return e}
+function td(x,c){var e=el('td',x);if(c)e.className=c;return e}
+function m(cs,cur){return (cs/100).toFixed(2)+' '+(cur||'THB')}
+
+var PAY=null;
+get('/api/venue/statement').then(function(j){
+  if(!j.ok) return;
+  PAY=j.pay_to;
+  var r=document.getElementById('running');r.textContent='';
+  r.appendChild(el('div','This week so far')).className='muted';
+  r.appendChild(el('div',m(j.running.total_cs,j.running.currency))).className='big';
+  if(j.running.awaiting)
+    r.appendChild(el('div',j.running.awaiting+' booking(s) we have no bill amount for — not counted.')).className='muted';
+  r.appendChild(el('div','Invoiced every Monday for the week just finished.')).className='muted';
+  if(j.pay_to_error) r.appendChild(el('div',j.pay_to_error)).className='muted';
+
+  var tb=document.getElementById('inv');tb.textContent='';
+  if(!j.invoices.length){var tr=el('tr');var c=td('Nothing invoiced yet.','muted');c.colSpan=4;tr.appendChild(c);tb.appendChild(tr);return}
+  j.invoices.forEach(function(v){
+    var tr=el('tr');
+    tr.appendChild(td(v.period_start.slice(0,10)+' → '+v.period_end.slice(0,10)));
+    tr.appendChild(td(m(v.amount_cs,v.currency)));
+    tr.appendChild(td(v.state==='paid'?'Paid':(v.state==='void'?'Cancelled':'Due')));
+    var c=el('td');c.className='r';
+    var b=el('button',v.state==='open'?'Pay':'View');b.className='ghost';b.style.margin='0';
+    b.onclick=function(){show(v)};
+    c.appendChild(b);tr.appendChild(c);tb.appendChild(tr);
+  });
+});
+
+function show(v){
+  var d=document.getElementById('detail');d.textContent='';
+  var card=el('div');card.className='card';
+  card.appendChild(el('h2','Invoice '+v.id)).style.margin='0 0 8px';
+  card.appendChild(el('div',m(v.amount_cs,v.currency))).className='big';
+  if(v.state==='open'&&PAY){
+    card.appendChild(el('p','Scan to pay NUM · '+PAY.name)).className='muted';
+    (PAY.methods||[]).forEach(function(mth){
+      var img=el('img');
+      img.src=q('/api/venue/payee.svg')+(K?'&':'?')+'m='+mth.kind+
+              '&currency='+encodeURIComponent(v.currency||'THB')+
+              '&amount='+encodeURIComponent((v.amount_cs/100).toFixed(2));
+      img.style.width='190px';img.style.height='190px';img.style.display='block';img.style.marginTop='8px';
+      card.appendChild(img);
+      var lbl=el('div', mth.kind==='promptpay' ? ('PromptPay '+mth.promptpay)
+                                               : (mth.label+' — '+mth.address));
+      lbl.className='muted';lbl.style.wordBreak='break-all';card.appendChild(lbl);
+    });
+  } else if(v.state==='open'){
+    card.appendChild(el('p','Payment details are not set up yet — we will send them.')).className='muted';
+  }
+  var tbl=el('table');var tb=el('tbody');
+  tbl.appendChild(tb);card.appendChild(tbl);
+  d.appendChild(card);
+  get('/api/venue/invoice?id='+encodeURIComponent(v.id)).then(function(j){
+    if(!j.ok)return;
+    j.lines.forEach(function(l){
+      var tr=el('tr');
+      tr.appendChild(td((l.created_at||'').slice(0,10)));
+      tr.appendChild(td('Bill '+((l.basis_cs||0)/100).toFixed(2)));
+      tr.appendChild(td(m(l.amount_cs,l.currency),'r'));
+      tb.appendChild(tr);
+    });
+  });
+  d.scrollIntoView({behavior:'smooth',block:'start'});
+}
+</script>`, "Statement"), {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CHAIN WATCHER + QR INTEGRITY
+
+   The watcher reads and never signs. There is no key in this worker and no
+   transaction is ever sent from it; the worst a hostile RPC endpoint can do
+   is claim a payment arrived, and every such claim is stored with its
+   transaction hash so a human can check it on a block explorer.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+async function chainSweep(env) {
+  if (!env.NUM_RPC_BASE) return { ok: false, reason: "no RPC endpoint configured" };
+  // The settle function is passed in rather than imported by rpc.mjs, so the
+  // watcher can never reach into the money path on its own.
+  return RPC.sweep(env, (e, businessId, token, opts) => QR.settleBill(e, businessId, token, opts));
+}
+
+/** GET /api/venue/chain — is the watcher on, and what has it seen for me? */
+async function venueChain(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const status = await RPC.watcherStatus(env);
+  const { results } = await env.DB.prepare(
+    `SELECT s.tx_hash, s.block_number, s.value_base, s.outcome, s.detail, s.created_at,
+            s.token_matched
+       FROM num_chain_sightings s
+       JOIN num_paylinks p ON p.token = s.token_matched
+      WHERE p.business_id = ?1
+      ORDER BY s.id DESC LIMIT 50`
+  ).bind(who.business.id).all().catch(() => ({ results: [] }));
+
+  return J({ ok: true, watcher: status, sightings: results || [] });
+}
+
+/** GET /api/venue/qrcheck — every code this venue has, and what is wrong. */
+async function venueQrCheck(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  return J(await QRCHECK.checkQrs(env, { businessId: who.business.id }));
+}
+
+/** Operator-wide versions. */
+async function adminChain(req, env, url) {
+  if (!adminOk(env, url, req)) return J({ ok: false, error: "unauthorised" }, 401);
+  const action = clean(url.searchParams.get("do"), 24);
+  if (action === "sweep") return J(await chainSweep(env));
+  if (action === "qrcheck") return J(await QRCHECK.checkQrs(env));
+  return J({ ok: true, watcher: await RPC.watcherStatus(env) });
+}

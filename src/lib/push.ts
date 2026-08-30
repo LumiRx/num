@@ -7,6 +7,7 @@
 import { store } from './store';
 import { openDm } from './dm';
 import { apiUrl } from '../lib/apibase';
+import { isNativeApp } from './native';
 
 // Not a secret: the browser needs it to encrypt the subscription to us.
 const VAPID_PUBLIC = 'BGfIJ2Yj82iiRSVBUi97G8nmxi9WT6uWxgqApr0EqEzrhiu0FSnD7hnnONE0qHgO72cvIwb3JaqDfSAOJs3St1U';
@@ -18,8 +19,18 @@ const toBytes = (b64: string) => {
 
 export const pushSupported = (): boolean => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
-/** iOS gives an installed PWA push; a Safari tab gets nothing, silently. */
+/**
+ * iOS gives an installed PWA push; a Safari tab gets nothing, silently.
+ *
+ * The App Store build counts as installed even though neither PWA signal
+ * fires inside it — it is a WKWebView, not a home-screen web app. Without
+ * isNativeApp() here, pushState() returns 'needs-install' on iOS native and
+ * the app shows a "add Num to your home screen to get notifications" prompt
+ * to somebody running the App Store app, whose push arrives over APNs and
+ * needs no install at all.
+ */
 export const installedOnHomeScreen = (): boolean =>
+  isNativeApp() ||
   window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
 export const pushState = (): 'unsupported' | 'needs-install' | 'default' | 'granted' | 'denied' => {

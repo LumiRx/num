@@ -81,11 +81,47 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** What each tier costs and allows. One table, quoted everywhere. */
 export const TIERS = Object.freeze({
-  free: { monthly_limit: 1000, note: 'Evaluation. Attribution required on every rendered result.' },
-  directory: { usd_per_call: 0.02, note: 'search_places, open_places, place_details.' },
-  concierge: { usd_per_call: 0.10, note: 'concierge_answer — the whole product in one call.' },
-  platform: { usd_month: 1500, monthly_limit: 100000, rev_share_pct: 20, note: 'Flat to 100k calls + 20% rev-share on bookings originated.' },
+  free: { monthly_limit: 1000, per_min: 12, note: 'Evaluation. Attribution required on every rendered result.' },
+  // ── WHY A PAID TIER EXISTS BEFORE BILLING DOES ───────────────────────
+  //
+  // LetsGo2Trip's term 8 asks for "a minimum rate limit of 120 req/min".
+  // That is TEN TIMES the unkeyed ceiling, against a free tier of 1,000 calls
+  // a MONTH — 120/min would exhaust a month's free quota in nine minutes. So
+  // it is not a technical footnote inside an SLA clause, it is the commercial
+  // ask, and it needs a tier with a name and a number rather than an
+  // exception quietly made for one partner.
+  //
+  // The flat monthly fee in their term 10 is what this tier is. Billing is
+  // not wired yet and the ceiling is enforced regardless: a limit that only
+  // exists once someone can be charged is a limit that does not exist during
+  // exactly the period when a partner is integrating against it.
+  partner: { monthly_limit: 250_000, per_min: 120, note: 'Flat monthly tier. 120 calls/min. Attribution still required.' },
+  // Every tier below carries a per_min too. Not decoration: perMinFor() falls
+  // back to the FREE figure for a tier that omits it, so a metered tier with
+  // no per_min silently sells a customer twelve calls a minute — the cheapest
+  // possible way to make a paying integration look broken.
+  directory: { usd_per_call: 0.02, per_min: 120, note: 'search_places, open_places, place_details.' },
+  concierge: { usd_per_call: 0.10, per_min: 60, note: 'concierge_answer — the whole product in one call.' },
+  platform: { usd_month: 1500, monthly_limit: 100000, per_min: 600, rev_share_pct: 20, note: 'Flat to 100k calls + 20% rev-share on bookings originated.' },
 });
+
+/**
+ * Resolve an API key to its partner row, or null.
+ *
+ * Exported because the key is now the front door to more than the usage page:
+ * the settlement feed in worker/handoff.mjs authenticates the same way, and a
+ * second copy of "hash it and look it up" is a second place for the hashing to
+ * drift.
+ */
+export async function partnerByKey(env, key) {
+  if (!env?.DB || !key) return null;
+  await ensure(env);
+  return await env.DB.prepare('SELECT * FROM num_partner_keys WHERE key_hash = ?1')
+    .bind(await sha256(String(key))).first().catch(() => null);
+}
+
+/** The per-minute ceiling this key is entitled to. Unkeyed callers are not here. */
+export const perMinFor = (row) => TIERS[row?.tier]?.per_min ?? TIERS.free.per_min;
 
 export async function handlePartnerSignup(request, env) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });

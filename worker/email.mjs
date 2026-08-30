@@ -230,6 +230,61 @@ export const TEMPLATES = {
     cta: d.link ? { href: d.link, label: 'SEE THE DETAILS' } : null,
     text: [`Changed — ${d.title}`, '', d.what, d.was ? `Was: ${d.was}` : '', d.now ? `Now: ${d.now}` : '', d.link ? `Details: ${d.link}` : ''].filter(Boolean).join('\n'),
   }),
+
+  /**
+   * The travel handoff — the only email in this file that goes to a BUSINESS
+   * rather than to a member, and the only one whose job is legal as much as
+   * commercial.
+   *
+   * Two sentences here are load-bearing and must not be softened: the agency
+   * quotes, and the agency collects payment from the traveller directly. That
+   * is the property that keeps Num out of the passenger-money business
+   * (HQ/divisions/num/REFERRAL_STRUCTURE_ANALYSIS.md §1), and an email that
+   * merely implies it is an email a partner can honestly misread.
+   *
+   * The subject carries the NUM- reference first, so a shared inbox can be
+   * filtered on it and a reply keeps the thread — LETSGO2TRIP_MEETING_BRIEF.md
+   * §6.1. `d.text` is the plain-text handoff built by travelreferral.mjs, which
+   * is the same artefact an operator pastes into WhatsApp; passing it through
+   * keeps the two channels identical rather than merely similar.
+   */
+  travelReferral: (d) => ({
+    subject: d.subject ? `Num travel request — ${d.subject}` : `Num travel request — ${d.ref}`,
+    preheader: `${d.itinerary ?? 'A qualified request'} · ${d.pax ?? ''} · you quote and you take payment directly.`,
+    kicker: 'TRAVEL REQUEST',
+    title: `${d.ref} — ${d.itinerary || 'a request from a Num member'}`,
+    body:
+      `<p style="margin:0 0 4px;">A Num member has asked for this and it is yours to quote${d.sla_hours ? `, ideally within ${esc(String(d.sla_hours))} hours` : ''}.</p>`
+      + detailTable([
+        row('REFERENCE', d.ref),
+        row('PRODUCT', d.product),
+        row('ITINERARY', d.itinerary),
+        row('PASSENGERS', d.pax),
+        row('CABIN', d.cabin),
+        row('TRAVELLER BUDGET', d.budget),
+        row('NOTES', d.notes),
+        row('CONTACT', d.contact),
+      ])
+      + `<p style="margin:18px 0 0;font-size:14px;line-height:1.6;"><strong>You quote, and you take the traveller's payment directly. You issue the confirmation in your own name.</strong> Num does not hold traveller money and does not issue tickets — we introduce the traveller, relay your quote, and invoice commission afterwards against your own booking reference.</p>`
+      + `<p style="margin:12px 0 0;color:${BRAND.muted};font-size:13px;">The contact details above are for this booking only. Please don't add them to a marketing list.</p>`,
+    cta: d.link ? { href: d.link, label: 'ATTACH YOUR QUOTE' } : null,
+    footnote: `Reply to this email quoting ${esc(d.ref ?? '')} if you'd rather answer in writing — either way reaches the same desk.`,
+    // Written by hand and complete: for a small agency working a shared inbox
+    // on a phone, this is very often the only part that gets read.
+    text: d.text ?? [
+      `NUM TRAVEL REQUEST — ${d.ref}`,
+      '',
+      d.itinerary,
+      d.pax,
+      d.budget ? `Traveller's budget: up to ${d.budget}` : '',
+      d.notes,
+      '',
+      `Contact: ${d.contact ?? '(reply here)'}`,
+      '',
+      'You quote and you take the traveller\'s payment directly, and you issue the confirmation. Num does not hold traveller money.',
+      d.link ? `Attach your quote: ${d.link}` : '',
+    ].filter(Boolean).join('\n'),
+  }),
 };
 
 // ── sending ───────────────────────────────────────────────────────────────
@@ -335,4 +390,17 @@ const SAMPLE = {
   errand: { runner: 'Ben', title: 'USB-C charger', deliverTo: 'Sukhumvit Soi 11, room 704', code: 'WKS7LD', bounty: 40, cap: 50, link: 'https://app.itsnum.com/?app' },
   planInvite: { from: 'Dre', plan: 'Bangkok weekend', link: 'https://app.itsnum.com/?i=example' },
   changed: { title: 'Dinner at Gaggan', what: 'The restaurant moved your table half an hour later.', was: 'Sun 2 Aug · 20:00', now: 'Sun 2 Aug · 20:30', place: 'Gaggan Anand', link: 'https://app.itsnum.com/?app' },
+  travelReferral: {
+    ref: 'NUM-K7QP42',
+    subject: 'NUM-K7QP42 Phuket 2026-09-04–2026-09-11 2 adults',
+    product: 'flight',
+    itinerary: 'LHR → HKT · out 2026-09-04 · back 2026-09-11',
+    pax: '2 adults',
+    cabin: 'Economy',
+    budget: '1800.00 GBP',
+    notes: 'Aisle seats together. Flexible by a day either side.',
+    contact: 'Viv Carter · viv@example.com · +447700900123',
+    sla_hours: 24,
+    link: 'https://app.itsnum.com/api/travel/quote?ref=NUM-K7QP42&t=example',
+  },
 };

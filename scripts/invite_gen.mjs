@@ -17,6 +17,13 @@
  * gives the agent the same words they approved yesterday.
  */
 
+// The fee sentence is NOT written here. `feeSentence` resolves the same rate
+// `accrue` will bill, including country overrides, so the invite cannot
+// promise a number the ledger disagrees with. It did until 25 Aug 2026: this
+// file hardcoded "10% only when a booking actually happens" while stays bill
+// 15%, which meant every hotel invited was quoted a third under its real rate.
+import { feeSentence } from '../worker/commission.mjs';
+
 /* ── deterministic pick ─────────────────────────────────────────────────── */
 
 function hash(str) {
@@ -323,10 +330,24 @@ function placeLine(lead) {
 
 /* ── the four generated sentences ───────────────────────────────────────── */
 
+/* NOTHING HERE MAY ASSERT DEMAND WE CANNOT EVIDENCE.
+ *
+ * Two variants used to open "Travellers are asking for somewhere to stay in
+ * Bath" and "Travellers using NUM are already asking for…". Both are
+ * present-tense claims about other people's behaviour, and on 25 Aug 2026 the
+ * UK had SIX asks on record, one of them about a hotel, and no members. A
+ * third of the queued invites would have carried a claim a hotelier could
+ * disprove by replying "great, send them over" and receiving nothing.
+ *
+ * The conditional forms below promise exactly what NUM can deliver: that when
+ * somebody does ask, the answer comes from the profiles we hold. That is true
+ * on day one with zero traffic, and it stays true at scale — which is the test
+ * a cold-email claim has to pass. `invite_fee.test.mjs` enforces it. */
+
 function personalOpen(lead, place, cat) {
   const name = lead.name;
   const V = [
-    `Travellers using NUM are already asking for ${cat.noun} in ${place}. When they do, we answer from the profiles we hold — and ${name} has one sitting there unclaimed.`,
+    `When a traveller asks NUM for ${cat.noun} in ${place}, we answer from the profiles we hold — and ${name} has one sitting there unclaimed.`,
     `We're building the concierge travellers text when they want ${cat.noun} in ${place}, in whatever language they speak. ${name} is already on the map. It just isn't yours yet.`,
     `${name} is listed in NUM as one of the places we can point travellers to for ${cat.noun} in ${place}. Claiming it takes two minutes and costs nothing — and it changes how often we can recommend you.`,
   ];
@@ -373,10 +394,136 @@ function subjectLine(lead, place, cat) {
   const short = shortName(lead.name);
   const V = [
     `${short} — your AI profile on NUM is ready to claim (free)`,
-    `Travellers are asking for ${cat.noun} in ${place}. ${short} can be the answer.`,
+    `${short} is on NUM. Travellers who ask for ${cat.noun} in ${place} can be sent to you.`,
     `Claim ${possessive(short)} AI text-message profile — free, 2 minutes`,
   ];
   return pick(V, lead.id, 3);
+}
+
+/* ── the direct-booking line ────────────────────────────────────────────── */
+
+/**
+ * The one sentence in a hotel invite that is not marketing.
+ *
+ * NUM's UK sweep read each hotel's own site and pulled the booking engine out
+ * of it — SiteMinder, Mews, SynXis, Cloudbeds, Guestline and the rest. When we
+ * have that link we can deep-link a traveller to the hotel's OWN booking page
+ * instead of an OTA's, and saying so proves we did work on their behalf before
+ * asking for anything. It also invites a correction, which is the cheapest way
+ * to find out our link is stale.
+ *
+ * Returns '' when we have no link — an invite that gestures at a booking page
+ * it cannot name is worse than one that never mentions it.
+ */
+/**
+ * Engine domains also host their own MARKETING site, and a footer badge on a
+ * hotel's page links to the marketing site, not to that hotel's booking page.
+ * The UK sweep hit this on Hotel Ceilidh-Donia, whose "booking link" resolved
+ * to `eviivo.com/products/website-manager/?utm_source=website-builder` — a
+ * sales page for the software. Telling a hotelier we found their booking page
+ * and then naming a vendor's ad is the tell that nobody looked.
+ */
+const NOT_A_BOOKING_PAGE = /\/(products|features|pricing|solutions|about|blog)(\/|$)|utm_source=website-builder/i;
+
+export function directLine(lead = {}) {
+  const link = String(lead.booking_link ?? '').trim();
+  if (!/^https?:\/\//i.test(link)) return '';
+  if (NOT_A_BOOKING_PAGE.test(link)) return '';
+  let host;
+  try { host = new URL(link).host.replace(/^www\./, ''); } catch { return ''; }
+  const engine = String(lead.engine ?? '').trim();
+  return `We already found your own booking page${engine ? ` (${engine})` : ''} at ${host}, `
+    + `so NUM can send a traveller straight there rather than to a booking site. `
+    + `If we have the wrong link, claiming your listing is how you correct it.`;
+}
+
+/**
+ * LINE is a real second channel in Thailand, Japan and Taiwan, where a small
+ * hotel's whole front desk runs on it. Everywhere else it is an app the
+ * recipient has never installed, and offering it is the sentence that makes an
+ * otherwise-local email read as a mail merge from somewhere far away. Bath
+ * does not want a LINE ID.
+ */
+const LINE_COUNTRIES = new Set(['TH', 'JP', 'TW']);
+export const usesLine = (lead = {}) => LINE_COUNTRIES.has(String(lead.country ?? '').toUpperCase());
+
+/**
+ * The "how else can I reach you" sentence, as HTML.
+ *
+ * Built here rather than sat in the template because it is the one line whose
+ * CONTENT depends on the recipient's country, and a template cannot branch.
+ * `short` is lead-derived and is escaped on the way in — this string is handed
+ * to the merge loop pre-trusted, so anything unescaped here reaches the email
+ * as markup.
+ */
+function contactBlockHtml(lead, short, lineUrl) {
+  const name = esc(short);
+  return usesLine(lead)
+    ? `Prefer LINE? Add <a href="${lineUrl}" style="color:#5457D8;font-weight:700">@799pyrus</a> and send <b style="color:#2C3054">CLAIM ${name}</b> — a human replies. Or simply reply to this email and we'll set it up for you.`
+    : `Or simply reply to this email and we'll set it up for you — a human replies.`;
+}
+
+/* ── freemail (shared with send_invites.mjs and the automated drain) ────── */
+
+/**
+ * One address per domain per run stops us mailing twelve inboxes at one hotel
+ * group. It must NOT apply to freemail — thousands of these businesses run on
+ * gmail alone, and treating gmail.com as "one organisation" would send exactly
+ * one gmail-hosted business per run and silently skip the rest forever, since
+ * a skipped lead never enters the ledger and so looks identical on every
+ * future run. Moved here from send_invites.mjs on 26 Aug so the CLI tool and
+ * the automated worker drain read the exact same list — two copies of a
+ * freemail set are two lists that drift, and the worker cannot import a file
+ * that lives only inside a Node script.
+ */
+export const FREEMAIL = new Set([
+  // global
+  'gmail','googlemail','hotmail','outlook','live','msn','yahoo','ymail','rocketmail',
+  'aol','icloud','me','mac','protonmail','proton','tutanota','zoho','fastmail','mail','email','gmx',
+  // DE / AT / CH
+  'web','t-online','freenet','arcor','bluewin','sunrise','hispeed','aon','utanet','chello','a1',
+  // FR
+  'orange','wanadoo','free','laposte','sfr','neuf','bbox',
+  // IT
+  'libero','virgilio','alice','tiscali','tin','fastwebnet','inwind',
+  // CZ / HU / HR
+  'seznam','centrum','volny','atlas','email','freemail','citromail','net','vip',
+  // PT / ES
+  'sapo','clix','netcabo','iol','telefonica','terra',
+  // NL / BE
+  'ziggo','kpnmail','hetnet','planet','telenet','skynet','home',
+  // SE / DK / IS / NO
+  'telia','bredband','comhem','spray','bahnhof','simnet','internet',
+  // GB / IE
+  'btinternet','sky','virginmedia','talktalk','ntlworld','blueyonder','eircom',
+  // APAC
+  'naver','daum','hanmail','qq','163','126','sina','foxmail','bigpond','xtra',
+]);
+
+/** gmail.com, hotmail.co.uk, t-online.de → true. accor.com, auchan.pt → false. */
+export const isFreemail = (d) => FREEMAIL.has(String(d || '').toLowerCase().split('.')[0]);
+
+/* ── the "back to the website" link ───────────────────────────────────── */
+
+/**
+ * Every invite carries a plain link to itsnum.com beyond the claim button —
+ * the recipient who is not ready to claim today, and just wants to see who is
+ * emailing them, needs somewhere to land that explains it. Routed to
+ * `/business/` (the merchant page, not the bare homepage) so what they land on
+ * answers "what is this and what does it cost", and carries the same
+ * `utm_source/medium/campaign` shape `num-capture.js` already reads on every
+ * other NUM page, plus `?s=` into `claims.source` — so a business that comes
+ * back later and claims through the site is attributed to this email, not
+ * counted as organic.
+ */
+function websiteUrl(lead, base, token) {
+  const dest = String(lead.dest ?? 'invite').toLowerCase().replace(/[^a-z0-9-]+/g, '-') || 'invite';
+  const cat = normaliseCategory(lead.category) || 'business';
+  const qs = new URLSearchParams({
+    utm_source: 'invite', utm_medium: 'email', utm_campaign: dest, utm_content: cat,
+    s: token || '',
+  });
+  return `${base}/business/?${qs.toString()}`;
 }
 
 /* ── main ───────────────────────────────────────────────────────────────── */
@@ -406,18 +553,27 @@ export function generateInvite(lead, opts = {}) {
     num_reply:           numReply(lead, place, cat),
     sign_off:            signOff(lead, cat),
     preheader:           `Free to claim. Travellers asking for ${cat.noun} in ${place} can be sent to you.`,
+    // Priced from the lead's OWN category and country, not from the family the
+    // copy is written for: a "Hotel & Spa" is billed as a stay whichever noun
+    // the invite happens to use.
+    fee_line:            feeSentence({ category: lead.category, country: lead.country }),
+    direct_line:         directLine(lead),
+    website_url:         websiteUrl(lead, base, token),
     // Routed through the accounts Worker so the click is recorded, then 302'd
     // to /claim. Rides the already-live /api/accounts* route — no new route.
     claim_url:           `${base}/api/accounts/claim?t=${encodeURIComponent(token)}`,
     unsub_url:           `${base}/api/accounts/unsubscribe?t=${encodeURIComponent(token)}`,
     pixel_url:           `${base}/api/accounts/i.gif?t=${encodeURIComponent(token)}`,
     line_url:            'https://line.me/R/ti/p/@799pyrus',
+    contact_block_html:  contactBlockHtml(lead, short, 'https://line.me/R/ti/p/@799pyrus'),
   };
 
   let html = String(opts.template || '');
   for (const [k, v] of Object.entries(fields)) {
-    // URLs are already encoded; visible copy gets HTML-escaped.
-    const safe = /_url$/.test(k) ? v : esc(v);
+    // URLs are already encoded and `_html` fields are assembled here with
+    // every lead-derived substring already escaped at the point it goes in —
+    // see `contactBlockHtml`. Everything else is copy and is escaped now.
+    const safe = /_(url|html)$/.test(k) ? v : esc(v);
     html = html.split(`{{${k}}}`).join(safe);
   }
 
@@ -426,6 +582,7 @@ export function generateInvite(lead, opts = {}) {
     ``,
     fields.personal_open,
     ``,
+    ...(fields.direct_line ? [fields.direct_line, ``] : []),
     `WHAT A PROFILE DOES`,
     `Traveller: "${fields.traveller_ask}"`,
     `NUM: "${fields.num_reply}"`,
@@ -434,16 +591,17 @@ export function generateInvite(lead, opts = {}) {
     `- Free to claim, free to stay listed. No signup fee, no card.`,
     `- Travellers find you in their own language.`,
     `- Bookings arrive on your phone. Guests pay you directly.`,
-    `- 10% only when a booking actually happens.`,
+    `- ${fields.fee_line}`,
     `- Real reviews only, from verified completed bookings.`,
     ``,
     `Claim ${short} — free: ${fields.claim_url}`,
-    `Prefer LINE? Add @799pyrus and send: CLAIM ${short}`,
+    ...(usesLine(lead) ? [`Prefer LINE? Add @799pyrus and send: CLAIM ${short}`] : ['Or just reply to this email and we\'ll set it up for you.']),
     ``,
     fields.sign_off,
     ``,
     `The NUM team — 5arz`,
-    `itsnum.com · info@5arz.com`,
+    `More about NUM: ${fields.website_url}`,
+    `info@5arz.com`,
     ``,
     `You're receiving this one-time invitation because ${fields.business_name} is publicly listed as a business in ${place}.`,
     `Unsubscribe and remove our listing: ${fields.unsub_url}`,
@@ -454,6 +612,9 @@ export function generateInvite(lead, opts = {}) {
     preheader:     fields.preheader,
     personal_open: fields.personal_open,
     traveller_ask: fields.traveller_ask,
+    fee_line:      fields.fee_line,
+    direct_line:   fields.direct_line,
+    website_url:   fields.website_url,
     num_reply:     fields.num_reply,
     sign_off:      fields.sign_off,
     html, text, fields,

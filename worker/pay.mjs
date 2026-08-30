@@ -53,12 +53,36 @@ const STRIPE = 'https://api.stripe.com/v1';
  * worker, separate economy. Cash-out is a REQUEST from here that the payout
  * desk settles there. The two ledgers must never be merged.
  */
+/**
+ * What Stars are and are not.
+ *
+ * ── 'bookings' CAME OFF THIS LIST ON 18 AUG 2026 ─────────────────────────
+ *
+ * Stars are bought with a card, land in Num's own Stripe balance, and are
+ * spent later. A Star that settles a flight or a hotel is therefore "all sums
+ * received … for travel services" under California B&P §17550.15(b), just with
+ * a delay in the middle — which creates a trust obligation, which sizes a
+ * surety bond under §17550.11. The whole $0-bond structure is the single
+ * sentence "Num never holds traveller funds", and Star settlement of travel
+ * makes that sentence false.
+ *
+ * `spends_on` now names TABLES rather than bookings, because that is the only
+ * kind of booking Num brokers with its own money in the middle: a restaurant
+ * table, billed to the venue, no transportation and no lodging, so no travel
+ * services and nothing for §17550.9 to bite on. bookdesk keeps working.
+ *
+ * `never_spends_on` is not decoration. preflight.checkPayment refuses any
+ * transaction whose ref names travel, and worker/travelspeak.test.mjs fails
+ * if 'travel' or 'bookings' ever reappears above.
+ */
 export const STAR_POLICY = Object.freeze({
   earned_cashable: true,
   purchased_cashable: false,
   cash_out_destination: '5arz',
-  spends_on: ['errands', 'tabs', 'bookings', 'bounties'],
-  statement: 'Stars you earn can be cashed out. Stars you buy spend inside Num.',
+  spends_on: ['errands', 'tabs', 'tables', 'bounties'],
+  never_spends_on: ['flights', 'hotels', 'cruises', 'rail', 'transfers', 'any travel'],
+  travel_settlement: 'never — the traveller pays the travel partner directly (B&P §17550.20(g)(5))',
+  statement: 'Stars you earn can be cashed out. Stars you buy spend inside Num — never on travel.',
 });
 
 const json = (body, status = 200) =>

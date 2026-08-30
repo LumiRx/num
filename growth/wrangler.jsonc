@@ -26,8 +26,78 @@
 
   "vars": {
     "SITE": "https://itsnum.com",
-    "MAIL_FROM": "Num by 5arz <info@5arz.com>",
-    "SEND_BUDGET": "40"
+    // Sender identity, and why it moved off 5arz.com on 25 Aug 2026.
+    //
+    // A cautious recipient runs about four checks in two seconds, and the
+    // first is "does the sender match the brand". Mail arriving from
+    // info@5arz.com, signed "NUM", linking to itsnum.com, is three names with
+    // no stated relationship between them — which is the shape of a phishing
+    // attempt, not a company. Recognition beats reputation isolation while
+    // almost nobody knows the brand exists; the send ramp and list validation
+    // are what manage the deliverability risk instead.
+    //
+    // Requires itsnum.com verified in Resend (it is) AND exactly one DKIM key
+    // at resend._domainkey.itsnum.com — two records at that name is ambiguous
+    // and now lands on this campaign directly.
+    "MAIL_FROM": "NUM <info@itsnum.com>",
+    "SEND_BUDGET": "40",
+
+    // ── merchant-invite drain (invitecron.mjs) ─────────────────────────
+    //
+    // Which \`leads.batch\` value is live inventory right now. One var, so
+    // pointing the automated drain at a new campaign is a config change, not
+    // a code change. 14,433 rows are queued under this one as of 25 Aug 2026
+    // (LA 7,487 · Phuket 5,593 · Edinburgh 1,353) — Phuket does not send
+    // regardless, see SEND_WINDOWS in invitecron.mjs.
+    "INVITE_LEAD_BATCH": "outreach-2026-08-25",
+    // Day zero of the five-week ramp (UTC date). The daily cap is computed
+    // from whole days elapsed since this date — see the RAMP table in
+    // invitecron.mjs. Move this only if the ramp itself should restart.
+    "INVITE_RAMP_START": "2026-08-26",
+    // Hard per-tick ceiling, independent of the ramp's daily cap — a safety
+    // valve against a bug in the pacing math ever sending hundreds of emails
+    // in one Resend batch call in one request.
+    "INVITE_SEND_BUDGET": "25",
+    // Baht to the dollar, for quoting a bill in a stablecoin. A var and not a
+    // secret on purpose: it is not sensitive, and it is the kind of number
+    // that must be reviewable in a diff rather than hidden in a dashboard.
+    //
+    // IT GOES STALE. It is used to tell a guest how much USDC to send for a
+    // baht bill, so a rate that has drifted quietly overcharges or
+    // undercharges every crypto payment. Rate at 21 Aug 2026; a live source
+    // is the proper fix. Nothing is guessed if it is removed — minting a
+    // crypto bill simply refuses and says which variable is missing.
+    "NUM_FX_THB_USD": "32.68",
+    // Where the chain watcher reads from. Read-only: this worker holds no key
+    // and signs nothing, so the worst a hostile endpoint can do is lie about
+    // whether a payment arrived — and every claim it makes is stored with its
+    // transaction hash so a human can check it on a block explorer.
+    //
+    // A COMMA-SEPARATED LIST, tried in order. Not one URL — that was the bug.
+    //
+    // mainnet.base.org answers a laptop instantly and returns 429 to a Worker,
+    // because a Worker's requests leave from a shared Cloudflare egress pool
+    // that everyone else is also hammering. It sat first in this list and the
+    // watcher never once completed a pass.
+    //
+    // These three are the survivors of probing thirteen public endpoints from
+    // real Worker egress. Each one served eth_getLogs over a ~1700-block range
+    // and returned the transfer we were hunting. The ones that did not:
+    //
+    //   publicnode  — archive ranges need a paid token
+    //   blastapi    — eth_getLogs capped at 10 blocks
+    //   1rpc        — capped at 50 blocks, narrower than one cron gap
+    //   meowrpc     — HTTP 200 and an EMPTY ARRAY for a range that provably
+    //                 contains the payment. Disqualified on the spot: a node
+    //                 that answers "no money arrived" when money did is worse
+    //                 than one that refuses, because nothing looks wrong.
+    //
+    // All three throttle intermittently, which is why rpc() carries spares and
+    // retries a round. Get a keyed endpoint before this carries real volume —
+    // free public RPC rate limits are shared with everything else running on
+    // Cloudflare, so on a busy day they are somebody else's to spend. Adding
+    // one is a one-line change: put its URL at the front of this list.
+    "NUM_RPC_BASE": "https://base.gateway.tenderly.co,https://base.drpc.org,https://mainnet.base.org"
   },
 
   // Drains queued VIP-host contact invites. A host who uploads 400 contacts
@@ -79,10 +149,33 @@
     // card is not a deploy, it is a courier. Same slash rule as /r/ and /go/.
     { "pattern": "itsnum.com/v/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/venue/*", "zone_name": "itsnum.com" },
+    // The paylink QR images and the EMV payload. The handlers have existed
+    // since the paylink build but this pattern never did, so every QR on
+    // /biz/pay resolved to the site's 404 page instead of an image — the
+    // merchant pay console has been shipping broken pictures. Nothing else
+    // claims /api/pay/*; before this line it fell through to num-console.
+    { "pattern": "itsnum.com/api/pay/*", "zone_name": "itsnum.com" },
+    // The pay page a guest's camera opens. Same slash rule as /r/ and /v/:
+    // /p/ is its own namespace and must never collide with a marketing path.
+    // Without this route the token falls through to num-console and the guest
+    // gets a 404 instead of a payment screen — which is exactly what happened
+    // before 22 Aug, and why paylinks looked broken.
+    { "pattern": "itsnum.com/p/*", "zone_name": "itsnum.com" },
     // The business-facing code manager. /biz/ does not collide with /business*
     // (num-biz-site) — the slash is what separates them, same rule as /r/.
     { "pattern": "itsnum.com/biz/*", "zone_name": "itsnum.com" },
     // The public offers page — the URL marketing points traveller demand at.
-    { "pattern": "itsnum.com/tonight*", "zone_name": "itsnum.com" }
+    { "pattern": "itsnum.com/tonight*", "zone_name": "itsnum.com" },
+    // After the table: how was it, and would you like to leave something.
+    // The guest lands here straight from the check-in scan, so it is as short
+    // as /r/ and /v/ and follows the same slash rule — "/a/" is its own
+    // namespace and cannot collide with /about or /app.
+    //
+    // WITHOUT THIS LINE THE WHOLE FEATURE IS INVISIBLE. The handlers answer
+    // inside num-growth, but the zone hands "itsnum.com/a/…" to num-console,
+    // which serves the site's 404 page — verified on the first deploy, which
+    // is why this comment exists rather than a bug report later.
+    { "pattern": "itsnum.com/a/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/api/after/*", "zone_name": "itsnum.com" }
   ]
 }

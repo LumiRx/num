@@ -61,7 +61,17 @@ export default function IOSDevice({
       </div>
       {/* content */}
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <div className="no-scrollbar" style={{ flex: 1, overflow: 'auto' }}>{children}</div>
+        {/* `hidden`, not `auto`.
+            On the launch page this frame is a SHOWCASE sitting dead centre of
+            the viewport, exactly where a cursor or thumb lands. An inner
+            scroller there competes with the page for every wheel tick and
+            swipe: the app scrolls inside the glass and the page looks frozen.
+            That was reported as "the page won't scroll" three times and
+            half-fixed twice — pointer-events:none on the wrapper stopped the
+            wheel, but a touch drag on a phone still had somewhere to go.
+            The way into the real app is the Open Num button, so nothing here
+            needs to scroll. */}
+        <div className="no-scrollbar" style={{ flex: 1, overflow: 'hidden' }}>{children}</div>
       </div>
       {/* home indicator */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60, height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end', paddingBottom: 8, pointerEvents: 'none' }}>

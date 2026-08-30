@@ -11,6 +11,7 @@
 import http from 'node:http';
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from '../worker/prompt.mjs';
+import { scrubPayload as scrubTravelSpeak } from '../worker/travelspeak.mjs';
 
 const PORT = Number(process.env.NUM_AI_PORT) || 8787;
 const MODEL = 'claude-opus-5';
@@ -51,7 +52,15 @@ const server = http.createServer(async (req, res) => {
   try {
     const { messages, state } = JSON.parse(body);
     const result = await askNum(messages, state);
-    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result));
+    // The same travel-speak filter the Worker runs, for the same reason: this
+    // server answers the app in local dev, and a rule that only holds in
+    // production is a rule people learn to write around.
+    const context = (messages ?? []).slice(-4).map((m) => String(m?.content ?? '')).join('\n');
+    const { _travelspeak, ...safe } = scrubTravelSpeak(result, { context });
+    if (_travelspeak?.hits?.length) {
+      console.warn(`[travelspeak] rewrote ${_travelspeak.hits.length} travel claim(s) before send`);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(safe));
   } catch (err) {
     console.error('[num-ai]', err);
     const status = err?.status === 401 ? 401 : 500;

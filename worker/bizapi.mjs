@@ -24,7 +24,22 @@
  * Making that step easier would make Num's recommendations worthless: anything
  * that lets a stranger edit a restaurant's listing lets a competitor do it too.
  */
-import { generateCode, hashCode, safeEqual, sendCode, CODE_TTL_MIN, MAX_ATTEMPTS } from '../claim/verify.mjs';
+import {
+  generateCode, hashCode, safeEqual, sendCode, uid, maskEmail, maskPhone, CODE_TTL_MIN,
+} from '../claim/verify.mjs';
+// The same promotion every claim door on Num runs once a code checks out:
+// create the business, initialise its commerce profile and settings. Without
+// it a business is verified but inert — no commission rate, no timezone, no
+// feature flags (see claim/onboard.mjs's own doc comment). Reused here rather
+// than reimplemented so a claim made through the API ends up in exactly the
+// state a claim made through the public form does.
+import { onboardStatements } from '../claim/onboard.mjs';
+// Circular by design and safe: bizmcp imports handleBizApi and only calls it
+// inside a function, and this only reads the tool array inside bizApiIndex().
+// Neither reference is evaluated at module scope, so there is no TDZ hazard in
+// either import order. The alternative — retyping six tool names here — is the
+// exact duplication this index exists to make checkable.
+import { TOOLS_FOR_TEST as BIZ_MCP_TOOLS } from './bizmcp.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -44,10 +59,14 @@ const json = (body, status = 200) =>
 const err = (code, message, status) => json({ error: code, message }, status);
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
 
+// num_claims, num_place_owners, businesses and num_business_profiles are
+// owned by claim/schema.sql and worker/num_business_schema.sql respectively —
+// already applied, so this worker does not create them. num_biz_keys is the
+// one table that belongs to this API alone.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS num_biz_keys (
   id TEXT PRIMARY KEY,
-  place_id TEXT NOT NULL,
+  business_id TEXT NOT NULL,
   key_hash TEXT NOT NULL UNIQUE,
   key_prefix TEXT NOT NULL,
   label TEXT,
@@ -55,20 +74,7 @@ CREATE TABLE IF NOT EXISTS num_biz_keys (
   last_used_at INTEGER,
   revoked_at INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_bizkeys_place ON num_biz_keys(place_id);
-CREATE TABLE IF NOT EXISTS num_biz_claims (
-  id TEXT PRIMARY KEY,
-  place_id TEXT NOT NULL,
-  channel TEXT NOT NULL,
-  target TEXT NOT NULL,
-  code_hash TEXT,
-  code_salt TEXT,
-  expires_at INTEGER,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  verified_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_bizclaims_place ON num_biz_claims(place_id);
+CREATE INDEX IF NOT EXISTS idx_bizkeys_business ON num_biz_keys(business_id);
 `;
 let ready = false;
 async function ensure(env) {
@@ -78,7 +84,6 @@ async function ensure(env) {
 }
 
 const now = () => Math.floor(Date.now() / 1000);
-const uid = (p) => `${p}_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
 
 async function sha256(s) {
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -94,16 +99,31 @@ async function sha256(s) {
  * secret to do it.
  */
 async function authed(env, req) {
+  // num_biz_keys is created lazily (ensure(), same as startClaim/verifyClaim) —
+  // without this call here, the very first hit to any auth'd route before
+  // any claim had ever completed queried a table that did not exist yet and
+  // threw an unhandled D1 error (surfaced to the caller as a bare Cloudflare
+  // 1101, not the JSON 'unauthorized' this function exists to return).
+  // Confirmed live in production 2026-08-30 — a bogus key crashed instead of
+  // 401ing, because ensure() had never run: no claim had ever verified.
+  await ensure(env);
   const raw = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!raw) return { error: err('unauthorized', 'Send your key as: Authorization: Bearer numbiz_…', 401) };
   const row = await env.DB.prepare(
-    'SELECT id, place_id, revoked_at FROM num_biz_keys WHERE key_hash=?1',
+    'SELECT id, business_id, revoked_at FROM num_biz_keys WHERE key_hash=?1',
   ).bind(await sha256(raw)).first();
   if (!row) return { error: err('unauthorized', 'That key is not recognised.', 401) };
   if (row.revoked_at) return { error: err('key_revoked', 'That key has been revoked.', 401) };
   // Best-effort: a failed timestamp write must never block a legitimate call.
   env.DB.prepare('UPDATE num_biz_keys SET last_used_at=?2 WHERE id=?1').bind(row.id, now()).run().catch(() => {});
-  return { placeId: row.place_id, keyId: row.id };
+
+  const owner = await env.DB.prepare(
+    `SELECT place_id FROM num_place_owners
+      WHERE business_id=?1 AND revoked_at IS NULL
+      ORDER BY verified_at DESC LIMIT 1`,
+  ).bind(row.business_id).first().catch(() => null);
+
+  return { businessId: row.business_id, placeId: owner?.place_id ?? null, keyId: row.id };
 }
 
 /** The public shape of a listing. Deliberately small and stable. */
@@ -119,7 +139,10 @@ const publicPlace = (p) => ({
   website: p.website,
   hours: p.hours,
   cuisine: p.cuisine,
-  claimed: !!p.claimed_at,
+  // places has no claimed_at column, and never did — this read undefined
+  // and reported every listing as unclaimed. status/business_id are what
+  // actually record it.
+  claimed: p.status === 'claimed' || !!p.business_id,
 });
 
 /* ─────────────────────────────── endpoints ─────────────────────────────── */
@@ -131,7 +154,7 @@ async function findPlaces(env, url) {
   if (!q && !dest) return err('bad_request', 'Give me q= (a name) and/or dest= (a destination slug).', 400);
   const like = `%${(q || '').toLowerCase()}%`;
   const { results } = await env.DB.prepare(
-    `SELECT id, name, category, dest, area, country, address, phone, website, hours, cuisine
+    `SELECT id, name, category, dest, area, country, address, phone, website, hours, cuisine, status, business_id
        FROM places
       WHERE (?1 = '' OR lower(name) LIKE ?2)
         AND (?3 = '' OR dest = ?3)
@@ -154,12 +177,16 @@ async function startClaim(env, req) {
   if (!placeId) return err('bad_request', 'place_id is required. Find it with GET /v1/places?q=', 400);
 
   const place = await env.DB.prepare(
-    'SELECT id, name, email, phone, website FROM places WHERE id=?1',
+    'SELECT id, name, category, dest, country, area, address, lat, lng, email, phone, website FROM places WHERE id=?1',
   ).bind(placeId).first();
   if (!place) return err('not_found', 'No listing with that place_id.', 404);
 
+  // The same ownership record every claim door checks — num_place_owners,
+  // not a table scoped to this API alone. A listing claimed through the
+  // public form or the app is exactly as "taken" here as one claimed
+  // through this API.
   const taken = await env.DB.prepare(
-    'SELECT id FROM num_biz_keys WHERE place_id=?1 AND revoked_at IS NULL',
+    'SELECT place_id FROM num_place_owners WHERE place_id=?1 AND revoked_at IS NULL',
   ).bind(placeId).first();
   if (taken) {
     return err('already_claimed',
@@ -189,56 +216,110 @@ async function startClaim(env, req) {
     return err('send_failed', `Could not send the code: ${out.error}. Email info@5arz.com and a person will verify you.`, 502);
   }
 
-  const id = uid('bizclaim');
+  // Written to num_claims - the table the ops console's claims queue, the
+  // public /claim/ form and the in-app claim flow all already write to. Its
+  // channel column has a CHECK constraint limited to a fixed taxonomy
+  // ('sms','voice','email_domain','manual') — confirmed against production
+  // 2026-08-29 — so an email claim is recorded as 'email_domain' there too,
+  // same as growth's. The two doors still run genuinely different policies
+  // (this one sends only to the address already published on the listing;
+  // growth also accepts any mailbox at the listed website's domain) — that
+  // distinction lives in application logic (this function never asks the
+  // caller for an address), not in a channel value the schema can't hold.
+  const dbChannel = channel === 'email' ? 'email_domain' : channel;
+  const id = uid('claim');
+  const expiresAt = new Date(Date.now() + CODE_TTL_MIN * 60000).toISOString();
+  const maskedTarget = channel === 'email' ? maskEmail(target) : maskPhone(target);
   await env.DB.prepare(
-    `INSERT INTO num_biz_claims (id, place_id, channel, target, code_hash, code_salt, expires_at, attempts, created_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,0,?8)`,
-  ).bind(id, placeId, channel, target, await hashCode(code, salt), salt, now() + CODE_TTL_MIN * 60, now()).run();
+    `INSERT INTO num_claims
+       (id, place_id, channel, channel_value, code_hash, code_salt, attempts, max_attempts,
+        sent_at, expires_at, state, ip, created_at)
+     VALUES (?1,?2,?3,?4,?5,?6,0,?7,datetime('now'),?8,'pending',?9,datetime('now'))`,
+  ).bind(
+    id, placeId, dbChannel, maskedTarget, await hashCode(code, salt), salt,
+    // num_claims itself defaults max_attempts to 5; carried explicitly here
+    // so this stays correct even if that default ever changes.
+    5, expiresAt, req.headers.get('CF-Connecting-IP') ?? null,
+  ).run();
 
   return json({
     claim_id: id,
-    sent_to: channel === 'email' ? maskEmail(target) : maskPhone(target),
+    sent_to: maskedTarget,
     channel,
     expires_in_minutes: CODE_TTL_MIN,
     next: 'POST /v1/verify with {claim_id, code}',
   });
 }
 
-const maskEmail = (e) => String(e).replace(/^(.).*(@.*)$/, (_, a, b) => `${a}${'•'.repeat(4)}${b}`);
-const maskPhone = (p) => String(p).replace(/.(?=.{3})/g, '•');
-
 /** POST /v1/verify {claim_id, code} → the API key. Shown once. */
 async function verifyClaim(env, req) {
   await ensure(env);
   const b = await req.json().catch(() => ({}));
-  const row = await env.DB.prepare('SELECT * FROM num_biz_claims WHERE id=?1').bind(clip(b.claim_id, 60) ?? '').first();
+  const row = await env.DB.prepare('SELECT * FROM num_claims WHERE id=?1').bind(clip(b.claim_id, 60) ?? '').first();
   if (!row) return err('not_found', 'Unknown claim_id.', 404);
-  if (row.verified_at) return err('already_verified', 'That claim was already used.', 409);
-  if (row.expires_at < now()) return err('expired', 'That code expired. Start again with POST /v1/claim.', 410);
-  if (row.attempts >= MAX_ATTEMPTS) return err('too_many_attempts', 'Too many attempts. Start again with POST /v1/claim.', 429);
+  if (row.state === 'verified') return err('already_verified', 'That claim was already used.', 409);
+  if (row.state !== 'pending' || !row.code_hash) {
+    return err('no_code_pending', 'No code is pending for this claim. Start again with POST /v1/claim.', 409);
+  }
+  if (row.expires_at && new Date(row.expires_at) < new Date()) {
+    await env.DB.prepare("UPDATE num_claims SET state='expired' WHERE id=?1").bind(row.id).run();
+    return err('expired', 'That code expired. Start again with POST /v1/claim.', 410);
+  }
+  if (row.attempts >= row.max_attempts) {
+    await env.DB.prepare("UPDATE num_claims SET state='failed' WHERE id=?1").bind(row.id).run();
+    return err('too_many_attempts', 'Too many attempts. Start again with POST /v1/claim.', 429);
+  }
 
   const supplied = String(b.code || '').replace(/\D/g, '');
   if (!safeEqual(await hashCode(supplied, row.code_salt), row.code_hash)) {
-    await env.DB.prepare('UPDATE num_biz_claims SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
-    return json({ error: 'wrong_code', attempts_left: MAX_ATTEMPTS - (row.attempts + 1) }, 400);
+    const left = row.max_attempts - (row.attempts + 1);
+    await env.DB.prepare('UPDATE num_claims SET attempts=attempts+1 WHERE id=?1').bind(row.id).run();
+    return json({ error: 'wrong_code', attempts_left: Math.max(0, left) }, 400);
   }
 
-  // Shown exactly once. We store only the hash, so we genuinely cannot return
-  // it again later — which is the property that makes the key worth trusting.
+  // Verified. From here this is the exact promotion every other claim door on
+  // Num runs: create the business, take ownership, initialise the commerce
+  // profile (claim/onboard.mjs's onboardStatements - commission rate,
+  // timezone, locale; without it a business is verified but inert). Only
+  // then is a key issued - that part IS unique to this door, because an API
+  // key is what an agent needs and a human clicking a web dashboard does not.
+  const place = await env.DB.prepare(
+    'SELECT id, name, category, dest, country, area, address, lat, lng, phone, email, website FROM places WHERE id=?1',
+  ).bind(row.place_id).first();
+  const businessId = uid('biz');
   const key = `numbiz_${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const keyId = uid('bizkey');
+
   await env.DB.batch([
-    env.DB.prepare('UPDATE num_biz_claims SET verified_at=?2, code_hash=NULL, code_salt=NULL WHERE id=?1').bind(row.id, now()),
     env.DB.prepare(
-      `INSERT INTO num_biz_keys (id, place_id, key_hash, key_prefix, label, created_at)
+      `INSERT INTO businesses (id, name, kind, category, territory, status, onboarded_by, notes)
+       VALUES (?1,?2,'merchant',?3,?4,'active','biz-api',?5)`,
+    ).bind(businessId, place.name, place.category ?? null, place.dest ?? null, `claim ${row.id}`),
+    env.DB.prepare(
+      `INSERT INTO num_place_owners (place_id, business_id, claim_id, method, phone)
+       VALUES (?1,?2,?3,?4,?5)
+       ON CONFLICT(place_id) DO UPDATE SET business_id=excluded.business_id,
+             claim_id=excluded.claim_id, method=excluded.method, phone=excluded.phone,
+             verified_at=datetime('now'), revoked_at=NULL`,
+    ).bind(row.place_id, businessId, row.id, row.channel, row.channel === 'sms' ? place.phone : null),
+    env.DB.prepare(
+      `UPDATE num_claims SET state='verified', business_id=?2, code_hash=NULL, code_salt=NULL,
+              decided_at=datetime('now'), decided_by='biz-api' WHERE id=?1`,
+    ).bind(row.id, businessId),
+    env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1")
+      .bind(row.place_id, businessId),
+    ...(await onboardStatements(env, businessId, place, 'biz-api:' + row.channel)),
+    env.DB.prepare(
+      `INSERT INTO num_biz_keys (id, business_id, key_hash, key_prefix, label, created_at)
        VALUES (?1,?2,?3,?4,?5,?6)`,
-    ).bind(keyId, row.place_id, await sha256(key), key.slice(0, 14), clip(b.label, 60) ?? 'default', now()),
+    ).bind(keyId, businessId, await sha256(key), key.slice(0, 14), clip(b.label, 60) ?? 'default', now()),
   ]);
 
   return json({
     ok: true,
     api_key: key,
     key_id: keyId,
+    business_id: businessId,
     place_id: row.place_id,
     warning: 'This key is shown once and cannot be recovered. Store it now.',
     next: 'GET /v1/profile with Authorization: Bearer <key>',
@@ -246,13 +327,21 @@ async function verifyClaim(env, req) {
 }
 
 /** GET /v1/profile — what Num currently knows about you. */
-async function getProfile(env, placeId) {
+async function getProfile(env, businessId, placeId) {
   const p = await env.DB.prepare(
-    `SELECT id, name, category, dest, area, country, address, phone, website, hours, cuisine
+    `SELECT id, name, category, dest, area, country, address, phone, website, hours, cuisine, status, business_id
        FROM places WHERE id=?1`,
   ).bind(placeId).first();
   if (!p) return err('not_found', 'Listing not found.', 404);
-  return json({ profile: publicPlace(p) });
+  // num_business_profiles carries the commerce-layer fields the claim/onboard
+  // flow initialises (vertical, commerce_status, notify_channel, ...) — merged
+  // in here so one profile response reflects the now-unified data model rather
+  // than making a caller learn to fetch two things.
+  const biz = await env.DB.prepare(
+    `SELECT vertical, commerce_status, notify_channel, default_locale, timezone
+       FROM num_business_profiles WHERE business_id=?1`,
+  ).bind(businessId).first().catch(() => null);
+  return json({ profile: { ...publicPlace(p), business_id: businessId, ...(biz ?? {}) } });
 }
 
 /**
@@ -265,7 +354,7 @@ async function getProfile(env, placeId) {
  */
 const EDITABLE = new Set(['name', 'phone', 'website', 'hours', 'cuisine', 'address']);
 
-async function patchProfile(env, placeId, req) {
+async function patchProfile(env, businessId, placeId, req) {
   const b = await req.json().catch(() => ({}));
   const sets = [], binds = [];
   for (const [k, v] of Object.entries(b)) {
@@ -278,7 +367,7 @@ async function patchProfile(env, placeId, req) {
       `Send at least one of: ${[...EDITABLE].join(', ')}. Category, rating and position are not editable — they belong to the guest's trust in Num.`, 400);
   }
   await env.DB.prepare(`UPDATE places SET ${sets.join(', ')} WHERE id=?1`).bind(placeId, ...binds).run();
-  return getProfile(env, placeId);
+  return getProfile(env, businessId, placeId);
 }
 
 /**
@@ -329,9 +418,17 @@ export async function handleBizApi(request, env, path) {
   // Everything else needs a key.
   const auth = await authed(env, request);
   if (auth.error) return auth.error;
+  // A key can be valid (the business is verified and onboarded) while still
+  // having no place_id — num_place_owners rows are revocable, and a business
+  // could in principle exist without ever having owned a listing. Every route
+  // below reads/writes `places` by placeId, so fail clearly instead of a
+  // confusing 404/undefined further down.
+  if (!auth.placeId) {
+    return err('no_listing', 'This key is valid but is not attached to a listing yet.', 409);
+  }
 
-  if (path === '/v1/profile' && request.method === 'GET') return getProfile(env, auth.placeId);
-  if (path === '/v1/profile' && request.method === 'PATCH') return patchProfile(env, auth.placeId, request);
+  if (path === '/v1/profile' && request.method === 'GET') return getProfile(env, auth.businessId, auth.placeId);
+  if (path === '/v1/profile' && request.method === 'PATCH') return patchProfile(env, auth.businessId, auth.placeId, request);
   if (path === '/v1/insights' && request.method === 'GET') return getInsights(env, auth.placeId, url);
 
   return err('not_found', `No such endpoint: ${request.method} ${path}. See GET /api/biz/v1 for the index.`, 404);
@@ -353,6 +450,13 @@ export function bizApiIndex() {
       { method: 'PATCH', path: '/v1/profile', auth: true, body: { hours: 'string', website: 'string', phone: 'string', cuisine: 'string', address: 'string', name: 'string' }, does: 'Change it.' },
       { method: 'GET', path: '/v1/insights?days=7', auth: true, does: 'How often Num surfaced you.' },
     ],
+    // The MCP surface publishes six tools and, until today, this index — the
+    // only machine-readable description of /api/biz that exists — listed none
+    // of them. That is a listing nothing can be diffed against, which is how a
+    // tool gets added, removed or renamed without any check noticing.
+    // Generated from bizmcp.mjs rather than retyped: a hand-maintained second
+    // copy of a tool list is a copy that goes stale.
+    mcp_tools: BIZ_MCP_TOOLS.map((t) => ({ name: t.name, description: t.description.split('.')[0] + '.' })),
     not_editable: ['category', 'rating', 'position in recommendations'],
     why: 'A business controls how it is described. It does not control where it ranks — that belongs to the guest.',
   });

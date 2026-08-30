@@ -117,7 +117,7 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
          which businesses are already on NUM. */
       await fetch('/api/accounts/login', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ email: v })
+        body: JSON.stringify({ email: v, next: new URLSearchParams(location.search).get('next') || '' })
       });
       $('nsi-form').style.display='none'; $('nsi-sent').style.display='';
     }catch(e){
