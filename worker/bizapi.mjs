@@ -438,6 +438,26 @@ async function getInsights(env, businessId, placeId, url) {
       GROUP BY 1 ORDER BY 1`,
   ).bind(placeId, `-${days} day`).all().catch(() => ({ results: [] }));
   const total = (results ?? []).reduce((n, r) => n + r.impressions, 0);
+
+  // Export is a Pro/Full perk on the pricing page (public/pricing/index.html)
+  // — kept generous here (any paid tier, not just Pro and up) rather than a
+  // fourth entitlement flag to track, since nothing else reads a distinct
+  // "export" capability yet. CSV, not a signed download: this is a same-key
+  // authed GET, not a public link, so there is nothing to expire.
+  if (url.searchParams.get('format') === 'csv') {
+    if (plan.tier === 'free') {
+      return err('upgrade_required', 'Exporting is part of a paid plan. See GET /v1/billing/tiers.', 402);
+    }
+    const rows = ['day,impressions', ...(results ?? []).map((r) => `${r.day},${r.impressions}`)];
+    return new Response(rows.join('\n') + '\n', {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="num-insights-${placeId}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
   return json({
     available: true, place_id: placeId, days, impressions: total, by_day: results ?? [],
     ...(requested > cap ? { requested_days: requested, plan: plan.tier, upgrade_for_more: true } : {}),
@@ -529,6 +549,7 @@ export function bizApiIndex() {
       { method: 'GET', path: '/v1/profile', auth: true, does: 'What Num currently says about you, plus your current plan.' },
       { method: 'PATCH', path: '/v1/profile', auth: true, body: { hours: 'string', website: 'string', phone: 'string', cuisine: 'string', address: 'string', name: 'string', promo_text: 'string (paid plans only)' }, does: 'Change it.' },
       { method: 'GET', path: '/v1/insights?days=7', auth: true, does: 'How often Num surfaced you — lookback window depends on your plan.' },
+      { method: 'GET', path: '/v1/insights?format=csv', auth: true, does: 'The same data as a CSV download. Paid plans only.' },
       { method: 'GET', path: '/v1/locations', auth: true, does: 'Every listing this business owns.' },
       { method: 'GET', path: '/v1/billing/tiers', auth: false, does: 'The price list. Public, so it can never disagree with what you are charged.' },
       { method: 'GET', path: '/v1/billing/me', auth: true, does: 'Your current plan and renewal date.' },
