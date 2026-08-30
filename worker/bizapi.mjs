@@ -40,6 +40,7 @@ import { onboardStatements } from '../claim/onboard.mjs';
 // either import order. The alternative — retyping six tool names here — is the
 // exact duplication this index exists to make checkable.
 import { TOOLS_FOR_TEST as BIZ_MCP_TOOLS } from './bizmcp.mjs';
+import { bizEntitlements } from './bizbilling.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -338,10 +339,22 @@ async function getProfile(env, businessId, placeId) {
   // in here so one profile response reflects the now-unified data model rather
   // than making a caller learn to fetch two things.
   const biz = await env.DB.prepare(
-    `SELECT vertical, commerce_status, notify_channel, default_locale, timezone
+    `SELECT vertical, commerce_status, notify_channel, default_locale, timezone, custom_fields
        FROM num_business_profiles WHERE business_id=?1`,
   ).bind(businessId).first().catch(() => null);
-  return json({ profile: { ...publicPlace(p), business_id: businessId, ...(biz ?? {}) } });
+  // promo_text lives inside custom_fields (a JSON blob num_business_profiles
+  // already carries) rather than a new column — it is gated by entitlement,
+  // not schema, so a plan change never needs a migration.
+  let promoText = null;
+  if (biz?.custom_fields) {
+    try { promoText = JSON.parse(biz.custom_fields)?.promo_text ?? null; } catch { promoText = null; }
+  }
+  const { custom_fields: _cf, ...bizFields } = biz ?? {};
+  const plan = await bizEntitlements(env, businessId);
+  return json({
+    profile: { ...publicPlace(p), business_id: businessId, ...bizFields, promo_text: promoText },
+    plan,
+  });
 }
 
 /**
@@ -362,11 +375,30 @@ async function patchProfile(env, businessId, placeId, req) {
     binds.push(clip(v, 400));
     sets.push(`${k}=?${binds.length + 1}`);
   }
-  if (!sets.length) {
-    return err('nothing_editable',
-      `Send at least one of: ${[...EDITABLE].join(', ')}. Category, rating and position are not editable — they belong to the guest's trust in Num.`, 400);
+  const hasPromo = Object.prototype.hasOwnProperty.call(b, 'promo_text');
+  if (hasPromo) {
+    // Promotions are a paid entitlement (worker/bizbilling.mjs), not an
+    // allowlist member — a free listing can ask to set one and gets told
+    // plainly why not, the same shape as every other upgrade prompt.
+    const plan = await bizEntitlements(env, businessId);
+    if (!plan.promotions) {
+      return err('upgrade_required', 'Promotions are part of a paid plan. See GET /v1/billing/tiers.', 402);
+    }
+    const row = await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1')
+      .bind(businessId).first().catch(() => null);
+    let cf = {};
+    try { cf = JSON.parse(row?.custom_fields || '{}') ?? {}; } catch { cf = {}; }
+    cf.promo_text = clip(b.promo_text, 140) ?? '';
+    await env.DB.prepare('UPDATE num_business_profiles SET custom_fields=?2 WHERE business_id=?1')
+      .bind(businessId, JSON.stringify(cf)).run().catch(() => {});
   }
-  await env.DB.prepare(`UPDATE places SET ${sets.join(', ')} WHERE id=?1`).bind(placeId, ...binds).run();
+  if (!sets.length && !hasPromo) {
+    return err('nothing_editable',
+      `Send at least one of: ${[...EDITABLE].join(', ')}, promo_text. Category, rating and position are not editable — they belong to the guest's trust in Num.`, 400);
+  }
+  if (sets.length) {
+    await env.DB.prepare(`UPDATE places SET ${sets.join(', ')} WHERE id=?1`).bind(placeId, ...binds).run();
+  }
   return getProfile(env, businessId, placeId);
 }
 
@@ -379,8 +411,16 @@ async function patchProfile(env, businessId, placeId, req) {
  * number here would be the most damaging possible lie: it is the one figure a
  * merchant would make decisions on.
  */
-async function getInsights(env, placeId, url) {
-  const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days') || 7)));
+async function getInsights(env, businessId, placeId, url) {
+  // How far back a plan is allowed to look — free sees a week, paid tiers see
+  // more (worker/bizbilling.mjs). Capped silently rather than refused: a
+  // business that asks for more than its plan allows still gets the honest
+  // number for what it IS entitled to, plus a plain note that more is a plan
+  // away, not a wall.
+  const plan = await bizEntitlements(env, businessId);
+  const cap = plan.analytics_days ?? 7;
+  const requested = Math.min(90, Math.max(1, Number(url.searchParams.get('days') || 7)));
+  const days = Math.min(requested, cap);
   const has = await env.DB.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='num_place_impressions'",
   ).first().catch(() => null);
@@ -398,7 +438,30 @@ async function getInsights(env, placeId, url) {
       GROUP BY 1 ORDER BY 1`,
   ).bind(placeId, `-${days} day`).all().catch(() => ({ results: [] }));
   const total = (results ?? []).reduce((n, r) => n + r.impressions, 0);
-  return json({ available: true, place_id: placeId, days, impressions: total, by_day: results ?? [] });
+  return json({
+    available: true, place_id: placeId, days, impressions: total, by_day: results ?? [],
+    ...(requested > cap ? { requested_days: requested, plan: plan.tier, upgrade_for_more: true } : {}),
+  });
+}
+
+/**
+ * GET /v1/locations — every listing this business owns, not just the one the
+ * key happens to be scoped to today (authed() picks the most recently
+ * verified owned place as `placeId`). `max` is the plan's multi_location_max
+ * (worker/bizbilling.mjs) — informational: NUM does not yet refuse a claim
+ * once a business is over its plan's location count, it simply tells them
+ * plainly what their plan allows, the same honesty rule as everything else on
+ * this API.
+ */
+async function listLocations(env, businessId) {
+  const { results } = await env.DB.prepare(
+    `SELECT po.place_id, p.name, p.category, p.dest, po.verified_at
+       FROM num_place_owners po JOIN places p ON p.id = po.place_id
+      WHERE po.business_id=?1 AND po.revoked_at IS NULL
+      ORDER BY po.verified_at DESC`,
+  ).bind(businessId).all().catch(() => ({ results: [] }));
+  const plan = await bizEntitlements(env, businessId);
+  return json({ locations: results ?? [], count: (results ?? []).length, max: plan.multi_location_max, plan: plan.tier });
 }
 
 /* ──────────────────────────────── router ───────────────────────────────── */
@@ -410,14 +473,31 @@ export async function handleBizApi(request, env, path) {
   const url = new URL(request.url);
   const post = request.method === 'POST';
 
-  // Open: discovery and claiming. You cannot present a key before you have one.
+  // Open: discovery, claiming, and the public price list. You cannot present
+  // a key before you have one, and a business should be able to see what
+  // paying buys before it has anything to pay with.
   if (path === '/v1/places' && request.method === 'GET') return findPlaces(env, url);
   if (path === '/v1/claim' && post) return startClaim(env, request);
   if (path === '/v1/verify' && post) return verifyClaim(env, request);
+  if (path === '/v1/billing/tiers' && request.method === 'GET') {
+    const { handleBizBilling } = await import('./bizbilling.mjs');
+    return handleBizBilling(request, env, '/tiers', null);
+  }
 
   // Everything else needs a key.
   const auth = await authed(env, request);
   if (auth.error) return auth.error;
+
+  // Billing and locations need only the key's identity, not a live listing —
+  // a business with a revoked or not-yet-attached place should still be able
+  // to see its plan or add a location, so these are checked before the
+  // placeId gate below rather than after it.
+  if (path.startsWith('/v1/billing/')) {
+    const { handleBizBilling } = await import('./bizbilling.mjs');
+    return handleBizBilling(request, env, path.slice('/v1/billing'.length), auth);
+  }
+  if (path === '/v1/locations' && request.method === 'GET') return listLocations(env, auth.businessId);
+
   // A key can be valid (the business is verified and onboarded) while still
   // having no place_id — num_place_owners rows are revocable, and a business
   // could in principle exist without ever having owned a listing. Every route
@@ -429,7 +509,7 @@ export async function handleBizApi(request, env, path) {
 
   if (path === '/v1/profile' && request.method === 'GET') return getProfile(env, auth.businessId, auth.placeId);
   if (path === '/v1/profile' && request.method === 'PATCH') return patchProfile(env, auth.businessId, auth.placeId, request);
-  if (path === '/v1/insights' && request.method === 'GET') return getInsights(env, auth.placeId, url);
+  if (path === '/v1/insights' && request.method === 'GET') return getInsights(env, auth.businessId, auth.placeId, url);
 
   return err('not_found', `No such endpoint: ${request.method} ${path}. See GET /api/biz/v1 for the index.`, 404);
 }
@@ -446,9 +526,14 @@ export function bizApiIndex() {
       { method: 'GET', path: '/v1/places?q=&dest=', auth: false, does: 'Find your listing.' },
       { method: 'POST', path: '/v1/claim', auth: false, body: { place_id: 'string' }, does: 'Send a code to the contact details published on the listing.' },
       { method: 'POST', path: '/v1/verify', auth: false, body: { claim_id: 'string', code: 'string' }, does: 'Exchange the code for an API key. Shown once.' },
-      { method: 'GET', path: '/v1/profile', auth: true, does: 'What Num currently says about you.' },
-      { method: 'PATCH', path: '/v1/profile', auth: true, body: { hours: 'string', website: 'string', phone: 'string', cuisine: 'string', address: 'string', name: 'string' }, does: 'Change it.' },
-      { method: 'GET', path: '/v1/insights?days=7', auth: true, does: 'How often Num surfaced you.' },
+      { method: 'GET', path: '/v1/profile', auth: true, does: 'What Num currently says about you, plus your current plan.' },
+      { method: 'PATCH', path: '/v1/profile', auth: true, body: { hours: 'string', website: 'string', phone: 'string', cuisine: 'string', address: 'string', name: 'string', promo_text: 'string (paid plans only)' }, does: 'Change it.' },
+      { method: 'GET', path: '/v1/insights?days=7', auth: true, does: 'How often Num surfaced you — lookback window depends on your plan.' },
+      { method: 'GET', path: '/v1/locations', auth: true, does: 'Every listing this business owns.' },
+      { method: 'GET', path: '/v1/billing/tiers', auth: false, does: 'The price list. Public, so it can never disagree with what you are charged.' },
+      { method: 'GET', path: '/v1/billing/me', auth: true, does: 'Your current plan and renewal date.' },
+      { method: 'POST', path: '/v1/billing/subscribe', auth: true, body: { tier: 'small | pro | full' }, does: 'Start a Stripe Checkout session for that plan. Returns a url to redirect to.' },
+      { method: 'POST', path: '/v1/billing/cancel', auth: true, does: 'Cancel at period end — you keep the month you already paid for.' },
     ],
     // The MCP surface publishes six tools and, until today, this index — the
     // only machine-readable description of /api/biz that exists — listed none

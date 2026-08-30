@@ -276,7 +276,7 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
  *   - payment_intent_data is NOT sent: Stripe rejects it in subscription
  *     mode; the subscription carries the metadata instead.
  */
-export async function requestSubscription(env, { memberId, amountCents, name, ref, successUrl, cancelUrl }) {
+export async function requestSubscription(env, { memberId, businessId, amountCents, name, ref, successUrl, cancelUrl }) {
   await ensure(env);
   const mode = payMode(env);
   if (mode !== 'stripe') {
@@ -284,6 +284,16 @@ export async function requestSubscription(env, { memberId, amountCents, name, re
   }
   const amount = Math.round(Number(amountCents));
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, mode, error: 'A positive amount is required.' };
+
+  // A business subscription (worker/bizbilling.mjs) reuses this exact function
+  // rather than a second copy of it — same reasoning as pay.mjs's own header:
+  // one recurring-checkout implementation, not one per owner type. The two
+  // owner kinds are told apart by WHICH metadata key carries the id
+  // (num_member vs num_business), never by both at once, so the webhook can
+  // never mistake a business for a member — the notify-a-member push below
+  // only ever fires on num_member, and a business subscription never sets it.
+  const ownerId = businessId || memberId || null;
+  const ownerMetaKey = businessId ? 'num_business' : 'num_member';
 
   const id = `pay_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
@@ -306,9 +316,9 @@ export async function requestSubscription(env, { memberId, amountCents, name, re
           },
         },
       ],
-      metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(memberId ? { num_member: memberId } : {}) },
+      metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(ownerId ? { [ownerMetaKey]: ownerId } : {}) },
       subscription_data: {
-        metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(memberId ? { num_member: memberId } : {}) },
+        metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(ownerId ? { [ownerMetaKey]: ownerId } : {}) },
       },
     },
     id,
@@ -316,7 +326,7 @@ export async function requestSubscription(env, { memberId, amountCents, name, re
 
   await env.DB?.prepare(
     'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
-  ).bind(id, clip(memberId, 40), 'stripe-sub', clip(ref, 60), amount, 'usd', clip(name, 200), session.id, session.url).run().catch(() => {});
+  ).bind(id, clip(ownerId, 40), 'stripe-sub', clip(ref, 60), amount, 'usd', clip(name, 200), session.id, session.url).run().catch(() => {});
 
   return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: 'usd' };
 }
@@ -426,6 +436,24 @@ export async function handlePay(request, env, path) {
           }
         }
 
+        // A NUM for Business plan — the exact same shape as a member tier,
+        // priced and verified the same way, just keyed on num_business
+        // instead of num_member so the two owner kinds can never collide.
+        const bizTierMatch = /^biztier:([a-z_]{2,20})$/.exec(ref);
+        const businessId = s.metadata?.num_business;
+        if (firstTime && bizTierMatch && businessId) {
+          const { grantBizTier, bizTiers } = await import('./bizbilling.mjs');
+          const { tierPaidRight } = await import('./preflight.mjs');
+          const owed = bizTiers(env)[bizTierMatch[1]]?.price_cents;
+          const paidRight = tierPaidRight(s, owed);
+          if (!paidRight) {
+            console.error(`[pay] BIZ TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} usd. Grant refused; refund ${id} and find out which client built this session.`);
+          } else {
+            const g = await grantBizTier(env, businessId, bizTierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
+            console.log('[pay] biz tier', bizTierMatch[1], g.ok ? 'granted to' : 'FAILED for', businessId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
+          }
+        }
+
         const packMatch = /^stars:(\d{1,7})$/.exec(ref);
         if (firstTime && packMatch && memberId && env.STARS_SALE_OK === '1') {
           const n = Number(packMatch[1]);
@@ -486,7 +514,15 @@ export async function handlePay(request, env, path) {
         const periodEnd = inv.lines?.data?.[0]?.period?.end ?? null;
         const { recordRenewal } = await import('./membership.mjs');
         const r = await recordRenewal(env, subId, periodEnd);
-        console.log('[pay] renewal', subId, r.ok ? `extended to ${r.renews_at}` : 'MATCHED NO MEMBER');
+        if (r.ok) {
+          console.log('[pay] renewal', subId, `extended to ${r.renews_at}`);
+        } else {
+          // Not a member subscription — a sub id belongs to exactly one of
+          // the two tables, so try the business side before giving up.
+          const { recordBizRenewal } = await import('./bizbilling.mjs');
+          const rb = await recordBizRenewal(env, subId, periodEnd);
+          console.log('[pay] renewal', subId, rb.ok ? `extended (business) to ${rb.renews_at}` : 'MATCHED NO MEMBER OR BUSINESS');
+        }
       }
       return json({ received: true });
     }
@@ -495,7 +531,13 @@ export async function handlePay(request, env, path) {
       const sub = event.data?.object ?? {};
       const { lapseBySub } = await import('./membership.mjs');
       const r = await lapseBySub(env, sub.id);
-      console.log('[pay] subscription ended', sub.id, r.ok ? '— membership lapsed' : '— no membership held it');
+      if (r.ok) {
+        console.log('[pay] subscription ended', sub.id, '— membership lapsed');
+      } else {
+        const { lapseBizBySub } = await import('./bizbilling.mjs');
+        const rb = await lapseBizBySub(env, sub.id);
+        console.log('[pay] subscription ended', sub.id, rb.ok ? '— business plan lapsed' : '— no membership or business plan held it');
+      }
       return json({ received: true });
     }
 

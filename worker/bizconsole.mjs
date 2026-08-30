@@ -132,6 +132,17 @@ td{padding:9px 12px;border-top:1px solid #f0eee9}
 .big{font-size:30px;font-weight:700;letter-spacing:-.02em;display:block;line-height:1.1}
 .ok{color:var(--ok)}.bad{color:var(--bad)}
 a{color:inherit}.foot{margin-top:32px;font-size:13px;color:var(--muted)}
+.plangrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 14px}
+.plancard{border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center;background:#fff}
+.plancard.current{border-color:var(--ink);background:#faf9f7}
+.plancard .pname{font-weight:700;font-size:14px;margin:0 0 2px}
+.plancard .pprice{font-size:20px;font-weight:700;letter-spacing:-.02em;display:block;margin:2px 0 8px}
+.plancard .pprice span{font-size:12px;font-weight:400;color:var(--muted)}
+.plancard button{margin-top:4px;padding:9px;font-size:13.5px}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#eee;color:var(--muted);margin-left:6px;vertical-align:1px}
+.entlist{list-style:none;padding:0;margin:10px 0 0;font-size:13.5px;color:var(--muted)}
+.entlist li{padding:3px 0}
+.entlist li b{color:var(--ink);font-weight:600}
 </style></head><body>${inner}</body></html>`,
     { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
@@ -213,12 +224,67 @@ function keyIssued(key, token) {
     <a href="/api/biz/console?s=${encodeURIComponent(token)}"><button type="button">Open my dashboard</button></a>`);
 }
 
+/** Money formatter for the plan cards — cents, US-style, drops the .00. */
+const USD = (cents) => `$${cents % 100 ? (cents / 100).toFixed(2) : cents / 100}`;
+
+/** The "Your plan" card: what you're on, and the ladder above it. */
+function planSection(plan, allTiers, token, saved, err) {
+  const tierId = plan?.tier ?? 'free';
+  const isFree = tierId === 'free';
+  const cards = Object.entries(allTiers).map(([id, t]) => {
+    const current = id === tierId;
+    const priceLine = t.price_cents > 0
+      ? `${USD(t.price_cents)}<span>/mo</span>` : 'Free';
+    const action = current
+      ? '<button type="button" class="ghost" disabled>Current plan</button>'
+      : t.price_cents > 0
+        ? `<form method="post"><input type="hidden" name="action" value="upgrade">
+             <input type="hidden" name="s" value="${H(token)}">
+             <input type="hidden" name="tier" value="${H(id)}">
+             <button type="submit">${isFree ? 'Upgrade' : 'Switch'}</button></form>`
+        : '';
+    return `<div class="plancard${current ? ' current' : ''}">
+        <p class="pname">${H(t.name)}${current ? '<span class="tag">you</span>' : ''}</p>
+        <span class="pprice">${priceLine}</span>
+        <p class="sub" style="margin:0 0 6px;min-height:32px">${H(t.blurb)}</p>
+        ${action}
+      </div>`;
+  }).join('');
+
+  const ent = plan ?? {};
+  const entRows = [
+    `<li><b>${ent.analytics_days ?? 7}-day</b> analytics window</li>`,
+    `<li>Promotions: <b>${ent.promotions ? 'on' : 'not on this plan'}</b></li>`,
+    `<li>Locations on this plan: <b>${ent.multi_location_max == null ? 'unlimited' : ent.multi_location_max}</b></li>`,
+    `<li>Beta features: <b>${ent.beta_features ? 'yes, first' : 'not yet'}</b></li>`,
+  ].join('');
+
+  return `
+    <h2>Your plan</h2>
+    ${errBox(err)}
+    ${saved ? `<div class="note ok">${H(saved)}</div>` : ''}
+    <div class="plangrid">${cards}</div>
+    <div class="card">
+      <h3 style="margin-bottom:2px">${H(allTiers[tierId]?.name ?? 'Listed')} — what you get</h3>
+      <ul class="entlist">${entRows}</ul>
+      ${!isFree ? `<form method="post" style="margin-top:12px">
+          <input type="hidden" name="action" value="cancel_plan">
+          <input type="hidden" name="s" value="${H(token)}">
+          <button type="submit" class="ghost">Cancel plan</button>
+        </form>
+        <p class="sub" style="margin:8px 0 0">Cancelling stops the next charge — you keep this plan until the
+          period you already paid for ends.</p>` : ''}
+    </div>`;
+}
+
 /** The dashboard. */
-function dashboard(place, insights, bookings, token, saved = '', err = '') {
+function dashboard(place, insights, bookings, token, saved = '', err = '', extra = {}) {
+  const { plan = { tier: 'free' }, allTiers = {}, locations = [], promoText = '', planErr = '', planSaved = '' } = extra;
   const link = `/api/biz/console?s=${encodeURIComponent(token)}`;
   const impressions = insights?.available
     ? `<span class="big">${NUM(insights.impressions)}</span>
-       <span class="sub">times NUM showed you to a traveller · last ${H(insights.days)} days</span>`
+       <span class="sub">times NUM showed you to a traveller · last ${H(insights.days)} days${
+         insights.upgrade_for_more ? ` · <a href="#plan">a longer window is on a paid plan</a>` : ''}</span>`
     // The honest empty state, kept verbatim from the API rather than softened.
     // Inventing this number would be the single most damaging lie available:
     // it is the one figure a merchant makes decisions on.
@@ -227,6 +293,12 @@ function dashboard(place, insights, bookings, token, saved = '', err = '') {
   const F = (name, label, val, ph = '') => `
     <label for="${name}">${H(label)}</label>
     <input id="${name}" name="${name}" value="${H(val ?? '')}" placeholder="${H(ph)}">`;
+
+  const canPromote = !!plan?.promotions;
+  const promoField = canPromote
+    ? `${F('promo_text', 'Promotion NUM can mention', promoText, 'e.g. Happy hour 5-7pm, 20% off cocktails')}`
+    : `<label for="promo_text">Promotion NUM can mention</label>
+       <input id="promo_text" disabled placeholder="Part of a paid plan — see below" style="color:var(--muted);background:#faf9f7">`;
 
   return shell(`
     <h1>${H(place.name)}</h1>
@@ -258,11 +330,20 @@ function dashboard(place, insights, bookings, token, saved = '', err = '') {
       ${F('address', 'Address', place.address)}
       ${F('hours', 'Opening hours', place.hours, 'Mon-Sat 11:00-22:00')}
       ${F('cuisine', 'Cuisine or speciality', place.cuisine)}
+      ${promoField}
       <button type="submit">Save</button>
     </form>
     <div class="note">Your category, rating and where you appear in a recommendation are <b>not</b> editable —
       not by you, and not by anyone paying us. They belong to the traveller's trust in NUM, and the day a
       position can be bought the recommendations stop being worth reading.</div>
+
+    ${locations.length > 1 ? `<h2>Your locations</h2>
+      <table><tr><th>Name</th><th>Where</th></tr>
+        ${locations.map((l) => `<tr><td>${H(l.name)}</td><td>${H([l.category, l.dest].filter(Boolean).join(' · ') || '—')}</td></tr>`).join('')}
+      </table>` : ''}
+
+    <a name="plan"></a>
+    ${planSection(plan, allTiers, token, planSaved, planErr)}
 
     <p class="foot">Listing ID <code>${H(place.place_id ?? place.id)}</code> ·
       Questions: <a href="mailto:info@5arz.com">info@5arz.com</a> ·
@@ -271,7 +352,15 @@ function dashboard(place, insights, bookings, token, saved = '', err = '') {
 
 /* ─────────────────────────────── router ───────────────────────────────── */
 
-async function loadDashboard(env, placeId, token, origin, saved = '', err = '') {
+/** The business_id this listing is currently owned by, or null. */
+async function ownerOf(env, placeId) {
+  const row = await env.DB.prepare(
+    'SELECT business_id FROM num_place_owners WHERE place_id=?1 AND revoked_at IS NULL',
+  ).bind(placeId).first().catch(() => null);
+  return row?.business_id ?? null;
+}
+
+async function loadDashboard(env, placeId, token, origin, saved = '', err = '', planSaved = '', planErr = '') {
   // READS go to the database directly; WRITES go through the API path.
   //
   // That split is deliberate. /v1/profile authenticates by key, and the session
@@ -285,13 +374,39 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '') 
   ).bind(placeId).first();
   if (!place) return landing('That listing no longer exists. Email info@5arz.com.');
 
-  const insights = await insightsFor(env, placeId, 30);
+  const businessId = await ownerOf(env, placeId);
+
+  // The plan gates how far back insights are allowed to look — same rule as
+  // GET /v1/insights, kept in step deliberately rather than the console
+  // showing more than the API would hand an integration reading the same
+  // number.
+  const { bizEntitlements, bizTiers } = await import('./bizbilling.mjs');
+  const plan = businessId ? await bizEntitlements(env, businessId) : { tier: 'free', analytics_days: 7, promotions: false, multi_location_max: 1, beta_features: false, name: 'Listed' };
+  const allTiers = bizTiers(env);
+  const insights = await insightsFor(env, placeId, Math.min(30, plan.analytics_days ?? 7));
+
   const { results: bookings } = await env.DB.prepare(
     `SELECT created_at, guest_name, party, when_text, date, state
        FROM num_booking_requests WHERE place_id=?1 ORDER BY rowid DESC LIMIT 25`,
   ).bind(placeId).all().catch(() => ({ results: [] }));
 
-  return dashboard(place, insights, bookings ?? [], token, saved, err);
+  let locations = [];
+  let promoText = '';
+  if (businessId) {
+    const { results: locs } = await env.DB.prepare(
+      `SELECT po.place_id, p.name, p.category, p.dest
+         FROM num_place_owners po JOIN places p ON p.id = po.place_id
+        WHERE po.business_id=?1 AND po.revoked_at IS NULL ORDER BY po.verified_at DESC`,
+    ).bind(businessId).all().catch(() => ({ results: [] }));
+    locations = locs ?? [];
+    const row = await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1')
+      .bind(businessId).first().catch(() => null);
+    try { promoText = JSON.parse(row?.custom_fields || '{}')?.promo_text ?? ''; } catch { promoText = ''; }
+  }
+
+  return dashboard(place, insights, bookings ?? [], token, saved, err, {
+    plan, allTiers, locations, promoText, planSaved, planErr,
+  });
 }
 
 /** Read-only impressions, same honesty contract as GET /v1/insights. */
@@ -320,7 +435,13 @@ export async function handleBizConsole(request, env, url) {
     if (!s) return landing();
     const placeId = await sessionPlace(env, s);
     if (!placeId) return landing('That session expired — sign in with your key again.');
-    return await loadDashboard(env, placeId, s, origin);
+    // Stripe redirects here straight from its own hosted checkout page —
+    // grantBizTier() runs from the webhook, which is asynchronous and usually
+    // fast but is never guaranteed to have landed before this GET does. Said
+    // plainly rather than silently showing the OLD plan and looking broken.
+    const upgraded = url.searchParams.get('upgraded');
+    const planSaved = upgraded ? `Payment received — your plan updates within a few seconds. Refresh if ${H(upgraded)} doesn't show yet.` : '';
+    return await loadDashboard(env, placeId, s, origin, '', '', planSaved);
   }
   if (request.method !== 'POST') return landing();
 
@@ -385,11 +506,96 @@ export async function handleBizConsole(request, env, url) {
       if (v) patch[k] = v;
     }
     const sets = Object.entries(patch);
-    if (!sets.length) return await loadDashboard(env, placeId, token, origin, '', 'Nothing to save.');
-    await env.DB.prepare(
-      `UPDATE places SET ${sets.map(([k], i) => `${k}=?${i + 2}`).join(', ')} WHERE id=?1`,
-    ).bind(placeId, ...sets.map(([, v]) => String(v).slice(0, 400))).run();
+
+    // promo_text is entitlement-gated (worker/bizbilling.mjs), never in the
+    // plain allowlist above — a free listing can still POST the field (the
+    // input is disabled but a form can be hand-submitted), so this checks the
+    // plan itself rather than trusting the client left it blank.
+    let promoNote = '';
+    const promoRaw = form.get('promo_text');
+    if (promoRaw != null) {
+      const businessId = await ownerOf(env, placeId);
+      const { bizEntitlements } = await import('./bizbilling.mjs');
+      const plan = businessId ? await bizEntitlements(env, businessId) : null;
+      if (plan?.promotions && businessId) {
+        const row = await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1')
+          .bind(businessId).first().catch(() => null);
+        let cf = {};
+        try { cf = JSON.parse(row?.custom_fields || '{}') ?? {}; } catch { cf = {}; }
+        cf.promo_text = String(promoRaw).trim().slice(0, 140);
+        await env.DB.prepare('UPDATE num_business_profiles SET custom_fields=?2 WHERE business_id=?1')
+          .bind(businessId, JSON.stringify(cf)).run().catch(() => {});
+        promoNote = 'promo';
+      } else if (String(promoRaw).trim()) {
+        return await loadDashboard(env, placeId, token, origin, '', 'Promotions are part of a paid plan — see below.');
+      }
+    }
+
+    if (!sets.length && !promoNote) return await loadDashboard(env, placeId, token, origin, '', 'Nothing to save.');
+    if (sets.length) {
+      await env.DB.prepare(
+        `UPDATE places SET ${sets.map(([k], i) => `${k}=?${i + 2}`).join(', ')} WHERE id=?1`,
+      ).bind(placeId, ...sets.map(([, v]) => String(v).slice(0, 400))).run();
+    }
     return await loadDashboard(env, placeId, token, origin, 'Saved. NUM will use this from the next question a traveller asks.');
+  }
+
+  if (action === 'upgrade') {
+    const token = val('s');
+    const placeId = await sessionPlace(env, token);
+    if (!placeId) return landing('That session expired — sign in with your key again.');
+    const businessId = await ownerOf(env, placeId);
+    if (!businessId) return await loadDashboard(env, placeId, token, origin, '', '', '', 'No business is attached to this listing yet — email info@5arz.com.');
+    const { bizTiers } = await import('./bizbilling.mjs');
+    const tier = val('tier');
+    const t = bizTiers(env)[tier];
+    if (!tier || !t || !(t.price_cents > 0)) {
+      return await loadDashboard(env, placeId, token, origin, '', '', '', 'Pick a plan to upgrade to.');
+    }
+    const { requestSubscription } = await import('./pay.mjs');
+    const out = await requestSubscription(env, {
+      businessId,
+      amountCents: t.price_cents,
+      name: `NUM for Business — ${t.name}`,
+      ref: `biztier:${tier}`,
+      successUrl: `${origin}/api/biz/console?s=${encodeURIComponent(token)}&upgraded=${encodeURIComponent(tier)}`,
+      cancelUrl: `${origin}/api/biz/console?s=${encodeURIComponent(token)}`,
+    });
+    if (!out.ok || !out.url) {
+      return await loadDashboard(env, placeId, token, origin, '', '', '', out.error || 'Could not start checkout — try again in a minute.');
+    }
+    // A plain redirect, not a fetch — this console renders as arriving HTML
+    // with no client JS, same rule as everything else in this file, so
+    // handing the browser to Stripe's own hosted page is a 303, not a link
+    // the owner has to notice and click.
+    return Response.redirect(out.url, 303);
+  }
+
+  if (action === 'cancel_plan') {
+    const token = val('s');
+    const placeId = await sessionPlace(env, token);
+    if (!placeId) return landing('That session expired — sign in with your key again.');
+    const businessId = await ownerOf(env, placeId);
+    if (!businessId) return await loadDashboard(env, placeId, token, origin);
+    // bizEntitlements() lazily creates num_business_subscriptions the same way
+    // authed() must for num_biz_keys (see the 2026-08-30 production incident
+    // note on that function) — called here FIRST, before the raw SELECT below
+    // touches a table that may not exist yet for a business that has never
+    // held a paid plan.
+    const { bizEntitlements } = await import('./bizbilling.mjs');
+    await bizEntitlements(env, businessId);
+    const row = await env.DB.prepare('SELECT stripe_sub, tier, renews_at FROM num_business_subscriptions WHERE business_id=?1')
+      .bind(businessId).first().catch(() => null);
+    if (!row?.stripe_sub) {
+      return await loadDashboard(env, placeId, token, origin, '', '', row?.renews_at
+        ? `Nothing renews automatically — your ${row.tier} access simply ends ${row.renews_at}.`
+        : "You're on the free plan — nothing to cancel.");
+    }
+    const { cancelSubscription } = await import('./pay.mjs');
+    const out = await cancelSubscription(env, row.stripe_sub);
+    return await loadDashboard(env, placeId, token, origin, '', '',
+      out.ok ? `Done — ${row.tier} stays active until ${row.renews_at}, then won't charge again.` : '',
+      out.ok ? '' : (out.error || 'Could not cancel — try again in a minute.'));
   }
 
   return landing();
