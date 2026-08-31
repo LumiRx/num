@@ -88,3 +88,47 @@ test('whole-chain failure is logged loudly, not inferred from a status code', ()
   assert.match(code(brains), /console\.error\('\[brains\] EVERY BRAIN FAILED/,
     'the one condition that never shows up as a bad status code is not being logged');
 });
+
+// ── 31 Aug 2026: the health check that sent a human after the wrong thing ──
+
+test('the brain health check must actually call the brain', () => {
+  // It read, in full: `if (!env.ANTHROPIC_API_KEY) return {ok:false}; return
+  // {ok:true}` — a configuration check reported as a health check. So when
+  // both Anthropic brains were failing, `brain: ok` was TRUE throughout, and
+  // the only thing that noticed was the cooldown table. Then the cooldown
+  // lapsed and everything went green with nothing proven either way.
+  const health = readFileSync(new URL('./health.mjs', import.meta.url), 'utf8');
+  const probe = readFileSync(new URL('./brainprobe.mjs', import.meta.url), 'utf8');
+  assert.match(probe, /api\.anthropic\.com/, 'nothing in the probe actually calls the vendor');
+  const cron = readFileSync(new URL('./index.mjs', import.meta.url), 'utf8');
+  assert.match(cron, /proveBrains/, 'the probe is never run, so it proves nothing');
+  // And the remedy must stop offering "mint a new key" for every class at once.
+  assert.match(health, /Blocked:/, 'the operator remedy still lumps every failure class together');
+});
+
+test('a recovered brain stops carrying its old error', () => {
+  // haiku recovered at 14:29 and still displayed a 403 at 15:41, because
+  // recordSuccess cleared fails and cooldown but not last_error. A healthy
+  // brain that looks broken is worse than no state at all.
+  const src = readFileSync(new URL('./brainstate.mjs', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('export async function recordSuccess'));
+  const stmt = fn.slice(fn.indexOf('UPDATE num_brain_state'), fn.indexOf('WHERE brain'));
+  assert.match(stmt, /last_error\s*=\s*NULL/,
+    'recovery leaves the old error attached, so a working brain keeps reading as broken');
+});
+
+test('a reasoning model that ran out of room is alive, not dead', () => {
+  // 31 Aug: the health probe called gpt-oss-120b and qwen3-30b with a 40-token
+  // ceiling. Both are reasoning models — they think before they speak, put the
+  // thinking in `reasoning_content`, and had no budget left for `content`. The
+  // probe reported both as broken while production, which allows 700, was
+  // using them happily. A liveness check that invents outages is worse than
+  // none.
+  const src = readFileSync(new URL('./brains.mjs', import.meta.url), 'utf8');
+  const extract = src.slice(src.indexOf('function extractText'), src.indexOf('async function callProse'));
+  assert.match(extract, /reasoning_content/,
+    'a model that produced only reasoning still reads as having returned nothing');
+  const probeFn = src.slice(src.indexOf('export async function probe'));
+  assert.ok(!/maxTokens: 40\b/.test(probeFn.slice(0, probeFn.indexOf('\n}'))),
+    'the probe still uses a budget too small for a reasoning model to answer in');
+});

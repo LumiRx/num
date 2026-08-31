@@ -95,22 +95,47 @@ const VERIFY_HINTS = {
 /**
  * Turn one raw Verify attempt into the sentence an operator needs.
  *
- * `channel_data.status` is the carrier's word, not Twilio's queue state, and
- * it is the only field here that answers "did a phone buzz". When Twilio has
- * not resolved it yet the answer is `unknown` — never `ok`.
+ * ── I READ THE WRONG FIELD FIRST — 31 Aug 2026 ───────────────────────────
+ *
+ * The first cut of this took `channel_data.status` to be the carrier verdict.
+ * It is not. Twilio puts TWO statuses in that object and they answer opposite
+ * questions:
+ *
+ *   status          — did the person type the code back? ("unconfirmed")
+ *   message_status  — did a carrier take the message?    ("undelivered")
+ *
+ * So the first live run of this endpoint reported `status: unconfirmed,
+ * delivered: null` and a verdict of "pending — ask again in a minute" about an
+ * attempt that was nineteen hours old and would never change. A diagnostic
+ * built to end confident-sounding nonsense produced confident-sounding
+ * nonsense, from the wrong field, on its first outing. The fix is to read the
+ * field that answers the question being asked.
+ *
+ * `error_code: "0"` means NO error, and must not be shown as one.
+ *
+ * And the most useful fact in the whole payload turned out to be `to` — the
+ * number Twilio actually texted. On 30 Aug a code went to +1310735…, one digit
+ * from the number the person was holding, and every other field said the send
+ * was fine. It was. It just went somewhere else.
  */
 export function explainAttempt(attempt) {
   const cd = attempt?.channel_data ?? {};
-  const status = cd.status ? String(cd.status).toLowerCase() : null;
+
+  // The carrier's word. `message_status` is the only field here that answers
+  // "did a phone buzz"; everything else is about the code, not the message.
+  const delivery = cd.message_status ? String(cd.message_status).toLowerCase() : null;
+  // Whether the person typed the code back. Useful, and NOT a delivery signal.
+  const confirmation = cd.status ? String(cd.status).toLowerCase() : null;
+
   const rawCode = cd.error_code ?? cd.errorCode ?? null;
-  const code = rawCode == null || rawCode === '' ? null : String(rawCode);
+  const code = rawCode == null || rawCode === '' || String(rawCode) === '0' ? null : String(rawCode);
   const n = Number(code);
 
   // DELIVERED is the only value that means the message landed. `sent` means a
   // carrier accepted a handoff and can still drop it; treating `sent` as
   // success is how the previous blind spot was built.
-  const delivered = status === 'delivered' ? true
-    : status === 'undelivered' || status === 'failed' ? false
+  const delivered = delivery === 'delivered' ? true
+    : delivery === 'undelivered' || delivery === 'failed' ? false
       : null;
 
   return {
@@ -122,13 +147,32 @@ export function explainAttempt(attempt) {
     // unconverted attempt on a DELIVERED message is a product problem; on an
     // undelivered one it is a carrier problem. Different people, different fix.
     converted: attempt?.conversion_status === 'converted',
+    // THE NUMBER WE ACTUALLY TEXTED. First field an operator should read: a
+    // perfectly delivered code to the wrong digits looks identical to success
+    // in every other field.
     to: cd.to ?? null,
-    status: status ?? 'unknown',
+    carrier: cd.carrier ?? null,
+    country: cd.country ?? null,
+    status: delivery ?? 'unknown',
+    confirmation: confirmation ?? null,
     delivered,
     error_code: code,
     hint: code ? (VERIFY_HINTS[n] ?? CARRIER_HINTS[n] ?? null) : null,
   };
 }
+
+/**
+ * How long we wait before an unresolved attempt stops being "in flight".
+ *
+ * Twilio normally reports a carrier result within seconds. An attempt with no
+ * `message_status` five minutes on is not pending — it is a question Twilio is
+ * never going to answer, and saying "ask again in a minute" about it is how a
+ * dead end gets dressed up as progress.
+ */
+const PENDING_GRACE_MS = 5 * 60 * 1000;
+
+export const isStale = (attempt, now = Date.now()) =>
+  !!attempt?.at && (now - new Date(attempt.at).getTime()) > PENDING_GRACE_MS;
 
 const auth = (env) => 'Basic ' + btoa(`${env.TWILIO_SID ?? env.TWILIO_ACCOUNT_SID}:${env.TWILIO_TOKEN ?? env.TWILIO_AUTH_TOKEN}`);
 
@@ -244,7 +288,7 @@ export async function reconcileVerifySends(env, { sinceIso, now = Date.now() } =
  * The one-sentence verdict. Written so it can be read at speed during an
  * incident by somebody who has not seen this file.
  */
-export function verdictFor({ configured, attempts, service }) {
+export function verdictFor({ configured, attempts, service, now = Date.now() }) {
   if (!configured.ok) return { state: 'misconfigured', say: configured.note };
   if (service?._error) return { state: 'unreachable', say: `Twilio would not describe the Verify service: ${service._error}` };
   if (!attempts.ok) return { state: 'unreachable', say: `Could not read Verify attempts: ${attempts.error}` };
@@ -254,7 +298,18 @@ export function verdictFor({ configured, attempts, service }) {
   const resolved = attempts.attempts.filter((a) => a.delivered !== null);
   const bad = resolved.filter((a) => a.delivered === false);
   if (!resolved.length) {
-    return { state: 'pending', say: `Twilio has accepted ${attempts.attempts.length} attempt(s) but has not yet reported a carrier result for any of them. Ask again in a minute — this is normal for the first ~30 seconds and abnormal after five.` };
+    const newest = attempts.attempts[0];
+    // Old and unresolved is a different animal from young and unresolved, and
+    // telling somebody to "ask again in a minute" about a nineteen-hour-old
+    // attempt is exactly the sort of cheerful non-answer this file exists to
+    // stop producing.
+    if (isStale(newest, now)) {
+      return {
+        state: 'unresolved',
+        say: `Twilio accepted ${attempts.attempts.length} attempt(s) and never reported a carrier result — the newest is from ${newest.at}. Waiting will not change this. Check the destination number first: the last code went to ${newest.to ?? 'a number Twilio did not report'}${newest.carrier ? ` on ${newest.carrier}` : ''}. A code delivered to the wrong digits looks identical to a healthy send in every other field.`,
+      };
+    }
+    return { state: 'pending', say: `Twilio has accepted ${attempts.attempts.length} attempt(s) but has not yet reported a carrier result. This is normal for the first ~30 seconds.` };
   }
   if (bad.length === resolved.length) {
     const a = bad[0];
@@ -263,7 +318,11 @@ export function verdictFor({ configured, attempts, service }) {
   if (bad.length) {
     return { state: 'partial', say: `${bad.length} of ${resolved.length} resolved attempts failed at the carrier. Most recent failure: ${bad[0].error_code ?? bad[0].status}. ${bad[0].hint ?? ''}`.trim() };
   }
-  return { state: 'delivering', say: `All ${resolved.length} resolved attempts were delivered. If somebody still says no code arrived, the message reached their carrier and the problem is downstream of us — a blocked sender, a full inbox, or the wrong number on file.` };
+  const last = resolved.find((a) => a.delivered) ?? resolved[0];
+  return {
+    state: 'delivering',
+    say: `All ${resolved.length} resolved attempts were delivered. Most recent went to ${last.to ?? 'an unreported number'}${last.carrier ? ` on ${last.carrier}` : ''}. If somebody still says no code arrived, CHECK THAT NUMBER IS THEIRS before anything else — the message reached a carrier, so what is left is a blocked sender, a full inbox, or the wrong digits on file.`,
+  };
 }
 
 /** GET /api/admin/verify — admin key required. Never returns a credential. */

@@ -37,6 +37,31 @@ export const BRAINS = [
     note: 'The concierge. Books, remembers, uses the specialists.',
   },
   {
+    // ── THE BULK LANE ──────────────────────────────────────────────────────
+    //
+    // The everyday turn — "where should we eat", "best beach", "what's on
+    // tonight" — answered by Haiku at one fifth of Opus's price.
+    //
+    // WHY A SECOND ANTHROPIC BRAIN RATHER THAN A CHEAPER VENDOR: everything
+    // below this line in the chain is `structured: false`, and a prose brain
+    // is forbidden — correctly — from minting cards or actions. That boundary
+    // exists so a cheap model can never fake a reservation. But it means that
+    // routing the MAJORITY of traffic to a prose brain quietly removed the
+    // ability to offer a booking from the majority of conversations. Haiku
+    // produces the full REPLY_SCHEMA, so the cheap lane keeps every capability
+    // the expensive one has.
+    //
+    // It shares Anthropic's quota with `claude`, which is why it is not a
+    // substitute for the independent-bill brains below — it is a cost lane,
+    // not a redundancy lane. The redundancy still lives underneath it.
+    id: 'haiku',
+    label: 'Claude Haiku 4.5',
+    kind: 'anthropic',
+    structured: true,
+    ready: (env) => !!env.ANTHROPIC_API_KEY,
+    note: 'The bulk lane. Recommendations and lookups at a fifth of Opus, with the full schema — so a cheap answer can still offer a booking.',
+  },
+  {
     // A hosted model on a SEPARATE bill from Anthropic and from Workers AI.
     //
     // This is the layer the 2026-08-06 and 08-07 outages were actually missing.
@@ -280,6 +305,23 @@ function extractText(res) {
   }
   const choice = res.choices?.[0]?.message?.content;
   if (typeof choice === 'string' && choice.trim()) return choice.trim();
+  // Completion-style shape, still used by some Workers AI models.
+  const legacy = res.choices?.[0]?.text;
+  if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  // REASONING MODELS THAT RAN OUT OF ROOM TO ANSWER.
+  //
+  // gpt-oss-120b and qwen3-30b spend their budget thinking before they say
+  // anything, and put the thinking in `reasoning_content` with `content` left
+  // empty. On 31 Aug the health probe called them with a 40-token ceiling —
+  // enough to think, not enough to speak — and both were reported broken while
+  // production, which allows 700, was using them happily.
+  //
+  // Read as a last resort rather than a peer: reasoning is not an answer, and
+  // preferring it over real content would put chain-of-thought in front of a
+  // guest. But a model that produced reasoning is unambiguously ALIVE, and a
+  // liveness check that calls it dead is worse than no check.
+  const thought = res.choices?.[0]?.message?.reasoning_content;
+  if (typeof thought === 'string' && thought.trim()) return thought.trim();
   return '';
 }
 
@@ -397,9 +439,15 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
     const started = Date.now();
     try {
       if (brain.structured) {
-        const out = await structuredCall();
+        // The directive names WHICH Anthropic model this tier deserves —
+        // Haiku for the bulk, Opus for money and trouble. Without passing it
+        // through, both structured brains would call the same model and the
+        // whole bulk lane would be a relabelling exercise that saved nothing.
+        const structuredModel =
+          (directive?.steps ?? []).find((s2) => s2.brain === brain.id)?.model ?? null;
+        const out = await structuredCall(null, structuredModel);
         await recordBrainSuccess(env, brain.id, state);
-        return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started };
+        return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started, _model: structuredModel };
       }
       // The director may name a model for this brain (per-class override).
       // Match the FIRST step naming this brain — not step 0. With the chain
@@ -490,9 +538,28 @@ export async function probe(env) {
       continue;
     }
     if (brain.structured) {
-      // Probing Claude means paying for a real turn; the chain proves itself in
-      // production every time it answers.
-      out.push({ id: brain.id, ready: true, ok: null, note: 'primary — not probed (a probe costs a real turn)' });
+      // THIS USED TO REFUSE TO ANSWER, and it refused about the only two
+      // brains that have ever taken the product down.
+      //
+      // It read: `ok: null, note: 'primary — not probed (a probe costs a real
+      // turn)'`, on the reasoning that "the chain proves itself in production
+      // every time it answers". On 31 Aug 2026 both Anthropic brains failed at
+      // 13:33 and no guest asked anything for the next two hours, so the chain
+      // proved nothing, the cooldown lapsed, and health went green on a timer.
+      // `/api/brains?probe=1` — the one diagnostic reachable by hand during
+      // that window — would have reported `ok: null` for both.
+      //
+      // The caution was right and the price was wrong: it assumed the probe
+      // below, a 40-token reply behind the full concierge system prompt. A
+      // reachability check needs one token and no prompt at all. See
+      // worker/brainprobe.mjs, which is the same call the cron makes — so this
+      // endpoint and the automatic check can never disagree about a brain.
+      const { probeBrain } = await import('./brainprobe.mjs');
+      const t0 = Date.now();
+      const r = await probeBrain(env, brain.id);
+      out.push(r.probed
+        ? { id: brain.id, ready: true, ok: r.ok, ms: r.ms, ...(r.ok ? {} : { error: r.error, class: r.class }) }
+        : { id: brain.id, ready: true, ok: null, note: r.reason, ms: Date.now() - t0 });
       continue;
     }
     const t0 = Date.now();
@@ -500,7 +567,11 @@ export async function probe(env) {
       const probe = await callProse(env, brain, {
         messages: [{ role: 'user', content: 'Say hello in under 10 words.' }],
         system: 'You are a warm concierge. Reply in under 10 words, plain prose.',
-        maxTokens: 40,
+        // 40 was too mean for a reasoning model: it thinks first, and a
+        // ceiling that stops it mid-thought produced an empty completion that
+        // this endpoint then reported as a dead brain. 256 is still trivial
+        // and leaves room for a short answer after the thinking.
+        maxTokens: 256,
       });
       out.push({ id: brain.id, ready: true, ok: true, ms: Date.now() - t0, sample: probe.text.slice(0, 90) });
     } catch (err) {
