@@ -443,7 +443,23 @@ async function checkSurface(surface, { offline }) {
       const inner = json.result?.content?.map((c) => c?.text ?? '').join('\n') ?? '';
       let payload = null;
       try { payload = JSON.parse(inner); } catch { /* a tool may return prose */ }
-      const text = inner || JSON.stringify(json.error ?? json.result ?? {});
+      // THE WHOLE BODY, not one field of it.
+      //
+      // 31 Aug 2026: this read `json.error` alone. The agents worker refuses an
+      // unauthenticated tools/call with a transport-level 401 shaped
+      // `{error:"unauthorized", message:"… POST /api/agent/signup …", docs:…}`
+      // — deliberately NOT a JSON-RPC envelope, because RFC 9728 §5.1 requires
+      // a real 401 with WWW-Authenticate for an MCP client to start the OAuth
+      // flow. The documented pointer therefore lives in `message`, which this
+      // line never looked at. So the checker reported ADVERTISED BUT BROKEN
+      // against a surface that was answering exactly as designed, and printed
+      // `"unauthorized"` as its evidence — the one field that could not
+      // possibly contain what it was searching for.
+      //
+      // The rule this encodes: match against everything the server said, and
+      // let the pattern be the narrow part. A checker that pre-filters the
+      // evidence decides the answer before it looks.
+      const text = inner || JSON.stringify(json);
       // "Broken" is the tool's own verdict, not a substring search: isError from
       // the transport, or an `error` key at the top level of its payload.
       const looksBroken = json.result?.isError === true
@@ -459,7 +475,7 @@ async function checkSurface(surface, { offline }) {
             detail: `expected an auth refusal and got a result — ${surface.auth} is no longer enforced` });
         } else if (!matched) {
           problems.push({ surface: surface.id, kind: 'smoke', where: s.tool,
-            detail: `refused, but not in the documented way (${s.match}): ${text.slice(0, 200)}` });
+            detail: `refused, but not in the documented way — looked for ${s.match} and the server said: ${text.slice(0, 300)}` });
         }
         continue;
       }

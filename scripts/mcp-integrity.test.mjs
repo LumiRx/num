@@ -181,3 +181,47 @@ test('the booking surface is not on the read-only partner surface', () => {
     'a tool is served by both the open read-only surface and the keyed booking surface — one of the two access ' +
     'policies is therefore decorative');
 });
+
+// ── 31 Aug 2026: the checker judged a surface on one field of its answer ──
+
+test('a refusal is matched against the whole body, not just .error', () => {
+  // The agents worker refuses an unauthenticated tools/call with a real HTTP
+  // 401 — NOT a JSON-RPC envelope — because RFC 9728 §5.1 requires
+  // WWW-Authenticate for an MCP client to begin the OAuth flow. Its body is
+  // {error, message, docs}, and the documented signup pointer lives in
+  // `message`. Reading only `error` made the checker report a correct,
+  // spec-compliant surface as ADVERTISED BUT BROKEN — and print
+  // `"unauthorized"` as the proof, the one field that could never contain
+  // what it was looking for.
+  const src = readFileSync(new URL('./mcp-integrity.mjs', import.meta.url), 'utf8');
+  const smoke = src.slice(src.indexOf('facts.smoke = []'));
+  assert.match(smoke, /const text = inner \|\| JSON\.stringify\(json\)/,
+    'the smoke check still pre-filters the response before matching, so it decides before it looks');
+  assert.ok(!/JSON\.stringify\(json\.error \?\? json\.result/.test(smoke),
+    'the old single-field read is still there');
+});
+
+test('a failed smoke prints what the server actually said', () => {
+  // Four alarms on 31 Aug each named the wrong culprit, and every one was a
+  // conclusion printed without the observation behind it. A checker holding
+  // the response body when it declares a tool broken should show it.
+  const src = readFileSync(new URL('./mcp-integrity.mjs', import.meta.url), 'utf8');
+  assert.match(src, /looked for \$\{s\.match\} and the server said/,
+    'the failure message states a verdict without the evidence it was drawn from');
+});
+
+test('the real 31 Aug refusal body would now pass', () => {
+  // Verbatim from https://itsnum.com/mcp, unauthenticated tools/call.
+  const body = {
+    error: 'unauthorized',
+    message: 'Send Authorization: Bearer <token>. Either a key from POST https://itsnum.com/api/agent/signup, '
+      + 'or an OAuth 2.1 access token — see https://itsnum.com/.well-known/oauth-protected-resource.',
+    docs: 'https://itsnum.com/agents/',
+  };
+  const inner = '';
+  const text = inner || JSON.stringify(body);
+  assert.equal(/api\/agent\/signup/.test(text), true,
+    'the documented pointer is in the body and must match');
+  // And the old behaviour must be shown to have failed, so this test means something.
+  assert.equal(/api\/agent\/signup/.test(JSON.stringify(body.error)), false);
+});
