@@ -32,6 +32,60 @@ const rpcErr = (id, code, message) => new Response(JSON.stringify({ jsonrpc: '2.
   headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
 });
 
+/* ── WHY THIS ROUTE LIMITS ITSELF ─────────────────────────────────────────
+ *
+ * It did not, and on 31 Aug 2026 that failed the MCP integrity gate on a live
+ * deploy: `tools/list returned undefined` and "advertised tool does not work".
+ * Neither was true. A single call answered perfectly; only a burst failed.
+ *
+ * The cause was the blanket 12/min-per-IP gate in index.mjs, which every
+ * POST /api/* gets by default. That is the right default and the wrong rule
+ * for an MCP endpoint, for the reasons partnermcp.mjs sets out at length — and
+ * the one that bit here is the second: ITS 429 IS NOT JSON-RPC. It answers
+ * `{"error":"You are going faster than I can keep up"}` with no `jsonrpc` and
+ * no `id`, so an MCP client cannot correlate it to a pending request. A
+ * throttle therefore reads as a protocol fault: "Num is broken", not "slow
+ * down". The integrity checker read it exactly that way, and so would an
+ * agent evaluating us.
+ *
+ * index.mjs already exempts /api/partner/mcp and /api/concierge/mcp and says,
+ * in a comment directly above the list, "Do NOT add a route here without
+ * giving it a limiter of its own." This route was added without one. The
+ * comment was right; the enforcement was a comment.
+ *
+ * So: same binding, same guard, same shape as the partner surface — and
+ * discovery is never throttled. `initialize`, `notifications/initialized` and
+ * `tools/list` are how an agent finds out what we can do. Rate-limiting the
+ * handshake means an agent that has called nothing yet is told it is calling
+ * too much, which is the worst possible first impression and buys us nothing:
+ * discovery is a static list, not work.
+ * --------------------------------------------------------------------- */
+
+/** A throttle in the shape an MCP client can act on: -32003, 429, Retry-After. */
+export function bizThrottled(id, retryAfter) {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0', id,
+      error: {
+        code: -32003,
+        message: `This surface is limited per IP. Retry in ${retryAfter}s. Nothing was changed.`,
+      },
+    }),
+    {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Retry-After': String(retryAfter),
+      },
+    },
+  );
+}
+
+/** Discovery is free; work is counted. */
+export const isDiscovery = (method) =>
+  method === 'initialize' || method === 'notifications/initialized' || method === 'tools/list';
+
 const TOOLS = [
   {
     name: 'find_listing',
@@ -185,6 +239,12 @@ export async function handleBizMcp(request, env) {
   if (method === 'tools/list') return rpc(id, { tools: TOOLS });
 
   if (method === 'tools/call') {
+    // Counted here rather than at the top of the handler, so discovery stays
+    // free and only real work spends the bucket.
+    const { enforceRateLimit } = await import('./guard.mjs');
+    const limit = await enforceRateLimit(env, request.headers.get('CF-Connecting-IP') ?? 'unknown', 'RATE_LIMITER');
+    if (!limit.ok) return bizThrottled(id, limit.retryAfter);
+
     const { name, arguments: args = {} } = params;
     const base = new URL(request.url).origin + '/api/biz';
     const [req, path] = toRequest(name, args, base);

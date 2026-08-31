@@ -1100,7 +1100,13 @@ export default {
       // partnermcp.mjs and conciergemcp.mjs apply the same limiter with the
       // scope each trust level deserves, and answer in JSON-RPC. Do NOT add a
       // route here without giving it a limiter of its own.
-      const isSelfLimitedMcp = url.pathname === '/api/partner/mcp' || url.pathname === '/api/concierge/mcp';
+      // /api/biz/mcp joined this list on 31 Aug 2026, after the blanket gate's
+      // non-JSON-RPC 429 failed the MCP integrity check on a live deploy and
+      // reported two perfectly working tools as broken. It now limits itself
+      // in bizmcp.mjs, on the same binding, exempting discovery.
+      const isSelfLimitedMcp = url.pathname === '/api/partner/mcp'
+        || url.pathname === '/api/concierge/mcp'
+        || url.pathname === '/api/biz/mcp';
       if (!isWebhook && !isSelfLimitedMcp) {
         const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
         // The admin door gets its own, much smaller bucket: a password guess
