@@ -13,6 +13,7 @@
   "workers_dev": true,
   "observability": { "enabled": true },
 
+  "send_email": [{ "name": "EMAIL" }],
   "d1_databases": [
     {
       "binding": "DB",
@@ -39,7 +40,10 @@
     // Requires itsnum.com verified in Resend (it is) AND exactly one DKIM key
     // at resend._domainkey.itsnum.com — two records at that name is ambiguous
     // and now lands on this campaign directly.
-    "MAIL_FROM": "NUM <info@itsnum.com>",
+    // mail.itsnum.com is the sending domain, live 31 Aug. Cloudflare only
+    // sends FROM a domain it holds — itsnum.com is not one, which is why
+    // every attempt read "could not find domain config of sending domain".
+    "MAIL_FROM": "NUM <hello@mail.itsnum.com>",
     "SEND_BUDGET": "40",
 
     // ── merchant-invite drain (invitecron.mjs) ─────────────────────────
@@ -53,7 +57,13 @@
     // Day zero of the five-week ramp (UTC date). The daily cap is computed
     // from whole days elapsed since this date — see the RAMP table in
     // invitecron.mjs. Move this only if the ramp itself should restart.
-    "INVITE_RAMP_START": "2026-08-26",
+    // Anchored to the day the SENDING DOMAIN started, not the day the queue
+    // was built. The ramp counts calendar days (50/day, 150 after a week,
+    // 400 after two), so leaving it on 26 Aug would have jumped a
+    // domain with zero reputation and zero sent mail straight to 150/day
+    // in two days' time. Reputation is earned by delivering, not by
+    // waiting.
+    "INVITE_RAMP_START": "2026-08-31",
     // Hard per-tick ceiling, independent of the ramp's daily cap — a safety
     // valve against a bug in the pacing math ever sending hundreds of emails
     // in one Resend batch call in one request.

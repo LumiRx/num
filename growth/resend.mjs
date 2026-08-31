@@ -24,9 +24,50 @@ function randomHex(bytes = 12) {
  *   `sent` is `messages.length` on success — Resend's batch endpoint is
  *   all-or-nothing, so a caller never gets a partial count back from here.
  */
+/**
+ * Cloudflare Email Sending, one message at a time.
+ *
+ * Resend's batch endpoint takes the whole tick in one call; Cloudflare's
+ * binding takes one message. At a ramp that opens on 50 a day that difference
+ * costs nothing, and it is the only transport that currently works: the
+ * production Resend key returns 401 "API key is invalid", and the copy on disk
+ * is a restricted key authorised for no domain we own (checked against
+ * itsnum.com, mail.itsnum.com, 5arz.com and thatislumi.com on 31 Aug).
+ *
+ * All-or-nothing is deliberately preserved. `drainInvites` marks a lead
+ * `invited` on a reported success, so a partial count would silently burn the
+ * leads the caller believes were skipped. If any message fails, the whole tick
+ * reports failure and the drain releases every lead it claimed.
+ */
+async function viaCloudflareOneByOne(env, messages) {
+  const { send } = await import('../worker/mailer.mjs');
+  const ids = [];
+  for (const { __idem, ...m } of messages) {
+    const out = await send(env, {
+      to: m.to,
+      from: m.from,
+      subject: m.subject,
+      text: m.text,
+      html: m.html,
+      replyTo: Array.isArray(m.reply_to) ? m.reply_to[0] : m.reply_to,
+      // A copy of every invite is not a safety net, it is a second mailbox
+      // nobody reads — and some providers count each BCC against the send.
+      bulk: true,
+    }, { order: ['cloudflare'] });
+    if (!out?.ok) {
+      return { ok: false, sent: 0, ids: [], error: `cloudflare ${out?.error ?? 'unknown'}`.slice(0, 300) };
+    }
+    ids.push(out.id);
+  }
+  return { ok: true, sent: messages.length, ids };
+}
+
 export async function sendBatch(env, messages) {
   if (!messages.length) return { ok: true, sent: 0, ids: [] };
-  if (!env.RESEND_KEY) return { ok: false, sent: 0, ids: [], error: 'no RESEND_KEY' };
+  if (!env.RESEND_KEY) {
+    if (env.EMAIL?.send) return viaCloudflareOneByOne(env, messages);
+    return { ok: false, sent: 0, ids: [], error: 'no RESEND_KEY and no EMAIL binding' };
+  }
   const res = await fetch('https://api.resend.com/emails/batch', {
     method: 'POST',
     headers: {
@@ -37,7 +78,14 @@ export async function sendBatch(env, messages) {
     body: JSON.stringify(messages.map(({ __idem, ...m }) => m)),
   });
   if (!res.ok) {
-    return { ok: false, sent: 0, ids: [], error: 'resend ' + res.status + ' ' + (await res.text()).slice(0, 300) };
+    const detail = (await res.text()).slice(0, 300);
+    // 401/403 is the key itself, not this batch. Retrying it on the next tick
+    // changes nothing, so fall through to Cloudflare rather than reporting a
+    // failure that stops the drain for as long as the key stays broken.
+    if ((res.status === 401 || res.status === 403) && env.EMAIL?.send) {
+      return viaCloudflareOneByOne(env, messages);
+    }
+    return { ok: false, sent: 0, ids: [], error: 'resend ' + res.status + ' ' + detail };
   }
   const body = await res.json().catch(() => ({}));
   const ids = (body.data || []).map((d) => d.id);

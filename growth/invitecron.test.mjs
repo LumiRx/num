@@ -480,3 +480,108 @@ test('the ramp, not the calendar, is what limits daily volume', () => {
   assert.equal(dailyCap(env, day30), 1500);
   assert.ok(dailyCap(env, day0) < dailyCap(env, day30), 'the ramp must still climb');
 });
+
+/* ─────────────────────────────────────────────────────────────────────────
+   THE CIRCUIT BREAKER
+
+   A failed invite marks its row `failed` forever and the lead is excluded
+   forever. That is right when the failure is about the RECIPIENT. When the
+   failure is about US, the same mechanism is a shredder: on 27–30 Aug 2026
+   this cron ran every five minutes into a dead credential and permanently
+   burned 80 businesses that had never been contacted.
+   ───────────────────────────────────────────────────────────────────────── */
+import { OUR_FAULT } from './invitecron.mjs';
+
+test('a failure that is ours is told apart from one that is theirs', () => {
+  for (const ours of [
+    'resend 401 API key is invalid',
+    'resend 403 {"message":"This API key is not authorized to send emails from itsnum.com"}',
+    'no RESEND_KEY',
+    'cloudflare could not find domain config of sending domain',
+    'resend 429 rate limit exceeded',
+    'resend 503 service unavailable',
+  ]) assert.equal(OUR_FAULT.test(ours), true, `not recognised as our fault: ${ours}`);
+
+  for (const theirs of [
+    'mailbox full',
+    'recipient address rejected',
+    'hard bounce: no such user',
+    'domain does not exist',
+    'unsubscribed',
+  ]) assert.equal(OUR_FAULT.test(theirs), false, `wrongly blamed on us: ${theirs}`);
+});
+
+test('the cron refuses to claim leads while the send path is broken', async () => {
+  const calls = [];
+  const DB = {
+    prepare(sql) {
+      calls.push(sql);
+      return {
+        bind: () => ({ first: async () => null, all: async () => ({ results: [] }), run: async () => ({}) }),
+        first: async () => (/status = 'failed'/.test(sql)
+          ? { status: 'failed', error: 'resend 401 API key is invalid' }
+          : null),
+        all: async () => ({ results: [] }),
+        run: async () => ({}),
+      };
+    },
+    batch: async () => [],
+  };
+  const r = await drainInvites(
+    { DB, INVITE_LEAD_BATCH: 'outreach-2026-08-25', RESEND_KEY: 'dead', INVITE_RAMP_START: '2026-08-25' },
+    { scheduledTime: Date.parse('2026-09-01T09:00:00Z') },
+  );
+  assert.equal(r.sent, 0);
+  assert.match(r.reason, /refusing to burn leads/);
+  assert.match(r.error, /401/);
+  assert.ok(!calls.some((s) => /INSERT INTO num_invites/i.test(s)),
+    'not one lead may be claimed while the credential is dead');
+});
+
+test('a healthy last-failure does not stop the queue', async () => {
+  const DB = {
+    prepare(sql) {
+      return {
+        bind: () => ({ first: async () => ({ n: 0 }), all: async () => ({ results: [] }), run: async () => ({}) }),
+        first: async () => (/status = 'failed'/.test(sql) ? { status: 'failed', error: 'mailbox full' } : { n: 0 }),
+        all: async () => ({ results: [] }),
+        run: async () => ({}),
+      };
+    },
+    batch: async () => [],
+  };
+  const r = await drainInvites(
+    { DB, INVITE_LEAD_BATCH: 'b', RESEND_KEY: 'k', INVITE_RAMP_START: '2026-08-25' },
+    { scheduledTime: Date.parse('2026-09-01T09:00:00Z') },
+  );
+  assert.ok(!/refusing to burn leads/.test(r.reason ?? ''), 'a recipient-side bounce is not a reason to stop');
+});
+
+test('every invite carries a physical postal address, in both parts', async () => {
+  // CAN-SPAM §7704(a)(5) requires one in every commercial email, and 7,484 of
+  // the 14,360 addresses in this queue are US businesses. The footer had a
+  // company name, a website and an email — and no postal address, the one
+  // element of the four that is not optional. Penalties run per email.
+  const { generateInvite, POSTAL_ADDRESS } = await import('../scripts/invite_gen.mjs');
+  const { INVITE_TEMPLATE } = await import('./invitetemplate.mjs');
+  const d = generateInvite(
+    { id: 1, name: 'The Ivy', category: 'Restaurant', dest: 'london', country: 'GB', email: 'a@theivy.co.uk' },
+    { template: INVITE_TEMPLATE, token: 'tok', base: 'https://itsnum.com' },
+  );
+  assert.match(POSTAL_ADDRESS, /\d+ .+, .+, [A-Z]{2} \d{5}, USA/, 'a real street address, not a country name');
+  assert.ok(d.text.includes(POSTAL_ADDRESS), 'missing from the plain-text part');
+  // Almost nobody reads the text alternative. "It was in the version you did
+  // not open" is not a defence.
+  assert.ok(d.html.includes(POSTAL_ADDRESS), 'missing from the HTML part');
+});
+
+test('every invite still carries a working way out', async () => {
+  const { generateInvite } = await import('../scripts/invite_gen.mjs');
+  const { INVITE_TEMPLATE } = await import('./invitetemplate.mjs');
+  const d = generateInvite(
+    { id: 1, name: 'The Ivy', category: 'Restaurant', dest: 'london', country: 'GB', email: 'a@theivy.co.uk' },
+    { template: INVITE_TEMPLATE, token: 'tok', base: 'https://itsnum.com' },
+  );
+  assert.match(d.text, /Unsubscribe and remove our listing: https:\/\/itsnum\.com\/api\/accounts\/unsubscribe\?t=tok/);
+  assert.ok(d.html.includes('/api/accounts/unsubscribe?t=tok'));
+});

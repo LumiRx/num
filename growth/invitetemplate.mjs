@@ -189,6 +189,7 @@ export const INVITE_TEMPLATE = `
       <a href="https://itsnum.com/privacy" style="color:#7C82AC;text-decoration:underline">Privacy</a>
       &nbsp;&middot;&nbsp;
       <a href="https://itsnum.com/terms" style="color:#7C82AC;text-decoration:underline">Terms</a>
+      <br>{{postal_address}}
       <br>© 2026 5arz. We won't email you again unless you reply.
     </div>
   </td></tr>

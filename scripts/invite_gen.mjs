@@ -294,6 +294,21 @@ const RISK = {
 };
 const riskOf = c => RISK[String(c || '').toUpperCase()] || 'care';
 
+/**
+ * The sender's physical postal address.
+ *
+ * CAN-SPAM §7704(a)(5) requires one in every commercial email, and 7,484 of
+ * the 14,360 addresses in this queue are US businesses. The footer carried a
+ * company name, a website and an email and no postal address at all — the one
+ * element of the four that is not optional. Penalties run per email, so at
+ * this volume the omission is not a technicality.
+ *
+ * It also has to appear in the HTML, not only the plain-text alternative:
+ * almost nobody reads the text part, and "it was in the version you did not
+ * open" is not a defence.
+ */
+const POSTAL_ADDRESS = '16192 Coastal Highway, Lewes, DE 19958, USA';
+
 /* ── helpers ────────────────────────────────────────────────────────────── */
 
 const esc = s => String(s == null ? '' : s)
@@ -563,6 +578,7 @@ export function generateInvite(lead, opts = {}) {
     // to /claim. Rides the already-live /api/accounts* route — no new route.
     claim_url:           `${base}/api/accounts/claim?t=${encodeURIComponent(token)}`,
     unsub_url:           `${base}/api/accounts/unsubscribe?t=${encodeURIComponent(token)}`,
+    postal_address:      POSTAL_ADDRESS,
     pixel_url:           `${base}/api/accounts/i.gif?t=${encodeURIComponent(token)}`,
     line_url:            'https://line.me/R/ti/p/@799pyrus',
     contact_block_html:  contactBlockHtml(lead, short, 'https://line.me/R/ti/p/@799pyrus'),
@@ -602,6 +618,7 @@ export function generateInvite(lead, opts = {}) {
     `The NUM team — 5arz`,
     `More about NUM: ${fields.website_url}`,
     `info@5arz.com`,
+    POSTAL_ADDRESS,
     ``,
     `You're receiving this one-time invitation because ${fields.business_name} is publicly listed as a business in ${place}.`,
     `Unsubscribe and remove our listing: ${fields.unsub_url}`,
@@ -622,4 +639,4 @@ export function generateInvite(lead, opts = {}) {
   };
 }
 
-export { catOf, riskOf, shortName, placeLine, hash, excludeReason, normaliseCategory };
+export { catOf, riskOf, shortName, placeLine, hash, excludeReason, normaliseCategory, POSTAL_ADDRESS };
