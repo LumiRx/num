@@ -151,19 +151,41 @@ async function viaCloudflare(env, m) {
   const from = override ?? m.from;
   const substituted = !!override && bareAddress(override) !== bareAddress(m.from);
   const replyTo = m.replyTo ?? (substituted ? bareAddress(m.from) : null);
+  const name = displayName(from);
+  const base = {
+    to: m.to.length === 1 ? m.to[0] : m.to,
+    from: name ? { email: bareAddress(from), name } : bareAddress(from),
+    subject: m.subject,
+    ...(m.text ? { text: m.text } : {}),
+    ...(m.html ? { html: m.html } : {}),
+    ...(replyTo ? { replyTo } : {}),
+  };
+  const wanted = m.bcc?.length ? { ...base, bcc: m.bcc.length === 1 ? m.bcc[0] : m.bcc } : base;
   try {
-    const name = displayName(from);
-    const out = await env.EMAIL.send({
-      to: m.to.length === 1 ? m.to[0] : m.to,
-      from: name ? { email: bareAddress(from), name } : bareAddress(from),
-      subject: m.subject,
-      ...(m.text ? { text: m.text } : {}),
-      ...(m.html ? { html: m.html } : {}),
-      ...(m.bcc?.length ? { bcc: m.bcc.length === 1 ? m.bcc[0] : m.bcc } : {}),
-      ...(replyTo ? { replyTo } : {}),
-    });
+    const out = await env.EMAIL.send(wanted);
     return { ok: true, id: out?.messageId ?? null, substitutedFrom: substituted ? bareAddress(from) : null };
   } catch (e) {
+    /**
+     * The blind copy must never cost us the email itself.
+     *
+     * Cloudflare's send binding is not documented to accept `bcc`, and a
+     * binding that rejects an unknown field would have turned a convenience
+     * into a total outage — on the first real send, to the six businesses who
+     * have already waited weeks. So a failure with a bcc present is retried
+     * once without it: the business hears from us, and the result says the
+     * copy did not go rather than pretending it did.
+     */
+    if (wanted !== base) {
+      try {
+        const out = await env.EMAIL.send(base);
+        return {
+          ok: true,
+          id: out?.messageId ?? null,
+          substitutedFrom: substituted ? bareAddress(from) : null,
+          bccDropped: `cloudflare rejected bcc: ${String(e?.message ?? e).slice(0, 120)}`,
+        };
+      } catch { /* fall through to the original error */ }
+    }
     // The two real ones, and both are limits rather than bugs:
     //   "could not find domain config of sending domain" — the FROM domain is
     //   not a routing or sending domain on this account.
@@ -191,7 +213,19 @@ export async function send(env, message, { order = null } = {}) {
     const fn = via === TRANSPORT.RESEND ? viaResend : via === TRANSPORT.CLOUDFLARE ? viaCloudflare : null;
     if (!fn) continue;
     const r = await fn(env, m);
-    if (r.ok) return { ok: true, via, id: r.id, substitutedFrom: r.substitutedFrom ?? null, tried };
+    if (r.ok) {
+      return {
+        ok: true,
+        via,
+        id: r.id,
+        substitutedFrom: r.substitutedFrom ?? null,
+        // Carried up rather than dropped here: "it sent, but the copy you
+        // asked for did not go" is exactly the kind of half-truth this file
+        // exists to stop reporting as success.
+        ...(r.bccDropped ? { bccDropped: r.bccDropped } : {}),
+        tried,
+      };
+    }
     tried.push({ via, error: r.error });
   }
   return {

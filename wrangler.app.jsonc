@@ -83,6 +83,10 @@
     // its MX points at an SES inbound host with no receipt rule set, so
     // it rejects at the SMTP layer. Move these to info@itsnum.com only
     // once Email Routing is enabled and a test reply actually arrives.
+    // The sending domain, live and DNS-configured 31 Aug. Cloudflare will only
+    // send FROM a domain it holds; itsnum.com is not one, which is why every
+    // attempt read "could not find domain config of sending domain".
+    "MAIL_FROM": "NUM <hello@mail.itsnum.com>",
     "MAIL_REPLY_TO": "info@thatislumi.com",
     "MAIL_BCC": "info@thatislumi.com" },
   // The concierge model. Opus is the default in code; set it here to flip the

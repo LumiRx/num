@@ -319,3 +319,35 @@ test('with no env configured nothing changes', () => {
   assert.deepEqual(m.bcc, []);
   assert.equal(m.replyTo, null);
 });
+
+test('a rejected blind copy never costs us the email', async () => {
+  // Cloudflare's binding is not documented to accept bcc. A binding that
+  // rejects an unknown field would have turned a convenience into a total
+  // outage on the first real send, to businesses who had already waited weeks.
+  const seen = [];
+  const env = {
+    MAIL_BCC: 'info@thatislumi.com',
+    EMAIL: {
+      send: async (msg) => {
+        seen.push(msg);
+        if ('bcc' in msg) throw new Error('unknown field bcc');
+        return { messageId: 'ok-1' };
+      },
+    },
+  };
+  const out = await send(env, { to: 'adam@hotel.co.uk', from: 'NUM <hello@mail.itsnum.com>', subject: 's', text: 't' },
+    { order: [TRANSPORT.CLOUDFLARE] });
+  assert.equal(out.ok, true, 'the business must still hear from us');
+  assert.equal(seen.length, 2, 'tried with the copy, then without');
+  assert.ok(!('bcc' in seen[1]));
+});
+
+test('a dropped blind copy is reported, not pretended', async () => {
+  const env = {
+    MAIL_BCC: 'info@thatislumi.com',
+    EMAIL: { send: async (msg) => { if ('bcc' in msg) throw new Error('unknown field bcc'); return { messageId: 'ok-1' }; } },
+  };
+  const out = await send(env, { to: 'a@b.com', from: 'NUM <hello@mail.itsnum.com>', subject: 's', text: 't' },
+    { order: [TRANSPORT.CLOUDFLARE] });
+  assert.match(out.bccDropped ?? '', /rejected bcc/);
+});
