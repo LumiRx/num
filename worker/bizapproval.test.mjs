@@ -227,3 +227,50 @@ test('the console link prefills their name and carries no credential', () => {
   // forward, and in every referrer the page leaks.
   assert.doesNotMatch(text, /[?&]s=|key=|token=/, 'the email carries a session or key in a URL');
 });
+
+test('a claims table without decided_at is migrated, not silently failed against', async () => {
+  // Production's `claims` had neither decided_at nor decided_by. Three code
+  // paths write both. Every one of them threw into a .catch(() => {}), so the
+  // ledger filled while claims.state never moved — eight businesses sat
+  // approved-and-pending at once, invisible from both ends.
+  const stmts = [];
+  const prep = (sql) => {
+    stmts.push(sql);
+    const api = {
+      run: async () => ({ meta: { changes: 1 } }),
+      first: async () => ({ id: '13', business_name: 'Holiday Inn Express', state: 'new' }),
+      all: async () => ({ results: [] }),
+    };
+    return { ...api, bind: () => api };
+  };
+  const env = { DB: { prepare: prep } };
+  await decideClaim(env, { id: '13', decision: 'approved', by: 'test' });
+  const alters = stmts.filter((s) => /ALTER TABLE claims ADD COLUMN/.test(s));
+  assert.equal(alters.length, 2, 'both columns must be added before any decision is written');
+  assert.ok(alters.some((s) => s.includes('decided_at')));
+  assert.ok(alters.some((s) => s.includes('decided_by')));
+});
+
+test('a state update that fails is reported, never swallowed', async () => {
+  const env = {
+    DB: {
+      prepare: (sql) => ({
+        bind: () => ({
+          run: async () => {
+            if (/UPDATE claims SET state/.test(sql)) throw new Error('no such column: decided_at');
+            return { meta: { changes: 1 } };
+          },
+          first: async () => ({ id: '13', business_name: 'Holiday Inn Express', state: 'new' }),
+          all: async () => ({ results: [] }),
+        }),
+        run: async () => ({ meta: { changes: 1 } }),
+        first: async () => ({ id: '13', business_name: 'Holiday Inn Express', state: 'new' }),
+        all: async () => ({ results: [] }),
+      }),
+    },
+  };
+  const out = await decideClaim(env, { id: '13', decision: 'approved', by: 'test' });
+  assert.equal(out.ok, false, 'a decision the console cannot see is not a decision');
+  assert.match(out.error, /state not moved/);
+  assert.match(out.error, /decided_at/);
+});

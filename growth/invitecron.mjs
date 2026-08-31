@@ -257,6 +257,17 @@ const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
  *                         request)
  * @param {{scheduledTime?: number}} event   the Cron Trigger event
  */
+/**
+ * Failures that are about NUM rather than about the recipient.
+ *
+ * A bounce, a rejected address, a full mailbox — those are facts about the
+ * lead and the row should stay `failed` forever. An invalid key, an
+ * unauthorised domain, a missing provider or a rate limit are facts about us,
+ * and burning a business over one is throwing away something we cannot get
+ * back to fix a problem that has nothing to do with them.
+ */
+export const OUR_FAULT = /\b(401|403|429|5\d\d)\b|api key|not authorized|unauthori[sz]ed|invalid.*key|no RESEND_KEY|no_email_provider|domain config|rate.?limit/i;
+
 export async function drainInvites(env, event = {}) {
   if (!env?.DB) return { sent: 0, reason: 'no DB' };
   if (!env.INVITE_LEAD_BATCH) return { sent: 0, reason: 'INVITE_LEAD_BATCH not set' };
@@ -265,6 +276,28 @@ export async function drainInvites(env, event = {}) {
   const now = new Date(event.scheduledTime || Date.now());
   const dests = openDestinations(now);
   if (!dests.length) return { sent: 0, reason: 'outside every destination’s send window' };
+
+  // ── THE CIRCUIT BREAKER ────────────────────────────────────────────────
+  //
+  // A failed invite marks its row `failed` FOREVER, and `candidateRows`
+  // excludes any lead that already has a row. That permanence is deliberate
+  // and correct — a bounce must never become a retry loop that emails the
+  // same business twice — but it assumes the failure was about the RECIPIENT.
+  //
+  // When the failure is about US, the same mechanism becomes a shredder. On
+  // 27–30 Aug 2026 the credential was dead (403, then 401) and this cron ran
+  // every five minutes into it, permanently burning real businesses at six a
+  // tick. 46 were gone by breakfast; 80 by the evening. Every one of them was
+  // a lead that had never been contacted and now never could be.
+  //
+  // So: if the last attempt failed for a reason that is plainly ours, claim
+  // nothing. A queue that waits is recoverable. A queue that burns is not.
+  const last = await env.DB.prepare(
+    "SELECT status, error FROM num_invites WHERE status = 'failed' ORDER BY queued_at DESC LIMIT 1",
+  ).first().catch(() => null);
+  if (last?.error && OUR_FAULT.test(last.error)) {
+    return { sent: 0, reason: 'send path is broken — refusing to burn leads', error: String(last.error).slice(0, 200) };
+  }
 
   const today = now.toISOString().slice(0, 10);
   const sentRow = await env.DB.prepare(
@@ -313,12 +346,17 @@ export async function drainInvites(env, event = {}) {
     __idem: 'invite-' + token,
     from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
     to: [lead.email],
-    replyTo: ['info@itsnum.com'],
+    // Not hardcoded any more. info@itsnum.com's MX points at an SES inbound
+    // host with no receipt rule set, so it rejects at the SMTP layer: every
+    // business that hit reply on one of the 1,051 invites already sent got a
+    // bounce, and so did anyone using the mailto unsubscribe below — which is
+    // one of the two opt-out routes CAN-SPAM and PECR require us to honour.
+    replyTo: [env.MAIL_REPLY_TO || 'info@itsnum.com'],
     subject: draft.subject,
     html: draft.html,
     text: draft.text,
     headers: {
-      'List-Unsubscribe': `<${draft.fields.unsub_url}>, <mailto:info@itsnum.com?subject=unsubscribe>`,
+      'List-Unsubscribe': `<${draft.fields.unsub_url}>, <mailto:${env.MAIL_REPLY_TO || 'info@itsnum.com'}?subject=unsubscribe>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     },
     tags: [

@@ -77,7 +77,14 @@
   // ADMIN_EMAIL is an identity, not a credential — ADMIN_KEY is still the gate.
   // It stamps the signed session so the console can say who is looking, and so
   // the sign-in log has a name in it rather than a row of anonymous successes.
-  "vars": { "VAPID_SUBJECT": "mailto:hello@itsnum.com", "SABRE_PCC": "FF9A", "ADMIN_EMAIL": "andre@thatislumi.com" },
+  "vars": { "VAPID_SUBJECT": "mailto:hello@itsnum.com", "SABRE_PCC": "FF9A", "ADMIN_EMAIL": "andre@thatislumi.com",
+    // Every reply-capable email carries this as Reply-To, and every
+    // non-bulk send is blind-copied here. info@itsnum.com is NOT used:
+    // its MX points at an SES inbound host with no receipt rule set, so
+    // it rejects at the SMTP layer. Move these to info@itsnum.com only
+    // once Email Routing is enabled and a test reply actually arrives.
+    "MAIL_REPLY_TO": "info@thatislumi.com",
+    "MAIL_BCC": "info@thatislumi.com" },
   // The concierge model. Opus is the default in code; set it here to flip the
   // latency/cost trade without a code change (e.g. "claude-sonnet-5").
   // "vars": { "NUM_MODEL": "claude-sonnet-5" },

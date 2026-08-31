@@ -10,8 +10,28 @@
  * What was missing is everything after it. `claims.state` has been 'new' on
  * every row ever written; `decided_at` and `decided_by` have never held a
  * value. Eight businesses — a Holiday Inn Express, a hotel, restaurants —
- * signed up over four weeks and no row records a decision, because there was
- * no decision to record.
+ * signed up over four weeks and no row records a decision.
+ *
+ * ── AND WHY DECIDING DID NOT HELP ─────────────────────────────────────────
+ *
+ * All eight were approved at 20:26 on 30 Aug. `num_claim_decisions` holds the
+ * eight ledger rows. `claims.state` is still 'new' on all eight.
+ *
+ * `decided_at` and `decided_by` do not exist on the production `claims` table.
+ * The UPDATE below sets all three columns in one statement, so it throws, and
+ * a `.catch(() => {})` ate the error. The ledger filled, the state never
+ * moved, and `autoApproveAll` then reported `approved: 0` on every later run
+ * because the ledger insert was already there — so the failure was invisible
+ * from both ends at once.
+ *
+ * The tests never caught it because their fixtures create `claims` WITH those
+ * two columns (bizbilling.test.mjs, bizconsole.test.mjs). The test schema was
+ * more correct than the database, which is the one direction a fixture must
+ * never drift.
+ *
+ * Two other paths write the same columns and failed the same silent way:
+ * `bizapi.mjs:308` and `claimverify.mjs:406` — the second being the path a
+ * business reaches by *proving* it owns the listing.
  *
  * ── AND THE HOLE THE ALERT LEFT ───────────────────────────────────────────
  *
@@ -62,6 +82,14 @@ async function ensure(env) {
        PRIMARY KEY (claim_id, round)
      )`,
   ).run();
+
+  // SQLite has no ADD COLUMN IF NOT EXISTS, so a duplicate-column error is the
+  // expected steady state and is the only error swallowed here. Three code
+  // paths write these two columns and every one of them failed silently for
+  // weeks, because production never had them and the test fixtures did.
+  for (const col of ['decided_at TEXT', 'decided_by TEXT']) {
+    await env.DB.prepare(`ALTER TABLE claims ADD COLUMN ${col}`).run().catch(() => {});
+  }
 }
 
 export const DECISIONS = Object.freeze(['approved', 'rejected']);
@@ -94,9 +122,18 @@ export async function decideClaim(env, { id, decision, by, note = null }) {
   ).bind(claimId, decision, String(by ?? 'unknown').slice(0, 60), note).run();
   const alreadyDecided = !first?.meta?.changes;
 
-  await env.DB.prepare(
+  // NOT swallowed. A decision the console cannot see is not a decision, and
+  // the silent catch that used to be here is the entire reason eight
+  // businesses sat approved-but-pending for a day without anyone noticing.
+  const moved = await env.DB.prepare(
     `UPDATE claims SET state = ?2, decided_at = datetime('now'), decided_by = ?3 WHERE id = ?1`,
-  ).bind(claimId, decision, String(by ?? 'unknown').slice(0, 60)).run().catch(() => {});
+  ).bind(claimId, decision, String(by ?? 'unknown').slice(0, 60)).run()
+    .then(() => ({ ok: true }))
+    .catch((e) => ({ ok: false, error: String(e?.message || e).slice(0, 200) }));
+
+  if (!moved.ok) {
+    return { ok: false, error: `ledger written but state not moved: ${moved.error}`, claim, decision, alreadyDecided };
+  }
 
   return { ok: true, claim, decision, alreadyDecided };
 }

@@ -46,12 +46,34 @@ export const TRANSPORT = Object.freeze({
 const asArray = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean);
 
 /** A message, normalised, so every transport reads the same object. */
-export function normalise(msg = {}) {
+export function normalise(msg = {}, env = {}) {
   const to = asArray(msg.to).map((s) => String(s).trim().toLowerCase());
+  const toSet = new Set(to);
+  /**
+   * Who gets a blind copy.
+   *
+   * `MAIL_BCC` is the standing address that must see anything a lead could
+   * reply to. `bulk: true` opts a send out of it — a copy of all 39,271
+   * outreach invites is not a safety net, it is a second dead mailbox, and
+   * some providers count every BCC against the send.
+   *
+   * A recipient who is already on `to` is not also blind-copied: that is how
+   * somebody gets two of the same email and stops reading either.
+   */
+  const bcc = (msg.bulk ? [] : [...asArray(msg.bcc), ...(env?.MAIL_BCC ? [env.MAIL_BCC] : [])])
+    .map((s) => String(s).trim().toLowerCase())
+    .filter((a) => a && !toSet.has(a));
   return {
     to,
-    from: String(msg.from || 'NUM <info@itsnum.com>'),
-    replyTo: msg.replyTo ? String(msg.replyTo) : null,
+    bcc: [...new Set(bcc)],
+    from: String(msg.from || env?.MAIL_FROM || 'NUM <info@itsnum.com>'),
+    /**
+     * Never null if we can help it. A reply goes to From unless told
+     * otherwise, and the default From is info@itsnum.com — the address whose
+     * inbound has been rejecting at the SMTP layer. Every lead who hit reply
+     * on anything NUM has ever sent got a bounce.
+     */
+    replyTo: msg.replyTo ? String(msg.replyTo) : (env?.MAIL_REPLY_TO ? String(env.MAIL_REPLY_TO) : null),
     subject: String(msg.subject ?? '').slice(0, 300),
     text: msg.text ? String(msg.text) : null,
     html: msg.html ? String(msg.html) : null,
@@ -94,6 +116,7 @@ async function viaResend(env, m) {
         subject: m.subject,
         ...(m.text ? { text: m.text } : {}),
         ...(m.html ? { html: m.html } : {}),
+        ...(m.bcc?.length ? { bcc: m.bcc } : {}),
         ...(m.replyTo ? { reply_to: m.replyTo } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
@@ -136,6 +159,7 @@ async function viaCloudflare(env, m) {
       subject: m.subject,
       ...(m.text ? { text: m.text } : {}),
       ...(m.html ? { html: m.html } : {}),
+      ...(m.bcc?.length ? { bcc: m.bcc.length === 1 ? m.bcc[0] : m.bcc } : {}),
       ...(replyTo ? { replyTo } : {}),
     });
     return { ok: true, id: out?.messageId ?? null, substitutedFrom: substituted ? bareAddress(from) : null };
@@ -157,7 +181,7 @@ async function viaCloudflare(env, m) {
  * five silent days happened for want of exactly that list.
  */
 export async function send(env, message, { order = null } = {}) {
-  const m = normalise(message);
+  const m = normalise(message, env);
   const bad = invalid(m);
   if (bad) return { ok: false, via: TRANSPORT.NONE, error: bad, tried: [] };
 

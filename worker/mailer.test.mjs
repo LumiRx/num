@@ -278,3 +278,44 @@ test('the two real Cloudflare refusals are surfaced verbatim, not flattened', as
     assert.match(r.error, new RegExp(msg));
   }
 });
+
+test('every non-bulk send is blind-copied to the standing address', () => {
+  const m = normalise({ to: ['owner@venue.co.uk'], subject: 'x' }, { MAIL_BCC: 'info@thatislumi.com' });
+  assert.deepEqual(m.bcc, ['info@thatislumi.com']);
+});
+
+test('a bulk send is not blind-copied', () => {
+  // 39,271 outreach invites copied to one inbox is not a safety net, it is a
+  // second mailbox nobody reads — and some providers count every BCC.
+  const m = normalise({ to: ['a@b.com'], subject: 'x', bulk: true }, { MAIL_BCC: 'info@thatislumi.com' });
+  assert.deepEqual(m.bcc, []);
+});
+
+test('nobody is both a recipient and a blind copy', () => {
+  const m = normalise({ to: ['Info@ThatIsLumi.com'], subject: 'x' }, { MAIL_BCC: 'info@thatislumi.com' });
+  assert.deepEqual(m.to, ['info@thatislumi.com']);
+  assert.deepEqual(m.bcc, [], 'two copies of one email is how somebody stops reading both');
+});
+
+test('a caller can add its own blind copy, and duplicates collapse', () => {
+  const m = normalise({ to: ['a@b.com'], bcc: ['ops@x.com', 'info@thatislumi.com'], subject: 'x' },
+    { MAIL_BCC: 'info@thatislumi.com' });
+  assert.deepEqual(m.bcc, ['ops@x.com', 'info@thatislumi.com']);
+});
+
+test('reply-to falls back to a monitored address rather than the dead default', () => {
+  // The default From is info@itsnum.com, whose inbound rejects at the SMTP
+  // layer. A reply goes to From unless told otherwise, so with no Reply-To
+  // every lead who hit reply got a bounce.
+  const m = normalise({ to: ['a@b.com'], subject: 'x' }, { MAIL_REPLY_TO: 'info@thatislumi.com' });
+  assert.equal(m.replyTo, 'info@thatislumi.com');
+  const explicit = normalise({ to: ['a@b.com'], subject: 'x', replyTo: 'adam@hotel.com' },
+    { MAIL_REPLY_TO: 'info@thatislumi.com' });
+  assert.equal(explicit.replyTo, 'adam@hotel.com', 'an explicit reply-to still wins');
+});
+
+test('with no env configured nothing changes', () => {
+  const m = normalise({ to: ['a@b.com'], subject: 'x' });
+  assert.deepEqual(m.bcc, []);
+  assert.equal(m.replyTo, null);
+});
