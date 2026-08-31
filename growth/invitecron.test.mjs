@@ -649,3 +649,25 @@ test('a delivered tick clears the breaker', async () => {
   const tail = src.slice(src.indexOf("UPDATE num_invites SET status='sent'"));
   assert.match(tail.slice(0, 400), /clearBreaker\(env\)/, 'success is the only evidence the path works');
 });
+
+test('US is only sendable because the postal address is actually there', async () => {
+  // CAN-SPAM is opt-out: accurate headers, a working unsubscribe, and the
+  // sender's physical postal address. US sat at 'care' because the third was
+  // missing. If it is ever removed, this tier must go back.
+  const { riskOf, POSTAL_ADDRESS, generateInvite } = await import('../scripts/invite_gen.mjs');
+  const { INVITE_TEMPLATE } = await import('./invitetemplate.mjs');
+  assert.equal(riskOf('US'), 'ok');
+  const d = generateInvite(
+    { id: 1, name: 'Bar Amá', category: 'Restaurant', dest: 'los-angeles', country: 'US', email: 'a@barama.com' },
+    { template: INVITE_TEMPLATE, token: 'tok', base: 'https://itsnum.com' },
+  );
+  assert.ok(d.text.includes(POSTAL_ADDRESS) && d.html.includes(POSTAL_ADDRESS),
+    'US must never be sendable without the address in both parts');
+  assert.ok(d.text.includes('/api/accounts/unsubscribe?t=tok'));
+});
+
+test('the strict opt-in regimes are still held back', async () => {
+  const { riskOf } = await import('../scripts/invite_gen.mjs');
+  for (const c of ['DE', 'AT', 'IT']) assert.equal(riskOf(c), 'hold', c);
+  for (const c of ['ES', 'FR', 'GR']) assert.equal(riskOf(c), 'care', c);
+});

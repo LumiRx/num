@@ -291,6 +291,15 @@ const RISK = {
   DE:'hold', AT:'hold', IT:'hold',                      // strictest opt-in regimes for B2B
   ES:'care', FR:'care', GR:'care', HU:'care', PT:'care', CZ:'care', HR:'care',
   GB:'ok', IE:'ok', NL:'ok', SE:'ok', DK:'ok', CH:'ok', IS:'ok', TH:'ok',
+  // US moved from the default 'care' to 'ok' on 31 Aug 2026, and the reason is
+  // specific rather than a loosening of nerve. CAN-SPAM is an opt-out regime:
+  // cold B2B email is lawful with accurate headers, a working unsubscribe and
+  // the sender's physical postal address. The first two were always there. The
+  // third was missing entirely — the footer carried a company name, a website
+  // and an email and no address at all — which is exactly why this sat at
+  // 'care' and why 7,484 US leads were unreachable. The address is now in both
+  // the HTML and the text part, so the condition that held it back is gone.
+  US:'ok',
 };
 const riskOf = c => RISK[String(c || '').toUpperCase()] || 'care';
 
