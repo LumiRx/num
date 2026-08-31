@@ -171,11 +171,53 @@ export const PLATFORMS = {
     mode: 'deeplink',
     // Sabre's booking engine. Needs BOTH hotel and chain, so the ref carries
     // them as "hotel:chain" — a hotel id alone lands on a chain picker.
-    pattern: /be\.synxis\.com\/[^"'\s]*?hotel=(\d+)[^"'\s]*?chain=(\d+)|be\.synxis\.com\/[^"'\s]*?chain=(\d+)[^"'\s]*?hotel=(\d+)/i,
-    ref: (m) => (m[1] ? `${m[1]}:${m[2]}` : `${m[4]}:${m[3]}`),
+    //
+    // AND THE HOST, when the engine is white-labelled.
+    //
+    // Hotels routinely put SynXis on their own domain: The Fingal's booking
+    // button is book.fingal.co.uk, carrying the identical hotel/chain/level
+    // triple. Matching only be.synxis.com missed every one of them — and
+    // Fingal is a hotel that claimed its listing on NUM the same week. So the
+    // host is captured as a third ref segment and the link is rebuilt on it,
+    // which also keeps the guest on the hotel's own branding rather than
+    // bouncing them to a Sabre URL they have never seen.
+    //
+    // `level=hotel` is what makes the host-agnostic half safe to match: it is
+    // a SynXis-ism, and requiring it alongside both ids keeps a stray
+    // "?hotel=2&chain=3" on some unrelated site from being read as a booking
+    // engine.
+    // ONE pattern, host captured, and two ways to qualify.
+    //
+    // be.synxis.com needs no further proof — the host IS the evidence, and a
+    // live fixture links it without level=hotel at all. Any OTHER host must
+    // also carry level=hotel, which is a SynXis-ism: that is what stops a
+    // stray "?hotel=2&chain=3" on an unrelated site being read as a booking
+    // engine.
+    //
+    // Written first as canonical-then-generic alternatives, which never fired:
+    // alternation is leftmost-FIRST, and a branch starting at "https://" wins
+    // over one starting at "be.synxis.com" eight characters later. Every
+    // Sabre-hosted link took the white-label path and grew a third ref
+    // segment, changing ids already stored on live rows. The existing fixture
+    // caught it. Both branches now start at the same offset.
+    pattern: new RegExp(
+      'https?://(?:(be\\.synxis\\.com)|([\\w.-]+)(?=[^"\'\\s]*level=hotel))'
+      + '/[^"\'\\s]*?(?:hotel=(\\d+)[^"\'\\s]*?chain=(\\d+)'
+      + '|chain=(\\d+)[^"\'\\s]*?hotel=(\\d+))',
+      'i',
+    ),
+    ref: (m) => {
+      const hotel = m[3] || m[6];
+      const chain = m[4] || m[5];
+      if (!hotel || !chain) return '';
+      // The canonical host stays a two-segment ref, byte-identical to what is
+      // already written on live rows. Only a white-labelled engine adds the
+      // third segment, because only then is it needed.
+      return m[1] ? `${hotel}:${chain}` : `${hotel}:${chain}:${String(m[2]).toLowerCase()}`;
+    },
     link: (ref, o) => {
-      const [hotel, chain] = String(ref).split(':');
-      const u = new URL('https://be.synxis.com/');
+      const [hotel, chain, host] = String(ref).split(':');
+      const u = new URL(`https://${host || 'be.synxis.com'}/`);
       u.searchParams.set('hotel', hotel);
       if (chain) u.searchParams.set('chain', chain);
       u.searchParams.set('level', 'hotel');

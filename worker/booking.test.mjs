@@ -69,3 +69,45 @@ test('every platform builds a valid URL from its own ref', () => {
     assert.doesNotThrow(() => new URL(url), `${id} produced a malformed URL`);
   }
 });
+
+test('SynXis is found when a hotel white-labels it on its own domain', () => {
+  // The Fingal's booking button is book.fingal.co.uk carrying the identical
+  // hotel/chain/level triple. Matching only be.synxis.com missed every
+  // white-labelled property — and Fingal claimed its NUM listing the same week.
+  const d = detectBooking('', 'https://book.fingal.co.uk/?adult=2&arrive=2026-08-28&chain=6386&hotel=31306&level=hotel&locale=en-GB');
+  assert.equal(d?.platform, 'synxis');
+  assert.equal(d.ref, '31306:6386:book.fingal.co.uk');
+});
+
+test('a white-labelled engine keeps the guest on the hotel own domain', () => {
+  // Bouncing somebody to a Sabre URL they have never seen, to pay a hotel they
+  // chose by name, is how a booking gets abandoned.
+  const d = detectBooking('', 'https://book.fingal.co.uk/?chain=6386&hotel=31306&level=hotel');
+  const out = bookingLink({ booking_platform: d.platform, booking_ref: d.ref },
+    { checkin: '2026-09-12', checkout: '2026-09-14', adults: 2, rooms: 1 });
+  assert.ok(out.url.startsWith('https://book.fingal.co.uk/'), out.url);
+  assert.match(out.url, /arrive=2026-09-12&depart=2026-09-14/);
+  assert.equal(out.dated, true);
+});
+
+test('the original Sabre-hosted form still works, and still prefills', () => {
+  const d = detectBooking('', 'https://be.synxis.com/?adult=2&chain=25766&hotel=66353&level=hotel');
+  assert.equal(d.ref, '66353:25766', 'the canonical host stays a two-segment ref');
+  const out = bookingLink({ booking_platform: d.platform, booking_ref: d.ref },
+    { checkin: '2026-09-12', checkout: '2026-09-14', adults: 2, rooms: 1 });
+  assert.ok(out.url.startsWith('https://be.synxis.com/'));
+  assert.match(out.url, /hotel=66353&chain=25766/);
+});
+
+test('a stray hotel/chain pair on an unrelated site is not a booking engine', () => {
+  // level=hotel is the SynXis-ism that makes the host-agnostic half safe.
+  assert.equal(detectBooking('', 'https://example.com/?hotel=2&chain=3'), null);
+  assert.equal(detectBooking('', 'https://blog.example.com/best-hotel=5-chain=9-guide'), null);
+});
+
+test('a two-segment ref from before white-labelling still resolves', () => {
+  // Rows written before the host was captured must keep working.
+  const out = bookingLink({ booking_platform: 'synxis', booking_ref: '66353:25766' },
+    { checkin: '2026-09-12', checkout: '2026-09-14' });
+  assert.ok(out.url.startsWith('https://be.synxis.com/'), out.url);
+});
