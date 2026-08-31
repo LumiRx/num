@@ -211,6 +211,34 @@ export async function sendOnboarding(env, claim, { mailer } = {}) {
  * so a backlog drains steadily rather than as one burst a provider reads as a
  * spike.
  */
+/**
+ * Has this exact failure already been reported?
+ *
+ * alert() does not throttle: it fans out to webhook, SMS and email every time
+ * it is called. This sweep runs on the five-minute cron, so alerting on each
+ * tick while the mailer is down would have sent 288 identical alerts a day
+ * across three channels — and an alert that arrives 288 times is one nobody
+ * reads, which is the failure mode every other guard in this file exists to
+ * prevent.
+ *
+ * So: report a failure signature once, then stay quiet until it CHANGES. A new
+ * business failing, or the same one failing differently, is news and alerts
+ * again. The same six failing for the same reason is not news after the first
+ * time.
+ */
+async function alreadyReported(env, signature) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS num_onboard_alerts (
+       signature  TEXT PRIMARY KEY,
+       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+     )`,
+  ).run().catch(() => {});
+  const ins = await env.DB.prepare(
+    'INSERT OR IGNORE INTO num_onboard_alerts (signature) VALUES (?1)',
+  ).bind(signature).run().catch(() => null);
+  return !ins?.meta?.changes;
+}
+
 export async function onboardApproved(env, { limit = 10, mailer } = {}) {
   if (!env?.DB) return { sent: 0, failed: 0, skipped: 'no database' };
   if (env.BIZ_ONBOARD_EMAIL !== 'on') return { sent: 0, failed: 0, skipped: 'BIZ_ONBOARD_EMAIL not on' };
@@ -239,5 +267,11 @@ export async function onboardApproved(env, { limit = 10, mailer } = {}) {
       errors.push(`${claim.business_name}: ${out?.error ?? 'unknown'}`.slice(0, 160));
     }
   }
-  return { sent, failed, ...(errors.length ? { errors } : {}) };
+  // A send that succeeds clears the slate, so the next outage is reported
+  // even though its signature may match one from before.
+  if (sent) {
+    await env.DB.prepare('DELETE FROM num_onboard_alerts').run().catch(() => {});
+  }
+  const repeated = failed ? await alreadyReported(env, errors.slice().sort().join(' | ').slice(0, 400)) : false;
+  return { sent, failed, ...(errors.length ? { errors } : {}), ...(repeated ? { repeated: true } : {}) };
 }

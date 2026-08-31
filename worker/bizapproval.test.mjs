@@ -276,7 +276,7 @@ test('a state update that fails is reported, never swallowed', async () => {
 });
 
 /** Approved claims that nobody has been told about yet. */
-function onboardDb(rows) {
+function onboardDb(rows, alerts = new Set()) {
   return {
     prepare: (sql) => ({
       bind: (...a) => ({
@@ -289,12 +289,20 @@ function onboardDb(rows) {
             const r = rows.find((x) => String(x.id) === String(a[0]));
             if (r) r.onboarded = 1;
           }
+          if (/INSERT OR IGNORE INTO num_onboard_alerts/.test(sql)) {
+            const fresh = !alerts.has(a[0]);
+            alerts.add(a[0]);
+            return { meta: { changes: fresh ? 1 : 0 } };
+          }
           return { meta: { changes: 1 } };
         },
       }),
       all: async () => ({ results: [] }),
       first: async () => null,
-      run: async () => ({ meta: { changes: 1 } }),
+      run: async () => {
+        if (/DELETE FROM num_onboard_alerts/.test(sql)) alerts.clear();
+        return { meta: { changes: 1 } };
+      },
     }),
   };
 }
@@ -367,4 +375,43 @@ test('the email never prints an address that rejects mail', () => {
   assert.ok(!routed.text.includes('info@itsnum.com'));
   const thai = onboardingEmail({ business: 'X', contact: 'A', country: 'TH', contactAddress: 'info@thatislumi.com' });
   assert.match(thai.text, /NUM · info@thatislumi\.com/);
+});
+
+test('the same failure is reported once, not every five minutes', async () => {
+  // alert() fans out to webhook, SMS and email with no throttle of its own,
+  // and this sweep runs on the five-minute cron: 288 identical alerts a day
+  // across three channels is an alert nobody reads.
+  const rows = [{ id: 13, business_name: 'Holiday Inn Express', email: 'x@y.com', created_at: '2026-08-24 16:32:33', onboarded: 0 }];
+  const env = { DB: onboardDb(rows), BIZ_ONBOARD_EMAIL: 'on' };
+  const down = async () => ({ ok: false, error: 'destination not verified' });
+  const first = await onboardApproved(env, { mailer: down });
+  assert.equal(first.failed, 1);
+  assert.ok(!first.repeated, 'the first report is news');
+  const second = await onboardApproved(env, { mailer: down });
+  assert.equal(second.failed, 1);
+  assert.equal(second.repeated, true, 'the second tick must stay quiet');
+});
+
+test('a changed failure is news again', async () => {
+  const rows = [{ id: 13, business_name: 'Holiday Inn Express', email: 'x@y.com', created_at: '2026-08-24 16:32:33', onboarded: 0 }];
+  const env = { DB: onboardDb(rows), BIZ_ONBOARD_EMAIL: 'on' };
+  await onboardApproved(env, { mailer: async () => ({ ok: false, error: 'destination not verified' }) });
+  const changed = await onboardApproved(env, { mailer: async () => ({ ok: false, error: 'resend 401 invalid' }) });
+  assert.ok(!changed.repeated, 'a different reason is a different alert');
+});
+
+test('a success clears the slate so the next outage is heard', async () => {
+  const rows = [
+    { id: 13, business_name: 'A', email: 'a@y.com', created_at: '2026-08-24 16:32:33', onboarded: 0 },
+    { id: 15, business_name: 'B', email: 'b@y.com', created_at: '2026-08-29 14:44:29', onboarded: 0 },
+  ];
+  const env = { DB: onboardDb(rows), BIZ_ONBOARD_EMAIL: 'on' };
+  let up = false;
+  const mailer = async (_e, m) => (up && m.to === 'a@y.com' ? { ok: true } : { ok: false, error: 'destination not verified' });
+  await onboardApproved(env, { mailer });
+  up = true;
+  const mixed = await onboardApproved(env, { mailer });
+  assert.equal(mixed.sent, 1);
+  assert.equal(mixed.failed, 1);
+  assert.ok(!mixed.repeated, 'a tick that delivered something reports what still failed');
 });

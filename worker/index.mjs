@@ -1907,7 +1907,10 @@ export default {
         // gated on BIZ_ONBOARD_EMAIL, which stays off until you switch it on.
         const { onboardApproved } = await import('./bizonboard.mjs');
         const told = await onboardApproved(env);
-        if (told.failed) {
+        // `repeated` means this exact failure was already reported. alert()
+        // fans out to webhook, SMS and email with no throttle of its own, and
+        // this runs every five minutes.
+        if (told.failed && !told.repeated) {
           const { alert } = await import('./health.mjs');
           await alert(env, `[biz] ${told.failed} onboarding email(s) failed: ${(told.errors ?? []).join(' | ')}`);
         }
