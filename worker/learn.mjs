@@ -79,7 +79,10 @@ async function ensure(env) {
   if (ready || !env?.DB) return;
   for (const sql of COLUMNS) await env.DB.prepare(sql).run().catch(() => {});
   await env.DB.prepare(
-    'CREATE INDEX IF NOT EXISTS idx_places_numrating ON places(num_rating_n)',
+    // Partial on purpose. Nothing is rated yet, so a full index on this column
+    // is two and a half million copies of the same key — 23 MB that cannot
+    // narrow anything. See worker/migrations/0012_places_index_diet.sql.
+    'CREATE INDEX IF NOT EXISTS idx_places_numrating ON places(num_rating_n) WHERE num_rating_n > 0',
   ).run().catch(() => {});
   ready = true;
 }
@@ -164,7 +167,7 @@ export async function learningState(env) {
       `SELECT COUNT(*) AS rated_places,
               SUM(CASE WHEN num_rating_n >= ${MIN_RATINGS} THEN 1 ELSE 0 END) AS counting,
               MAX(num_rated_at) AS last_rollup
-         FROM places WHERE COALESCE(num_rating_n,0) > 0`,
+         FROM places WHERE num_rating_n > 0`,
     ).first();
     const t = await env.DB.prepare(
       'SELECT COUNT(*) AS ratings, COUNT(DISTINCT place_id) AS places FROM num_ratings',

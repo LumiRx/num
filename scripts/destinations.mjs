@@ -52,6 +52,58 @@ export const DESTINATIONS = [
   { slug:'singapore',   name:'Singapore',     country:'SG', region:'Asia',   tz:'Asia/Singapore',   lat:1.290,  lng:103.852,bbox:[1.23,103.76,1.38,103.93] },
   { slug:'hong-kong',   name:'Hong Kong',     country:'HK', region:'Asia',   tz:'Asia/Hong_Kong',   lat:22.302, lng:114.170,bbox:[22.24,114.11,22.35,114.25] },
   { slug:'taipei',      name:'Taipei',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:25.038, lng:121.565,bbox:[24.99,121.49,25.10,121.62] },
+  // ─── Taiwan beyond Taipei ───────────────────────────────────────
+  //
+  // Taipei was the only Taiwanese destination, and its box stops at the city
+  // limits — so the three other major cities, the east coast and every
+  // mountain town a traveller actually asks about were absent.
+  //
+  // Boxes are the URBAN CORE, taken from Nominatim and then tightened, which
+  // matters more here than anywhere else so far: Nominatim's Kaohsiung
+  // boundary reads [10.345,114.307,23.472,121.049] because the municipality
+  // administers the Pratas and Taiping islands, 1,300km out in the South
+  // China Sea. Ingesting that literally would have pulled a vast rectangle of
+  // ocean, and — since those islands are disputed — a set of places Num has
+  // no business asserting anything about.
+  { slug:'taichung',    name:'Taichung',      country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.147, lng:120.673,bbox:[24.10,120.61,24.20,120.73] },
+  { slug:'kaohsiung',   name:'Kaohsiung',     country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.627, lng:120.301,bbox:[22.56,120.25,22.68,120.36] },
+  { slug:'tainan',      name:'Tainan',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.993, lng:120.203,bbox:[22.94,120.15,23.05,120.26] },
+  { slug:'hualien',     name:'Hualien',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.977, lng:121.604,bbox:[23.94,121.55,24.03,121.65] },
+  // Tamsui and Jiufen are administratively New Taipei, not Taipei, and both
+  // sit well outside the Taipei box — which is why a traveller asking for
+  // either got nothing at all.
+  { slug:'tamsui',      name:'Tamsui',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:25.181, lng:121.453,bbox:[25.12,121.40,25.25,121.53] },
+  { slug:'jiufen',      name:'Jiufen',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:25.112, lng:121.845,bbox:[25.08,121.81,25.15,121.88] },
+  { slug:'sun-moon-lake',name:'Sun Moon Lake',country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.852, lng:120.929,bbox:[23.81,120.88,23.90,120.97] },
+  // Kenting is the national park; Hengchun is the town people actually sleep
+  // and eat in, so the box covers both rather than the park alone.
+  { slug:'kenting',     name:'Kenting',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.003, lng:120.745,bbox:[21.89,120.69,22.07,120.87] },
+  { slug:'chiayi',      name:'Chiayi',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.480, lng:120.449,bbox:[23.44,120.40,23.52,120.50] },
+  // ── Taiwan, island-wide ────────────────────────────────────────────
+  // The ten above are cities. These are the rest of the island: every county
+  // a traveller names, both offshore county groups, and the four places people
+  // fly in FOR. Boxes stay urban/administrative cores — see the Kaohsiung note
+  // above about the South China Sea. Anything falling outside all of them is
+  // assigned to the nearest of these (scripts/osmplace.mjs), so no business on
+  // the island is homeless.
+  { slug:'new-taipei',  name:'New Taipei',    country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:25.017, lng:121.463,bbox:[24.85,121.28,25.30,122.01] },
+  { slug:'taoyuan',     name:'Taoyuan',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.994, lng:121.301,bbox:[24.80,121.03,25.13,121.45] },
+  { slug:'hsinchu',     name:'Hsinchu',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.814, lng:120.968,bbox:[24.55,120.85,24.95,121.30] },
+  { slug:'keelung',     name:'Keelung',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:25.128, lng:121.739,bbox:[25.08,121.66,25.22,121.83] },
+  { slug:'yilan',       name:'Yilan',         country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.702, lng:121.738,bbox:[24.30,121.40,24.98,122.00] },
+  { slug:'miaoli',      name:'Miaoli',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.560, lng:120.821,bbox:[24.28,120.65,24.75,121.15] },
+  { slug:'changhua',    name:'Changhua',      country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.052, lng:120.516,bbox:[23.85,120.28,24.22,120.72] },
+  { slug:'yunlin',      name:'Yunlin',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.709, lng:120.545,bbox:[23.50,120.10,23.95,120.70] },
+  { slug:'nantou',      name:'Nantou',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.916, lng:120.687,bbox:[23.45,120.55,24.25,121.15] },
+  { slug:'pingtung',    name:'Pingtung',      country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.670, lng:120.488,bbox:[22.05,120.35,22.95,120.90] },
+  { slug:'taitung',     name:'Taitung',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.758, lng:121.144,bbox:[22.30,120.85,23.40,121.35] },
+  { slug:'penghu',      name:'Penghu',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.565, lng:119.579,bbox:[23.15,119.25,23.85,119.80] },
+  { slug:'kinmen',      name:'Kinmen',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.437, lng:118.317,bbox:[24.35,118.13,24.60,118.55] },
+  { slug:'matsu',       name:'Matsu',         country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:26.161, lng:119.950,bbox:[25.90,119.85,26.40,120.55] },
+  { slug:'taroko',      name:'Taroko Gorge',  country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:24.158, lng:121.490,bbox:[24.05,121.30,24.30,121.65] },
+  { slug:'alishan',     name:'Alishan',       country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:23.510, lng:120.800,bbox:[23.40,120.60,23.65,121.00] },
+  { slug:'lanyu',       name:'Orchid Island', country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.050, lng:121.540,bbox:[21.94,121.48,22.12,121.63] },
+  { slug:'green-island',name:'Green Island',  country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:22.660, lng:121.470,bbox:[22.60,121.44,22.72,121.53] },
   { slug:'kuala-lumpur',name:'Kuala Lumpur',  country:'MY', region:'Asia',   tz:'Asia/Kuala_Lumpur',lat:3.147,  lng:101.700,bbox:[3.08,101.63,3.20,101.76] },
   { slug:'hanoi',       name:'Hanoi',         country:'VN', region:'Asia',   tz:'Asia/Bangkok',     lat:21.030, lng:105.850,bbox:[20.98,105.79,21.07,105.90] },
   { slug:'ho-chi-minh', name:'Ho Chi Minh City',country:'VN',region:'Asia',  tz:'Asia/Bangkok',     lat:10.776, lng:106.700,bbox:[10.72,106.63,10.83,106.75] },

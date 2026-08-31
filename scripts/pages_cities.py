@@ -20,87 +20,121 @@ CC = {
     "VN": "Vietnam",
 }
 
-# (slug, name, country_code, region, places)  — live counts, 31 July 2026
+# (slug, name, country_code, region, places)
+#
+# Generated from the live destinations table, not typed by hand. The list this
+# replaced was dated 31 July 2026 and had drifted to a fifth of the truth —
+# 567,793 places across 77 destinations, against 2.69m across 104 — while
+# aifacts.mjs kept patching the headline number on the same page, so the hub
+# contradicted itself. Refresh with:
+#   npx wrangler d1 execute num-db --remote --json \
+#     --command "SELECT slug,name,country,region,place_count FROM destinations WHERE live=1 ORDER BY country,name"
 DESTS = [
-    ("abu-dhabi", "Abu Dhabi", "AE", "Asia", 4574),
-    ("ajman", "Ajman", "AE", "Asia", 1986),
-    ("al-ain", "Al Ain", "AE", "Asia", 649),
-    ("dubai", "Dubai", "AE", "Asia", 8468),
-    ("fujairah", "Fujairah", "AE", "Asia", 326),
-    ("ras-al-khaimah", "Ras Al Khaimah", "AE", "Asia", 206),
-    ("sharjah", "Sharjah", "AE", "Asia", 4526),
-    ("vienna", "Vienna", "AT", "Europe", 12619),
-    ("bridgetown", "Barbados", "BB", "Islands", 912),
-    ("nassau", "Nassau", "BS", "Islands", 642),
-    ("zurich", "Zurich", "CH", "Europe", 5978),
-    ("prague", "Prague", "CZ", "Europe", 9388),
-    ("berlin", "Berlin", "DE", "Europe", 19351),
-    ("munich", "Munich", "DE", "Europe", 8711),
-    ("copenhagen", "Copenhagen", "DK", "Europe", 6451),
-    ("barcelona", "Barcelona", "ES", "Europe", 16444),
-    ("ibiza", "Ibiza", "ES", "Islands", 1481),
-    ("madrid", "Madrid", "ES", "Europe", 16586),
-    ("mallorca", "Mallorca", "ES", "Islands", 3413),
-    ("seville", "Seville", "ES", "Europe", 4443),
-    ("nice", "Nice", "FR", "Europe", 3306),
-    ("paris", "Paris", "FR", "Europe", 19991),
+    ("abu-dhabi", "Abu Dhabi", "AE", "Asia", 14770),
+    ("ajman", "Ajman", "AE", "Asia", 2296),
+    ("al-ain", "Al Ain", "AE", "Asia", 2712),
+    ("dubai", "Dubai", "AE", "Asia", 42038),
+    ("fujairah", "Fujairah", "AE", "Asia", 1096),
+    ("ras-al-khaimah", "Ras Al Khaimah", "AE", "Asia", 1449),
+    ("sharjah", "Sharjah", "AE", "Asia", 11887),
+    ("vienna", "Vienna", "AT", "Europe", 30950),
+    ("bridgetown", "Barbados", "BB", "Islands", 3279),
+    ("nassau", "Nassau", "BS", "Islands", 3251),
+    ("zurich", "Zurich", "CH", "Europe", 15387),
+    ("prague", "Prague", "CZ", "Europe", 30658),
+    ("berlin", "Berlin", "DE", "Europe", 49587),
+    ("munich", "Munich", "DE", "Europe", 24819),
+    ("copenhagen", "Copenhagen", "DK", "Europe", 19633),
+    ("barcelona", "Barcelona", "ES", "Europe", 50931),
+    ("ibiza", "Ibiza", "ES", "Islands", 6019),
+    ("madrid", "Madrid", "ES", "Europe", 50866),
+    ("mallorca", "Mallorca", "ES", "Islands", 12972),
+    ("seville", "Seville", "ES", "Europe", 14243),
+    ("nice", "Nice", "FR", "Europe", 10227),
+    ("paris", "Paris", "FR", "Europe", 86306),
     ("bath", "Bath", "GB", "UK", 4192),
-    ("edinburgh", "Edinburgh", "GB", "UK", 6318),
-    ("liverpool", "Liverpool", "GB", "UK", 6539),
-    ("london", "London", "GB", "UK", 52451),
-    ("manchester", "Manchester", "GB", "UK", 10506),
-    ("athens", "Athens", "GR", "Europe", 10619),
-    ("mykonos", "Mykonos", "GR", "Islands", 381),
-    ("santorini", "Santorini", "GR", "Islands", 1078),
-    ("hong-kong", "Hong Kong", "HK", "Asia", 7536),
-    ("dubrovnik", "Dubrovnik", "HR", "Europe", 630),
-    ("budapest", "Budapest", "HU", "Europe", 9401),
-    ("bali", "Bali", "ID", "Islands", 10664),
-    ("dublin", "Dublin", "IE", "UK", 4830),
-    ("goa", "Goa", "IN", "Asia", 3532),
-    ("reykjavik", "Reykjavik", "IS", "Europe", 1316),
-    ("florence", "Florence", "IT", "Europe", 4281),
-    ("milan", "Milan", "IT", "Europe", 12143),
-    ("rome", "Rome", "IT", "Europe", 10200),
-    ("venice", "Venice", "IT", "Europe", 2167),
-    ("kyoto", "Kyoto", "JP", "Asia", 6367),
-    ("osaka", "Osaka", "JP", "Asia", 16195),
-    ("tokyo", "Tokyo", "JP", "Asia", 19979),
-    ("siem-reap", "Siem Reap", "KH", "Asia", 1344),
-    ("seoul", "Seoul", "KR", "Asia", 19953),
-    ("colombo", "Colombo", "LK", "Asia", 1986),
-    ("mauritius", "Mauritius", "MU", "Islands", 2116),
-    ("maldives", "Maldives (Malé)", "MV", "Islands", 527),
-    ("cancun", "Cancún", "MX", "Islands", 1047),
-    ("tulum", "Tulum", "MX", "Islands", 560),
-    ("kuala-lumpur", "Kuala Lumpur", "MY", "Asia", 7517),
-    ("langkawi", "Langkawi", "MY", "Islands", 771),
-    ("amsterdam", "Amsterdam", "NL", "Europe", 8015),
-    ("boracay", "Boracay", "PH", "Islands", 850),
-    ("manila", "Manila", "PH", "Asia", 17380),
-    ("lisbon", "Lisbon", "PT", "Europe", 9187),
-    ("porto", "Porto", "PT", "Europe", 4797),
-    ("stockholm", "Stockholm", "SE", "Europe", 6051),
-    ("singapore", "Singapore", "SG", "Asia", 11276),
-    ("bangkok", "Bangkok", "TH", "Asia", 9912),
-    ("chiang-mai", "Chiang Mai", "TH", "Asia", 5085),
-    ("phi-phi", "Koh Phi Phi", "TH", "Islands", 369),
-    ("koh-samui", "Koh Samui", "TH", "Asia", 1331),
-    ("krabi", "Krabi", "TH", "Asia", 936),
-    ("pattaya", "Pattaya", "TH", "Asia", 5539),
-    ("phuket", "Phuket", "TH", "Asia", 5399),
-    ("istanbul", "Istanbul", "TR", "Europe", 15714),
-    ("taipei", "Taipei", "TW", "Asia", 19986),
-    ("honolulu", "Honolulu", "US", "Islands", 1747),
-    ("los-angeles", "Los Angeles", "US", "Americas", 11869),
-    ("miami", "Miami", "US", "Americas", 3139),
-    ("new-york", "New York", "US", "Americas", 19992),
-    ("orange-county", "Orange County", "US", "Americas", 7375),
-    ("da-nang", "Da Nang", "VN", "Asia", 2936),
-    ("hanoi", "Hanoi", "VN", "Asia", 5332),
-    ("ho-chi-minh", "Ho Chi Minh City", "VN", "Asia", 5979),
+    ("edinburgh", "Edinburgh", "GB", "UK", 14201),
+    ("liverpool", "Liverpool", "GB", "UK", 12134),
+    ("london", "London", "GB", "UK", 120463),
+    ("manchester", "Manchester", "GB", "UK", 19846),
+    ("athens", "Athens", "GR", "Europe", 39454),
+    ("mykonos", "Mykonos", "GR", "Islands", 2461),
+    ("santorini", "Santorini", "GR", "Islands", 4118),
+    ("hong-kong", "Hong Kong", "HK", "Asia", 55448),
+    ("dubrovnik", "Dubrovnik", "HR", "Europe", 2613),
+    ("budapest", "Budapest", "HU", "Europe", 32399),
+    ("bali", "Bali", "ID", "Islands", 54282),
+    ("dublin", "Dublin", "IE", "UK", 13110),
+    ("goa", "Goa", "IN", "Asia", 11732),
+    ("reykjavik", "Reykjavik", "IS", "Europe", 4135),
+    ("florence", "Florence", "IT", "Europe", 15081),
+    ("milan", "Milan", "IT", "Europe", 37198),
+    ("rome", "Rome", "IT", "Europe", 50558),
+    ("venice", "Venice", "IT", "Europe", 6354),
+    ("kyoto", "Kyoto", "JP", "Asia", 34561),
+    ("osaka", "Osaka", "JP", "Asia", 72264),
+    ("tokyo", "Tokyo", "JP", "Asia", 154366),
+    ("siem-reap", "Siem Reap", "KH", "Asia", 5193),
+    ("seoul", "Seoul", "KR", "Asia", 73094),
+    ("colombo", "Colombo", "LK", "Asia", 11791),
+    ("mauritius", "Mauritius", "MU", "Islands", 7826),
+    ("maldives", "Maldives (Malé)", "MV", "Islands", 2823),
+    ("cancun", "Cancún", "MX", "Islands", 13114),
+    ("tulum", "Tulum", "MX", "Islands", 2810),
+    ("kuala-lumpur", "Kuala Lumpur", "MY", "Asia", 44596),
+    ("langkawi", "Langkawi", "MY", "Islands", 3931),
+    ("amsterdam", "Amsterdam", "NL", "Europe", 23763),
+    ("boracay", "Boracay", "PH", "Islands", 2650),
+    ("manila", "Manila", "PH", "Asia", 92655),
+    ("lisbon", "Lisbon", "PT", "Europe", 25686),
+    ("porto", "Porto", "PT", "Europe", 13728),
+    ("stockholm", "Stockholm", "SE", "Europe", 19560),
+    ("singapore", "Singapore", "SG", "Asia", 48388),
+    ("bangkok", "Bangkok", "TH", "Asia", 106279),
+    ("chiang-mai", "Chiang Mai", "TH", "Asia", 31933),
+    ("phi-phi", "Koh Phi Phi", "TH", "Islands", 791),
+    ("koh-samui", "Koh Samui", "TH", "Asia", 8157),
+    ("krabi", "Krabi", "TH", "Asia", 6650),
+    ("pattaya", "Pattaya", "TH", "Asia", 23252),
+    ("phuket", "Phuket", "TH", "Asia", 30543),
+    ("istanbul", "Istanbul", "TR", "Europe", 70320),
+    ("alishan", "Alishan", "TW", "Asia", 1068),
+    ("changhua", "Changhua", "TW", "Asia", 9999),
+    ("chiayi", "Chiayi", "TW", "Asia", 4993),
+    ("green-island", "Green Island", "TW", "Asia", 156),
+    ("hsinchu", "Hsinchu", "TW", "Asia", 9596),
+    ("hualien", "Hualien", "TW", "Asia", 3576),
+    ("jiufen", "Jiufen", "TW", "Asia", 401),
+    ("kaohsiung", "Kaohsiung", "TW", "Asia", 10484),
+    ("keelung", "Keelung", "TW", "Asia", 2598),
+    ("kenting", "Kenting", "TW", "Asia", 703),
+    ("kinmen", "Kinmen", "TW", "Asia", 1056),
+    ("matsu", "Matsu", "TW", "Asia", 511),
+    ("miaoli", "Miaoli", "TW", "Asia", 3389),
+    ("nantou", "Nantou", "TW", "Asia", 4385),
+    ("new-taipei", "New Taipei", "TW", "Asia", 16272),
+    ("lanyu", "Orchid Island", "TW", "Asia", 143),
+    ("penghu", "Penghu", "TW", "Asia", 906),
+    ("pingtung", "Pingtung", "TW", "Asia", 6137),
+    ("sun-moon-lake", "Sun Moon Lake", "TW", "Asia", 489),
+    ("taichung", "Taichung", "TW", "Asia", 17555),
+    ("tainan", "Tainan", "TW", "Asia", 12447),
+    ("taipei", "Taipei", "TW", "Asia", 104931),
+    ("taitung", "Taitung", "TW", "Asia", 3700),
+    ("tamsui", "Tamsui", "TW", "Asia", 3082),
+    ("taoyuan", "Taoyuan", "TW", "Asia", 23281),
+    ("taroko", "Taroko Gorge", "TW", "Asia", 742),
+    ("yilan", "Yilan", "TW", "Asia", 3379),
+    ("yunlin", "Yunlin", "TW", "Asia", 5788),
+    ("honolulu", "Honolulu", "US", "Islands", 11250),
+    ("los-angeles", "Los Angeles", "US", "Americas", 90263),
+    ("miami", "Miami", "US", "Americas", 33038),
+    ("new-york", "New York", "US", "Americas", 117177),
+    ("orange-county", "Orange County", "US", "Americas", 58063),
+    ("da-nang", "Da Nang", "VN", "Asia", 30396),
+    ("hanoi", "Hanoi", "VN", "Asia", 78624),
+    ("ho-chi-minh", "Ho Chi Minh City", "VN", "Asia", 100338),
 ]
-
 REGION_ORDER = ["UK", "Europe", "Asia", "Islands", "Americas"]
 REGION_LABEL = {
     "UK": "United Kingdom and Ireland",
@@ -110,12 +144,27 @@ REGION_LABEL = {
     "Americas": "The Americas",
 }
 
-# Cities with a page of their own. Everything else on the hub is text.
+# The four cities with a hand-written page in this file.
 DEEP = ["edinburgh", "london", "phuket", "bangkok"]
 
-TOTAL_PLACES = sum(d[4] for d in DESTS)          # 567,793 across the directory
-TOTAL_DESTS = len(DESTS)                          # 77
-TOTAL_COUNTRIES = len(set(d[2] for d in DESTS))   # 38
+# Destinations whose page is generated by scripts/destpage.mjs rather than
+# written here. The hub must link them: a generated page nothing links to is a
+# doorway page by Google's own definition, and 28 unlinked Taiwanese pages is
+# how a site gets demoted rather than ranked. Read from disk so the list cannot
+# drift from what was actually built.
+def _built_pages():
+    import os
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "public")
+    if not os.path.isdir(root):
+        return set()
+    return {d for d in os.listdir(root)
+            if os.path.isfile(os.path.join(root, d, "index.html"))}
+
+LINKED = sorted({d[0] for d in DESTS} & (_built_pages() | set(DEEP)))
+
+TOTAL_PLACES = sum(d[4] for d in DESTS)          # read from D1, see the DESTS note
+TOTAL_DESTS = len(DESTS)
+TOTAL_COUNTRIES = len(set(d[2] for d in DESTS))
 
 EXTRA_CSS = """
 .dwrap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 26px;margin-top:18px}
@@ -190,15 +239,15 @@ def build_hub(M):
   <div><b>&pound;0</b><span>cost to travellers</span></div>
 </div>
 <div class="prose" style="margin-top:34px">
-<p>These counts are live, taken from the NUM directory on 31 July 2026 — not estimates.
+<p>These counts are live, taken from the NUM directory on 31 August 2026 — not estimates.
 A place being in the directory means NUM knows it exists, where it is and what it does.
 It does not mean NUM will recommend it: businesses claim their listing and verify with 5arz
 before NUM will put a traveller in front of them. That gap is deliberate, and it is the
 whole product.</p>
-<p>Four cities have a page of their own below, because they are where NUM is working hardest
-right now. The rest are live in the app today.</p>
+<p>%d destinations have a page of their own, linked below. The rest are live in the app
+today.</p>
 </div>
-</section>""" % (fmt(TOTAL_PLACES), TOTAL_DESTS, TOTAL_COUNTRIES))
+</section>""" % (fmt(TOTAL_PLACES), TOTAL_DESTS, TOTAL_COUNTRIES, len(LINKED)))
 
     body.append('<section class="wrap" style="padding-top:26px"><h2>Cities with a guide</h2><div class="grid3">')
     for slug in DEEP:
@@ -220,7 +269,7 @@ right now. The rest are live in the app today.</p>
         for slug, name, cc, _r, n in rows:
             label = "<b>%s</b> <span>%s</span>" % (name, CC.get(cc, cc))
             cell = '<b>%s</b> <span>%s places</span>' % (name, fmt(n))
-            if slug in DEEP:
+            if slug in LINKED:
                 body.append('<a href="/%s/">%s</a>' % (slug, cell))
             else:
                 body.append('<a href="/get" title="%s, %s">%s</a>'

@@ -95,10 +95,46 @@ def robots(S):
     return "\n".join(L)
 
 
-def sitemap(S, today):
+# Hand-tuned priorities. Any page on disk that is not listed here still gets
+# into the sitemap — see below — it just takes the default weight.
+PRIORITY = {slug: (pri, freq) for slug, pri, freq in URLS}
+
+
+def _pages(pub):
+    """Every indexable page on disk, as site-root paths ending in a slash.
+
+    Read from disk rather than from a list, because the list drifted: on
+    31 Aug 2026 the sitemap held 37 URLs and URLS held 22, so regenerating it
+    silently dropped /hosts/, /sms/, /what-we-do/, /phuket/beaches/ and every
+    /agents/* page. A sitemap that shrinks when you rebuild it is worse than no
+    sitemap, because Search Console reads the disappearance as deindexing.
+
+    Pages carrying a noindex are skipped: submitting one asks Google to crawl a
+    page in order to be told to forget it.
+    """
+    out = []
+    for root, _dirs, files in os.walk(pub):
+        if "index.html" not in files:
+            continue
+        path = os.path.join(root, "index.html")
+        rel = os.path.relpath(root, pub).replace(os.sep, "/")
+        slug = "/" if rel == "." else "/%s/" % rel
+        try:
+            with open(path, encoding="utf-8") as fh:
+                if "noindex" in fh.read():
+                    continue
+        except OSError:
+            continue
+        out.append(slug)
+    return sorted(set(out))
+
+
+def sitemap(S, today, pub=None):
+    slugs = _pages(pub) if pub else [u[0] for u in URLS]
     L = ['<?xml version="1.0" encoding="UTF-8"?>',
          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    for slug, pri, freq in URLS:
+    for slug in slugs:
+        pri, freq = PRIORITY.get(slug, ("0.7", "weekly"))
         L.append("  <url>")
         L.append("    <loc>%s%s</loc>" % (S, slug))
         L.append("    <lastmod>%s</lastmod>" % today)
@@ -115,7 +151,7 @@ def write(M):
     today = datetime.date.today().isoformat()
     out = []
     for name, body in (("robots.txt", robots(S)),
-                       ("sitemap.xml", sitemap(S, today)),
+                       ("sitemap.xml", sitemap(S, today, M.PUB)),
                        ("llms.txt", LLMS % {"S": S, "d": today}),
                        ("llms-full.txt", LLMS_FULL % {"S": S, "d": today})):
         p = os.path.join(M.PUB, name)
