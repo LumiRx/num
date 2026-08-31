@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   pendingClaims, decideClaim, autoApproveAll, dueRound, staleDigest, REMINDER_HOURS,
 } from './bizapproval.mjs';
-import { onboardingEmail, sendOnboarding, consoleLink } from './bizonboard.mjs';
+import { onboardingEmail, sendOnboarding, consoleLink, onboardApproved } from './bizonboard.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -273,4 +273,98 @@ test('a state update that fails is reported, never swallowed', async () => {
   assert.equal(out.ok, false, 'a decision the console cannot see is not a decision');
   assert.match(out.error, /state not moved/);
   assert.match(out.error, /decided_at/);
+});
+
+/** Approved claims that nobody has been told about yet. */
+function onboardDb(rows) {
+  return {
+    prepare: (sql) => ({
+      bind: (...a) => ({
+        all: async () => ({ results: /FROM claims c/.test(sql) ? rows.filter((r) => !r.onboarded) : [] }),
+        first: async () => (/SELECT onboarded/.test(sql)
+          ? rows.find((r) => String(r.id) === String(a[0])) ?? null
+          : null),
+        run: async () => {
+          if (/SET onboarded = 1/.test(sql)) {
+            const r = rows.find((x) => String(x.id) === String(a[0]));
+            if (r) r.onboarded = 1;
+          }
+          return { meta: { changes: 1 } };
+        },
+      }),
+      all: async () => ({ results: [] }),
+      first: async () => null,
+      run: async () => ({ meta: { changes: 1 } }),
+    }),
+  };
+}
+
+test('approving is not telling — the sweep emails everyone nobody told', async () => {
+  const rows = [
+    { id: 13, business_name: 'Holiday Inn Express', email: 'reception@hie.co.uk', created_at: '2026-08-24 16:32:33', onboarded: 0 },
+    { id: 15, business_name: 'Fingal Hotel', email: 'reservations@fingal.co.uk', created_at: '2026-08-29 14:44:29', onboarded: 0 },
+  ];
+  const sent = [];
+  const out = await onboardApproved(
+    { DB: onboardDb(rows), BIZ_ONBOARD_EMAIL: 'on' },
+    { mailer: async (_e, m) => { sent.push(m.to); return { ok: true }; } },
+  );
+  assert.equal(out.sent, 2);
+  assert.equal(out.failed, 0);
+  assert.deepEqual(sent, ['reception@hie.co.uk', 'reservations@fingal.co.uk']);
+});
+
+test('the sweep stays shut while the flag is off', async () => {
+  // Nothing emails a real business until that switch is thrown, by hand.
+  const out = await onboardApproved({ DB: onboardDb([]), BIZ_ONBOARD_EMAIL: undefined });
+  assert.equal(out.sent, 0);
+  assert.match(out.skipped, /BIZ_ONBOARD_EMAIL/);
+});
+
+test('a business is told once, not once per tick', async () => {
+  const rows = [{ id: 13, business_name: 'X', email: 'x@y.com', created_at: '2026-08-24 16:32:33', onboarded: 0 }];
+  const env = { DB: onboardDb(rows), BIZ_ONBOARD_EMAIL: 'on' };
+  const mailer = async () => ({ ok: true });
+  assert.equal((await onboardApproved(env, { mailer })).sent, 1);
+  assert.equal((await onboardApproved(env, { mailer })).sent, 0, 'the second tick must be silent');
+});
+
+test('a send that fails is retried next tick, and reported now', async () => {
+  // onboarded is set only on a send that actually succeeded, so a mailer that
+  // is down delays the news instead of losing it.
+  const rows = [{ id: 13, business_name: 'Holiday Inn Express', email: 'x@y.com', created_at: '2026-08-24 16:32:33', onboarded: 0 }];
+  const env = { DB: onboardDb(rows), BIZ_ONBOARD_EMAIL: 'on' };
+  const down = await onboardApproved(env, { mailer: async () => ({ ok: false, error: 'destination not verified' }) });
+  assert.equal(down.sent, 0);
+  assert.equal(down.failed, 1);
+  assert.match(down.errors[0], /Holiday Inn Express: destination not verified/);
+  const up = await onboardApproved(env, { mailer: async () => ({ ok: true }) });
+  assert.equal(up.sent, 1, 'the news is delayed, never lost');
+});
+
+test('the onboarding email never quotes a hand-written coverage number', () => {
+  // It said "2.5 million" while the directory held 2,686,795 — the same drift
+  // aifacts.mjs exists to stop, in the one email a business reads carefully.
+  // Comments stripped first: the note explaining why this guard exists says
+  // "2.5 million" itself, and a guard that trips on its own rationale is a
+  // guard somebody deletes.
+  const src = readFileSync(join(HERE, 'bizonboard.mjs'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+  assert.ok(!/2\.5 million/.test(src), 'no literal coverage number in the template');
+  assert.ok(!/2\.5 ล้าน/.test(src), 'nor in the Thai copy');
+  const live = onboardingEmail({ business: 'X', contact: 'A', places: 2686795 });
+  assert.match(live.text, /2,686,795 real places/);
+  const unknown = onboardingEmail({ business: 'X', contact: 'A', places: null });
+  assert.ok(!/\d,\d{3},\d{3}/.test(unknown.text), 'an unknown count states no number at all');
+});
+
+test('the email never prints an address that rejects mail', () => {
+  // "Reply to this email and a person will read it" printed above
+  // info@itsnum.com, whose MX rejects at the SMTP layer.
+  const routed = onboardingEmail({ business: 'X', contact: 'A', contactAddress: 'info@thatislumi.com' });
+  assert.match(routed.text, /NUM · info@thatislumi\.com/);
+  assert.ok(!routed.text.includes('info@itsnum.com'));
+  const thai = onboardingEmail({ business: 'X', contact: 'A', country: 'TH', contactAddress: 'info@thatislumi.com' });
+  assert.match(thai.text, /NUM · info@thatislumi\.com/);
 });

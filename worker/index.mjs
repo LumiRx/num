@@ -18,6 +18,7 @@ import { recordAsk } from './asks.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
 import { formatEvents } from './cityevents.mjs';
+import { formatSearchedEvents } from './eventsearch.mjs';
 import { loadFacts, saveFacts } from './memory.mjs';
 import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
 import { scrubPayload as scrubTravelSpeak } from './travelspeak.mjs';
@@ -55,11 +56,14 @@ import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
-import { servicesBlock, optionsFor } from './services.mjs';
+import { servicesBlock, optionsFor, canIssueFlight } from './services.mjs';
 import { blockFor as viatorBlock } from './viator.mjs';
 import { carLink, carBlock } from './localrent.mjs';
 import { blockFor as eventsBlockFor } from './events.tm.mjs';
 import { luggageLink, luggageBlock, wantsLuggage } from './luggage.mjs';
+import {
+  flightLink, stayLink, flightBlock, stayBlock, wantsFlight, wantsStay, openReferral, lgtReady,
+} from './letsgo2trip.mjs';
 import { policyFor, policyBrief, screen as screenReply, substituteFor } from './geopolicy.mjs';
 import { tagged } from './affiliate.mjs';
 import { logHandoffs } from './affiliateclicks.mjs';
@@ -82,7 +86,7 @@ const WANTS_CAR = /\b(rent(?:al|ing)?|hire|hiring)\s+(?:a\s+|an\s+)?(?:car|suv|4
 
 const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
 
-async function askNum(client, messages, state, grounding, profile, extraSystem, env, userText, acceptLang) {
+async function askNum(client, messages, state, grounding, profile, extraSystem, env, userText, acceptLang, modelOverride = null) {
   // PERSONA + VOICE are identical on every request, so they sit above the
   // cache breakpoint. Everything below it changes per turn.
   const specialist = pickSpecialist(userText ?? '');
@@ -106,7 +110,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         partners: grounding.partners,
         guide: grounding.guide,
         showtimes: grounding.showtimes ?? null,
-        events: formatEvents(grounding.events ?? []),
+        events: [formatEvents(grounding.events ?? []), formatSearchedEvents(grounding.searchedEvents)].filter(Boolean).join('\n\n'),
         profile: safeProfile.profile,
         buzz: grounding.buzz,
         services: servicesBlock(grounding.place, env ?? {}),
@@ -153,6 +157,68 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
     const bags = luggageBlock(luggageLink(env ?? {}, grounding.place), grounding.place);
     if (bags) system.push({ type: 'text', text: bags });
   }
+  // LetsGo2Trip — THE FALLBACK, and only ever the fallback.
+  //
+  // It is the only rail that can actually ISSUE a ticket, which sabre_air and
+  // duffel cannot. It is also the only rail that sends a traveller out of the
+  // app to a checkout that charges them a fee, so it must never fire while Num
+  // could have finished the job itself. `canIssueFlight` is services.mjs's
+  // single definition of that, shared rather than re-derived: the day Sabre
+  // booking is switched on, this rail goes quiet on its own and nobody has to
+  // remember to turn it off.
+  //
+  // The referral row is AWAITED rather than fired off. askNum has no
+  // execution context, and an un-awaited promise after the response returns
+  // is cancelled by the runtime — the row would silently never land, and
+  // this row is the only independent record that Num sent anybody. It is one
+  // INSERT and it never throws; a bookkeeping failure costs a row, never a
+  // reply and never the link.
+  if (lgtReady(env ?? {}) && !canIssueFlight(env ?? {})) {
+    const memberId = state?.memberId ?? state?.member_id ?? null;
+    if (wantsFlight(userText ?? '')) {
+      const f = flightLink(env, {});
+      if (f) {
+        system.push({ type: 'text', text: flightBlock(f, env, {}) });
+        await openReferral(env, { ref: f.ref, memberId, product: 'flight' });
+      }
+    } else if (wantsStay(userText ?? '')) {
+      // `else if` on purpose: a turn that asks for both gets the flight, which
+      // is the one with a deadline. Two booking links and two fee disclosures
+      // in one reply is not a concierge, it is a banner.
+      const s = stayLink(env, grounding.place);
+      if (s) {
+        system.push({ type: 'text', text: stayBlock(s, env, grounding.place) });
+        await openReferral(env, {
+          ref: s.ref, memberId, product: 'stay', destination: grounding.place?.name ?? null,
+        });
+      }
+    }
+  }
+  // An open flight booking, if there is one.
+  //
+  // Gated on `canIssueFlight` — the same single definition the LetsGo2Trip
+  // fallback uses. Today that is false everywhere, so this is inert: no
+  // issuer is configured, and collecting a passport number for a ticket Num
+  // cannot issue would be asking for something we have no use for.
+  //
+  // The day an issuer is switched on, this connects on its own. That is also
+  // the day the seller-of-travel registration has to be in hand — /api/pay/status
+  // flips its published claim at the same moment, from the same function.
+  if (canIssueFlight(env ?? {}) && state?.flightBooking) {
+    const { bookingBlock } = await import('./flightbooking.mjs');
+    const { payBlock } = await import('./flightpay.mjs');
+    const b = state.flightBooking;
+    const open = bookingBlock(b);
+    if (open) system.push({ type: 'text', text: open });
+    // The money is read back only once everything is collected — quoting a
+    // total while three passport numbers are still missing invites them to
+    // agree to a number that is not yet the number.
+    const { readyToIssue } = await import('./flightbooking.mjs');
+    if (readyToIssue(b).ok) {
+      const pay = payBlock(b, env ?? {});
+      if (pay) system.push({ type: 'text', text: pay });
+    }
+  }
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
   // A structured reply is one long JSON string. If the model runs out of room
   // it stops MID-STRING, JSON.parse throws, and the user gets an error instead
@@ -162,7 +228,12 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // in a ceiling that cuts it off mid-sentence.
   // Opus for the turns that deserve it, Sonnet for one-line lookups. Fails
   // toward Opus on anything ambiguous — see router.pickModel.
-  const model = pickModel(userText, state, env ?? {});
+  //
+  // `modelOverride` is the director's per-tier choice, arriving via the brain
+  // chain (brains.ask → structuredCall). It wins when present because it was
+  // decided with the tier in hand; pickModel remains the answer for every
+  // caller that does not route through the director.
+  const model = modelOverride || pickModel(userText, state, env ?? {});
   const call = (maxTokens, m = model) =>
     client.messages.create({
       model: m,
@@ -629,15 +700,15 @@ export async function handleNum(request, env, ctx) {
     }
 
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    const callNum = async (extraSystem) => {
+    const callNum = async (extraSystem, modelOverride = null) => {
       try {
-        return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
+        return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang, modelOverride);
       } catch (err) {
         // Grammar compilation is cached once it succeeds but can time out on a
         // cold schema — one retry usually lands on the warmed cache.
         if (!/grammar compilation/i.test(err?.message ?? '')) throw err;
         await new Promise((r) => setTimeout(r, 1500));
-        return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang);
+        return askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang, modelOverride);
       }
     };
 
@@ -662,9 +733,14 @@ export async function handleNum(request, env, ctx) {
       guide: grounding.guide,
       profile: redactProfile(profile).profile,
       buzz: grounding.buzz,
-      events: formatEvents(grounding.events ?? []),
+      events: [formatEvents(grounding.events ?? []), formatSearchedEvents(grounding.searchedEvents)].filter(Boolean).join('\n\n'),
     });
     const startedAt = Date.now();
+    // Hoisted: the directive decides who answers AND is the honest label for
+    // what this turn was. Computing it inline meant the tier existed for one
+    // expression and was never written down — see the lane/category note
+    // below.
+    const directive = direct(lastUser, parsed.state, env);
     // The chain, not one model. Claude first for the full concierge; if it
     // fails for any reason, an open model on Cloudflare's edge (or a
     // self-hosted one) answers in prose rather than the user hitting a wall.
@@ -686,7 +762,7 @@ export async function handleNum(request, env, ctx) {
       // response brain, which costs 1/76th as much. The rest of the chain
       // stays underneath either way — the director chooses the order, never
       // the last resort.
-      directive: direct(lastUser, parsed.state, env),
+      directive,
     });
     // Somebody asked their concierge something, which is the moment a
     // referral stops being a signup and starts being a user. Runs after the
@@ -787,11 +863,26 @@ export async function handleNum(request, env, ctx) {
     // So it still runs the full path and still costs a model call; it just
     // stops writing to the tables we make decisions from.
     const isProbe = request.headers.get('X-Num-Probe') === '1';
+    // WHAT THE LANE COLUMN USED TO SAY, AND WHY IT WAS USELESS.
+    //
+    // This was the literal string 'big' on every turn, so all 383 asks ever
+    // recorded claimed the expensive lane — including every one the director
+    // had actually sent to a cheap brain. The column that exists to answer
+    // "is the router saving us anything" could only ever answer "no", and it
+    // would have said that just as loudly on the day the router worked
+    // perfectly. Recording the tier the director actually chose is what makes
+    // every routing change after this one measurable.
+    const laneLabel = `${directive.tier}:${result._brain ?? 'none'}`;
     if (!isProbe) ctx.waitUntil(
       recordAsk(env, {
         text: lastUser,
+        // The demand class, finally written down. `category` has been NULL on
+        // every row since the table was created, which is why no question has
+        // ever been gradeable BY KIND — we could see that an answer was
+        // off-topic but never that recommendations specifically were.
+        category: directive.tier,
         dest: grounding.place?.slug ?? null,
-        lane: 'big',
+        lane: laneLabel,
         brain: result._brain ?? null,
         degraded: !!result._degraded,
         quality: quality.flags,
@@ -799,13 +890,15 @@ export async function handleNum(request, env, ctx) {
         anonId: parsed.state?.anon ?? null,
       }).then((askId) =>
         logUsage(env, {
-          lane: result._brain === 'claude' ? 'big' : `fallback:${result._brain}`,
+          lane: laneLabel,
           // The MODEL, not the brain slot. `hosted` is a position in the
           // chain; `deepseek-v4-flash` is a thing with a price. Logging the
           // slot is why every fallback turn priced at zero.
-          model: result._brain === 'claude'
-            ? env.NUM_MODEL || DEFAULT_MODEL
-            : result._model ?? result._brain,
+          // The MODEL, not the brain slot. Both Anthropic brains now carry
+          // `_model` from the directive, so a Haiku turn prices as Haiku
+          // rather than inheriting Opus's rate and overstating the bill.
+          model: result._model
+            ?? (result._brain === 'claude' ? env.NUM_MODEL || DEFAULT_MODEL : result._brain),
           specialist: result._specialist ?? null,
           place: grounding.place?.name ?? null,
           usage: result._usage,
@@ -1072,6 +1165,108 @@ export default {
         return json(200, { brains: brainRoster(env), probe: await brainProbe(env) });
       }
       return json(200, { brains: brainRoster(env) });
+    }
+
+    // "Which Messaging Service SID should be set?" — asked of Twilio itself,
+    // using the credentials this Worker already holds. Admin-gated; returns
+    // SIDs and statuses, never a credential. See twiliodiag.mjs.
+    // The approvals queue. Admin-gated: which businesses have asked to be
+    // listed is a commercial fact, not a public one.
+    if (url.pathname === '/api/admin/claims') {
+      if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) {
+        return json(404, { error: 'not found' });
+      }
+      const biz = await import('./bizapproval.mjs');
+      if (request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const out = await biz.decideClaim(env, {
+          id: body.id,
+          decision: body.decision,
+          by: `admin:${(request.headers.get('CF-Connecting-IP') ?? 'console').slice(0, 40)}`,
+          note: typeof body.note === 'string' ? body.note.slice(0, 300) : null,
+        });
+        if (!out.ok) return json(400, out);
+        // The onboarding email goes ONLY on approval, only once, and only when
+        // the send actually succeeds — see bizonboard.sendOnboarding.
+        if (out.decision === 'approved' && !out.alreadyDecided && env.BIZ_ONBOARD_EMAIL === 'on') {
+          const { sendOnboarding } = await import('./bizonboard.mjs');
+          ctx.waitUntil(sendOnboarding(env, out.claim).catch(() => {}));
+        }
+        return json(200, out);
+      }
+      return json(200, { pending: await biz.pendingClaims(env) });
+    }
+
+    // SEE WHAT THEY SEE.
+    //
+    // The owner's dashboard and this preview are built by the SAME function
+    // (bizdash.dashboardData). A preview that assembled its own numbers would
+    // be a preview of a screen nobody has, and the first time a merchant
+    // phoned about a figure it would not be on Dre's version of the page.
+    //
+    // Read-only on purpose: it renders what the business sees, it does not
+    // hand out a session that could edit their listing. Admin-gated.
+    if (url.pathname === '/api/admin/biz-view') {
+      if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) {
+        return json(404, { error: 'not found' });
+      }
+      const placeId = url.searchParams.get('place') ?? '';
+      if (!placeId) {
+        // No listing named: list the ones there are to look at.
+        const { results } = await env.DB.prepare(
+          `SELECT po.place_id, p.name, p.dest, po.business_id
+             FROM num_place_owners po JOIN places p ON p.id = po.place_id
+            WHERE po.revoked_at IS NULL ORDER BY po.verified_at DESC LIMIT 50`,
+        ).all().catch(() => ({ results: [] }));
+        return json(200, { businesses: results ?? [], hint: 'add ?place=<place_id>' });
+      }
+      const place = await env.DB.prepare(
+        `SELECT id AS place_id, name, category, dest, area, address, phone, website, hours, cuisine
+           FROM places WHERE id = ?1`,
+      ).bind(placeId).first();
+      if (!place) return json(404, { error: 'no such listing' });
+      const [{ dashboardData }, { bizEntitlements }] = await Promise.all([
+        import('./bizdash.mjs'), import('./bizbilling.mjs'),
+      ]);
+      const owner = await env.DB.prepare(
+        'SELECT business_id FROM num_place_owners WHERE place_id=?1 AND revoked_at IS NULL',
+      ).bind(placeId).first().catch(() => null);
+      const plan = owner?.business_id
+        ? await bizEntitlements(env, owner.business_id)
+        : { tier: 'free', analytics_days: 7, promotions: false, name: 'Listed' };
+      const { results: bookings } = await env.DB.prepare(
+        `SELECT created_at, guest_name, party, when_text, date, state
+           FROM num_booking_requests WHERE place_id=?1 ORDER BY rowid DESC LIMIT 25`,
+      ).bind(placeId).all().catch(() => ({ results: [] }));
+      const insights = await (await import('./bizconsole.mjs')).insightsForAdmin?.(env, placeId, Math.min(30, plan.analytics_days ?? 7))
+        ?? null;
+      return json(200, await dashboardData(env, {
+        place, plan: { ...plan, business_id: owner?.business_id ?? null }, insights, bookings: bookings ?? [],
+      }));
+    }
+
+    if (url.pathname === '/api/admin/twilio') {
+      const { handleTwilioDiag } = await import('./twiliodiag.mjs');
+      return await handleTwilioDiag(request, env);
+    }
+
+    // The OTHER pipe. /api/admin/twilio inspects Programmable Messaging; every
+    // sign-in code goes through Twilio Verify, which is a separate service
+    // with a separate sender pool and no delivery webhook at all. Fixing one
+    // has never told you anything about the other, which is how a repaired
+    // Messaging Service SID and a signup that received no text were true on
+    // the same evening.
+    if (url.pathname === '/api/admin/verify') {
+      const { handleVerifyDiag } = await import('./verifydiag.mjs');
+      return await handleVerifyDiag(request, env);
+    }
+
+    // What Num can actually do where this guest is standing. One indexed D1
+    // read, no model call — see suggest.mjs for why this must never cost a
+    // generation.
+    if (url.pathname === '/api/suggest') {
+      const { handleSuggest } = await import('./suggest.mjs');
+      return await handleSuggest(request, env);
     }
 
     if (url.pathname === '/api/version') {
@@ -1618,6 +1813,53 @@ export default {
   // record the verdict, and shout ONLY when the state changes.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
+    // Does mail actually leave the building? For five days in August the
+    // answer was no and nothing said so — the evidence was one column in
+    // num_invites nobody read. Set MAIL_SELFTEST to an address and the next
+    // tick answers it in num_health, from a real send rather than from
+    // configuration. No-op when the variable is unset.
+    ctx.waitUntil(
+      import('./mailer.mjs')
+        .then((m) => m.selfTest(env))
+        .catch((e) => console.error('[mailer]', e?.message ?? e)),
+    );
+    // IS THE BRAIN ACTUALLY ANSWERING?
+    //
+    // On 31 Aug 2026 both Anthropic brains failed at 13:33, stood down for an
+    // hour, and the health check went green at 14:33 when the cooldown lapsed
+    // — with nothing proven either way, because the only "brain" check we had
+    // tested whether a key was SET. The next guest would have been the one to
+    // find out. This spends one token instead, and only for a brain that is
+    // carrying a failure whose cooldown has already run out. A healthy chain
+    // probes nothing and costs nothing. See worker/brainprobe.mjs.
+    ctx.waitUntil(
+      import('./brainprobe.mjs')
+        .then((m) => m.proveBrains(env))
+        .then((r) => {
+          if (r?.recovered?.length) console.log(`[brainprobe] recovered: ${r.recovered.join(', ')}`);
+          if (r?.still_down?.length) console.warn(`[brainprobe] STILL DOWN: ${JSON.stringify(r.still_down)}`);
+        })
+        .catch((e) => console.error('[brainprobe]', e?.message ?? e)),
+    );
+    // DID THE SIGN-IN CODES ACTUALLY ARRIVE?
+    //
+    // Twilio Verify has no StatusCallback, so unlike Programmable Messaging
+    // nothing ever calls us back to say a carrier dropped a code. The outcome
+    // exists — Twilio records it per attempt — but only if somebody asks. For
+    // as long as nobody did, `num_signin_events` reported a healthy send rate
+    // for a channel that was delivering nothing, and `num_sms_delivery` sat
+    // nine days stale because it only ever saw the pipe sign-in stopped using.
+    // This is the ask. See worker/verifydiag.mjs.
+    ctx.waitUntil(
+      import('./verifydiag.mjs')
+        .then((m) => m.reconcileVerifySends(env))
+        .then((r) => {
+          if (r?.undelivered) {
+            console.warn(`[verify] ${r.undelivered}/${r.seen} sign-in codes did NOT reach a carrier — ${JSON.stringify(r.reasons)}`);
+          }
+        })
+        .catch((e) => console.error('[verify-reconcile]', e?.message ?? e)),
+    );
     // The concierge that speaks first. Same cron, its own failure domain —
     // a broken nudge must never take health monitoring down with it.
     ctx.waitUntil(
@@ -1630,6 +1872,53 @@ export default {
       import('./nudge.mjs')
         .then((m) => m.claimSweep(env))
         .catch((e) => console.error('[claimsweep]', e?.message ?? e)),
+    );
+    // A BUSINESS SIGNUP MUST NOT BE LOST TO ONE DROPPED TEXT.
+    //
+    // claimSweep already alerts on every new claim, once, deduped forever.
+    // That is right for noise and wrong for certainty: claim 15 (Fingal Hotel)
+    // was announced at 14:45 on 29 Aug — three days into the SMS outage, when
+    // every message went out on a bare long code and carriers dropped it. One
+    // shot, into a dead channel, and the dedupe meant it never came back.
+    //
+    // This re-raises anything still undecided on a widening schedule
+    // (2h, 8h, 1d, 3d, 1w…) and stops the moment somebody decides — which is
+    // the only evidence that a human actually saw it. Own failure domain, so a
+    // broken digest never takes health monitoring down with it.
+    ctx.waitUntil(
+      (async () => {
+        const { autoApproveAll, staleDigest } = await import('./bizapproval.mjs');
+        // EVERY business gets an account and a dashboard, immediately.
+        // Verification is a separate badge earned by proof (bizverify.mjs) —
+        // refusing an account until then costs a real business and protects
+        // nothing, since the dashboard only ever edits that listing's own
+        // hours, phone and address.
+        await autoApproveAll(env);
+        // Approving is not telling. autoApproveAll never called sendOnboarding
+        // — only the manual admin route did — so eight businesses sat approved
+        // and uninformed. This sweep re-reads the world every tick, so one
+        // approved while the mailer is down is told when it comes back. It is
+        // gated on BIZ_ONBOARD_EMAIL, which stays off until you switch it on.
+        const { onboardApproved } = await import('./bizonboard.mjs');
+        const told = await onboardApproved(env);
+        if (told.failed) {
+          const { alert } = await import('./health.mjs');
+          await alert(env, `[biz] ${told.failed} onboarding email(s) failed: ${(told.errors ?? []).join(' | ')}`);
+        }
+        const digest = await staleDigest(env);
+        if (digest) {
+          const { alert } = await import('./health.mjs');
+          await alert(env, digest.text);
+        }
+        // The business's own weekly note. Sends only to owners who opted in,
+        // only when the week actually held something, and at most once every
+        // seven days — see biznotify.weeklySweep. An empty digest is how a
+        // sender becomes spam, so it simply does not go.
+        if (env.BIZ_WEEKLY_EMAIL === 'on') {
+          const { weeklySweep } = await import('./biznotify.mjs');
+          await weeklySweep(env);
+        }
+      })().catch((e) => console.error('[bizapproval]', e?.message ?? e)),
     );
     // Self-submitted businesses, turned into coordinates. Migration 0007 was
     // written for this step and nothing ever performed it, so every submission

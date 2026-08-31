@@ -50,11 +50,33 @@ const firstName = (full) => String(full ?? '').trim().split(/\s+/)[0] || '';
 /**
  * @returns {{ subject: string, text: string }}
  */
-export function onboardingEmail({ business, contact, country, waitedDays = 0 } = {}) {
+export function onboardingEmail({
+  business, contact, country, waitedDays = 0, places = null, contactAddress = null,
+} = {}) {
   const th = String(country ?? '').toUpperCase() === 'TH';
   const name = firstName(contact);
   const biz = String(business ?? 'your business').trim();
   const link = consoleLink(biz);
+  /**
+   * The coverage number, read from the database at send time.
+   *
+   * It said "2.5 million" while the directory held 2,686,795 — the same
+   * hand-written-number drift aifacts.mjs exists to stop, in the one email a
+   * business owner reads most carefully. A vague "2.5 million" understates us
+   * by two hundred thousand places AND is the kind of round number that reads
+   * as marketing rather than fact.
+   */
+  const count = Number(places) > 0
+    ? `${Math.floor(Number(places)).toLocaleString('en-GB')} real places`
+    : 'millions of real places';
+  /**
+   * The address we tell them to write to.
+   *
+   * info@itsnum.com's MX points at an SES inbound host with no receipt rule
+   * set, so it rejects at the SMTP layer. Printing it under a sentence that
+   * promises "a person will read it" is a promise the infrastructure breaks.
+   */
+  const reply = String(contactAddress || 'info@itsnum.com');
   // SAY SOMETHING ABOUT THE WAIT, WHEN THERE HAS BEEN ONE.
   //
   // Six businesses signed up between 9 and 29 August and heard nothing back —
@@ -76,7 +98,7 @@ export function onboardingEmail({ business, contact, country, waitedDays = 0 } =
           : `ตรวจสอบเรียบร้อยแล้ว — ${biz} เป็นของคุณบน NUM แล้วครับ`,
         '',
         'NUM เป็นผู้ช่วยส่วนตัวที่นักท่องเที่ยวถามว่า "คืนนี้กินอะไรดี" '
-          + 'เราตอบจากฐานข้อมูลสถานที่จริง 2.5 ล้านแห่ง และตอนนี้ร้านของคุณอยู่ในนั้น',
+          + `เราตอบจากฐานข้อมูลสถานที่จริง${Number(places) > 0 ? ` ${Math.floor(Number(places)).toLocaleString('en-GB')} แห่ง` : 'หลายล้านแห่ง'} และตอนนี้ร้านของคุณอยู่ในนั้น`,
         '',
         'จัดการข้อมูลร้านของคุณได้ที่:',
         link,
@@ -87,7 +109,7 @@ export function onboardingEmail({ business, contact, country, waitedDays = 0 } =
         '',
         'มีคำถาม ตอบกลับอีเมลนี้ได้เลยครับ',
         '',
-        'NUM · info@itsnum.com',
+        `NUM · ${reply}`,
       ].join('\n'),
     };
   }
@@ -103,7 +125,7 @@ export function onboardingEmail({ business, contact, country, waitedDays = 0 } =
         : `We have checked your claim — ${biz} is yours on NUM.`,
       '',
       'NUM is a personal concierge travellers ask things like "where should we eat tonight".'
-        + ' It answers from a directory of 2.5 million real places, and yours is now one of them.',
+        + ` It answers from a directory of ${count}, and yours is now one of them.`,
       '',
       'Manage your listing here:',
       link,
@@ -119,7 +141,7 @@ export function onboardingEmail({ business, contact, country, waitedDays = 0 } =
       '',
       'Reply to this email if anything looks wrong and a person will read it.',
       '',
-      'NUM · info@itsnum.com',
+      `NUM · ${reply}`,
     ].join('\n'),
   };
 }
@@ -144,7 +166,15 @@ export async function sendOnboarding(env, claim, { mailer } = {}) {
   const waitedDays = claim.created_at
     ? Math.max(0, (Date.now() - Date.parse(`${String(claim.created_at).replace(' ', 'T')}Z`)) / 86_400_000)
     : 0;
-  const { subject, text } = onboardingEmail({ ...claim, business: claim.business ?? claim.business_name, waitedDays });
+  const places = await env.DB.prepare('SELECT COUNT(*) AS n FROM places').first()
+    .then((r) => r?.n ?? null).catch(() => null);
+  const { subject, text } = onboardingEmail({
+    ...claim,
+    business: claim.business ?? claim.business_name,
+    waitedDays,
+    places,
+    contactAddress: env.MAIL_REPLY_TO || null,
+  });
   const send = mailer ?? (await import('./mailer.mjs')).send;
   const out = await send(env, {
     to: claim.email,
@@ -159,4 +189,55 @@ export async function sendOnboarding(env, claim, { mailer } = {}) {
     ).bind(String(claim.id)).run().catch(() => {});
   }
   return out;
+}
+
+/**
+ * Tell every approved business that nobody has told yet.
+ *
+ * `autoApproveAll` runs on the five-minute cron and never called
+ * `sendOnboarding`; only the manual admin route did, and that route is behind
+ * `BIZ_ONBOARD_EMAIL`. So on 30 Aug eight businesses were approved by the cron
+ * and none of them were emailed — a third independent lock on the same door,
+ * after the state that would not move and a mailer that could not reach them.
+ *
+ * This is a sweep rather than a hook on purpose. The three failures above were
+ * all one-shot: something fired once, into a channel that was down, and the
+ * system then believed the job was done. A sweep that re-reads the world each
+ * tick cannot make that mistake — a business approved while the mailer is
+ * broken is simply told when the mailer comes back, and `onboarded` is set
+ * only on a send that actually succeeded, so it retries until it lands.
+ *
+ * Ordered oldest-first because that is who has waited longest. Capped per tick
+ * so a backlog drains steadily rather than as one burst a provider reads as a
+ * spike.
+ */
+export async function onboardApproved(env, { limit = 10, mailer } = {}) {
+  if (!env?.DB) return { sent: 0, failed: 0, skipped: 'no database' };
+  if (env.BIZ_ONBOARD_EMAIL !== 'on') return { sent: 0, failed: 0, skipped: 'BIZ_ONBOARD_EMAIL not on' };
+
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.business_name, c.contact_name, c.email, c.country, c.created_at
+       FROM claims c
+       JOIN num_claim_decisions d ON d.claim_id = CAST(c.id AS TEXT)
+      WHERE d.decision = 'approved'
+        AND COALESCE(d.onboarded, 0) = 0
+        AND c.email IS NOT NULL AND c.email <> ''
+      ORDER BY c.created_at ASC
+      LIMIT ?1`,
+  ).bind(limit).all().catch(() => ({ results: [] }));
+
+  let sent = 0;
+  let failed = 0;
+  const errors = [];
+  for (const claim of results ?? []) {
+    const out = await sendOnboarding(env, claim, { mailer }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+    if (out?.ok) sent += 1;
+    else if (!out?.skipped) {
+      failed += 1;
+      // Kept, not swallowed. A silent catch here is the exact shape of the
+      // three bugs this function exists to close.
+      errors.push(`${claim.business_name}: ${out?.error ?? 'unknown'}`.slice(0, 160));
+    }
+  }
+  return { sent, failed, ...(errors.length ? { errors } : {}) };
 }
