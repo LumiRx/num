@@ -48,3 +48,7 @@ vite.config.ts.timestamp-*.mjs
 # scripts/ingest_*.mjs whenever a destination is re-walked. The database is the
 # record; these are the transport.
 sql/
+
+# Staged-for-deletion dist snapshots (_stale-dist-<timestamp>/). Rollback
+# copies somebody parked in the tree, not source.
+_stale-dist-*/

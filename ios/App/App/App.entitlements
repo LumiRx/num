@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Guideline 4.8 (Login Services). App Review rejected 1.0(2) because the
+	     app offered "Continue with Google" and no equivalent privacy-preserving
+	     login. Sign in with Apple is that equivalent.
+
+	     This entitlement only signs if the capability is ALSO enabled on the
+	     App ID (developer.apple.com → Identifiers → com.itsnum.app → Sign in
+	     with Apple) and the provisioning profile has been regenerated. If the
+	     archive fails with "Provisioning profile doesn't include the
+	     com.apple.developer.applesignin entitlement", that portal step is the
+	     missing one — not this file. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>
