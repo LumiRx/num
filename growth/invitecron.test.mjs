@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 /**
  * invitecron — the automated merchant-invite drain.
  *
@@ -13,7 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import {
   drainInvites, selectBatch, openDestinations, dailyCap, ticksRemainingToday,
-  candidateRows, SEND_WINDOWS, _resetSchemaCache,
+  candidateRows, SEND_WINDOWS, _resetSchemaCache, BREAKER_COOLDOWN_MS
 } from './invitecron.mjs';
 
 /* ── a D1-shaped wrapper over node:sqlite, matching qrsystem.test.mjs ────── */
@@ -307,7 +308,10 @@ test('a Resend failure marks the ledger failed, not silently lost — and never 
   const DB = db();
   const lead = seedLead(DB);
   const env = baseEnv(DB);
-  mockFetch(() => new Response('rate limited', { status: 429 }));
+  // A RECIPIENT-side failure. 429 was used here before, but a rate limit is
+  // ours, not theirs — and under the released/burned split it now puts the
+  // lead back in the queue rather than excluding it forever.
+  mockFetch(() => new Response('{"message":"recipient mailbox full"}', { status: 422 }));
 
   const r = await drainInvites(env, WED_EDINBURGH);
   assert.equal(r.sent, 0);
@@ -315,7 +319,7 @@ test('a Resend failure marks the ledger failed, not silently lost — and never 
 
   const row = DB._raw.prepare('SELECT * FROM num_invites WHERE email = ?').get(lead.email);
   assert.equal(row.status, 'failed');
-  assert.match(row.error, /429|rate limited/);
+  assert.match(row.error, /422|mailbox full/);
 
   // A failed send is a permanent exclusion by design — see invitecron.mjs's
   // comment on why. A human reviews failures; the drain does not guess.
@@ -518,8 +522,8 @@ test('the cron refuses to claim leads while the send path is broken', async () =
       calls.push(sql);
       return {
         bind: () => ({ first: async () => null, all: async () => ({ results: [] }), run: async () => ({}) }),
-        first: async () => (/status = 'failed'/.test(sql)
-          ? { status: 'failed', error: 'resend 401 API key is invalid' }
+        first: async () => (/FROM num_invite_breaker/.test(sql)
+          ? { error: 'resend 401 API key is invalid', tripped_at: new Date().toISOString().replace('T', ' ').slice(0, 19) }
           : null),
         all: async () => ({ results: [] }),
         run: async () => ({}),
@@ -543,7 +547,9 @@ test('a healthy last-failure does not stop the queue', async () => {
     prepare(sql) {
       return {
         bind: () => ({ first: async () => ({ n: 0 }), all: async () => ({ results: [] }), run: async () => ({}) }),
-        first: async () => (/status = 'failed'/.test(sql) ? { status: 'failed', error: 'mailbox full' } : { n: 0 }),
+        // A recipient-side bounce never trips the breaker, so there is no row
+        // for it to find — which is the point: only OUR failures stop the queue.
+        first: async () => (/FROM num_invite_breaker/.test(sql) ? null : { n: 0 }),
         all: async () => ({ results: [] }),
         run: async () => ({}),
       };
@@ -584,4 +590,62 @@ test('every invite still carries a working way out', async () => {
   );
   assert.match(d.text, /Unsubscribe and remove our listing: https:\/\/itsnum\.com\/api\/accounts\/unsubscribe\?t=tok/);
   assert.ok(d.html.includes('/api/accounts/unsubscribe?t=tok'));
+});
+
+test('a sender that was never authorised did not email anybody', () => {
+  // 40 Edinburgh leads were claimed, never sent, and permanently excluded on
+  // 31 Aug because our own key was not authorised for our own domain. The
+  // exclusion guarantee stops a business being emailed twice; a message that
+  // never left cannot have been received once.
+  for (const e of [
+    'resend 403 {"statusCode":403,"message":"This API key is not authorized to send emails from itsnum.com"}',
+    'resend 401 API key is invalid',
+    'no RESEND_KEY and no EMAIL binding',
+    'cloudflare could not find domain config of sending domain',
+    'cloudflare destination address is not a verified address',
+    'no transport configured',
+  ]) assert.equal(OUR_FAULT.test(e), true, e);
+});
+
+test('anything that might have reached somebody stays excluded forever', () => {
+  // The cost of a wrong answer here is a duplicate email to a stranger, so
+  // this stays deliberately narrow.
+  for (const e of [
+    'resend 422 recipient mailbox full',
+    'mailbox full',
+    'recipient rejected',
+    '',
+    undefined,
+  ]) assert.equal(OUR_FAULT.test(String(e ?? '')), false, String(e));
+  // 5xx counts as ours on purpose: a server error is transient and the lead
+  // deserves another attempt. It is the one place this predicate is generous.
+  assert.equal(OUR_FAULT.test('resend 500 internal error'), true);
+});
+
+test('a tripped breaker lets a probe through once the cooldown passes', async () => {
+  // The old breaker read the newest `failed` row, which is permanent — so once
+  // tripped it stayed tripped even after the send path was fixed. On 31 Aug it
+  // held from 11:45 against a transport that worked again by 18:30.
+  const old = new Date(Date.now() - BREAKER_COOLDOWN_MS - 60_000)
+    .toISOString().replace('T', ' ').slice(0, 19);
+  const fresh = new Date(Date.now() - 60_000).toISOString().replace('T', ' ').slice(0, 19);
+  const held = { error: 'resend 403 not authorized', tripped_at: fresh };
+  const cooled = { error: 'resend 403 not authorized', tripped_at: old };
+  const age = (t) => Date.now() - Date.parse(`${t.tripped_at.replace(' ', 'T')}Z`);
+  assert.ok(age(held) < BREAKER_COOLDOWN_MS, 'a fresh trip still holds the queue');
+  assert.ok(age(cooled) >= BREAKER_COOLDOWN_MS, 'a cooled trip must allow a probe');
+});
+
+test('an our-fault failure releases its claims instead of burning them', async () => {
+  const src = readFileSync(new URL('./invitecron.mjs', import.meta.url), 'utf8');
+  const branch = src.slice(src.indexOf('if (OUR_FAULT.test(String(res.error'), src.indexOf('return { sent: 0, released'));
+  assert.match(branch, /DELETE FROM num_invites WHERE token = \?1/, 'the lead goes back in the queue');
+  assert.match(branch, /tripBreaker/, 'and the trip is recorded so the loop cannot churn');
+  assert.ok(!/status='failed'/.test(branch), 'never marked permanently failed');
+});
+
+test('a delivered tick clears the breaker', async () => {
+  const src = readFileSync(new URL('./invitecron.mjs', import.meta.url), 'utf8');
+  const tail = src.slice(src.indexOf("UPDATE num_invites SET status='sent'"));
+  assert.match(tail.slice(0, 400), /clearBreaker\(env\)/, 'success is the only evidence the path works');
 });

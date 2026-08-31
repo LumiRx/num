@@ -202,6 +202,37 @@ export function ticksRemainingToday(now) {
  * test can now seed `num_invites`/`num_suppressions`/`leads` and assert on
  * what THIS returns, without a send ever having to happen.
  */
+/** How long a tripped breaker waits before it lets one probe through. */
+export const BREAKER_COOLDOWN_MS = 30 * 60 * 1000;
+
+async function breakerTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS num_invite_breaker (
+       id         INTEGER PRIMARY KEY CHECK (id = 1),
+       error      TEXT NOT NULL,
+       tripped_at TEXT NOT NULL DEFAULT (datetime('now'))
+     )`,
+  ).run().catch(() => {});
+}
+
+export async function breakerState(env) {
+  await breakerTable(env);
+  return env.DB.prepare('SELECT error, tripped_at FROM num_invite_breaker WHERE id = 1')
+    .first().catch(() => null);
+}
+
+export async function tripBreaker(env, error) {
+  await breakerTable(env);
+  await env.DB.prepare(
+    `INSERT INTO num_invite_breaker (id, error, tripped_at) VALUES (1, ?1, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET error = excluded.error, tripped_at = excluded.tripped_at`,
+  ).bind(String(error ?? 'send failed').slice(0, 300)).run().catch(() => {});
+}
+
+export async function clearBreaker(env) {
+  await env.DB.prepare('DELETE FROM num_invite_breaker').run().catch(() => {});
+}
+
 export async function candidateRows(env, dests, limit) {
   const destList = dests.map((d) => q(d.toLowerCase())).join(',');
   const { results } = await env.DB.prepare(
@@ -266,7 +297,20 @@ const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
  * and burning a business over one is throwing away something we cannot get
  * back to fix a problem that has nothing to do with them.
  */
-export const OUR_FAULT = /\b(401|403|429|5\d\d)\b|api key|not authorized|unauthori[sz]ed|invalid.*key|no RESEND_KEY|no_email_provider|domain config|rate.?limit/i;
+/**
+ * Was this failure ours rather than the recipient's?
+ *
+ * Widened 31 Aug. It did not match "destination address is not a verified
+ * address" or "no EMAIL binding" — the two errors the Cloudflare transport
+ * actually returns when the sending domain is not set up. Both are plainly
+ * ours, and either one would have permanently burned every lead in the tick
+ * that hit it, which is the precise failure this predicate exists to prevent.
+ *
+ * 5xx counts as ours on purpose: a server error is transient and the lead
+ * deserves another attempt. That is the one place this is deliberately
+ * generous, and the breaker's cooldown is what stops it becoming a loop.
+ */
+export const OUR_FAULT = /\b(401|403|429|5\d\d)\b|api key|not authorized|unauthori[sz]ed|invalid.*key|no RESEND_KEY|no_email_provider|domain config|rate.?limit|not a verified address|destination not verified|no EMAIL binding|no transport configured/i;
 
 export async function drainInvites(env, event = {}) {
   if (!env?.DB) return { sent: 0, reason: 'no DB' };
@@ -292,11 +336,21 @@ export async function drainInvites(env, event = {}) {
   //
   // So: if the last attempt failed for a reason that is plainly ours, claim
   // nothing. A queue that waits is recoverable. A queue that burns is not.
-  const last = await env.DB.prepare(
-    "SELECT status, error FROM num_invites WHERE status = 'failed' ORDER BY queued_at DESC LIMIT 1",
-  ).first().catch(() => null);
-  if (last?.error && OUR_FAULT.test(last.error)) {
-    return { sent: 0, reason: 'send path is broken — refusing to burn leads', error: String(last.error).slice(0, 200) };
+  //
+  // AND A WAY BACK. The breaker above reads the newest `failed` row, which is
+  // permanent — so once tripped it stayed tripped even after the send path was
+  // fixed, and the queue never resumed on its own. On 31 Aug it had been
+  // holding since 11:45 against a transport that worked again by 18:30.
+  //
+  // So an our-fault failure now RELEASES its claims rather than marking them
+  // failed (nothing left the building; there is nobody to email twice), and
+  // the trip is recorded here instead. After a cooldown the breaker goes
+  // half-open: one tick is allowed through as a probe. It succeeds and the
+  // breaker clears itself; it fails and the trip is re-recorded, having burned
+  // nothing.
+  const trip = await breakerState(env);
+  if (trip && Date.now() - Date.parse(`${trip.tripped_at.replace(' ', 'T')}Z`) < BREAKER_COOLDOWN_MS) {
+    return { sent: 0, reason: 'send path is broken — refusing to burn leads', error: String(trip.error).slice(0, 200) };
   }
 
   const today = now.toISOString().slice(0, 10);
@@ -369,8 +423,21 @@ export async function drainInvites(env, event = {}) {
   if (!res.ok) {
     // Resend's batch endpoint is all-or-nothing (see resend.mjs). Reverting
     // to 'failed' rather than deleting the row keeps the permanent-exclusion
-    // guarantee: a bounce or an outage on our side must not turn into a
-    // retry loop that eventually emails the same business twice.
+    // guarantee: a bounce must not turn into a retry loop that eventually
+    // emails the same business twice.
+    //
+    // But a bounce and a broken sender are not the same event, and treating
+    // them alike cost us 40 Edinburgh leads on 31 Aug — the cleanest segment
+    // in the queue, permanently excluded because OUR API key was not
+    // authorised for OUR domain. Nothing left the building, so there is
+    // nobody to email twice. Those claims are released instead.
+    if (OUR_FAULT.test(String(res.error ?? ''))) {
+      await env.DB.batch(claimed.map(({ token }) =>
+        env.DB.prepare('DELETE FROM num_invites WHERE token = ?1').bind(token),
+      )).catch(() => {});
+      await tripBreaker(env, res.error);
+      return { sent: 0, released: claimed.length, error: res.error, dests, tick };
+    }
     await env.DB.batch(claimed.map(({ token }) =>
       env.DB.prepare("UPDATE num_invites SET status='failed', error=?1 WHERE token=?2")
         .bind(String(res.error || 'send failed').slice(0, 300), token),
@@ -383,6 +450,7 @@ export async function drainInvites(env, event = {}) {
       .bind(res.ids[i] || null, token),
   )).catch(() => {});
 
+  await clearBreaker(env);
   return { sent: claimed.length, dests, tick, cap, sentToday: sentToday + claimed.length };
 }
 
