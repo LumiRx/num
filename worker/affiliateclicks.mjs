@@ -38,6 +38,8 @@
  * asks/day this is a few hundred rows a week.
  */
 
+import { attributionsFor } from './sourcing.mjs';
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS num_affiliate_clicks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,16 +51,59 @@ CREATE TABLE IF NOT EXISTS num_affiliate_clicks (
   kind TEXT,
   member_id TEXT,
   dest TEXT,
+  -- WHICH VENUE, not just which host. synxis.com is one booking engine a
+  -- thousand hotels share, and without this column a link handed out for a hotel
+  -- somebody sourced is indistinguishable from one that came off OSM.
+  place_id TEXT,
+  -- Who was credited with introducing that venue AT THE TIME OF THE HANDOFF.
+  -- Copied, not joined, for the same reason every rate in num_scout_places is
+  -- copied: this is a record of what happened, and it must keep saying what it
+  -- said even after an introduction is transferred, ended or voided.
+  scout_id TEXT,
   ts INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_affclick_host_ts ON num_affiliate_clicks(host, ts);
 CREATE INDEX IF NOT EXISTS idx_affclick_ts ON num_affiliate_clicks(ts);
 `;
 
+/**
+ * The table already exists in production, so CREATE TABLE IF NOT EXISTS will
+ * not add the two new columns to it — the statement succeeds and does nothing.
+ * These run separately and are expected to fail with "duplicate column" on
+ * every deploy after the first. That failure is the success case; anything
+ * that treated it as an error would make the worker refuse to start.
+ */
+const MIGRATIONS = [
+  'ALTER TABLE num_affiliate_clicks ADD COLUMN place_id TEXT',
+  'ALTER TABLE num_affiliate_clicks ADD COLUMN scout_id TEXT',
+  // ORDER MATTERS, and it is the reason these two indexes are down here
+  // instead of up in SCHEMA with the others. A partial index names the column
+  // in its WHERE clause, so on the table that is already in production it
+  // would be created before the ALTER that adds the column — and because
+  // SCHEMA runs as one batch, that single failure would roll back the whole
+  // batch and leave the click log writing nothing at all.
+  //
+  // The whole point of the two columns: "what did we hand out for this
+  // scout's venues, and when" has to be one index seek, not a table scan, or
+  // the first statement anybody asks for is the one nobody runs.
+  'CREATE INDEX IF NOT EXISTS idx_affclick_scout ON num_affiliate_clicks(scout_id, ts) WHERE scout_id IS NOT NULL',
+  'CREATE INDEX IF NOT EXISTS idx_affclick_place ON num_affiliate_clicks(place_id, ts) WHERE place_id IS NOT NULL',
+];
+
 let ready = false;
 async function ensure(env) {
   if (ready) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // Sequential and individually swallowed: one batch would roll the whole
+  // thing back the first time a column already existed, which is always.
+  //
+  // try/catch rather than `.catch()` on purpose. A D1 stand-in that does not
+  // implement `run` throws a TypeError SYNCHRONOUSLY, which no `.catch()` on
+  // the returned promise can see — and that TypeError would escape ensure(),
+  // be swallowed by the caller, and silently turn the click log off.
+  for (const m of MIGRATIONS) {
+    try { await env.DB.prepare(m).run(); } catch { /* already applied */ }
+  }
   ready = true;
 }
 
@@ -72,8 +117,12 @@ const EVENTS = new Set(['handoff', 'tap']);
  * Record outbound links Num handed over.
  *
  * @param env    Worker env; needs `env.DB`. No DB, no row, no error.
- * @param links  `[{ host, programme, tagged, kind }]` — the shape
- *               `affiliate.tagged()` already returns, plus the service kind.
+ * @param links  `[{ host, programme, tagged, kind, placeId }]` — the shape
+ *               `affiliate.tagged()` already returns, plus the service kind and
+ *               (where the link is for one specific venue) that venue's id.
+ *               `placeId` is what makes a handoff attributable to the person
+ *               who introduced the place; omit it for city-level provider
+ *               links, which belong to nobody in particular.
  * @param meta   `{ memberId, dest, surface, event }`.
  *
  * Never throws. A bookkeeping failure must not cost somebody their answer,
@@ -97,7 +146,14 @@ export async function recordHandoffs(env, links = [], meta = {}) {
     const host = String(l?.host ?? '').toLowerCase().slice(0, 120);
     if (!host) continue; // a malformed URL has no host to attribute
     const kind = l?.kind ? String(l.kind).slice(0, 24) : null;
-    const dedupe = `${host}|${kind}`;
+    const placeId = l?.placeId == null ? null : String(l.placeId).slice(0, 120);
+    // THE PLACE IS PART OF THE DEDUPE KEY, and it has to be. Two different
+    // hotels booked through the same engine share a host and a kind, so
+    // without this a reply offering one of Adam's hotels and one of nobody's
+    // — both synxis.com, both 'stay' — would collapse to a single row and
+    // silently drop whichever attribution came second. The dedupe exists to
+    // stop one link being counted twice, not to merge two venues into one.
+    const dedupe = `${host}|${kind}|${placeId ?? ''}`;
     if (seen.has(dedupe)) continue;
     seen.add(dedupe);
     rows.push({
@@ -105,21 +161,48 @@ export async function recordHandoffs(env, links = [], meta = {}) {
       programme: l?.programme ? String(l.programme).slice(0, 120) : null,
       tagged: l?.tagged ? 1 : 0,
       kind,
+      placeId,
+      // A caller that has already resolved the introduction passes it through
+      // rather than making this file ask again for something it was just told.
+      scoutId: l?.scoutId ? String(l.scoutId).slice(0, 64) : null,
     });
   }
   if (!rows.length) return { logged: 0 };
+
+  // Who is credited with each venue, resolved ONCE for the whole reply rather
+  // than once per link. Callers may pass a scoutId they already know (the
+  // booking handler has usually just looked the place up); anything they did
+  // not resolve is looked up here, because the alternative is a call site
+  // that forgets and an attribution that is lost for good. A lookup failure
+  // costs an attribution, never a row: an unattributed handoff is still the
+  // evidence that the handoff happened.
+  let credited = new Map();
+  const needing = rows.filter((r) => r.placeId && !r.scoutId).map((r) => r.placeId);
+  if (needing.length) {
+    credited = await attributionsFor(env, needing).catch(() => new Map());
+  }
 
   try {
     await ensure(env);
     const ts = Math.floor(Date.now() / 1000);
     const stmt = env.DB.prepare(
-      `INSERT INTO num_affiliate_clicks (host, programme, tagged, event, surface, kind, member_id, dest, ts)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
+      `INSERT INTO num_affiliate_clicks
+         (host, programme, tagged, event, surface, kind, member_id, dest, place_id, scout_id, ts)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`,
     );
+    let attributed = 0;
     await env.DB.batch(
-      rows.map((r) => stmt.bind(r.host, r.programme, r.tagged, event, surface, r.kind, memberId, dest, ts)),
+      rows.map((r) => {
+        const scoutId = r.scoutId
+          ?? (r.placeId ? (credited.get(r.placeId)?.scoutId ?? null) : null);
+        if (scoutId) attributed += 1;
+        return stmt.bind(
+          r.host, r.programme, r.tagged, event, surface, r.kind, memberId, dest,
+          r.placeId, scoutId, ts,
+        );
+      }),
     );
-    return { logged: rows.length };
+    return { logged: rows.length, attributed };
   } catch (e) {
     console.warn('[affiliate] click log write failed', e?.message ?? e);
     return { logged: 0, error: String(e?.message ?? e) };

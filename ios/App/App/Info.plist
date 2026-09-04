@@ -66,6 +66,24 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- WHY THESE EXIST: without NSCameraUsageDescription, iOS terminates the
+	     process (TCC SIGABRT) the moment the photo picker offers "Take Photo".
+	     That is the 2.1(a) crash in App Review of 1.0(2) on an iPad Air M3,
+	     2026-08-29 23:07: "attempted to access privacy-sensitive data without a
+	     usage description".
+
+	     The trigger is the avatar picker in src/components/app/ProfileView.tsx —
+	     an <input type="file" accept="image/*">, whose iOS sheet always offers
+	     the camera. Nothing in the JS asks for the camera explicitly, which is
+	     why this was invisible in review of the web app and never reproduced in
+	     a browser.
+
+	     Any new media input needs its matching usage description added here
+	     BEFORE it ships. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Num uses the camera so you can take a profile picture.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Num uses your photo library so you can choose a profile picture.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

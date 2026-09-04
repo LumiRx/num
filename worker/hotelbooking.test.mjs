@@ -204,3 +204,111 @@ describe('the links themselves', () => {
     }
   });
 });
+
+/* ── the chains ─────────────────────────────────────────────────────────── */
+//
+// Hilton, Marriott and IHG identify a property by a short code that appears in
+// BOTH its marketing URL and its booking URL. Every fixture below is a real
+// `places.website` value from the Edinburgh directory, paired with the deep
+// link a partner supplied for that same property — so these tests assert that
+// the code NUM reads off a page it already has produces the link somebody else
+// arrived at independently. That agreement is the evidence; a name match is
+// not, and a name match is what puts a guest at the wrong Sheraton.
+
+describe('chain properties resolve from the URL already in the directory', () => {
+  const CASES = [
+    // [ website in `places`, platform, ref, the link the partner sent ]
+    ['https://www.hilton.com/en/hotels/ednchqq-the-caledonian-edinburgh/', 'hilton', 'ednchqq',
+      'https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=EDNCHQQ'],
+    ['https://www.hilton.com/en/hotels/edicahi-hilton-edinburgh-carlton/', 'hilton', 'edicahi',
+      'https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=EDICAHI'],
+    // Real row, query string and all: the tracking parameters must not be read
+    // as part of the property code.
+    ['https://www.hilton.com/en/hotels/ediccdi-doubletree-edinburgh-city-centre/?WT.mc_id=zELWAKN0EMEA1DT2DMH3LocalSearch4DGGenericx6EDICCDI',
+      'hilton', 'ediccdi', 'https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=EDICCDI'],
+    ['https://www.marriott.com/en-gb/hotels/edilg-the-edinburgh-grand-a-luxury-collection-hotel-edinburgh/overview/',
+      'marriott', 'edilg', 'https://www.marriott.com/reservation/availability.mi?propertyCode=edilg'],
+    ['https://www.marriott.com/en-us/hotels/ediwh-w-edinburgh/overview/?scid=d2406702-e8ea-4b45-bb9b-69cddaaef03d',
+      'marriott', 'ediwh', 'https://www.marriott.com/reservation/availability.mi?propertyCode=ediwh'],
+    // The older Marriott form, which ENDS at the code — nothing follows it to
+    // anchor a pattern on. It is in the directory today (the Sheraton Grand).
+    ['https://www.marriott.com/hotels/travel/EDISI', 'marriott', 'EDISI',
+      'https://www.marriott.com/reservation/availability.mi?propertyCode=edisi'],
+    ['https://www.marriott.com/en-us/hotels/ediak-the-glasshouse-autograph-collection/overview/?scid=x',
+      'marriott', 'ediak', 'https://www.marriott.com/reservation/availability.mi?propertyCode=ediak'],
+    ['https://www.ihg.com/intercontinental/hotels/gb/en/edinburgh/edigs/hoteldetail', 'ihg', 'edigs',
+      'https://www.ihg.com/redirect?hotelCode=EDIGS'],
+    // A different IHG brand, a different path depth, same rule.
+    ['https://www.ihg.com/kimptonhotels/hotels/us/en/charlotte-square-hotel-edinburgh-uk/edics/hoteldetail',
+      'ihg', 'edics', 'https://www.ihg.com/redirect?hotelCode=EDICS'],
+  ];
+
+  for (const [website, platform, ref, expected] of CASES) {
+    test(`${platform} ${ref}`, () => {
+      const d = detectBooking('', website);
+      assert.ok(d, `no platform detected for ${website}`);
+      assert.equal(d.platform, platform);
+      assert.equal(d.ref, ref);
+      assert.equal(d.kind, 'stay');
+      assert.equal(bookingLink({ booking_platform: platform, booking_ref: ref }).url, expected);
+    });
+  }
+
+  test('a booking deep link is recognised as readily as a property page', () => {
+    // The partner's own list is the other direction: given the link, name the
+    // property. Both directions must land on the same place.
+    for (const [url, platform] of [
+      ['https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=EDNCHQQ', 'hilton'],
+      ['https://www.marriott.com/reservation/availability.mi?propertyCode=edilg', 'marriott'],
+      ['https://www.ihg.com/redirect?hotelCode=EDIGS', 'ihg'],
+    ]) {
+      const d = detectBooking('', url);
+      assert.equal(d?.platform, platform, url);
+      assert.equal(bookingLink({ booking_platform: platform, booking_ref: d.ref }).url.toLowerCase(),
+        url.toLowerCase());
+    }
+  });
+
+  test('a chain landing page with no property in it is not a bookable venue', () => {
+    // "marriott.com/en-gb/hotels/" is a brand page. Reading a property code
+    // out of it would make every chain's front door look like a hotel.
+    for (const url of [
+      'https://www.marriott.com/en-gb/hotels/',
+      'https://www.hilton.com/en/',
+      'https://www.ihg.com/hotels/gb/en/reservation',
+    ]) {
+      assert.equal(detectBooking('', url), null, url);
+    }
+  });
+
+  test('NO chain prefills dates, and says so', () => {
+    // Each of these engines answers 200 to any query string it does not
+    // recognise, so an invented date parameter yields a page that opens on
+    // TODAY while the traveller believes they are looking at their weekend.
+    // `dated:false` is what stops NUM claiming the dates are already in.
+    for (const platform of ['hilton', 'marriott', 'ihg']) {
+      assert.ok(!PREFILLS_DATES.includes(platform), `${platform} must not claim to prefill dates`);
+      const l = bookingLink({ booking_platform: platform, booking_ref: 'ednchqq' }, WHEN);
+      assert.equal(l.dated, false, platform);
+      assert.ok(!/2026-09-24/.test(l.url), `${platform} put a date on a link it cannot prefill`);
+    }
+  });
+
+  test('the four independents on the partner list have no engine, and that is honest', () => {
+    // The partner's own note says these have no fixed deep-link pattern. NUM
+    // must return null rather than invent one — a dead booking button is worse
+    // than a phone number.
+    for (const url of [
+      'https://www.fingal.co.uk/rooms-suites/',
+      'https://www.roccofortehotels.com/hotels-and-resorts/the-balmoral-hotel/',
+      'https://tigerlilyedinburgh.co.uk/',
+      'https://www.thewitchery.com/stay/',
+    ]) {
+      assert.equal(detectBooking('', url), null, url);
+    }
+  });
+
+  test('all three chains are stay engines', () => {
+    for (const p of ['hilton', 'marriott', 'ihg']) assert.ok(STAY_PLATFORMS.includes(p), p);
+  });
+});

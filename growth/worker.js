@@ -13,6 +13,18 @@
  *   POST /api/host/join             VIP host signs up      (host-join.html)
  *   GET  /api/host/summary?k=       host console data      (host-console.html)
  *   POST /api/host/contacts?k=      host uploads contacts  (host-console.html)
+ *   GET/POST /api/host/clients?k=   the host's book        (/host/)
+ *   GET/POST /api/host/products?k=  what they sell         (/host/)
+ *   GET/POST /api/host/requests?k=  their client work      (/host/)
+ *   GET/POST /api/host/network?k=   other hosts            (/host/)
+ *   GET/POST /api/host/intros?k=    introductions to accept(/host/)
+ *   GET  /api/host/nearby           public: hosts near me
+ *   POST /api/host/intro            public: member asks for a host
+ *   GET/POST /api/host/link?t=      the MEMBER's own page: who my host is, leave
+ *   POST /api/host/close?k=         host closes their account, releases clients
+ *   GET  /api/host/integrity        ADMIN_KEY: orphans and contradictions
+ *   GET  /api/host/calendar.ics?t= the host's confirmed work, read-only feed
+ *   GET/POST /api/host/messages?k= the thread between a host and their client
  *   GET  /r/:code                   referral link -> attributed redirect
  *   GET  /go/:token                 contact confirms  (double opt-in)
  *   GET  /stop/:token               contact opts out
@@ -42,7 +54,11 @@ let CLAIM_DEPS;
 const LEGAL_LINE =
   "5arz Inc · 16192 Coastal Highway, Lewes, DE 19958 · info@itsnum.com · +1 754 444 8885";
 const BANNER_VERSION = "2026-07-31.1";
-const TERMS_VERSION = "host-2026-07-31";
+// Bumped 3 Sep 2026 when the host agreement changed from "3% of NUM's
+// commission for 12 months" to the monthly-plan model. The old string is NOT
+// reused: rows signed under the old wording must stay identifiable as such,
+// because what a host agreed to is a fact about a day, not about a product.
+const TERMS_VERSION = "host-plan-2026-09-03";
 
 /* ------------------------------------------------------------------ utils */
 
@@ -218,6 +234,36 @@ function country(req) {
   return (req.cf && req.cf.country) || req.headers.get("cf-ipcountry") || "";
 }
 
+/**
+ * A CRAWLER IS NOT A VISITOR — the third robot this codebase has had to learn.
+ *
+ * The uptime probe was one string in 65% of every question ever asked. The MCP
+ * integrity monitor wrote its test question into num_asks as a traveller's.
+ * And on 3 Sep 2026, within three hours of the ads landing page going live,
+ * **302 "visitors"** arrived on it: US desktop, no referrer, no campaign, one
+ * page view each, not one scroll and not one question. The real campaign is
+ * 87% mobile and carries utm_source=reddit. Those 302 were scanners finding a
+ * newly published URL — and they were sitting in the denominator of the only
+ * conversion rate this company is currently judged on, making it read as
+ * "nobody who arrives is interested" rather than "almost nobody has arrived".
+ *
+ * A page view that a person did not make is not a small measurement error. It
+ * is the number a campaign gets paused over.
+ *
+ * Deliberately conservative: this matches self-declared crawlers only. A bot
+ * that lies about its user-agent still gets through, and that is the right
+ * trade — wrongly dropping a real visitor is worse than keeping a stray one,
+ * because you cannot see what you deleted.
+ */
+const BOT_UA = /bot\b|crawler|spider|crawling|slurp|bingpreview|facebookexternalhit|facebot|ia_archiver|semrush|ahrefs|mj12|dotbot|petalbot|yandex|baiduspider|duckduckbot|applebot|headlesschrome|phantomjs|puppeteer|playwright|python-requests|curl\/|wget|scrapy|go-http-client|axios\/|node-fetch|okhttp|java\/|httpclient|monitoring|uptime|pingdom|statuscake|gtmetrix|lighthouse|chrome-lighthouse/i;
+
+function isBot(req) {
+  const ua = req.headers.get("user-agent") || "";
+  // No user-agent at all is not a browser a person is holding.
+  if (!ua) return true;
+  return BOT_UA.test(ua);
+}
+
 function device(req) {
   const ua = (req.headers.get("user-agent") || "").toLowerCase();
   if (/ipad|tablet/.test(ua)) return "tablet";
@@ -311,6 +357,8 @@ import {
   readSettings, writeSettings, settingHistory,
 } from './venuesettings.mjs';
 import { foodAndDrink } from '../worker/commission.mjs';
+import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
+import { integrityReport } from '../worker/hostintegrity.mjs';
 // The screen after the table. worker/aftertable.mjs had rate(), tip() and
 // prioritySeating() fully written and fully tested with no call sites at all;
 // this is where the scan reaches them.
@@ -1059,7 +1107,20 @@ const WORKER = {
 
       if (p === "/api/host/join" && req.method === "POST") return hostJoin(req, env, ctx);
       if (p === "/api/host/summary" && req.method === "GET") return hostSummary(req, env, url);
+      if (p === "/api/host/profile") return hostProfile(req, env, url, ctx);
       if (p === "/api/host/contacts" && req.method === "POST") return hostContacts(req, env, url, ctx);
+      if (p === "/api/host/clients") return hostClients(req, env, url, ctx);
+      if (p === "/api/host/products") return hostProducts(req, env, url);
+      if (p === "/api/host/requests") return hostRequests(req, env, url, ctx);
+      if (p === "/api/host/network") return hostNetwork(req, env, url);
+      if (p === "/api/host/intros") return hostIntros(req, env, url, ctx);
+      if (p === "/api/host/nearby" && req.method === "GET") return hostNearby(req, env, url);
+      if (p === "/api/host/intro" && req.method === "POST") return hostIntro(req, env, ctx);
+      if (p === "/api/host/link") return memberLink(req, env, url, ctx);
+      if (p === "/api/host/close" && req.method === "POST") return hostClose(req, env, url, ctx);
+      if (p === "/api/host/integrity" && req.method === "GET") return hostIntegrity(req, env, url);
+      if (p === "/api/host/calendar.ics" && req.method === "GET") return hostCalendar(req, env, url);
+      if (p === "/api/host/messages") return hostMessages(req, env, url, ctx);
 
       if (p === "/api/admin/earnings" && req.method === "POST") return adminEarnings(req, env);
 
@@ -1265,12 +1326,29 @@ const EVENTS = new Set([
   "app_launched_standalone",// opened Num from the home screen icon: real install proof
   "open_in_browser_click",  // chose the browser over installing
   "first_message_sent",     // the only event that means the product was used
+  // --- did it actually work (added 3 Sep 2026) --------------------------
+  // The pair for first_message_sent. `num_answered` carries 'first' or
+  // 'repeat' in detail — the second answer is the one that earns the
+  // home-screen ask. `ask_failed` carries the reason, and exists because the
+  // failure path on the ads landing page was silent: if the API or CORS broke
+  // for real visitors, every dashboard we own would have shown a quiet page
+  // and no reason for it.
+  "num_answered", "ask_failed",
   "watch_film_click",
   "scroll_50", "scroll_90",
   // --- desktop handoff --------------------------------------------------
   "desktop_handoff_shown", "desktop_qr_shown", "desktop_link_sent",
   // --- language -----------------------------------------------------------
   "lang_offer_shown", "lang_switched",
+  // --- 5arz consent ask (added 2 Sep 2026) --------------------------------
+  // The wall metric is shown → linked. `num_identity_links` has always had the
+  // numerator; nothing ever wrote the denominator. Fired by Verify5arz.tsx.
+  "consent_prompt_shown", "consent_prompt_engaged",
+  // --- recommendation cards (added 3 Sep 2026) ----------------------------
+  // Which half of a pick card people actually use: the link, the map, or the
+  // phone. This is how we learn whether a website or directions is the thing
+  // a traveller wants, rather than assuming.
+  "pick_link_click", "pick_map_click", "pick_call_click",
   // --- outbound email (added 25 Aug 2026) ---------------------------------
   // Logged by GET /api/ev.gif, not by the tracker script: an email client has
   // no JavaScript. `email_open` is the weakest signal we record and is treated
@@ -1288,6 +1366,9 @@ async function ev(req, env) {
 
   const name = clean(b.event, 40);
   if (!EVENTS.has(name)) return J({ ok: true, ignored: true });
+  // Answered 200 like everything else, so a crawler that runs JavaScript sees
+  // nothing unusual and does not retry — it just does not land in the funnel.
+  if (isBot(req)) return J({ ok: true, ignored: "bot" });
 
   const vid = await visitorId(req, env);
   await env.DB.prepare(
@@ -1913,6 +1994,13 @@ async function hostJoin(req, env, ctx) {
       code, bps, TERMS_VERSION, now(),
       String(b.terms_text || "").slice(0, 1200), consoleKey, now()
     ),
+    // The signup form asks "who you look after, and where they travel" and
+    // tells them "it is what we read first". The browser has been sending it
+    // as `notes` since the form went live and nothing read it. Asking a
+    // question and discarding the answer is worse than not asking, because
+    // they believe we know.
+    env.DB.prepare("UPDATE num_hosts SET about = ? WHERE id = ?")
+      .bind(clean(b.notes || b.about, 4000), hostId),
   ]);
 
   const link = site + "/r/" + code;
@@ -1925,31 +2013,35 @@ async function hostJoin(req, env, ctx) {
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [email],
     replyTo: ["info@itsnum.com"],
-    subject: "Your NUM link — " + code,
+    subject: "Your NUM host account — " + code,
     text:
 `Hi ${name},
 
-You're in. Here is your link:
-
-${link}
-
-Anyone who books through it is yours for 12 months. You earn 3% of what
-they spend — that is 3 of the 10 points we charge the business, and it
-costs your guest nothing.
-
-Your page, where you can see arrivals, bookings and what you have earned:
+You're in. Here is your console — your clients, your services, your
+prices, and the work coming in:
 
 ${consoleUrl}
 
-Keep that second link private — it opens your account without a password.
+Keep that link private. It opens your account without a password.
 
-You can also upload the people you already look after and we'll send the
-invitation for you, with your name on it. One message each. If they don't
-say yes, they never hear from us again.
+Your clients stay yours. NUM does not become their concierge, does not
+charge them anything, and does not take a commission from what they
+spend with you. We are the back office, not the front desk.
 
-Paid monthly, once we've collected from the business and once you're over
-£25. Nothing is owed to you before we've been paid, which is why there is
-no cap and no clawback surprise later.
+What you pay: a monthly plan to be on NUM, free to start, and £5 for
+each booking we arrange for you. That's it. Your plan does not limit how
+many clients you can have — we are not going to charge you for the size
+of a book you spent years building. Paying more unlocks more of the tool
+— text alerts, then the host network and new clients from us, then
+products — never more room.
+
+This is your invite link, for anyone you want to bring in yourself:
+
+${link}
+
+You can also paste in the people you already look after and we'll send
+the invitation for you, with your name on it. One message each. If they
+don't say yes, they never hear from us again.
 
 — Viv
 NUM, by 5arz · ${LEGAL_LINE}
@@ -1973,6 +2065,197 @@ async function hostAuth(env, url) {
   if (!sameSecret(host.console_key, k)) return null;
   if (host.status === "ended") return null;
   return host;
+}
+
+/* ------------------------------------------------ /api/host/profile  R/W */
+
+/** The service vocabulary. Shared with num_commissions.category so a host's
+ *  services and our commission categories cannot drift into two lists that
+ *  mean the same thing and match on nothing. */
+const HOST_SERVICES = ["car", "reservation", "stay", "activity", "appointment", "delivery"];
+const HOST_UNITS = ["hour", "day", "trip", "person", "item", "quote"];
+const HOST_FULFILMENT = ["delivered", "on_site", "either"];
+const HOST_TIERS = ["free", "small", "pro", "full"];
+
+/** Normalise one price line. Returns null for a line we will not store.
+ *
+ * Money is validated HARD here because this is the number a host's own client
+ * is quoted. A malformed price that reaches a guest is worse than a missing
+ * one: the missing one asks, the malformed one promises. `unit: "quote"` is
+ * the honest escape hatch — the price is agreed per request, and price_minor
+ * is forced to 0 rather than left as whatever was typed before they switched.
+ */
+function priceLine(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const key = String(raw.key || "").trim().toLowerCase();
+  if (HOST_SERVICES.indexOf(key) === -1) return null;
+  const unit = HOST_UNITS.indexOf(String(raw.unit || "")) === -1 ? "quote" : String(raw.unit);
+  const fulfilment = HOST_FULFILMENT.indexOf(String(raw.fulfilment || "")) === -1
+    ? "either" : String(raw.fulfilment);
+  var minor = Math.round(Number(raw.price_minor));
+  if (!isFinite(minor) || minor < 0 || minor > 100000000) minor = 0;
+  if (unit === "quote") minor = 0;
+  return {
+    key: key,
+    label: clean(raw.label, 80) || key,
+    price_minor: minor,
+    unit: unit,
+    fulfilment: fulfilment,
+    notes: clean(raw.notes, 240),
+  };
+}
+
+async function hostProfile(req, env, url, ctx) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const row = await env.DB.prepare(
+    `SELECT services_json, pricing_json, areas_json, charge_mode, currency, tier,
+            notify_phone, sms_opt_in, calendar_token, profile_updated_at,
+            accepts_intros, in_network, blurb
+       FROM num_hosts WHERE id = ?`
+  ).bind(host.id).first();
+
+  const read = () => J({
+    ok: true,
+    name: host.name,
+    status: host.status,
+    services: JSON.parse((row && row.services_json) || "[]"),
+    pricing: JSON.parse((row && row.pricing_json) || "[]"),
+    areas: JSON.parse((row && row.areas_json) || "[]"),
+    charge_mode: (row && row.charge_mode) || "own",
+    currency: (row && row.currency) || "GBP",
+    tier: (row && row.tier) || "free",
+    notify_phone: (row && row.notify_phone) || "",
+    sms_opt_in: !!(row && row.sms_opt_in),
+    // The subscribe URL, not the token. A calendar feed is readable by anyone
+    // holding its link, so it is minted on demand and shown once here rather
+    // than sprayed through every summary response.
+    calendar_url: (row && row.calendar_token)
+      ? (env.SITE || "https://itsnum.com") + "/api/host/calendar.ics?t=" + row.calendar_token
+      : null,
+    profile_updated_at: (row && row.profile_updated_at) || null,
+    // Both default OFF in 0014 and are read back as booleans so the console can
+    // never render "on" against a column it did not actually set.
+    accepts_intros: !!(row && row.accepts_intros),
+    in_network: !!(row && row.in_network),
+    blurb: (row && row.blurb) || "",
+    tiers: HOST_TIERS.map(function (t) {
+      return { key: t, price: HOST_TIER_PRICE[t], clients: HOST_TIER_CLIENTS,
+               features: HOST_TIER_FEATURES[t] || [] };
+    }),
+    vocabulary: { services: HOST_SERVICES, units: HOST_UNITS, fulfilment: HOST_FULFILMENT },
+  });
+
+  if (req.method === "GET") return read();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  let b;
+  try { b = await readJSON(req, 65536); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+
+  const services = (Array.isArray(b.services) ? b.services : [])
+    .map(function (x) { return String(x || "").trim().toLowerCase(); })
+    .filter(function (x, i, a) { return HOST_SERVICES.indexOf(x) !== -1 && a.indexOf(x) === i; });
+
+  const pricing = (Array.isArray(b.pricing) ? b.pricing : [])
+    .slice(0, 40).map(priceLine).filter(Boolean);
+
+  /* WHERE THEY WORK.
+   *
+   * Until now areas_json was read but never written, so every host's coverage
+   * was the empty array it was created with — which meant nearest-host
+   * matching had nothing to match on and would have returned nobody, forever,
+   * silently. Saved here, and mirrored into num_host_areas so the match is an
+   * indexed query rather than a scan. */
+  const areas = (Array.isArray(b.areas) ? b.areas : [])
+    .slice(0, 20).map(areaLine).filter(Boolean);
+
+  /* THE TWO SWITCHES THAT PUT A STRANGER NEAR THEIR BOOK.
+   *
+   * Both fail closed, and both are only ever turned on by an explicit `true`.
+   * A host's book is the thing they spent years building; it is not something
+   * we opt them into because a field was absent. */
+  const acceptsIntros = (b.accepts_intros === true || b.accepts_intros === 1) ? 1 : 0;
+  const inNetwork = (b.in_network === true || b.in_network === 1) ? 1 : 0;
+  const blurb = clean(b.blurb, 240);
+
+  /* WHO TAKES THE MONEY.
+   *
+   * 'num' is only honoured when it is asked for explicitly. Collecting on a
+   * host's behalf makes NUM a payment intermediary for their business and
+   * attaches their refunds, chargebacks and tax position to us — that is a
+   * decision, never a default, and never the result of an absent field. An
+   * unrecognised value falls back to 'own' for the same reason. */
+  const chargeMode = b.charge_mode === "num" ? "num" : "own";
+
+  const currency = /^[A-Za-z]{3}$/.test(String(b.currency || ""))
+    ? String(b.currency).toUpperCase() : "GBP";
+  const tier = HOST_TIERS.indexOf(String(b.tier || "")) === -1 ? "free" : String(b.tier);
+
+  /* SMS consent is a positive act, and the number has to survive it.
+   * `sms_opt_in` can only be 1 when there is a valid number to send to —
+   * otherwise the dashboard would show "texts on" against nothing, and the
+   * first missed request would be blamed on the agent rather than on this. */
+  const notifyPhone = okPhone(b.notify_phone) ? e164(b.notify_phone) : null;
+  // Text alerts are on the small plan and up. The number is still SAVED on any
+  // plan — a host who downgrades should not have to retype it to come back —
+  // but the switch that actually sends is what the plan buys.
+  const smsOptIn = (b.sms_opt_in === true || b.sms_opt_in === 1)
+                   && notifyPhone && hostCan(tier, "sms") ? 1 : 0;
+
+  // Minted once, on the first save that asks for it, and never rotated here —
+  // a calendar the host has already subscribed to must not go dead because
+  // they edited a price.
+  const calendarToken = (row && row.calendar_token) ? row.calendar_token : token(18);
+
+  await env.DB.prepare(
+    `UPDATE num_hosts
+        SET services_json = ?, pricing_json = ?, areas_json = ?, charge_mode = ?,
+            currency = ?, tier = ?, notify_phone = ?, sms_opt_in = ?,
+            calendar_token = ?, accepts_intros = ?, in_network = ?, blurb = ?,
+            profile_updated_at = ?, updated_at = ?
+      WHERE id = ?`
+  ).bind(
+    JSON.stringify(services), JSON.stringify(pricing), JSON.stringify(areas),
+    chargeMode, currency, tier, notifyPhone, smsOptIn, calendarToken,
+    acceptsIntros, inNetwork, blurb, now(), now(), host.id
+  ).run();
+
+  // The shadow table follows the host's own copy, never the other way round.
+  await syncHostAreas(env, host.id, areas);
+
+  const after = await env.DB.prepare(
+    `SELECT services_json, pricing_json, areas_json, charge_mode, currency, tier,
+            notify_phone, sms_opt_in, calendar_token, profile_updated_at,
+            accepts_intros, in_network, blurb
+       FROM num_hosts WHERE id = ?`
+  ).bind(host.id).first();
+
+  return J({
+    ok: true,
+    saved: true,
+    services: JSON.parse(after.services_json || "[]"),
+    pricing: JSON.parse(after.pricing_json || "[]"),
+    charge_mode: after.charge_mode,
+    currency: after.currency,
+    tier: after.tier,
+    notify_phone: after.notify_phone || "",
+    sms_opt_in: !!after.sms_opt_in,
+    calendar_url: (env.SITE || "https://itsnum.com") + "/api/host/calendar.ics?t=" + after.calendar_token,
+    areas: JSON.parse(after.areas_json || "[]"),
+    accepts_intros: !!after.accepts_intros,
+    in_network: !!after.in_network,
+    blurb: after.blurb || "",
+    profile_updated_at: after.profile_updated_at,
+    // Said back plainly. A host who asked us to collect and a host who did not
+    // are in materially different relationships with NUM, and the UI should
+    // never have to infer which one happened.
+    note: chargeMode === "num"
+      ? "NUM will collect from your clients and settle to you."
+      : "Your clients pay you directly. NUM never touches that money.",
+  });
 }
 
 async function hostSummary(req, env, url) {
@@ -2026,6 +2309,1833 @@ async function hostSummary(req, env, url) {
       when: r.completed_at,
     })),
   });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE HOST'S BOOK — clients, work, products, network, introductions
+ *
+ * Everything below is written from one premise: THE HOST IS OUR CUSTOMER AND
+ * THE CLIENT IS THEIRS. NUM is the back office. That is not a slogan, it is a
+ * constraint, and it shows up as four rules that are enforced here and not
+ * merely described in the copy:
+ *
+ *   1. NUM never bills a host's client. There is no price field anywhere in
+ *      this file that a client is charged by us. The host pays a monthly plan;
+ *      the plan is capped by client count; the client pays nothing to NUM.
+ *   2. NUM never contacts a host's client first. Client rows are created from
+ *      the host's own attestation, and an introduction reaches a host only
+ *      after the MEMBER asked for it and the HOST accepted it.
+ *   3. NUM never confirms on a host's behalf. `confirmed` is reachable only
+ *      through an explicit confirm action taken by the holder of the console
+ *      key. There is no auto-confirm branch to find later.
+ *   4. NUM never enters a host-to-host job. Host B invoices Host A. We record
+ *      the link and take a flat network fee. We do not hold the money.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** THE HOST'S SUBSCRIPTION IS NOT PRICED PER CLIENT.
+ *
+ *  There is no client cap on any tier, and this is a commercial decision, not
+ *  an oversight. A concierge's book is the thing they spent years building; a
+ *  per-head price charges them for their own success, and — worse — makes
+ *  their first instinct to keep clients OUT of NUM, which breaks the product
+ *  long before it improves the invoice. The plan buys the tool. What the host
+ *  does with it is theirs.
+ *
+ *  So the tiers differentiate on CAPABILITY. `used` is still counted and shown,
+ *  because a host wants to know the size of their own book — but it is never a
+ *  ceiling, and no code path anywhere refuses a client because of it. */
+const HOST_TIER_CLIENTS = -1;                                        // every tier. no exceptions.
+const HOST_TIER_PRICE  = { free: "Free", small: "£9.99/mo", pro: "£19.99/mo", full: "£50/mo" };
+const HOST_TIER_FEATURES = {
+  free:  ["Unlimited clients", "Your services and prices", "Requests and drafts"],
+  small: ["Everything in Free", "Text alerts", "Calendar feed"],
+  pro:   ["Everything in Small", "The host network", "Introductions from NUM"],
+  full:  ["Everything in Pro", "Products and Ghost Message", "Your services promoted"],
+};
+
+/** WHAT A TIER ACTUALLY BUYS.
+ *
+ *  If the tiers gate nothing, they are decoration and nobody upgrades. If they
+ *  gate the wrong thing, they punish a host for having clients. So the line is
+ *  drawn deliberately: EVERY tier, including free, can hold unlimited clients,
+ *  set prices, take requests and get drafts — the work itself is never behind
+ *  a paywall, because a host whose clients are stuck is a host who leaves.
+ *  What money buys is REACH and LEVERAGE: alerts, then other people's books
+ *  and new clients from us, then a shelf to sell from. */
+const HOST_TIER_RANK = { free: 0, small: 1, pro: 2, full: 3 };
+const FEATURE_MIN_TIER = {
+  sms: "small",
+  calendar: "small",
+  network: "pro",
+  intros: "pro",
+  products: "full",
+};
+const FEATURE_LABEL = {
+  sms: "Text alerts", calendar: "Calendar feed", network: "The host network",
+  intros: "Introductions from NUM", products: "Products and Ghost Message",
+};
+
+function hostCan(tier, feature) {
+  const need = FEATURE_MIN_TIER[feature];
+  if (!need) return true;
+  return (HOST_TIER_RANK[tier] || 0) >= HOST_TIER_RANK[need];
+}
+
+/** The refusal a host can act on. 402 with what it is, what unlocks it, and
+ *  what that costs — never a bare "forbidden" they have to go and ask about. */
+function needsTier(feature) {
+  const need = FEATURE_MIN_TIER[feature];
+  return J({
+    ok: false,
+    error: "needs_tier",
+    feature: feature,
+    label: FEATURE_LABEL[feature],
+    needs_tier: need,
+    price: HOST_TIER_PRICE[need],
+    note: FEATURE_LABEL[feature] + " is on the " + need + " plan (" + HOST_TIER_PRICE[need] +
+          "). Your clients and your prices are not affected, and nothing you already have is taken away.",
+  }, 402);
+}
+const HOST_PRODUCT_KINDS = ["own", "num", "ghost"];
+const NUM_PRODUCTS = ["tab", "membership", "concierge"];
+const HOST_REQ_STATUS = ["new", "drafted", "awaiting_host", "confirmed", "declined", "done", "cancelled"];
+const CLIENT_SOURCES = ["host_added", "num_offer", "self_joined"];
+
+/** NUM's flat fee on a host-to-host job, in the requesting host's currency.
+ *  Flat, not a percentage, and deliberately small: we are being paid for the
+ *  introduction and the record, not for the work. A percentage would give us
+ *  an interest in the size of a job we are not doing. */
+const NETWORK_FEE_MINOR = 500;
+
+/** The consent attestation minimum, in characters. Identical to the rule
+ *  already enforced on /api/host/contacts, on purpose — a host adding one
+ *  client by hand and a host pasting forty are making the same claim about
+ *  the same people, and a shorter answer here would be the loophole. */
+const CLIENT_CONSENT_MIN = 40;
+
+/** Where a host stands against their plan. Read before every insert that
+ *  could grow the book, and returned on every GET so the console can show the
+ *  ceiling BEFORE it is hit rather than as an error after. */
+async function hostPlan(env, hostId) {
+  const row = await env.DB.prepare(
+    "SELECT tier, plan_status, plan_renews_at FROM num_hosts WHERE id = ?"
+  ).bind(hostId).first();
+  const tier = (row && HOST_TIER_PRICE[row.tier] !== undefined) ? row.tier : "free";
+  const used = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM num_host_clients WHERE host_id = ? AND status = 'active'"
+  ).bind(hostId).first();
+  const n = (used && used.n) || 0;
+  return {
+    tier: tier,
+    price: HOST_TIER_PRICE[tier],
+    features: HOST_TIER_FEATURES[tier] || [],
+    limit: HOST_TIER_CLIENTS,        // -1, on every tier
+    used: n,
+    // `full` is kept and is ALWAYS false. It stays because callers read it,
+    // and because a constant false is a louder statement than a deleted field:
+    // there is no state in which NUM refuses a host a client.
+    full: false,
+    plan_status: (row && row.plan_status) || "none",
+    renews_at: (row && row.plan_renews_at) || null,
+    booking_fee_minor: BOOKING_FEE_MINOR,
+    can: Object.keys(FEATURE_MIN_TIER).reduce(function (acc, f) {
+      acc[f] = hostCan(tier, f); return acc;
+    }, {}),
+    // The whole money story, in one sentence a host can repeat to a client.
+    note: n === 1
+      ? "1 client. Your plan does not limit how many you can have, and none of them are charged by NUM."
+      : n + " clients. Your plan does not limit how many you can have, and none of them are charged by NUM.",
+  };
+}
+
+/* ------------------------------------------------- /api/host/clients  R/W */
+
+function clientRow(r, site) {
+  return {
+    id: r.id, name: r.name, email: r.email || "", phone: r.phone || "",
+    home_city: r.home_city || "", home_country: r.home_country || "",
+    languages: r.languages || "", notes: r.notes || "",
+    source: r.source, status: r.status, created_at: r.created_at,
+    ended_at: r.ended_at || null, ended_by: r.ended_by || null,
+    // Their own way out, for the host to hand over. Shown to the host on
+    // purpose: this is not a back door we hide from them, it is a thing they
+    // can offer, and a host who offers it looks better than one who does not.
+    member_link: r.member_token ? site + "/my-host/?t=" + r.member_token : null,
+  };
+}
+
+async function hostClients(req, env, url, ctx) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const list = async () => {
+    const [rows, plan] = await Promise.all([
+      env.DB.prepare(
+        `SELECT id,name,email,phone,home_city,home_country,languages,notes,source,status,
+                member_token,ended_at,ended_by,created_at
+           FROM num_host_clients WHERE host_id = ? AND status <> 'removed'
+          ORDER BY status ASC, name ASC LIMIT 500`
+      ).bind(host.id).all(),
+      hostPlan(env, host.id),
+    ]);
+    const site = env.SITE || "https://itsnum.com";
+    return J({
+      ok: true,
+      clients: ((rows && rows.results) || []).map(function (r) { return clientRow(r, site); }),
+      plan: plan,
+    });
+  };
+
+  if (req.method === "GET") return list();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  let b;
+  try { b = await readJSON(req, 65536); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+  const action = String(b.action || "add");
+
+  /* REMOVING IS NOT PAUSING, AND IT DOES NOT SHARE THEIR CODE PATH.
+   *
+   * Pause is bookkeeping: the client stays in the book, greyed out, and the
+   * host is not billed for them. Nobody needs telling, because nothing about
+   * the relationship ended.
+   *
+   * Remove ends a relationship with a person who is not in the room, so it
+   * goes through endClient — which records who ended it, tells them, and
+   * moves the £5 booking fee back onto them. Silently flipping a status
+   * would leave that person believing they still have a concierge. */
+  if (action === "remove") {
+    const id = clean(b.id, 40);
+    if (!id) return J({ ok: false, error: "no_id" }, 400);
+    const row = await env.DB.prepare(
+      "SELECT * FROM num_host_clients WHERE id = ? AND host_id = ?"
+    ).bind(id, host.id).first();
+    if (!row) return J({ ok: false, error: "not_found" }, 404);
+    await endClient(env, ctx, {
+      host: { id: host.id, name: host.name, email: host.email },
+      client: row,
+      ended_by: "host",
+      reason: b.reason,
+    });
+    return list();
+  }
+
+  if (action === "pause" || action === "resume") {
+    const id = clean(b.id, 40);
+    if (!id) return J({ ok: false, error: "no_id" }, 400);
+    const next = action === "pause" ? "paused" : "active";
+
+    // Nothing to check. There is no cap to breach — resuming a client is the
+    // host putting someone back in their own book, and it is not ours to
+    // refuse. Removed rows are NOT resumable: coming back is a new consent,
+    // not an undo, and the person who left gets to give it.
+    await env.DB.prepare(
+      "UPDATE num_host_clients SET status = ?, updated_at = ? WHERE id = ? AND host_id = ? AND status <> 'removed'"
+    ).bind(next, now(), id, host.id).run();
+    return list();
+  }
+
+  if (action === "update") {
+    const id = clean(b.id, 40);
+    if (!id) return J({ ok: false, error: "no_id" }, 400);
+    await env.DB.prepare(
+      `UPDATE num_host_clients
+          SET name = COALESCE(NULLIF(?,''), name), phone = ?, home_city = ?,
+              home_country = ?, languages = ?, notes = ?, updated_at = ?
+        WHERE id = ? AND host_id = ?`
+    ).bind(
+      clean(b.name, 120), e164(b.phone) || null, clean(b.home_city, 80),
+      clean(b.home_country, 60), clean(b.languages, 120), clean(b.notes, 2000),
+      now(), id, host.id
+    ).run();
+    return list();
+  }
+
+  /* ADD.
+   *
+   * Two gates, and neither is decoration.
+   *
+   * The attestation is a lawful-basis claim about someone who is not in the
+   * room. We keep the exact words the host was shown, not a version string,
+   * because in a complaint the question is what THIS host agreed to on THIS
+   * day and a pointer to a document we have since edited does not answer it.
+   *
+   * The attestation is the ONLY gate. There is deliberately no second one:
+   * the plan does not cap clients, so there is no version of this endpoint
+   * that refuses a host a person because of what they pay us. */
+  const consent = String(b.consent_text || "").trim();
+  if (consent.length < CLIENT_CONSENT_MIN) {
+    return J({ ok: false, error: "consent_required", min: CLIENT_CONSENT_MIN }, 400);
+  }
+
+  const name = clean(b.name, 120);
+  if (!name) return J({ ok: false, error: "no_name" }, 400);
+  const email = String(b.email || "").trim();
+  if (email && !okEmail(email)) return J({ ok: false, error: "bad_email" }, 400);
+
+  // A person who has asked NUM never to contact them again is not made
+  // contactable by a host asserting otherwise. The suppression list wins.
+  //
+  // 3 Sep 2026: it did not win. Both suppression checks queried `email_lc`,
+  // a column num_suppressions does not have, and both swallowed the error —
+  // so every lookup returned "not suppressed" and the guard has never once
+  // fired. A silent catch turned a legal obligation into a no-op.
+  if (email) {
+    const supp = await env.DB.prepare(
+      "SELECT 1 AS x FROM num_suppressions WHERE lower(email) = ?"
+    ).bind(lc(email)).first().catch(function () { return null; });
+    if (supp) return J({ ok: false, error: "suppressed" }, 409);
+  }
+
+  const id = "hc_" + token(10);
+  try {
+    await env.DB.prepare(
+      `INSERT INTO num_host_clients
+         (id,host_id,name,email,email_lc,phone,home_city,home_country,languages,
+          notes,source,consent_basis,consent_text,status,member_token,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,'host_added','host_asserted',?,'active',?,?)`
+    ).bind(
+      id, host.id, name, email || null, email ? lc(email) : null,
+      e164(b.phone) || null, clean(b.home_city, 80), clean(b.home_country, 60),
+      clean(b.languages, 120), clean(b.notes, 2000), consent.slice(0, 1200),
+      // Minted for EVERY client, not only introduced ones, so a host can hand
+      // their own client the same way out. A host who says "here is how to
+      // remove yourself from this" is making an argument for themselves.
+      token(20), now()
+    ).run();
+  } catch (e) {
+    // The unique index on (host_id, email_lc) is doing its job: a host pasting
+    // the same list twice must not double their own bill.
+    return J({ ok: false, error: "already_in_your_book" }, 409);
+  }
+  return list();
+}
+
+/* ------------------------------------------------ /api/host/products  R/W */
+
+/** One product line, normalised. The three kinds share a table because a host
+ *  thinks of them as one shelf, but they do NOT share validation:
+ *
+ *  'ghost' is the strict one. A Ghost Message code that resolves to nothing is
+ *  the single failure that makes the whole primitive untrustworthy — the buyer
+ *  texted a code off a card and got silence — so a ghost line cannot go active
+ *  without a SKU, a keyword, a photo and a real price. That is the Resolution
+ *  Rule from the Ghost spec, enforced here and again by a CHECK in 0014.
+ *
+ *  'num' is a NUM product the host resells. The price is OURS, so the host
+ *  does not get to set it: price_minor is forced to 0 and the live price is
+ *  read from our catalogue at display time. A host quoting a NUM price we
+ *  later change would be the one who looks wrong to their client. */
+function productLine(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const kind = HOST_PRODUCT_KINDS.indexOf(String(raw.kind || "")) === -1 ? null : String(raw.kind);
+  if (!kind) return null;
+  const name = clean(raw.name, 120);
+  if (!name) return null;
+
+  var minor = Math.round(Number(raw.price_minor));
+  if (!isFinite(minor) || minor < 0 || minor > 100000000) minor = 0;
+
+  const out = {
+    kind: kind,
+    name: name,
+    description: clean(raw.description, 1200),
+    category: clean(raw.category, 60),
+    price_minor: minor,
+    currency: /^[A-Za-z]{3}$/.test(String(raw.currency || "")) ? String(raw.currency).toUpperCase() : "GBP",
+    unit: HOST_UNITS.indexOf(String(raw.unit || "")) === -1 ? "item" : String(raw.unit),
+    photo_url: cleanUrl(raw.photo_url, 400),
+    sku: null, keyword: null, num_product: null,
+    active: raw.active === true || raw.active === 1 ? 1 : 0,
+  };
+
+  if (kind === "num") {
+    out.num_product = NUM_PRODUCTS.indexOf(String(raw.num_product || "")) === -1 ? "tab" : String(raw.num_product);
+    out.price_minor = 0;                                  // our price, not theirs
+  }
+
+  if (kind === "ghost") {
+    out.sku = String(raw.sku || "").replace(/[^0-9]/g, "").slice(0, 12) || null;
+    out.keyword = String(raw.keyword || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24) || null;
+    // Fails CLOSED. A ghost line missing any part of what makes a code
+    // resolve is stored as a draft, never as something a client can text.
+    if (!out.sku || !out.keyword || !out.photo_url || out.price_minor <= 0) out.active = 0;
+  }
+
+  return out;
+}
+
+async function hostProducts(req, env, url) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const list = async () => {
+    const rows = await env.DB.prepare(
+      `SELECT id,kind,sku,keyword,name,description,category,price_minor,currency,unit,
+              photo_url,num_product,moderation,active,created_at
+         FROM num_host_products WHERE host_id = ? ORDER BY kind ASC, name ASC LIMIT 300`
+    ).bind(host.id).all();
+    return J({
+      ok: true,
+      products: (rows && rows.results) || [],
+      vocabulary: { kinds: HOST_PRODUCT_KINDS, units: HOST_UNITS, num_products: NUM_PRODUCTS },
+      // Said out loud so a host is never guessing why a code is not live.
+      ghost_rule: "A Ghost Message line needs a SKU, a keyword, a photo and a price before it can go live. A code that resolves to nothing is worse than no code.",
+    });
+  };
+
+  if (req.method === "GET") return list();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  // Reading the shelf is free — a host on any plan can see what this is and
+  // what they already saved. Writing to it is what the full plan buys.
+  const plan = await hostPlan(env, host.id);
+  if (!hostCan(plan.tier, "products")) return needsTier("products");
+
+  let b;
+  try { b = await readJSON(req, 65536); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+
+  if (String(b.action || "") === "delete") {
+    const id = clean(b.id, 40);
+    if (!id) return J({ ok: false, error: "no_id" }, 400);
+    await env.DB.prepare("DELETE FROM num_host_products WHERE id = ? AND host_id = ?")
+      .bind(id, host.id).run();
+    return list();
+  }
+
+  const p = productLine(b.product || b);
+  if (!p) return J({ ok: false, error: "bad_product" }, 400);
+
+  const id = clean(b.id || (b.product && b.product.id), 40);
+  try {
+    if (id) {
+      await env.DB.prepare(
+        `UPDATE num_host_products
+            SET kind=?,sku=?,keyword=?,name=?,description=?,category=?,price_minor=?,
+                currency=?,unit=?,photo_url=?,num_product=?,active=?,updated_at=?
+          WHERE id = ? AND host_id = ?`
+      ).bind(
+        p.kind, p.sku, p.keyword, p.name, p.description, p.category, p.price_minor,
+        p.currency, p.unit, p.photo_url, p.num_product, p.active, now(), id, host.id
+      ).run();
+    } else {
+      await env.DB.prepare(
+        `INSERT INTO num_host_products
+           (id,host_id,kind,sku,keyword,name,description,category,price_minor,currency,
+            unit,photo_url,num_product,moderation,active,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`
+      ).bind(
+        "hp_" + token(10), host.id, p.kind, p.sku, p.keyword, p.name, p.description,
+        p.category, p.price_minor, p.currency, p.unit, p.photo_url, p.num_product,
+        p.active, now()
+      ).run();
+    }
+  } catch (e) {
+    return J({ ok: false, error: "duplicate_sku_or_keyword" }, 409);
+  }
+  return list();
+}
+
+/* ------------------------------------------------ /api/host/requests  R/W */
+
+async function hostRequests(req, env, url, ctx) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const list = async () => {
+    const rows = await env.DB.prepare(
+      `SELECT r.id,r.client_id,r.service_key,r.title,r.detail,r.city,r.country,
+              r.starts_at,r.ends_at,r.party_size,r.price_minor,r.currency,r.unit,
+              r.quote_only,r.status,r.draft_text,r.network_host_id,r.network_status,
+              r.network_fee_minor,r.booking_fee_minor,r.created_at,r.confirmed_at,
+              c.name AS client_name
+         FROM num_host_requests r
+         LEFT JOIN num_host_clients c ON c.id = r.client_id
+        WHERE r.host_id = ? ORDER BY r.created_at DESC LIMIT 300`
+    ).bind(host.id).all();
+    const list_ = (rows && rows.results) || [];
+    return J({
+      ok: true,
+      requests: list_,
+      statuses: HOST_REQ_STATUS,
+      booking_fee_minor: BOOKING_FEE_MINOR,
+      // What the host owes us this cycle, from their own confirmed work. Shown
+      // beside the work itself so it is never a surprise on an invoice.
+      fees_minor: list_.reduce(function (n, r) { return n + (r.booking_fee_minor || 0); }, 0),
+    });
+  };
+
+  if (req.method === "GET") return list();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  let b;
+  try { b = await readJSON(req, 65536); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+  const action = String(b.action || "create");
+
+  /* CONFIRM IS ITS OWN ACTION AND ITS OWN CODE PATH.
+   *
+   * This is rule 3, and this is where it lives. There is no branch anywhere in
+   * this file that sets status='confirmed' as a consequence of something else
+   * happening — not a draft being written, not a client replying, not a timer
+   * expiring. A commitment to a host's own client is made by the host, and the
+   * only way to reach that state is for the holder of the console key to say
+   * so. If you are ever asked to add an auto-confirm, this comment is the
+   * argument against it: the host is the first point of contact, and an agent
+   * that commits on their behalf makes them absent rather than organised. */
+  if (action === "confirm" || action === "decline" || action === "done" || action === "cancel") {
+    const id = clean(b.id, 40);
+    if (!id) return J({ ok: false, error: "no_id" }, 400);
+    const next = action === "confirm" ? "confirmed"
+               : action === "decline" ? "declined"
+               : action === "done" ? "done" : "cancelled";
+    /* THE BOOKING FEE LANDS HERE, ON THE HOST, AND ONLY ON CONFIRM.
+     *
+     * £5 per booking NUM arranged, billed to the host — never to their client,
+     * who must never see a NUM line item on anything. It attaches at confirm
+     * rather than at creation because a request that was logged, drafted and
+     * then declined is work we did not complete, and charging for it would
+     * teach hosts to stop logging the ones they are unsure about, which is
+     * exactly the data the agent needs most.
+     *
+     * `CASE WHEN` rather than a second statement so a repeated confirm cannot
+     * stack a second fee onto the same booking. */
+    await env.DB.prepare(
+      `UPDATE num_host_requests
+          SET status = ?,
+              confirmed_at = CASE WHEN ? = 'confirmed' THEN COALESCE(confirmed_at, ?) ELSE confirmed_at END,
+              booking_fee_minor = CASE WHEN ? = 'confirmed' AND booking_fee_minor = 0 THEN ? ELSE booking_fee_minor END,
+              updated_at = ?
+        WHERE id = ? AND host_id = ?`
+    ).bind(next, next, now(), next, BOOKING_FEE_MINOR, now(), id, host.id).run();
+
+    /* AND NOW — only now — the client hears, over their host's name.
+     *
+     * This is the step that must never fire before the host has acted. It is
+     * guarded by being inside the confirm branch and nowhere else. */
+    if (next === "confirmed") {
+      const row = await env.DB.prepare(
+        `SELECT r.*, c.name AS c_name, c.email AS c_email, c.id AS c_id
+           FROM num_host_requests r LEFT JOIN num_host_clients c ON c.id = r.client_id
+          WHERE r.id = ? AND r.host_id = ?`
+      ).bind(id, host.id).first();
+      if (row && row.c_email && row.client_notified_at == null) {
+        await notifyClientOfConfirm(env, ctx, host, row,
+          { id: row.c_id, name: row.c_name, email: row.c_email });
+      }
+    }
+    return list();
+  }
+
+  /* HAND A JOB TO ANOTHER HOST.
+   *
+   * Rule 4. We record who is doing it and what our fee is, and that is the
+   * whole of NUM's involvement. Host B invoices Host A. NUM does not collect
+   * from the client, does not split anything, and never appears to the client
+   * at all — which is the only version of this that keeps "your clients stay
+   * yours" true when the work crosses a border. */
+  if (action === "handoff") {
+    const id = clean(b.id, 40);
+    const toHost = clean(b.to_host_id, 40);
+    if (!id || !toHost) return J({ ok: false, error: "no_id" }, 400);
+    const link = await env.DB.prepare(
+      `SELECT status FROM num_host_links
+        WHERE status = 'accepted'
+          AND ((host_a = ? AND host_b = ?) OR (host_a = ? AND host_b = ?))`
+    ).bind(host.id, toHost, toHost, host.id).first();
+    if (!link) return J({ ok: false, error: "not_connected" }, 403);
+    await env.DB.prepare(
+      `UPDATE num_host_requests
+          SET network_host_id = ?, network_status = 'offered', network_fee_minor = ?, updated_at = ?
+        WHERE id = ? AND host_id = ?`
+    ).bind(toHost, NETWORK_FEE_MINOR, now(), id, host.id).run();
+    return list();
+  }
+
+  // CREATE
+  const serviceKey = String(b.service_key || "").trim().toLowerCase();
+  if (HOST_SERVICES.indexOf(serviceKey) === -1) return J({ ok: false, error: "bad_service" }, 400);
+  const title = clean(b.title, 160);
+  if (!title) return J({ ok: false, error: "no_title" }, 400);
+
+  const clientId = clean(b.client_id, 40) || null;
+  if (clientId) {
+    const owned = await env.DB.prepare(
+      "SELECT 1 AS x FROM num_host_clients WHERE id = ? AND host_id = ?"
+    ).bind(clientId, host.id).first();
+    if (!owned) return J({ ok: false, error: "not_your_client" }, 403);
+  }
+
+  const unit = HOST_UNITS.indexOf(String(b.unit || "")) === -1 ? "quote" : String(b.unit);
+  var minor = Math.round(Number(b.price_minor));
+  if (!isFinite(minor) || minor < 0 || minor > 100000000) minor = 0;
+  // Same rule as the price list: a 'quote' line carries no number, because an
+  // invented number is one the client will hold the host to.
+  if (unit === "quote") minor = 0;
+
+  const reqId = "hr_" + token(10);
+  await env.DB.prepare(
+    `INSERT INTO num_host_requests
+       (id,host_id,client_id,service_key,title,detail,city,country,starts_at,ends_at,
+        party_size,price_minor,currency,unit,quote_only,status,created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'new',?)`
+  ).bind(
+    reqId, host.id, clientId, serviceKey, title, clean(b.detail, 4000),
+    clean(b.city, 80), clean(b.country, 60), clean(b.starts_at, 40), clean(b.ends_at, 40),
+    Math.max(0, Math.min(999, Math.round(Number(b.party_size)) || 0)) || null,
+    minor, /^[A-Za-z]{3}$/.test(String(b.currency || "")) ? String(b.currency).toUpperCase() : "GBP",
+    unit, unit === "quote" ? 1 : 0, now()
+  ).run();
+
+  /* THE HOST IS TOLD. THE CLIENT IS NOT.
+   *
+   * At this moment there is nothing to tell a client — nobody has agreed to
+   * anything, and a message saying "we have received your request" from a
+   * company they have never heard of is exactly the intrusion /hosts/
+   * promises will not happen. The client hears once, on confirm, over their
+   * host's name.
+   *
+   * Skipped when the host logged it themselves in the console — they are
+   * looking at it, and mailing someone about a thing they just typed is how
+   * a useful notification becomes noise they filter. */
+  if (b.notify_host !== false && b.source !== "console") {
+    const clientRow_ = clientId
+      ? await env.DB.prepare("SELECT name FROM num_host_clients WHERE id = ?").bind(clientId).first()
+      : null;
+    await notifyHostOfRequest(env, ctx, host, {
+      id: reqId, title: title, city: clean(b.city, 80),
+      starts_at: clean(b.starts_at, 40), detail: clean(b.detail, 4000),
+    }, clientRow_ ? clientRow_.name : null);
+  }
+
+  return list();
+}
+
+/* ------------------------------------------------- /api/host/network  R/W */
+
+async function hostNetwork(req, env, url) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const list = async () => {
+    const [me, dir, links] = await Promise.all([
+      env.DB.prepare("SELECT in_network, blurb FROM num_hosts WHERE id = ?").bind(host.id).first(),
+      // The directory shows a host, a city, and what they do. It does not show
+      // an email or a phone number. Two hosts who want to talk get connected
+      // through an accepted link, not by scraping a list.
+      env.DB.prepare(
+        `SELECT h.id, h.name, h.company, h.blurb, h.services_json, h.currency,
+                (SELECT city FROM num_host_areas a WHERE a.host_id = h.id LIMIT 1) AS city
+           FROM num_hosts h
+          WHERE h.in_network = 1 AND h.status = 'active' AND h.id <> ?
+          ORDER BY h.created_at DESC LIMIT 200`
+      ).bind(host.id).all(),
+      env.DB.prepare(
+        `SELECT l.id, l.host_a, l.host_b, l.asked_by, l.status, l.note, l.created_at,
+                ha.name AS a_name, hb.name AS b_name
+           FROM num_host_links l
+           LEFT JOIN num_hosts ha ON ha.id = l.host_a
+           LEFT JOIN num_hosts hb ON hb.id = l.host_b
+          WHERE l.host_a = ? OR l.host_b = ? ORDER BY l.created_at DESC LIMIT 200`
+      ).bind(host.id, host.id).all(),
+    ]);
+    return J({
+      ok: true,
+      in_network: !!(me && me.in_network),
+      blurb: (me && me.blurb) || "",
+      directory: ((dir && dir.results) || []).map(function (h) {
+        return {
+          host_id: h.id, name: h.name, company: h.company || "", blurb: h.blurb || "",
+          city: h.city || "", currency: h.currency || "GBP",
+          services: JSON.parse(h.services_json || "[]"),
+        };
+      }),
+      links: ((links && links.results) || []).map(function (l) {
+        const otherIsB = l.host_a === host.id;
+        return {
+          id: l.id,
+          host_id: otherIsB ? l.host_b : l.host_a,
+          name: otherIsB ? l.b_name : l.a_name,
+          status: l.status,
+          mine: l.asked_by === host.id,
+          note: l.note || "",
+        };
+      }),
+      network_fee_minor: NETWORK_FEE_MINOR,
+      how_money_works: "When you hand a job to another host, they invoice you and you bill your client as normal. NUM takes a flat network fee and never touches your client's money.",
+    });
+  };
+
+  if (req.method === "GET") return list();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  const plan = await hostPlan(env, host.id);
+  if (!hostCan(plan.tier, "network")) return needsTier("network");
+
+  let b;
+  try { b = await readJSON(req, 16384); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+  const action = String(b.action || "");
+
+  if (action === "visibility") {
+    const on = (b.in_network === true || b.in_network === 1) ? 1 : 0;
+    await env.DB.prepare("UPDATE num_hosts SET in_network = ?, blurb = ?, updated_at = ? WHERE id = ?")
+      .bind(on, clean(b.blurb, 240), now(), host.id).run();
+    return list();
+  }
+
+  if (action === "connect") {
+    const other = clean(b.host_id, 40);
+    if (!other || other === host.id) return J({ ok: false, error: "bad_host" }, 400);
+    const ok = await env.DB.prepare(
+      "SELECT 1 AS x FROM num_hosts WHERE id = ? AND in_network = 1 AND status = 'active'"
+    ).bind(other).first();
+    if (!ok) return J({ ok: false, error: "not_in_network" }, 404);
+    // Pair stored low-id-first so the unique index actually prevents the same
+    // two hosts holding two links pointing opposite ways.
+    const a = host.id < other ? host.id : other;
+    const z = host.id < other ? other : host.id;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO num_host_links (id,host_a,host_b,asked_by,status,note,created_at)
+         VALUES (?,?,?,?,'pending',?,?)`
+      ).bind("hl_" + token(8), a, z, host.id, clean(b.note, 300), now()).run();
+    } catch (e) { return J({ ok: false, error: "already_asked" }, 409); }
+    return list();
+  }
+
+  if (action === "accept" || action === "decline" || action === "end") {
+    const id = clean(b.id, 40);
+    if (!id) return J({ ok: false, error: "no_id" }, 400);
+    const next = action === "accept" ? "accepted" : action === "decline" ? "declined" : "ended";
+    // Only the host who did NOT ask may accept. Otherwise a host could ask and
+    // then accept on the other's behalf, which is not a connection, it is a
+    // list they added themselves to.
+    const guard = (action === "accept" || action === "decline")
+      ? " AND asked_by <> ? AND status = 'pending'" : "";
+    const stmt = env.DB.prepare(
+      "UPDATE num_host_links SET status = ?, decided_at = ? WHERE id = ? AND (host_a = ? OR host_b = ?)" + guard
+    );
+    await (guard
+      ? stmt.bind(next, now(), id, host.id, host.id, host.id)
+      : stmt.bind(next, now(), id, host.id, host.id)).run();
+    return list();
+  }
+
+  return J({ ok: false, error: "bad_action" }, 400);
+}
+
+
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE LOOP — a request arrives, the host decides, the client hears back.
+ *
+ * Everything before this was storage. This is the part that makes it a
+ * service, and it turns on one rule that is easy to state and easy to break:
+ *
+ *   NUM NEVER SPEAKS TO A CLIENT IN ITS OWN VOICE.
+ *
+ * A client hears from their host. When NUM sends that email it is over the
+ * host's name, with the host's words where there are any, and the reply
+ * address is a thread the host reads. NUM's name appears once, in small
+ * print, saying who sent it on their behalf — because pretending a person
+ * typed it would be a lie, and putting NUM in the from-line would be us
+ * introducing ourselves to somebody else's client.
+ *
+ * The order is fixed, and each step has exactly one trigger:
+ *
+ *   client asks ──▶ HOST is told            (never the client — nothing to say yet)
+ *   host confirms ─▶ CLIENT is told         in the host's name
+ *   client replies ▶ HOST is told           on the same thread
+ *   host replies ──▶ CLIENT is told         in the host's name again
+ *
+ * The thing that must never happen is step two firing before step one — NUM
+ * telling a client something the host has not agreed to.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** How a message is signed. The host's name in the subject and the sign-off,
+ *  NUM once at the bottom as the sender of record. */
+function onBehalf(host, env) {
+  const site = env.SITE || "https://itsnum.com";
+  return "\n\n— " + (host.name || "Your host") +
+         "\n\nSent by NUM on " + (host.name || "your host") + "'s behalf. " +
+         "Manage how they look after you: " + site + "/my-host/";
+}
+
+/** Tell the host a request needs them. Their own client, their own decision —
+ *  we are the thing that noticed, not the thing that decided. */
+async function notifyHostOfRequest(env, ctx, host, req, clientName) {
+  if (!host.email) return;
+  const site = env.SITE || "https://itsnum.com";
+  ctx.waitUntil(sendBatch(env, [{
+    __idem: "reqnew-" + req.id,
+    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    to: [host.email],
+    replyTo: ["info@itsnum.com"],
+    subject: (clientName ? clientName + ": " : "New request: ") + req.title,
+    text:
+`${host.name},
+
+${clientName ? clientName + " needs" : "Someone needs"} something${req.city ? " in " + req.city : ""}.
+
+  ${req.title}
+${req.starts_at ? "  When: " + req.starts_at + "\n" : ""}${req.detail ? "  Detail: " + req.detail + "\n" : ""}
+Nothing has been said to them yet. NUM does not confirm anything to your
+client on your behalf — you are their first point of contact and we are not
+going to be.
+
+Open it, price it if you need to, and confirm:
+${site}/host/
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}`,
+    tags: [{ name: "kind", value: "host_request_new" }],
+  }]));
+  await env.DB.prepare("UPDATE num_host_requests SET host_notified_at = ? WHERE id = ?")
+    .bind(now(), req.id).run();
+}
+
+/** Tell the client their host has confirmed. THIS IS THE ONLY EMAIL NUM SENDS
+ *  TO A HOST'S CLIENT ABOUT A BOOKING, and it goes out over the host's name. */
+async function notifyClientOfConfirm(env, ctx, host, req, client) {
+  if (!client || !client.email) return;
+  const money = (!req.quote_only && req.price_minor > 0)
+    ? "\n  " + (req.currency || "GBP") + " " + (req.price_minor / 100).toFixed(2) : "";
+  ctx.waitUntil(sendBatch(env, [{
+    __idem: "reqconf-" + req.id,
+    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    to: [client.email],
+    replyTo: [host.email || "info@itsnum.com"],
+    subject: "Confirmed — " + req.title,
+    text:
+`${String(client.name || "").split(/\s+/)[0]},
+
+That's confirmed.
+
+  ${req.title}
+${req.starts_at ? "  " + req.starts_at + "\n" : ""}${req.city ? "  " + req.city + "\n" : ""}${money}
+
+If anything about it needs to change, reply to this email and it goes
+straight to ${host.name}.${onBehalf(host, env)}`,
+    tags: [{ name: "kind", value: "client_request_confirmed" }],
+  }]));
+  await env.DB.prepare("UPDATE num_host_requests SET client_notified_at = ? WHERE id = ?")
+    .bind(now(), req.id).run();
+}
+
+/** Post a message on a request's thread, and tell whoever did not write it.
+ *  One function for both directions — two would be how one of them silently
+ *  stops delivering. */
+async function postMessage(env, ctx, opts) {
+  const { host, request, client, author } = opts;
+  const body = clean(opts.body, 4000);
+  if (!body) return { ok: false, error: "empty" };
+
+  const id = "hm_" + token(10);
+  await env.DB.prepare(
+    `INSERT INTO num_host_messages (id,request_id,host_id,client_id,author,body,created_at)
+     VALUES (?,?,?,?,?,?,?)`
+  ).bind(id, request.id, host.id, client ? client.id : null, author, body, now()).run();
+
+  const site = env.SITE || "https://itsnum.com";
+  const mail = author === "host"
+    ? (client && client.email ? {
+        __idem: "msg-" + id,
+        from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+        to: [client.email],
+        replyTo: [host.email || "info@itsnum.com"],
+        subject: "Re: " + request.title,
+        text: String(client.name || "").split(/\s+/)[0] + ",\n\n" + body + onBehalf(host, env),
+        tags: [{ name: "kind", value: "client_message" }],
+      } : null)
+    : (host.email ? {
+        __idem: "msg-" + id,
+        from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+        to: [host.email],
+        replyTo: ["info@itsnum.com"],
+        subject: (client ? client.name + " replied" : "Reply") + " — " + request.title,
+        text:
+`${host.name},
+
+${client ? client.name : "Your client"} says:
+
+  ${body.split("\n").join("\n  ")}
+
+Reply on the request in your console:
+${site}/host/
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}`,
+        tags: [{ name: "kind", value: "host_client_replied" }],
+      } : null);
+
+  if (mail) {
+    ctx.waitUntil(sendBatch(env, [mail]));
+    await env.DB.prepare("UPDATE num_host_messages SET delivered_at = ? WHERE id = ?")
+      .bind(now(), id).run();
+  }
+  return { ok: true, id: id, delivered: !!mail };
+}
+
+
+/* ------------------------------------------------ /api/host/messages?k=
+ * The host's side of a thread. GET reads one request's messages, POST adds
+ * one and emails the client over the host's name. */
+async function hostMessages(req, env, url, ctx) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const requestId = clean(url.searchParams.get("request") || "", 40);
+  if (!requestId) return J({ ok: false, error: "no_request" }, 400);
+
+  // Ownership is checked on the REQUEST, not on the message. A console key
+  // must never be able to read a thread by guessing a message id.
+  const request = await env.DB.prepare(
+    `SELECT r.*, c.id AS c_id, c.name AS c_name, c.email AS c_email, c.status AS c_status
+       FROM num_host_requests r LEFT JOIN num_host_clients c ON c.id = r.client_id
+      WHERE r.id = ? AND r.host_id = ?`
+  ).bind(requestId, host.id).first();
+  if (!request) return J({ ok: false, error: "not_found" }, 404);
+
+  const list = async () => {
+    const rows = await env.DB.prepare(
+      "SELECT id,author,body,delivered_at,created_at FROM num_host_messages WHERE request_id = ? ORDER BY created_at ASC LIMIT 200"
+    ).bind(requestId).all();
+    return J({
+      ok: true,
+      request: { id: request.id, title: request.title, status: request.status },
+      client: request.c_id ? { name: request.c_name, reachable: !!request.c_email } : null,
+      messages: (rows && rows.results) || [],
+      // Said plainly so a host is never typing into a void without knowing.
+      note: request.c_email
+        ? "Your client gets this by email, from you. NUM's name appears once at the bottom, as the sender."
+        : "This client has no email on file, so nothing can be sent. Add one, or tell them yourself.",
+    });
+  };
+
+  if (req.method === "GET") return list();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  let b;
+  try { b = await readJSON(req, 16384); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+
+  // A client who left is not messageable. Their relationship ended, and the
+  // console must not be a way around that.
+  if (request.c_status === "removed") return J({ ok: false, error: "client_left" }, 409);
+
+  const out = await postMessage(env, ctx, {
+    host: { id: host.id, name: host.name, email: host.email },
+    request: request,
+    client: request.c_id ? { id: request.c_id, name: request.c_name, email: request.c_email } : null,
+    author: "host",
+    body: b.body,
+  });
+  if (!out.ok) return J({ ok: false, error: out.error || "failed" }, 400);
+  return list();
+}
+
+/* ------------------------------------------ GET /api/host/calendar.ics?t=
+ *
+ * Promised on 1 Sep — the token has been minted and displayed in the console
+ * ever since, pointing at nothing. A feed URL a host has already subscribed
+ * to and that returns 404 is worse than no feed: their calendar shows no
+ * error, it just quietly holds nothing.
+ *
+ * READ-ONLY, and that is the whole design. NUM publishes, their calendar
+ * subscribes. We never ask for write access to a person's calendar and we
+ * never will — it is the single most invasive permission in the product and
+ * we do not need it to be useful.
+ */
+async function hostCalendar(req, env, url) {
+  const t = url.searchParams.get("t") || "";
+  if (t.length < 16 || t.length > 80) return new Response("Not found", { status: 404 });
+
+  const host = await env.DB.prepare(
+    "SELECT id, name, calendar_token FROM num_hosts WHERE calendar_token = ? AND status = 'active'"
+  ).bind(t).first();
+  if (!host || !sameSecret(host.calendar_token, t)) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT r.id, r.title, r.detail, r.city, r.country, r.starts_at, r.ends_at,
+            r.status, r.price_minor, r.currency, r.quote_only, r.updated_at, r.created_at,
+            c.name AS client_name
+       FROM num_host_requests r
+       LEFT JOIN num_host_clients c ON c.id = r.client_id
+      WHERE r.host_id = ? AND r.status IN ('confirmed','done')
+        AND r.starts_at IS NOT NULL AND r.starts_at <> ''
+      ORDER BY r.starts_at DESC LIMIT 400`
+  ).bind(host.id).all();
+
+  // ICS wants UTC basic format. A date we cannot parse is SKIPPED rather than
+  // guessed at: a booking in the wrong place in someone's calendar is worse
+  // than one that is missing, because they will plan around it.
+  const stamp = (s) => {
+    if (!s) return null;
+    const d = new Date(String(s).replace(" ", "T"));
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  };
+  // RFC 5545: escape, then fold at 75 octets. Unfolded long lines are the
+  // classic reason a feed parses in one calendar app and not in another.
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  const fold = (line) => {
+    const out = [];
+    let s = line;
+    while (s.length > 73) { out.push(s.slice(0, 73)); s = " " + s.slice(73); }
+    out.push(s);
+    return out.join("\r\n");
+  };
+
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//NUM//VIP host//EN",
+    "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    fold("X-WR-CALNAME:" + esc((host.name || "NUM") + " — confirmed work")),
+  ];
+
+  for (const r of ((rows && rows.results) || [])) {
+    const start = stamp(r.starts_at);
+    if (!start) continue;
+    // No end time given: an hour is the honest default for a concierge job and
+    // is marked as such in the description rather than presented as fact.
+    const end = stamp(r.ends_at) ||
+      stamp(new Date(new Date(String(r.starts_at).replace(" ", "T")).getTime() + 36e5).toISOString());
+    const price = (!r.quote_only && r.price_minor > 0)
+      ? (r.currency || "GBP") + " " + (r.price_minor / 100).toFixed(2) : "agreed per request";
+    const desc = [
+      r.client_name ? "For: " + r.client_name : null,
+      r.detail || null,
+      "Price: " + price,
+      !r.ends_at ? "(No end time was set — shown as one hour.)" : null,
+    ].filter(Boolean).join("\n");
+
+    lines.push("BEGIN:VEVENT");
+    lines.push("UID:" + r.id + "@itsnum.com");
+    lines.push("DTSTAMP:" + (stamp(r.updated_at) || stamp(r.created_at) || start));
+    lines.push("DTSTART:" + start);
+    lines.push("DTEND:" + end);
+    lines.push(fold("SUMMARY:" + esc(r.title + (r.client_name ? " — " + r.client_name : ""))));
+    if (r.city) lines.push(fold("LOCATION:" + esc([r.city, r.country].filter(Boolean).join(", "))));
+    lines.push(fold("DESCRIPTION:" + esc(desc)));
+    lines.push("STATUS:" + (r.status === "done" ? "CONFIRMED" : "CONFIRMED"));
+    lines.push("END:VEVENT");
+  }
+  lines.push("END:VCALENDAR");
+
+  return new Response(lines.join("\r\n") + "\r\n", {
+    status: 200,
+    headers: {
+      "content-type": "text/calendar; charset=utf-8",
+      // Calendar clients poll hard. Five minutes is responsive enough for a
+      // booking made this morning and cheap enough to survive the polling.
+      "cache-control": "private, max-age=300",
+      // A feed URL is a bearer token. It must never be indexed, and it must
+      // never be sent as a Referer to anywhere the events link out to.
+      "x-robots-tag": "noindex, nofollow",
+      "referrer-policy": "no-referrer",
+    },
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * ENDING IT — from either side, on the record, with both sides told.
+ *
+ * 0014 gave only the host a way to end the relationship, silently, by setting
+ * a status. Everything below is the other half of that, and it rests on one
+ * idea: AN ENDING NOBODY IS TOLD ABOUT IS NOT AN ENDING.
+ *
+ * If a host removes a client and the client is not told, the client goes on
+ * believing they have a concierge. If a member leaves and the host is not
+ * told, the host goes on holding — and working from — details of somebody who
+ * withdrew. And in both cases the £5 booking fee keeps landing on whichever
+ * of them the stale row says it should, which is the version of this failure
+ * that shows up on a card statement.
+ *
+ * So every path here does the same four things, in the same order, and
+ * `endClient` is the only place any of them happens:
+ *   1. mark the row ended, with WHO ended it — not just that it ended
+ *   2. write an append-only separation record
+ *   3. tell the other side
+ *   4. release or hold the introduction offer, depending on who ended it
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** WHO MAY BE OFFERED THIS HOST AGAIN.
+ *
+ *  The asymmetry is deliberate and it is about consent, not symmetry:
+ *
+ *  • The HOST ended it → the offer row STAYS, so NUM never offers this member
+ *    to this host again. The host said no once; asking again is us overruling
+ *    them with a cron job.
+ *  • The MEMBER ended it → the offer row is DELETED, so the member is free to
+ *    choose again, including this same host later. Their own decision is not
+ *    a permanent bar on their own options.
+ */
+const OFFER_ON_END = { host: "keep", member: "release", host_closed: "keep", num: "keep" };
+
+/**
+ * End one client relationship. The single writer.
+ *
+ * Returns { ok, already } so callers can tell an ending from a no-op — a
+ * double-tap on "leave" must not send a second email to a host who has
+ * already been told, and must not write a second separation row that makes
+ * the audit trail read like two events.
+ */
+async function endClient(env, ctx, opts) {
+  const host = opts.host;                 // { id, name, email }
+  const row = opts.client;                // full num_host_clients row
+  const endedBy = opts.ended_by;
+  const reason = clean(opts.reason, 600);
+
+  if (!row || !host) return { ok: false };
+  if (row.status === "removed") return { ok: true, already: true };
+
+  const at = now();
+  const sepId = "hs_" + token(10);
+
+  const writes = [
+    env.DB.prepare(
+      `UPDATE num_host_clients
+          SET status = 'removed', ended_at = ?, ended_by = ?, updated_at = ?
+        WHERE id = ? AND host_id = ?`
+    ).bind(at, endedBy, at, row.id, host.id),
+    env.DB.prepare(
+      `INSERT INTO num_host_separations
+         (id,host_id,client_id,member_id,ended_by,reason,host_notified,member_notified,at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      sepId, host.id, row.id, row.member_id || null, endedBy, reason,
+      // Recorded as intent here and corrected below only if there was nobody
+      // to write to. A 0 against an ended row is a real defect the integrity
+      // check reports, not a cosmetic gap.
+      endedBy === "member" ? 1 : 0,
+      endedBy === "member" ? 0 : (row.email ? 1 : 0),
+      at
+    ),
+  ];
+
+  // The member walking away is the member's own decision about their own
+  // options, so it must not become a permanent bar on them.
+  if (OFFER_ON_END[endedBy] === "release") {
+    writes.push(env.DB.prepare(
+      "DELETE FROM num_host_offers WHERE client_id = ? AND host_id = ?"
+    ).bind(row.id, host.id));
+  }
+
+  await env.DB.batch(writes);
+
+  /* TELL THE OTHER SIDE. Always the other side — the one who acted already
+   * knows, and a confirmation to them is a courtesy, while a notice to the
+   * other one is the whole point. */
+  const site = env.SITE || "https://itsnum.com";
+  const mails = [];
+  const firstName = String(row.name || "").split(/\s+/)[0] || "Your client";
+
+  if (endedBy === "member" && host.email) {
+    mails.push({
+      __idem: "sep-host-" + sepId,
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      to: [host.email],
+      replyTo: ["info@itsnum.com"],
+      subject: firstName + " has left your book",
+      text:
+`${host.name},
+
+${firstName} has asked NUM to remove them from your client list${reason ? ", and said: “" + reason + "”" : "."}
+
+They are no longer in your console, NUM will not act for them in your name,
+and you will not be charged for anything of theirs from now on.
+
+Nothing else about your account changes. If you think this is a mistake,
+reply to this email and a person will look at it with you — we will not put
+them back without hearing from them.
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}`,
+      tags: [{ name: "kind", value: "host_client_left" }],
+    });
+  }
+
+  if (endedBy !== "member" && row.email) {
+    const why = endedBy === "host_closed"
+      ? `${host.name} has closed their NUM host account, so they are no longer looking after you through NUM.`
+      : `${host.name} has removed you from their NUM client list.`;
+    mails.push({
+      __idem: "sep-member-" + sepId,
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      to: [row.email],
+      replyTo: ["info@itsnum.com"],
+      subject: "Your VIP host has changed",
+      text:
+`Hello ${firstName},
+
+${why}
+
+What this means for you: nothing stops working. NUM still books your travel
+directly, the same way, with the same answer at whatever hour you ask. A VIP
+host was always an added service, never a requirement.
+
+One thing does change: while a host was looking after you, NUM's £5 booking
+fee was billed to them. From now on it is billed to you.
+
+If you would like another host near you, there may be one:
+${site}/find-a-host/
+
+If you would rather NUM held nothing about you at all, reply to this email
+and say so, and we will delete it.
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}`,
+      tags: [{ name: "kind", value: "member_host_ended" }],
+    });
+  }
+
+  if (mails.length) {
+    ctx.waitUntil(sendBatch(env, mails));
+    await env.DB.prepare(
+      "UPDATE num_host_clients SET notified_at = ? WHERE id = ?"
+    ).bind(at, row.id).run();
+  } else {
+    // Honest bookkeeping: there was nobody to write to, so say so rather than
+    // leaving a row that claims a notification happened.
+    await env.DB.prepare(
+      `UPDATE num_host_separations
+          SET host_notified = 0, member_notified = 0 WHERE id = ?`
+    ).bind(sepId).run();
+  }
+
+  return { ok: true, already: false, separation_id: sepId };
+}
+
+/* ------------------------------------------- /api/host/integrity  ADMIN_KEY
+ *
+ * Read-only. Reads every host table and asks whether they still agree with
+ * each other. Six tables now describe one relationship between two people,
+ * each written by a different endpoint on a different day — which is exactly
+ * the shape of system where the disagreement stays invisible until somebody
+ * is billed for a client they released.
+ *
+ * The checks themselves live in worker/hostintegrity.mjs as pure functions
+ * over rows, so they are unit-tested against constructed states rather than
+ * only against whatever production happens to hold today.
+ */
+async function hostIntegrity(req, env, url) {
+  const key = url.searchParams.get("key") || "";
+  if (!env.ADMIN_KEY || !sameSecret(env.ADMIN_KEY, key)) {
+    return J({ ok: false, error: "unauthorised" }, 401);
+  }
+
+  const q = (sql) => env.DB.prepare(sql).all().then(
+    function (r) { return (r && r.results) || []; },
+    function () { return []; }
+  );
+
+  const [clients, hosts, offers, separations, links, areas, requests] = await Promise.all([
+    q(`SELECT id,host_id,member_id,member_token,email,status,ended_at,ended_by,notified_at
+         FROM num_host_clients LIMIT 5000`),
+    q(`SELECT id,status,tier,accepts_intros,in_network,sms_opt_in,notify_phone
+         FROM num_hosts LIMIT 5000`),
+    q(`SELECT id,member_id,host_id,client_id,member_said,host_said FROM num_host_offers LIMIT 5000`),
+    q(`SELECT id,host_id,client_id,ended_by,at FROM num_host_separations LIMIT 5000`),
+    q(`SELECT id,host_a,host_b,status FROM num_host_links LIMIT 5000`),
+    q(`SELECT id,host_id,city FROM num_host_areas LIMIT 5000`),
+    q(`SELECT id,host_id,status,booking_fee_minor,network_host_id FROM num_host_requests LIMIT 5000`),
+  ]);
+
+  const report = integrityReport({ clients, hosts, offers, separations, links, areas, requests });
+  return J({
+    ok: true,
+    checked_at: now(),
+    rows: {
+      clients: clients.length, hosts: hosts.length, offers: offers.length,
+      separations: separations.length, links: links.length, areas: areas.length,
+      requests: requests.length,
+    },
+    ...report,
+  });
+}
+
+/* ------------------------------------------------- /api/host/link?t=  MEMBER
+ *
+ * The member's own page. One token, one relationship, two things it can do:
+ * show you who holds your details, and end it.
+ *
+ * Deliberately NOT behind a NUM login. A member introduced to a host may have
+ * no account at all, and an exit that requires one is an exit most people
+ * never reach — which would make the consent they gave at the introduction
+ * worth less than it looked.
+ */
+async function memberLink(req, env, url, ctx) {
+  const t = url.searchParams.get("t") || "";
+  if (t.length < 20 || t.length > 80) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const row = await env.DB.prepare(
+    `SELECT c.*, h.name AS host_name, h.company AS host_company, h.email AS host_email,
+            h.status AS host_status
+       FROM num_host_clients c JOIN num_hosts h ON h.id = c.host_id
+      WHERE c.member_token = ?`
+  ).bind(t).first();
+  if (!row) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!sameSecret(row.member_token, t)) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const bookings = async () => {
+    const rows = await env.DB.prepare(
+      `SELECT id,title,city,starts_at,status,price_minor,currency,quote_only
+         FROM num_host_requests
+        WHERE client_id = ? AND status IN ('confirmed','done')
+        ORDER BY COALESCE(starts_at, created_at) DESC LIMIT 50`
+    ).bind(row.id).all();
+    return (rows && rows.results) || [];
+  };
+
+  const read = async () => J({
+    ok: true,
+    you: row.name,
+    // What their host has actually confirmed for them. Confirmed and done
+    // only: a client must never be shown a booking their host has not agreed
+    // to, which is the same rule that governs the confirmation email.
+    bookings: await bookings(),
+    host: {
+      // The host's name and company, because that is who holds your details
+      // and you are entitled to know. Not their email or number: this page
+      // exists so you can leave, not so it can be used to reach them.
+      name: row.host_name,
+      company: row.host_company || "",
+      closed: row.host_status !== "active",
+    },
+    status: row.status,
+    since: row.created_at,
+    ended_at: row.ended_at || null,
+    ended_by: row.ended_by || null,
+    // Said plainly, because a page that lets you leave should tell you what
+    // leaving costs you before you do it.
+    what_they_see: [
+      "Your name" + (row.email ? " and email" : ""),
+      row.phone ? "Your phone number" : null,
+      row.home_city ? "Where you are based" : null,
+      row.notes ? "Notes they have written about how you like to travel" : null,
+    ].filter(Boolean),
+    if_you_leave: [
+      "They are told, and you are removed from their console.",
+      "NUM keeps booking your travel directly, exactly as it does now.",
+      "NUM's £5 booking fee moves from them to you.",
+      "You can ask a different host, or the same one again, whenever you like.",
+    ],
+  });
+
+  if (req.method === "GET") return read();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+
+  let b;
+  try { b = await readJSON(req, 16384); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+  const action = String(b.action || "");
+
+  /* THE CLIENT REPLYING. The other half of the loop, and the reason this page
+   * is not just an exit door: a client who can only leave or do nothing will
+   * leave. Their message goes to their host, and only to their host. */
+  if (action === "reply") {
+    if (row.status === "removed") return J({ ok: false, error: "ended" }, 409);
+    const requestId = clean(b.request_id, 40);
+    const request = await env.DB.prepare(
+      "SELECT * FROM num_host_requests WHERE id = ? AND client_id = ?"
+    ).bind(requestId, row.id).first();
+    if (!request) return J({ ok: false, error: "not_found" }, 404);
+
+    const out = await postMessage(env, ctx, {
+      host: { id: row.host_id, name: row.host_name, email: row.host_email },
+      request: request,
+      client: { id: row.id, name: row.name, email: row.email },
+      author: "client",
+      body: b.body,
+    });
+    if (!out.ok) return J({ ok: false, error: out.error || "failed" }, 400);
+    return J({
+      ok: true,
+      sent: true,
+      note: out.delivered
+        ? String(row.host_name || "Your host").split(/\s+/)[0] + " has it."
+        : "Saved. We could not email them just now, so they will see it in their console.",
+    });
+  }
+
+  if (action !== "leave") return J({ ok: false, error: "bad_action" }, 400);
+  if (row.status === "removed") return read();
+
+  const out = await endClient(env, ctx, {
+    host: { id: row.host_id, name: row.host_name, email: row.host_email },
+    client: row,
+    ended_by: "member",
+    reason: b.reason,
+  });
+  if (!out.ok) return J({ ok: false, error: "failed" }, 500);
+
+  return J({
+    ok: true,
+    left: true,
+    note: "Done. " + String(row.host_name || "Your host").split(/\s+/)[0] +
+          " has been told, you are out of their console, and NUM will keep booking your travel directly.",
+  });
+}
+
+/* --------------------------------------------------- /api/host/close?k=  HOST
+ *
+ * A host ending their NUM account. Two-step on purpose: this releases every
+ * client they have, and a mis-tap that quietly emailed forty people would be
+ * unrecoverable.
+ */
+async function hostClose(req, env, url, ctx) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+
+  let b;
+  try { b = await readJSON(req, 8192); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+
+  const active = await env.DB.prepare(
+    "SELECT * FROM num_host_clients WHERE host_id = ? AND status <> 'removed'"
+  ).bind(host.id).all();
+  const clients = (active && active.results) || [];
+
+  /* THE CONFIRMATION STEP. The host has to type their own account name back.
+   * Not a checkbox: a checkbox is one tap from a scroll, and this ends
+   * relationships belonging to other people. */
+  if (String(b.confirm || "").trim().toLowerCase() !== String(host.name || "").trim().toLowerCase()) {
+    return J({
+      ok: false,
+      error: "confirm_required",
+      clients: clients.length,
+      note: "Closing releases " + clients.length + " client" + (clients.length === 1 ? "" : "s") +
+            " and tells each of them. Type your name exactly as it appears on your account to confirm.",
+    }, 400);
+  }
+
+  for (const row of clients) {
+    await endClient(env, ctx, {
+      host: { id: host.id, name: host.name, email: host.email },
+      client: row,
+      ended_by: "host_closed",
+      reason: b.reason,
+    });
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE num_hosts
+          SET status = 'ended', accepts_intros = 0, in_network = 0,
+              closed_at = ?, closed_reason = ?, plan_status = 'cancelled', updated_at = ?
+        WHERE id = ?`
+    ).bind(now(), clean(b.reason, 600), now(), host.id),
+    // Coverage goes with them. A closed host left in the areas table is a
+    // closed host still being ranked for introductions.
+    env.DB.prepare("DELETE FROM num_host_areas WHERE host_id = ?").bind(host.id),
+    // Standing connections end rather than dangle: another host must not be
+    // able to hand work to somebody who is gone.
+    env.DB.prepare(
+      "UPDATE num_host_links SET status = 'ended', decided_at = ? WHERE (host_a = ? OR host_b = ?) AND status <> 'ended'"
+    ).bind(now(), host.id, host.id),
+    // Pending introductions to them are withdrawn, not left waiting.
+    env.DB.prepare(
+      "UPDATE num_host_offers SET host_said = 'no', decided_at = ? WHERE host_id = ? AND host_said = 'pending'"
+    ).bind(now(), host.id),
+  ]);
+
+  if (host.email) {
+    ctx.waitUntil(sendBatch(env, [{
+      __idem: "hostclosed-" + host.id,
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      to: [host.email],
+      replyTo: ["info@itsnum.com"],
+      subject: "Your NUM host account is closed",
+      text:
+`${host.name},
+
+Your host account is closed. ${clients.length} client${clients.length === 1 ? " has" : "s have"} been released and told
+directly — they know it was an account closure, not anything about them.
+
+Your plan is cancelled and you will not be billed again. Your console link no
+longer opens anything.
+
+We keep a record of the bookings you confirmed and of each release, because
+that is what makes a later question answerable. We do not keep working on
+anything for you.
+
+If you want to come back, reply to this email rather than signing up again —
+that way your history comes with you.
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}`,
+      tags: [{ name: "kind", value: "host_closed" }],
+    }]));
+  }
+
+  return J({
+    ok: true,
+    closed: true,
+    released: clients.length,
+    note: "Closed. " + clients.length + " client" + (clients.length === 1 ? " was" : "s were") +
+          " released and told. Your plan is cancelled and this console key no longer works.",
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * INTRODUCTIONS — a NUM member with no host, and the nearest host who might
+ * take them.
+ *
+ * The chosen shape is OFFER ONLY, AND THE HOST OPTS IN FIRST. Three separate
+ * yeses have to exist before one person's details reach another:
+ *
+ *   1. the host turned `accepts_intros` on            (default 0, in 0014)
+ *   2. the member asked to be introduced to that host (member_said = 'yes')
+ *   3. the host accepted this particular member       (host_said = 'yes')
+ *
+ * Until all three, the host row the member sees carries a first name, a city,
+ * a blurb and a distance — and nothing that could be used to contact anyone.
+ * The auto-assign version of this feature is one line shorter and attaches a
+ * stranger to somebody's travel without asking, which is exactly the thing a
+ * concierge's client is paying not to have happen to them.
+ *
+ * If nobody is near, or nobody accepts, NOTHING BREAKS: the member is served
+ * by NUM directly, the way they already are. VIP hosting is the added service,
+ * never the gate.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** Great-circle distance in km. Used to rank, never to route — a host's
+ *  "nearest" is about which city they actually work, and the radius on the
+ *  area row is what decides whether they are a candidate at all. */
+function kmBetween(aLat, aLng, bLat, bLng) {
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (bLat - aLat) * r, dLng = (bLng - aLng) * r;
+  const s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(s))) * 10) / 10;
+}
+
+/** Rewrite the indexed shadow of a host's areas. Called on every profile save.
+ *  areas_json stays the host's editable copy; this table is what nearest-host
+ *  matching queries, because a JSON scan across every host is the version that
+ *  quietly stops working at a few hundred rows and is never noticed. */
+async function syncHostAreas(env, hostId, areas) {
+  await env.DB.prepare("DELETE FROM num_host_areas WHERE host_id = ?").bind(hostId).run();
+  const rows = areas.slice(0, 20).map(function (a) {
+    return env.DB.prepare(
+      "INSERT INTO num_host_areas (id,host_id,city,country,lat,lng,radius_km,created_at) VALUES (?,?,?,?,?,?,?,?)"
+    ).bind(
+      "ha_" + token(8), hostId, a.city || null, a.country || null,
+      a.lat, a.lng, a.radius_km, now()
+    );
+  });
+  if (rows.length) await env.DB.batch(rows);
+}
+
+/** One area, normalised. A radius is capped at 500km on purpose: a host who
+ *  claims the whole of Europe is not a local contact, and the value of this
+ *  feature is entirely that the host is actually there. */
+function areaLine(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lat = Number(raw.lat), lng = Number(raw.lng);
+  const city = clean(raw.city, 80);
+  if (!city && !(isFinite(lat) && isFinite(lng))) return null;
+  return {
+    city: city,
+    country: clean(raw.country, 60),
+    lat: isFinite(lat) && lat >= -90 && lat <= 90 ? lat : null,
+    lng: isFinite(lng) && lng >= -180 && lng <= 180 ? lng : null,
+    radius_km: Math.max(1, Math.min(500, Math.round(Number(raw.radius_km)) || 50)),
+  };
+}
+
+/* --------------------------------------------- GET /api/host/nearby  public
+ *
+ * Deliberately public and deliberately thin. Everything in the response could
+ * be printed on a business card the host chose to hand out. There is no email,
+ * no phone, no client count and no host id that unlocks anything on its own.
+ */
+async function hostNearby(req, env, url) {
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("nearby:" + ip, 30)) return J({ ok: false, error: "slow_down" }, 429);
+
+  const city = clean(url.searchParams.get("city"), 80);
+  const lat = Number(url.searchParams.get("lat"));
+  const lng = Number(url.searchParams.get("lng"));
+  const hasGeo = isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  if (!city && !hasGeo) return J({ ok: false, error: "need_city_or_coords" }, 400);
+
+  // Bounding box first, haversine second. One degree of latitude is ~111km, so
+  // a 5-degree box comfortably contains any 500km radius and lets the index do
+  // the work before we do arithmetic on anything.
+  const rows = hasGeo
+    ? await env.DB.prepare(
+        `SELECT a.city, a.country, a.lat, a.lng, a.radius_km,
+                h.id, h.name, h.company, h.blurb, h.services_json, h.currency
+           FROM num_host_areas a JOIN num_hosts h ON h.id = a.host_id
+          WHERE h.accepts_intros = 1 AND h.status = 'active'
+            AND h.tier IN ('pro','full')
+            AND a.lat BETWEEN ? AND ? AND a.lng BETWEEN ? AND ?
+          LIMIT 200`
+      ).bind(lat - 5, lat + 5, lng - 5, lng + 5).all()
+    : await env.DB.prepare(
+        `SELECT a.city, a.country, a.lat, a.lng, a.radius_km,
+                h.id, h.name, h.company, h.blurb, h.services_json, h.currency
+           FROM num_host_areas a JOIN num_hosts h ON h.id = a.host_id
+          WHERE h.accepts_intros = 1 AND h.status = 'active'
+            AND h.tier IN ('pro','full') AND lower(a.city) = ?
+          LIMIT 200`
+      ).bind(lc(city)).all();
+
+  const seen = {};
+  const out = [];
+  for (const r of ((rows && rows.results) || [])) {
+    const d = (hasGeo && r.lat != null && r.lng != null) ? kmBetween(lat, lng, r.lat, r.lng) : null;
+    // The host's own radius is the filter. They said how far they work; we do
+    // not stretch it because there was nobody closer.
+    if (d !== null && d > r.radius_km) continue;
+    if (seen[r.id]) continue;
+    seen[r.id] = 1;
+    out.push({
+      host_id: r.id,
+      // First name and a last initial. Enough to be a person, not enough to be
+      // looked up and contacted around us before either side has agreed.
+      name: String(r.name || "").split(/\s+/)[0] +
+            (String(r.name || "").split(/\s+/)[1] ? " " + String(r.name).split(/\s+/)[1][0] + "." : ""),
+      company: r.company || "",
+      blurb: r.blurb || "",
+      city: r.city || "",
+      country: r.country || "",
+      distance_km: d,
+      services: JSON.parse(r.services_json || "[]"),
+    });
+  }
+  out.sort(function (a, z) {
+    if (a.distance_km === null) return 1;
+    if (z.distance_km === null) return -1;
+    return a.distance_km - z.distance_km;
+  });
+
+  return J({
+    ok: true,
+    hosts: out.slice(0, 10),
+    // The honest framing, returned with the data so no surface can quietly
+    // reword it into a requirement.
+    note: out.length
+      ? "These hosts take introductions. Nothing is shared with them until you ask."
+      : "No VIP host near you yet. NUM will book this for you directly.",
+    optional: true,
+  });
+}
+
+/* -------------------------------------------- POST /api/host/intro  public
+ *
+ * The member asking. This creates the offer AND a paused client row holding
+ * the member's details, so that the details live in exactly one place — the
+ * host's own book, switched off — instead of being copied into an offers
+ * table that would then hold personal data belonging to a relationship that
+ * may never start. If the host declines, that row is deleted outright.
+ */
+async function hostIntro(req, env, ctx) {
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("intro:" + ip, 5)) return J({ ok: false, error: "slow_down" }, 429);
+
+  let b;
+  try { b = await readJSON(req, 16384); } catch (e) { return J({ ok: false }, 400); }
+
+  const hostId = clean(b.host_id, 40);
+  const name = clean(b.name, 120);
+  const email = String(b.email || "").trim();
+  if (!hostId || !name) return J({ ok: false, error: "missing" }, 400);
+  if (!okEmail(email)) return J({ ok: false, error: "bad_email" }, 400);
+  // The member's own yes. This is the one consent in the whole system that the
+  // person themselves gives about themselves, and it is not inferable from the
+  // fact that they filled in a form.
+  if (b.share_ok !== true) return J({ ok: false, error: "consent_required" }, 400);
+
+  const host = await env.DB.prepare(
+    "SELECT id,name,email,accepts_intros,status,tier FROM num_hosts WHERE id = ? AND accepts_intros = 1 AND status = 'active'"
+  ).bind(hostId).first();
+  if (!host) return J({ ok: false, error: "host_unavailable" }, 404);
+  // Checked again here, not only in the listing. A host who downgraded between
+  // the member seeing them and the member tapping must not receive someone
+  // they can no longer take.
+  if (!hostCan(host.tier, "intros")) return J({ ok: false, error: "host_unavailable" }, 404);
+
+  const supp = await env.DB.prepare("SELECT 1 AS x FROM num_suppressions WHERE lower(email) = ?")
+    .bind(lc(email)).first().catch(function () { return null; });
+  if (supp) return J({ ok: false, error: "suppressed" }, 409);
+
+  // No capacity check: no tier caps clients, so there is no "full" host to
+  // protect a member from. A host who does not want more people switches
+  // accepts_intros off — a decision they make, not one their invoice makes
+  // for them.
+  const memberId = "m_" + token(10);
+  const clientId = "hc_" + token(10);
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO num_host_clients
+           (id,host_id,name,email,email_lc,home_city,source,consent_basis,consent_text,
+            status,member_id,member_token,created_at)
+         VALUES (?,?,?,?,?,?,'num_offer','member_asked',?,'paused',?,?,?)`
+      ).bind(
+        clientId, host.id, name, email, lc(email), clean(b.city, 80),
+        "Member asked NUM to introduce them to this host and agreed to share their name and email. " +
+        "Asked on " + now() + ".",
+        // member_id is written HERE, at the only moment we know a NUM member
+        // and a host client are the same person. Nothing populated it before,
+        // which meant worker/servicefee.mjs answered "no host" for everyone
+        // and every hosted client would have been charged the £5 we promised
+        // them they would never pay.
+        memberId, token(20), now()
+      ),
+      env.DB.prepare(
+        `INSERT INTO num_host_offers
+           (id,member_id,host_id,city,distance_km,member_said,host_said,client_id,created_at,expires_at)
+         VALUES (?,?,?,?,?, 'yes','pending', ?,?,?)`
+      ).bind(
+        "ho_" + token(10), memberId, host.id, clean(b.city, 80),
+        isFinite(Number(b.distance_km)) ? Number(b.distance_km) : null,
+        clientId, now(),
+        new Date(Date.now() + 14 * 864e5).toISOString().replace("T", " ").slice(0, 19)
+      ),
+    ]);
+  } catch (e) {
+    return J({ ok: false, error: "already_asked" }, 409);
+  }
+
+  // The host hears about it. The member's email is NOT in this message — the
+  // host sees who and where, and gets the rest only once they accept.
+  if (host.email) {
+    ctx.waitUntil(sendBatch(env, [{
+      __idem: "hostintro-" + clientId,
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      to: [host.email],
+      replyTo: ["info@itsnum.com"],
+      subject: "A NUM member near you is asking for a host",
+      text:
+`${host.name},
+
+${name.split(/\s+/)[0]}${b.city ? ", in " + clean(b.city, 80) + "," : ""} is a NUM member with no VIP host, and has asked to be introduced to you.
+
+They have agreed to share their name and email with you. We have not sent them anything of yours, and we will not until you say yes.
+
+Open your console and accept or decline:
+${(env.SITE || "https://itsnum.com")}/host/
+
+If you decline, their details are deleted and they are never offered to you again. NUM books their travel directly, as it already does.
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}`,
+      tags: [{ name: "kind", value: "host_intro" }],
+    }]));
+  }
+
+  return J({
+    ok: true,
+    asked: true,
+    note: "We have asked " + String(host.name || "").split(/\s+/)[0] +
+          ". Nothing of yours has been sent to them yet, and NUM will book your travel either way.",
+  });
+}
+
+/* ------------------------------------------------- /api/host/intros  R/W
+ * The host's side of the same thing. */
+async function hostIntros(req, env, url, ctx) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const list = async () => {
+    const [rows, plan, me] = await Promise.all([
+      env.DB.prepare(
+        `SELECT o.id,o.city,o.distance_km,o.host_said,o.created_at,o.expires_at,
+                c.name AS client_name, c.home_city
+           FROM num_host_offers o LEFT JOIN num_host_clients c ON c.id = o.client_id
+          WHERE o.host_id = ? AND o.host_said = 'pending' AND o.member_said = 'yes'
+          ORDER BY o.created_at DESC LIMIT 100`
+      ).bind(host.id).all(),
+      hostPlan(env, host.id),
+      env.DB.prepare("SELECT accepts_intros FROM num_hosts WHERE id = ?").bind(host.id).first(),
+    ]);
+    return J({
+      ok: true,
+      accepts_intros: !!(me && me.accepts_intros),
+      // First name only until they accept. The host is deciding whether to take
+      // a person, not being handed one to look up first.
+      intros: ((rows && rows.results) || []).map(function (o) {
+        return {
+          id: o.id,
+          who: String(o.client_name || "").split(/\s+/)[0],
+          city: o.city || o.home_city || "",
+          distance_km: o.distance_km,
+          asked_at: o.created_at,
+          expires_at: o.expires_at,
+        };
+      }),
+      plan: plan,
+    });
+  };
+
+  if (req.method === "GET") return list();
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  if (badOrigin(req)) return J({ ok: false }, 403);
+  if (host.status !== "active") return J({ ok: false, error: "host_not_active" }, 403);
+
+  const plan = await hostPlan(env, host.id);
+  if (!hostCan(plan.tier, "intros")) return needsTier("intros");
+
+  let b;
+  try { b = await readJSON(req, 16384); } catch (e) { return J({ ok: false, error: "bad_body" }, 400); }
+  const action = String(b.action || "");
+
+  if (action === "switch") {
+    const on = (b.accepts_intros === true || b.accepts_intros === 1) ? 1 : 0;
+    await env.DB.prepare("UPDATE num_hosts SET accepts_intros = ?, updated_at = ? WHERE id = ?")
+      .bind(on, now(), host.id).run();
+    return list();
+  }
+
+  const id = clean(b.id, 40);
+  if (!id) return J({ ok: false, error: "no_id" }, 400);
+  const offer = await env.DB.prepare(
+    "SELECT id, client_id, host_said FROM num_host_offers WHERE id = ? AND host_id = ? AND host_said = 'pending'"
+  ).bind(id, host.id).first();
+  if (!offer) return J({ ok: false, error: "not_found" }, 404);
+
+  if (action === "accept") {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE num_host_offers SET host_said = 'yes', decided_at = ? WHERE id = ?")
+        .bind(now(), offer.id),
+      // The paused row created when they asked becomes a real client. The
+      // details were never copied anywhere else, so there is nothing to move.
+      env.DB.prepare("UPDATE num_host_clients SET status = 'active', updated_at = ? WHERE id = ? AND host_id = ?")
+        .bind(now(), offer.client_id, host.id),
+    ]);
+    return list();
+  }
+
+  if (action === "decline") {
+    // Declined means gone. The offer keeps its row so we never ask this host
+    // about this person again; the personal details do not survive a no.
+    await env.DB.batch([
+      env.DB.prepare("UPDATE num_host_offers SET host_said = 'no', decided_at = ?, client_id = NULL WHERE id = ?")
+        .bind(now(), offer.id),
+      env.DB.prepare("DELETE FROM num_host_clients WHERE id = ? AND host_id = ?")
+        .bind(offer.client_id, host.id),
+    ]);
+    return list();
+  }
+
+  return J({ ok: false, error: "bad_action" }, 400);
 }
 
 /* ----------------------------------------------- /api/host/contacts  upload */

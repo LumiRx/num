@@ -81,3 +81,29 @@ test('the uptime probe is excluded from the tables we decide from', () => {
   assert.match(probe, /url: 'https:\/\/app\.itsnum\.com\/api\/num'/,
     'the probe no longer exercises the real model path — that is the only reason it exists');
 });
+
+// ── THE SECOND ROBOT ─────────────────────────────────────────────────────
+//
+// The uptime probe was taught to identify itself on 15 Aug 2026, after one
+// string turned out to be 65% of every question Num had ever been asked. The
+// MCP integrity monitor then did the same thing through a different door:
+// concierge_answer runs the FULL guest pipeline, so its one question landed
+// in num_asks as a traveller's. 12 of the 30 real asks recorded between 31
+// Aug and 3 Sep 2026 were that robot — on the most-used lane, inside every
+// funnel number we look at.
+test('the MCP integrity monitor names itself as a probe', () => {
+  const integrity = readFileSync(new URL('../scripts/mcp-integrity.mjs', import.meta.url), 'utf8');
+  assert.match(integrity, /'X-Num-Probe': '1'/,
+    'the integrity monitor is asking as a guest again and polluting the analytics tables');
+});
+
+test('concierge_answer forwards a probe header but never invents one', () => {
+  const mcp = readFileSync(new URL('./partnermcp.mjs', import.meta.url), 'utf8');
+  assert.match(mcp, /request\.headers\.get\('X-Num-Probe'\) === '1'/,
+    'the monitor header is dropped at the MCP surface, so /api/num cannot tell the robot from a traveller');
+  // Partner traffic is a real person asking through somebody else's app. If
+  // this tool marked everything a probe, every partner ask would vanish from
+  // the numbers — the same damage in the other direction.
+  assert.equal(/headers:\s*\{[^}]*'X-Num-Probe':\s*'1',/.test(mcp), false,
+    'concierge_answer marks every call a probe — real partner asks would stop being counted');
+});

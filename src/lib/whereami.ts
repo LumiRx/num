@@ -19,6 +19,15 @@ import { store } from './store';
 
 let askedThisSession = false;
 
+/**
+ * How long anything is willing to wait for the device to answer.
+ *
+ * Longer than getCurrentPosition's own 8s timeout so a slow-but-working fix
+ * still lands, short enough that a guest who is ignoring a permission dialog
+ * gets their answer instead of a frozen app.
+ */
+const HARD_TIMEOUT_MS = 10_000;
+
 /** Has the browser already granted location, without prompting to find out? */
 export async function locationGranted(): Promise<boolean> {
   try {
@@ -32,21 +41,50 @@ export async function locationGranted(): Promise<boolean> {
 }
 
 /**
- * Ask the device where we are. Resolves to a coordinate or null; never throws
- * and never blocks the UI. `silent` only proceeds if permission already
- * exists, so a page load can refresh a known position without a prompt.
+ * Ask the device where we are. Resolves to a coordinate or null; never
+ * throws, and ALWAYS settles — see the deadline below for why that sentence
+ * used to be false. `silent` only proceeds if permission already exists, so a
+ * page load can refresh a known position without a prompt.
  */
 export async function fixPosition(silent = false): Promise<{ lat: number; lng: number } | null> {
   if (!('geolocation' in navigator)) return null;
   if (silent && !(await locationGranted())) return null;
 
   return new Promise((resolve) => {
-    const done = (v: { lat: number; lng: number } | null) => resolve(v);
+    // ── THE DEADLINE IS NOT OPTIONAL ────────────────────────────────────
+    //
+    // `getCurrentPosition`'s own `timeout` option does NOT cover the
+    // permission prompt. While iOS is showing "Allow Num to use your
+    // location?", the clock is not running — so a guest who ignores that
+    // dialog, or a WebView where the prompt never appears at all, leaves this
+    // promise pending FOREVER. Neither callback is ever invoked.
+    //
+    // That is not theoretical. `askNum` awaited this before echoing the
+    // guest's message, so a typed question containing the word "dinner"
+    // vanished out of the composer and never reached the thread, the server,
+    // or the log. The starter chips appeared to work only because their
+    // wording dodged the trigger.
+    //
+    // So: whatever the platform does, this settles. A recommendation without
+    // a precise fix is a good answer; a question that disappears is not.
+    let settled = false;
+    const done = (v: { lat: number; lng: number } | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      resolve(v);
+    };
+    const deadline = setTimeout(() => done(null), HARD_TIMEOUT_MS);
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const at = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5) };
         // Held in app state and sent with the next question, so the concierge
         // grounds on a real fix instead of the edge's IP guess.
+        //
+        // Written even if the deadline already fired: a fix that arrives late
+        // is still true, and it makes the NEXT question better. `done` is the
+        // idempotent part, not this.
         store.set({ here: at });
         done(at);
       },

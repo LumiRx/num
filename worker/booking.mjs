@@ -325,6 +325,82 @@ export const PLATFORMS = {
     pattern: /([\w-]+)\.roomraccoon\.co(?:m|\.uk)/i,
     link: (ref) => `https://${ref}.roomraccoon.com`,
   },
+
+  /* ── THE CHAINS ────────────────────────────────────────────────────────
+   *
+   * Everything above is an independent hotel's own engine. These three are
+   * the big brands' own booking sites, and they behave differently in one
+   * way that matters: a chain property is identified by a SHORT CODE that
+   * appears in both its marketing URL and its booking URL.
+   *
+   *   Hilton    ednchqq   hilton.com/en/hotels/ednchqq-…       ctyhocn=
+   *   Marriott  edilg     marriott.com/en-gb/hotels/edilg-…    propertyCode=
+   *   IHG       edigs     ihg.com/…/edigs/hoteldetail          hotelCode=
+   *
+   * That is what makes them worth adding: the code is already sitting in
+   * `places.website` on rows the directory has had all along, so a scrape
+   * that has already run can name the property exactly. No guessing from a
+   * hotel name, which is the failure mode that puts a guest at the wrong
+   * Sheraton.
+   *
+   * NONE OF THE THREE PREFILLS DATES, deliberately. Each of these engines
+   * answers HTTP 200 to any query string it does not recognise, so an
+   * invented `checkInDate` yields a page that opens cleanly on TODAY while
+   * the traveller believes they are looking at their weekend — a failure
+   * nobody sees until someone arrives at a hotel with no room. Omitting
+   * `dates` makes `bookingLink().dated` report false, which is what stops
+   * NUM saying "dates already filled in" over a link that has none. If the
+   * chains' date parameters are ever read off a live page, they can be added
+   * then and not before.
+   *
+   * The deep-link ENDPOINTS below came from a partner's list rather than
+   * from a page NUM has opened itself. They are the same forms the brands
+   * publish, and the property codes in them are confirmed against
+   * `places.website` — but the endpoint shape is second-hand, so a link that
+   * ever stops resolving should be checked here first.
+   */
+
+  hilton: {
+    // Same label as every independent engine above, and for the same reason:
+    // the label is what a guest READS, and its job is to say the reservation
+    // lands with the hotel rather than an OTA. hilton.com is the hotel's own
+    // site — no OTA commission, no third party holding the booking — so the
+    // sentence is true here too. The brand is not hidden; it travels as
+    // `booking.platform` in the API response, where a caller can use it
+    // without a guest being told they are booking somewhere they are not.
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Either the booking deep link (ctyhocn=) or the property page path.
+    pattern: /hilton\.com\/[^"'\s]*?(?:ctyhocn=([A-Za-z0-9]{5,8})|\/hotels\/([a-z0-9]{5,8})-)/i,
+    link: (ref) =>
+      `https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=${String(ref).toUpperCase()}`,
+  },
+
+  marriott: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Three live shapes, all seen in the directory today:
+    //   /reservation/availability.mi?propertyCode=edilg
+    //   /en-gb/hotels/edilg-the-edinburgh-grand-…/overview/
+    //   /hotels/travel/EDISI            ← older form, ends at the code
+    // The lookahead is what lets the last one match without a trailing
+    // character to anchor on.
+    pattern: /marriott\.com\/[^"'\s]*?(?:propertyCode=([A-Za-z0-9]{5,7})|hotels\/(?:travel\/)?([A-Za-z0-9]{5,7})(?=[-/?#]|$))/i,
+    link: (ref) =>
+      `https://www.marriott.com/reservation/availability.mi?propertyCode=${String(ref).toLowerCase()}`,
+  },
+
+  ihg: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // IHG puts the code in the path segment before /hoteldetail, across every
+    // brand: intercontinental/…/edigs/hoteldetail, kimptonhotels/…/edics/…
+    pattern: /ihg\.com\/[^"'\s]*?(?:hotelCode=([A-Za-z0-9]{5,7})|\/([a-z0-9]{5,7})\/hoteldetail)/i,
+    link: (ref) => `https://www.ihg.com/redirect?hotelCode=${String(ref).toUpperCase()}`,
+  },
 };
 
 /** The engines whose date parameters have been confirmed on a live page. */

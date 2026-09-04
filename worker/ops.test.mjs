@@ -155,3 +155,65 @@ test('a post-login failure is never reported as a login failure', () => {
   assert.match(page, /dashboard data failed to load \(HTTP/, 'the overview error hides its status and body again');
   assert.match(page, /the dashboard failed to draw/, 'a render crash is reported as a login failure again');
 });
+
+// ── the sign-in that accepted the password and said nothing ──────────────
+//
+// From 8 Aug to 31 Aug the login log recorded pairs of ACCEPTED admin keys
+// seconds apart — 21:52:22 ok, 21:52:35 ok — on every date anyone tried. The
+// password was never wrong. The session was rejected afterwards, and the gate
+// redrew itself with an EMPTY error, because the fragment collector rewrote
+// the address bar to a bare '/ops/' before boot() ran and so erased the
+// `?in=1` marker that told boot() a sign-in had just happened. Without it
+// every failure took the "first visit, show no error" branch. A form that
+// silently redisplays itself is indistinguishable from one that did nothing,
+// so the key got typed again — hence the pairs.
+
+test('the fragment collector keeps the query string it needs later', () => {
+  const collector = script.slice(script.indexOf("location.hash.slice(1)"));
+  const upToClose = collector.slice(0, collector.indexOf('\n}'));
+  assert.ok(
+    !/replaceState\([^)]*['"]\/ops\/['"]\s*\)/.test(upToClose),
+    'the collector rewrites the URL to a bare /ops/, erasing ?in=1 — boot() can then no longer tell a failed sign-in from a first visit, and shows no error at all',
+  );
+  assert.ok(
+    upToClose.includes('location.search'),
+    'the collector must preserve location.search when it strips the token',
+  );
+});
+
+test('a rejected fresh session is always explained, never silent', () => {
+  const catchBlock = script.slice(script.indexOf('const fresh401'));
+  const branch = catchBlock.slice(0, catchBlock.indexOf('} else {'));
+  assert.ok(
+    branch.includes('/api/admin/why'),
+    'a session rejected seconds after a correct password must be diagnosed against /api/admin/why, not guessed at',
+  );
+});
+
+// ── the server must not hand out a session it cannot verify ──────────────
+test('adminLogin verifies its own minted token before redirecting', () => {
+  const fn = console_.slice(console_.indexOf('async function adminLogin'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.ok(
+    /sessionClaims\(env, token\)/.test(body),
+    'adminLogin must verify the token it mints; a session that is dead on arrival looks exactly like a wrong password from the browser',
+  );
+  assert.ok(body.includes("'?err=mint'"), 'a token that fails its own check needs its own error code');
+});
+
+test('/admin/why is reachable without being signed in', () => {
+  const why = console_.indexOf("path === '/admin/why'");
+  const guard = console_.indexOf('if (!(await isAdmin(env, request)))');
+  assert.ok(why > 0, '/admin/why is not routed');
+  assert.ok(why < guard, '/admin/why sits behind the auth guard it exists to explain');
+});
+
+test('the diagnostic grades a token without echoing it', () => {
+  const fn = console_.slice(console_.indexOf('export async function gradeSession'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  for (const verdict of ['absent', 'malformed', 'bad-signature', 'expired', 'ok']) {
+    assert.ok(body.includes(`'${verdict}'`), `gradeSession never reports "${verdict}"`);
+  }
+  assert.ok(!/return\s+t\b/.test(body), 'gradeSession must never return the token itself');
+  assert.ok(!/ADMIN_KEY/.test(body), 'gradeSession must not touch ADMIN_KEY directly');
+});

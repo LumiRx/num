@@ -11,6 +11,7 @@
 // colour. A monitor that says "degraded" and stops has moved the problem, not
 // solved it.
 import { senderParams } from './twiliosender.mjs';
+import { NOT_PROBE } from './asks.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -132,7 +133,7 @@ function checkSms(env) {
     return { ok: true, warn: 'TWILIO_FROM is set but TWILIO_MESSAGING_SERVICE_SID is not, so US-destined texts go out as a bare number and carriers reject them with 30034 even when the A2P campaign is approved. Set the Messaging Service SID (MG…) that carries the campaign, and confirm the number is in that service\'s sender pool.' };
   }
   if (svc && !/^MG[0-9a-f]{32}$/i.test(svc)) {
-    return { ok: false, remedy: `TWILIO_MESSAGING_SERVICE_SID is set to something that is not a Messaging Service SID (expected MG + 32 hex, got ${svc.slice(0, 4)}…). An account SID starts AC, a campaign CM, a brand BN — check which one was pasted. Every send is falling back to the bare number.` };
+    return { ok: false, remedy: `TWILIO_MESSAGING_SERVICE_SID is set to something that is not a Messaging Service SID (expected MG + 32 hex, got ${svc.slice(0, 4)}…). An account SID starts AC, a campaign CM, a brand BN — check which one was pasted. Every send is falling back to the bare number. GET /api/admin/twilio (X-Admin-Key) asks Twilio which service carries the approved campaign AND holds our number, and prints the exact command to set it.` };
   }
   return { ok: true };
 }
@@ -144,18 +145,28 @@ function checkSms(env) {
  */
 async function checkStorage(env) {
   try {
-    const r = await env.DB.prepare('SELECT COUNT(*) n FROM places').first();
-    const places = Number(r?.n ?? 0);
-    if (places > 4_000_000) {
+    // Ask D1 how big it is instead of counting the directory. The previous
+    // version ran `SELECT COUNT(*) FROM places` — a full scan of ~2.69M rows —
+    // every five minutes: ~774M rows read per day, about $23/month, to guard a
+    // storage bill of roughly a dollar. D1 reports its own size on every
+    // statement's `meta.size_after`, so a one-row query answers the real
+    // question (distance to the cap) for free. The cap that caused the 2-day
+    // read-only outage is a byte limit, not a row count.
+    const probe = await env.DB.prepare('SELECT 1').run();
+    const bytes = Number(probe?.meta?.size_after ?? 0);
+    const CAP_BYTES = 10 * 1024 ** 3; // D1 paid-plan per-database limit
+    const WARN_BYTES = 6 * 1024 ** 3;  // ample runway to move the directory out
+    if (bytes > WARN_BYTES) {
       return {
         ok: false,
-        places,
-        remedy: 'The places directory is past 4M rows and heading for the cap that caused the 2-day write outage. Pause any ingest and move the directory to its own database (num-core).',
+        bytes,
+        capBytes: CAP_BYTES,
+        remedy: `Database is ${(bytes / 1024 ** 3).toFixed(2)} GB of a ${CAP_BYTES / 1024 ** 3} GB cap. Pause any ingest and move the places directory to its own database (num-core) before the cap makes the product read-only again.`,
       };
     }
-    return { ok: true, places };
+    return { ok: true, bytes, capBytes: CAP_BYTES };
   } catch {
-    return { ok: true, places: null }; // absence of the table is not an outage
+    return { ok: true, bytes: null }; // an unreadable size is not an outage
   }
 }
 
@@ -170,19 +181,135 @@ async function checkBrains(env) {
     const { results } = await env.DB.prepare(
       'SELECT brain, fails, class, last_error, cooldown_until FROM num_brain_state WHERE class IS NOT NULL AND cooldown_until > ?1 ORDER BY cooldown_until DESC',
     ).bind(Math.floor(Date.now() / 1000)).all().catch(() => ({ results: null }));
-    const down = (results ?? []).filter((r) => String(r.class).toLowerCase() === 'quota' || String(r.class).toLowerCase() === 'auth');
+    // WHAT COUNTS AS "SOMEBODY HAS TO DO SOMETHING".
+    //
+    // quota and auth need a human and never heal on their own. `blocked` — an
+    // edge or WAF refusal in front of the vendor — normally heals in seconds,
+    // so a single one is noise and must NOT raise the same alarm; that
+    // conflation on 31 Aug 2026 printed "mint a new key" for a key that was
+    // working. But a block that keeps coming back is no longer weather, so it
+    // joins the list once it has failed three times in a row.
+    const needsHuman = (r) => {
+      const cls = String(r.class).toLowerCase();
+      return cls === 'quota' || cls === 'auth' || (cls === 'blocked' && Number(r.fails) >= 3);
+    };
+    const down = (results ?? []).filter(needsHuman);
     const cooling = (results ?? []).filter((r) => !down.includes(r));
     if (down.length) {
       const names = down.map((r) => `${r.brain} (${r.class}${r.last_error ? ': ' + String(r.last_error).slice(0, 80) : ''})`).join('; ');
       return {
         ok: false,
         down,
-        remedy: `${down.length} brain(s) are standing down with quota or auth failures: ${names}. `
-          + 'Quota: check the vendor balance and top up. Auth: mint a new key and `wrangler versions secret put`.',
+        // The remedy names the class it is talking about. The old one offered
+        // every fix at once — "top up, or mint a new key" — which is how a
+        // 403 from an upstream edge became an instruction to rotate a
+        // credential that had nothing wrong with it.
+        remedy: `${down.length} brain(s) are standing down: ${names}. `
+          + 'Quota: check the vendor balance and top up. '
+          + 'Auth: the vendor rejected the credential itself — mint a new key and `wrangler versions secret put`. '
+          + 'Blocked: something IN FRONT of the vendor API refused us (edge, WAF, region). The key is not the problem; '
+          + 'check vendor status and whether the calls are egressing from an unexpected region.',
       };
     }
     return { ok: true, cooling: cooling.map((r) => r.brain) };
   } catch {
+    return { ok: true };
+  }
+}
+
+/**
+ * IS ANYTHING BROKEN THAT NOBODY HAS BEEN TOLD ABOUT.
+ *
+ * The other checks on this page ask a dependency how it feels. This one asks
+ * whether the reporting itself is working — which on 3 Sep 2026 turned out to
+ * be the only question that mattered. The watchman had been recording four
+ * real failures for a month into a LINE channel that returned 404 on every
+ * send, and no dashboard anywhere showed a thing.
+ *
+ * OPEN AND UNTOLD is the failing condition, not merely OPEN. A failure that
+ * somebody has been told about is work in progress; a failure nobody knows
+ * about is the product deceiving its owners.
+ */
+async function checkFailures(env) {
+  try {
+    const { summary } = await import('./failures.mjs');
+    const s = await summary(env);
+    if (!s.open) return { ok: true, open: 0 };
+    if (!s.blind && !s.critical) {
+      // Known about, being handled. Reported, not alarming.
+      return { ok: true, open: s.open, high: s.high, worst: s.worst };
+    }
+    return {
+      ok: false,
+      ...s,
+      remedy: s.blind
+        ? `${s.open} open failure(s) and at least one that nobody was successfully told about. `
+          + 'Read GET /api/admin/failures. While this is true, every other check on this page is '
+          + 'unverified — the alarm channel is the thing to fix first, before the failures themselves.'
+        : `${s.critical} critical failure(s) open: ${s.worst.map((w) => `${w.kind} ${w.subject}`).join('; ')}. `
+          + 'GET /api/admin/failures for the detail.',
+    };
+  } catch (e) {
+    // A ledger that cannot be read is itself a reason to be suspicious, but it
+    // is not proof the product is down.
+    return { ok: true, error: String(e?.message ?? e).slice(0, 120) };
+  }
+}
+
+/**
+ * WHO IS ACTUALLY ANSWERING — the check that would have caught 3 Sep 2026.
+ *
+ * Every brain reported ready, /api/health said ok, and brains_state.cooling
+ * was empty, while the most-used lane on the dashboard read `moderate:none`
+ * with brain NULL on 12 of 41 asks. Nothing was down: the two corrective
+ * retries in /api/num rebuilt the result object and dropped `_brain` on the
+ * way through, so healthy answers filed themselves as though no brain had
+ * produced them (fixed in worker/routinglabel.mjs).
+ *
+ * It cost days, because every check we had was asking the brains how they
+ * felt rather than reading what they had signed. So this one reads the
+ * signatures: over the last day of real asks, how many arrived with nobody's
+ * name on them.
+ *
+ * A warning, never a page. `brain: null` on a live product means one of two
+ * things and both need a human eventually, neither this minute:
+ *   - the fallback line really is going out (a genuine, quiet degradation), or
+ *   - the attribution is lying again (a reporting bug wearing an outage's
+ *     clothes, which is the expensive one).
+ * Cached and small-lane rows are excluded — they never had a brain to lose.
+ */
+async function checkAttribution(env) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n, SUM(CASE WHEN brain IS NULL OR brain = '' THEN 1 ELSE 0 END) AS unattributed
+         FROM num_asks
+        WHERE ts > datetime('now', '-1 day')
+          AND cached = 0
+          AND (lane IS NULL OR lane NOT IN ('small', 'cache', 'rescue'))
+          AND ${NOT_PROBE}`,
+    ).first().catch(() => null);
+    const n = Number(row?.n ?? 0);
+    const orphan = Number(row?.unattributed ?? 0);
+    // Under ten asks a day, one odd row is 10% and means nothing. Silence is
+    // the honest answer on a sample that small.
+    if (n < 10) return { ok: true, asks: n };
+    const share = orphan / n;
+    if (share >= 0.2) {
+      return {
+        ok: false,
+        asks: n,
+        unattributed: orphan,
+        remedy:
+          `${orphan} of ${n} answers in the last day recorded no brain (${Math.round(share * 100)}%). `
+          + 'If the brains are otherwise healthy this is almost certainly ATTRIBUTION, not an outage: '
+          + 'something on the answer path is rebuilding the result and dropping `_brain` — see '
+          + 'worker/routinglabel.mjs, which exists because that exact bug read as "the brain is down" for days. '
+          + 'If brains_state also shows brains standing down, believe that one instead: the fallback line really is shipping.',
+      };
+    }
+    return { ok: true, asks: n, unattributed: orphan };
+  } catch {
+    // A missing column on an older table is not an outage.
     return { ok: true };
   }
 }
@@ -254,6 +381,37 @@ async function checkPublic(url, marker) {
 }
 
 /**
+ * "A real health run", as SQL.
+ *
+ * ── THE BUG THIS CLOSES ───────────────────────────────────────────────────
+ *
+ * `num_health` is not written only by the health cron. `mailer.selfTest()`
+ * also writes to it, using the `failing` column — which everywhere else holds
+ * a comma-separated list of FAILING CHECK NAMES — as a label: `mail:selftest`,
+ * with verdict `ok` and a plain-text detail.
+ *
+ * Found 2026-08-30 by reading /api/health during a sweep. It answered:
+ *
+ *     { "verdict": "ok", "failing": 1, "at": "2026-08-30 19:46:05" }
+ *
+ * Healthy, with one thing failing. Both halves came from the self-test row.
+ *
+ * Cosmetic on a good day. On a bad one it is the outage that gets missed:
+ *
+ *   - a self-test row landing AFTER a degraded run makes /api/health report
+ *     `ok`, so the monitor stops showing a live failure;
+ *   - `detail` on those rows is prose, not JSON, so `checks` parses to `{}`
+ *     and every per-check remedy vanishes from the endpoint;
+ *   - healthCron alerts on a CHANGE of verdict, so with `ok` rows interleaved
+ *     every five minutes a sustained outage flips ok -> degraded -> ok ->
+ *     degraded forever, and pages on every second tick.
+ *
+ * Both readers now ask for health runs specifically, rather than for whatever
+ * was written to this table last.
+ */
+const REAL_RUN = "verdict <> 'probe' AND (failing IS NULL OR failing NOT LIKE 'mail:%')";
+
+/**
  * The last verdict the cron actually observed, or null if it has never run.
  *
  * Staleness is surfaced, not swallowed: if the newest row is older than three
@@ -263,7 +421,7 @@ async function checkPublic(url, marker) {
 async function runHealthFromLastRun(env) {
   try {
     const row = await env.DB.prepare(
-      "SELECT at, verdict, failing, detail FROM num_health WHERE verdict <> 'probe' ORDER BY id DESC LIMIT 1",
+      `SELECT at, verdict, failing, detail FROM num_health WHERE ${REAL_RUN} ORDER BY id DESC LIMIT 1`,
     ).first();
     if (!row) return null;
     const ageMin = (Date.now() - new Date(row.at.replace(' ', 'T') + 'Z').getTime()) / 60000;
@@ -314,6 +472,8 @@ export async function runHealth(env) {
     d1_write: await checkWrite(env),
     brain: checkBrain(env),
     brains_state: await checkBrains(env),
+    attribution: await checkAttribution(env),
+    failures: await checkFailures(env),
     payments: checkPay(env),
     sms: checkSms(env),
     push: await checkPush(env),
@@ -325,7 +485,12 @@ export async function runHealth(env) {
   // a front door that will not open: on 4 Aug the site served an infinite
   // redirect for hours while every internal check stayed green, which is
   // precisely the case this severity exists to stop being quiet about.
-  const DOWN = ['d1_write', 'brain', 'site_public'];
+  // `failures` joins the DOWN list for one reason only, and it is the reason
+  // this whole ledger exists: it goes not-ok when something is broken AND
+  // nobody was successfully told. A product that is quietly broken while its
+  // alarms shout into a dead wire — 81 line_404 rows over a month — is down in
+  // every sense that matters, because nothing else it reports can be believed.
+  const DOWN = ['d1_write', 'brain', 'site_public', 'failures'];
   const verdict = failing.some((f) => DOWN.includes(f))
     ? 'down'
     : failing.length ? 'degraded' : 'ok';
@@ -339,7 +504,7 @@ export async function runHealth(env) {
  */
 export async function healthCron(env) {
   const out = await runHealth(env);
-  const prev = await env.DB?.prepare("SELECT verdict FROM num_health WHERE verdict <> 'probe' ORDER BY id DESC LIMIT 1")
+  const prev = await env.DB?.prepare(`SELECT verdict FROM num_health WHERE ${REAL_RUN} ORDER BY id DESC LIMIT 1`)
     .first().catch(() => null);
 
   await env.DB?.prepare('INSERT INTO num_health (verdict, failing, detail) VALUES (?1,?2,?3)')
@@ -362,13 +527,30 @@ export async function healthCron(env) {
 }
 
 /** Wherever the humans are. Silent if nothing is configured — never throws. */
-export async function alert(env, text) {
+export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
+  // WRITTEN DOWN BEFORE IT IS SENT.
+  //
+  // For a month the watchman reported four real failures into a dead LINE
+  // channel — 81 rows, every one line_404 — and nobody could see any of them,
+  // because the way you would find out was the broken thing. So the ledger
+  // comes first and is not conditional on any channel working. See
+  // worker/failures.mjs.
+  const { record, told: markTold } = await import('./failures.mjs');
+  await record(env, {
+    kind, subject: subject || text.slice(0, 100),
+    detail: text, severity: 'high',
+  });
+  // Did ANY channel take it. Not "did we try" — the four fire-and-forget
+  // catches below made trying and succeeding indistinguishable.
+  let carried = null;
+
   if (env.ALERT_WEBHOOK) {
-    await fetch(env.ALERT_WEBHOOK, {
+    const r = await fetch(env.ALERT_WEBHOOK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (r && r.ok) carried = carried || 'webhook';
   }
   // The quietest of the three senders, and the one it would hurt most to leave
   // behind: its whole job is to tell us something broke. If it keeps sending
@@ -383,7 +565,7 @@ export async function alert(env, text) {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({ To: env.ALERT_SMS_TO, ...smsSender, Body: text.slice(0, 320) }),
-    }).catch(() => {});
+    }).then((r) => { if (r && r.ok) carried = carried || 'sms'; }).catch(() => {});
   }
   // Resend email — the handoff mandates this path so an outage that runs 18
   // hours before a human notices (9-10 Aug, 11 Aug) is impossible again.
@@ -399,9 +581,63 @@ export async function alert(env, text) {
         subject: `Num ${text.slice(0, 50)}`,
         text,
       }),
-    }).catch(() => {});
+    }).then((r) => { if (r && r.ok) carried = carried || 'resend'; }).catch(() => {});
   }
-  console.warn('[health]', text);
+
+  // ── THE ALERTER WAS ITSELF UNREACHABLE ──────────────────────────────────
+  //
+  // On 30 Aug 2026 all three channels above were dead at once and nothing
+  // said so, which is the worst possible failure for this function: its only
+  // job is to be the thing that still works when other things do not.
+  //
+  //   ALERT_WEBHOOK   — not set
+  //   Twilio SMS      — A2P campaign unapproved, every send rejected 30034
+  //   Resend          — key returns 401 invalid; and this block reads
+  //                     RESEND_API_KEY while the rest of the codebase sets
+  //                     RESEND_KEY, so on most deployments it never ran at all
+  //
+  // So the mailer goes last and unconditionally: it owns transport fallback,
+  // and the Cloudflare binding reaches the account's verified addresses even
+  // when every credential is dead. An alert nobody receives is a log line
+  // with extra steps.
+  const to = env.ALERT_EMAIL_TO || env.ADMIN_EMAIL;
+  if (to) {
+    try {
+      const { send } = await import('./mailer.mjs');
+      const r = await send(env, {
+        to,
+        from: env.ALERT_EMAIL_FROM || 'Num <alerts@itsnum.com>',
+        subject: `Num alert — ${text.slice(0, 60)}`,
+        text: `${text}\n\n— Num, automatically. Reply and a person will see it.`,
+      });
+      if (r.ok) carried = carried || `mail:${r.via}`;
+      else console.error('[health] ALERT UNDELIVERABLE —', r.error);
+    } catch (e) {
+      console.error('[health] alert mailer threw', e?.message ?? e);
+    }
+  }
+
+  // ── THE STATE THAT OUTRANKS EVERY OTHER ─────────────────────────────────
+  //
+  // "Something is broken" is a degradation. "Something is broken AND we could
+  // not tell you" is an outage, because from that moment every green light on
+  // every other dashboard is an unverified claim. It is recorded as critical
+  // so /api/health carries it, and the uptime probe outside Cloudflare — the
+  // one reporting path with a month of proven delivery — reads that.
+  if (carried) {
+    await markTold(env, kind, subject || text.slice(0, 100), carried);
+  } else {
+    const { record: rec } = await import('./failures.mjs');
+    await rec(env, {
+      kind: 'alert_undelivered',
+      subject: 'no channel accepted an alert',
+      detail: `Nothing carried: "${text.slice(0, 200)}". Tried webhook / SMS / Resend / mailer. `
+        + 'While this is open, every other check on this page is unverified.',
+      severity: 'critical',
+    });
+  }
+  console.warn('[health]', text, carried ? `(via ${carried})` : '(UNDELIVERED)');
+  return { carried };
 }
 
 export async function handleHealth(request, env, path) {
@@ -418,7 +654,7 @@ export async function handleHealth(request, env, path) {
   if (path === '/history') {
     await ensure(env);
     const { results } = await env.DB.prepare(
-      "SELECT at, verdict, failing FROM num_health WHERE verdict <> 'probe' ORDER BY id DESC LIMIT 50",
+      `SELECT at, verdict, failing FROM num_health WHERE ${REAL_RUN} ORDER BY id DESC LIMIT 50`,
     ).all();
     return json({ history: results ?? [] });
   }

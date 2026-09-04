@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import Boundary from './components/app/Boundary';
 import { loadAnalytics } from './lib/analyticsLoader';
 import './styles/ds.css';
 import './styles/app.css';
@@ -11,9 +12,40 @@ import './styles/themes.css';
 // Measurement is injected, never blocking — see lib/analyticsLoader.ts.
 loadAnalytics();
 
+// ── A CRASH THAT NOBODY HEARS ────────────────────────────────────────────
+//
+// Boundary catches errors thrown while RENDERING. It cannot see a failed
+// promise, a broken event handler, or a script that died before React
+// mounted — and those blank a page just as effectively in an unfamiliar
+// webview. On 2 Sep 2026 the app went black inside Instagram and there was
+// no record anywhere of what threw, which is the part that made it a guess
+// rather than a fix.
+//
+// Reporting only. Never swallows, never changes behaviour, never throws:
+// an error handler that can itself fail is worse than none.
+for (const [type, read] of [
+  ['error', (e: unknown) => (e as ErrorEvent)?.message],
+  ['unhandledrejection', (e: unknown) => String((e as PromiseRejectionEvent)?.reason ?? '')],
+] as const) {
+  window.addEventListener(type, (e: Event) => {
+    try {
+      const g = (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag;
+      g?.('event', 'app_error', {
+        kind: type,
+        message: String(read(e) ?? '').slice(0, 200),
+        ua: String(navigator.userAgent || '').slice(0, 200),
+      });
+    } catch { /* never a second failure */ }
+  });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {/* Outside App on purpose: a boundary inside the tree it is protecting
+        cannot catch an error thrown while that tree is being created. */}
+    <Boundary>
+      <App />
+    </Boundary>
   </React.StrictMode>,
 );
 

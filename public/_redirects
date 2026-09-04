@@ -45,3 +45,11 @@
 /city             /destinations/   301
 /tab              /tabs/           301
 /num-tab          /tabs/           301
+
+# --- the ad landing path, on the wrong host ------------------------------------
+# The live Reddit campaign points at app.itsnum.com/install/ (a real page in the
+# app worker). itsnum.com/install has never existed here and answers 404 — so
+# any ad, post or printed link that drops the app. subdomain lands a paid click
+# on a dead page. Send it to the page that page was trying to be.
+/install          /ask/            301
+/install/         /ask/            301

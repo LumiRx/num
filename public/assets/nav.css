@@ -1,0 +1,70 @@
+/* ONE NAVIGATION, FOR THE WHOLE SITE — built 3 Sep 2026.
+ *
+ * Before this file, 41 of 78 pages had no navigation at all: every Taiwan
+ * destination page, /taipei/, /partners/, /referral/, /sms/, /claim/,
+ * /signin/. A visitor who arrived on one of them from search had no way to
+ * reach anything else on itsnum.com — the page was a cul-de-sac. The 37 that
+ * did have a nav carried four different versions of it, between 2 and 17
+ * links, so "the nav" was not one thing that could be changed.
+ *
+ * SELF-CONTAINED ON PURPOSE. Those 41 pages do not link assets/site.css —
+ * they carry their own inline styles. Reusing site.css's .nav would have meant
+ * either adding a whole design system to 41 pages that already have one (and
+ * inheriting every .wrap / .btn collision), or maintaining two navs that look
+ * alike until the day they don't. So this file owns everything the nav needs
+ * and every class is prefixed `nv-`, which collides with nothing.
+ *
+ * Values are copied from site.css's tokens rather than read from them, for the
+ * same reason: this must render identically on a page that has never heard of
+ * site.css. If the brand palette changes, both files change.
+ */
+.nv{position:sticky;top:0;z-index:60;background:rgba(246,250,249,.88);
+  -webkit-backdrop-filter:saturate(180%) blur(12px);backdrop-filter:saturate(180%) blur(12px);
+  border-bottom:1px solid #E7ECEE;
+  font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}
+.nv *{box-sizing:border-box}
+.nv a{text-decoration:none;color:inherit}
+.nv-bar{max-width:1140px;margin:0 auto;padding:0 24px;display:flex;align-items:center;
+  justify-content:space-between;gap:18px;height:66px}
+.nv-brand{display:flex;align-items:center;gap:10px;font-family:'Space Grotesk','Plus Jakarta Sans',sans-serif;
+  font-weight:700;font-size:20px;letter-spacing:-.02em;color:#0A1A24;flex:0 0 auto}
+.nv-dot{width:12px;height:12px;border-radius:50%;background:#0EA483;box-shadow:0 0 0 4px #E7F6F1}
+.nv-brand small{font-family:inherit;font-weight:600;font-size:10px;color:#586A74;letter-spacing:.13em;
+  text-transform:uppercase}
+
+.nv-links{display:flex;align-items:center;gap:22px;font-size:15px;font-weight:600;color:#586A74;
+  flex:1 1 auto;justify-content:center}
+.nv-links a{position:relative;transition:color .15s;white-space:nowrap}
+.nv-links a:hover{color:#0A1A24}
+.nv-links a[aria-current="page"]{color:#0A1A24}
+.nv-links a[aria-current="page"]::after{content:"";position:absolute;left:0;right:0;bottom:-23px;
+  height:2px;background:#0EA483;border-radius:2px}
+/* The audience break. Travellers to the left of it, partners to the right —
+   the one piece of structure in the row, and it encodes something true. */
+.nv-sep{width:1px;height:20px;background:#E7ECEE;flex:0 0 auto}
+
+.nv-end{display:flex;align-items:center;gap:16px;flex:0 0 auto}
+.nv-signin{font-size:15px;font-weight:600;color:#586A74;white-space:nowrap}
+.nv-signin:hover{color:#0A1A24}
+.nv-cta{background:#0EA483;color:#fff;border-radius:999px;padding:10px 18px;font-size:14px;
+  font-weight:700;white-space:nowrap;transition:background .15s}
+.nv-cta:hover{background:#0B7C63}
+
+.nv-burger{display:none;background:none;border:0;cursor:pointer;padding:8px;color:#0A1A24;
+  font-size:20px;line-height:1}
+.nv-menu{border-top:1px solid #E7ECEE;background:#fff;padding:6px 0 14px}
+.nv-menu a{display:block;padding:12px 24px;font-weight:600;color:#0A1A24;font-size:16px}
+.nv-menu a:active{background:#F1FBF8}
+.nv-group{margin:14px 0 2px;padding:0 24px;font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:#586A74}
+.nv-menu .nv-cta{display:inline-block;margin:10px 24px 2px;padding:11px 20px}
+
+/* 1040px, not 860: the row carries six links plus a button now, and between
+   those two widths the old breakpoint let it collide with the brand. */
+@media(max-width:1040px){
+  .nv-links{display:none}
+  .nv-burger{display:inline-flex}
+  .nv-signin{display:none}
+}
+@media(max-width:520px){ .nv-cta{padding:9px 14px;font-size:13px} .nv-bar{gap:10px} }
+@media(prefers-reduced-motion:reduce){ .nv *{transition:none!important} }

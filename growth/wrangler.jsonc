@@ -40,10 +40,13 @@
     // Requires itsnum.com verified in Resend (it is) AND exactly one DKIM key
     // at resend._domainkey.itsnum.com — two records at that name is ambiguous
     // and now lands on this campaign directly.
-    // mail.itsnum.com is the sending domain, live 31 Aug. Cloudflare only
-    // sends FROM a domain it holds — itsnum.com is not one, which is why
-    // every attempt read "could not find domain config of sending domain".
-    "MAIL_FROM": "NUM <hello@mail.itsnum.com>",
+    // itsnum.com, not mail.itsnum.com (changed 1 Sep): the subdomain publishes
+    // DMARC p=reject with no SPF and no DKIM, so everything it sent failed
+    // authentication by construction and landed in junk. See the long note in
+    // wrangler.app.jsonc. MAIL_CF_FROM keeps the Cloudflare fallback alive,
+    // since Cloudflare holds the subdomain and not the apex.
+    "MAIL_FROM": "NUM <hello@itsnum.com>",
+    "MAIL_CF_FROM": "NUM <hello@mail.itsnum.com>",
     "SEND_BUDGET": "40",
 
     // ── merchant-invite drain (invitecron.mjs) ─────────────────────────

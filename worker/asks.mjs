@@ -53,8 +53,39 @@ const MIGRATIONS = [
   // fallback into member_id: anything joining member_id to num_members must
   // keep meaning what it says.
   'ALTER TABLE num_asks ADD COLUMN anon_id TEXT',
+  // Added 4 Sep. Our own uptime and MCP-integrity probes ask a real question
+  // through the real model path on purpose — that is the only probe that
+  // measures what a guest experiences. But they were 277 of 451 rows (61%)
+  // and 46% of degraded=1, so "how is the concierge doing" was mostly
+  // "how is the probe doing". Marked at write time so every reader can
+  // exclude them with one predicate.
+  'ALTER TABLE num_asks ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0',
 ];
 let ready = false;
+
+/**
+ * The exact questions our probes ask. Kept here, next to the table they
+ * pollute, so a change to a probe script and a change to the filter are the
+ * same edit. scripts/uptime.mjs and scripts/mcp-integrity.mjs send these.
+ */
+export const PROBE_TEXTS = Object.freeze([
+  'my group needs dinner ideas in patong tonight',
+  "I'm in phuket. where should we eat tonight?",
+]);
+
+/** True for a question one of our own probes asked. Compared after scrubAsk(). */
+export function isProbeText(text) {
+  const t = String(text ?? '').trim().toLowerCase();
+  return PROBE_TEXTS.some((p) => p.toLowerCase() === t);
+}
+
+/**
+ * SQL predicate that excludes probe rows without depending on the
+ * `synthetic` column existing yet — the column is added lazily on the first
+ * write after deploy, and a reader that ran before that write would throw.
+ * Text matching is exact and needs no schema. Use as `WHERE ... AND ${NOT_PROBE}`.
+ */
+export const NOT_PROBE = `text NOT IN (${PROBE_TEXTS.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')})`;
 
 /** Emails, phones and long digit runs become placeholders, in place. */
 export function scrubAsk(text) {
@@ -92,7 +123,7 @@ export async function recordAsk(env, { text, category = null, dest = null, lane 
     // never per kind of question — which is the only number that tells the
     // router what to route where.
     const res = await env.DB.prepare(
-      'INSERT INTO num_asks (text, category, dest, lane, brain, degraded, cached, quality, member_id, anon_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)',
+      'INSERT INTO num_asks (text, category, dest, lane, brain, degraded, cached, quality, member_id, anon_id, synthetic) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)',
     ).bind(
       t, category, dest, lane, brain, degraded ? 1 : 0, cached ? 1 : 0,
       // '' means checked and clean; NULL means never checked at all.
@@ -101,6 +132,7 @@ export async function recordAsk(env, { text, category = null, dest = null, lane 
       // Shape-checked, not trusted: the client sends this, so a crafted
       // request must not be able to write arbitrary text into the table.
       /^a_[a-z0-9]{8,64}$/.test(String(anonId ?? '')) ? String(anonId) : null,
+      isProbeText(t) ? 1 : 0,
     ).run();
     return res?.meta?.last_row_id ?? null;
   } catch (e) {

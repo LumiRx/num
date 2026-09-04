@@ -321,16 +321,40 @@ async function accountDelete(env, req) {
     ]).catch(() => {});
   }
 
+  // Every table keyed by this member, verified against sqlite_master on
+  // 4 Sep 2026. Two entries in the previous list were wrong and failed
+  // silently on every deletion: `num_dm` (the table is `num_dms`) — so a
+  // deleted member's private messages survived deletion — and `num_prefs`,
+  // which does not exist. Nine personal tables were missing altogether
+  // (asks, usage, impressions, identity signals, sign-in events, facts,
+  // nudges, affiliate clicks, scouts).
+  //
+  // Deliberately KEPT: num_star_ledger, num_payments, num_cashouts,
+  // num_commissions, num_tab_settlements. Those are financial records; the
+  // account is gone but the money trail stays, as it must.
   const wipe = [
     'DELETE FROM num_plan_members WHERE member_id=?1',
     'DELETE FROM num_links WHERE a_id=?1 OR b_id=?1',
-    'DELETE FROM num_dm WHERE from_id=?1 OR to_id=?1',
+    'DELETE FROM num_dms WHERE from_id=?1 OR to_id=?1',
     'DELETE FROM num_push_subs WHERE member_id=?1',
     'DELETE FROM num_notifications WHERE member_id=?1',
-    'DELETE FROM num_prefs WHERE member_id=?1',
     'DELETE FROM num_inbox WHERE member_id=?1',
     'DELETE FROM num_star_balances WHERE member_id=?1',
     'DELETE FROM num_blocks WHERE member_id=?1 OR blocked_id=?1',
+    'DELETE FROM num_asks WHERE member_id=?1',
+    'DELETE FROM num_usage WHERE member_id=?1',
+    'DELETE FROM num_usage_counters WHERE member_id=?1',
+    'DELETE FROM num_place_impressions WHERE member_id=?1',
+    'DELETE FROM num_identity_signals WHERE member_id=?1',
+    'DELETE FROM num_signin_events WHERE member_id=?1',
+    'DELETE FROM num_member_facts WHERE member_id=?1',
+    'DELETE FROM num_nudges WHERE member_id=?1',
+    'DELETE FROM num_affiliate_clicks WHERE member_id=?1',
+    'DELETE FROM num_scouts WHERE member_id=?1',
+    'DELETE FROM num_memberships WHERE member_id=?1',
+    'DELETE FROM num_event_guests WHERE member_id=?1',
+    'DELETE FROM num_item_attendees WHERE member_id=?1',
+    'DELETE FROM num_tab_members WHERE member_id=?1',
     'DELETE FROM num_members WHERE id=?1',
   ];
   for (const sql of wipe) {

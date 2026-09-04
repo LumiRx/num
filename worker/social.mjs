@@ -15,13 +15,14 @@
 //   2. A plan is real before a reservation is. Items start as ideas, and the
 //      same row becomes the booking when it firms up, so nobody has to wait
 //      for a confirmation to start planning together.
-import { generateCode, hashCode, safeEqual, normalisePhone, uid, sendCode, verifyConfigured, verifySend, verifyCheck } from '../claim/verify.mjs';
+import { generateCode, hashCode, safeEqual, normalisePhone, normaliseMobile, uid, sendCode, verifyConfigured, verifySend, verifyCheck } from '../claim/verify.mjs';
 import { notify } from './push.mjs';
 import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
 import { markReferralEarned } from './referral.mjs';
 import { logSignin } from './signinlog.mjs';
+import { verifyAppleToken } from './appleauth.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
@@ -375,14 +376,26 @@ async function me(env, req) {
   const b = await readBody(req);
   const id = clip(b.id, 40) || uid('mem');
   const name = clip(b.name, 60);
-  const phone = normalisePhone(b.phone, regionOf(req));
+  const region = regionOf(req);
+  const phone = normaliseMobile(b.phone, region);
   // A number without a country code is unusable: it cannot be texted, it
   // cannot be matched against another member, and it silently becomes a
   // different number in another country. normalisePhone keeps the digits
   // either way, so without this check it SAVED and then failed at every
   // later step, which is far worse than refusing it here.
+  //
+  // `normaliseMobile`, not `normalisePhone`, since 2 Sep 2026: this number is
+  // about to be TEXTED. The first real campaign arrival who tried to sign in
+  // had `+44 991…` stored — a bare Indian-looking mobile with the UK code
+  // put on it because that is where he was standing. Twilio said 60200 and
+  // he never saw a code. The sentence below is written for him: it names
+  // the country we guessed, so he can see the guess and correct it.
   if (b.phone && (!phone || !phone.startsWith('+'))) {
-    return json({ error: 'That number needs its country code — start it with + (like +1, +44 or +66).', bad_phone: true }, 400);
+    const looksInternational = String(b.phone).trim().startsWith('+');
+    const guessed = region && !looksInternational
+      ? ` I read it as a ${region} number — if your phone is from somewhere else, start with its country code (like +91, +1 or +44).`
+      : ' Start it with + and your country code (like +1, +44 or +66).';
+    return json({ error: `That doesn’t look like a mobile number I can text.${guessed}`, bad_phone: true }, 400);
   }
   const dest = clip(b.dest, 80);
   const avatar = clip(b.avatar, 60000);
@@ -464,13 +477,49 @@ async function me(env, req) {
     // route. Genuine recovery is one extra step and unchanged in spirit:
     // POST /me → read the SMS → POST /verify { phone, code } → you are in.
     //
-    // A VERIFIED number was already shut and stays shut.
-    if (!holder.phone_verified) {
+    // ── A VERIFIED NUMBER USED TO BE SHUT, AND THAT WAS BACKWARDS ────────
+    //
+    // This branch read `if (!holder.phone_verified)`: an UNVERIFIED number
+    // could be recovered with a code, a VERIFIED one could not. It was
+    // written as anti-takeover hardening and it inverted the property it was
+    // protecting.
+    //
+    // An unverified number is a CLAIM — nobody has ever proved they hold it.
+    // A verified number is PROVEN — we know for a fact that an SMS to it
+    // reaches the person who owns the account. The second is the stronger
+    // case for allowing recovery, not the weaker one.
+    //
+    // What protects this branch was never the refusal. It is that the code
+    // goes to the number ALREADY ON FILE (never one the caller typed), and
+    // that `/me` releases no identity at all — the member id comes back only
+    // from `/verify`, only against that code. Refusing verified numbers added
+    // nothing on top of that; it only meant the more thoroughly somebody
+    // proved they owned their number, the more permanently they were locked
+    // out of it.
+    //
+    // The lived cost: verify your number, then change or wipe your phone, and
+    // Num answered "Sign in from the device that has it." That device is
+    // exactly the thing you no longer have — the single most common reason
+    // anybody needs to sign in again — and there was no other way in.
+    //
+    // Recovery now runs for any number on file. The real owner is still told
+    // either way: the code lands on their handset, which is the standard
+    // signal that somebody is trying to get into their account.
+    {
       // No write before proof. The old code wrote the CALLER's name onto the
       // account first, which defaced a stranger's profile even when the rest
       // of the branch failed.
-      const verification = await issueCode(env, holder.id, holder.phone);
-      if (!verification.sent) {
+      // THROTTLED, not skipped. A refusal here still means a code is in
+      // flight — one went out less than a minute ago — so the person belongs
+      // on the code screen, not on an error. Returning `sent: false` with the
+      // gate's own sentence keeps the contract this branch promises (a 202
+      // carrying `recovery: 'code_sent'`, never an id) while telling the truth
+      // about what just happened.
+      const refuse = await sendGate(env, holder.id);
+      const verification = refuse
+        ? { sent: false, throttled: true, note: refuse.error, retry_after_sec: refuse.retry_after_sec }
+        : await issueCode(env, holder.id, holder.phone);
+      if (!verification.sent && !refuse) {
         // Fail closed. We could not reach the owner, so we cannot tell them
         // this is happening, so we do not act on it. `flagCollision` above
         // already recorded the attempt either way.
@@ -490,15 +539,6 @@ async function me(env, req) {
       }, 202);
     }
 
-    return json(
-      {
-        error: holder.phone_verified
-          ? 'That number is already on Num. Sign in from the device that has it.'
-          : 'That number is already on an account. Open Num on the device you set it up on, or verify it to move it across.',
-        number_taken: true,
-      },
-      409,
-    );
   }
   if (existing) {
     // The name on a verified account is an identity claim, not a nickname: it
@@ -622,9 +662,19 @@ async function issueCode(env, id, phone) {
     await logSignin(env, { memberId: id, stage: 'send', outcome: 'ok', via: 'verify' });
     // Clear any legacy pending code so a stale one cannot be used to sign in
     // alongside the Verify one. Belt and braces during the cutover.
+    //
+    // `code_sid` KEEPS THE VERIFICATION SID (VE…). Verify has no
+    // StatusCallback: it answers `pending` and then never mentions the message
+    // again, so the only way to learn whether a phone actually buzzed is to go
+    // back and ASK, per verification, via the Attempts API. Storing the sid is
+    // what makes that possible — see worker/verifydiag.mjs. Without it, `ok`
+    // above means "Twilio accepted the request" and nothing more, which is
+    // exactly how a signup on 30 Aug 2026 recorded a successful send for a
+    // text that never existed.
+    await env.DB.prepare('ALTER TABLE num_members ADD COLUMN code_sid TEXT').run().catch(() => {});
     await env.DB.prepare(
-      'UPDATE num_members SET code_hash=NULL, code_salt=NULL, code_expires=NULL, attempts=0 WHERE id=?1',
-    ).bind(id).run().catch(() => {});
+      'UPDATE num_members SET code_hash=NULL, code_salt=NULL, code_expires=NULL, attempts=0, code_sid=?2 WHERE id=?1',
+    ).bind(id, v.sid ?? null).run().catch(() => {});
     return { sent: true, channel: 'sms', via: 'verify', expires_in_min: 10 };
   }
 
@@ -658,31 +708,147 @@ async function issueCode(env, id, phone) {
  * unthrottled endpoint is a way to spend our Twilio balance on someone else's
  * afternoon. A cooldown says "not yet" to a button masher without locking out
  * a person whose first text genuinely never came.
+ *
+ * ── THE COOLDOWN USED TO BE DEAD CODE ────────────────────────────────────
+ *
+ * It read the cooldown off `code_expires`, which only the Programmable
+ * Messaging path writes. On the Twilio Verify path — the one every sign-in
+ * has actually used since Verify was switched on — `issueCode` NULLs that
+ * column on purpose, because Verify owns the code and its expiry. So the
+ * whole block was skipped, and the rate limit that existed on paper did not
+ * exist in production: one held button was an unbounded row of paid messages
+ * until Twilio's own 60203 stopped it, at which point the person who genuinely
+ * never got a code was locked out for ten minutes by their own impatience.
+ *
+ * It now measures from `num_signin_events`, which BOTH paths write and which
+ * exists for exactly this reason — knowing what happened without inferring it
+ * from a side effect. Computed in SQL rather than JS: `datetime('now')` has no
+ * timezone marker, and `new Date('2026-08-30 22:15:04')` is parsed as local
+ * time by V8, so a machine that is not on UTC would silently mis-measure every
+ * cooldown it enforced.
  */
 const RESEND_COOLDOWN_SEC = 60;
 
+/**
+ * A ceiling as well as a cooldown. The cooldown alone permits 60 messages an
+ * hour to one number, which is a bill and a Fraud Guard trip rather than a
+ * person who needs help. Five is more than anybody legitimately needs and less
+ * than Twilio's own per-number limit, so we say "no" in our own words before
+ * Twilio says it in a 60203 nobody can read.
+ */
+const RESEND_MAX_PER_HOUR = 5;
+
+/**
+ * May we spend another text on this member right now?
+ *
+ * Shared by `/resend` and by the RECOVERY branch of `/me`, because both mint a
+ * code and only one of them was ever throttled. Recovery takes a bare phone
+ * number from an unauthenticated caller and sends a paid SMS to whoever owns
+ * it — so anybody holding a Num member's number could text them on a loop, at
+ * our expense, and the only thing that would eventually stop it was Twilio's
+ * own 60203, which then locks the real owner out for ten minutes. Capping the
+ * button while leaving that open would have been theatre.
+ *
+ * Returns null when clear, or the refusal to hand back. Never throws: a gate
+ * that fails open on a D1 hiccup is better than a sign-in that dies on one.
+ */
+async function sendGate(env, memberId) {
+  // ONLY SUCCESSFUL SENDS COOL ANYTHING DOWN.
+  //
+  // The first cut counted every `send` row whatever its outcome, which meant a
+  // send that FAILED — no provider, a 400 from Twilio, a number the carrier
+  // refuses — locked the person out for a minute and told them "a code is on
+  // its way". Nothing was on its way. That is the same lie this whole change
+  // exists to delete, rebuilt one layer up, and the takeover suite caught it
+  // within a minute of the gate being shared: its victims sign up with SMS
+  // deliberately broken, so every one of them was born throttled.
+  //
+  // It is also the right rule on cost, which is what the cap is for: a message
+  // that never left is a message nobody paid for.
+  const gate = await env.DB.prepare(
+    `SELECT
+       (SELECT strftime('%s','now') - strftime('%s', ts) FROM num_signin_events
+          WHERE member_id=?1 AND stage='send' AND outcome='ok' ORDER BY id DESC LIMIT 1) AS last_send_sec,
+       (SELECT COUNT(*) FROM num_signin_events
+          WHERE member_id=?1 AND stage='send' AND outcome='ok' AND ts > datetime('now','-1 hour')) AS sends_hour`,
+  ).bind(memberId).first().catch(() => null);
+
+  const sinceLast = Number(gate?.last_send_sec ?? Number.POSITIVE_INFINITY);
+  if (Number.isFinite(sinceLast) && sinceLast < RESEND_COOLDOWN_SEC) {
+    return {
+      error: 'A code is on its way — give it a moment before asking for another.',
+      retry_after_sec: Math.max(1, RESEND_COOLDOWN_SEC - sinceLast),
+    };
+  }
+  if (Number(gate?.sends_hour ?? 0) >= RESEND_MAX_PER_HOUR) {
+    return {
+      error: 'That\u2019s as many codes as I can send to one number in an hour. If none of them arrived, the problem is not the button — message us and we will sort it by hand.',
+      retry_after_sec: 3600,
+      capped: true,
+    };
+  }
+  return null;
+}
+
 async function resendCode(env, req) {
   const b = await readBody(req);
-  const row = await env.DB.prepare('SELECT id, phone, phone_verified, code_expires FROM num_members WHERE id=?1')
-    .bind(clip(b.id, 40) ?? '').first();
-  if (!row) return json({ error: 'unknown member' }, 404);
+
+  // TWO WAYS IN, because the people most likely to need a resend have no
+  // member id to send us. Recovery deliberately withholds it — `/me` answers
+  // 202 with no id and the id is released only by `/verify` against a code
+  // (SEC-001). So an id-only resend endpoint failed exactly the person staring
+  // at a code box that never filled.
+  //
+  // Resending by number is not a new exposure: it is precisely what `/me`
+  // already does, to the number ALREADY ON FILE, releasing nothing. Nobody
+  // learns anything from this endpoint they could not learn from that one.
+  const id = clip(b.id, 40);
+  const phone = id ? null : normalisePhone(b.phone, regionOf(req));
+  const row = id
+    ? await env.DB.prepare('SELECT id, phone, phone_verified, code_sid FROM num_members WHERE id=?1').bind(id).first()
+    : phone
+      ? await env.DB.prepare('SELECT id, phone, phone_verified, code_sid FROM num_members WHERE phone=?1').bind(phone).first()
+      : null;
+
+  // NO ENUMERATION ORACLE. A number that is not on file gets the same sentence
+  // as one that is cooling down — "not right now" — because a distinguishable
+  // 404 turns this endpoint into a free "is this person on Num" lookup for
+  // anybody with a phone book.
+  if (!row) {
+    return json({
+      error: 'I can’t send another code to that number right now. Check the digits, or start again from the top.',
+      retry_after_sec: RESEND_COOLDOWN_SEC,
+    }, 429);
+  }
   if (row.phone_verified) return json({ ok: true, already: true });
   if (!row.phone) return json({ error: 'no number on file' }, 400);
 
-  // A code minted less than the cooldown ago is still in flight. code_expires
-  // is CODE_TTL_MIN in the future at mint, so anything fresher than
-  // (TTL - cooldown) from now was issued within the cooldown window.
-  if (row.code_expires) {
-    const mintedMsAgo = CODE_TTL_MIN * 60_000 - (new Date(row.code_expires).getTime() - Date.now());
-    if (mintedMsAgo >= 0 && mintedMsAgo < RESEND_COOLDOWN_SEC * 1000) {
-      return json({
-        error: 'A code is on its way — give it a moment before asking for another.',
-        retry_after_sec: Math.ceil((RESEND_COOLDOWN_SEC * 1000 - mintedMsAgo) / 1000),
-      }, 429);
+  const refuse = await sendGate(env, row.id);
+  if (refuse) return json(refuse, 429);
+
+  // WHAT HAPPENED TO THE LAST ONE, before promising anything about the next.
+  //
+  // Verify reports carrier outcomes only on request, so a code that a carrier
+  // rejected leaves our side reading `ok`. Asking costs one GET and turns
+  // "I have sent another code" — which would be the second lie in a row — into
+  // the actual reason nothing arrived. Best-effort: a diagnostic that fails
+  // must never block the resend it was describing.
+  let previous = null;
+  if (String(row.code_sid ?? '').startsWith('VE')) {
+    try {
+      const { attemptsForVerification } = await import('./verifydiag.mjs');
+      const seen = await attemptsForVerification(env, row.code_sid);
+      const failed = (seen.attempts ?? []).find((a) => a.delivered === false);
+      if (failed) previous = { delivered: false, error_code: failed.error_code, hint: failed.hint };
+    } catch {
+      /* the diagnosis is a bonus; the resend is the job */
     }
   }
 
-  return json(await issueCode(env, row.id, row.phone));
+  const out = await issueCode(env, row.id, row.phone);
+  // Never echo the member id back: this endpoint is reachable with a phone
+  // number alone, and `issueCode` is shared with paths that already hold one.
+  return json({ ...out, previous });
 }
 
 async function verifyMe(env, req) {
@@ -750,7 +916,16 @@ async function verifyMe(env, req) {
     });
   }
 
-  if (row.phone_verified) return json({ ok: true, already: true });
+  // `already: true` carries NO identity — correct for a member who already
+  // holds their id and re-verified, useless to somebody signing in on a new
+  // device, who is here precisely to obtain one. Short-circuiting the PHONE
+  // path on `phone_verified` was the second half of the lockout: `/me` would
+  // send them a code and this line threw it away unread.
+  //
+  // On the phone path a verified number now falls through to the code check
+  // like any other. The identity is still released only against a correct
+  // code — that has not changed and must not.
+  if (row.phone_verified && !byPhone) return json({ ok: true, already: true });
 
   // TWILIO VERIFY holds the code when it is configured, so the check goes back
   // to Twilio rather than to a hash of ours. Only reached below the review
@@ -799,6 +974,19 @@ async function verifyMe(env, req) {
   markReferralEarned(env, row.id, 'phone_verified').catch(() => {});
   await env.DB.prepare('UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL WHERE id=?1')
     .bind(row.id).run();
+  // SIGNING UP MUST NOT COST THEM WHAT NUM ALREADY LEARNED.
+  //
+  // Everything noticed before this moment is filed against the device, because
+  // that is the only handle a first-time guest has. If it stayed there, the
+  // reward for verifying a phone would be a Num that suddenly knows less about
+  // you than it did a minute ago — and people notice that immediately. Fires
+  // once, here, and only fills blanks: the account is older and more trusted
+  // than the device, so an existing member fact always wins.
+  if (b.anon) {
+    import('./soulprofile.mjs')
+      .then((m) => m.mergeAnon(env, String(b.anon).slice(0, 64), row.id))
+      .catch(() => {});
+  }
   // The ID rides back ONLY on the recovery path, and only now that the code
   // has been presented. On the ordinary path the caller already had it, and
   // repeating it would make this response look like a way to obtain one.
@@ -1069,6 +1257,136 @@ async function pairRedeem(env, req) {
  * number nobody has ever sent a code to — which is exactly the badge people
  * would rely on when deciding whether to meet a stranger.
  */
+/**
+ * Sign in with Apple.
+ *
+ * ── WHY IT EXISTS ─────────────────────────────────────────────────────────
+ *
+ * App Review rejected 1.0(2) under guideline 4.8: the app offered "Continue
+ * with Google" (for 5arz identity linking) and no login service that limits
+ * collection to name and email, lets the user withhold a real email, and does
+ * not track for advertising. Sign in with Apple is Apple's own named example.
+ *
+ * It is also the first sign-in Num has had that does not depend on SMS. Of
+ * 129 members, 2 have ever completed phone verification.
+ *
+ * ── THE IDENTITY RULE ─────────────────────────────────────────────────────
+ *
+ * One Apple ID, one Num account, permanently — the same rule as 5arz linking
+ * and for the same reason: an identity that can fan out to many accounts is
+ * not an identity. `apple_sub` is the primary key, so the constraint is the
+ * database's, not a code path someone can forget to call.
+ *
+ * `sub` is what we key on, never the email: Apple's Private Relay addresses
+ * change, users can hide them entirely, and an account that moves when an
+ * email does is an account that can be stolen when one is reassigned.
+ */
+async function appleSignIn(env, req) {
+  await ensure(env);
+  const b = await readBody(req);
+
+  const token = clip(b.identity_token, 4096);
+  if (!token) return json({ error: 'Missing Apple identity token.' }, 400);
+
+  let claims;
+  try {
+    // Verified against Apple's published keys. NEVER decoded and believed —
+    // see appleauth.mjs; a client-supplied JWT is a claim until the signature
+    // says otherwise.
+    claims = await verifyAppleToken(token, {
+      audience: env.APPLE_BUNDLE_ID || undefined,
+    });
+  } catch (err) {
+    console.warn('[apple] rejected:', err?.message ?? err);
+    return json({ error: 'That Apple sign-in could not be verified.' }, 401);
+  }
+
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS num_apple_identities (
+       apple_sub  TEXT PRIMARY KEY,
+       member_id  TEXT NOT NULL,
+       email      TEXT,
+       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+     )`,
+  ).run();
+
+  const known = await env.DB.prepare(
+    'SELECT member_id FROM num_apple_identities WHERE apple_sub = ?1 LIMIT 1',
+  ).bind(claims.sub).first();
+
+  let memberId = known?.member_id ?? null;
+
+  if (!memberId) {
+    // First sight of this Apple ID. Adopt the device's current anonymous
+    // member when it has one so a guest who has already been chatting keeps
+    // their thread; otherwise mint a fresh account.
+    const claimed = clip(b.me, 40);
+    const existing = claimed
+      ? await env.DB.prepare('SELECT id FROM num_members WHERE id = ?1 LIMIT 1').bind(claimed).first()
+      : null;
+    memberId = existing?.id ?? uid('mem');
+
+    // APPLE SENDS THE NAME EXACTLY ONCE, on the first authorization for this
+    // Apple ID — never again, not even after the app is deleted and
+    // reinstalled. So it is stored now or it is lost.
+    const name = clip(b.name, 60);
+    if (existing) {
+      if (name) {
+        await env.DB.prepare(
+          'UPDATE num_members SET name = COALESCE(name, ?2), seen_at = datetime(\'now\') WHERE id = ?1',
+        ).bind(memberId, name).run();
+      }
+    } else {
+      await env.DB.prepare(
+        "INSERT INTO num_members (id, name, ref_code, seen_at) VALUES (?1,?2,?3,datetime('now'))",
+      ).bind(memberId, name, friendly()).run();
+    }
+
+    try {
+      await env.DB.prepare(
+        'INSERT INTO num_apple_identities (apple_sub, member_id, email) VALUES (?1,?2,?3)',
+      ).bind(claims.sub, memberId, claims.email).run();
+    } catch {
+      // Lost a race against another device signing in with the same Apple ID.
+      // The row that won is the truth; adopt it rather than creating a second
+      // account for one person.
+      const row = await env.DB.prepare(
+        'SELECT member_id FROM num_apple_identities WHERE apple_sub = ?1 LIMIT 1',
+      ).bind(claims.sub).first();
+      if (row?.member_id) memberId = row.member_id;
+    }
+  }
+
+  const me = await env.DB.prepare(
+    'SELECT id, name, phone, phone_verified, avatar, bio, ref_code FROM num_members WHERE id = ?1 LIMIT 1',
+  ).bind(memberId).first();
+  if (!me) return json({ error: 'Could not open that account.' }, 500);
+
+  // `stage`/`outcome` are a closed vocabulary in signinlog.mjs and anything
+  // outside it is refused with a warning and logged nowhere — which would have
+  // made every Apple sign-in invisible in the one table that answers "can
+  // people actually get in". `via` is the free field, and it is what
+  // distinguishes this path from an SMS code.
+  await logSignin(env, { memberId, stage: 'check', outcome: 'ok', via: 'apple' }).catch(() => {});
+
+  return json({
+    me: {
+      id: me.id,
+      name: me.name,
+      phone: me.phone,
+      phone_verified: !!me.phone_verified,
+      avatar: me.avatar ?? null,
+      bio: safeParse(me.bio),
+      ref: me.ref_code,
+    },
+    ref: me.ref_code,
+    // Deliberately NOT echoed: the email. Private Relay exists so a person can
+    // withhold it; storing it is necessary, reflecting it back into client
+    // state that syncs and logs is not.
+    signed_in_with: 'apple',
+  });
+}
+
 async function verifyVia5arz(env, req) {
   const b = await readBody(req);
   const meId = clip(b.me, 40);
@@ -2343,6 +2661,7 @@ export async function handleSocial(request, env, path) {
   if (path === '/pair/mint' && post) return await pairMint(env, request);
   if (path === '/pair/redeem' && post) return await pairRedeem(env, request);
   if (path === '/verify/5arz' && post) return await verifyVia5arz(env, request);
+  if (path === '/apple' && post) return await appleSignIn(env, request);
   if (path === '/friends') return await friends(env, url);
   if (path === '/prefs' && post) return await prefsWrite(env, request);
   if (path === '/prefs') return await prefsRead(env, url);

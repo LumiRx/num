@@ -18,6 +18,7 @@ import { THEMES, setTheme } from '../../lib/themes';
 import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
 import Verify5arz from './Verify5arz';
+import AppleSignIn from './AppleSignIn';
 import PairBridge from './PairBridge';
 import PeopleCard from './PeopleCard';
 import MembershipCard from './MembershipCard';
@@ -194,8 +195,15 @@ export default function ProfileView() {
           <span style={{ position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 999, background: '#fff', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,.18)' }}>
             <CameraIcon size={12} />
           </span>
+          {/* The picker this opens offers "Take Photo", which touches the
+              camera — so Info.plist MUST carry NSCameraUsageDescription.
+              Without it iOS terminates the process the instant the sheet
+              appears (TCC SIGABRT), which is exactly how 1.0(2) crashed in
+              review on an iPad. The key is in ios/App/App/Info.plist; do not
+              remove it, and do not add another media input without checking
+              the matching usage description exists. */}
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0])} />
         </div>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0])} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={kicker}>YOU</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 2 }}>{me.name ?? 'Traveller'}</div>
@@ -222,6 +230,7 @@ export default function ProfileView() {
       </div>
       {/* Its own block UNDER the identity row. As a third flex child it was
           being squeezed into the name column and printing over "Dre". */}
+      <AppleSignIn />
       <Verify5arz />
       {/* Finish a connection that opened in the browser instead of the app. */}
       <PairBridge installed />

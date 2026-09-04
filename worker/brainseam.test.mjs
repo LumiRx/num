@@ -65,7 +65,12 @@ test('the model override cannot be chosen by the guest', () => {
   assert.match(brains, /\(directive\?\.steps \?\? \[\]\)\.find\(\(s2\) => s2\.brain === brain\.id\)\?\.model/,
     'the override no longer reads the directive — verify the model name still cannot come from user input');
   const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
-  assert.match(index, /directive: direct\(lastUser, parsed\.state, env\)/,
+  // Hoisted to a const on 30 Aug so the tier could also be RECORDED (it is
+  // now num_asks.category and the lane label). The security property this
+  // test exists for is unchanged and still checked: the directive is built
+  // here, by the director, from the server's own env — never read off the
+  // request body.
+  assert.match(index, /const directive = direct\(lastUser, parsed\.state, env\)/,
     'the directive is no longer built server-side by the director');
   assert.ok(!/directive:\s*parsed\.(state\.)?directive/.test(index),
     'the directive is taken from the user payload — a guest could name the model on our bill');

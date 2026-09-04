@@ -57,6 +57,20 @@ export default function App() {
   useEffect(() => {
     if (!standalone) return;
     const root = document.documentElement;
+    // THE INSTALLED APP IS NOT A BROWSER WINDOW.
+    //
+    // glass.css frames the shell as a 440px phone-shaped column on a dark
+    // stage above 520px wide. In a desktop BROWSER that is right — it is the
+    // launch stage, the app shown in a phone. Inside an installed iPad binary
+    // it is a mockup of a phone floating on black, which is what App Review
+    // photographed on an iPad Air M3.
+    //
+    // This is the same mistake as the old `innerWidth < 720` test in
+    // useStandalone, in a different file: a viewport-width rule that is
+    // correct for a browser and meaningless inside an app somebody
+    // downloaded. Marking the document lets the CSS tell the two apart
+    // instead of guessing from width.
+    if (isNativeApp()) root.classList.add('num-native');
     // The document-scroll lock goes on BEFORE the visualViewport guard, and
     // comes off in the same cleanup. It is a different concern from keyboard
     // sizing: sizing needs visualViewport, but "the page must not scroll"
@@ -64,7 +78,7 @@ export default function App() {
     // the status bar is broken whether or not the API exists.
     root.classList.add('num-standalone');
     const vv = window.visualViewport;
-    if (!vv) return () => root.classList.remove('num-standalone');
+    if (!vv) return () => { root.classList.remove('num-standalone'); root.classList.remove('num-native'); };
     const KEYBOARD_MIN = 120; // smaller gaps are browser chrome, not a keyboard
     let pinned = -1;
     let raf = 0;
@@ -96,6 +110,7 @@ export default function App() {
       vv.removeEventListener('resize', onResize);
       root.style.removeProperty('--vvh');
       root.classList.remove('num-standalone');
+      root.classList.remove('num-native');
     };
   }, [standalone]);
 

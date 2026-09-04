@@ -12,14 +12,18 @@
 // request before we spend a token — see DEPLOY.md § Launch hardening.
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
+import { resolvePicks } from './placelink.mjs';
 import { redactProfile, redactState } from './redact.mjs';
 import { readCache, writeCache, cacheable } from './answercache.mjs';
-import { recordAsk } from './asks.mjs';
+import { recordAsk, scrubAsk } from './asks.mjs';
+import { keepRouting, fallbackRouting, laneLabel } from './routinglabel.mjs';
+import { publicNumber as whatsAppNumber } from './whatsapp.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
 import { formatEvents } from './cityevents.mjs';
 import { formatSearchedEvents } from './eventsearch.mjs';
 import { loadFacts, saveFacts } from './memory.mjs';
+import { loadTurns, saveTurn, mergeHistory, subjectFor } from './turns.mjs';
 import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
 import { scrubPayload as scrubTravelSpeak } from './travelspeak.mjs';
 import { direct } from './director.mjs';
@@ -234,6 +238,11 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // decided with the tier in hand; pickModel remains the answer for every
   // caller that does not route through the director.
   const model = modelOverride || pickModel(userText, state, env ?? {});
+  // WHICH MODEL ACTUALLY ANSWERED, not which one we intended to call.
+  // The garbled-reply path below escalates to the strong model, and the
+  // caller prices the turn from this field — so it has to follow the
+  // escalation or an Opus rescue bills as a Haiku answer.
+  let usedModel = model;
   const call = (maxTokens, m = model) =>
     client.messages.create({
       model: m,
@@ -264,7 +273,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   }
 
   if (response.stop_reason === 'refusal') {
-    return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
+    return { reply: 'I can’t help with that one — anything else on the trip?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist, _model: usedModel };
   }
   let text = response.content.find((b) => b.type === 'text')?.text ?? '';
   let parsed = parseStructured(text);
@@ -276,6 +285,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // on the strong model. Rendering junk to a guest is never on the menu.
   if (!parsed || !guardReply(parsed.reply).ok) {
     console.error(`[num-ai] GARBLED REPLY suppressed (model=${model}) — retrying strong`);
+    usedModel = env?.NUM_MODEL_STRONG || 'claude-opus-5';
     response = await call(4096, env?.NUM_MODEL_STRONG || 'claude-opus-5');
     if (response.stop_reason !== 'refusal') {
       text = response.content.find((b) => b.type === 'text')?.text ?? '';
@@ -283,7 +293,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
     }
     if (!parsed || !guardReply(parsed.reply).ok) {
       console.error('[num-ai] retry ALSO garbled — clean miss beats a leak');
-      return { reply: 'I lost my thread for a second — ask me that once more?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist };
+      return { reply: 'I lost my thread for a second — ask me that once more?', card: null, chips: null, actions: [], _usage: response.usage, _specialist: specialist, _model: usedModel };
     }
   }
   // ── THE LAST GATE ──────────────────────────────────────────────────────
@@ -308,14 +318,14 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         // The card and actions came from the same turn that produced the
         // blocked line, so they are not to be trusted either.
         card: null, actions: [],
-        _usage: response.usage, _specialist: specialist, _blocked: verdict.rule,
+        _usage: response.usage, _specialist: specialist, _blocked: verdict.rule, _model: usedModel,
       };
     }
   }
 
   // usage rides back with the reply so the caller can bill it to a day. Real
   // counts, not an estimate — this is what the admin dashboard reports.
-  return { ...reply, _usage: response.usage, _specialist: specialist };
+  return { ...reply, _usage: response.usage, _specialist: specialist, _model: usedModel };
 }
 
 /**
@@ -344,7 +354,9 @@ async function logFeatureRequests(env, result, userAsk, place) {
     );
     await env.DB.batch(
       flagged.map((f) =>
-        ins.bind(new Date().toISOString(), place ?? null, (userAsk ?? '').slice(0, 500), f.summary.slice(0, 500), f.suggestion.slice(0, 800)),
+        // scrubAsk, as num_asks does: row 5 of this table held a raw phone
+        // number for a month because this path skipped the redaction.
+        ins.bind(new Date().toISOString(), place ?? null, scrubAsk(userAsk ?? '').slice(0, 500), f.summary.slice(0, 500), f.suggestion.slice(0, 800)),
       ),
     );
     console.log('[feature-request]', ...flagged.map((f) => f.summary));
@@ -640,7 +652,10 @@ export async function handleNum(request, env, ctx) {
     // not a device. Loaded in parallel with grounding so durable, per-
     // member memory (worker/memory.mjs) never adds sequential latency.
     const memberId = parsed.state?.me?.id ?? null;
-    const [groundResult, rememberedFacts] = await Promise.all([
+    // The thread, server-side (worker/turns.mjs). Loaded in the same
+    // Promise.all as facts, so continuity across devices costs no latency.
+    const turnSubject = subjectFor({ memberId, anonId: parsed.state?.anon ?? null });
+    const [groundResult, rememberedFacts, storedTurns] = await Promise.all([
       groundRequest(env, {
         userText: lastUser,
         statedPlace: parsed.place,
@@ -650,6 +665,7 @@ export async function handleNum(request, env, ctx) {
           : null,
       }),
       memberId ? loadFacts(env, memberId).catch(() => ({})) : Promise.resolve({}),
+      turnSubject ? loadTurns(env, turnSubject).catch(() => []) : Promise.resolve([]),
     ]);
     grounding = groundResult;
 
@@ -661,12 +677,32 @@ export async function handleNum(request, env, ctx) {
 
     // Profile + trip state carry long-term context now, so the model only
     // needs the recent turns.
-    const history = parsed.messages.slice(-14);
+    //
+    // The client's thread wins; what it lacks — a fresh device, a cleared
+    // browser — is filled from the server copy, never the other way round.
+    const history = mergeHistory(parsed.messages.slice(-14), storedTurns);
     // Server memory (worker/memory.mjs) is the FLOOR, never the ceiling: a
     // durable fact survives losing the app, but a correction the guest
     // just made THIS session — still only living in state.profile until
     // the next remember action lands it server-side — always wins.
-    const profile = { ...rememberedFacts, ...(parsed.state?.profile ?? {}) };
+    const stated = { ...rememberedFacts, ...(parsed.state?.profile ?? {}) };
+    // THE SOULPROFILE — what we have noticed often enough to trust, under
+    // everything the guest actually said.
+    //
+    // Keyed on member OR device, because 370 of 412 asks have no member id: a
+    // member-keyed profile would be a feature for 10% of traffic that looks
+    // broken to everyone else, and would learn nothing during the first
+    // conversation, which is the one where somebody decides if Num is any
+    // good. Stated facts are spread on top, so an observation can never argue
+    // with something the guest told us. See worker/soulprofile.mjs.
+    const anonId = parsed.state?.anon ?? null;
+    const soul = await (async () => {
+      try {
+        const { profileFor } = await import('./soulprofile.mjs');
+        return await profileFor(env, { stated, memberId, anonId });
+      } catch { return stated; }
+    })();
+    const profile = soul;
 
     // Small lane: chit-chat goes to Workers AI, no Claude call at all. Any
     // wobble — HANDOFF, null, or a guard failure — falls through to the big
@@ -675,11 +711,16 @@ export async function handleNum(request, env, ctx) {
     // returns in milliseconds — so it runs before the lane is even chosen.
     // cacheable() gates the WRITE strictly; this read is keyed on the same
     // rules, so a personal question can never match a shared entry.
-    if (cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: {} })) {
-      const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang });
+    // Where the asker is, to ~1 km, so "near me" answers are shared only
+    // among people standing in the same place (answercache.mjs).
+    const cachePos = grounding.place?.lat != null ? { lat: grounding.place.lat, lng: grounding.place.lng } : null;
+    if (cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: {}, pos: cachePos })) {
+      const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, pos: cachePos });
       if (hit) {
         console.log('[num-ai] served from cache, no model called');
         ctx.waitUntil(recordAsk(env, { text: lastUser, dest: grounding.place?.slug ?? null, lane: 'cache', cached: true, memberId: parsed.state?.me?.id ?? null }));
+        // A cached answer is still a turn the person saw; the thread keeps it.
+        if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, typeof hit.reply === 'string' ? hit.reply : ''));
         return json(200, { ...hit, actions: [], place: grounding.place?.name ?? null });
       }
     }
@@ -699,8 +740,29 @@ export async function handleNum(request, env, ctx) {
       }
     }
 
+    // THE ONE QUESTION NUM MAY EARN THIS TURN.
+    //
+    // Picked here, deterministically, rather than left to the model. A model
+    // told "ask when it would help" asks constantly; a guest being interviewed
+    // is a guest filling in a form, and people leave forms. The picker returns
+    // null far more often than it returns a question — it refuses when the
+    // topic is unclear, when the answer is already known, and when Num has
+    // already put that question in this conversation. See soulprofile.mjs.
+    let earnedBlock = null;
+    try {
+      const { nextQuestion, questionBlock, topicOf, askedAlready } = await import('./soulprofile.mjs');
+      earnedBlock = questionBlock(nextQuestion(profile, {
+        topic: topicOf(lastUser),
+        asked: askedAlready(history),
+      }));
+    } catch { /* a question is a bonus; the answer is the job */ }
+
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const callNum = async (extraSystem, modelOverride = null) => {
+      // The earned question rides along unless a caller has its own system
+      // note (a quality retry), in which case fixing the answer outranks
+      // learning something new.
+      extraSystem = extraSystem ?? earnedBlock;
       try {
         return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang, modelOverride);
       } catch (err) {
@@ -793,6 +855,10 @@ export async function handleNum(request, env, ctx) {
     }));
     // Output guard: never let leaked JSON scaffolding reach the user. One
     // corrective retry, then salvage, then the safe fallback.
+    // Who answered, kept honest across the two corrective retries below.
+    // Both call the structured Claude path directly, bypassing the brain
+    // chain, so a bare spread erased `_brain`/`_tried`/`_degraded` and filed
+    // a healthy answer as lane `<tier>:none`. See worker/routinglabel.mjs.
     const guard = guardReply(result.reply);
     if (guard.ok) {
       result = { ...result, reply: guard.cleaned };
@@ -802,12 +868,15 @@ export async function handleNum(request, env, ctx) {
       );
       const retryGuard = guardReply(retry.reply);
       if (retryGuard.ok) {
-        result = { ...retry, reply: retryGuard.cleaned };
+        result = keepRouting({ ...retry, reply: retryGuard.cleaned }, result);
       } else {
         const cleaned = retryGuard.cleaned ?? guard.cleaned;
         result = cleaned
-          ? { ...retry, reply: cleaned }
-          : { reply: FALLBACK_REPLY, card: null, chips: null, actions: [] };
+          ? keepRouting({ ...retry, reply: cleaned }, result)
+          // NOT keepRouting: no brain produced this line. The hard-coded
+          // fallback is the one case where lane `:none` is the truth and
+          // the probe SHOULD page — so it is labelled as what it is.
+          : fallbackRouting(FALLBACK_REPLY, result);
       }
     }
 
@@ -822,18 +891,66 @@ export async function handleNum(request, env, ctx) {
     // in context, a reply that is only a question) earns ONE corrective
     // retry. If the retry is no better the original still ships: grading
     // never produces silence. Soft flags are recorded and nothing else.
-    let quality = inspect({ ask: lastUser, reply: result.reply, context: groundingBlock });
+    // ── ATTACH THE VERIFIED LINKS, BEFORE ANYTHING IS GRADED ────────────
+    //
+    // The model named places; this turns each into a card the guest can tap,
+    // using the row the grounding step actually read. A pick that matches no
+    // verified row is dropped here rather than shown as a name with no way to
+    // reach it. Runs BEFORE inspect() on purpose: the grader must judge the
+    // message that will actually be sent, links and all.
+    {
+      const resolved = resolvePicks(result.picks, grounding?.partners ?? []);
+      // Then the details a concierge actually says — "4 min walk", "open,
+      // closes 23:00 (40 min)", the local-script name, the rating with the
+      // count that earned it. All from the row, none invented, and absent
+      // where the row is silent. See worker/pickdetail.mjs.
+      const { enrichPicks } = await import('./pickdetail.mjs');
+      result = { ...result, picks: enrichPicks(resolved.picks, grounding?.partners ?? [], grounding?.place?.tz) };
+      // A FIRST ANSWER WITH PLACES ALWAYS OFFERS A NEXT TAP.
+      //
+      // The bulk lane (Haiku) reliably returns picks and reliably returns no
+      // chips — measured live 3 Sep 2026: three places, zero chips. `null`
+      // means "keep the current chips", which is right mid-conversation and
+      // empty on the first turn, so a guest's very first answer ended in a
+      // bare text box. Only the first turn is filled, and only from what the
+      // picks can actually do; later turns keep the model's contract.
+      const firstTurn = !history.some((m) => m?.role === 'assistant');
+      if (firstTurn && !(result.chips?.length) && result.picks?.length) {
+        const anyBookable = result.picks.some((pk) => pk?.bookable);
+        result = {
+          ...result,
+          chips: [
+            anyBookable ? { id: 'book', label: 'Book a table' } : { id: 'directions', label: 'Get directions' },
+            { id: 'nearby', label: 'Something else nearby' },
+            { id: 'later', label: 'Save these for later' },
+          ],
+        };
+      }
+      if (resolved.dropped.length) {
+        console.warn(`[num-ai] dropped ${resolved.dropped.length} unverifiable pick(s): ${resolved.dropped.join(', ')}`);
+      }
+    }
+
+    let quality = inspect({ ask: lastUser, reply: result.reply, picks: result.picks, context: groundingBlock });
     if (quality.hard) {
       try {
         const fixed = await callNum(quality.note);
         const fixedGuard = guardReply(fixed.reply);
         if (fixedGuard.ok) {
-          const after = inspect({ ask: lastUser, reply: fixedGuard.cleaned, context: groundingBlock });
+          const reFixedRaw = resolvePicks(fixed.picks, grounding?.partners ?? []);
+          const { enrichPicks: enrichAgain } = await import('./pickdetail.mjs');
+          const reFixed = { ...reFixedRaw, picks: enrichAgain(reFixedRaw.picks, grounding?.partners ?? [], grounding?.place?.tz) };
+          const after = inspect({ ask: lastUser, reply: fixedGuard.cleaned, picks: reFixed.picks, context: groundingBlock });
           // Take the retry only if it is genuinely better. A retry that
           // trades an invented price for an off-topic answer is not a fix.
           if (!after.hard) {
-            result = { ...fixed, reply: fixedGuard.cleaned };
-            quality = { ...after, flags: [...after.flags, 'retried'] };
+            result = keepRouting({ ...fixed, reply: fixedGuard.cleaned, picks: reFixed.picks }, result);
+            // WHY it was retried travels with the row. Until 3 Sep 2026 the
+            // second grade replaced the first, so 60% of bulk-lane turns read
+            // "retried" with no trace of the hard flag that earned it — the
+            // one fact that tells you whether the cheap model or the grader
+            // is the thing to fix.
+            quality = { ...after, flags: [...after.flags, 'retried', ...quality.flags.filter((f) => !after.flags.includes(f)).map((f) => `was:${f}`)] };
           } else {
             quality = { ...quality, flags: [...quality.flags, 'retry-failed'] };
           }
@@ -872,7 +989,7 @@ export async function handleNum(request, env, ctx) {
     // would have said that just as loudly on the day the router worked
     // perfectly. Recording the tier the director actually chose is what makes
     // every routing change after this one measurable.
-    const laneLabel = `${directive.tier}:${result._brain ?? 'none'}`;
+    const answeredLane = laneLabel(directive, result);
     if (!isProbe) ctx.waitUntil(
       recordAsk(env, {
         text: lastUser,
@@ -882,7 +999,7 @@ export async function handleNum(request, env, ctx) {
         // off-topic but never that recommendations specifically were.
         category: directive.tier,
         dest: grounding.place?.slug ?? null,
-        lane: laneLabel,
+        lane: answeredLane,
         brain: result._brain ?? null,
         degraded: !!result._degraded,
         quality: quality.flags,
@@ -890,7 +1007,7 @@ export async function handleNum(request, env, ctx) {
         anonId: parsed.state?.anon ?? null,
       }).then((askId) =>
         logUsage(env, {
-          lane: laneLabel,
+          lane: answeredLane,
           // The MODEL, not the brain slot. `hosted` is a position in the
           // chain; `deepseek-v4-flash` is a thing with a price. Logging the
           // slot is why every fallback turn priced at zero.
@@ -946,8 +1063,8 @@ export async function handleNum(request, env, ctx) {
     // who asked, or carrying an action, is never stored. A degraded reply is
     // never stored either: caching lean mode would outlive the outage that
     // caused it.
-    if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean })) {
-      ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean }));
+    if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean, pos: cachePos })) {
+      ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean, pos: cachePos }));
     }
     // Durable memory: whatever `remember` actions this turn produced,
     // mirrored server-side (worker/memory.mjs) so they survive losing the
@@ -956,6 +1073,29 @@ export async function handleNum(request, env, ctx) {
     // failing to save costs nothing this turn, only a possible re-ask
     // later, which is the status quo everywhere today.
     if (memberId) ctx.waitUntil(saveFacts(env, memberId, clean.actions));
+    // The exchange itself, so the next device picks up mid-thought. Degraded
+    // replies are stored too: the person saw them, so the thread has them.
+    if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, typeof clean.reply === 'string' ? clean.reply : ''));
+    // The same remember actions, read a second way. memory.mjs keeps them as
+    // authoritative "never re-ask this" facts; soulprofile keeps the taste
+    // dimensions with a confidence count, so a one-off mention does not
+    // become a permanent belief. It also runs for guests with no member id,
+    // which is almost all of them.
+    {
+      const subj = memberId ?? (parsed.state?.anon ? `anon:${parsed.state.anon}` : null);
+      if (subj) {
+        ctx.waitUntil((async () => {
+          try {
+            const { observe } = await import('./soulprofile.mjs');
+            for (const a of clean.actions ?? []) {
+              if (a?.type !== 'remember') continue;
+              const { key, value } = (typeof a.payload === 'string' ? JSON.parse(a.payload) : a.payload) ?? {};
+              if (key && value) await observe(env, subj, String(key), String(value));
+            }
+          } catch (e) { console.warn('[soul]', e?.message ?? e); }
+        })());
+      }
+    }
     // The question itself, kept (scrubbed inside recordAsk). Until this
     // line, the text only survived when a partner impression fired — the
     // asks nobody could serve, the exact ones that write the roadmap, were
@@ -1085,7 +1225,11 @@ export default {
       // would turn a busy minute into a retry storm — and would drop exactly
       // the delivery failures we most need to see.
       const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound'
-        || url.pathname === '/api/sms/status';
+        || url.pathname === '/api/sms/status' || url.pathname === '/api/whatsapp/inbound'
+        // Resend delivery events, for the same reason: it retries on a non-2xx,
+        // and the events a throttle would drop are precisely the bounces and
+        // delivery confirmations this product spent a month unable to see.
+        || url.pathname === '/api/webhooks/resend';
       // The MCP endpoints limit themselves, and must. Everything about the
       // blanket gate is wrong for JSON-RPC:
       //   • It throttles the HANDSHAKE. initialize and tools/list are POSTs, so
@@ -1251,6 +1395,33 @@ export default {
       }));
     }
 
+    // WHERE IS EVERY BUSINESS, AND WHOSE MOVE IS IT?
+    //
+    // /api/admin/claims answers "who is waiting on a decision" and
+    // /api/admin/biz-view answers "what does one merchant see". Neither could
+    // answer the question that actually runs the pilot: has this business got
+    // everything it needs to operate, and if not, is the delay ours or theirs?
+    //
+    // Read-only and admin-gated, like the two above. `?business=<id>` for one;
+    // no argument returns the rollup every agent reports into. The rollup
+    // groups what NUM owes BY THE SWITCH THAT FIXES IT, because eleven
+    // businesses missing the same email is one job, not eleven errands.
+    if (url.pathname === '/api/admin/biz-onboarding') {
+      if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) {
+        return json(404, { error: 'not found' });
+      }
+      const businessId = url.searchParams.get('business');
+      if (businessId) {
+        const { agentBrief } = await import('./bizagent.mjs');
+        const brief = await agentBrief(env, businessId);
+        return brief ? json(200, brief) : json(404, { error: 'no such business' });
+      }
+      const { rollup } = await import('./bizagent.mjs');
+      return json(200, await rollup(env, {
+        limit: Math.min(500, Number(url.searchParams.get('limit')) || 200),
+      }));
+    }
+
     if (url.pathname === '/api/admin/twilio') {
       const { handleTwilioDiag } = await import('./twiliodiag.mjs');
       return await handleTwilioDiag(request, env);
@@ -1265,6 +1436,45 @@ export default {
     if (url.pathname === '/api/admin/verify') {
       const { handleVerifyDiag } = await import('./verifydiag.mjs');
       return await handleVerifyDiag(request, env);
+    }
+
+    // What NUM handed out on a scout's behalf — the statement you can send
+    // them. It reports handoffs and earnings as separate, differently-named
+    // numbers on purpose: see scoutusage.mjs for why calling a handoff a
+    // booking is the one mistake this endpoint must never make.
+    if (url.pathname === '/api/admin/scout-usage') {
+      const { handleScoutUsage } = await import('./scoutusage.mjs');
+      return await handleScoutUsage(request, env);
+    }
+
+    // The funnel the money is judged on: arrived → asked → answered → offered
+    // the home screen → kept it. Reported per install path, because an in-app
+    // browser cannot add a home screen icon at all and averaging it with
+    // Chrome produces a number that argues for better copy when the problem is
+    // the browser. See worker/installfunnel.mjs.
+    // WHAT IS BROKEN, PULLED RATHER THAN PUSHED.
+    //
+    // The watchman spent a month reporting four real failures into a LINE
+    // channel that answered 404 on every send. An alerting system that can
+    // only push has a single point of failure at the exact moment it matters.
+    // This is the surface that cannot be silenced by the thing it reports.
+    // Resend tells us what actually happened to each message. Without this,
+    // "delivered" is a word nobody in this system has ever been able to say.
+    if (url.pathname === '/api/webhooks/resend') {
+      const { handleResendWebhook } = await import('./maildelivery.mjs');
+      return await handleResendWebhook(request, env);
+    }
+
+    if (url.pathname === '/api/admin/failures') {
+      const denied = (await import('./adminkey.mjs')).adminGuard(request, env, cors);
+      if (denied) return denied;
+      const { open, summary } = await import('./failures.mjs');
+      return json(200, { ...(await summary(env)), failures: await open(env, { limit: 100 }) });
+    }
+
+    if (url.pathname === '/api/admin/install-funnel') {
+      const { handleInstallFunnel } = await import('./installfunnel.mjs');
+      return await handleInstallFunnel(request, env);
     }
 
     // What Num can actually do where this guest is standing. One indexed D1
@@ -1313,6 +1523,8 @@ export default {
           payments: payMode(env),
           voice_in: voiceReady(env),
           verify_5arz: !!env.GOOGLE_CLIENT_ID,
+          // Off by configuration until WHATSAPP_ENABLED + TWILIO_WHATSAPP_FROM are set.
+          whatsapp: !!whatsAppNumber(env),
         },
         // Public by design — a Google OAuth client id ships inside every page
         // that uses Google Sign-In; the SECRET part of the pair never leaves
@@ -1323,6 +1535,14 @@ export default {
         // The number members text to reach Num. A phone number is public by
         // nature; serving it here keeps the app and the worker agreeing.
         sms_number: env.TWILIO_FROM ?? null,
+        // The WhatsApp line, in the same public shape as the SMS one, and
+        // ONLY when the channel is actually live. The landing page reads
+        // this to decide whether to show its WhatsApp button, so switching
+        // the channel on is one secret and no site deploy — and, more
+        // importantly, the button can never appear before there is a real
+        // sender behind it. A dead "Message us on WhatsApp" is worse than no
+        // button: it spends the one click a stranger was ever going to give.
+        whatsapp_number: whatsAppNumber(env),
         // The SHAPE of the Twilio SID — never the value.
         //
         // Twilio answered 401 for every send in this product's life, and no
@@ -1399,6 +1619,15 @@ export default {
 
     // Twilio's inbound-SMS webhook and the member's inbox view of it.
     if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+    // WhatsApp as a front door — same brain, same memory, same thread as the
+    // app. Signed by Twilio, dark until WHATSAPP_ENABLED + TWILIO_WHATSAPP_FROM
+    // are set. Its concierge turn rides on handleNum in-process; the per-sender
+    // limit there is what protects the brain, which is why this webhook itself
+    // is exempt from the blanket gate above. See worker/whatsapp.mjs.
+    if (url.pathname === '/api/whatsapp/inbound') {
+      const { handleWhatsAppInbound } = await import('./whatsapp.mjs');
+      return await handleWhatsAppInbound(request, env, ctx);
+    }
     // Twilio's delivery receipts. Signature-verified inside, like inbound.
     if (url.pathname === '/api/sms/status') return await handleSmsStatus(request, env);
     if (url.pathname === '/api/sms/inbox') {
@@ -1914,6 +2143,24 @@ export default {
           const { alert } = await import('./health.mjs');
           await alert(env, `[biz] ${told.failed} onboarding email(s) failed: ${(told.errors ?? []).join(' | ')}`);
         }
+        // The directory reading its own notes: hours text → weekly mask, a
+        // few hundred rows per tick, until 124,117 more places can say
+        // whether they are open. See worker/hoursbackfill.mjs.
+        try {
+          const { backfillHours } = await import('./hoursbackfill.mjs');
+          const h = await backfillHours(env);
+          if (h.scanned) console.log(`[hoursbackfill] ${h.parsed} parsed, ${h.refused} refused of ${h.scanned}`);
+        } catch (e) { console.warn('[cron] hours backfill', e?.message ?? e); }
+
+        // ACCEPTED IS NOT DELIVERED. Anything handed to a transport and still
+        // unconfirmed after thirty minutes becomes a named, visible failure.
+        // On 30 Aug this would have shown six of them by 20:56 — the evening
+        // it happened — instead of four days of silence.
+        try {
+          const { checkUnconfirmed } = await import('./maildelivery.mjs');
+          await checkUnconfirmed(env);
+        } catch (e) { console.warn('[cron] unconfirmed sweep', e?.message ?? e); }
+
         const digest = await staleDigest(env);
         if (digest) {
           const { alert } = await import('./health.mjs');
@@ -1928,6 +2175,23 @@ export default {
           await weeklySweep(env);
         }
       })().catch((e) => console.error('[bizapproval]', e?.message ?? e)),
+    );
+    // EVERY BUSINESS GETS ITS OWN AGENT, AND THE AGENT KEEPS UP.
+    //
+    // `num_business_profiles.owner_agent` has existed since 31 Jul and nothing
+    // ever wrote it. This is the sweep that does — and it is a sweep rather
+    // than a hook on the signup path for the reason bizonboard.mjs sets out:
+    // every failure this codebase has found was a one-shot hook that fired
+    // into a broken channel and then believed the job was done. A business
+    // whose agent could not be created on Tuesday gets one on Wednesday.
+    //
+    // Own failure domain. It creates records and refreshes what they know; it
+    // sends nothing, so it cannot reach a merchant even if it is wrong.
+    ctx.waitUntil(
+      import('./bizagent.mjs')
+        .then((m) => m.agentSweep(env))
+        .then((r) => { if (r?.created) console.log(`[bizagent] ${r.created} new agent(s)`); })
+        .catch((e) => console.error('[bizagent]', e?.message ?? e)),
     );
     // Self-submitted businesses, turned into coordinates. Migration 0007 was
     // written for this step and nothing ever performed it, so every submission
@@ -1959,6 +2223,24 @@ export default {
           .then((m) => m.rollupRatings(env))
           .then((r) => { if (r?.places) console.log('[learn]', JSON.stringify(r)); })
           .catch((e) => console.error('[learn]', e?.message ?? e)),
+      );
+      // Retention: make num_retention_policy true. Every row had
+      // last_purged_at NULL on 4 Sep 2026 — the policy existed, nothing read
+      // it. Also drains soft-deleted messages, expired cached answers and
+      // the passenger sweep that had no caller. See worker/retention.mjs.
+      ctx.waitUntil(
+        import('./retention.mjs')
+          .then((m) => m.runRetention(env))
+          .then((r) => console.log('[retention]', JSON.stringify(r)))
+          .catch((e) => console.error('[retention]', e?.message ?? e)),
+      );
+      // Neighbourhood centroids: rebuilt hourly from the directory into
+      // num_dest_areas (0016) so no request re-aggregates 290K rows.
+      ctx.waitUntil(
+        import('../ai/places.js')
+          .then((m) => m.refreshDestAreas(env))
+          .then((r) => console.log('[dest-areas]', JSON.stringify(r)))
+          .catch((e) => console.error('[dest-areas]', e?.message ?? e)),
       );
     }
   },

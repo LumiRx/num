@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUM — ask for anything, anywhere in the world</title>
+<meta name="description" content="Ask NUM for dinner, a driver, a table, a spa — anywhere in the world — and get a real answer from real local places in seconds. No signup, no app store. 2.5 million places across 77 destinations.">
+<link rel="canonical" href="https://itsnum.com/ask/">
+<meta property="og:title" content="NUM — ask for anything, anywhere in the world">
+<meta property="og:description" content="Ask for dinner, a driver, a table, a spa. Real places, real answers, in seconds. No signup.">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://app.itsnum.com">
+<!-- FONTS MUST NOT BE ABLE TO HOLD UP THE FIRST PAINT.
+     A stylesheet in the head blocks rendering until it arrives, so on this
+     page — 87% mobile, most of it inside Reddit's in-app browser on Thai
+     mobile data — a slow or unreachable fonts.googleapis.com meant a white
+     screen for as long as it took to fail. Loaded as `print` and promoted on
+     load, the type renders immediately in the fallback stack and swaps when
+     the webfont lands (the URL already carries display=swap). The <noscript>
+     keeps it working with JavaScript off. -->
+<link rel="preload" as="style"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap">
+<noscript><link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"></noscript>
+<link rel="stylesheet" href="/assets/site.css">
+
+<!-- TWO trackers, on purpose, and this comment is why.
+     num-capture.js does consent, referral arrival and the capture form.
+     num-track.js does BEHAVIOUR: scroll depth, CTA taps, install prompt,
+     first_message_sent — and it was never on this page. So the homepage sent
+     page_view and landing_view and measured nothing else, which is how a
+     campaign could put 577 paid visitors here in August and leave us unable to
+     say whether a single one of them read a word. Both, from now on. -->
+<script src="/num-capture.js" data-page="landing" defer></script>
+<script src="/num-track.js" defer></script>
+<!-- Meta pixel harness. Inert until a Pixel ID is pasted into js/track.js, and
+     gated behind its own consent bar either way. It is HERE, on the page paid
+     traffic lands on, because it was previously only on /sms/ and /get/ — so a
+     Meta campaign pointed at the homepage would have reported nothing at all
+     and had nothing to optimise towards. -->
+<script src="/js/track.js" defer></script>
+<!-- Reddit conversion layer. Same job js/track.js does for Meta: the base
+     pixel in <head> reports PageVisit, this reports the three moments that
+     mean something (first message, two answers, added to home screen). It
+     wraps numMetaEvent so one call reaches both networks. -->
+<script src="/js/reddit.js" defer></script>
+<style>
+/* ── THE ASK ──────────────────────────────────────────────────────────────
+   This page's whole job is to let a stranger use Num before it asks them for
+   anything. No signup, no app store, no home-screen prompt on arrival — the
+   install invitation appears only after Num has actually answered twice and
+   earned it. 95% of the traffic that lands here is a phone inside Reddit's
+   in-app browser, which cannot install a PWA at all, so nothing above the fold
+   is allowed to depend on being able to. */
+.askwrap{max-width:720px;margin:0 auto;padding:0 20px}
+/* ── THE ONE WAY OFF THIS PAGE ────────────────────────────────────────────
+   This page deliberately has no site navigation: it is what paid traffic
+   lands on, and every extra exit is a click that cost money and left without
+   asking Num anything. But "no nav" had become "no way home and no brand at
+   all" — the page opened on a bare headline, which reads like a page someone
+   scraped rather than a company you are about to trust with dinner.
+   So: the wordmark, which goes home, and one link for the question a
+   stranger actually has before typing. Two exits, both forward. */
+.topbar{max-width:1080px;margin:0 auto;padding:16px 20px 4px;display:flex;
+  align-items:center;justify-content:space-between;gap:16px}
+.topbrand{display:inline-flex;align-items:center;gap:9px;font-family:var(--disp);
+  font-weight:700;font-size:19px;letter-spacing:-.02em;color:var(--ink)}
+.topbrand .dot{width:11px;height:11px;border-radius:50%;background:var(--pri);
+  box-shadow:0 0 0 4px var(--pri-l)}
+.topbrand small{font-family:var(--body);font-weight:600;font-size:9.5px;color:var(--slate);
+  letter-spacing:.14em;text-transform:uppercase}
+.toplink{font-size:14px;font-weight:600;color:var(--slate);white-space:nowrap}
+.toplink:hover{color:var(--ink)}
+@media(max-width:520px){.topbar{padding:12px 18px 2px}.topbrand small{display:none}}
+
+/* [hidden] loses to any class that sets `display`, and .btn sets it — which is
+   why the WhatsApp button was on screen, linking nowhere, on a page whose whole
+   job is one click. */
+[hidden]{display:none!important}
+.askhero{padding:34px 0 8px;text-align:center}
+.askhero .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;
+  color:var(--pri-d);background:var(--pri-xl);border:1px solid var(--pri-l);padding:6px 12px;border-radius:999px}
+.askhero h1{font-family:var(--disp);font-size:clamp(28px,7vw,42px);line-height:1.1;letter-spacing:-.03em;
+  margin:16px 0 10px;text-wrap:balance}
+.askhero .sub{color:var(--ink2);font-size:16.5px;line-height:1.6;max-width:46ch;margin:0 auto}
+
+/* the box */
+.box{margin:22px 0 0;background:var(--card,#fff);border:1px solid var(--line);border-radius:20px;
+  box-shadow:var(--shadow);overflow:hidden}
+.boxtop{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,var(--pri-xl),transparent)}
+.av{width:28px;height:28px;border-radius:9px;background:var(--pri);color:#fff;flex:none;
+  display:grid;place-items:center;font:800 14px/1 var(--disp)}
+.boxtop b{font-size:14.5px}
+.boxtop span{font-size:12px;color:var(--pri-d);font-weight:650}
+.thread{padding:16px;display:flex;flex-direction:column;gap:12px;max-height:none}
+.bub{max-width:88%;padding:12px 15px;border-radius:16px;font-size:15.3px;line-height:1.58;white-space:pre-wrap}
+.bub.me{align-self:flex-end;background:var(--pri);color:#fff;border-bottom-right-radius:6px}
+.bub.num{align-self:flex-start;background:var(--sunk,#F4F8F7);color:var(--ink);border:1px solid var(--line);
+  border-bottom-left-radius:6px}
+.bub.num.err{background:#FEF2F2;border-color:#FECACA;color:#B4232B}
+/* ── THE PLACES THEMSELVES ─────────────────────────────────────────────────
+   Until 3 Sep 2026 this page showed Num's prose and threw the picks away:
+   three verified places with map links, tel: links and a reason, and not one
+   of them tappable. A guest read "I'd take Ciccio — the pasta is exceptional"
+   and had no way to get there. On the page every paid click lands on. */
+.picks{display:flex;flex-direction:column;gap:8px;align-self:stretch;max-width:100%}
+.pick{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 13px 10px;
+  box-shadow:0 1px 2px rgba(10,26,36,.04)}
+.pick .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.pick .nm{font-family:var(--disp);font-weight:700;font-size:15.5px;letter-spacing:-.01em;line-height:1.25}
+.pick .nm small{display:block;font-family:var(--body);font-weight:500;font-size:12.5px;color:var(--slate);
+  letter-spacing:0;margin-top:1px}
+.pick .dist{font:600 12px/1.3 var(--mono,ui-monospace,Menlo,monospace);color:var(--slate);white-space:nowrap}
+.pick .meta{display:flex;flex-wrap:wrap;gap:6px 10px;margin:5px 0 0;font-size:12.5px;color:var(--slate)}
+.pick .meta .on{color:var(--pri-d);font-weight:600}
+.pick .meta .off{color:#B4232B;font-weight:600}
+.pick .why{margin:7px 0 0;font-size:14px;line-height:1.5;color:var(--ink)}
+.pick .acts{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap}
+.pick .acts a{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;
+  border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink);background:#fff;text-decoration:none}
+.pick .acts a.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+.pick .acts a:active{transform:translateY(1px)}
+.dots{display:inline-flex;gap:4px;align-items:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--slate);opacity:.45;animation:bl 1.2s infinite}
+.dots i:nth-child(2){animation-delay:.18s}.dots i:nth-child(3){animation-delay:.36s}
+@keyframes bl{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:.95;transform:translateY(-3px)}}
+@media (prefers-reduced-motion: reduce){.dots i{animation:none}}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 14px}
+.chip{border:1px solid var(--line);background:#fff;color:var(--ink2);border-radius:999px;
+  padding:9px 14px;font:600 14px/1 var(--body);cursor:pointer;text-align:left}
+.chip:hover{border-color:var(--pri);color:var(--pri-d);background:var(--pri-xl)}
+.chip:focus-visible,.send:focus-visible,#q:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+
+.composer{display:flex;gap:9px;padding:12px 14px;border-top:1px solid var(--line);background:#fff}
+/* KEEP-HANDY ROW. Three full-size buttons stacked into three lines inside a
+   column this narrow, which read as a broken layout rather than a choice. The
+   ask box is the primary action on this page; these are the "and when you're
+   done" options, so they are sized like options. */
+.ways{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0 0}
+.ways .lede{font-size:13px;font-weight:600;color:var(--slate);margin-right:2px}
+.ways .btn{padding:9px 15px;font-size:14px;border-radius:999px}
+.ways .btn.pri{font-weight:700}
+/* The hero is centred at this width, so a left-hugging row of pills under it
+   reads as a misalignment rather than a choice. */
+@media(max-width:859px){.ways{gap:7px;justify-content:center}.ways .lede{width:100%;margin:0 0 2px;text-align:center}}
+#q{flex:1;border:1px solid var(--line);border-radius:13px;padding:13px 15px;font:16px/1.4 var(--body);
+  background:#fff;color:var(--ink);min-width:0}
+#q::placeholder{color:var(--slate)}
+.send{flex:none;border:0;border-radius:13px;background:var(--pri);color:#fff;padding:0 20px;
+  font:700 15px/1 var(--body);cursor:pointer}
+.send[disabled]{opacity:.5;cursor:default}
+.under{text-align:center;color:var(--slate);font-size:13.5px;margin:12px 0 0}
+
+/* the install invitation — hidden until Num has earned it */
+.earned{display:none;margin:30px 0 4px;border:1px solid var(--pri-l);background:var(--pri-xl);
+  border-radius:20px;padding:26px 26px 24px;text-align:center;
+  box-shadow:0 1px 2px rgba(10,26,36,.04),0 18px 44px rgba(14,164,131,.13)}
+/* THE MOMENT THIS PAGE IS BUILT FOR. It appears only after Num has actually
+   answered twice, so by the time anyone reads it they already know what they
+   would be keeping. It is allowed to be the loudest thing on the page —
+   everything above it is deliberately quieter so that this can be. */
+.earned.on{display:block;animation:earnedIn .42s cubic-bezier(.2,.7,.3,1) both}
+@keyframes earnedIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.earned.on{animation:none}}
+.earned .tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--pri-d);margin:0 0 8px}
+.earned h3{font-family:var(--disp);font-size:clamp(21px,3.4vw,26px);margin:0 0 8px;letter-spacing:-.02em;
+  text-wrap:balance}
+.earned p{color:var(--ink2);margin:0 auto 16px;font-size:15.3px;line-height:1.62;max-width:44ch}
+.earned .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.earned .how{margin:14px 0 0;font-size:13px;color:var(--slate);line-height:1.55}
+
+/* proof, deliberately below the working product */
+.proof{max-width:1080px;margin:56px auto 0;padding:0 20px}
+.proof h2{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--slate);margin:0 0 18px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
+.fact b{display:block;font-family:var(--disp);font-size:25px;letter-spacing:-.03em;line-height:1}
+.fact span{display:block;color:var(--slate);font-size:13.5px;margin-top:5px;line-height:1.45}
+.plain{margin-top:30px;color:var(--ink2);font-size:15.3px;line-height:1.7}
+.plain b{color:var(--ink)}
+
+/* ── PHOTOGRAPHY ──────────────────────────────────────────────────────────
+   Four real photographs the site already owned and the old homepage barely
+   used. They are here to do a job, not to decorate: the hero shows a person
+   mid-use so the box below it reads as the same thing she is holding, and the
+   strip lower down pairs a real face with a real question and Num's real
+   answer. Nothing on this page is an illustration of a product that does not
+   exist yet. */
+/* ORDER IS THE WHOLE POINT ON A PHONE.
+   First build put the hero photograph between the headline and the ask box,
+   and on a 390×844 screen that pushed the composer clean off the bottom of
+   the fold — a page whose entire job is "let them use it" where the thing they
+   use is not on screen. On mobile the box comes first and the photograph sits
+   under it as proof; on a wide screen there is room for both side by side. */
+.split{display:flex;flex-direction:column;gap:0}
+.split .col{display:contents}
+.split .shot{order:2}
+.shot{position:relative;border-radius:20px;overflow:hidden;margin:20px 0 0;
+  box-shadow:var(--shadow);aspect-ratio:16/10;background:var(--sunk,#F4F8F7)}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:center 32%;display:block}
+/* A quiet wash so white text on the caption never sits on a light patch. */
+.shot::after{content:"";position:absolute;inset:auto 0 0 0;height:52%;
+  background:linear-gradient(180deg,transparent,rgba(6,26,22,.72))}
+.shot figcaption{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:14px 16px;
+  color:#fff;font-size:14.5px;line-height:1.45;font-weight:600;text-shadow:0 1px 12px rgba(0,0,0,.45)}
+@media(min-width:860px){
+  /* WIDER, AND WEIGHTED TOWARDS THE THING PEOPLE CAME TO USE.
+     At 720px the ask column was ~345px: the chips wrapped to three lines, the
+     input took a third of the box, and the photo — at 450x570 — was the
+     biggest thing on the screen. The composer is the product; the photo is
+     the reason to believe it. 1.2/1 says so. */
+  .askwrap{max-width:1080px}
+  .split{display:grid;grid-template-columns:1.32fr 1fr;gap:48px;align-items:stretch;
+    text-align:left;padding-top:40px}
+  .split .col{display:block}
+  .split .askhero{text-align:left;padding:0 0 4px}
+  .split .askhero .sub{margin-left:0}
+  .split .under{text-align:left}
+  /* Height comes from the column beside it, so the two sides finish together
+     instead of the photo stopping 300px short and leaving a hole. */
+  .shot{margin:0;aspect-ratio:auto;height:100%;min-height:440px;max-height:620px;align-self:stretch}
+  .earned{max-width:760px;margin-left:auto;margin-right:auto}
+}
+
+/* the ask strip — a face, a real question, Num's real answer */
+/* Same 1080 as the hero and the header: one left edge for the whole page. */
+.asks{max-width:1080px;margin:64px auto 0;padding:0 20px}
+.asked{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:20px}
+.ask-card{background:var(--card,#fff);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  box-shadow:var(--shadow);display:flex;flex-direction:column}
+.ask-card img{width:100%;height:150px;object-fit:cover;display:block}
+.ask-card .body{padding:15px 16px 17px;display:flex;flex-direction:column;gap:9px;flex:1}
+.ask-card q{display:block;font-size:15px;font-weight:650;color:var(--ink);line-height:1.45;quotes:'“' '”'}
+.ask-card .ans{font-size:14px;color:var(--ink2);line-height:1.55;border-left:2px solid var(--pri);padding-left:11px}
+.ask-card .ans b{color:var(--ink);font-weight:650}
+.ask-card .tag{font:700 10px/1 var(--mono,ui-monospace,Menlo,monospace);letter-spacing:.11em;
+  text-transform:uppercase;color:var(--slate);margin-top:auto}
+
+@media(max-width:520px){.askhero{padding-top:22px}.bub{max-width:94%}.shot{aspect-ratio:5/3}}
+</style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1091773503496521');
+fbq('track', 'PageView');
+</script>
+<noscript><img alt="" width="1" height="1" style="display:none"
+src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
+</head>
+<body>
+
+<header class="topbar">
+  <a class="topbrand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
+  <a class="toplink" href="/how-it-works/">How it works &rarr;</a>
+</header>
+
+<div class="askwrap">
+  <div class="split">
+   <div class="col">
+    <header class="askhero">
+      <span class="pill">✦ Live in 38 countries</span>
+      <h1>Ask for anything.<br>Anywhere you land.</h1>
+      <p class="sub">Dinner, a driver, a table for six, somewhere quiet at 6am. Real places, real answers —
+        right here, right now.</p>
+    </header>
+
+  <!-- The product, not a picture of it. -->
+  <div class="box">
+    <div class="boxtop"><span class="av">N</span><div><b>NUM concierge</b><br><span>● online now</span></div></div>
+
+    <div class="thread" id="thread" aria-live="polite">
+      <div class="bub num">Tell me where you are and what you're after. I'll give you three real places and say which one I'd pick.</div>
+    </div>
+
+    <!-- Three taps, no typing. Most of the people who land here are on a phone
+         with one thumb free; a blank text box is a wall. -->
+    <div class="chips" id="chips">
+      <button class="chip" data-q="Dinner tonight in Edinburgh, somewhere I couldn't find on my own">🍜 Dinner tonight in Edinburgh</button>
+      <button class="chip" data-q="I land in Bangkok at 11pm and I'm starving. What's actually open?">🌙 Landing in Bangkok at 11pm</button>
+      <button class="chip" data-q="Somewhere quiet in Tokyo to work for a few hours with good coffee">☕ Quiet place to work in Tokyo</button>
+    </div>
+
+    <form class="composer" id="composer">
+      <input id="q" type="text" autocomplete="off" enterkeyhint="send"
+             placeholder="Or ask me anything…" aria-label="Ask Num anything">
+      <button class="send" type="submit" id="send">Ask</button>
+    </form>
+  </div>
+
+  <p class="under">Free. No signup, no app store, no card. Ask as much as you like.</p>
+
+  <!-- Always visible, by decision (Dre, 3 Sep 2026): the ads page must offer a
+       way to add Num and a way to message it, on arrival — not only after two
+       answers. Placed UNDER the ask box on purpose, so the box stays the first
+       thing a paid visitor meets and the thing the campaign bids on (Lead =
+       first message). -->
+  <div class="ways" id="ways">
+    <span class="lede">Keep Num handy:</span>
+    <a class="btn pri" href="/app/" id="addNum">Add to home screen</a>
+    <a class="btn ghost" id="waLine" href="#" hidden rel="noopener">WhatsApp</a>
+    <a class="btn ghost" href="https://line.me/R/ti/p/@799pyrus" rel="noopener">LINE</a>
+  </div>
+  <script>
+  /* The WhatsApp line, revealed by the API rather than hard-coded here.
+     A wa.me link needs a real sender behind it, and the sender lives in the
+     Worker's config (WHATSAPP_ENABLED + TWILIO_WHATSAPP_FROM, see
+     worker/whatsapp.mjs). app.itsnum.com/api/version — the app Worker, the
+     same origin the composer above posts to; this page is served by the
+     console Worker, which has no /api — publishes the number ONLY when both
+     are set and the channel is genuinely live, so:
+       - the button can never appear before there is someone to answer it,
+         and a dead chat is worse than no button — it spends the one click a
+         stranger was ever going to give us;
+       - switching WhatsApp on is one secret, not a secret plus a site
+         deploy plus remembering this file exists.
+     Failure is silence: no network, no button, and the page is unaffected. */
+  (function () {
+    var a = document.getElementById('waLine');
+    if (!a) return;
+    try {
+      fetch('https://app.itsnum.com/api/version', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          var n = String((d && d.whatsapp_number) || '').replace(/[^\d]/g, '');
+          if (!/^\d{8,15}$/.test(n)) return;
+          a.href = 'https://wa.me/' + n + '?text=' + encodeURIComponent('Hi Num');
+          a.hidden = false;
+        })
+        .catch(function () { /* no line, no button */ });
+    } catch (e) { /* no line, no button */ }
+  })();
+  </script>
+   </div>
+
+    <!-- fetchpriority high: on a wide screen this is the LCP element, and on a
+         phone it is the first thing under the fold. Intrinsic size is set so
+         nothing reflows under a thumb that is already reaching for the box. -->
+    <figure class="shot" style="margin:0">
+      <img src="/assets/hero.jpg" width="900" height="1117" alt="A traveller asking Num for somewhere to eat"
+           fetchpriority="high" decoding="async">
+      <figcaption>She asked for lunch. Num gave her three places and said which one it would pick.</figcaption>
+    </figure>
+  </div>
+
+  <!-- Shown only after Num has answered twice. Never on arrival. -->
+  <section class="earned" id="earned">
+    <span class="tag">You've seen what it does</span>
+    <h3>Now put it where you'll need it</h3>
+    <p>On the street outside the restaurant. In the taxi. At 6am when nothing is open and you are
+      hungry in a city you don't know. Ten seconds, nothing to download.</p>
+    <div class="row">
+      <button class="btn pri lg" id="addBtn" type="button">Add to home screen</button>
+      <a class="btn ghost lg" id="openApp" href="https://app.itsnum.com/">Keep going in the app</a>
+    </div>
+    <p class="how" id="howTo" hidden></p>
+  </section>
+</div>
+
+<section class="asks">
+  <h2 style="font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--slate);margin:56px 0 0;padding-bottom:9px;border-bottom:1px solid var(--line)">What people actually ask</h2>
+  <div class="asked">
+    <figure class="ask-card" style="margin:0">
+      <img src="/assets/p1.jpg" width="820" height="612" alt="Two travellers checking their phone on a street" loading="lazy" decoding="async">
+      <div class="body">
+        <q>Somewhere for dinner where we won't be the only tourists</q>
+        <p class="ans">Three neighbourhood places, none of them on the strip — and <b>which one Num would pick</b>, with the reason.</p>
+        <span class="tag">answered in seconds</span>
+      </div>
+    </figure>
+    <figure class="ask-card" style="margin:0">
+      <img src="/assets/p2.jpg" width="820" height="612" alt="A traveller on a beach using his phone" loading="lazy" decoding="async">
+      <div class="body">
+        <q>It's 11pm and I've just landed. What's actually open?</q>
+        <p class="ans">Open <b>now</b>, near where you actually are — not a list of places that closed two hours ago.</p>
+        <span class="tag">any hour</span>
+      </div>
+    </figure>
+    <figure class="ask-card" style="margin:0">
+      <img src="/assets/p3.jpg" width="820" height="612" alt="Two travellers laughing over a phone by rice terraces" loading="lazy" decoding="async">
+      <div class="body">
+        <q>A table for six tonight, one of us is vegetarian</q>
+        <p class="ans">Num checks it can seat six, then <b>books it</b> — or tells you plainly that it can't.</p>
+        <span class="tag">it does the ringing</span>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="proof">
+  <h2>What's behind the answer</h2>
+  <div class="facts">
+    <div class="fact"><b>2.5M+</b><span>real places, not listings someone paid for</span></div>
+    <div class="fact"><b>77</b><span>destinations across 38 countries</span></div>
+    <div class="fact"><b>24/7</b><span>any language, any hour</span></div>
+  </div>
+  <p class="plain">Num is not a search engine and it is not a directory. You say what you actually want —
+    <b>"somewhere my mother-in-law will like", "open now", "not touristy"</b> — and it answers the way a
+    concierge would: three real places, and which one it would pick. Nobody pays to be recommended, and
+    when Num isn't sure it says so instead of inventing something.</p>
+</section>
+
+<footer><div class="wrap">
+  <div class="frow">
+    <div>
+      <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 77 destinations across 38 countries. By 5arz.</p>
+    </div>
+    <div><h4>Product</h4><a href="/what-we-do/">What we do</a><a href="/app/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a></div>
+    <div><h4>Get started</h4><a href="/claim/">List your business</a><a href="/hosts/">For concierges &amp; hosts</a><a href="/business/pricing/">Pricing</a><a href="/business/">Why list with NUM</a></div>
+    <div><h4>Company</h4><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@itsnum.com">info@itsnum.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://5arz.com">5arz.com</a></div>
+  </div>
+  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Verified humans, real places.</span></div>
+</div></footer>
+
+<script src="/assets/site.js"></script>
+<script>
+(function () {
+  'use strict';
+  var API = 'https://app.itsnum.com/api/num';
+  var $ = function (id) { return document.getElementById(id); };
+  var thread = $('thread'), q = $('q'), send = $('send');
+  var history = [], state = {}, answered = 0, busy = false;
+
+  /* numTrack comes from num-track.js, which is deferred and may not have run
+     when the first tap lands. Never let a missing tracker eat a click. */
+  var track = function (ev, detail) {
+    try {
+      if (typeof window.numTrack === 'function') window.numTrack(ev, detail ? { detail: detail } : undefined);
+    } catch (e) { /* never let a missing tracker eat a click */ }
+  };
+
+  function bubble(cls, text) {
+    var d = document.createElement('div');
+    d.className = 'bub ' + cls;
+    d.textContent = text;
+    thread.appendChild(d);
+    return d;
+  }
+
+  /* The places, as cards a thumb can use. Every field comes from the API
+     row — the directory is the authority — and a field the row does not
+     have is simply not drawn. No "probably open", no invented rating. */
+  function esc(t) { return String(t == null ? '' : t); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function renderPicks(picks) {
+    if (!Array.isArray(picks) || !picks.length) return;
+    var wrap = el('div', 'picks');
+    picks.slice(0, 3).forEach(function (p, i) {
+      if (!p || !p.name) return;
+      var card = el('div', 'pick');
+
+      var top = el('div', 'top');
+      var nm = el('div', 'nm', esc(p.name));
+      if (p.name_local) nm.appendChild(el('small', null, esc(p.name_local)));
+      top.appendChild(nm);
+      if (p.distance) top.appendChild(el('span', 'dist', esc(p.distance)));
+      card.appendChild(top);
+
+      var meta = el('div', 'meta');
+      if (p.open_label) meta.appendChild(el('span', p.open && p.open.state === 'open' ? 'on' : 'off', esc(p.open_label)));
+      if (p.cuisine || p.category) meta.appendChild(el('span', null, esc(p.cuisine || p.category)));
+      if (p.rating) meta.appendChild(el('span', null, '★ ' + p.rating + (p.reviews ? ' (' + p.reviews.toLocaleString() + ')' : '')));
+      if (p.area) meta.appendChild(el('span', null, esc(p.area)));
+      if (meta.childNodes.length) card.appendChild(meta);
+
+      if (p.why) card.appendChild(el('p', 'why', esc(p.why)));
+
+      var acts = el('div', 'acts');
+      var add = function (href, label, cls, ev) {
+        if (!href) return;
+        var a = el('a', cls || null, label);
+        a.href = href; a.rel = 'noopener'; a.target = href.indexOf('tel:') === 0 ? '_self' : '_blank';
+        a.addEventListener('click', function () { track(ev, String(i + 1)); });
+        acts.appendChild(a);
+      };
+      // The primary action is the most useful one this row can actually
+      // offer, in order: book it, open its site, or show it on a map.
+      if (p.bookable && p.book) add(p.book, 'Book', 'pri', 'pick_link_click');
+      else if (p.link && p.link_kind === 'website') add(p.link, 'Website', 'pri', 'pick_link_click');
+      add(p.map, 'Map', null, 'pick_map_click');
+      add(p.tel, 'Call', null, 'pick_call_click');
+      if (acts.childNodes.length) card.appendChild(acts);
+
+      wrap.appendChild(card);
+    });
+    if (wrap.childNodes.length) thread.appendChild(wrap);
+  }
+
+  function typing() {
+    var d = document.createElement('div');
+    d.className = 'bub num';
+    d.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+    thread.appendChild(d);
+    return d;
+  }
+
+  /* Follow-ups come from the answer, not from us. The API returns the chips it
+     thinks are the real next moves — "Eat there", "Delivery", "Something nearer
+     me" — and a canned list of ours would be a worse guess than the model's. */
+  function offer(chips) {
+    var box = $('chips');
+    box.innerHTML = '';
+    (chips || []).slice(0, 4).forEach(function (c) {
+      var b = document.createElement('button');
+      b.className = 'chip';
+      b.type = 'button';
+      b.textContent = c.label;
+      b.setAttribute('data-q', c.label);
+      box.appendChild(b);
+    });
+  }
+
+  function ask(text) {
+    if (busy || !text) return;
+    busy = true;
+    send.disabled = true;
+    q.value = '';
+    bubble('me', text);
+    var wait = typing();
+    thread.scrollIntoView({ block: 'end', behavior: 'smooth' });
+
+    // THE event. `first_message_sent` has existed in the tracker since the
+    // beginning and had never fired once — because until this page there was
+    // nowhere on itsnum.com a person could send a message from.
+    if (!answered) {
+      track('first_message_sent');
+      // The conversion Meta should bid for. Not a page load — the moment a
+      // stranger actually asked Num something. numMetaEvent queues safely when
+      // there is no pixel or no consent, so this call is unconditional.
+      if (window.numMetaEvent) window.numMetaEvent('Lead', { content_name: 'first_ask' });
+    }
+
+    history.push({ role: 'user', content: text });
+
+    fetch(API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: history.slice(-8), state: state })
+    }).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.json();
+    }).then(function (d) {
+      wait.remove();
+      var reply = (d && d.reply) || '';
+      if (!reply) throw new Error('empty');
+      bubble('num', reply);
+      renderPicks(d.picks);
+      history.push({ role: 'assistant', content: reply });
+      // Remembered facts ride along so the second question knows the city from
+      // the first, exactly as the app does.
+      (d.actions || []).forEach(function (a) {
+        if (a && a.type === 'remember' && a.key) state[a.key] = a.value;
+      });
+      if (d.place) state.place = d.place;
+      offer(d.chips);
+      answered++;
+      // Num actually answered. Without this, `first_message_sent` had no
+      // partner: we could see that somebody asked and never whether they got
+      // anything back. `once` semantics are wrong here — the second answer is
+      // the one that earns the home-screen ask, so both are counted.
+      track('num_answered', answered === 1 ? 'first' : 'repeat');
+      // TWO answers, then the invitation. One is a demo; two is a habit
+      // starting, and that is the only honest moment to ask for a home-screen
+      // icon. Asking on arrival is what the old install page did, and it lost
+      // 89% of everyone it was shown to.
+      if (answered >= 2) {
+        // Two answers in: a conversation, not a bounce. The warm retargeting
+        // audience, and the signal that the page did its job.
+        if (answered === 2 && window.numMetaEvent) window.numMetaEvent('ViewContent', { content_name: 'two_answers' });
+        reveal();
+      }
+      thread.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }).catch(function (err) {
+      wait.remove();
+      // A SILENT FAILURE ON THE PAGE THE ADS POINT AT.
+      //
+      // This branch showed the guest a polite line and told us nothing. If the
+      // API, CORS or the network were failing for real visitors — the exact
+      // thing that turns 324 arrivals into 2 conversations — every dashboard
+      // we own would have shown a quiet page and no reason.
+      track('ask_failed', String((err && err.message) || 'unknown').slice(0, 60));
+      // Say what happened and leave the question in the box so nobody has to
+      // retype it. A concierge that goes silent is worse than one that is busy.
+      bubble('num err', 'That did not go through — my end, not yours. Try that again in a moment.');
+      q.value = text;
+      history.pop();
+    }).then(function () {
+      busy = false;
+      send.disabled = false;
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('.chip') : null;
+    if (c && c.getAttribute('data-q')) { track('primary_cta_click'); ask(c.getAttribute('data-q')); }
+  });
+
+  $('composer').addEventListener('submit', function (e) {
+    e.preventDefault();
+    ask(q.value.trim());
+  });
+
+  /* ── the home-screen ask, once earned ────────────────────────────────────
+     Three different worlds, and only one of them has a button that works:
+       · Chrome/Android with a deferred prompt → a real one-tap install
+       · iOS Safari → no API exists; words are the only honest option
+       · an in-app webview (Reddit, Instagram, LINE) → CANNOT install at all,
+         so we send them onward to the app rather than to a dead button.
+     Getting this wrong is how the old page showed an install prompt to 1,805
+     people and reached 3 of them. */
+  function inApp() {
+    var u = navigator.userAgent || '';
+    return /FBAN|FBAV|Instagram|Line\/|Twitter|Reddit|Snapchat|Pinterest|TikTok/i.test(u);
+  }
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || '') && !window.MSStream;
+  }
+
+  function reveal() {
+    var box = $('earned');
+    if (box.classList.contains('on')) return;
+    box.classList.add('on');
+    // Appearing is not the same as being seen. By the second answer the thread
+    // has grown and this card is born below the fold — so walk them to it,
+    // gently, once.
+    try {
+      setTimeout(function () {
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 420);
+    } catch (e) { /* an old browser just gets the card where it is */ }
+    var btn = $('addBtn'), how = $('howTo');
+
+    // WHICH INSTALL EXISTS FOR THIS PERSON.
+    //
+    // Three completely different experiences hide behind one card, and until
+    // now all three were recorded identically — which is to say, not at all.
+    // 95% of this traffic is inside Reddit's in-app browser, where
+    // `beforeinstallprompt` never fires and a home screen icon is simply not
+    // available: counting those arrivals against "installs offered" would make
+    // the conversion rate look like a persuasion problem when it is a browser
+    // problem. The path rides along on every event from here on.
+    var path = window.numDeferredPrompt ? 'native' : (inApp() ? 'inapp' : (isIOS() ? 'ios-safari' : 'other'));
+
+    // The invitation reached a human. This is the denominator for every
+    // home-screen number we will ever quote, and it did not exist before.
+    track('install_prompt_shown', path);
+
+    if (window.numDeferredPrompt) {
+      btn.onclick = function () {
+        track('install_cta_click', 'native');
+        var p = window.numDeferredPrompt;
+        window.numDeferredPrompt = null;
+        btn.disabled = true;
+        if (window.numMetaEvent) window.numMetaEvent('CompleteRegistration', { content_name: 'add_to_home_screen' });
+        p.prompt();
+        // The outcome, which is the only honest install number. num-track.js
+        // listens for `appinstalled` too, but that never fires when somebody
+        // declines — and the number nobody wants to look at is the one worth
+        // recording.
+        try {
+          p.userChoice.then(function (c) {
+            track(c && c.outcome === 'accepted' ? 'install_accepted' : 'install_dismissed', 'native');
+          });
+        } catch (e) { /* older browsers resolve nothing */ }
+      };
+    } else if (isIOS() && !inApp()) {
+      btn.hidden = true;
+      how.hidden = false;
+      how.textContent = 'On iPhone: tap the Share button at the bottom of Safari, then “Add to Home Screen”.';
+      // iOS never fires a prompt, so the instruction IS the call to action.
+      // Somebody reading it is the closest thing to intent this path has.
+      track('install_cta_click', 'ios-instructions-shown');
+    } else {
+      // In-app browser, or a browser that will not offer the prompt. Do not
+      // show a button that cannot work — send them somewhere that does.
+      btn.hidden = true;
+      how.hidden = false;
+      how.textContent = inApp()
+        ? 'You are in an in-app browser, which cannot add to a home screen. Open Num in Safari or Chrome and it takes ten seconds.'
+        : 'Open Num in Chrome or Safari to add it to your home screen.';
+    }
+    // "Keep going in the app" is a different intent from "put it on my home
+    // screen", and logging both as install_cta_click made the install number
+    // flatter than it was.
+    $('openApp').addEventListener('click', function () { track('primary_cta_click', 'earned-open-app'); });
+  }
+
+  // Carry the campaign through to the app so a person who continues there is
+  // still attributable to the ad that found them.
+  (function () {
+    var s = location.search;
+    if (s && s.indexOf('utm_') !== -1) $('openApp').href = 'https://app.itsnum.com/' + s;
+  })();
+})();
+</script>
+<script>
+/* The home page's app button points straight at the web app. That is right in
+   Safari and Chrome, and wrong inside Instagram, Facebook, TikTok and the
+   rest: their built-in browsers cannot install anything, so the button led to
+   a 500 kB app that loaded onto a dark screen and could not be added to a home
+   screen afterwards. /app/ knows how to explain that and how to get out of it.
+   Same signature list as public/app/index.html and src/lib/webview.mjs. */
+(function () {
+  var ua = navigator.userAgent || '';
+  if (!/\bMessenger(ForiOS|Lite)?[\s/]|FBAN\/Messenger|FBAN\/|FB_IAB\/|FBAV\/|\bInstagram[\s/]|\bReddit[\s/]|BytedanceWebview|musical_ly|\bBytedance\b|\bLine\/[\d.]|\bLIFF\b|Twitter for (?:iPhone|iPad|Android)|\bTwitterAndroid\b|\bSnapchat\b|MicroMessenger|\bLinkedInApp\b|\bPinterest(?:Bot)?[\s/]/i.test(ua)) return;
+  var a = document.getElementById('openApp');
+  if (a) a.href = '/app/' + (location.search || '');
+})();
+</script>
+</body>
+</html>

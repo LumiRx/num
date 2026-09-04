@@ -45,9 +45,17 @@ test('an OpenAI-shaped usage block is read, not dropped', () => {
 
 test('the ledger records the MODEL, not the chain slot', () => {
   // 'hosted' is a position; 'deepseek-v4-flash' is a thing with a price.
+  //
+  // Widened 30 Aug: both Anthropic brains now carry `_model` from the
+  // directive, so `_model` leads and the brain slot is only ever the last
+  // resort. A Haiku turn must price as Haiku — inheriting Opus's rate would
+  // overstate the bill by 5x and hide the saving the bulk lane exists for.
   const i = src('index.mjs');
-  assert.match(i, /result\._model \?\? result\._brain/,
+  assert.match(i, /model: result\._model\s*\n?\s*\?\?/,
     'usage logs the brain slot again — priceFor() cannot resolve it and the turn prices at zero or at Opus');
+  const b = src('brains.mjs');
+  assert.match(b, /_model: structuredModel/,
+    'the structured brains no longer report which model answered — every Haiku turn would price as Opus');
 });
 
 test('cost is joined to the question that caused it', () => {
@@ -85,4 +93,26 @@ test('a vendor-prefixed model is priced as itself, not as Opus', async () => {
   // an under-count hides real spend, which is the worse direction to be wrong.
   assert.match(src, /no price for model .* charging at the default rate/,
     'an unpriced model is now silent — spend on a new vendor would vanish from the ledger');
+});
+
+// ── THE BULK LANE HAD NO PRICE ───────────────────────────────────────────
+//
+// Found 3 Sep 2026 while pulling the numbers for a full report: 13 Haiku
+// calls averaged $0.056 against Opus's $0.061, because the price table had no
+// Haiku row and the resolver falls back to Opus on an unknown model. The
+// router exists to make the everyday question cost a fifth of the expensive
+// one, and the one ledger that judges it was reporting that it costs the same.
+test('the bulk lane has a price of its own', () => {
+  const c = readFileSync(new URL('./console.mjs', import.meta.url), 'utf8');
+  const table = c.slice(c.indexOf('const PRICES = {'), c.indexOf('const PRICE ='));
+  assert.match(table, /'claude-haiku-4-5-20251001':/,
+    'the dated model id the API echoes back has no price and falls through to Opus');
+  assert.match(table, /'claude-haiku-4-5':/, 'the bare name has no price');
+  // Cheaper than Opus in every column, or the row is not doing its job.
+  const haiku = /'claude-haiku-4-5':\s*\{ in: ([\d.]+), out: ([\d.]+), cacheWrite: ([\d.]+), cacheRead: ([\d.]+) \}/.exec(table);
+  const opus = /'claude-opus-5':\s*\{ in: ([\d.]+),\s*out: ([\d.]+),\s*cacheWrite: ([\d.]+), cacheRead: ([\d.]+) \}/.exec(table);
+  assert.ok(haiku && opus, 'the price rows changed shape');
+  for (let i = 1; i <= 4; i++) {
+    assert.ok(Number(haiku[i]) < Number(opus[i]), `haiku column ${i} is not cheaper than opus`);
+  }
 });

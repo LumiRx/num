@@ -67,8 +67,23 @@ body {
   height: var(--vvh, 100dvh);
   overflow: hidden;
 }
+/* THE PHONE FRAME IS FOR BROWSERS ONLY — `html:not(.num-native)`.
+
+   Above 520px the app is drawn as a 440px phone-shaped column on a dark
+   stage. In a desktop browser that is the intended launch stage: the product
+   shown inside a phone. Inside an INSTALLED iPad binary it is a mockup of a
+   phone floating on black, and that is what App Review photographed on an
+   iPad Air M3 while reviewing 1.0(2).
+
+   Somebody who downloaded an app wants the app, at whatever width their
+   device happens to be. This is the same mistake the `innerWidth < 720` test
+   in useStandalone once made — a viewport-width rule that is right for a
+   browser and meaningless inside a binary — so it is fixed the same way:
+   App.tsx marks the document `.num-native`, and the frame skips it.
+
+   The frame is otherwise unchanged, so the web launch stage is untouched. */
 @media (min-width: 520px) {
-  .app-shell {
+  html:not(.num-native) .app-shell {
     width: 440px;
     height: min(100dvh - 48px, 940px);
     margin: auto;
@@ -76,7 +91,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.14);
     box-shadow: 0 40px 90px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
-  .app-shell-stage {
+  html:not(.num-native) .app-shell-stage {
     height: 100dvh;
     display: flex;
     align-items: center;
@@ -87,6 +102,28 @@ body {
       #14100e;
   }
 }
+/* AN INSTALLED APP ON A BIG SCREEN: fill it, but keep the reading column sane.
+
+   Dropping the phone frame (above) makes the shell full-bleed, which is what
+   an iPad user expects from something they downloaded. Left there, though, a
+   chat bubble and a settings row would stretch across 1180px, and a line that
+   wide is genuinely worse to read than the mockup was to look at.
+
+   So the SHELL fills the device — background, aurora, safe areas, all of it —
+   and the CONTENT inside it is centred at a comfortable measure. That is the
+   normal shape of a phone-first app on a tablet, and it needs no per-view
+   layout work: one rule on the shell's own child.
+
+   Phones never reach 520px CSS pixels in portrait, so nothing here changes
+   how the app looks on the device most people use. */
+@media (min-width: 520px) {
+  html.num-native .app-shell > div {
+    max-width: 760px;
+    margin-inline: auto;
+    width: 100%;
+  }
+}
+
 /* The installed app never scrolls the DOCUMENT. Only the regions inside it
    scroll, each in its own overflow container.
 

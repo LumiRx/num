@@ -351,3 +351,60 @@ test('a dropped blind copy is reported, not pretended', async () => {
     { order: [TRANSPORT.CLOUDFLARE] });
   assert.match(out.bccDropped ?? '', /rejected bcc/);
 });
+
+// ── headers reach the transport, or one-click unsubscribe is decorative ──
+//
+// The first onboarding batch landed in junk. growth/invitecron builds
+// List-Unsubscribe correctly and posts it to Resend itself; anything sent
+// through THIS mailer had the field dropped on the floor, because normalise()
+// did not carry `headers` and viaResend never forwarded them. A header that is
+// built, passed, and silently discarded is worse than one that was never
+// written: it reads as done.
+test('normalise carries custom headers, and drops nothing silently', () => {
+  const m = normalise({
+    to: 'a@b.com', subject: 's', text: 't',
+    headers: { 'List-Unsubscribe': '<mailto:x@y.z>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+  }, {});
+  assert.equal(m.headers['List-Unsubscribe'], '<mailto:x@y.z>');
+  assert.equal(m.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+});
+
+test('no headers means null, never an empty object the transport would send', () => {
+  assert.equal(normalise({ to: 'a@b.com', subject: 's', text: 't' }, {}).headers, null);
+});
+
+// ── the sending identity must be a domain that can authenticate ──────────
+//
+// mail.itsnum.com published `_dmarc … p=reject` and had no SPF record and no
+// DKIM key at any selector. Every message it sent failed DMARC by
+// construction; the first onboarding batch went to junk and we only found out
+// because Dre checked his own spam folder. The DMARC record had no `rua`, so
+// there were no failure reports either.
+//
+// This test does not know DNS. It knows the one decision that caused it: the
+// From domain we ship. If mail.itsnum.com comes back, it comes back only after
+// someone has verified it in Resend and relaxed that DMARC record — and this
+// test is where they will be reminded.
+test('MAIL_FROM is not on the unauthenticated sending subdomain', () => {
+  const configs = ['wrangler.app.jsonc', 'growth/wrangler.jsonc'];
+  for (const rel of configs) {
+    const raw = readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+    const from = /"MAIL_FROM"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
+    assert.ok(from, `${rel} has no MAIL_FROM`);
+    assert.ok(
+      !/@mail\.itsnum\.com/.test(from),
+      `${rel} sends From mail.itsnum.com, which publishes DMARC p=reject with no SPF and no DKIM — every message fails authentication`,
+    );
+  }
+});
+
+test('the Cloudflare fallback still has a sender it is allowed to use', () => {
+  // Cloudflare only sends from a domain it holds. Moving MAIL_FROM to the apex
+  // fixed authentication and would have silently killed the fallback — which
+  // only fires when Resend is already broken, i.e. exactly when nobody is
+  // watching. MAIL_CF_FROM is what keeps that path alive.
+  for (const rel of ['wrangler.app.jsonc', 'growth/wrangler.jsonc']) {
+    const raw = readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+    assert.match(raw, /"MAIL_CF_FROM"\s*:\s*"[^"]+"/, `${rel} lost MAIL_CF_FROM — the Cloudflare fallback cannot send`);
+  }
+});

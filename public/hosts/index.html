@@ -48,29 +48,69 @@
 .tag{display:inline-block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#0d9488);font-weight:700}
 @media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
 </style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1091773503496521');
+fbq('track', 'PageView');
+</script>
+<noscript><img alt="" width="1" height="1" style="display:none"
+src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
+<link rel="stylesheet" href="/assets/nav.css">
+<script src="/assets/nav.js" defer></script>
 </head>
 <body>
-
-<nav class="nav"><div class="wrap row">
-  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
-  <div class="navlinks">
-    <a href="/what-we-do/">What we do</a>
-    <a href="/app/">Get the app</a>
-    <a href="/how-it-works/">How it works</a>
-    <a href="/business/">For business</a>
-    <a href="/agents/">For AI agents</a>
-    <span id="signin-slot"><a href="/signin/">Sign in</a></span>
-    <a class="btn pri" href="/claim/" style="padding:10px 18px;font-size:14px">List your business</a>
+<!-- ONE NAV, EVERY PAGE. See assets/nav.css for why it is self-contained. -->
+<nav class="nv">
+  <div class="nv-bar">
+    <a class="nv-brand" href="/"><span class="nv-dot"></span>NUM <small>travel concierge</small></a>
+    <div class="nv-links">
+      <a href="/what-we-do/">What we do</a>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/destinations/">Destinations</a>
+      <span class="nv-sep"></span>
+      <a href="/business/">For business</a>
+      <a href="/hosts/">For hosts</a>
+      <a href="/agents/">For AI agents</a>
+    </div>
+    <div class="nv-end">
+      <a class="nv-signin" id="navAuth" href="/signin/">Sign in</a>
+      <a class="nv-cta" href="/app/">Get the app</a>
+    </div>
+    <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
   </div>
-  <button class="menu-btn" aria-label="Menu">&#9776;</button>
-</div>
-<div class="mobile">
-  <a href="/what-we-do/">What we do</a><a href="/app/">Get the app</a><a href="/how-it-works/">How it works</a>
-  <a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a>
-  <a href="/claim/">List your business</a>
-  <a href="/signin/" id="signin-slot-m">Sign in</a>
-</div>
+  <div class="nv-menu" hidden>
+    <p class="nv-group">Travellers</p>
+    <a href="/what-we-do/">What we do</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/destinations/">Destinations</a>
+    <a href="/perks/">Perks</a>
+    <p class="nv-group">Partners</p>
+    <a href="/business/">For business</a>
+    <a href="/claim/">List your business</a>
+    <a href="/hosts/">For hosts</a>
+    <a href="/agents/">For AI agents</a>
+    <p class="nv-group">Account</p>
+    <a href="/signin/">Sign in</a>
+    <a href="/contact/">Contact</a>
+  </div>
 </nav>
+
 
 <header class="wrap" style="padding-top:56px;padding-bottom:8px">
   <span class="pill">&#10022; Founding hosts &mdash; by application</span>
@@ -155,6 +195,79 @@
   </div>
 </section>
 
+
+<!-- ── PRICING ────────────────────────────────────────────────────────────
+     A concierge asks what it costs inside the first thirty seconds. Until
+     3 Sep 2026 this page did not answer, which meant every host had to email
+     to find out — and the ones who did not email simply left. -->
+<section class="wrap" style="padding-top:46px" id="pricing">
+  <p class="tag">What it costs</p>
+  <h2 style="margin:6px 0 0">Two numbers, and neither of them is your client&rsquo;s.</h2>
+  <p style="margin:14px 0 0;color:var(--ink2);font-size:16px;line-height:1.7;max-width:66ch">
+    You pay a monthly plan to be on NUM, and <b>&pound;5 for each booking we arrange for you</b> &mdash; charged when
+    you confirm it, and nothing at all on one you decline. <b>Your clients are never charged by NUM, for anything, on
+    any plan.</b> They never see a NUM line item, because you are the one we work for.</p>
+
+  <div class="card2" style="margin-top:22px;border-color:var(--accent,#0d9488)">
+    <h3 style="margin:0 0 8px">No plan limits how many clients you can have.</h3>
+    <p style="margin:0;color:var(--ink2);font-size:15px;line-height:1.65">
+      Not the free one either. We are not going to charge you for the size of a book you spent years building &mdash;
+      and if we did, your first instinct would be to keep clients off NUM, which would break the thing you came here
+      for. What a plan buys is <b>reach</b>: alerts, then other hosts&rsquo; books and new clients from us, then a
+      shelf to sell from. Never room.</p>
+  </div>
+
+  <div class="grid2" style="margin-top:22px">
+    <div class="card2">
+      <h3 style="margin:0 0 4px">Free</h3>
+      <p style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;0</p>
+      <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
+        <li><b>Unlimited clients</b></li>
+        <li>Your services, your prices, your rules</li>
+        <li>Every request read, triaged and drafted</li>
+      </ul>
+    </div>
+    <div class="card2">
+      <h3 style="margin:0 0 4px">Small</h3>
+      <p style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;9.99<span style="font-size:15px;font-weight:500;color:var(--ink2)">/month</span></p>
+      <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
+        <li>Everything in Free</li>
+        <li>Text alerts when a request lands</li>
+        <li>Your confirmed work in your own calendar</li>
+      </ul>
+    </div>
+    <div class="card2">
+      <h3 style="margin:0 0 4px">Pro</h3>
+      <p style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;19.99<span style="font-size:15px;font-weight:500;color:var(--ink2)">/month</span></p>
+      <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
+        <li>Everything in Small</li>
+        <li><b>The host network</b> &mdash; hand a job to a host in a city you do not cover</li>
+        <li><b>Introductions</b> &mdash; NUM members near you who asked for a host</li>
+      </ul>
+    </div>
+    <div class="card2">
+      <h3 style="margin:0 0 4px">Full</h3>
+      <p style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;50<span style="font-size:15px;font-weight:500;color:var(--ink2)">/month</span></p>
+      <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
+        <li>Everything in Pro</li>
+        <li>Products and Ghost Message &mdash; things your clients can order by text</li>
+        <li>Your services promoted to travellers in your cities</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card2" style="margin-top:22px">
+    <h3 style="margin:0 0 10px">When you use another host, and when another host uses you</h3>
+    <p style="margin:0 0 10px;color:var(--ink2);font-size:15px;line-height:1.65">
+      Your client wants a car in Bangkok and you have nobody there. A NUM host does. <b>They invoice you, you bill
+      your client exactly as you always have, and NUM takes a flat network fee.</b> We never charge your client and
+      we never appear to them &mdash; which is the only version of this that keeps &ldquo;your clients stay
+      yours&rdquo; true when the work crosses a border.</p>
+    <p style="margin:0;color:var(--ink2);font-size:15px;line-height:1.65">
+      And nothing is ever handed to you that you did not accept first.</p>
+  </div>
+</section>
+
 <section class="wrap" style="padding-top:46px">
   <div class="grid2">
     <div class="card2">
@@ -171,8 +284,10 @@
       <h3 style="margin:0 0 10px">Where we are, honestly</h3>
       <p style="margin:0 0 10px;color:var(--ink2);font-size:15px;line-height:1.65">
         The concierge is live and running trips today. So is the host side you sign up to: <strong>host accounts,
-        inviting your clients with a confirmation step, and the earnings ledger are built and running.</strong> What is
-        still being built is the dispatch layer &mdash; texting your named person, then working down your book.</p>
+        your client book, your services and prices, requests, products and the host network are built and
+        running.</strong> What is still being built is the dispatch layer &mdash; texting your named person, then
+        working down your book &mdash; and the billing that charges the plan and the &pound;5. Until that is on, you
+        are not charged anything.</p>
       <p style="margin:0;color:var(--ink2);font-size:15px;line-height:1.65">
         You would be among the first hosts on it, which means terms and influence a later host will not get, and it
         means some of this will be rough while we build it around how you actually work. We would rather say that than
@@ -181,16 +296,162 @@
   </div>
 </section>
 
-<section class="wrap" style="padding:50px 0 76px">
-  <div class="card2" style="text-align:center;padding:38px 30px">
-    <h2 style="margin:0 0 10px">Become a founding host</h2>
-    <p style="color:var(--ink2);max-width:56ch;margin:0 auto 22px;font-size:15.5px;line-height:1.65">
-      Tell us who you look after and where. If it fits, we will set you up ourselves and build the first version around
-      your book &mdash; not the other way round.</p>
-    <a class="btn pri" href="mailto:info@itsnum.com?subject=Founding%20host%20application&amp;body=Who%20you%20look%20after%3A%0AWhere%20they%20travel%3A%0AHow%20many%20clients%3A%0AThe%20people%20already%20in%20your%20network%20(drivers%2C%20restaurants%2C%20guides)%3A%0AWhat%20eats%20most%20of%20your%20time%3A%0A">Apply to host &mdash; info@itsnum.com</a>
-    <p style="color:var(--ink3,#8A9691);font-size:13px;margin:18px 0 0">No fee to apply. No exclusivity. You keep your clients and your people.</p>
+<section class="wrap" style="padding:50px 0 76px" id="apply">
+  <div class="card2" style="padding:38px 30px;max-width:620px;margin:0 auto">
+    <h2 style="margin:0 0 10px;text-align:center">Become a founding host</h2>
+    <p style="color:var(--ink2);margin:0 auto 24px;font-size:15.5px;line-height:1.65;text-align:center;max-width:52ch">
+      Tell us who you look after and where. You get your link and your console straight away &mdash;
+      no waiting on us to reply to an email.</p>
+
+    <!-- This was a mailto: link until 1 Sep 2026, which is the entire reason
+         num_hosts held zero rows: POST /api/host/join has been live and
+         working the whole time with nothing pointed at it. -->
+    <div id="hostErr" class="hostnote bad"></div>
+
+    <form id="hostForm" novalidate>
+      <div class="hostrow">
+        <div class="hostfield">
+          <label for="h_name">Your name</label>
+          <input id="h_name" name="name" type="text" autocomplete="name" required>
+        </div>
+        <div class="hostfield">
+          <label for="h_company">Company <span class="opt">optional</span></label>
+          <input id="h_company" name="company" type="text" autocomplete="organization">
+        </div>
+      </div>
+      <div class="hostrow">
+        <div class="hostfield">
+          <label for="h_email">Email</label>
+          <input id="h_email" name="email" type="email" autocomplete="email" required
+                 inputmode="email" spellcheck="false">
+          <p class="hosthint">Your link and console arrive here within a minute.</p>
+        </div>
+        <div class="hostfield">
+          <label for="h_phone">Mobile <span class="opt">optional</span></label>
+          <input id="h_phone" name="phone" type="tel" autocomplete="tel" placeholder="+44 7…">
+        </div>
+      </div>
+      <div class="hostfield">
+        <label for="h_about">Who you look after, and where they travel</label>
+        <textarea id="h_about" rows="3" placeholder="e.g. 40 private clients out of Edinburgh — mostly UK, some UAE and Thailand. Drivers and two restaurants I use constantly."></textarea>
+        <p class="hosthint">Not required, but it is what we read first.</p>
+      </div>
+      <label class="hostterms">
+        <input id="h_terms" type="checkbox" required>
+        <span>I have read the <a href="/terms/">terms</a> and the <a href="/privacy/">privacy policy</a>.
+        I understand my clients stay mine &mdash; NUM does not become their concierge and never charges them
+        anything. I pay to use NUM: a monthly plan, free to start, and &pound;5 per booking NUM arranges, billed
+        to me. My plan does not limit how many clients I can have. I can change or cancel it at any time.</span>
+      </label>
+      <button class="btn pri" type="submit" id="h_btn" style="width:100%;justify-content:center">Create my host account</button>
+    </form>
+
+    <div id="hostDone" class="hostdone">
+      <h3 style="margin:0 0 8px">You&rsquo;re in.</h3>
+      <p style="margin:0 0 14px;color:var(--ink2);line-height:1.6">This is your invite link. Someone who joins
+        through it arrives already in your book, as your client &mdash; not ours.</p>
+      <p class="hostmono" id="hostLink"></p>
+      <p style="margin:16px 0 8px;color:var(--ink2);line-height:1.6">And this is your console &mdash; arrivals,
+        bookings, your prices and your earnings. <b>Keep it private: it opens your account without a password.</b></p>
+      <p><a class="btn pri" id="hostConsole" href="#">Open my console</a></p>
+      <p class="hosthint" style="margin-top:14px">Both links are in your inbox too, so you cannot lose them by
+        closing this tab.</p>
+    </div>
+
+    <p style="color:var(--ink3,#8A9691);font-size:13px;margin:18px 0 0;text-align:center">
+      No fee to apply. No exclusivity. Unlimited clients on every plan, including the free one.
+      You keep your clients and your people.</p>
   </div>
 </section>
+
+<style>
+.hostrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:560px){.hostrow{grid-template-columns:1fr}}
+.hostfield{margin-bottom:14px;text-align:left}
+.hostfield label{display:block;font-size:13px;font-weight:650;color:var(--ink2);margin:0 0 5px}
+.hostfield .opt{font-weight:500;color:var(--slate);font-size:12px}
+.hostfield input,.hostfield textarea{width:100%;padding:10px 12px;border:1px solid var(--line);
+  border-radius:10px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}
+.hostfield textarea{resize:vertical;line-height:1.55}
+.hostfield input:focus-visible,.hostfield textarea:focus-visible,#h_btn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.hosthint{font-size:12.5px;color:var(--slate);margin:5px 0 0;line-height:1.5}
+.hostterms{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:13.5px;
+  color:var(--ink2);line-height:1.6;margin:6px 0 18px}
+.hostterms input{margin-top:3px;flex:0 0 auto}
+.hostnote{display:none;border-radius:11px;padding:12px 14px;font-size:14px;line-height:1.55;
+  margin-bottom:16px;text-align:left}
+.hostnote.on{display:block}
+.hostnote.bad{background:#FEF2F2;border:1px solid #FECACA;color:#B4232B}
+.hostdone{display:none;text-align:left}
+.hostdone.on{display:block}
+.hostmono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--bg);
+  border:1px solid var(--line);border-radius:8px;padding:9px 11px;word-break:break-all;margin:0}
+</style>
+
+<script>
+(function () {
+  var f = document.getElementById('hostForm');
+  if (!f) return;
+  var err = document.getElementById('hostErr');
+  var btn = document.getElementById('h_btn');
+  var say = function (m) { err.textContent = m || ''; err.className = 'hostnote bad' + (m ? ' on' : ''); };
+
+  f.onsubmit = function (e) {
+    e.preventDefault();
+    say('');
+    var name = document.getElementById('h_name').value.trim();
+    var email = document.getElementById('h_email').value.trim();
+    if (!name) return say('We need your name — it goes on every invitation your clients receive.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) return say('That email does not look right. Your link is sent there.');
+    if (!document.getElementById('h_terms').checked) return say('Please confirm you have read the terms.');
+
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    fetch('/api/host/join', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: name,
+        company: document.getElementById('h_company').value.trim(),
+        email: email,
+        phone: document.getElementById('h_phone').value.trim(),
+        notes: document.getElementById('h_about').value.trim(),
+        terms_ok: true,
+        // Stored verbatim on num_hosts.agreed_ip's sibling column as the exact
+        // wording agreed to. The version string alone is not evidence of what
+        // a person actually read.
+        terms_text: document.querySelector('.hostterms span').textContent.replace(/\s+/g, ' ').trim()
+      })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      btn.disabled = false;
+      btn.textContent = 'Create my host account';
+      if (!d.ok) {
+        var why = {
+          no_name: 'We need your name.',
+          bad_email: 'That email does not look right.',
+          no_terms: 'Please confirm you have read the terms.',
+          slow_down: 'Too many tries from here. Give it a minute.'
+        }[d.error];
+        return say(why || 'That did not go through. Try again, or email info@itsnum.com and a person will sort it.');
+      }
+      f.style.display = 'none';
+      document.getElementById('hostLink').textContent = d.link;
+      document.getElementById('hostConsole').href = d.console_url;
+      document.getElementById('hostDone').className = 'hostdone on';
+      // An existing host who signs up twice gets the SAME code back rather than
+      // a second one that would split their earnings. Say so, or it reads as a
+      // failure to create an account.
+      if (d.existing) {
+        document.querySelector('#hostDone h3').textContent = 'You already have an account.';
+      }
+      document.getElementById('apply').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }).catch(function () {
+      btn.disabled = false;
+      btn.textContent = 'Create my host account';
+      say('Could not reach NUM. Check your connection — nothing was created.');
+    });
+  };
+})();
+</script>
 
 <footer><div class="wrap">
   <div class="frow">

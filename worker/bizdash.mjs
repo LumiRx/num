@@ -15,6 +15,7 @@
  * invented figure is the most damaging thing this file could produce. When
  * there is nothing to show it says so in words a person can act on.
  */
+import { NOT_PROBE } from './asks.mjs';
 
 /**
  * The dashboard's version, shown to the owner and returned by the API.
@@ -44,6 +45,7 @@ export async function travellerDemand(env, { dest, days = 30, limit = 8 } = {}) 
       `SELECT text, COUNT(*) AS n
          FROM num_asks
         WHERE dest = ?1 AND ts >= datetime('now', ?2)
+          AND ${NOT_PROBE}
         GROUP BY lower(trim(text))
         ORDER BY n DESC
         LIMIT ?3`,

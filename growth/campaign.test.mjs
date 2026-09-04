@@ -42,7 +42,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
 const worker = read('growth/worker.js');
 const appPage = read('public/app/index.html');
 const getPage = read('public/get/index.html');
-const landing = read('public/index.html');
+const landing = read('public/ask/index.html');
 
 /**
  * num-capture.js exactly as the browser receives it.

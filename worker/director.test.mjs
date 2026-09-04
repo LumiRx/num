@@ -115,41 +115,52 @@ test('NUM_MODEL kill switch overrides everything', () => {
   assert.equal(d2.steps[0].model, 'claude-opus-5');
 });
 
-test('MODERATE with hosted brain: flash first, escalate to kimi then Claude', () => {
+// == THE BULK LANE IS HAIKU, FROM 30 AUG =====================================
+//
+// These four tests previously asserted that the bulk went to the `hosted`
+// brain (DeepSeek flash, then Kimi). Measured against the live table that
+// route failed 66 per cent of the time - 81 of 122 turns degraded - while the
+// Workers AI brain behind it failed 10 of 10. The bulk now goes to Haiku,
+// which is a STRUCTURED brain, so the cheap lane keeps the cards, actions and
+// chips that every prose brain is correctly forbidden from producing.
+//
+// The escalation shape is unchanged and still tested: cheapest capable first,
+// Claude Opus as the floor, and nothing can strand a turn.
+test('MODERATE with a hosted brain: Haiku first, hosted behind it, Claude last', () => {
   const env = { NUM_LLM_BASE_URL: 'https://api.example.com/v1' };
   const d = direct('where should I get breakfast', {}, env);
   assert.equal(d.tier, TIERS.MODERATE);
-  assert.equal(d.steps.length, 3);
-  assert.equal(d.steps[0].brain, 'hosted');
-  assert.equal(d.steps[0].model, 'deepseek-v4-flash');
+  assert.equal(d.steps.length, 4);
+  assert.equal(d.steps[0].brain, 'haiku');
+  assert.equal(d.steps[0].model, 'claude-haiku-4-5-20251001');
   assert.equal(d.steps[1].brain, 'hosted');
-  assert.equal(d.steps[1].model, 'kimi-k2.6');
-  assert.equal(d.steps[2].brain, 'claude');
-  assert.equal(d.steps[2].model, 'claude-opus-5');
-  assert.equal(d.estCostUsd, 0.0007, 'first step should cost as flash');
+  assert.equal(d.steps[1].model, 'deepseek-v4-flash');
+  assert.equal(d.steps[2].brain, 'hosted');
+  assert.equal(d.steps[2].model, 'kimi-k2.6');
+  assert.equal(d.steps[3].brain, 'claude');
+  assert.equal(d.steps[3].model, 'claude-opus-5');
+  assert.equal(d.estCostUsd, 0.0022, 'first step should cost as Haiku');
 });
 
-test('MODERATE without hosted brain: Claude only, strong', () => {
+test('MODERATE without a hosted brain: Haiku then Claude', () => {
   const d = direct('where should I get breakfast', {}, {});
   assert.equal(d.steps.length, 2);
-  assert.equal(d.steps[0].brain, 'claude');
-  assert.equal(d.steps[0].model, 'claude-opus-5'); // MODERATE → strong on Claude-only path
+  assert.equal(d.steps[0].brain, 'haiku');
   assert.equal(d.steps[1].brain, 'claude');
   assert.equal(d.steps[1].model, 'claude-opus-5');
 });
 
-test('SIMPLE with hosted brain: flash first, escalate', () => {
+test('SIMPLE goes to Haiku too', () => {
   const env = { NUM_LLM_BASE_URL: 'https://api.example.com/v1' };
   const d = direct('what time do shops open', {}, env);
   assert.equal(d.tier, TIERS.SIMPLE);
-  assert.equal(d.steps[0].brain, 'hosted');
-  assert.equal(d.steps[0].model, 'deepseek-v4-flash');
-  assert.equal(d.estCostUsd, 0.0007);
+  assert.equal(d.steps[0].brain, 'haiku');
+  assert.equal(d.estCostUsd, 0.0022);
 });
 
-test('SIMPLE without hosted brain: Claude easy', () => {
-  const d = direct('what time do shops open', {}, {});
-  assert.equal(d.steps[0].brain, 'claude');
+test('the bulk model is overridable without a deploy', () => {
+  const d = direct('what time do shops open', {}, { NUM_MODEL_BULK: 'claude-sonnet-5' });
+  assert.equal(d.steps[0].brain, 'haiku');
   assert.equal(d.steps[0].model, 'claude-sonnet-5');
 });
 
@@ -185,31 +196,33 @@ test('env overrides for hosted model names', () => {
     NUM_HOSTED_MID: 'custom-mid',
   };
   const d = direct('where should I get breakfast', {}, env);
-  assert.equal(d.steps[0].model, 'custom-flash');
-  assert.equal(d.steps[1].model, 'custom-mid');
+  // Haiku leads now, so the hosted overrides sit one place further down.
+  assert.equal(d.steps[1].model, 'custom-flash');
+  assert.equal(d.steps[2].model, 'custom-mid');
 });
 
 // ── escalation ─────────────────────────────────────────────────────────────
 
 test('afterFailure advances to the next step', () => {
   const d = direct('best beach in Phuket', {}, { NUM_LLM_BASE_URL: 'https://api.example.com/v1' });
-  // After flash fails (index 0)
+  // After Haiku fails (index 0) the independent-bill brain is next.
   const d1 = afterFailure(d, 0);
   assert.ok(d1, 'should have a next step');
-  assert.equal(d1.steps.length, 2);
-  assert.equal(d1.steps[0].model, 'kimi-k2.6');
-  assert.equal(d1.estCostUsd, 0.0056);
+  assert.equal(d1.steps.length, 3);
+  assert.equal(d1.steps[0].model, 'deepseek-v4-flash');
 
-  // After kimi fails (index 0 from d1, which is position 1 in original)
   const d2 = afterFailure(d1, 0);
   assert.ok(d2);
-  assert.equal(d2.steps.length, 1);
-  assert.equal(d2.steps[0].brain, 'claude');
-  assert.equal(d2.estCostUsd, 0.0532);
+  assert.equal(d2.steps[0].model, 'kimi-k2.6');
+
+  const d3 = afterFailure(d2, 0);
+  assert.ok(d3);
+  assert.equal(d3.steps.length, 1);
+  assert.equal(d3.steps[0].brain, 'claude');
+  assert.equal(d3.estCostUsd, 0.0532);
 
   // Claude is the end of the path
-  const d3 = afterFailure(d2, 0);
-  assert.equal(d3, null, 'no step after Claude');
+  assert.equal(afterFailure(d3, 0), null, 'no step after Claude');
 });
 
 test('afterFailure on a single-step directive returns null', () => {
@@ -276,7 +289,7 @@ test('the phrasings real guests actually use reach the cheap lane', () => {
     'food near me',
     'massage recommendations',
   ]) {
-    assert.equal(direct(q, {}, env).steps[0].brain, 'hosted',
+    assert.equal(direct(q, {}, env).steps[0].brain, 'haiku',
       `"${q}" escalated to Claude — the router saves nothing on phrasings it does not recognise`);
   }
 });
@@ -300,4 +313,17 @@ test('widening the cheap lane did not leak a money question into it', () => {
     assert.equal(direct(q, {}, env).steps[0].brain, 'claude',
       `"${q}" was routed to the cheap brain — money, bookings, groups and trouble must always start on Claude`);
   }
+});
+
+test('placing an order spends money, so it never reaches the cheap lane', () => {
+  // Found 30 Aug while measuring the new routing against real traffic:
+  // "order dinner to my hotel tonight" was asked 6 times and classified
+  // MODERATE every time, because the classifier read "dinner" and never
+  // "order". A delivery request commits money exactly as a booking does.
+  for (const q of ['order dinner to my hotel tonight', 'order me a coffee', 'place an order for lunch']) {
+    assert.equal(direct(q, {}, {}).tier, TIERS.CRITICAL, `"${q}" was economised on`);
+  }
+  // ...without swallowing the idiom, which carries no commitment at all.
+  assert.equal(direct('in order to get there faster what should i do', {}, {}).tier, TIERS.MODERATE,
+    '"in order to" was read as placing an order');
 });

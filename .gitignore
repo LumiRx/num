@@ -52,3 +52,8 @@ sql/
 # Staged-for-deletion dist snapshots (_stale-dist-<timestamp>/). Rollback
 # copies somebody parked in the tree, not source.
 _stale-dist-*/
+affiliates.json
+
+# Local edit/deploy claims — see scripts/claim.mjs. One machine's worktree, never shared.
+.claims/
+.secrets/

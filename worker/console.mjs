@@ -13,6 +13,7 @@
 // rather than estimated.
 import { maskPhone } from '../claim/verify.mjs';
 import { DESTINATIONS } from '../scripts/destinations.mjs';
+import { NOT_PROBE } from './asks.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -79,6 +80,15 @@ async function ensureUsage(env) {
 const PRICES = {
   'claude-opus-5':   { in: 5,    out: 25,   cacheWrite: 6.25, cacheRead: 0.5 },
   'claude-sonnet-5': { in: 3,    out: 15,   cacheWrite: 3.75, cacheRead: 0.3 },
+  // THE BULK LANE HAD NO PRICE, so every Haiku turn was charged at Opus's
+  // rate by the fallback below — 13 calls averaging $0.056 each, within a
+  // rounding error of Opus's $0.061. The router's whole case is that the
+  // everyday question costs a fifth of the expensive one, and the ledger was
+  // quietly reporting that it costs the same. Both the dated id the API
+  // returns and the bare name are keyed, because the resolver matches on
+  // exactly what the vendor echoed back.
+  'claude-haiku-4-5':            { in: 1, out: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  'claude-haiku-4-5-20251001':   { in: 1, out: 5, cacheWrite: 1.25, cacheRead: 0.1 },
   // Bionic-hosted open models. Cached input is priced where the vendor
   // publishes it; where it is not, cacheRead falls back to the input price so
   // we never under-count.
@@ -400,7 +410,7 @@ async function rows(env, sql, ...binds) {
   }
 }
 
-const TABS = ['overview', 'growth', 'asks', 'guests', 'business', 'money', 'places', 'infra'];
+const TABS = ['overview', 'growth', 'asks', 'guests', 'business', 'onboarding', 'money', 'places', 'infra'];
 
 async function liteConsole(env, req, url) {
   // WHO: a posted key, or a still-valid token in ?s=.
@@ -544,9 +554,11 @@ async function liteConsole(env, req, url) {
   }
 
   if (tab === 'asks') {
-    const feed = await rows(env, `SELECT text, category, dest, lane, brain, degraded, cached, ts FROM num_asks WHERE ts > ${since} ORDER BY id DESC LIMIT 50`);
-    const cats = await rows(env, `SELECT COALESCE(category,'(uncategorised)') c, COALESCE(dest,'?') dest, COUNT(*) n FROM num_asks WHERE ts > ${since} GROUP BY 1,2 ORDER BY n DESC LIMIT 15`);
-    const pain = await rows(env, `SELECT text, dest, ts FROM num_asks WHERE degraded=1 AND ts > ${since} ORDER BY id DESC LIMIT 15`);
+    // Our own probes ask a real question every few minutes; without this
+    // predicate they were 61% of the feed and 46% of "pain".
+    const feed = await rows(env, `SELECT text, category, dest, lane, brain, degraded, cached, ts FROM num_asks WHERE ts > ${since} AND ${NOT_PROBE} ORDER BY id DESC LIMIT 50`);
+    const cats = await rows(env, `SELECT COALESCE(category,'(uncategorised)') c, COALESCE(dest,'?') dest, COUNT(*) n FROM num_asks WHERE ts > ${since} AND ${NOT_PROBE} GROUP BY 1,2 ORDER BY n DESC LIMIT 15`);
+    const pain = await rows(env, `SELECT text, dest, ts FROM num_asks WHERE degraded=1 AND ts > ${since} AND ${NOT_PROBE} ORDER BY id DESC LIMIT 15`);
     const gaps = await rows(env, `SELECT summary, place, status, ts FROM feature_requests ORDER BY id DESC LIMIT 12`);
     body = `<h2>What guests are asking (scrubbed at write — emails and numbers never stored)</h2>
       ${tbl2(['Question', 'Cat', 'Dest', 'Answered by', 'When'], feed.map((r) =>
@@ -599,6 +611,66 @@ async function liteConsole(env, req, url) {
       `<tr><td>${H(r.name ?? '—')}</td><td>${H(r.email ?? '—')}</td><td>${H(r.dest ?? '—')}</td><td>${H(r.status ?? 'new')}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'No leads yet.')}
     <h2>Guest referrals of businesses</h2>
     ${tbl2(['Business', 'State', 'When'], refs.map((r) => `<tr><td>${H(r.business_name ?? '—')}</td><td>${H(r.state)}</td><td>${H(r.created_at ?? '')}</td></tr>`), 'None yet.')}`;
+  }
+
+  // WHERE IS EVERY BUSINESS, AND WHOSE MOVE IS IT?
+  //
+  // The `business` tab above counts businesses, claims and owners. Counting
+  // them was never the problem: on 30 Aug eight businesses were approved and
+  // the honest answer to "are any of them able to operate" was that nobody
+  // knew, because no table held it. This tab is that answer.
+  //
+  // The two lists are deliberately separate and never summed. What NUM owes a
+  // business is a debt with a name on it; what a business has not filled in is
+  // a nudge. Adding them produces one number that argues for the wrong action.
+  //
+  // Built from bizagent.rollup — the SAME function the admin API and the
+  // per-business agents read. A console that assembled its own version of
+  // "ready" would be a second definition, and the second definition is always
+  // the one that quietly goes stale.
+  if (tab === 'onboarding') {
+    let ro = null;
+    try { ro = await (await import('./bizagent.mjs')).rollup(env, { limit: 200 }); }
+    catch (e) { console.warn('[console.onboarding]', e?.message ?? e); }
+
+    if (!ro) {
+      body = '<h2>Business onboarding</h2><p class="tools">Onboarding state could not be read just now.</p>';
+    } else {
+      const c = ro.counts ?? {};
+      const stageLabel = Object.fromEntries((ro.stages ?? []).map((x) => [x.id, x.label]));
+      const itemLabel = Object.fromEntries((ro.items ?? []).map((x) => [x.id, x.label]));
+      const names = (list) => list.slice(0, 6).map((b) => b.name).join(', ')
+        + (list.length > 6 ? ` +${list.length - 6} more` : '');
+
+      body = `<div class="cards">
+      ${card('operating', NUM(c.operating), 'set up, reachable, nothing outstanding')}
+      ${card('waiting on us', NUM(c.blocked_on_us), 'our move — a debt, not a nudge', (c.blocked_on_us ?? 0) > 0)}
+      ${card('waiting on them', NUM(c.blocked_on_them), 'their move — worth a nudge')}
+      ${card('agents', NUM(c.agents), `${NUM(c.agents_missing)} business(es) without one`, (c.agents_missing ?? 0) > 0)}
+      ${card('never became an account', NUM(c.prospects), 'signed up, no business row', (c.prospects ?? 0) > 0)}
+    </div>
+    <h2>Our move — grouped by the switch that fixes it</h2>
+    <p class="tools">Eleven businesses missing the same thing is one job, not eleven errands.</p>
+    ${tbl2(['What we owe', 'Businesses', 'Who'], (ro.our_move ?? []).map((g) =>
+        `<tr><td>${H(g.label)}</td><td>${NUM(g.businesses.length)}</td><td>${H(names(g.businesses))}</td></tr>`),
+      'Nothing outstanding on our side.')}
+    <h2>Every business</h2>
+    ${tbl2(['Business', 'Where', 'Stage', 'We owe', 'They owe', 'Cannot see'], (ro.reports ?? []).map((r) =>
+        `<tr><td>${H(r.name)}</td><td>${H(r.where ?? '—')}</td>`
+        + `<td class="${r.stage === 'operating' ? 'ok' : ''}">${H(stageLabel[r.stage] ?? r.stage)}</td>`
+        + `<td class="${r.we_owe.length ? 'bad' : ''}">${H(r.we_owe.map((i) => itemLabel[i] ?? i).join(', ') || '—')}</td>`
+        + `<td>${H(r.they_owe.map((i) => itemLabel[i] ?? i).join(', ') || '—')}</td>`
+        + `<td>${H(r.cannot_see.join(', ') || '—')}</td></tr>`),
+      'No businesses yet.')}
+    <h2>Signed up but never became an account</h2>
+    <p class="tools">Not a failing of the business. This is the clearest signal a signup door is broken.</p>
+    ${tbl2(['Business', 'Contact', 'Email', 'State', 'When'], (ro.prospects ?? []).map((r) =>
+        `<tr><td>${H(r.business_name ?? '—')}</td><td>${H(r.contact_name ?? '—')}</td>`
+        + `<td>${H(r.email ?? '—')}</td><td>${H(r.state ?? 'new')}</td><td>${H(r.created_at ?? '')}</td></tr>`),
+      'None — every signup became an account.')}
+    <p class="sub">Onboarding state generated ${H(String(ro.generated_at ?? '').slice(0, 16).replace('T', ' '))} UTC.
+      "Cannot see" means the evidence table does not exist yet — not that the business failed to do it.</p>`;
+    }
   }
 
   if (tab === 'money') {
@@ -689,6 +761,12 @@ async function adminLogin(env, req) {
   const who = env.ADMIN_EMAIL ?? null;
   await logAdmin(env, req, { who, ok: true });
   const token = await mintSession(env, who);
+  // Verify the token we are about to hand out, against the same code that will
+  // check it on the next request. If this ever fails, the password was right
+  // and the session is dead on arrival — which is indistinguishable, from the
+  // browser, from a wrong password. Say so instead of redirecting into a
+  // login form that will silently reject the user forever.
+  if (!(await sessionClaims(env, token))) return to('?err=mint');
   return new Response(null, {
     status: 303,
     headers: {
@@ -703,6 +781,37 @@ async function adminLogin(env, req) {
       // the redirect and every same-site request, never cross-site.
       'Set-Cookie': `num_ops_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`,
     },
+  });
+}
+
+/** Grade a session token WITHOUT revealing anything about the key.
+ *
+ * Everything here is about a credential the caller already possesses, so it
+ * leaks nothing: it only turns a silent 401 into a word. `graded` never
+ * returns the token, its payload, or any part of ADMIN_KEY.
+ */
+export async function gradeSession(env, token) {
+  const t = String(token ?? '');
+  if (!t) return 'absent';
+  const [payload, sig] = t.split('.');
+  if (!payload || !sig) return 'malformed';
+  if (!safeEq(sig, await hmac(env, payload))) return 'bad-signature';
+  let c;
+  try { c = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))); }
+  catch { return 'unreadable-payload'; }
+  if (typeof c.exp !== 'number') return 'no-expiry';
+  return c.exp > Date.now() ? 'ok' : 'expired';
+}
+
+/** Why was I not signed in? Unauthenticated on purpose — a 401 that will not
+ *  say what failed costs more than this endpoint could ever leak. */
+async function adminWhy(env, req) {
+  return json({
+    admin_key: !!env.ADMIN_KEY,
+    header: await gradeSession(env, req.headers.get('X-Admin-Session')),
+    cookie: await gradeSession(env, sessionCookie(req.headers.get('Cookie'))),
+    server_time: new Date().toISOString(),
+    session_hours: SESSION_HOURS,
   });
 }
 
@@ -966,7 +1075,7 @@ async function adminOverview(env, url, req) {
         settle(q(`SELECT substr(ts,1,10) day, COUNT(*) asks,
                          COUNT(DISTINCT COALESCE(member_id, anon_id)) askers,
                          SUM(CASE WHEN member_id IS NULL AND anon_id IS NULL THEN 1 ELSE 0 END) unattributed
-                    FROM num_asks WHERE ts > datetime('now','${win}')
+                    FROM num_asks WHERE ts > datetime('now','${win}') AND ${NOT_PROBE}
                    GROUP BY day`).all(), { results: [] }),
         settle(q(`SELECT (SELECT MAX(created_at) FROM num_members WHERE phone_verified=1) last_verified,
                          (SELECT COUNT(*) FROM num_members WHERE phone IS NOT NULL AND phone_verified=0) stuck,
@@ -1546,6 +1655,9 @@ export async function handleConsole(request, env, path) {
       // The only unauthenticated route: trade the key for a session.
       if (path === '/admin/session' && post) return await adminSession(env, request);
       if (path === '/admin/login' && post) return await adminLogin(env, request);
+      // Deliberately ahead of the isAdmin guard: the whole point is to explain
+      // a failed guard, so it cannot sit behind one.
+      if (path === '/admin/why') return await adminWhy(env, request);
       if (path === '/admin/console') {
         if (!env.ADMIN_KEY) return liteLogin('No admin key is configured on this Worker.');
         return await liteConsole(env, request, url);

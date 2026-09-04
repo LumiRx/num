@@ -37,6 +37,7 @@ import { openNow, hoursLeft } from './hours.mjs';
 import { bookingLink, PLATFORMS } from './booking.mjs';
 import { tagged } from './affiliate.mjs';
 import { logHandoffs } from './affiliateclicks.mjs';
+import { attributionFor } from './sourcing.mjs';
 import { ATTRIBUTION, partnerFrom } from './partnermcp.mjs';
 
 const CORS = {
@@ -185,12 +186,58 @@ export async function handleBookLink(request, env, ctx = null) {
   // evidence for which programme to apply for next; dropping it because we
   // earned nothing on it is how the list of what to sign up for stays a guess.
   if (link) {
-    const t = tagged(link.url, env, { extra: r.dest });
+    // WHO INTRODUCED THIS VENUE, resolved BEFORE the link is tagged — because
+    // the answer has to reach two different places and one of them is not
+    // ours.
+    //
+    // The scout's code goes into the affiliate network's own sub-id
+    // (`subId1` on Impact, `pubref` on Partnerize), so it comes back on
+    // HILTON'S payout statement rather than only in NUM's database. Two
+    // independent records that have to agree is what makes a commission owed
+    // to a real person checkable instead of assertable.
+    //
+    // It falls back to the destination slug, which is what this argument
+    // carried before scouts existed and is still the right answer for a venue
+    // nobody introduced.
+    //
+    // A failure here costs the sub-id, never the link: `attributionFor`
+    // swallows its own errors and returns null.
+    const credit = await attributionFor(env, r.id);
+    const t = tagged(link.url, env, { extra: credit?.code ?? r.dest });
     link.url = t.url;
-    logHandoffs(env, ctx, [{ ...t, kind: r.booking_platform || 'table' }], {
+    // `place_id` travels with the handoff. It is the difference between a log
+    // that says "we sent somebody to synxis.com" and one that can answer "did
+    // we use one of the hotels Adam introduced" — and the id is right here in
+    // `r`, so the only reason it was ever dropped is that the column to put it
+    // in did not exist. See worker/sourcing.mjs.
+    //
+    // `scoutId` is passed through rather than re-resolved: it was just looked
+    // up two lines ago, and asking twice is a query per booking for an answer
+    // already in hand.
+    //
+    // AWAITED when there is no execution context, and that is not a detail.
+    // `logHandoffs` returns null when it could hand the work to
+    // ctx.waitUntil, and the PROMISE when it could not — because an
+    // un-awaited promise left running after the response has been returned is
+    // cancelled by the Workers runtime and the row silently never lands.
+    // affiliateclicks.mjs says exactly that in its own comment; this caller
+    // was not honouring it. `partnermcp.mjs` calls this handler with no ctx
+    // at all, so every booking link handed to a partner agent was at risk of
+    // going unrecorded — which is the one thing the click log exists to stop.
+    //
+    // Node 24's test runner is what surfaced it: the assertions had been
+    // passing on incidental microtask ordering, and adding one await inside
+    // recordHandoffs was enough to lose the race.
+    const logged = logHandoffs(env, ctx, [{
+      ...t,
+      kind: r.booking_platform || 'table',
+      placeId: String(r.id),
+      scoutId: credit?.scoutId ?? null,
+    }], {
       surface: 'book_link',
       dest: r.dest ?? null,
     });
+    if (logged) await logged;
   }
   if (!link) {
     // An honest refusal beats a dead button. The phone number is the real

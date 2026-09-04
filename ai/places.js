@@ -132,14 +132,49 @@ function destNamedIn(text, dests) {
   return best?.dest || null;
 }
 
+/**
+ * Neighbourhood centroids, precomputed. `num_dest_areas` (migration 0016)
+ * holds one row per (dest, area) with the averaged coordinates — 16,539 rows
+ * for the whole directory. Before it existed this ran a GROUP BY over every
+ * place in the destination on each ask that arrived without coordinates:
+ * Tokyo cost 920 ms and 290K rows read, per request, to learn something
+ * that only changes on ingest. Falls back to the live aggregate if the
+ * table is missing or empty, so it keeps working before the migration runs.
+ */
+async function areaRows(env, destSlug) {
+  try {
+    const { results } = await env.DB
+      .prepare('SELECT area, lat, lng, n FROM num_dest_areas WHERE dest=?1 ORDER BY n DESC LIMIT 150')
+      .bind(destSlug).all();
+    if (results?.length) return results;
+  } catch { /* table not there yet — fall through to the live aggregate */ }
+  const { results } = await env.DB
+    .prepare(`SELECT area, AVG(lat) AS lat, AVG(lng) AS lng, COUNT(*) AS n FROM places
+              WHERE dest=?1 AND area IS NOT NULL AND area<>'' GROUP BY area COLLATE NOCASE
+              ORDER BY n DESC LIMIT 150`)
+    .bind(destSlug).all();
+  return results || [];
+}
+
+/**
+ * Rebuild num_dest_areas from the directory. Idempotent; run after any
+ * ingest (the hourly slot in scheduled() is the right home). Whole-directory
+ * cost measured 4 Sep 2026: 5.5 s, 4.9M rows read — once.
+ */
+export async function refreshDestAreas(env) {
+  const r = await env.DB.prepare(
+    `INSERT OR REPLACE INTO num_dest_areas (dest, area, lat, lng, n, refreshed_at)
+     SELECT dest, area, AVG(lat), AVG(lng), COUNT(*), strftime('%s','now')
+     FROM places WHERE area IS NOT NULL AND area <> ''
+     GROUP BY dest, area COLLATE NOCASE`,
+  ).run();
+  return { rows: r?.meta?.changes ?? null };
+}
+
 /** Neighbourhood centroid, derived from the data rather than a hardcoded list. */
 async function areaCenter(env, destSlug, text) {
   try {
-    const { results } = await env.DB
-      .prepare(`SELECT area, AVG(lat) AS lat, AVG(lng) AS lng, COUNT(*) AS n FROM places
-                WHERE dest=?1 AND area IS NOT NULL AND area<>'' GROUP BY area COLLATE NOCASE
-                ORDER BY n DESC LIMIT 150`)
-      .bind(destSlug).all();
+    const results = await areaRows(env, destSlug);
     const t = ' ' + (text || '').toLowerCase().replace(/[.,!?;:()"']/g, ' ') + ' ';
     let best = null;
     for (const a of results || []) {
@@ -253,14 +288,32 @@ export function herePhrase(text) {
   return h ? h[0] : null;
 }
 
-/** Is this string a neighbourhood we already hold places in? */
+/**
+ * Is this string a neighbourhood we already hold places in?
+ *
+ * Reads the 16.5K-row num_dest_areas table (0016), whose `area` column is
+ * COLLATE NOCASE and indexed, so this is an index seek. The previous query —
+ * `SELECT 1 FROM places WHERE area LIKE ?1 COLLATE NOCASE LIMIT 1` — had no
+ * index to use and scanned all 2.69M rows on a miss: 940 ms, measured. A miss
+ * is precisely the case where the guest named somewhere we don't cover, so
+ * the honest "I don't cover X" was the slowest thing Num said.
+ * Equality, not LIKE: the caller passes a plain place name, never a pattern.
+ */
 async function isKnownArea(env, s) {
   try {
     const r = await env.DB
-      .prepare('SELECT 1 FROM places WHERE area LIKE ?1 COLLATE NOCASE LIMIT 1')
+      .prepare('SELECT 1 FROM num_dest_areas WHERE area = ?1 LIMIT 1')
       .bind(s).first();
     return !!r;
-  } catch (e) { console.log('isKnownArea', String(e)); return false; }
+  } catch (e) {
+    // Table not migrated yet: keep the old behaviour rather than mis-classify.
+    try {
+      const r = await env.DB
+        .prepare('SELECT 1 FROM places WHERE area LIKE ?1 COLLATE NOCASE LIMIT 1')
+        .bind(s).first();
+      return !!r;
+    } catch (e2) { console.log('isKnownArea', String(e2)); return false; }
+  }
 }
 
 /**

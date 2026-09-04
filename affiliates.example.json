@@ -1,0 +1,14 @@
+{
+  "_readme": "Copy to affiliates.json, replace every UPPERCASE placeholder, then: node scripts/affiliate-dryrun.mjs --table-file affiliates.json. Only when the dry-run reads right: printf '%s' \"$(cat affiliates.json)\" | npx wrangler secret put NUM_AFFILIATES --config wrangler.app.jsonc. affiliates.json is gitignored on purpose — it is a secret's contents.",
+
+  "booking.com":      { "wrap": "https://tp.media/r?marker=TRAVELPAYOUTS_MARKER.{sub}&p=4&u={dest}" },
+  "agoda.com":        { "wrap": "https://tp.media/r?marker=TRAVELPAYOUTS_MARKER.{sub}&p=2&u={dest}" },
+  "trip.com":         { "wrap": "https://tp.media/r?marker=TRAVELPAYOUTS_MARKER.{sub}&p=7&u={dest}" },
+  "klook.com":        { "wrap": "https://tp.media/r?marker=TRAVELPAYOUTS_MARKER.{sub}&p=8&u={dest}" },
+  "getyourguide.com": { "wrap": "https://tp.media/r?marker=TRAVELPAYOUTS_MARKER.{sub}&p=9&u={dest}" },
+  "viator.com":       { "param": "pid", "ref": "VIATOR_PARTNER_ID" },
+  "airalo.com":       { "wrap": "https://airalo.pxf.io/c/IMPACT_MPID/IMPACT_ADID/IMPACT_CAMPID?subId1={sub}&u={dest}" },
+  "hilton.com":       { "wrap": "https://hilton.sjv.io/c/IMPACT_MPID/IMPACT_ADID/IMPACT_CAMPID?subId1={sub}&u={dest}" },
+  "marriott.com":     { "wrap": "https://marriott.sjv.io/c/IMPACT_MPID/IMPACT_ADID/IMPACT_CAMPID?subId1={sub}&u={dest}" },
+  "ihg.com":          { "wrap": "https://prf.hn/click/camref:PARTNERIZE_CAMREF/pubref:{sub}/destination:{dest}" }
+}

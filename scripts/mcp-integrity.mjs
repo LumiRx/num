@@ -433,7 +433,20 @@ async function checkSurface(surface, { offline }) {
   for (const s of surface.smoke) {
     if (live && !live.includes(s.tool)) continue; // already reported as missing
     try {
-      const { json } = await rpc(surface.url, 'tools/call', { name: s.tool, arguments: s.args }, {}, s.timeoutMs);
+      // THE MONITOR IS NOT A GUEST — the second time we have had to say it.
+      //
+      // concierge_answer runs the FULL guest pipeline (see its note above),
+      // so this check's one question was landing in num_asks as though a
+      // traveller had asked it: 12 of the 30 real asks recorded between 31
+      // Aug and 3 Sep 2026 were this robot. The same string, the same
+      // 'moderate' lane, computed into every funnel number we look at.
+      //
+      // /api/num already has the answer for this (`X-Num-Probe: 1`, kept out
+      // of the analytics tables, worker/index.mjs); it just could not see the
+      // header through the MCP surface. Now it can — and partner traffic,
+      // which is a real person asking through somebody else's app, still
+      // counts, because a real partner does not send this.
+      const { json } = await rpc(surface.url, 'tools/call', { name: s.tool, arguments: s.args }, { 'X-Num-Probe': '1' }, s.timeoutMs);
       const rpcError = !!json.error;
       // Unwrap the tool payload before judging it. MCP nests the result as a
       // JSON string inside content[].text, so `JSON.stringify(result)` gives

@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NOT_PROBE } from './asks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(HERE, 'health.mjs'), 'utf8');
@@ -130,4 +131,99 @@ test('a stalled cron is reported as down, not as a stale ok', () => {
   const fn = src.slice(src.indexOf('async function runHealthFromLastRun'), src.indexOf('export async function runHealth'));
   assert.match(fn, /health_cron_stalled/, 'a dead cron would still report the last good verdict');
   assert.match(fn, /ageMin > \d+/, 'there is no staleness threshold');
+});
+
+test('a mail self-test row can never be mistaken for a health run', async () => {
+  // mailer.selfTest() writes to num_health with failing='mail:selftest' and
+  // verdict='ok'. Reading "the newest row" therefore reported healthy-with-one-
+  // failing on 2026-08-30, and — the real cost — would report `ok` over a live
+  // outage whenever a self-test landed after a degraded run.
+  const { readFileSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'health.mjs'), 'utf8');
+
+  assert.match(src, /const REAL_RUN = .*failing NOT LIKE 'mail:%'/,
+    'the predicate that excludes non-health rows is gone');
+  // Every reader of this table must use it — a new one added later that reads
+  // "the newest row" reintroduces the whole bug silently.
+  const reads = [...src.matchAll(/FROM num_health WHERE ([^`"]+?) ORDER BY id DESC/g)].map((m) => m[1].trim());
+  assert.ok(reads.length >= 3, `expected at least 3 readers of num_health, found ${reads.length}`);
+  for (const where of reads) {
+    assert.match(where, /\$\{REAL_RUN\}/,
+      `a num_health reader filters with "${where}" instead of REAL_RUN — self-test rows will leak back in`);
+  }
+});
+
+// ── WHO IS ACTUALLY ANSWERING ────────────────────────────────────────────
+//
+// 3 Sep 2026: every brain ready, health ok, cooling empty — and 12 of 41
+// answers filed with brain NULL because two corrective retries rebuilt the
+// result object and dropped the attribution. Every check we had asked the
+// brains how they felt; none read what they had signed. This one does.
+function loadCheckAttribution(row) {
+  const start = src.indexOf('async function checkAttribution(');
+  const end = src.indexOf('/**\n * Does the front door actually open?');
+  const body = src.slice(start, end);
+  // checkAttribution excludes our own probe rows via NOT_PROBE (asks.mjs);
+  // the sliced source needs that binding supplied, as the module would.
+  const factory = new Function('NOT_PROBE', `${body}; return checkAttribution;`);
+  return factory(NOT_PROBE);
+}
+const envWithRow = (row, throws = false) => ({
+  DB: {
+    prepare: () => ({
+      first: async () => { if (throws) throw new Error('no such column: brain'); return row; },
+    }),
+  },
+});
+
+test('a healthy day of answers raises nothing', async () => {
+  const check = loadCheckAttribution();
+  const out = await check(envWithRow({ n: 100, unattributed: 3 }));
+  assert.equal(out.ok, true);
+  assert.equal(out.unattributed, 3);
+});
+
+test('a fifth of the day answered by nobody is reported', async () => {
+  const check = loadCheckAttribution();
+  const out = await check(envWithRow({ n: 41, unattributed: 12 }));
+  assert.equal(out.ok, false);
+  assert.match(out.remedy, /12 of 41/);
+  assert.match(out.remedy, /29%/);
+  // The remedy must name the likelier cause first. On 3 Sep the alarm that
+  // said "auth" cost the day; the one that says "attribution, check
+  // routinglabel" would have cost an hour.
+  assert.match(out.remedy, /routinglabel\.mjs/);
+  assert.ok(out.remedy.indexOf('ATTRIBUTION') < out.remedy.indexOf('brains_state'),
+    'the remedy leads with a credential-style outage again — that is the wrong first guess');
+});
+
+test('a quiet day is not evidence of anything', async () => {
+  const check = loadCheckAttribution();
+  const out = await check(envWithRow({ n: 4, unattributed: 4 }));
+  assert.equal(out.ok, true, 'four asks cannot carry a percentage');
+  assert.equal(out.asks, 4);
+});
+
+test('an older table without the column is not an outage', async () => {
+  const check = loadCheckAttribution();
+  const out = await check(envWithRow(null, true));
+  assert.equal(out.ok, true);
+});
+
+test('cached and small-lane rows are excluded — they never had a brain', () => {
+  const body = src.slice(src.indexOf('async function checkAttribution('), src.indexOf('/**\n * Does the front door actually open?'));
+  assert.match(body, /cached = 0/);
+  assert.match(body, /'small', 'cache', 'rescue'/);
+});
+
+test('the attribution check is actually wired into the verdict', () => {
+  assert.match(src, /attribution: await checkAttribution\(env\)/);
+  // A warning, not a page: `brain: null` needs a human eventually, not this
+  // minute, and a monitor that pages for it would be ignored by the time it
+  // was right.
+  const down = /const DOWN = \[([^\]]*)\]/.exec(src);
+  assert.ok(down, 'the DOWN list is gone');
+  assert.equal(/attribution/.test(down[1]), false, 'attribution pages as an outage — it is a warning');
 });

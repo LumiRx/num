@@ -2,6 +2,36 @@
 
 Every version that has been live, newest first.
 
+## 0.8.234 — 2026-09-03 21:31 UTC
+
+failure ledger, mail delivery evidence, resend webhook
+
+- commit `4cece12`
+
+## 0.8.233 — 2026-09-03 19:46 UTC
+
+(no note given)
+
+- commit `4cece12`
+
+## 0.8.232 — 2026-09-02 17:52 UTC
+
+browser-first in-app browsers; error boundary; install prompt after first message; await the handoff log
+
+- commit `4cece12`
+
+## 0.8.229 — 2026-08-31 18:21 UTC
+
+business MCP self-limits in JSON-RPC; discovery exempt
+
+- commit `3056849`
+
+## 0.8.228 — 2026-08-31 18:09 UTC
+
+verify reads message_status and names the destination number; probe budget for reasoning models
+
+- commit `41498db`
+
 ## 0.8.227 — 2026-08-30 00:36 UTC
 
 merge business-data systems onto canonical tables

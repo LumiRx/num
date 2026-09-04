@@ -31,6 +31,10 @@ const deps = (sent = []) => claimDeps({
   clean: (v, n) => String(v ?? '').trim().slice(0, n),
   readJSON: async (req) => req.__body ?? {},
   sendBatch: async (env, msgs) => { sent.push(...msgs); return true; },
+  // sendCode now goes through the mailer seam rather than the batch sender,
+  // so a dead credential on one transport is not the end of a claim. Shaped
+  // like the batch entry so the assertions below are unchanged.
+  sendMail: async (env, msg) => { sent.push({ ...msg, to: [msg.to] }); return { ok: true, via: 'test' }; },
   legalLine: '5arz Inc',
 });
 

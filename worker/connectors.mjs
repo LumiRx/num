@@ -83,6 +83,26 @@ export const CONNECTORS = Object.freeze([
     next: 'Credentials are already set. This one books — it is the only rail that does.',
     note: 'Delivery-as-a-service between two addresses, not food ordering. Covers the errand case.',
   }),
+  // The one rail that carries FULFILMENT rather than content. Sabre and
+  // Duffel below can shop a fare; neither can issue the ticket, and Num
+  // cannot take an AED card at all. LetsGo2Trip does both, which is why this
+  // is worth having alongside two flight rails Num already runs.
+  //
+  // Held at 'apply' deliberately while their rate card is unresolved: the
+  // deck states the flight commission three ways ($7.95 / $10.00 / $15.00 on
+  // their own $530 example) and never defines whether hotel "revenue share"
+  // is of gross or of their margin — a 20x difference. The link builder is
+  // written and tested; only the number is missing.
+  entry({
+    id: 'letsgo2trip', category: 'flights', vendor: 'LetsGo2Trip', adapter: 'letsgo2trip',
+    state: 'apply', power: 'link', coverage: 'global',
+    url: 'https://letsgo2trip.com',
+    next: 'Set LGT_PARTNER_ID to go live. Then LGT_RATE, once one rate card supersedes the deck — '
+      + 'until it is set, every referral is logged with commission_expected_cs NULL rather than a guess.',
+    note: 'Referral only: they own the fare, the checkout, the PNR and the refund. Issues tickets and takes '
+      + 'UAE/GCC cards through Telr, which is the actual reason to carry it. Their checkout adds a $15 '
+      + 'concierge surcharge on our slug — letsgo2trip.mjs discloses it and cannot be made to stop.',
+  }),
   entry({
     id: 'sabre_air', category: 'flights', vendor: 'Sabre', adapter: 'sabre_air',
     state: 'self_serve', power: 'search', coverage: 'global',

@@ -77,6 +77,19 @@ export function normalise(msg = {}, env = {}) {
     subject: String(msg.subject ?? '').slice(0, 300),
     text: msg.text ? String(msg.text) : null,
     html: msg.html ? String(msg.html) : null,
+    /**
+     * Extra headers, carried through to the transport that can take them.
+     *
+     * This existed nowhere, and its absence was invisible: growth/invitecron
+     * builds `List-Unsubscribe` and `List-Unsubscribe-Post` correctly and
+     * hands them to Resend directly, but anything routed through THIS mailer
+     * — the onboarding mail every approved business receives — had them
+     * silently dropped, because viaResend simply never forwarded a headers
+     * field. One-click unsubscribe is a mailbox-provider ranking signal, and
+     * a message that offers none from a domain with no reputation is a
+     * message the provider has no reason to trust.
+     */
+    headers: (msg.headers && typeof msg.headers === 'object') ? { ...msg.headers } : null,
   };
 }
 
@@ -118,6 +131,7 @@ async function viaResend(env, m) {
         ...(m.html ? { html: m.html } : {}),
         ...(m.bcc?.length ? { bcc: m.bcc } : {}),
         ...(m.replyTo ? { reply_to: m.replyTo } : {}),
+        ...(m.headers ? { headers: m.headers } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -202,12 +216,55 @@ async function viaCloudflare(env, m) {
  * `tried` always lists what was attempted and why each failed, because the
  * five silent days happened for want of exactly that list.
  */
-export async function send(env, message, { order = null } = {}) {
+/**
+ * ACCEPTED IS NOT DELIVERED, AND ON 30 AUG 2026 THAT COST SIX BUSINESSES.
+ *
+ * The Cloudflare binding takes a message and returns without throwing. That is
+ * an ACCEPT. Delivery happens later, and when the destination is not one of
+ * the account's verified addresses it simply does not happen — silently, with
+ * no exception to catch and no bounce to read.
+ *
+ * At 19:46 that evening the mail selftest passed "via cloudflare". At 20:26 —
+ * forty minutes later — six approved businesses were handed to the same
+ * transport, every send returned ok, and `num_claim_decisions.onboarded` was
+ * set to 1 on all six. Holiday Inn Express, Fingal, Giuliano's, Awafi, makani,
+ * Morrisons Lounge. Not one of them received anything. All six are now
+ * permanently marked as told, which means the retry sweep skips them forever.
+ *
+ * The transport was not lying. The CALLER was asking the wrong question: it
+ * asked "did a transport accept this" and recorded the answer as "was this
+ * business told".
+ *
+ * So audience is now explicit:
+ *
+ *   internal  us. Alerts, ops mail, anything to an address on our own
+ *             account. The Cloudflare binding is perfect for this and works
+ *             when every credential is dead — which is exactly when an alert
+ *             matters most.
+ *   external  somebody else's inbox. A business, a guest, a scout. Only a
+ *             transport that can actually reach an arbitrary recipient AND
+ *             report what happened to it is allowed to carry these, because a
+ *             false success here is worse than a failure: a failure gets
+ *             retried, and a false success never does.
+ */
+export const AUDIENCE = { INTERNAL: 'internal', EXTERNAL: 'external' };
+
+export function chainFor(audience) {
+  return audience === AUDIENCE.EXTERNAL
+    // Resend only. It reports per-message status and bounces, so a failure is
+    // visible. The Cloudflare binding is deliberately NOT here: it would
+    // accept the message and tell us nothing, which is how six businesses
+    // became unreachable-forever rather than merely un-emailed.
+    ? [TRANSPORT.RESEND]
+    : [TRANSPORT.RESEND, TRANSPORT.CLOUDFLARE];
+}
+
+export async function send(env, message, { order = null, audience = AUDIENCE.INTERNAL } = {}) {
   const m = normalise(message, env);
   const bad = invalid(m);
   if (bad) return { ok: false, via: TRANSPORT.NONE, error: bad, tried: [] };
 
-  const chain = order ?? [TRANSPORT.RESEND, TRANSPORT.CLOUDFLARE];
+  const chain = order ?? chainFor(audience);
   const tried = [];
   for (const via of chain) {
     const fn = via === TRANSPORT.RESEND ? viaResend : via === TRANSPORT.CLOUDFLARE ? viaCloudflare : null;
@@ -217,6 +274,12 @@ export async function send(env, message, { order = null } = {}) {
       return {
         ok: true,
         via,
+        audience,
+        // What we actually know. Every transport here reports an ACCEPT; none
+        // of them reports a delivery. A caller that writes "told" into a
+        // database on the strength of this field is making a claim the
+        // transport never made.
+        proof: 'accepted',
         id: r.id,
         substitutedFrom: r.substitutedFrom ?? null,
         // Carried up rather than dropped here: "it sent, but the copy you
@@ -231,7 +294,11 @@ export async function send(env, message, { order = null } = {}) {
   return {
     ok: false,
     via: TRANSPORT.NONE,
-    error: tried.map((t) => `${t.via}: ${t.error}`).join(' | ') || 'no transport configured',
+    audience,
+    error: tried.map((t) => `${t.via}: ${t.error}`).join(' | ')
+      || (audience === AUDIENCE.EXTERNAL
+        ? 'no transport can reach an external recipient — Resend is the only one allowed to, and it is not configured'
+        : 'no transport configured'),
     tried,
   };
 }

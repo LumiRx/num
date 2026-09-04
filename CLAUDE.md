@@ -20,6 +20,40 @@ git merge-base --is-ancestor HEAD origin/main && echo same-lineage || echo DIFFE
 
 Or run all of them at once: `bash scripts/preflight.sh`
 
+## Before you edit: claim the tree
+
+**Another session may be editing these files right now.** On 3 Sep 2026 two
+Cowork sessions edited this worktree between 19:47 and 20:25 without either
+knowing. Both sets of work survived by luck — each session reads a file, holds
+it in context, and writes it back, so whichever writes last silently erases the
+other's edits to that file. There is no conflict to see. The tests still pass.
+The work is simply gone.
+
+A git branch does not fix this: two sessions on the same working tree share one
+set of files whatever branch is checked out. Branches protect history, not the
+tree.
+
+```bash
+node scripts/claim.mjs status                                   # who holds what
+node scripts/claim.mjs take edit "what you are doing" --who ME  # before editing
+node scripts/claim.mjs renew edit --who ME                      # every ~15 min
+node scripts/claim.mjs release edit --who ME                    # when done
+```
+
+A claim goes stale after 20 minutes without a renew, so a crashed session never
+blocks the tree. `--force` breaks a claim you know is dead.
+
+**Deploys take their own claim, and it refuses while somebody is editing** — a
+deploy started mid-edit ships whatever is half-written on disk:
+
+```bash
+node scripts/claim.mjs take deploy "ship 0.8.233" --who ME
+```
+
+This is advisory: nothing stops a session that does not check. That is still
+most of the fix, because the failure above was not two people ignoring each
+other — it was two people with no way to find out.
+
 ## Non-negotiables
 
 - **Two lineages, no common ancestor.** `origin/main` is the Worker codebase;

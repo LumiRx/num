@@ -5,6 +5,7 @@
 // two people until BOTH acted — you by sending the invite, them by opening it
 // on their own device. Until then a link is 'pending' and carries nothing.
 import { store } from './store';
+import { anonId } from './anon';
 import { refreshRequests } from './requests';
 import { refreshStars } from './stars';
 import { resumeDm } from './dm';
@@ -302,6 +303,9 @@ interface Verification {
   sent: boolean;
   reason?: string;
   note?: string;
+  /** Refused by the cooldown, not by a provider — a code is already in flight. */
+  throttled?: boolean;
+  retry_after_sec?: number;
   /** 'sms' normally; 'review' for the App Store Connect grant. */
   channel?: string;
   expires_in_min?: number;
@@ -491,6 +495,48 @@ export async function signUp(name: string, phone?: string): Promise<SignUpResult
 }
 
 /**
+ * "Send it again."
+ *
+ * The server has had a `/resend` route the whole time and nothing in the app
+ * has ever called it. A person whose text did not arrive had exactly one
+ * option: close the sheet, come back, and hope — which lands on the recovery
+ * branch, and until 30 Aug 2026 that branch said "welcome back" and sent
+ * nothing at all.
+ *
+ * BY NUMBER WHEN THERE IS NO ID, and that is the common case rather than the
+ * edge one: recovery deliberately withholds the member id until a code proves
+ * possession, so the person most likely to press this button is precisely the
+ * one we cannot name. `verifyCode` above solves the same problem the same way.
+ *
+ * Errors are NOT swallowed. A resend button that reports success it did not
+ * have is worse than no button, because it converts "no text arrived" into
+ * "no text arrived and the app is lying to me". The throttle sentences are
+ * written for people on the server; they come through untouched.
+ */
+export type ResendOutcome = {
+  sent: boolean;
+  already?: boolean;
+  /** What became of the PREVIOUS code, when Twilio has resolved it. */
+  previous?: { delivered: boolean; error_code: string | null; hint: string | null } | null;
+};
+
+export async function resendCode(phone?: string): Promise<ResendOutcome> {
+  const me = store.get().me;
+  const recovering = me ? null : (phone ?? recoveringPhone);
+  if (!me && !recovering) throw new Error('There is no number to send a code to.');
+  const out = await api<{ sent?: boolean; already?: boolean; note?: string; previous?: ResendOutcome['previous'] }>(
+    '/resend',
+    {
+      method: 'POST',
+      // Never both: the server takes the id path whenever an id is present,
+      // so sending a stale one would 404 the person it is meant to rescue.
+      body: JSON.stringify(me ? { id: me.id } : { phone: recovering }),
+    },
+  );
+  return { sent: !!out.sent, already: out.already, previous: out.previous ?? null };
+}
+
+/**
  * Type the code in. Two callers, two proofs, one endpoint.
  *
  *   have an id  → { id, code }     the ordinary case: proving the number
@@ -519,7 +565,10 @@ export async function verifyCode(code: string, phone?: string): Promise<boolean>
     ref?: string;
   }>('/verify', {
     method: 'POST',
-    body: JSON.stringify(me ? { id: me.id, code } : { phone: recovering, code }),
+    // `anon` rides along so the server can fold everything Num noticed about
+    // this device into the account it just became. Without it, verifying a
+    // phone would make Num forget you — see mergeAnon in soulprofile.mjs.
+    body: JSON.stringify(me ? { id: me.id, code, anon: anonId() } : { phone: recovering, code, anon: anonId() }),
   });
   if (!out.ok) return false;
   if (out.me?.id) {

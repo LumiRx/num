@@ -157,6 +157,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://itsnum.com/find-a-host/</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://itsnum.com/hosts/</loc>
     <lastmod>2026-08-30</lastmod>
     <changefreq>weekly</changefreq>

@@ -1,0 +1,1355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your host console — NUM</title>
+<!-- Never indexed: every URL here carries a console key in the query string. -->
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+/* This page is the 404 that every host welcome email has been pointing at.
+   growth/worker.js mails "Your page, where you can see arrivals, bookings and
+   what you have earned: /host/?k=…" on every signup — and that URL returned
+   404, which is one of the reasons num_hosts held zero rows. */
+:root{ --gap:20px }
+body{background:var(--bg);color:var(--ink);font-family:var(--body)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+.tnum{font-variant-numeric:tabular-nums}
+header.top{background:var(--card);border-bottom:1px solid var(--line);padding:18px 0;margin-bottom:30px}
+header.top .wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-family:var(--disp);font-weight:700;font-size:19px;color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:9px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--pri);display:inline-block}
+.spacer{flex:1}
+.who{font-size:14px;color:var(--slate)}
+.who b{color:var(--ink);font-weight:650}
+
+.card2{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:var(--shadow);margin-bottom:var(--gap)}
+h1{font-family:var(--disp);font-size:27px;margin:0 0 6px;letter-spacing:-.02em;text-wrap:balance}
+h2{font-family:var(--disp);font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--slate);font-size:14.5px;margin:0 0 18px;max-width:64ch;line-height:1.6}
+.tag{display:inline-block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--pri-d);font-weight:700;margin-bottom:8px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:var(--gap)}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+.tile .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--slate);font-weight:700}
+.tile .v{font-family:var(--disp);font-size:26px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em;line-height:1}
+.tile .s{font-size:12.5px;color:var(--slate)}
+
+label{display:block;font-size:13px;font-weight:650;color:var(--ink2);margin:0 0 5px}
+.hint{font-size:12.5px;color:var(--slate);margin:5px 0 0;line-height:1.5}
+input[type=text],input[type=tel],input[type=email],select,textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14.5px;
+  background:#fff;color:var(--ink)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+textarea{min-height:96px;resize:vertical;line-height:1.55}
+.field{margin-bottom:16px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:620px){.row2{grid-template-columns:1fr}}
+
+.btn{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:11px;padding:11px 18px;
+  font:inherit;font-weight:650;font-size:14.5px;cursor:pointer;text-decoration:none}
+.btn.pri{background:var(--pri);color:#fff}
+.btn.pri:hover{background:var(--pri-d)}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn[disabled]{opacity:.55;cursor:default}
+
+.svc{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.svc label{display:flex;align-items:center;gap:7px;margin:0;padding:8px 12px;border:1px solid var(--line);
+  border-radius:10px;background:#fff;cursor:pointer;font-weight:600;font-size:14px}
+.svc input{margin:0}
+.svc label:has(input:checked){border-color:var(--pri);background:var(--pri-xl);color:var(--pri-d)}
+
+.price{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;background:#fff}
+.price .top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.price .top b{font-size:15px}
+.price .grid{display:grid;grid-template-columns:1.4fr .9fr .9fr 1.1fr;gap:10px}
+@media(max-width:760px){.price .grid{grid-template-columns:1fr 1fr}}
+
+.choice{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:#fff;cursor:pointer;display:block}
+.choice:has(input:checked){border-color:var(--pri);background:var(--pri-xl)}
+.choice b{display:block;font-size:15px;margin-bottom:3px}
+.choice span{font-size:13.5px;color:var(--slate);line-height:1.55}
+.choice input{margin-right:8px}
+
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+.scroll{overflow-x:auto}
+th{text-align:left;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--slate);
+  font-weight:700;padding:0 12px 8px 0;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px 10px 0;border-bottom:1px solid var(--line);color:var(--ink2)}
+
+.note{border-radius:11px;padding:12px 14px;font-size:14px;line-height:1.55;margin-bottom:14px;display:none}
+.note.on{display:block}
+.note.ok{background:var(--pri-xl);border:1px solid var(--pri-l);color:var(--pri-d)}
+.note.bad{background:#FEF2F2;border:1px solid #FECACA;color:#B4232B}
+.note.warn{background:var(--amber-l);border:1px solid #F5DFBB;color:#8A5A12}
+.gate{max-width:440px;margin:60px auto}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--bg);
+  border:1px solid var(--line);border-radius:7px;padding:3px 7px;word-break:break-all}
+.hide{display:none!important}
+</style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1091773503496521');
+fbq('track', 'PageView');
+</script>
+<noscript><img alt="" width="1" height="1" style="display:none"
+src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><span class="dot"></span>NUM</a>
+  <span class="spacer"></span>
+  <span class="who" id="who"></span>
+</div></header>
+
+<div class="wrap">
+
+<!-- ── GATE ─────────────────────────────────────────────────────────────
+     There is no password. A host's console key IS the credential and it
+     arrives in the welcome email as /host/?k=…  This box exists for the host
+     who lost the tab and pasted the key instead of the link. -->
+<section id="gate" class="gate hide">
+  <div class="card2">
+    <span class="tag">Host console</span>
+    <h1>Open your console</h1>
+    <p class="sub">Paste the key from your welcome email, or open the link we sent you. There is no password —
+      that link is the key, so keep it private.</p>
+    <div class="note bad" id="gateErr"></div>
+    <form id="gateForm">
+      <div class="field">
+        <label for="k">Console key</label>
+        <input id="k" name="k" type="text" autocomplete="off" spellcheck="false" required
+               placeholder="the long code after ?k= in your email">
+      </div>
+      <button class="btn pri" type="submit">Open console</button>
+    </form>
+    <p class="hint" style="margin-top:16px">Lost it? Email <a href="mailto:info@itsnum.com">info@itsnum.com</a>
+      from the address you signed up with and we will resend it.</p>
+  </div>
+</section>
+
+<!-- ── CONSOLE ────────────────────────────────────────────────────────── -->
+<main id="app" class="hide">
+
+  <h1 id="hello">Your console</h1>
+  <p class="sub" id="lede">Everything below is read from the database. Nothing here is an estimate.</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <!-- SERVICES + PRICING -->
+  <section class="card2">
+    <span class="tag">What you offer</span>
+    <h2>Your services and what they cost</h2>
+    <p class="sub">Tick what you take. For each one, say how you charge and whether you deliver or go to them.
+      If a price genuinely depends on the request, choose <b>agreed per request</b> — an invented number is one
+      your client will hold you to.</p>
+
+    <div class="note ok" id="profNote"></div>
+    <div class="note bad" id="profErr"></div>
+
+    <form id="profForm">
+      <div class="field">
+        <label>Services</label>
+        <div class="svc" id="svc"></div>
+        <p class="hint">Unticking a service hides its pricing but does not delete it — tick it again and your
+          prices come back.</p>
+      </div>
+
+      <div class="field">
+        <label>Pricing</label>
+        <div id="prices"></div>
+      </div>
+
+      <!-- WHERE YOU WORK.
+           This is not decoration. Until 3 Sep 2026 areas_json was read but
+           never written, so every host's coverage was the empty array it was
+           created with — which meant nearest-host matching had nothing to
+           match on and would have returned nobody, forever, silently. A host
+           with no city here is invisible to introductions. -->
+      <div class="field">
+        <label>Where you work</label>
+        <div id="areas"></div>
+        <button class="btn" type="button" id="areaAdd" style="margin-top:8px">Add a city</button>
+        <p class="hint">A NUM member with no host is only ever offered someone who actually works their city.
+          Radius is capped at 500km on purpose — the whole value of this is that you are really there.</p>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="currency">You quote in</label>
+          <select id="currency">
+            <option value="GBP">GBP £</option><option value="USD">USD $</option>
+            <option value="EUR">EUR €</option><option value="THB">THB ฿</option>
+            <option value="AED">AED د.إ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tier">Your plan</label>
+          <select id="tier">
+            <option value="free">Listed — free</option>
+            <option value="small">Small Business — £9.99/mo</option>
+            <option value="pro">Pro — £19.99/mo</option>
+            <option value="full">Full — £50/mo</option>
+          </select>
+          <p class="hint">Every plan holds unlimited clients. What a plan buys is reach: text alerts and calendar,
+            then the host network and introductions from NUM, then products and Ghost Message. Changing this here
+            records your choice; billing is set up separately and you are never charged from this page.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Who takes the money</label>
+        <!-- The default is "own" in the schema and stays "own" here. Collecting
+             on a host's behalf makes NUM a payment intermediary for their
+             business, with their refunds and chargebacks attached — that is a
+             decision a host makes on purpose, never a field they skipped. -->
+        <label class="choice">
+          <input type="radio" name="charge" value="own" checked>
+          <b>My clients pay me directly</b>
+          <span>NUM never touches the money. You invoice or take payment however you already do.
+            Nothing changes about your banking, your refunds or your tax position.</span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="charge" value="num">
+          <b>NUM collects and settles to me</b>
+          <span>We take the payment from your client and pay it on to you. This makes us a payment intermediary
+            for your business, so we will need to verify you before it is switched on — expect a conversation,
+            not a checkbox.</span>
+        </label>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="notify_phone">Mobile for coordinating texts</label>
+          <input id="notify_phone" type="tel" autocomplete="tel" placeholder="+44 7…">
+          <p class="hint">Often different from the number on your application — the 6am message needs to reach
+            the person, not the office.</p>
+        </div>
+        <div class="field">
+          <label for="smsopt" style="display:flex;align-items:center;gap:8px;font-weight:600">
+            <input id="smsopt" type="checkbox" style="width:auto">
+            Text me when a request comes in
+          </label>
+          <p class="hint">Only possible with a valid mobile above. Standard rates apply; reply STOP to any message
+            and they end.</p>
+        </div>
+      </div>
+
+      <button class="btn pri" type="submit" id="saveBtn">Save profile</button>
+      <span class="hint" id="savedAt" style="margin-left:12px"></span>
+    </form>
+  </section>
+
+  <!-- CALENDAR -->
+  <section class="card2" id="calCard">
+    <span class="tag">Calendar</span>
+    <h2>Your confirmed work, in your own calendar</h2>
+    <p class="sub">Subscribe once and every confirmed request appears in the calendar you already use.
+      This is a read-only feed — NUM publishes, your calendar subscribes. We never ask for write access
+      to anyone's calendar, and we never will.</p>
+    <p id="calUrl" class="hint">Save your profile once and your feed URL appears here.</p>
+  </section>
+
+  <!-- ── YOUR CLIENTS ──────────────────────────────────────────────────
+       The plan is priced on ACTIVE clients and nothing else. The bar shows
+       the ceiling before it is hit, because "you have reached your limit"
+       after the fact is a worse moment than "2 places left" before it. -->
+  <section class="card2" id="clientsCard">
+    <span class="tag">Your book</span>
+    <h2>Your clients</h2>
+    <p class="sub">The people you look after. <b>They are never charged by NUM, for anything, on any plan.</b>
+      You pay to use NUM — a monthly plan and £5 per booking we arrange — and <b>no plan limits how many
+      clients you can have</b>. We are not going to charge you for the size of your own book.</p>
+
+    <div class="note" id="planNote"></div>
+    <div class="note bad" id="clErr"></div>
+
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;font-weight:600">Add a client</summary>
+      <form id="clForm" style="margin-top:14px">
+        <div class="row2">
+          <div class="field"><label for="cl_name">Name</label><input id="cl_name" type="text" required></div>
+          <div class="field"><label for="cl_email">Email <span class="hint">optional</span></label><input id="cl_email" type="email"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="cl_phone">Mobile <span class="hint">optional</span></label><input id="cl_phone" type="tel"></div>
+          <div class="field"><label for="cl_city">Where they are based</label><input id="cl_city" type="text" placeholder="Edinburgh"></div>
+        </div>
+        <div class="field">
+          <label for="cl_notes">What NUM needs to know about them</label>
+          <textarea id="cl_notes" rows="2" placeholder="e.g. Always aisle. Hates being called before 9. Same driver in Dubai every time — Rashid."></textarea>
+          <p class="hint">This is what makes the difference between an assistant and a stranger. It is visible only to you and to NUM.</p>
+        </div>
+        <div class="field">
+          <label for="cl_consent">How you got permission to hold their details</label>
+          <textarea id="cl_consent" rows="2" placeholder="e.g. A private client since 2019 who gave me these details directly and expects me to arrange her travel."></textarea>
+          <p class="hint" id="clConsentCount">At least 40 characters. Stored with your name and the date — it is the
+            lawful basis for holding someone else's details, and it is what we would rely on if anyone ever asks.</p>
+        </div>
+        <button class="btn pri" type="submit" id="clBtn">Add to my book</button>
+      </form>
+    </details>
+
+    <div class="scroll"><table>
+      <thead><tr><th>Name</th><th>Where</th><th>How they arrived</th><th>Status</th><th></th></tr></thead>
+      <tbody id="clRows"></tbody>
+    </table></div>
+  </section>
+
+  <!-- ── INTRODUCTIONS ────────────────────────────────────────────────
+       A NUM member with no host, near you, who asked for you by name.
+       Off by default. Nothing of theirs is shown until you accept. -->
+  <section class="card2" id="introCard">
+    <span class="tag">Introductions</span>
+    <h2>NUM members near you who want a host</h2>
+    <p class="sub">When someone books through NUM in a city you cover and has no host, we can offer them you.
+      <b>They ask first, you accept second.</b> Until both, they see your first name, your city and one line about
+      you — never your email or your number. Decline and their details are deleted and they are never offered to
+      you again.</p>
+
+    <label class="choice" style="margin-bottom:14px">
+      <input type="checkbox" id="introSwitch">
+      <b>Offer me to NUM members near me</b>
+      <span>Off unless you switch it on. Your book is yours; we do not put strangers in it because a field was blank.</span>
+    </label>
+
+    <div class="note bad" id="inErr"></div>
+    <div id="inRows"></div>
+  </section>
+
+  <!-- ── THE WORK ─────────────────────────────────────────────────────
+       Nothing here confirms itself. `Confirm` is a button a person presses. -->
+  <section class="card2" id="reqCard">
+    <span class="tag">The work</span>
+    <h2>Requests</h2>
+    <p class="sub">What your clients have asked for. NUM drafts, prices from your list and reminds you —
+      <b>it never confirms anything to your client on your behalf</b>. You are the first point of contact;
+      we make you look organised, not absent.</p>
+    <p class="sub">Confirming is the moment NUM charges: <b>£5, to you, once per booking</b> — never to your
+      client, and nothing at all on one you decline. The running total sits with the work, below.</p>
+
+    <div class="note bad" id="rqErr"></div>
+
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;font-weight:600">Log a request</summary>
+      <form id="rqForm" style="margin-top:14px">
+        <div class="row2">
+          <div class="field"><label for="rq_client">Client</label><select id="rq_client"></select></div>
+          <div class="field"><label for="rq_service">Service</label><select id="rq_service"></select></div>
+        </div>
+        <div class="field"><label for="rq_title">What they asked for</label>
+          <input id="rq_title" type="text" required placeholder="Car from LAX Thursday, meeting the 11:05"></div>
+        <div class="row2">
+          <div class="field"><label for="rq_city">City</label><input id="rq_city" type="text"></div>
+          <div class="field"><label for="rq_start">When</label><input id="rq_start" type="datetime-local"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="rq_unit">How you are charging</label><select id="rq_unit"></select></div>
+          <div class="field"><label for="rq_price">Price</label><input id="rq_price" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        </div>
+        <div class="field"><label for="rq_detail">Detail</label><textarea id="rq_detail" rows="2"></textarea></div>
+        <button class="btn pri" type="submit" id="rqBtn">Log it</button>
+      </form>
+    </details>
+
+    <div class="scroll"><table>
+      <thead><tr><th>What</th><th>Who</th><th>When</th><th>Price</th><th>Status</th><th></th></tr></thead>
+      <tbody id="rqRows"></tbody>
+    </table></div>
+  </section>
+
+  <!-- ── THE THREAD ───────────────────────────────────────────────────
+       What you say here reaches your client as an email from you. NUM's name
+       appears once, at the bottom, as the sender of record — pretending a
+       person typed it would be a lie, and putting NUM in the from-line would
+       be us introducing ourselves to somebody else's client. -->
+  <section class="card2 hide" id="thCard">
+    <span class="tag">Thread</span>
+    <h2 id="thTitle">Messages</h2>
+    <p class="sub" id="thNote"></p>
+    <div class="note bad" id="thErr"></div>
+    <div id="thRows" style="margin-bottom:16px"></div>
+    <div class="field">
+      <label for="thBody">Your message</label>
+      <textarea id="thBody" rows="3" placeholder="Goes to them as an email from you."></textarea>
+    </div>
+    <button class="btn pri" type="button" id="thSend">Send</button>
+    <button class="btn" type="button" id="thClose">Close</button>
+  </section>
+
+  <!-- ── WHAT YOU SELL ───────────────────────────────────────────────── -->
+  <section class="card2" id="prodCard">
+    <span class="tag">Your shelf</span>
+    <h2>Products</h2>
+    <p class="sub">Three kinds, one shelf. <b>Your own</b> products — hampers, packaged experiences, anything with a
+      fixed price. <b>NUM's</b> products you can put in front of your clients. And <b>Ghost Message</b> lines: a code
+      a client texts to get something delivered.</p>
+
+    <div class="note warn on">
+      <b>The Ghost rule.</b> A Ghost line needs a SKU, a keyword, a photo and a real price before it can go live.
+      A code that resolves to nothing is worse than no code at all — the client texted it off a card and got silence.
+      Save an incomplete line and we keep it as a draft rather than pretending it works.
+    </div>
+
+    <div class="note bad" id="pdErr"></div>
+
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;font-weight:600">Add a product</summary>
+      <form id="pdForm" style="margin-top:14px">
+        <div class="row2">
+          <div class="field"><label for="pd_kind">Kind</label><select id="pd_kind">
+            <option value="own">Mine — something I sell</option>
+            <option value="num">NUM's — I offer it to my clients</option>
+            <option value="ghost">Ghost Message — a code they text</option>
+          </select></div>
+          <div class="field"><label for="pd_name">Name</label><input id="pd_name" type="text" required></div>
+        </div>
+        <div class="row2" id="pd_ghostRow" style="display:none">
+          <div class="field"><label for="pd_sku">SKU <span class="hint">digits</span></label><input id="pd_sku" type="text" inputmode="numeric" placeholder="6943"></div>
+          <div class="field"><label for="pd_keyword">Keyword</label><input id="pd_keyword" type="text" placeholder="roses"></div>
+        </div>
+        <div class="field" id="pd_numRow" style="display:none">
+          <label for="pd_num">Which NUM product</label>
+          <select id="pd_num"><option value="tab">Num Tab</option><option value="membership">Membership</option>
+            <option value="concierge">The concierge itself</option></select>
+          <p class="hint">The price is ours, so it is not yours to set here — your client sees our current price.</p>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="pd_price">Price</label><input id="pd_price" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          <div class="field"><label for="pd_photo">Photo URL</label><input id="pd_photo" type="url" placeholder="https://…"></div>
+        </div>
+        <div class="field"><label for="pd_desc">Description</label><textarea id="pd_desc" rows="2"></textarea></div>
+        <label class="choice"><input type="checkbox" id="pd_active"><b>Live</b>
+          <span>Ghost lines only go live once they resolve. Everything else goes live when you say so.</span></label>
+        <button class="btn pri" type="submit" id="pdBtn">Save product</button>
+      </form>
+    </details>
+
+    <div class="scroll"><table>
+      <thead><tr><th>Kind</th><th>Name</th><th>Code</th><th>Price</th><th>Live</th><th></th></tr></thead>
+      <tbody id="pdRows"></tbody>
+    </table></div>
+  </section>
+
+  <!-- ── OTHER HOSTS ──────────────────────────────────────────────────── -->
+  <section class="card2" id="netCard">
+    <span class="tag">The network</span>
+    <h2>Other hosts</h2>
+    <p class="sub">Your client wants a car in Bangkok and you do not have one there. Another host does.
+      <b>They invoice you, you bill your client as normal, and NUM takes a flat network fee.</b>
+      We never charge your client and we never appear to them — that is the only version of this that keeps
+      "your clients stay yours" true when the work crosses a border.</p>
+
+    <label class="choice" style="margin-bottom:14px">
+      <input type="checkbox" id="netSwitch">
+      <b>List me in the network</b>
+      <span>Other hosts see your name, your city, your services and one line about you. Never your email or number.</span>
+    </label>
+    <div class="field">
+      <label for="netBlurb">Your one line</label>
+      <input id="netBlurb" type="text" maxlength="240" placeholder="Drivers, restaurants and last-minute stays across Scotland. 11 years.">
+      <button class="btn" type="button" id="netSave" style="margin-top:10px">Save</button>
+    </div>
+
+    <div class="note bad" id="ntErr"></div>
+    <h3 style="margin:20px 0 8px;font-size:15px">Your connections</h3>
+    <div id="ntLinks"></div>
+    <h3 style="margin:20px 0 8px;font-size:15px">Hosts you can ask</h3>
+    <div id="ntDir"></div>
+  </section>
+
+  <!-- ── REMOVING SOMEONE ─────────────────────────────────────────────
+       Its own card, not a confirm() dialog, because the thing that needs
+       saying is what happens to THEM afterwards — and a browser dialog has
+       nowhere to say it. -->
+  <section class="card2 hide" id="rmCard">
+    <span class="tag">Remove a client</span>
+    <h2>Remove <span id="rmWho"></span> from your book?</h2>
+    <p class="sub">This is not the same as pausing. <b><span id="rmName"></span> is told by NUM that you have removed
+      them</b>, they leave your console, and you are not billed for anything of theirs again. NUM keeps booking
+      their travel directly, as it does for any member without a host, and the &pound;5 booking fee moves from you
+      to them.</p>
+    <p class="sub">You cannot undo this from here. If they come back it is a new consent, and it is theirs to give.
+      If you only want them out of the way for a while, <b>pause them instead</b> &mdash; a paused client is not
+      billed and is not told anything.</p>
+    <div class="note bad" id="rmErr"></div>
+    <input type="hidden" id="rmId">
+    <div class="field">
+      <label for="rmReason">Anything you want them told <span class="hint">optional</span></label>
+      <textarea id="rmReason" rows="2" placeholder="Left blank, they are simply told you have removed them."></textarea>
+      <p class="hint">Whatever you write is passed on word for word. NUM does not add a reason of its own.</p>
+    </div>
+    <button class="btn pri" type="button" id="rmGo">Remove and tell them</button>
+    <button class="btn" type="button" id="rmCancel">Keep them</button>
+  </section>
+
+  <!-- ── CLOSING THE ACCOUNT ──────────────────────────────────────────── -->
+  <section class="card2" id="closeCard">
+    <span class="tag">Leaving NUM</span>
+    <h2>Close your host account</h2>
+    <p class="sub">Everyone in your book is released and told directly &mdash; they are told it was an account
+      closure, not anything about them. Your plan is cancelled, you are not billed again, your coverage and your
+      network connections end, and this console link stops working.</p>
+    <p class="sub">We keep the record of the bookings you confirmed and of each release, because that is what makes
+      a later question answerable. We do not keep working on anything for you. <b>Your clients&rsquo; details are
+      yours &mdash; ask before you close and we will send you the list.</b></p>
+    <div class="note bad" id="clsErr"></div>
+    <div class="note ok" id="clsNote"></div>
+    <div class="field">
+      <label for="clsReason">Why you are leaving <span class="hint">optional, and read by a person</span></label>
+      <input id="clsReason" type="text" placeholder="It helps us more than a rating would.">
+    </div>
+    <div class="field">
+      <label for="clsConfirm">Type your name exactly as it is on your account</label>
+      <input id="clsConfirm" type="text" autocomplete="off" placeholder="Your name">
+      <p class="hint">Not a checkbox. A checkbox is one tap away from a scroll, and this ends relationships that
+        belong to other people.</p>
+    </div>
+    <button class="btn" type="button" id="clsGo">Close my account</button>
+  </section>
+
+  <!-- CONTACTS -->
+  <section class="card2">
+    <span class="tag">Your book</span>
+    <h2>Invite the people you already look after</h2>
+    <p class="sub">Paste them below, one per line: <b>name, email, phone</b>. We send one message each, with your
+      name on it. If they do not say yes, they never hear from us again.</p>
+
+    <!-- The API refuses any batch without an attestation of at least 40
+         characters. That is not a form nicety: it is the only lawful basis we
+         have for messaging these people, and a batch without it is not a batch
+         we keep. -->
+    <div class="note warn on">
+      <b>Before you paste.</b> These are your clients, not ours. You need their permission to pass their details to
+      a supplier acting for you — under UK GDPR and PECR a list you bought, scraped, or inherited is not a list
+      you can hand over. We will ask you to say, in your own words, how you got it.
+    </div>
+
+    <div class="note ok" id="cErr"></div>
+
+    <form id="cForm">
+      <div class="field">
+        <label for="contacts">Your contacts</label>
+        <textarea id="contacts" placeholder="Ada Lovelace, ada@example.com, +44 7700 900001&#10;Bernard Ng, bernard@example.com"></textarea>
+        <p class="hint">Email is required for each line — it is the only channel we can lawfully use today.
+          Phone is optional and is never messaged without a separate opt-in from them.</p>
+      </div>
+      <div class="field">
+        <label for="consent">How you got permission to contact these people</label>
+        <textarea id="consent" placeholder="e.g. These are private clients I have looked after since 2019. Each of them gave me their details directly and expects me to arrange travel and bookings on their behalf."></textarea>
+        <p class="hint" id="consentCount">At least 40 characters. This is stored with your name, the date and your
+          IP address, and it is what we would rely on if anyone ever asks.</p>
+      </div>
+      <button class="btn pri" type="submit" id="cBtn">Send invitations</button>
+    </form>
+  </section>
+
+  <!-- EARNINGS -->
+  <section class="card2">
+    <span class="tag">Ledger</span>
+    <h2>What you have earned</h2>
+    <p class="sub">Every row is a real booking. Cancelled bookings are shown and never counted in the headline.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>What</th><th>Booking</th><th>Your share</th><th>State</th><th>When</th></tr></thead>
+      <tbody id="earn"></tbody>
+    </table></div>
+  </section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  };
+  var SYM = { GBP: '£', USD: '$', EUR: '€', THB: '฿', AED: 'AED ' };
+  var money = function (minor, cur) {
+    return (SYM[cur] || (cur + ' ')) + (Number(minor || 0) / 100).toFixed(2);
+  };
+  var note = function (el, msg, kind) {
+    el.className = 'note ' + (kind || 'ok') + (msg ? ' on' : '');
+    el.textContent = msg || '';
+  };
+
+  /* The key travels in the query string because that is the link the welcome
+     email already sends. It is moved into sessionStorage and wiped from the
+     address bar on arrival, so it does not sit in the browser history, get
+     screenshotted, or leak through a Referer header on any outbound click. */
+  var K = new URLSearchParams(location.search).get('k') || sessionStorage.getItem('num_host_k') || '';
+  if (new URLSearchParams(location.search).get('k')) {
+    sessionStorage.setItem('num_host_k', K);
+    history.replaceState(null, '', '/host/');
+  }
+
+  var LABEL = {
+    car: 'Cars and drivers', reservation: 'Restaurants and reservations', stay: 'Stays',
+    activity: 'Activities and tours', appointment: 'Appointments', delivery: 'Deliveries'
+  };
+  var VOCAB = { services: [], units: [], fulfilment: [] };
+  var pricing = {};
+
+  function showGate(msg) {
+    $('gate').classList.remove('hide');
+    $('app').classList.add('hide');
+    if (msg) note($('gateErr'), msg, 'bad');
+  }
+
+  $('gateForm').onsubmit = function (e) {
+    e.preventDefault();
+    var v = $('k').value.trim();
+    // Accept a pasted full URL as well as a bare key. Somebody WILL paste the
+    // whole link, and refusing it teaches them nothing.
+    var m = v.match(/[?&]k=([^&\s]+)/);
+    if (m) v = decodeURIComponent(m[1]);
+    if (v.length < 20) return note($('gateErr'), 'That key looks too short — it is about 40 characters.', 'bad');
+    sessionStorage.setItem('num_host_k', v);
+    K = v;
+    boot();
+  };
+
+  function renderServices(selected) {
+    $('svc').innerHTML = VOCAB.services.map(function (s) {
+      return '<label><input type="checkbox" value="' + s + '"' +
+        (selected.indexOf(s) !== -1 ? ' checked' : '') + '>' + esc(LABEL[s] || s) + '</label>';
+    }).join('');
+    Array.prototype.forEach.call($('svc').querySelectorAll('input'), function (i) {
+      i.onchange = renderPrices;
+    });
+  }
+
+  function renderPrices() {
+    var on = Array.prototype.filter.call($('svc').querySelectorAll('input'), function (i) { return i.checked; })
+      .map(function (i) { return i.value; });
+    if (!on.length) {
+      $('prices').innerHTML = '<p class="hint">Tick a service above and its pricing appears here.</p>';
+      return;
+    }
+    var cur = $('currency').value;
+    $('prices').innerHTML = on.map(function (k) {
+      var p = pricing[k] || { label: LABEL[k] || k, price_minor: 0, unit: 'quote', fulfilment: 'either', notes: '' };
+      var units = VOCAB.units.map(function (u) {
+        return '<option value="' + u + '"' + (p.unit === u ? ' selected' : '') + '>' +
+          (u === 'quote' ? 'agreed per request' : 'per ' + u) + '</option>';
+      }).join('');
+      var ful = [['delivered', 'I deliver / come to them'], ['on_site', 'They come to me'], ['either', 'Either']]
+        .map(function (f) {
+          return '<option value="' + f[0] + '"' + (p.fulfilment === f[0] ? ' selected' : '') + '>' + f[1] + '</option>';
+        }).join('');
+      return '<div class="price" data-k="' + k + '">' +
+        '<div class="top"><b>' + esc(LABEL[k] || k) + '</b></div>' +
+        '<div class="grid">' +
+          '<div><label>Label your client sees</label><input type="text" data-f="label" value="' + esc(p.label) + '"></div>' +
+          '<div><label>Price (' + esc(cur) + ')</label><input type="text" inputmode="decimal" data-f="price"' +
+            (p.unit === 'quote' ? ' disabled placeholder="—"' : ' value="' + (p.price_minor / 100).toFixed(2) + '"') + '></div>' +
+          '<div><label>How</label><select data-f="unit">' + units + '</select></div>' +
+          '<div><label>Delivery</label><select data-f="ful">' + ful + '</select></div>' +
+        '</div>' +
+        '<div style="margin-top:10px"><label>Anything they should know</label>' +
+          '<input type="text" data-f="notes" value="' + esc(p.notes || '') + '" placeholder="e.g. 24 hours notice, minimum 3 hours"></div>' +
+      '</div>';
+    }).join('');
+
+    // "Agreed per request" must visibly disable the price box. A greyed-out
+    // number that is still stored is exactly how a host ends up quoting a
+    // figure they thought they had removed.
+    Array.prototype.forEach.call($('prices').querySelectorAll('[data-f=unit]'), function (sel) {
+      sel.onchange = function () {
+        var box = sel.closest('.price').querySelector('[data-f=price]');
+        box.disabled = sel.value === 'quote';
+        if (box.disabled) box.value = '';
+      };
+    });
+  }
+
+  function collectPricing() {
+    return Array.prototype.map.call($('prices').querySelectorAll('.price'), function (row) {
+      var f = function (n) { return row.querySelector('[data-f=' + n + ']'); };
+      var unit = f('unit').value;
+      var amount = parseFloat(f('price').value);
+      return {
+        key: row.getAttribute('data-k'),
+        label: f('label').value,
+        price_minor: unit === 'quote' || !isFinite(amount) ? 0 : Math.round(amount * 100),
+        unit: unit,
+        fulfilment: f('ful').value,
+        notes: f('notes').value
+      };
+    });
+  }
+
+  function paintProfile(p) {
+    VOCAB = p.vocabulary || VOCAB;
+    pricing = {};
+    (p.pricing || []).forEach(function (x) { pricing[x.key] = x; });
+    $('currency').value = p.currency || 'GBP';
+    $('tier').value = p.tier || 'free';
+    var r = document.querySelector('input[name=charge][value="' + (p.charge_mode || 'own') + '"]');
+    if (r) r.checked = true;
+    $('notify_phone').value = p.notify_phone || '';
+    $('smsopt').checked = !!p.sms_opt_in;
+    renderServices(p.services || []);
+    renderPrices();
+    AREAS = (p.areas || []).slice();
+    renderAreas();
+    fillRequestVocab();
+    if (p.accepts_intros !== undefined) $('introSwitch').checked = !!p.accepts_intros;
+    if (p.in_network !== undefined) $('netSwitch').checked = !!p.in_network;
+    if (p.blurb !== undefined) $('netBlurb').value = p.blurb || '';
+    $('savedAt').textContent = p.profile_updated_at ? 'Last saved ' + p.profile_updated_at : 'Never saved';
+    if (p.calendar_url) {
+      $('calUrl').innerHTML = 'Subscribe to this URL in Google Calendar, Apple Calendar or Outlook:<br>' +
+        '<span class="mono">' + esc(p.calendar_url) + '</span>';
+    }
+    // A profile nobody has touched since signup is a profile whose prices are
+    // wrong. Say so rather than quoting stale money at a guest.
+    if (!p.profile_updated_at) {
+      note($('profNote'), 'Your profile has never been saved, so NUM cannot quote you to anyone yet. ' +
+        'Tick your services, set your prices, and save.', 'warn');
+    }
+  }
+
+  $('currency').onchange = renderPrices;
+
+  $('profForm').onsubmit = function (e) {
+    e.preventDefault();
+    note($('profErr'), '');
+    var on = Array.prototype.filter.call($('svc').querySelectorAll('input'), function (i) { return i.checked; })
+      .map(function (i) { return i.value; });
+    if (!on.length) return note($('profErr'), 'Tick at least one service — otherwise there is nothing to send you.', 'bad');
+    if ($('smsopt').checked && $('notify_phone').value.trim().length < 7) {
+      return note($('profErr'), 'Texts need a mobile number. Add one, or untick the texts box.', 'bad');
+    }
+    $('saveBtn').disabled = true;
+    $('saveBtn').textContent = 'Saving…';
+    fetch('/api/host/profile?k=' + encodeURIComponent(K), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        services: on, pricing: collectPricing(), areas: collectAreas(),
+        currency: $('currency').value, tier: $('tier').value,
+        accepts_intros: $('introSwitch').checked,
+        in_network: $('netSwitch').checked, blurb: $('netBlurb').value,
+        charge_mode: (document.querySelector('input[name=charge]:checked') || {}).value || 'own',
+        notify_phone: $('notify_phone').value, sms_opt_in: $('smsopt').checked
+      })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      $('saveBtn').disabled = false;
+      $('saveBtn').textContent = 'Save profile';
+      if (!d.ok) return note($('profErr'), 'That did not save: ' + esc(d.error || 'unknown'), 'bad');
+      paintProfile(Object.assign({ vocabulary: VOCAB }, d));
+      // The server says back who takes the money, in words. A host who asked
+      // us to collect and one who did not are in materially different
+      // relationships with NUM, and neither should have to infer which.
+      note($('profNote'), 'Saved. ' + (d.note || ''), 'ok');
+    }).catch(function () {
+      $('saveBtn').disabled = false;
+      $('saveBtn').textContent = 'Save profile';
+      note($('profErr'), 'Could not reach NUM. Check your connection and try again — nothing was saved.', 'bad');
+    });
+  };
+
+  $('consent').oninput = function () {
+    var n = $('consent').value.trim().length;
+    $('consentCount').textContent = n < 40
+      ? 'At least 40 characters — ' + (40 - n) + ' to go. This is stored with your name, the date and your IP address.'
+      : 'Good. This is stored with your name, the date and your IP address, and it is what we would rely on if anyone ever asks.';
+  };
+
+  $('cForm').onsubmit = function (e) {
+    e.preventDefault();
+    note($('cErr'), '');
+    var consent = $('consent').value.trim();
+    if (consent.length < 40) return note($('cErr'), 'Tell us how you got permission first — at least 40 characters. Without it we cannot lawfully send anything.', 'bad');
+    var list = $('contacts').value.split('\n').map(function (line) {
+      var p = line.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!p.length) return null;
+      var email = p.find(function (x) { return x.indexOf('@') !== -1; }) || '';
+      var phone = p.find(function (x) { return /^\+?[\d ()-]{7,}$/.test(x); }) || '';
+      var name = p.find(function (x) { return x !== email && x !== phone; }) || '';
+      return email ? { name: name, email: email, phone: phone } : null;
+    }).filter(Boolean);
+    if (!list.length) return note($('cErr'), 'No usable lines. Each one needs an email address.', 'bad');
+    $('cBtn').disabled = true;
+    $('cBtn').textContent = 'Sending…';
+    fetch('/api/host/contacts?k=' + encodeURIComponent(K), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ contacts: list, consent_text: consent, filename: 'pasted' })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      $('cBtn').disabled = false;
+      $('cBtn').textContent = 'Send invitations';
+      if (!d.ok) {
+        var why = { no_consent_text: 'We need at least 40 characters on how you got permission.',
+          host_not_active: 'Your account is not active yet — we will be in touch.',
+          too_big: 'That is too much at once. Try 500 at a time.' }[d.error];
+        return note($('cErr'), why || ('That did not go through: ' + esc(d.error || 'unknown')), 'bad');
+      }
+      note($('cErr'), 'Queued ' + (d.accepted != null ? d.accepted : list.length) + ' invitations' +
+        (d.rejected ? ', skipped ' + d.rejected + ' (duplicates, unsubscribes or bad addresses)' : '') +
+        '. They go out over the next few hours, one each, with your name on them.', 'ok');
+      $('contacts').value = '';
+      boot(true);
+    }).catch(function () {
+      $('cBtn').disabled = false;
+      $('cBtn').textContent = 'Send invitations';
+      note($('cErr'), 'Could not reach NUM. Nothing was sent.', 'bad');
+    });
+  };
+
+  function paintSummary(d) {
+    $('who').innerHTML = 'Signed in as <b>' + esc(d.name) + '</b>';
+    $('hello').textContent = d.name ? d.name.split(' ')[0] + '’s console' : 'Your console';
+    // The old wording here promised the referral model — "yours for 12 months",
+    // which was NUM owning the client. Under the plan model the client is the
+    // host's, permanently, and the link is simply how they bring one in.
+    $('lede').innerHTML = 'Your clients are yours. NUM is the back office. Your invite link is ' +
+      '<span class="mono">' + esc(d.link) + '</span> — anyone who joins through it arrives in your book. ' +
+      'Every figure below is read from the database.';
+    var cur = d.currency || 'GBP';
+    $('tiles').innerHTML = [
+      ['arrivals', d.arrivals, 'people who opened your link'],
+      ['invited', d.invited, 'from your book'],
+      ['joined', d.joined, 'said yes'],
+      ['bookings', d.bookings, 'cancellations excluded'],
+      ['earned', money(d.earned_minor, cur), 'paid monthly over £25']
+    ].map(function (t) {
+      return '<div class="tile"><div class="k">' + t[0] + '</div>' +
+        '<div class="v tnum">' + esc(t[1]) + '</div><div class="s">' + t[2] + '</div></div>';
+    }).join('');
+    $('earn').innerHTML = (d.earnings || []).length
+      ? d.earnings.map(function (r) {
+          return '<tr><td>' + esc(r.what || '—') + '</td><td class="tnum">' + money(r.booking_minor, r.currency) +
+            '</td><td class="tnum">' + money(r.host_share_minor, r.currency) + '</td><td>' +
+            (r.state === 'void' ? 'Cancelled' : esc(r.state)) + '</td><td>' + esc(r.when || '—') + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="5" style="color:var(--slate)">No bookings yet. They appear here the moment one completes.</td></tr>';
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════
+     THE BOOK — clients, introductions, work, products, other hosts.
+
+     Every POST below re-renders from the server's response rather than from
+     what the form said. A console that paints what it hoped happened is how a
+     host ends up believing a client was added when the plan cap refused it.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  var CLIENTS = [];
+  var AREAS = [];
+
+  function api(path, body) {
+    var o = { headers: { 'content-type': 'application/json' } };
+    if (body) { o.method = 'POST'; o.body = JSON.stringify(body); }
+    return fetch('/api/host/' + path + '?k=' + encodeURIComponent(K), o)
+      .then(function (r) { return r.json(); });
+  }
+
+  /* ── where you work ─────────────────────────────────────────────────── */
+  function renderAreas() {
+    $('areas').innerHTML = AREAS.length ? AREAS.map(function (a, i) {
+      return '<div class="price" data-i="' + i + '" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px">' +
+        '<div><label class="hint">City</label><input type="text" data-a="city" value="' + esc(a.city || '') + '"></div>' +
+        '<div><label class="hint">Country</label><input type="text" data-a="country" value="' + esc(a.country || '') + '"></div>' +
+        '<div><label class="hint">Radius km</label><input type="number" data-a="radius" min="1" max="500" value="' + (a.radius_km || 50) + '"></div>' +
+        '<button class="btn" type="button" data-del="' + i + '">Remove</button></div>';
+    }).join('') : '<p class="hint">No cities yet. Without one, NUM cannot offer you to anyone near you.</p>';
+    Array.prototype.forEach.call($('areas').querySelectorAll('[data-del]'), function (b) {
+      b.onclick = function () { AREAS.splice(Number(b.getAttribute('data-del')), 1); renderAreas(); };
+    });
+  }
+  $('areaAdd').onclick = function () { AREAS.push({ city: '', country: '', radius_km: 50 }); renderAreas(); };
+  function collectAreas() {
+    return Array.prototype.map.call($('areas').querySelectorAll('[data-i]'), function (row) {
+      var g = function (n) { var e = row.querySelector('[data-a=' + n + ']'); return e ? e.value : ''; };
+      // Coordinates are preserved from whatever the server already knew. The
+      // console does not geocode — a wrong coordinate silently put on a host
+      // is worse than no coordinate, because it makes them a candidate for
+      // members who are nowhere near them.
+      var prev = AREAS[Number(row.getAttribute('data-i'))] || {};
+      return { city: g('city'), country: g('country'),
+               lat: prev.lat, lng: prev.lng,
+               radius_km: parseInt(g('radius'), 10) || 50 };
+    }).filter(function (a) { return a.city; });
+  }
+
+  /* ── clients ────────────────────────────────────────────────────────── */
+  function paintPlan(plan) {
+    if (!plan) return;
+    // The ceiling, before it is hit. And said in the same breath: the client
+    // is never the one paying.
+    // plan.full is a constant false and stays that way: there is no state in
+    // which NUM refuses a host a client.
+    note($('planNote'), plan.note +
+      (plan.price ? ' You are on ' + plan.tier + ' (' + plan.price + ').' : ''), 'ok');
+    $('clBtn') && ($('clBtn').disabled = false);
+  }
+
+  function paintClients(d) {
+    CLIENTS = d.clients || [];
+    paintPlan(d.plan);
+    $('clRows').innerHTML = CLIENTS.length ? CLIENTS.map(function (c) {
+      var how = { host_added: 'You added them', num_offer: 'Introduced by NUM', self_joined: 'Joined themselves' }[c.source] || c.source;
+      return '<tr><td><b>' + esc(c.name) + '</b>' + (c.email ? '<br><span class="hint">' + esc(c.email) + '</span>' : '') +
+        // Their own way out, for you to hand over. Not hidden from you: a host
+        // who offers this looks better than one who does not.
+        (c.member_link ? '<br><span class="hint">Their link: <span class="mono">' + esc(c.member_link) + '</span></span>' : '') +
+        '</td><td>' + esc(c.home_city || '—') + '</td><td>' + how + '</td><td>' +
+        (c.status === 'active' ? 'Active' : c.status === 'paused' ? 'Paused — not billed' : esc(c.status)) +
+        '</td><td><button class="btn" data-cl="' + c.id + '" data-act="' +
+        (c.status === 'active' ? 'pause' : 'resume') + '">' +
+        (c.status === 'active' ? 'Pause' : 'Resume') + '</button> ' +
+        '<button class="btn" data-rm="' + c.id + '" data-nm="' + esc(c.name) + '">Remove</button></td></tr>';
+    }).join('') : '<tr><td colspan="5" style="color:var(--slate)">Nobody yet. Add the first person you look after.</td></tr>';
+
+    Array.prototype.forEach.call($('clRows').querySelectorAll('[data-cl]'), function (b) {
+      b.onclick = function () {
+        api('clients', { action: b.getAttribute('data-act'), id: b.getAttribute('data-cl') })
+          .then(function (d) { if (d.ok) { paintClients(d); fillClientPicker(); } });
+      };
+    });
+
+    /* REMOVE IS NOT PAUSE, AND THE UI MUST NOT LET THEM BE CONFUSED.
+       Pause is bookkeeping and reversible. Remove ends a relationship with a
+       person who is not in the room, tells them so, and cannot be undone from
+       here — coming back is a new consent, which is theirs to give. */
+    Array.prototype.forEach.call($('clRows').querySelectorAll('[data-rm]'), function (b) {
+      b.onclick = function () {
+        var name = b.getAttribute('data-nm');
+        $('rmWho').textContent = name;
+        $('rmName').textContent = name;
+        $('rmId').value = b.getAttribute('data-rm');
+        $('rmReason').value = '';
+        note($('rmErr'), '');
+        $('rmCard').classList.remove('hide');
+        $('rmCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
+    });
+    fillClientPicker();
+  }
+
+  function fillClientPicker() {
+    var sel = $('rq_client');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— no client —</option>' + CLIENTS
+      .filter(function (c) { return c.status !== 'removed'; })
+      .map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('');
+  }
+
+  $('cl_consent').oninput = function () {
+    var n = $('cl_consent').value.trim().length;
+    $('clConsentCount').textContent = n < 40
+      ? 'At least 40 characters — ' + (40 - n) + ' to go.'
+      : 'Good. Stored with your name and the date, and it is what we would rely on if anyone ever asks.';
+  };
+
+  $('clForm').onsubmit = function (e) {
+    e.preventDefault();
+    note($('clErr'), '');
+    var consent = $('cl_consent').value.trim();
+    if (consent.length < 40) return note($('clErr'), 'Say how you got permission to hold their details first — at least 40 characters.', 'bad');
+    $('clBtn').disabled = true;
+    api('clients', {
+      action: 'add', name: $('cl_name').value, email: $('cl_email').value,
+      phone: $('cl_phone').value, home_city: $('cl_city').value,
+      notes: $('cl_notes').value, consent_text: consent
+    }).then(function (d) {
+      $('clBtn').disabled = false;
+      if (!d.ok) {
+        var why = {
+          plan_full: d.plan ? d.plan.note : 'You are at your plan limit.',
+          already_in_your_book: 'They are already in your book.',
+          suppressed: 'That address has asked NUM never to contact it. We will not add them.',
+          consent_required: 'We need at least 40 characters on how you got permission.'
+        }[d.error];
+        if (d.plan) paintPlan(d.plan);
+        return note($('clErr'), why || ('That did not save: ' + esc(d.error || 'unknown')), 'bad');
+      }
+      ['cl_name', 'cl_email', 'cl_phone', 'cl_city', 'cl_notes'].forEach(function (i) { $(i).value = ''; });
+      paintClients(d);
+    }).catch(function () {
+      $('clBtn').disabled = false;
+      note($('clErr'), 'Could not reach NUM. Nothing was saved.', 'bad');
+    });
+  };
+
+  /* ── introductions ──────────────────────────────────────────────────── */
+  function paintIntros(d) {
+    $('introSwitch').checked = !!d.accepts_intros;
+    var rows = d.intros || [];
+    $('inRows').innerHTML = rows.length ? rows.map(function (o) {
+      return '<div class="choice" style="display:block"><b>' + esc(o.who) + '</b>' +
+        '<span>' + esc(o.city || 'nearby') +
+        (o.distance_km != null ? ' · about ' + o.distance_km + ' km away' : '') +
+        ' · asked ' + esc(o.asked_at) + '</span>' +
+        '<div style="margin-top:10px"><button class="btn pri" data-in="' + o.id + '" data-act="accept">Accept</button> ' +
+        '<button class="btn" data-in="' + o.id + '" data-act="decline">Decline</button></div></div>';
+    }).join('') : '<p class="hint">' + (d.accepts_intros
+      ? 'Nobody waiting. When a NUM member in one of your cities asks for a host, they appear here.'
+      : 'Switched off. Turn it on above and NUM can offer you to members near you.') + '</p>';
+
+    Array.prototype.forEach.call($('inRows').querySelectorAll('[data-in]'), function (b) {
+      b.onclick = function () {
+        api('intros', { action: b.getAttribute('data-act'), id: b.getAttribute('data-in') })
+          .then(function (d) {
+            if (!d.ok && d.error === 'plan_full') return note($('inErr'), d.plan.note, 'bad');
+            if (d.ok) { paintIntros(d); loadClients(); }
+          });
+      };
+    });
+  }
+  $('introSwitch').onchange = function () {
+    api('intros', { action: 'switch', accepts_intros: $('introSwitch').checked })
+      .then(function (d) { if (d.ok) paintIntros(d); });
+  };
+
+  /* ── the work ───────────────────────────────────────────────────────── */
+  function paintRequests(d) {
+    var rows = d.requests || [];
+    $('rqRows').innerHTML = rows.length ? rows.map(function (r) {
+      var acts = (r.status === 'new' || r.status === 'drafted' || r.status === 'awaiting_host')  // eslint-disable-line
+        // Confirm is a button a person presses. There is no code path that
+        // reaches this state on the host's behalf.
+        ? '<button class="btn pri" data-rq="' + r.id + '" data-act="confirm">Confirm</button> ' +
+          '<button class="btn" data-rq="' + r.id + '" data-act="decline">Decline</button>'
+        : r.status === 'confirmed'
+          ? '<button class="btn" data-rq="' + r.id + '" data-act="done">Mark done</button>'
+          : '';
+      acts += ' <button class="btn" data-msg="' + r.id + '" data-t="' + esc(r.title) + '">Message</button>';
+      return '<tr><td><b>' + esc(r.title) + '</b>' + (r.city ? '<br><span class="hint">' + esc(r.city) + '</span>' : '') +
+        '</td><td>' + esc(r.client_name || '—') + '</td><td>' + esc(r.starts_at || '—') + '</td><td class="tnum">' +
+        (r.quote_only ? 'On request' : money(r.price_minor, r.currency)) + '</td><td>' + esc(r.status) +
+        '</td><td>' + acts + '</td></tr>';
+    }).join('') : '<tr><td colspan="6" style="color:var(--slate)">Nothing logged yet.</td></tr>';
+
+    // Beside the work, not on a statement a month later.
+    if (d.fees_minor != null) {
+      note($('rqErr'), d.fees_minor
+        ? 'NUM fees on your confirmed work so far: ' + money(d.fees_minor, $('currency').value || 'GBP') +
+          ' \u2014 \u00a35 a booking, billed to you, never to your client.'
+        : 'No NUM fees yet. We charge \u00a35 when you confirm a booking, and nothing on one you decline.', 'ok');
+    }
+
+    Array.prototype.forEach.call($('rqRows').querySelectorAll('[data-rq]'), function (b) {
+      b.onclick = function () {
+        api('requests', { action: b.getAttribute('data-act'), id: b.getAttribute('data-rq') })
+          .then(function (d) { if (d.ok) paintRequests(d); });
+      };
+    });
+
+    Array.prototype.forEach.call($('rqRows').querySelectorAll('[data-msg]'), function (b) {
+      b.onclick = function () { openThread(b.getAttribute('data-msg'), b.getAttribute('data-t')); };
+    });
+  }
+
+  function fillRequestVocab() {
+    $('rq_service').innerHTML = (VOCAB.services || []).map(function (k) {
+      return '<option value="' + k + '">' + esc(LABEL[k] || k) + '</option>';
+    }).join('');
+    $('rq_unit').innerHTML = (VOCAB.units || []).map(function (u) {
+      return '<option value="' + u + '">' + (u === 'quote' ? 'Agreed per request' : 'per ' + u) + '</option>';
+    }).join('');
+    $('rq_unit').onchange = function () {
+      $('rq_price').disabled = $('rq_unit').value === 'quote';
+      if ($('rq_price').disabled) $('rq_price').value = '';
+    };
+  }
+
+  $('rqForm').onsubmit = function (e) {
+    e.preventDefault();
+    note($('rqErr'), '');
+    $('rqBtn').disabled = true;
+    var amount = parseFloat($('rq_price').value);
+    api('requests', {
+      action: 'create', client_id: $('rq_client').value, service_key: $('rq_service').value,
+      title: $('rq_title').value, detail: $('rq_detail').value, city: $('rq_city').value,
+      starts_at: $('rq_start').value, unit: $('rq_unit').value,
+      price_minor: isFinite(amount) ? Math.round(amount * 100) : 0
+    }).then(function (d) {
+      $('rqBtn').disabled = false;
+      if (!d.ok) return note($('rqErr'), 'That did not save: ' + esc(d.error || 'unknown'), 'bad');
+      ['rq_title', 'rq_detail', 'rq_city', 'rq_start', 'rq_price'].forEach(function (i) { $(i).value = ''; });
+      paintRequests(d);
+    }).catch(function () {
+      $('rqBtn').disabled = false;
+      note($('rqErr'), 'Could not reach NUM. Nothing was saved.', 'bad');
+    });
+  };
+
+  /* ── products ───────────────────────────────────────────────────────── */
+  function paintProducts(d) {
+    var rows = d.products || [];
+    $('pdRows').innerHTML = rows.length ? rows.map(function (p) {
+      var kind = { own: 'Yours', num: 'NUM', ghost: 'Ghost' }[p.kind] || p.kind;
+      var code = p.kind === 'ghost'
+        ? '<span class="mono">1.' + esc(p.sku || '????') + ' ' + esc(p.keyword || '—') + '</span>'
+        : (p.num_product ? esc(p.num_product) : '—');
+      return '<tr><td>' + kind + '</td><td><b>' + esc(p.name) + '</b></td><td>' + code + '</td><td class="tnum">' +
+        (p.kind === 'num' ? 'our price' : money(p.price_minor, p.currency)) + '</td><td>' +
+        (p.active ? 'Live' : 'Draft') + '</td><td><button class="btn" data-pd="' + p.id + '">Delete</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" style="color:var(--slate)">Nothing on the shelf yet.</td></tr>';
+
+    Array.prototype.forEach.call($('pdRows').querySelectorAll('[data-pd]'), function (b) {
+      b.onclick = function () {
+        api('products', { action: 'delete', id: b.getAttribute('data-pd') })
+          .then(function (d) { if (d.ok) paintProducts(d); });
+      };
+    });
+  }
+
+  $('pd_kind').onchange = function () {
+    $('pd_ghostRow').style.display = $('pd_kind').value === 'ghost' ? '' : 'none';
+    $('pd_numRow').style.display = $('pd_kind').value === 'num' ? '' : 'none';
+    $('pd_price').disabled = $('pd_kind').value === 'num';
+  };
+
+  $('pdForm').onsubmit = function (e) {
+    e.preventDefault();
+    note($('pdErr'), '');
+    $('pdBtn').disabled = true;
+    var amount = parseFloat($('pd_price').value);
+    api('products', {
+      action: 'save',
+      product: {
+        kind: $('pd_kind').value, name: $('pd_name').value, description: $('pd_desc').value,
+        sku: $('pd_sku').value, keyword: $('pd_keyword').value, num_product: $('pd_num').value,
+        photo_url: $('pd_photo').value, active: $('pd_active').checked,
+        price_minor: isFinite(amount) ? Math.round(amount * 100) : 0,
+        currency: $('currency').value || 'GBP'
+      }
+    }).then(function (d) {
+      $('pdBtn').disabled = false;
+      if (!d.ok) {
+        return note($('pdErr'), d.error === 'duplicate_sku_or_keyword'
+          ? 'You already have a line with that SKU or keyword. Codes have to be unique or they cannot resolve.'
+          : 'That did not save: ' + esc(d.error || 'unknown'), 'bad');
+      }
+      var saved = (d.products || []).filter(function (p) { return p.name === $('pd_name').value; })[0];
+      if (saved && saved.kind === 'ghost' && !saved.active && $('pd_active').checked) {
+        note($('pdErr'), 'Saved as a draft. A Ghost line needs a SKU, a keyword, a photo and a price above zero before it can go live.', 'warn');
+      }
+      ['pd_name', 'pd_desc', 'pd_sku', 'pd_keyword', 'pd_photo', 'pd_price'].forEach(function (i) { $(i).value = ''; });
+      $('pd_active').checked = false;
+      paintProducts(d);
+    }).catch(function () {
+      $('pdBtn').disabled = false;
+      note($('pdErr'), 'Could not reach NUM. Nothing was saved.', 'bad');
+    });
+  };
+
+  /* ── other hosts ────────────────────────────────────────────────────── */
+  function paintNetwork(d) {
+    $('netSwitch').checked = !!d.in_network;
+    $('netBlurb').value = d.blurb || '';
+    var links = d.links || [];
+    $('ntLinks').innerHTML = links.length ? links.map(function (l) {
+      var acts = (l.status === 'pending' && !l.mine)
+        ? '<button class="btn pri" data-nt="' + l.id + '" data-act="accept">Accept</button> ' +
+          '<button class="btn" data-nt="' + l.id + '" data-act="decline">Decline</button>'
+        : l.status === 'accepted'
+          ? '<button class="btn" data-nt="' + l.id + '" data-act="end">End</button>' : '';
+      var state = l.status === 'pending' ? (l.mine ? 'You asked — waiting on them' : 'They asked you') : l.status;
+      return '<div class="choice" style="display:block"><b>' + esc(l.name || l.host_id) + '</b>' +
+        '<span>' + esc(state) + '</span><div style="margin-top:10px">' + acts + '</div></div>';
+    }).join('') : '<p class="hint">No connections yet.</p>';
+
+    var linked = {};
+    links.forEach(function (l) { linked[l.host_id] = l.status; });
+    $('ntDir').innerHTML = (d.directory || []).length ? d.directory.map(function (h) {
+      var already = linked[h.host_id];
+      return '<div class="choice" style="display:block"><b>' + esc(h.name) +
+        (h.company ? ' — ' + esc(h.company) : '') + '</b>' +
+        '<span>' + esc(h.city || '') + (h.blurb ? ' · ' + esc(h.blurb) : '') +
+        (h.services.length ? '<br>' + h.services.map(function (s) { return esc(LABEL[s] || s); }).join(' · ') : '') +
+        '</span><div style="margin-top:10px">' + (already
+          ? '<span class="hint">' + esc(already) + '</span>'
+          : '<button class="btn" data-conn="' + h.host_id + '">Ask to connect</button>') + '</div></div>';
+    }).join('') : '<p class="hint">Nobody else has listed themselves yet. When they do, they appear here.</p>';
+
+    Array.prototype.forEach.call($('ntDir').querySelectorAll('[data-conn]'), function (b) {
+      b.onclick = function () {
+        api('network', { action: 'connect', host_id: b.getAttribute('data-conn') })
+          .then(function (d) { if (d.ok) paintNetwork(d); else note($('ntErr'), esc(d.error), 'bad'); });
+      };
+    });
+    Array.prototype.forEach.call($('ntLinks').querySelectorAll('[data-nt]'), function (b) {
+      b.onclick = function () {
+        api('network', { action: b.getAttribute('data-act'), id: b.getAttribute('data-nt') })
+          .then(function (d) { if (d.ok) paintNetwork(d); });
+      };
+    });
+  }
+  function saveNetwork() {
+    api('network', { action: 'visibility', in_network: $('netSwitch').checked, blurb: $('netBlurb').value })
+      .then(function (d) { if (d.ok) paintNetwork(d); });
+  }
+  $('netSwitch').onchange = saveNetwork;
+  $('netSave').onclick = saveNetwork;
+
+  /* ── removing, and leaving ──────────────────────────────────────────── */
+  $('rmCancel').onclick = function () { $('rmCard').classList.add('hide'); };
+
+  $('rmGo').onclick = function () {
+    note($('rmErr'), '');
+    $('rmGo').disabled = true;
+    api('clients', { action: 'remove', id: $('rmId').value, reason: $('rmReason').value })
+      .then(function (d) {
+        $('rmGo').disabled = false;
+        if (!d.ok) return note($('rmErr'), 'That did not go through: ' + esc(d.error || 'unknown') +
+          '. Nothing has changed and nobody was told.', 'bad');
+        $('rmCard').classList.add('hide');
+        paintClients(d);
+        note($('clErr'), 'Removed, and they have been told. They are no longer in your book and you are not billed for them again.', 'ok');
+      })
+      .catch(function () {
+        $('rmGo').disabled = false;
+        note($('rmErr'), 'Could not reach NUM. Nothing has changed and nobody was told.', 'bad');
+      });
+  };
+
+  $('clsGo').onclick = function () {
+    note($('clsErr'), ''); note($('clsNote'), '');
+    $('clsGo').disabled = true;
+    fetch('/api/host/close?k=' + encodeURIComponent(K), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirm: $('clsConfirm').value, reason: $('clsReason').value })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      $('clsGo').disabled = false;
+      if (!d.ok) {
+        // The server counts the clients, not the browser — the number in this
+        // warning has to be the number it is actually about to release.
+        return note($('clsErr'), d.note || ('That did not go through: ' + esc(d.error || 'unknown')), 'bad');
+      }
+      // The console is over. Leaving it sitting there, apparently working,
+      // would be the last thing this host saw us do.
+      sessionStorage.removeItem('num_host_k');
+      $('app').innerHTML = '<section class="card2"><span class="tag">Closed</span>' +
+        '<h2>Your account is closed.</h2><p class="sub">' + esc(d.note || '') +
+        '</p><p class="sub">If you want to come back, reply to the email we have just sent rather than signing up ' +
+        'again &mdash; that way your history comes with you.</p>' +
+        '<p><a class="btn pri" href="/">Back to NUM</a></p></section>';
+    }).catch(function () {
+      $('clsGo').disabled = false;
+      note($('clsErr'), 'Could not reach NUM. Your account is unchanged and nobody was told.', 'bad');
+    });
+  };
+
+  /* ── the thread ─────────────────────────────────────────────────────── */
+  var THREAD = null;
+
+  function paintThread(d) {
+    $('thNote').textContent = d.note || '';
+    var m = d.messages || [];
+    $('thRows').innerHTML = m.length ? m.map(function (x) {
+      var who = x.author === 'host' ? 'You' : x.author === 'client'
+        ? (d.client ? d.client.name : 'Your client') : 'NUM';
+      var mine = x.author === 'host';
+      return '<div style="padding:11px 13px;border-radius:12px;margin-bottom:8px;max-width:88%;' +
+        (mine ? 'background:var(--pri);color:#fff;margin-left:auto' : 'background:var(--bg);border:1px solid var(--line)') +
+        '"><div style="font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;opacity:.75;margin-bottom:4px">' +
+        esc(who) + ' · ' + esc(x.created_at) +
+        (x.author !== 'num' && !x.delivered_at ? ' · not delivered' : '') +
+        '</div>' + esc(x.body).replace(/\n/g, '<br>') + '</div>';
+    }).join('') : '<p class="hint">Nothing yet. The first message you send starts the thread.</p>';
+  }
+
+  function openThread(id, title) {
+    THREAD = id;
+    $('thTitle').textContent = title || 'Messages';
+    $('thBody').value = '';
+    note($('thErr'), '');
+    $('thCard').classList.remove('hide');
+    $('thCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    fetch('/api/host/messages?k=' + encodeURIComponent(K) + '&request=' + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.ok) paintThread(d); else note($('thErr'), esc(d.error || 'unknown'), 'bad'); });
+  }
+
+  $('thClose').onclick = function () { $('thCard').classList.add('hide'); THREAD = null; };
+
+  $('thSend').onclick = function () {
+    note($('thErr'), '');
+    var body = $('thBody').value.trim();
+    if (!body) return note($('thErr'), 'Write something first.', 'bad');
+    $('thSend').disabled = true;
+    fetch('/api/host/messages?k=' + encodeURIComponent(K) + '&request=' + encodeURIComponent(THREAD), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: body })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      $('thSend').disabled = false;
+      if (!d.ok) {
+        return note($('thErr'), d.error === 'client_left'
+          ? 'This client has left your book, so nothing can be sent to them.'
+          : 'That did not send: ' + esc(d.error || 'unknown'), 'bad');
+      }
+      $('thBody').value = '';
+      paintThread(d);
+    }).catch(function () {
+      $('thSend').disabled = false;
+      note($('thErr'), 'Could not reach NUM. Nothing was sent.', 'bad');
+    });
+  };
+
+  /* ── loaders ────────────────────────────────────────────────────────── */
+  function loadClients() { return api('clients').then(function (d) { if (d.ok) paintClients(d); }); }
+  function loadBook() {
+    // Each section fails on its own. A host whose network call 500s should
+    // still be able to add a client — one broken panel must not blank a page
+    // that is their working tool.
+    loadClients().catch(function () {});
+    api('intros').then(function (d) { if (d.ok) paintIntros(d); }).catch(function () {});
+    api('requests').then(function (d) { if (d.ok) paintRequests(d); }).catch(function () {});
+    api('products').then(function (d) { if (d.ok) paintProducts(d); }).catch(function () {});
+    api('network').then(function (d) { if (d.ok) paintNetwork(d); }).catch(function () {});
+  }
+
+  function boot(quiet) {
+    if (!K) return showGate();
+    Promise.all([
+      fetch('/api/host/summary?k=' + encodeURIComponent(K)).then(function (r) { return r.json(); }),
+      fetch('/api/host/profile?k=' + encodeURIComponent(K)).then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      var sum = res[0], prof = res[1];
+      if (!sum.ok) {
+        sessionStorage.removeItem('num_host_k');
+        return showGate('That key was not recognised, or your account has ended. Check the link in your welcome email.');
+      }
+      $('gate').classList.add('hide');
+      $('app').classList.remove('hide');
+      paintSummary(sum);
+      loadBook();
+      // The profile endpoint is newer than the console key. A host whose
+      // account predates it still gets a working page rather than a blank one.
+      if (prof.ok) paintProfile(prof);
+      else if (!quiet) note($('profErr'), 'Your profile could not be loaded. Everything else here is live.', 'bad');
+    }).catch(function () {
+      showGate('Could not reach NUM just now. Your key is fine — try again in a moment.');
+    });
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

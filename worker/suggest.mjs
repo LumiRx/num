@@ -198,15 +198,24 @@ export function buildSuggestions(categoryRows, { now = Date.now(), max = 8 } = {
 export async function handleSuggest(request, env) {
   const url = new URL(request.url);
   const asked = url.searchParams.get('dest') ?? url.searchParams.get('place') ?? '';
+  // `me` is the member id the app already holds. When present, Num opens
+  // with what THIS person has coming up (worker/briefing.mjs) — and the
+  // response stops being cacheable by anyone but them.
+  const me = (url.searchParams.get('me') ?? '').slice(0, 64) || null;
+  const tz = (url.searchParams.get('tz') ?? '').slice(0, 40) || null;
   const dest = await resolveDest(env, asked);
-  const rows = dest ? await categoriesFor(env, dest) : [];
+  const [rows, briefing] = await Promise.all([
+    dest ? categoriesFor(env, dest) : Promise.resolve([]),
+    me ? import('./briefing.mjs').then((m) => m.briefingFor(env, { memberId: me, tz })).catch(() => null) : Promise.resolve(null),
+  ]);
   const body = buildSuggestions(rows);
-  return new Response(JSON.stringify({ ...body, dest }), {
+  return new Response(JSON.stringify({ ...body, dest, briefing: briefing ?? null }), {
     headers: {
       'Content-Type': 'application/json',
       // Short and public: the answer is identical for everyone in a city, and
-      // the rotation window is 90s anyway.
-      'Cache-Control': 'public, max-age=60',
+      // the rotation window is 90s anyway. Personal the moment a member is
+      // named — then nothing between here and their screen may keep a copy.
+      'Cache-Control': me ? 'private, no-store' : 'public, max-age=60',
     },
   });
 }

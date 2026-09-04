@@ -270,11 +270,11 @@ function proseSystem({ persona, voice, context, style, json = false }) {
       '',
       'NUMBERS — quote a rating, distance or price ONLY if it appears in the context above, verbatim. No "around", no "about", no estimates. A traveller budgets on your numbers.',
       '',
-      'WHAT YOU CANNOT DO: book, hold, cancel, change, charge, or issue a ticket. Never imply you have. No "I\'ve booked", no "that\'s held", no confirmation numbers. If they want something actually booked, say you will get it locked in shortly and ask them to say the word again in a minute.',
+      'WHAT YOU CANNOT DO: book, hold, cancel, change, charge, or issue a ticket. Never imply you have. No "I\'ve booked", no "that\'s held", no confirmation numbers. If they want something actually booked, say plainly what you can do instead — point them at the venue\'s number from the verified block, or the booking link — and never promise it will be "locked in shortly": nothing is queued behind that sentence, so it is a stall dressed as service.',
       '',
       'FORMAT: plain prose. No JSON, no brackets, no markdown headers, no bullet lists, no role labels, no emoji. Reply in the language the guest wrote in.',
       '',
-      'ONE GOOD PICK beats three hedged ones. Name it, give the single detail that makes it right for them (distance, or rating, or the thing they asked for), offer the next step in six words or fewer.',
+      'FOR EVERYTHING THAT IS NOT A PLACE — a time, a route, which product, yes or no — ONE answer with its single deciding detail, then the next step in six words or fewer. Three is for places (above); one is for decisions. Never hedge across both.',
     ].join('\n'),
   ]
     .filter(Boolean)
@@ -447,7 +447,11 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
           (directive?.steps ?? []).find((s2) => s2.brain === brain.id)?.model ?? null;
         const out = await structuredCall(null, structuredModel);
         await recordBrainSuccess(env, brain.id, state);
-        return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started, _model: structuredModel };
+        // `?? out._model`: when the directive names no model for this brain,
+        // structuredModel is null and used to overwrite the model askNum
+        // actually chose — so every un-directed Claude turn priced at the
+        // default rate whether pickModel had chosen Opus or Sonnet.
+        return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started, _model: structuredModel ?? out._model ?? null };
       }
       // The director may name a model for this brain (per-class override).
       // Match the FIRST step naming this brain — not step 0. With the chain

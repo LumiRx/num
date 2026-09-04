@@ -45,6 +45,11 @@ export const MODEL_COSTS = Object.freeze({
   'deepseek-v4-flash': 0.0007,
   'kimi-k2.6': 0.0056,
   'claude-sonnet-5': 0.02,
+  // Haiku 4.5 — $1 / $5 per million (anthropic.com/claude/haiku, checked
+  // 30 Aug 2026), i.e. one fifth of Opus on both sides of the meter. On a
+  // measured 700-in/300-out concierge turn that is ~$0.0022 against Opus's
+  // ~$0.0532: the bulk lane costs 4% of what it used to.
+  'claude-haiku-4-5': 0.0022,
   'claude-opus-5': 0.0532,
   'workers-ai': 0,
 });
@@ -60,7 +65,7 @@ const CRITICAL =
   // package" into the cheap lane — a PRICE question answered by a prose brain
   // that cannot see a verified figure. The money guard has to name the way
   // people actually ask what something costs, not only the word "cost".
-  /book|booking|reserve|reservation|pay|paid|price|cost|charge|refund|cancel|deposit|bill|invoice|how much|how many (?:baht|dollars?|usd|thb|euros?)|wrong|broken|late|missing|complain|help me|stuck|lost|emergency|hospital|police|we are|we have|our group|party of|kids|children|family|wheelchair|allerg/i;
+  /book|booking|reserve|reservation|pay|paid|price|cost|charge|refund|cancel|deposit|bill|invoice|how much|order (?:me|us|a|an|the|some|dinner|lunch|breakfast|food|delivery)|place an order|deliver (?:to|it)|how many (?:baht|dollars?|usd|thb|euros?)|wrong|broken|late|missing|complain|help me|stuck|lost|emergency|hospital|police|we are|we have|our group|party of|kids|children|family|wheelchair|allerg/i;
 
 /** Multi-step planning / arranging / itinerary — a frontier model is better at holding it together. */
 const COMPLEX =
@@ -160,6 +165,16 @@ export function claudeModelFor(tier, env = {}) {
 }
 
 /**
+ * Anthropic model ids carry a dated suffix ("claude-haiku-4-5-20251001") but
+ * the cost table is keyed by family. Strip the date so a model rev does not
+ * silently start reporting a null cost — the ledger going quiet is exactly
+ * how the DeepSeek days came to cost $0.00 in our own console.
+ */
+export function normaliseModel(id) {
+  return String(id ?? '').replace(/-\d{8}$/, '');
+}
+
+/**
  * Direct an ask to the cheapest capable model, with an escalation path.
  *
  * `steps` is an ordered list of `{ brain, model }` to try. `estCostUsd` is the
@@ -178,39 +193,38 @@ export function direct(text, state = {}, env = {}) {
   }
 
   const strong = env.NUM_MODEL_STRONG || 'claude-opus-5';
+  const bulk = env.NUM_MODEL_BULK || 'claude-haiku-4-5-20251001';
   const hosted = !!env.NUM_LLM_BASE_URL;
   const flash = env.NUM_HOSTED_FLASH || 'deepseek-v4-flash';
   const mid = env.NUM_HOSTED_MID || 'kimi-k2.6';
 
   switch (tier) {
     case TIERS.SIMPLE:
-    case TIERS.MODERATE:
-      // The bulk. When a hosted brain is configured, it answers first — flash
-      // for the cheap win, kimi if the guard bounces, Claude as the floor.
-      // Without a hosted brain we stay on Claude, strong for MODERATE.
-      if (hosted) {
-        return {
-          tier,
-          steps: [
-            { brain: 'hosted', model: flash },
-            { brain: 'hosted', model: mid },
-            { brain: 'claude', model: strong },
-          ],
-          estCostUsd: MODEL_COSTS[flash] ?? null,
-          signals,
-          reason,
-        };
-      }
-      return {
-        tier,
-        steps: [
-          { brain: 'claude', model: claudeModelFor(tier, env) },
-          { brain: 'claude', model: strong },
-        ],
-        estCostUsd: MODEL_COSTS[claudeModelFor(tier, env)] ?? null,
-        signals,
-        reason,
-      };
+    case TIERS.MODERATE: {
+      // ── THE BULK LANE ──────────────────────────────────────────────────
+      //
+      // Haiku answers the everyday turn: recommendations, lookups, "what's
+      // good near me". One fifth of Opus's price, a fraction of its latency,
+      // and — the reason it beats every cheaper option — it is a STRUCTURED
+      // brain. Every prose brain in the chain is forbidden from producing
+      // cards, actions or reliable chips (see brains.mjs readHosted), so
+      // routing the bulk to one meant the majority of turns silently lost
+      // the ability to offer a booking. Haiku keeps the full schema, so the
+      // cheap lane and the expensive lane produce the same SHAPE of answer
+      // and differ only in how much thinking went into it.
+      //
+      // Measured 30 Aug, this replaces a hosted lane that failed 66% of the
+      // time (81 of 122 turns degraded) and a Workers AI lane that failed
+      // 100% of the time (10 of 10). Both stay in the chain underneath as
+      // free backstops; neither is asked to carry traffic any more.
+      const steps = [{ brain: 'haiku', model: bulk }];
+      // A configured hosted brain is still worth a try before the frontier
+      // model — it is on an independent bill, which is the whole reason it
+      // exists — but it now sits BEHIND Haiku rather than in front of it.
+      if (hosted) steps.push({ brain: 'hosted', model: flash }, { brain: 'hosted', model: mid });
+      steps.push({ brain: 'claude', model: strong });
+      return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(bulk)] ?? null, signals, reason };
+    }
     default: // COMPLEX and CRITICAL — the frontier model, first and only.
       return {
         tier,

@@ -52,11 +52,30 @@ const firstName = (full) => String(full ?? '').trim().split(/\s+/)[0] || '';
  */
 export function onboardingEmail({
   business, contact, country, waitedDays = 0, places = null, contactAddress = null,
+  signinLink = null,
 } = {}) {
   const th = String(country ?? '').toUpperCase() === 'TH';
   const name = firstName(contact);
   const biz = String(business ?? 'your business').trim();
-  const link = consoleLink(biz);
+  /**
+   * THE LINK THAT ACTUALLY OPENS THE DASHBOARD.
+   *
+   * This email used to point at `?q=<their own name>` — a prefilled SEARCH
+   * BOX. To reach the dashboard we had just told them was theirs, an owner had
+   * to find themselves in a list, press claim, wait for a second one-time
+   * code, and type it in. They had already done all of that; that is why they
+   * were getting this email.
+   *
+   * `signinLink` is single-use, expires in fourteen days, is stored only as a
+   * hash, and leaves the address bar on first click. It is NOT the permanent
+   * key, which is still shown exactly once and never travels by email. See
+   * worker/bizsignin.mjs for the full reasoning, including why the rule this
+   * file wrote — "no key in the URL, ever" — is not the rule being broken.
+   *
+   * When no link could be minted the old prefill is used rather than nothing:
+   * a longer path in is better than no path in.
+   */
+  const link = signinLink || consoleLink(biz);
   /**
    * The coverage number, read from the database at send time.
    *
@@ -102,6 +121,7 @@ export function onboardingEmail({
         '',
         'จัดการข้อมูลร้านของคุณได้ที่:',
         link,
+        ...(signinLink ? ['(ลิงก์นี้ใช้ได้ครั้งเดียว ภายใน 14 วัน)'] : []),
         '',
         'คุณแก้ไขได้: เวลาทำการ เบอร์โทร ที่อยู่ เว็บไซต์ และคำอธิบายร้าน',
         'สิ่งที่แก้ไม่ได้: หมวดหมู่ คะแนน และลำดับการแสดงผล — ไม่ว่าจะจ่ายเท่าไหร่ '
@@ -129,6 +149,10 @@ export function onboardingEmail({
       '',
       'Manage your listing here:',
       link,
+      ...(signinLink
+        ? ['This link signs you straight in. It works once and lasts fourteen days — '
+          + 'so if you forward this email, the link in it will already be spent.']
+        : []),
       '',
       'You control the opening hours, phone number, address, website and the description'
         + ' travellers see. Keeping the hours right is the single thing that matters most —'
@@ -168,12 +192,28 @@ export async function sendOnboarding(env, claim, { mailer } = {}) {
     : 0;
   const places = await env.DB.prepare('SELECT COUNT(*) AS n FROM places').first()
     .then((r) => r?.n ?? null).catch(() => null);
+  // Minted per send, and only when we know which listing this claim owns.
+  // A failed mint is not a reason to withhold the email — the prefill link
+  // still gets them to a door they can open, it is just a longer walk.
+  let signinLink = null;
+  const placeId = claim.place_id
+    ?? (await env.DB.prepare(
+      'SELECT place_id FROM num_place_owners WHERE claim_id = ?1 AND revoked_at IS NULL LIMIT 1',
+    ).bind(String(claim.id)).first().catch(() => null))?.place_id
+    ?? null;
+  if (placeId) {
+    const { mintSigninLink, signinUrl } = await import('./bizsignin.mjs');
+    const token = await mintSigninLink(env, { placeId, purpose: 'welcome' }).catch(() => null);
+    if (token) signinLink = signinUrl(env.NUM_APP_ORIGIN || 'https://app.itsnum.com', token);
+  }
+
   const { subject, text } = onboardingEmail({
     ...claim,
     business: claim.business ?? claim.business_name,
     waitedDays,
     places,
     contactAddress: env.MAIL_REPLY_TO || null,
+    signinLink,
   });
   const send = mailer ?? (await import('./mailer.mjs')).send;
   const out = await send(env, {
@@ -181,12 +221,50 @@ export async function sendOnboarding(env, claim, { mailer } = {}) {
     from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
     subject,
     text,
-  });
+    /**
+     * One-click unsubscribe, on a message nobody should want to leave.
+     *
+     * This is transactional — the business asked to be listed and we are
+     * telling them they are — so almost nobody will use it. It is here for
+     * the mailbox provider, not the reader: Gmail and Yahoo both weigh a
+     * working `List-Unsubscribe-Post` when deciding where a message from a
+     * young sending domain lands, and the first onboarding batch went to
+     * junk. A header they can see beats an argument they cannot hear.
+     *
+     * The mailto is the required second route, and it points at the address
+     * that actually receives mail rather than the From, which does not.
+     */
+    headers: {
+      'List-Unsubscribe': `<mailto:${env.MAIL_REPLY_TO || 'info@itsnum.com'}?subject=unsubscribe>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+    // SOMEBODY ELSE'S INBOX. On 30 Aug 2026 this call fell through to the
+    // Cloudflare binding, which accepted six messages to businesses it could
+    // not reach, returned ok on all six, and left every one of them marked
+    // `onboarded = 1` — permanently skipped by the retry sweep. `external`
+    // means only a transport that can actually reach a stranger and report
+    // what happened is allowed to carry it. See mailer.AUDIENCE.
+  }, { audience: 'external' });
 
   if (out?.ok) {
-    await env.DB.prepare(
-      'UPDATE num_claim_decisions SET onboarded = 1 WHERE claim_id = ?1',
-    ).bind(String(claim.id)).run().catch(() => {});
+    // ACCEPTED, WITH THE PROVIDER'S RECEIPT — not "delivered", and the column
+    // names now say which. `onboard_ref` is what the delivery webhook matches
+    // on, and what turns this from a claim into a fact thirty minutes later.
+    // See worker/maildelivery.mjs.
+    const { accepted } = await import('./maildelivery.mjs');
+    await accepted(env, claim.id, { via: out.via, ref: out.id });
+  } else {
+    // A business that could not be told is a failure with a name, not a log
+    // line. It goes in the ledger so /api/health carries it and somebody sees
+    // it without having to already suspect it. Deduped on the claim, so a
+    // broken mailer is one loud row per business rather than one per sweep.
+    const { record } = await import('./failures.mjs');
+    await record(env, {
+      kind: 'biz_onboard_unsent',
+      subject: `${claim.business_name ?? claim.id} <${claim.email}>`,
+      detail: `Approved and still not told. Mailer said: ${out?.error ?? out?.skipped ?? 'unknown'}`,
+      severity: 'high',
+    });
   }
   return out;
 }
@@ -244,7 +322,7 @@ export async function onboardApproved(env, { limit = 10, mailer } = {}) {
   if (env.BIZ_ONBOARD_EMAIL !== 'on') return { sent: 0, failed: 0, skipped: 'BIZ_ONBOARD_EMAIL not on' };
 
   const { results } = await env.DB.prepare(
-    `SELECT c.id, c.business_name, c.contact_name, c.email, c.country, c.created_at
+    `SELECT c.id, c.business_name, c.contact_name, c.email, c.country, c.created_at, c.place_id
        FROM claims c
        JOIN num_claim_decisions d ON d.claim_id = CAST(c.id AS TEXT)
       WHERE d.decision = 'approved'

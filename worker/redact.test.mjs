@@ -96,3 +96,14 @@ test('a preference that merely mentions a person is kept', () => {
   assert.equal(isIdentifying('party_size', 4), false);
   assert.equal(isIdentifying('budget', 'mid'), false);
 });
+
+test('trip dates are facts, not phone numbers', () => {
+  // "2026-09-01" matched the phone pattern (digit, 8 of [digit - space], digit),
+  // so the one thing the model was told never to re-ask — the dates — was the
+  // one thing it never received.
+  assert.equal(isIdentifying('trip_dates', '2026-09-01 to 2026-09-08'), false, 'ISO dates were redacted as a phone');
+  assert.equal(isIdentifying('checkin', '2026-12-24'), false);
+  // A phone number next to a date is still a phone number.
+  assert.equal(isIdentifying('note', 'arriving 2026-09-01, call +66 81 234 5678'), true);
+  assert.equal(isIdentifying('contact', '+66812345678'), true);
+});

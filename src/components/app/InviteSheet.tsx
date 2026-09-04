@@ -4,11 +4,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
-import { normalisePhone } from '../../lib/phone';
+import { normalisePhone, describePhone } from '../../lib/phone';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
-import { contactsSupported, mintInvite, pickContacts, shareInvite, signUp, verifyCode, whoIsOnNum } from '../../lib/social';
+import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, signUp, verifyCode, whoIsOnNum } from '../../lib/social';
 import { canOfferInstall } from '../../lib/native';
+import AppleSignIn from './AppleSignIn';
+
+/** Matches RESEND_COOLDOWN_SEC in worker/social.mjs. Kept in step by hand;
+ *  the client one only has to be >= the server's, since the server is the
+ *  authority and a short client timer just earns a 429 with its own sentence. */
+const RESEND_COOLDOWN_SEC = 60;
 
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -131,6 +137,17 @@ export default function InviteSheet() {
   const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<'shared' | 'copied' | null>(null);
+  /**
+   * Seconds until "Send it again" is offered.
+   *
+   * Started at 60 the moment a code step appears, matching RESEND_COOLDOWN_SEC
+   * on the server. Counting down here rather than only reacting to a 429 means
+   * the button is never a control that exists solely to reject you — the wait
+   * is visible, which is the difference between "not yet" and "broken".
+   */
+  const [resendIn, setResendIn] = useState(0);
+  const [resendNote, setResendNote] = useState<string | null>(null);
+
 
   // Each time the sheet opens, seed the fields from whatever Num already
   // resolved — a name said in chat, a phone from a picked contact.
@@ -155,7 +172,12 @@ export default function InviteSheet() {
   // of our funnel for it. Num now lets them in on a name and asks for the
   // number at the moment it actually buys them something (inviting a friend,
   // saving a plan, cashing out) — which is also the moment they will say yes.
-  const phoneOk = !phone.trim() || normalisePhone(phone) !== null;
+  // What Num will actually text, shown BEFORE the tap — including the country
+  // it guessed from the device. The one real campaign arrival who ever tried
+  // to sign in typed an Indian mobile while in the UK, got +44 put on it, and
+  // never received a code. He would have fixed it in a keystroke had he seen it.
+  const phoneInfo = describePhone(phone);
+  const phoneOk = !phone.trim() || (phoneInfo.ok && normalisePhone(phone) !== null);
   const ready = !!name.trim() && phoneOk;
 
   const doSignUp = async () => {
@@ -170,9 +192,9 @@ export default function InviteSheet() {
     // A number typed WRONG still stops here — a half-number is worse than
     // none, because it looks like we can reach them and we cannot. A number
     // left BLANK is fine: they are in, and Num asks again when it matters.
-    const tidy = phone.trim() ? normalisePhone(phone) : null;
+    const tidy = phone.trim() && phoneInfo.ok ? normalisePhone(phone) : null;
     if (phone.trim() && !tidy) {
-      setAccountNote('That number doesn’t look complete — or leave it blank and I’ll ask later.');
+      setAccountNote(phoneInfo.note ?? 'That number doesn’t look complete — or leave it blank and I’ll ask later.');
       return;
     }
     setAccountNote(null);
@@ -187,10 +209,17 @@ export default function InviteSheet() {
       if (out.outcome === 'code_sent') {
         setRecoverPhone(out.phone ?? tidy ?? null);
         setCode('');
+        setResendIn(RESEND_COOLDOWN_SEC);
+        setResendNote(null);
         setAccountNote(
           out.verification?.channel === 'review'
             ? 'Enter the sign-in code from App Store Connect.'
-            : 'That number already has an account — I have texted it a six-digit code.',
+            // A throttled recovery is not a failed one: a code went out
+            // moments ago and is still the code to type. The server's own
+            // sentence says so better than a second version of it here.
+            : out.verification?.sent === false && out.verification?.note
+              ? out.verification.note
+              : 'That number already has an account — I have texted it a six-digit code.',
         );
         return;
       }
@@ -199,12 +228,69 @@ export default function InviteSheet() {
       // number.
       setSmsOn(!!out.verification?.sent);
       setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
+      if (out.verification?.sent) { setResendIn(RESEND_COOLDOWN_SEC); setResendNote(null); }
       // Cold first run: they came to try the app, not to invite someone. Get
       // out of the way — Num picks the conversation up in the thread. When an
       // invite IS in flight, stay put and carry straight on to it.
       if (!sending) store.set({ inviteOpen: null, threadOpen: true });
     } catch (err) {
       setAccountNote(err instanceof Error ? err.message : 'That didn’t go through.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Tick the resend cooldown down to zero.
+   *
+   * One interval for the whole sheet, cleared on every change — a per-press
+   * timer would keep running after the sheet closed and would leak one handle
+   * per attempt on the exact screen people retry on most.
+   */
+  const cooling = resendIn > 0;
+  useEffect(() => {
+    if (!cooling) return undefined;
+    const t = setInterval(() => setResendIn((n) => (n > 0 ? n - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [cooling]);
+
+  /**
+   * "I didn't get it."
+   *
+   * The single most common thing that happens in phone verification, and until
+   * now the app had no answer to it: the server has had a `/resend` route all
+   * along and nothing ever called it.
+   *
+   * It reports what it actually knows. When Twilio has already resolved the
+   * PREVIOUS code as undelivered, that is said out loud — because sending a
+   * second code down a pipe that just dropped the first one, and announcing it
+   * cheerfully, is how somebody ends up waiting twenty minutes for a text that
+   * was never going to come.
+   */
+  const doResend = async () => {
+    if (busy || resendIn > 0) return;
+    setBusy(true);
+    setResendNote(null);
+    try {
+      const out = await resendCode(recoverPhone ?? undefined);
+      if (out.already) {
+        setResendNote('That number is already verified — you are in.');
+        return;
+      }
+      // Start the wait BEFORE reporting anything: the message was sent either
+      // way, and a failed report must not hand back an uncooled button.
+      setResendIn(RESEND_COOLDOWN_SEC);
+      if (out.previous && out.previous.delivered === false) {
+        setResendNote(
+          `Sent again — but the last one never reached your carrier${out.previous.error_code ? ` (error ${out.previous.error_code})` : ''}. If this one does not arrive either, it is our end, not yours.`,
+        );
+        return;
+      }
+      setResendNote(out.sent ? 'New code on its way.' : 'I could not get a new code out just now. Give it a minute.');
+    } catch (err) {
+      // The server's throttle sentences are written for people. Passing them
+      // through is the honest thing; inventing a cheerful one is not.
+      setResendNote(err instanceof Error ? err.message : 'I could not get a new code out just now.');
     } finally {
       setBusy(false);
     }
@@ -301,8 +387,34 @@ export default function InviteSheet() {
               </div>
             </div>
             {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
+            {/* "I didn't get it." Always present, never a dead control: it
+                shows the wait rather than hiding until the wait is over, so
+                nobody is left wondering whether asking again is even possible.
+                A code that a carrier dropped is reported as such — see
+                doResend. */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10.5, color: 'var(--color-neutral-500)' }}>Didn&rsquo;t get it?</span>
+              {resendIn > 0 ? (
+                <span style={{ fontSize: 10.5, color: 'var(--color-neutral-500)' }}>
+                  You can ask again in {resendIn}s
+                </span>
+              ) : (
+                <span
+                  {...pressable(doResend)}
+                  role="button"
+                  aria-label="Send the code again"
+                  style={{
+                    fontSize: 10.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline',
+                    color: 'var(--color-neutral-700)', opacity: busy ? 0.5 : 1,
+                  }}
+                >
+                  {busy ? 'Sending…' : 'Send it again'}
+                </span>
+              )}
+            </div>
+            {resendNote && <div style={{ ...helpText, marginTop: 6 }}>{resendNote}</div>}
             <div
-              {...pressable(() => { setRecoverPhone(null); setCode(''); setAccountNote(null); })}
+              {...pressable(() => { setRecoverPhone(null); setCode(''); setAccountNote(null); setResendNote(null); })}
               style={{ ...helpText, cursor: 'pointer', textDecoration: 'underline' }}
             >
               That is not my number — go back
@@ -324,9 +436,33 @@ export default function InviteSheet() {
               ? 'Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.'
               : 'So I know what to call you. Your mobile is how friends find you here, and how I reach you if a booking moves — never shown to anyone you haven’t connected with.'}
           </div>
+          {/* SIGN IN WITH APPLE, ON THE FIRST SCREEN — not buried in Profile.
+
+              Two reasons, and the second is the one that cost a submission.
+
+              1. Guideline 4.8 asks for the equivalent login option to be no
+                 less prominent than the third-party one, and the first-run
+                 screen is where an account actually begins.
+
+              2. App Review's own screenshots of 1.0(2) show a reviewer who
+                 typed the name "Qwerty", left the number blank, and landed in
+                 an EMPTY account — no bookings, no people, no plans — while
+                 our notes described a rich demo account they never reached.
+
+              A blank number stays legal on purpose: making it mandatory would
+              put every new user back behind the SMS path that has verified two
+              people in this product's life. The fix is not a locked door, it
+              is a better one — one tap, no code, no waiting for a text. */}
+          <AppleSignIn onDone={close} />
+
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
             <input style={field} placeholder={sending ? 'Your name' : 'What should I call you?'} value={name} onChange={(e) => setName(e.target.value)} />
             <input style={field} placeholder={sending ? 'Their mobile' : 'Mobile (optional — for friends and bookings)'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            {phone.trim() && phoneInfo.note && (
+              <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : '#c0392b' }}>
+                {phoneInfo.note}
+              </div>
+            )}
             <div
               {...pressable(doSignUp)}
               aria-disabled={busy || !ready}
@@ -337,7 +473,7 @@ export default function InviteSheet() {
                 : !name.trim()
                   ? 'YOUR NAME FIRST'
                   : !phoneOk
-                    ? 'THAT NUMBER LOOKS SHORT'
+                    ? 'CHECK THAT NUMBER'
                     : sending
                       ? 'CREATE MY ACCOUNT'
                       : 'NICE TO MEET YOU'}
@@ -369,6 +505,32 @@ export default function InviteSheet() {
                 <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px' }}>CHECK</div>
               </div>
               {accountNote && <div style={helpText}>{accountNote}</div>}
+            {/* "I didn't get it." Always present, never a dead control: it
+                      shows the wait rather than hiding until the wait is over, so
+                      nobody is left wondering whether asking again is even possible.
+                      A code that a carrier dropped is reported as such — see
+                      doResend. */}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--color-neutral-500)' }}>Didn&rsquo;t get it?</span>
+                  {resendIn > 0 ? (
+                      <span style={{ fontSize: 10.5, color: 'var(--color-neutral-500)' }}>
+                        You can ask again in {resendIn}s
+                      </span>
+                  ) : (
+                      <span
+                        {...pressable(doResend)}
+                        role="button"
+                        aria-label="Send the code again"
+                        style={{
+                          fontSize: 10.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline',
+                          color: 'var(--color-neutral-700)', opacity: busy ? 0.5 : 1,
+                        }}
+                      >
+                        {busy ? 'Sending…' : 'Send it again'}
+                      </span>
+                  )}
+              </div>
+              {resendNote && <div style={{ ...helpText, marginTop: 6 }}>{resendNote}</div>}
             </div>
           )}
 

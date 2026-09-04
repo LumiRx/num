@@ -77,8 +77,24 @@ export const _resetLinkCache = () => { linked = false; };
  * imported, because the worker imports this file and a cycle would be worse
  * than an argument.
  */
-export const claimDeps = ({ J, clean, readJSON, sendBatch, legalLine }) =>
-  Object.freeze({ J, clean, readJSON, sendBatch, legalLine });
+export const claimDeps = ({ J, clean, readJSON, sendBatch, legalLine, sendMail }) =>
+  Object.freeze({
+    J,
+    clean,
+    readJSON,
+    sendBatch,
+    legalLine,
+    // The one transport-aware dependency. Defaults to the mailer, which owns
+    // fallback across Resend and the Cloudflare binding — sendCode used to
+    // speak Resend alone, and on 30 Aug 2026 Resend was 401 while the
+    // `if (!env.RESEND_KEY)` guard happily passed.
+    sendMail: sendMail ?? (async (env, msg) => {
+      const m = await import('../worker/mailer.mjs');
+      const r = await m.send(env, msg);
+      await m.recordSend(env, 'claim-code', r);
+      return r;
+    }),
+  });
 
 /**
  * The channels that can prove this listing, including the one the shared
@@ -130,7 +146,11 @@ function channelsForClaim(place) {
  */
 async function sendCode(env, deps, { channel, to, code, businessName }) {
   if (channel === 'sms') return { ok: false, error: 'no_sms_provider' };
-  if (!env.RESEND_KEY) return { ok: false, error: 'no_email_provider' };
+  // NOT `if (!env.RESEND_KEY)`. On 30 Aug 2026 the key was present and
+  // 401-invalid, so that guard passed and the send failed underneath it —
+  // the same shape of lie as `resend_key_present`. The mailer decides whether
+  // anything can carry this, because it is the only thing that knows.
+  if (!env.RESEND_KEY && !env.EMAIL?.send) return { ok: false, error: 'no_email_provider' };
 
   const lines = [
     `Your code for ${businessName} is ${code}`,
@@ -146,17 +166,26 @@ async function sendCode(env, deps, { channel, to, code, businessName }) {
     deps.legalLine ?? '',
   ];
 
+  // Through the mailer, so a dead credential on one transport is not the end
+  // of somebody's claim. Adam at the Holiday Inn Express started a claim on
+  // 24 Aug against a listing whose published address was his own — a perfect
+  // verification channel — and the code could not have reached him, because
+  // this function could only speak Resend and Resend was returning 401.
   try {
-    const out = await deps.sendBatch(env, [{
-      // One code per send, not per retry: a resend must actually resend.
-      __idem: `claimcode-${code.slice(0, 2)}-${Date.now()}`,
+    const r = await deps.sendMail(env, {
+      to,
       from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
-      to: [to],
-      reply_to: 'info@itsnum.com',
+      replyTo: 'info@itsnum.com',
       subject: `${code} is your NUM code for ${businessName}`,
       text: lines.join('\n'),
-    }]);
-    return out === false ? { ok: false, error: 'send_failed' } : { ok: true, via: 'resend' };
+    });
+    if (!r.ok) {
+      // Loud. A claimant is sitting on a form waiting for a number, and
+      // "nothing happened" is the impression that ends the relationship.
+      console.error(`[claim] CODE NOT SENT to ${to} — ${r.error}`);
+      return { ok: false, error: r.error.slice(0, 120) };
+    }
+    return { ok: true, via: r.via };
   } catch (e) {
     return { ok: false, error: String(e?.message ?? e).slice(0, 80) };
   }
