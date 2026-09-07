@@ -51,6 +51,103 @@ const dirty = () => {
   }
 };
 
+// ── AUTO-COMMIT ─────────────────────────────────────────────────────────────
+//
+// `stage` used to print "Working tree has uncommitted changes — staging them
+// anyway" and deploy regardless. A warning that never blocks anything is a
+// warning nobody reads: on 7 Sep 2026 that line had let 163 files and roughly
+// 18,000 lines go live while unrecorded, and underneath the noise a stale git
+// lock from 4 August had been failing every write for a month unnoticed. Every
+// version that shipped in that window was a version you could not return to,
+// which is the one thing a release tool exists to prevent.
+//
+// So committing is now part of releasing rather than something you remember
+// afterwards. It runs AFTER `npm test` and BEFORE `bump`, which means what
+// gets committed is exactly what passed, and the changelog's sha names it.
+//
+// NO_AUTOCOMMIT=1 restores the old warn-and-continue behaviour for the rare
+// case where you truly want a deploy off an uncommitted tree.
+
+// The safety valve. .gitignore is the first defence; this is the one that
+// assumes .gitignore was wrong, because `git add -A` in an automated path is
+// exactly how a key reaches a public remote. Checked against what git is
+// about to stage.
+const RISKY =
+  /(^|\/)(\.env(\.|$)|\.dev\.vars|.*\.(key|pem|p12|pfx|keystore|jks|mobileprovision)$|id_(rsa|dsa|ecdsa|ed25519)|.*secret.*|.*credential.*)/i;
+
+const pendingFiles = () => {
+  try {
+    return cap('git status --porcelain')
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => l.slice(3).trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const inRepo = () => {
+  try {
+    cap('git rev-parse --git-dir');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// True when something is actually staged. `git diff --cached --quiet` exits
+// non-zero when there ARE staged changes, so the throw is the success case.
+const hasStaged = () => {
+  try {
+    cap('git diff --cached --quiet');
+    return false;
+  } catch {
+    return true;
+  }
+};
+
+function gitCommit(paths, message) {
+  if (!inRepo()) return false;
+  if (paths === null) {
+    const risky = pendingFiles().filter((f) => RISKY.test(f));
+    if (risky.length) {
+      console.error('\n✘ Refusing to auto-commit — these look like secrets:\n');
+      risky.forEach((f) => console.error(`    ${f}`));
+      console.error('\n  Add them to .gitignore, or commit what you meant to yourself,');
+      console.error('  then run stage again. NO_AUTOCOMMIT=1 skips this step entirely.\n');
+      process.exit(1);
+    }
+  }
+  sh(paths === null ? 'git add -A' : `git add -- ${paths.join(' ')}`, true);
+  if (!hasStaged()) return false;
+  execSync('git commit -F -', { input: message, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+  return true;
+}
+
+// Called by `stage`, after the tests have passed.
+function commitWork(note) {
+  if (process.env.NO_AUTOCOMMIT) {
+    if (dirty()) console.warn('\n⚠  NO_AUTOCOMMIT set — staging an uncommitted tree.\n');
+    return;
+  }
+  if (!dirty()) return;
+  const msg =
+    `${note || 'Release work'}\n\n` +
+    'Committed by release.mjs stage, after npm test passed.\n';
+  if (gitCommit(null, msg)) {
+    console.log(`\n✓ working tree committed as ${gitSha()} — this release is recoverable.\n`);
+  }
+}
+
+// Called by `ship`, once the new version is verified live.
+function commitRelease(version) {
+  if (process.env.NO_AUTOCOMMIT) return;
+  if (gitCommit(['package.json', 'CHANGELOG.md'], `Release v${version}\n`)) {
+    console.log(`  release metadata committed for v${version}`);
+  }
+}
+
 function bump(kind = 'patch') {
   const [maj, min, pat] = pkg.version.split('.').map(Number);
   const next = kind === 'major' ? `${maj + 1}.0.0` : kind === 'minor' ? `${maj}.${min + 1}.0` : `${maj}.${min}.${pat + 1}`;
@@ -70,7 +167,6 @@ function changelog(version, note) {
 
 switch (cmd) {
   case 'stage': {
-    if (dirty()) console.warn('\n⚠  Working tree has uncommitted changes — staging them anyway.\n');
     // Tests BEFORE the build. A preview URL is something a person will open
     // and trust; a broken store selector or an unguarded credit site must not
     // be able to reach one.
@@ -83,6 +179,9 @@ switch (cmd) {
     // stale-stage guard below impossible to write, because there is no longer
     // any version the two files can agree on.
     sh('npm test');
+    // Commit here: after the tests, before the bump. What lands in the commit
+    // is precisely what passed, and `changelog` below records this sha.
+    commitWork(arg);
     const version = bump(process.env.BUMP || 'patch');
     // The build stamps the version in, so a running app can say what it is.
     process.env.VITE_NUM_VERSION = version;
@@ -205,6 +304,9 @@ switch (cmd) {
       console.log('  wrangler will ask which two versions to split between.\n');
       sh(`npx wrangler versions deploy ${CONFIG}`);
     }
+    // The bump and the changelog entry are only true once the version is
+    // actually serving, so they are committed here rather than in `stage`.
+    commitRelease(pkg.version);
     try {
       sh(`git tag -f v${pkg.version} && echo "tagged v${pkg.version}"`, true);
     } catch {

@@ -105,3 +105,88 @@ test('the staged record is only written after a successful upload', () => {
   assert.ok(upload > 0 && write > upload,
     'the staged record is written before the upload has succeeded');
 });
+
+/* ── 3 · a release is always recoverable ────────────────────────────────────
+ *
+ * ── WHAT HAPPENED, 7 SEPTEMBER 2026 ──────────────────────────────────────
+ *
+ * `stage` printed "Working tree has uncommitted changes — staging them anyway"
+ * and deployed regardless. A warning that never blocks is a warning nobody
+ * reads: 163 files and ~18,000 lines had gone live unrecorded, and under the
+ * noise a stale git lock from 4 August had been failing every write for a
+ * month without anyone noticing. Every version shipped in that window was a
+ * version production could not be returned to.
+ *
+ * Committing is now part of releasing. These pin the ordering that makes it
+ * trustworthy, because a commit taken at the wrong moment is worse than none:
+ * it records something that was never tested, or a version that never shipped.
+ */
+
+test('stage commits only after the tests have passed', () => {
+  const test_ = stageCase.indexOf("sh('npm test')");
+  const commit = stageCase.indexOf('commitWork(');
+  assert.ok(test_ !== -1, 'stage must still run the tests');
+  assert.ok(commit !== -1, 'stage must commit the working tree');
+  assert.ok(
+    test_ < commit,
+    'commitWork must run AFTER npm test — otherwise a failing tree gets committed',
+  );
+});
+
+test('stage commits before the version bump, so the changelog names the work', () => {
+  const commit = stageCase.indexOf('commitWork(');
+  const bumped = stageCase.indexOf('bump(process.env.BUMP');
+  assert.ok(bumped !== -1, 'stage must still bump the version');
+  assert.ok(
+    commit < bumped,
+    'commitWork must run BEFORE bump — the changelog records gitSha() and it must point at the work',
+  );
+});
+
+test('stage no longer warns-and-continues on an uncommitted tree', () => {
+  assert.ok(
+    !/staging them anyway/i.test(src),
+    'the warn-and-continue path is what let unrecorded versions ship; it must not come back',
+  );
+});
+
+test('ship commits the release metadata only after production is verified', () => {
+  const verified = shipCase.indexOf('verified: production is serving');
+  const commit = shipCase.indexOf('commitRelease(');
+  assert.ok(commit !== -1, 'ship must commit the bump and changelog');
+  assert.ok(
+    verified !== -1 && verified < commit,
+    'commitRelease must run AFTER the serving check — a version that never shipped must not be recorded as released',
+  );
+});
+
+test('auto-commit refuses to sweep up anything that looks like a secret', () => {
+  assert.ok(/const RISKY =/.test(src), 'the secret guard must exist');
+  const risky = /const RISKY =\s*([\s\S]*?);\n/.exec(src)?.[1] ?? '';
+  const rx = new RegExp(
+    risky.replace(/^\s*\/|\/i\s*$/g, ''),
+    'i',
+  );
+  for (const path of [
+    '.env',
+    '.env.production',
+    '.dev.vars',
+    'ios/App/dist.mobileprovision',
+    'certs/private.pem',
+    'keys/server.key',
+    'config/client_secret.json',
+    'home/.ssh/id_rsa',
+  ]) {
+    assert.ok(rx.test(path), `${path} must be caught by the secret guard`);
+  }
+  for (const path of ['worker/index.mjs', 'src/lib/social.ts', 'package.json', 'CHANGELOG.md']) {
+    assert.ok(!rx.test(path), `${path} is ordinary source and must not trip the guard`);
+  }
+});
+
+test('there is an escape hatch for a deliberate uncommitted deploy', () => {
+  assert.ok(
+    /NO_AUTOCOMMIT/.test(src),
+    'a guard with no override gets worked around in worse ways',
+  );
+});
