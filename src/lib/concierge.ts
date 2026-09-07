@@ -458,6 +458,7 @@ interface NumAction {
   mode?: 'connected' | 'handoff';
   options?: ServiceHandoff['options'];
   /** create_event */
+  place_id?: string | null;
   day?: string | null;
   time?: string | null;
   place?: string | null;
@@ -543,6 +544,9 @@ function applyAction(a: NumAction) {
       address: a.address ?? null,
       dress: a.dress ?? null,
       note: a.note ?? null,
+      // The verified place the event is at, when there is one — the server
+      // turns it into the business, so the venue can see the party coming.
+      place_id: a.place_id ?? null,
       // Named guests go with the event, so the people already on Num are asked
       // in the same round trip that creates it.
       ask: a.ask ?? [],

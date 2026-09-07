@@ -7,9 +7,10 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { normalisePhone, describePhone } from '../../lib/phone';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
-import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, signUp, verifyCode, whoIsOnNum } from '../../lib/social';
+import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, signUp, textInviteFromNum, verifyCode, whoIsOnNum } from '../../lib/social';
 import { canOfferInstall } from '../../lib/native';
 import AppleSignIn from './AppleSignIn';
+import { guestMessage } from '../../lib/saferr';
 
 /** Matches RESEND_COOLDOWN_SEC in worker/social.mjs. Kept in step by hand;
  *  the client one only has to be >= the server's, since the server is the
@@ -137,6 +138,8 @@ export default function InviteSheet() {
   const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<'shared' | 'copied' | null>(null);
+  // Num texting it for them: idle → sending → the server's one-line verdict.
+  const [numText, setNumText] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; note?: string }>({ state: 'idle' });
   /**
    * Seconds until "Send it again" is offered.
    *
@@ -158,6 +161,28 @@ export default function InviteSheet() {
     setSent(null);
     setInviteNote(null);
   }, [draft?.name, draft?.phone, !!draft]);
+
+  /**
+   * Tick the resend cooldown down to zero.
+   *
+   * One interval for the whole sheet, cleared on every change — a per-press
+   * timer would keep running after the sheet closed and would leak one handle
+   * per attempt on the exact screen people retry on most.
+   *
+   * ABOVE the early return on purpose. This effect once lived below
+   * `if (!draft) return null`, so the sheet rendered N hooks while closed and
+   * N+1 the moment it opened — React error #310, "rendered more hooks than
+   * during the previous render". On a brand-new device the name sheet opens
+   * by itself 900 ms after first paint, so every fresh install crashed on
+   * arrival while every existing device (sheet never auto-opens) looked fine.
+   * Hooks run every render, unconditionally, before any return — no exceptions.
+   */
+  const cooling = resendIn > 0;
+  useEffect(() => {
+    if (!cooling) return undefined;
+    const t = setInterval(() => setResendIn((n) => (n > 0 ? n - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [cooling]);
 
   if (!draft) return null;
   const close = () => store.set({ inviteOpen: null });
@@ -234,25 +259,11 @@ export default function InviteSheet() {
       // invite IS in flight, stay put and carry straight on to it.
       if (!sending) store.set({ inviteOpen: null, threadOpen: true });
     } catch (err) {
-      setAccountNote(err instanceof Error ? err.message : 'That didn’t go through.');
+      setAccountNote(guestMessage(err, 'That didn’t go through.'));
     } finally {
       setBusy(false);
     }
   };
-
-  /**
-   * Tick the resend cooldown down to zero.
-   *
-   * One interval for the whole sheet, cleared on every change — a per-press
-   * timer would keep running after the sheet closed and would leak one handle
-   * per attempt on the exact screen people retry on most.
-   */
-  const cooling = resendIn > 0;
-  useEffect(() => {
-    if (!cooling) return undefined;
-    const t = setInterval(() => setResendIn((n) => (n > 0 ? n - 1 : 0)), 1000);
-    return () => clearInterval(t);
-  }, [cooling]);
 
   /**
    * "I didn't get it."
@@ -290,7 +301,7 @@ export default function InviteSheet() {
     } catch (err) {
       // The server's throttle sentences are written for people. Passing them
       // through is the honest thing; inventing a cheerful one is not.
-      setResendNote(err instanceof Error ? err.message : 'I could not get a new code out just now.');
+      setResendNote(guestMessage(err, 'I could not get a new code out just now.'));
     } finally {
       setBusy(false);
     }
@@ -319,7 +330,7 @@ export default function InviteSheet() {
     } catch (err) {
       // The server's own sentence — "that code expired — ask for a new one",
       // "too many attempts" — is better than any guess we could make here.
-      setAccountNote(err instanceof Error ? err.message : 'That code didn’t match.');
+      setAccountNote(guestMessage(err, 'That code didn’t match.'));
     } finally {
       setBusy(false);
     }
@@ -331,7 +342,7 @@ export default function InviteSheet() {
     try {
       await mintInvite(toName.trim(), toPhone.trim() || undefined, draft.planId);
     } catch (err) {
-      setInviteNote(err instanceof Error ? err.message : 'Couldn’t create that invite.');
+      setInviteNote(guestMessage(err, 'Couldn’t create that invite.'));
     } finally {
       setBusy(false);
     }
@@ -461,6 +472,14 @@ export default function InviteSheet() {
             {phone.trim() && phoneInfo.note && (
               <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : '#c0392b' }}>
                 {phoneInfo.note}
+              </div>
+            )}
+            {/* The consent sentence. Recorded verbatim server-side when the
+                number is verified (worker/smsconsent.mjs SIGNUP_CONSENT_TEXT);
+                a test pins the two copies to the same words. */}
+            {!sending && phone.trim() && (
+              <div style={{ ...helpText, marginTop: 0 }}>
+                By continuing, Num may text this number to sign you in and about your own bookings, plans and friends’ invites. Message rates may apply. Reply STOP any time.
               </div>
             )}
             <div
@@ -655,8 +674,30 @@ export default function InviteSheet() {
               </div>
 
               <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                <div {...pressable(async () => setSent(((await shareInvite()) === 'shared' ? 'shared' : 'copied')))} style={primary}>
-                  <ShareIcon size={14} /> {sent === 'shared' ? 'SENT' : sent === 'copied' ? 'COPIED — PASTE IT TO THEM' : 'SEND IT'}
+                {/* The one-tap path: Num sends the text, names the member, honours STOP.
+                    Only offered when the server says it can (verified sender, a number,
+                    texting switched on) — otherwise the member's own phone is the path. */}
+                {minted.num_text && numText.state !== 'sent' ? (
+                  <div
+                    {...pressable(async () => {
+                      if (numText.state === 'sending') return;
+                      setNumText({ state: 'sending' });
+                      const out = await textInviteFromNum();
+                      setNumText({ state: out.ok ? 'sent' : 'failed', note: out.note });
+                    })}
+                    style={primary}
+                    aria-busy={numText.state === 'sending'}
+                  >
+                    {numText.state === 'sending' ? 'SENDING…' : `NUM TEXTS ${draft.name ? draft.name.toUpperCase() : 'THEM'} FOR YOU`}
+                  </div>
+                ) : null}
+                {numText.note ? (
+                  <div style={{ fontSize: 11.5, lineHeight: 1.5, color: numText.state === 'sent' ? 'var(--color-accent-700)' : 'var(--color-neutral-700)' }}>
+                    {numText.note}
+                  </div>
+                ) : null}
+                <div {...pressable(async () => setSent(((await shareInvite()) === 'shared' ? 'shared' : 'copied')))} style={minted.num_text && numText.state !== 'sent' ? { ...primary, background: 'var(--field-bg)', color: 'var(--ink)' } : primary}>
+                  <ShareIcon size={14} /> {sent === 'shared' ? 'SENT' : sent === 'copied' ? 'COPIED — PASTE IT TO THEM' : minted.num_text && numText.state !== 'sent' ? 'OR SEND IT YOURSELF' : 'SEND IT'}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <a href={minted.sms_url} className="glass press" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>

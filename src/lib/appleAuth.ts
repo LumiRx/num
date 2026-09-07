@@ -8,6 +8,7 @@
 import { apiUrl } from './apibase';
 import { nativePlatform } from './native';
 import type { Member } from './types';
+import { guestMessage } from './saferr';
 
 type AppleAuth = {
   identityToken: string;
@@ -52,7 +53,7 @@ export async function signInWithApple(currentMemberId?: string | null): Promise<
     auth = await p.authorize();
   } catch (err) {
     // A cancel is a decision, not a failure. The caller shows nothing.
-    const message = err instanceof Error ? err.message : String(err);
+    const message = guestMessage(err, 'That didn’t go through.');
     return { ok: false, cancelled: /cancel/i.test(message), message };
   }
 

@@ -31,7 +31,7 @@ export interface InviteDispatch {
 }
 
 export async function createEvent(
-  e: Partial<NumEvent> & { ask?: string[] },
+  e: Partial<NumEvent> & { ask?: string[]; place_id?: string | null },
 ): Promise<(NumEvent & { dispatch?: InviteDispatch }) | null> {
   const me = store.get().me;
   if (!me) return null;

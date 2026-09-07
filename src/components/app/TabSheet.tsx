@@ -15,6 +15,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, XIcon } from '../../lib/icons';
 import { addItem, closeTab, joinTab, openTab, settleTab, startTabSync } from '../../lib/tabs';
+import { guestMessage } from '../../lib/saferr';
 
 const field: React.CSSProperties = {
   width: '100%', height: 46, borderRadius: 14, border: '1px solid var(--ink-12)', padding: '0 14px',
@@ -60,7 +61,7 @@ export default function TabSheet() {
       setStars('');
       setOnly([]);
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'That didn’t go on.');
+      setMsg(guestMessage(err, 'That didn’t go on.'));
     }
     setBusy(false);
   };
@@ -226,7 +227,7 @@ export function TabStarter() {
       await fn();
       store.set({ walletOpen: false });
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'That didn’t work.');
+      setErr(guestMessage(e, 'That didn’t work.'));
     }
     setBusy(false);
   };

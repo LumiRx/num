@@ -990,6 +990,27 @@ export async function mintInvite(name: string, phone?: string, planId?: string |
   void refreshFriends();
 }
 
+/**
+ * The one-tap alternative: NUM sends the text. The server holds every rule —
+ * a verified sender, one invite per plan per number, daily and monthly caps,
+ * STOP honoured — so the app only reports what happened.
+ */
+export async function textInviteFromNum(): Promise<{ ok: boolean; note: string }> {
+  const me = store.get().me;
+  const minted = store.get().inviteOpen?.minted;
+  if (!me || !minted) return { ok: false, note: 'Nothing to send yet.' };
+  try {
+    const out = await api<{ ok: boolean; already?: boolean; to?: string; error?: string }>('/invite/text', {
+      method: 'POST',
+      body: JSON.stringify({ token: minted.token, from: me.id }),
+    });
+    if (out.ok) return { ok: true, note: out.already ? 'Already sent — once is enough.' : `Sent by Num to ${out.to ?? 'them'}.` };
+    return { ok: false, note: out.error ?? 'Num could not send it — use TEXT IT instead.' };
+  } catch (err) {
+    return { ok: false, note: (err as Error).message || 'Num could not send it — use TEXT IT instead.' };
+  }
+}
+
 /** Hand off to the OS: the invite is sent from the member's own number. */
 export async function shareInvite(): Promise<'shared' | 'copied' | 'none'> {
   const minted = store.get().inviteOpen?.minted;

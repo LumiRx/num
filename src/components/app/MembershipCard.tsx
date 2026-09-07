@@ -10,6 +10,18 @@
 // that is what they actually are. Nothing in the free tier gets taken away to
 // create a reason to pay.
 //
+// PAYING WITH STARS (7 Sep 2026).
+// A member can put Stars towards a membership instead of a card, which is the
+// only door for someone who was PAID in Stars for running an errand or was
+// given them by a friend. Two things about it are load-bearing:
+//   · It sits behind the SAME canOfferSubscription() gate as the card. Stars
+//     buying a digital service is a sale, and iOS sells nothing here — see the
+//     App Review note further down. A Stars button that rendered on iOS would
+//     reopen 3.1.1 through a side door.
+//   · The Star price comes from the server, per tier, and is never computed in
+//     this file. See worker/starmembership.mjs: it is derived from what a Star
+//     actually costs, so paying in Stars is never the cheap way in.
+//
 // TRAVEL IS NEVER A PAID BENEFIT AND MUST NEVER BE ADVERTISED AS ONE.
 // Fare search, the priority lane and concierge booking are true on every tier
 // (worker/membership.mjs UNGATED), so `highlights` can never surface them as a
@@ -35,6 +47,9 @@ type Tier = {
   blurb: string;
   entitlements: Record<string, boolean | number | null>;
 };
+
+type StarTier = { id: string; stars_per_month: number };
+type StarWallet = { star_tiers?: StarTier[]; spendable?: number; promo_locked?: number };
 
 const money = (c: number) => (c % 100 === 0 ? `$${c / 100}` : `$${(c / 100).toFixed(2)}`);
 
@@ -64,6 +79,7 @@ export default function MembershipCard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [wallet, setWallet] = useState<StarWallet | null>(null);
 
   useEffect(() => {
     void fetch(apiUrl('/api/membership/tiers')).then((r) => r.json()).then((d) => setTiers(d.tiers)).catch(() => {});
@@ -72,6 +88,13 @@ export default function MembershipCard() {
     if (!me?.id) return;
     void fetch(apiUrl(`/api/membership/me?me=${encodeURIComponent(me.id)}`))
       .then((r) => r.json()).then(setMine).catch(() => {});
+  }, [me?.id]);
+  // What the plans cost in Stars, and how many of this member's Stars may go
+  // towards one. Both come from the server; neither is worked out here.
+  useEffect(() => {
+    if (!me?.id || !canOfferSubscription()) return;
+    void fetch(apiUrl(`/api/membership/stars?me=${encodeURIComponent(me.id)}`))
+      .then((r) => r.json()).then(setWallet).catch(() => {});
   }, [me?.id]);
 
   if (!tiers?.length) return null;
@@ -92,6 +115,36 @@ export default function MembershipCard() {
       }).then((r) => r.json()) as { ok?: boolean; url?: string; error?: string };
       if (out.url) { window.location.href = out.url; return; }
       setNote(out.error ?? 'Couldn’t start that just now.');
+    } catch {
+      setNote('Couldn’t reach the till — try again in a moment.');
+    }
+    setBusy(null);
+  };
+
+  const starCost = (tier: string): number | null =>
+    wallet?.star_tiers?.find((t) => t.id === tier)?.stars_per_month ?? null;
+
+  const payWithStars = async (tier: string) => {
+    if (!me?.id) return;
+    setBusy(`stars:${tier}`);
+    setNote(null);
+    try {
+      const out = await fetch(apiUrl('/api/membership/upgrade-with-stars'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // The body says WHICH plan and HOW MANY months. It never says what
+        // that costs — the server owns the price, the way it owns pack prices.
+        body: JSON.stringify({ me: me.id, tier, months: 1, idem: `stars_${tier}_${Date.now()}` }),
+      }).then((r) => r.json()) as { ok?: boolean; error?: string; note?: string };
+      if (out.ok) {
+        setNote(out.note ?? 'Done.');
+        void fetch(apiUrl(`/api/membership/me?me=${encodeURIComponent(me.id)}`))
+          .then((r) => r.json()).then(setMine).catch(() => {});
+        void fetch(apiUrl(`/api/membership/stars?me=${encodeURIComponent(me.id)}`))
+          .then((r) => r.json()).then(setWallet).catch(() => {});
+      } else {
+        setNote(out.error ?? 'Couldn’t do that just now.');
+      }
     } catch {
       setNote('Couldn’t reach the till — try again in a moment.');
     }
@@ -180,22 +233,55 @@ export default function MembershipCard() {
                     YOUR PLAN
                   </div>
                 ) : (
-                  <div
-                    {...pressable(() => { if (!busy) void subscribe(t.id); })}
-                    style={{
-                      cursor: 'pointer', marginTop: 11, borderRadius: 999, padding: '11px 14px', textAlign: 'center',
-                      background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
-                      opacity: busy ? 0.5 : 1,
-                    }}
-                  >
-                    {busy === t.id ? 'OPENING…' : `GET ${t.name.toUpperCase()}`}
-                  </div>
+                  <>
+                    <div
+                      {...pressable(() => { if (!busy) void subscribe(t.id); })}
+                      style={{
+                        cursor: 'pointer', marginTop: 11, borderRadius: 999, padding: '11px 14px', textAlign: 'center',
+                        background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
+                        opacity: busy ? 0.5 : 1,
+                      }}
+                    >
+                      {busy === t.id ? 'OPENING…' : `GET ${t.name.toUpperCase()}`}
+                    </div>
+                    {/* The Stars door. Shown whenever a Star price exists, and
+                        AFFORDABLE only when the member has enough of their own
+                        Stars — the welcome gift is deliberately not spendable
+                        here, so the price is shown either way rather than the
+                        button quietly vanishing and leaving them puzzled. */}
+                    {starCost(t.id) != null && (
+                      (wallet?.spendable ?? 0) >= (starCost(t.id) as number) ? (
+                        <div
+                          {...pressable(() => { if (!busy) void payWithStars(t.id); })}
+                          style={{
+                            cursor: 'pointer', marginTop: 7, borderRadius: 999, padding: '10px 14px', textAlign: 'center',
+                            border: '1.5px solid var(--color-accent)', color: 'var(--color-accent-700)',
+                            fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
+                          }}
+                        >
+                          {busy === `stars:${t.id}` ? 'PAYING…' : `OR PAY ★${starCost(t.id)} FOR A MONTH`}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 8, fontSize: 10.5, color: 'var(--ink-40)', textAlign: 'center', lineHeight: 1.5 }}>
+                          Or ★{starCost(t.id)} a month — you have ★{wallet?.spendable ?? 0} to spend
+                        </div>
+                      )
+                    )}
+                  </>
                 )}
               </div>
             );
           })}
           <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
             Cancel any time. If a payment lapses you drop back to the free plan — you never lose the app, only the extra room.
+          </div>
+          {(wallet?.promo_locked ?? 0) > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
+              ★{wallet?.promo_locked} of your balance is the welcome gift — that one spends on plans, tabs and errands rather than on a membership.
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
+            Months paid in Stars simply end — nothing renews on its own and no card is stored.
           </div>
         </div>
       )}

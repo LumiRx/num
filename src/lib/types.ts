@@ -314,6 +314,8 @@ export interface InviteDraft {
     sms_url: string;
     whatsapp_url: string;
     install_steps: { ios: string[]; android: string[] };
+    /** True = Num can text this invite for the member (verified sender, a number, texting on). */
+    num_text?: boolean;
   };
 }
 
