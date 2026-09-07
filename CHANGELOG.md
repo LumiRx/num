@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.250 — 2026-09-07 20:34 UTC
+
+(no note given)
+
+- commit `9b03d69`
+
 ## 0.8.249 — 2026-09-07 20:14 UTC
 
 backfill: round-robin destinations
