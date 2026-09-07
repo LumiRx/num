@@ -26,7 +26,7 @@ function db(consent = [], optouts = []) {
         bind: (...a) => ({
           first: async () => {
             if (/FROM num_sms_consent WHERE phone/.test(sql)) return consent.find((c) => c.phone === a[0]) ?? null;
-            if (/FROM num_optouts/.test(sql)) return optouts.includes(a[0]) ? { x: 1 } : null;
+            if (/FROM num_(text_)?optouts/.test(sql)) return optouts.includes(a[0]) ? { x: 1 } : null;
             return null;
           },
           // Deliberately does NOT filter opt-outs: reachable() is the check

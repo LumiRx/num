@@ -325,6 +325,13 @@ export const HELP_REPLY =
  */
 async function applyOptOut(env, phone, word, body = '') {
   const stopping = STOP_WORDS.has(word);
+  // Recorded FIRST, in a table this worker owns, whether or not we ever held
+  // consent for the number. Before 4 Sep a STOP from a number with no consent
+  // row updated nothing and evaporated. worker/optout.mjs.
+  {
+    const { recordStop, recordStart } = await import('./optout.mjs');
+    await (stopping ? recordStop(env, phone, { evidence: body || word }) : recordStart(env, phone)).catch(() => {});
+  }
   if (!stopping) {
     const { record, SOURCE, inboundConsentText } = await import('./smsconsent.mjs');
     await record(env, {
