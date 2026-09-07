@@ -13,8 +13,8 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DISCLOSURES, ageFloor, allowedFor, annotate, disclosureBlock, disclosuresOf,
-  familyAsk, needsVerified,
+  DISCLOSURES, OWNER_HINT, ageFloor, allowedFor, annotate, disclosureBlock, disclosureFields,
+  disclosuresOf, familyAsk, needsVerified, saveDisclosures,
 } from './venuedisclosure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -220,5 +220,86 @@ describe('annotating rows', () => {
   test('no rows and no database are both just no rows', async () => {
     assert.deepEqual(await annotate(env, []), []);
     assert.deepEqual(await annotate({}, [{ id: 'p_aroyo' }]), [{ id: 'p_aroyo' }]);
+  });
+});
+
+describe('the owner declares it themselves', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, place_id TEXT,
+    custom_fields TEXT, updated_at INTEGER)`);
+  const env = {
+    DB: {
+      prepare(sql) {
+        const b = (args) => ({
+          bind: (...m) => b([...args, ...m]),
+          first: async () => db.prepare(sql).get(...args) ?? null,
+          run: async () => { db.prepare(sql).run(...args); return { success: true }; },
+        });
+        return b([]);
+      },
+    },
+  };
+  const fields = (id) => JSON.parse(db.prepare('SELECT custom_fields c FROM num_business_profiles WHERE business_id=?').get(id).c);
+
+  test('ticking a box is the only way one of these becomes true', async () => {
+    db.exec("DELETE FROM num_business_profiles");
+    db.exec("INSERT INTO num_business_profiles VALUES ('biz_a','p_a','{}',0)");
+    const out = await saveDisclosures(env, 'biz_a', ['clothing_optional'], 'owner');
+    assert.equal(out.ok, true);
+    assert.deepEqual(fields('biz_a').disclosures, ['clothing_optional']);
+    assert.equal(fields('biz_a').disclosures_by, 'owner');
+  });
+
+  test('saving does not wipe the licence sitting in the same JSON', async () => {
+    // custom_fields also holds `licence`, `age_min` and delivery hours. A
+    // whole-object write from this form would switch a partner's delivery off.
+    db.exec("DELETE FROM num_business_profiles");
+    db.exec(`INSERT INTO num_business_profiles VALUES
+      ('biz_b','p_b','{"licence":"C10-0000123","age_min":21,"delivery_hours":"10-8"}',0)`);
+    await saveDisclosures(env, 'biz_b', ['adults_only']);
+    const f = fields('biz_b');
+    assert.equal(f.licence, 'C10-0000123', 'a delivery licence was destroyed by a listing save');
+    assert.equal(f.age_min, 21);
+    assert.deepEqual(f.disclosures, ['adults_only']);
+  });
+
+  test('unticking everything is a real edit and must stick', async () => {
+    db.exec("DELETE FROM num_business_profiles");
+    db.exec(`INSERT INTO num_business_profiles VALUES ('biz_c','p_c','{"disclosures":["clothing_optional"]}',0)`);
+    await saveDisclosures(env, 'biz_c', []);
+    assert.deepEqual(fields('biz_c').disclosures, [],
+      'a business that stopped being clothing optional could never say so');
+  });
+
+  test('a typed id never becomes a fact NUM reads out', async () => {
+    db.exec("DELETE FROM num_business_profiles");
+    db.exec("INSERT INTO num_business_profiles VALUES ('biz_d','p_d','{}',0)");
+    await saveDisclosures(env, 'biz_d', ['clothing_optional', 'nudist', 'members_only', 'members_only']);
+    assert.deepEqual(fields('biz_d').disclosures, ['clothing_optional', 'members_only'],
+      'an unknown id was stored, or a duplicate was');
+  });
+
+  test('the form offers every disclosure, unticked, with a reason to tick it', () => {
+    const html = disclosureFields([]);
+    for (const d of Object.values(DISCLOSURES)) {
+      assert.ok(html.includes(`value="${d.id}"`), `${d.id} is not offered`);
+      assert.ok(html.includes(OWNER_HINT[d.id]), `${d.id} has no reason next to it`);
+    }
+    // The attribute, not the word: one of the hints says "ID is checked at the door".
+    assert.ok(!/ checked>/.test(html), 'a disclosure must never be on by default');
+  });
+
+  test('what they already declared comes back ticked', () => {
+    const html = disclosureFields(['clothing_optional']);
+    assert.match(html, /value="clothing_optional" checked/);
+    assert.ok(!/value="adults_only" checked/.test(html));
+    // And it accepts the objects `annotate` produces, not only bare ids.
+    assert.match(disclosureFields([DISCLOSURES.adults_only]), /value="adults_only" checked/);
+  });
+
+  test('the listing page is where an owner finds it', () => {
+    const c = readFileSync(join(HERE, 'bizconsole.mjs'), 'utf8');
+    assert.match(c, /disclosureFields\(disclosures\)/, 'the owner has no way to declare one');
+    assert.match(c, /saveDisclosures/, 'ticking the box saves nothing');
   });
 });

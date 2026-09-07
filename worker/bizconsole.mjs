@@ -51,6 +51,7 @@ import { deliveryPage } from './bizdelivery.mjs';
 // words on the form. worker/biztemplates.mjs.
 import { templateFor } from './biztemplates.mjs';
 import { consentCheckbox } from './partnersms.mjs';
+import { disclosureFields } from './venuedisclosure.mjs';
 
 const enc = new TextEncoder();
 const H = (v) => String(v ?? '')
@@ -589,7 +590,7 @@ function confirmPage(pending, applied, token, saved, err) {
 }
 
 /** The listing form. Promotions live on their own page now. */
-function listingPage(place, token, saved, err) {
+function listingPage(place, token, saved, err, disclosures = []) {
   const F = (name, label, val, ph = '') => `
     <label for="${name}">${H(label)}</label>
     <input id="${name}" name="${name}" value="${H(val ?? '')}" placeholder="${H(ph)}">`;
@@ -608,7 +609,16 @@ function listingPage(place, token, saved, err) {
       ${F('address', 'Address', place.address)}
       ${F('hours', 'Opening hours', place.hours, 'Mon-Sat 11:00-22:00')}
       ${F('cuisine', 'Cuisine or speciality', place.cuisine)}
-      <button type="submit">Save</button>
+      <!-- Facts a guest has to hear BEFORE the description, not on arrival.
+           This is the only writer of them: NUM never infers one from a
+           category or a name, because a venue wrongly labelled this way is a
+           libel and one wrongly left unlabelled is a guest walking into a
+           surprise. -->
+      <h3 style="margin:18px 0 2px">Anything a guest should know before they book?</h3>
+      <p class="sub" style="margin:0">Tick anything that is true and NUM says it <b>first</b> — before
+        describing you, before the price. Most places tick none of these.</p>
+      ${disclosureFields(disclosures)}
+      <button type="submit" style="margin-top:14px">Save</button>
     </form>
     <div class="note">Your category, rating and where you appear in a recommendation are <b>not</b> editable &mdash;
       not by you, and not by anyone paying us. They belong to the traveller's trust in NUM, and the day a
@@ -973,7 +983,7 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
     switch (page.id) {
       case 'setup':         body = setupPage(readiness, token); break;
       case 'confirm':       body = confirmPage(extra.pending ?? [], extra.autofilled ?? [], token, saved, err); break;
-      case 'listing':       body = listingPage(place, token, saved, err); break;
+      case 'listing':       body = listingPage(place, token, saved, err, extra.disclosures ?? []); break;
       case 'promotions':    body = promotionsPage(promoText, token, saved, err); break;
       case 'offerings':     body = offeringsPage(extra.offerings ?? [], extra.offerCurrency, token, saved, err, extra.tpl ?? templateFor(null)); break;
       case 'delivery':      body = deliveryPage({ settings: extra.delivery?.settings ?? null, orders: extra.delivery?.orders ?? [], priced: extra.delivery?.priced ?? 0, next: extra.delivery?.next, token, saved, err }); break;
@@ -1131,6 +1141,15 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
   // is done or that they do not want to be asked — and only for a business
   // that actually has an account, because there is nothing to sign into
   // otherwise.
+  // What this business has already declared about itself, for the listing form.
+  let disclosures = [];
+  if (businessId) {
+    const row = await env.DB.prepare(
+      'SELECT custom_fields FROM num_business_profiles WHERE business_id=?1',
+    ).bind(businessId).first().catch(() => null);
+    try { disclosures = JSON.parse(row?.custom_fields || '{}')?.disclosures ?? []; } catch { disclosures = []; }
+  }
+
   let appCard = '';
   if (businessId && String(page ?? 'overview') === 'overview') {
     try {
@@ -1142,7 +1161,7 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
   }
 
   return dashboard(place, insights, bookings ?? [], token, saved, err, {
-    appCard,
+    appCard, disclosures,
     plan, allTiers, locations, promoText, planSaved, planErr,
     version: data.version, released: data.released, notify,
     demand: data.demand, payQr: data.pay_qr, verification: data.verification, events: data.events ?? [],
@@ -1456,6 +1475,18 @@ export async function handleBizConsole(request, env, url) {
       if (v) patch[k] = v;
     }
     const sets = Object.entries(patch);
+
+    // What they ticked about themselves. Saved even when nothing else on the
+    // form changed — UNticking every box is a real edit, and a save path that
+    // only fires on a non-empty patch would make a disclosure impossible to
+    // withdraw.
+    if (form.has('disclosure') || form.get('p') === 'listing') {
+      const businessId = await ownerOf(env, placeId);
+      if (businessId) {
+        const { saveDisclosures } = await import('./venuedisclosure.mjs');
+        await saveDisclosures(env, businessId, form.getAll('disclosure'), 'owner').catch(() => null);
+      }
+    }
 
     // promo_text is entitlement-gated (worker/bizbilling.mjs), never in the
     // plain allowlist above — a free listing can still POST the field (the

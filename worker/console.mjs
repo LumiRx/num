@@ -1651,6 +1651,30 @@ async function ownershipWork(env, { placeId, place, businessId, claimId, who, no
  * have waited and where the code actually went, because those two facts
  * together are the whole explanation.
  */
+/**
+ * Why this person is still waiting, in one sentence — and only what we know.
+ *
+ * The first draft said "the code went to X, not to Y who filled in the form"
+ * unconditionally, which asserted a difference we had not established: Adam's
+ * row has no recorded target at all, and the address he typed IS the listing's
+ * published one. A queue that explains a case wrongly is worse than one that
+ * says less, because somebody acts on it.
+ */
+function whyStuck(r) {
+  const target = r.channel_value || null;
+  const typed = r.claimant_email || r.claimant_phone || null;
+  if (!target) {
+    return 'A code was sent to the contact published on the listing; we did not record which one. '
+      + 'Nobody answered it.';
+  }
+  if (typed && target.split('@').pop() === String(typed).split('@').pop()
+      && target.replace(/\*/g, '') && String(typed).startsWith(target[0])) {
+    return `The code went to ${target}, which is the address they gave. It was delivered and never answered.`;
+  }
+  return `The code went to ${target}`
+    + (typed ? `, not to ${typed} who filled in the form` : '') + '.';
+}
+
 export async function stalledClaims(env, limit = 100) {
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.place_id, c.state, c.channel, c.channel_value, c.created_at,
@@ -1668,8 +1692,7 @@ export async function stalledClaims(env, limit = 100) {
     days_waiting: Math.floor((r.age_h ?? 0) / 24),
     // The sentence that explains the silence, written once here rather than
     // re-derived by whoever reads this next.
-    why_stuck: `The code went to ${r.channel_value || 'the listing\'s published contact'}`
-      + `${r.claimant_email ? `, not to ${r.claimant_email} who filled in the form` : ''}.`,
+    why_stuck: whyStuck(r),
     already_claimed: r.place_status === 'claimed',
   }));
 }

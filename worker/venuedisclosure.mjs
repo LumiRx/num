@@ -204,3 +204,57 @@ export async function annotate(env, rows) {
   }
   return rows.map((r) => ({ ...r, disclosures: found.get(r.id) ?? [] }));
 }
+
+/**
+ * What the owner reads next to each box.
+ *
+ * Written for the person who runs the place, not for a compliance officer:
+ * ticking one of these is how NUM knows to say it BEFORE describing you, which
+ * is the thing that stops a guest arriving surprised. That is worth one
+ * sentence, because a box with no explanation gets left unticked by the
+ * businesses who most need it.
+ */
+export const OWNER_HINT = Object.freeze({
+  clothing_optional: 'NUM will say this first, before describing you — so the people who arrive are the people who wanted to.',
+  adults_only: 'Nobody turns up with children to be turned away at the door.',
+  members_only: 'A guest who cannot get in learns it here, not on your doorstep.',
+  twentyone_plus: 'For licensed premises where ID is checked at the door.',
+});
+
+/** The checkboxes on the owner's own listing page. */
+export function disclosureFields(current = []) {
+  const on = new Set((current ?? []).map((d) => (typeof d === 'string' ? d : d.id)));
+  const H = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return Object.values(DISCLOSURES).map((d) => `
+    <label for="disc_${d.id}" style="display:block;margin-top:10px">
+      <input type="checkbox" id="disc_${d.id}" name="disclosure" value="${H(d.id)}"${on.has(d.id) ? ' checked' : ''}>
+      <b>${H(d.lead.charAt(0).toUpperCase() + d.lead.slice(1))}</b>
+      <span class="sub" style="display:block;margin-left:22px">${H(OWNER_HINT[d.id] ?? d.why)}</span>
+    </label>`).join('');
+}
+
+/**
+ * Save what the owner ticked.
+ *
+ * Merged into `custom_fields` rather than replacing it, because `licence`,
+ * `age_min` and the delivery hours live in the same JSON and a whole-object
+ * write from this form would silently switch a partner's delivery licence off.
+ * Unknown ids are dropped: the form is the only writer today, and the day it
+ * is not, a typo must not become a fact NUM reads out about somebody.
+ */
+export async function saveDisclosures(env, businessId, ids, by = 'console') {
+  if (!env?.DB || !businessId) return { ok: false, error: 'no business' };
+  const wanted = [...new Set((ids ?? []).map(String))].filter((i) => DISCLOSURES[i]);
+  const row = await env.DB.prepare(
+    'SELECT custom_fields FROM num_business_profiles WHERE business_id=?1',
+  ).bind(String(businessId)).first().catch(() => null);
+  let f = {};
+  try { f = JSON.parse(row?.custom_fields || '{}') || {}; } catch { f = {}; }
+  try {
+    await env.DB.prepare(
+      'UPDATE num_business_profiles SET custom_fields=?2, updated_at=CAST(strftime(\'%s\',\'now\') AS INTEGER) WHERE business_id=?1',
+    ).bind(String(businessId), JSON.stringify({ ...f, disclosures: wanted, disclosures_by: by })).run();
+    return { ok: true, disclosures: wanted };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+}
