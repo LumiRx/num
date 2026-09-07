@@ -53,8 +53,26 @@ npm run build
 # Statement by statement, tolerating "already applied". Safe to re-run, and
 # re-running is how you finish a partial apply.
 echo
-echo "▸ Migrations 0013 / 0014 / 0015 → num-db (remote)"
+echo "▸ Migrations → num-db (remote)"
 node scripts/apply-host-migrations.mjs
+
+# ── 3b. DOES THE DATABASE NOW HAVE WHAT THE CODE BELIEVES IN? ───────────
+# On 7 Sep 2026 /api/host/requests had been returning 500 for every host for
+# weeks, because num_host_requests.booking_fee_minor was declared inside a
+# CREATE TABLE IF NOT EXISTS on a table that already existed — a silent no-op.
+# The column reached fresh databases and no existing one. Nothing compared the
+# two, so nothing noticed.
+#
+# This runs AFTER the migrations on purpose: it is asking whether the apply we
+# just did actually left the database in the shape the code expects, which is a
+# different question from whether the apply reported success.
+#
+# It stops the deploy. A worker shipped against a database missing a column it
+# selects is a 500 for every user of that endpoint, and it fails silently in
+# the console — which is exactly how the last one went unnoticed.
+echo
+echo "▸ Schema drift — does production have every column the migrations declare?"
+node scripts/schema-drift.mjs
 
 # ── 4. BACKFILL ─────────────────────────────────────────────────────────
 # Client rows created before 0015 have no member_token, which means those
