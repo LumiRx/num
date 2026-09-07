@@ -2,6 +2,24 @@
 
 Every version that has been live, newest first.
 
+## 0.8.247 — 2026-09-07 19:56 UTC
+
+booking platform backfill
+
+- commit `ddd0fd3`
+
+## 0.8.246 — 2026-09-07 19:54 UTC
+
+(no note given)
+
+- commit `ddd0fd3`
+
+## 0.8.245 — 2026-09-07 19:53 UTC
+
+(no note given)
+
+- commit `ddd0fd3`
+
 ## 0.8.244 — 2026-09-07 19:40 UTC
 
 clarify venue bookings vs flight ticketing
