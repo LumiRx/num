@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.255 — 2026-09-07 20:57 UTC
+
+(no note given)
+
+- commit `bbf975a`
+
 ## 0.8.254 — 2026-09-07 20:45 UTC
 
 defend the three rail registries against drift
