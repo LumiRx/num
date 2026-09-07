@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.248 — 2026-09-07 20:10 UTC
+
+backfill: retry bad moments, crawl the recommended first
+
+- commit `131268d`
+
 ## 0.8.247 — 2026-09-07 19:56 UTC
 
 booking platform backfill
