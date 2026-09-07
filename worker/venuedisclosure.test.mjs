@@ -9,11 +9,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   DISCLOSURES, ageFloor, allowedFor, annotate, disclosureBlock, disclosuresOf,
   familyAsk, needsVerified,
 } from './venuedisclosure.mjs';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const CO = DISCLOSURES.clothing_optional;
 const aroyo = (extra = {}) => ({ id: 'p_aroyo', name: 'Aroyo', disclosures: [CO], ...extra });
 const plain = { id: 'p_inn', name: 'The Inn', disclosures: [] };
@@ -42,7 +46,8 @@ describe('reading what a business declared', () => {
     assert.equal(ageFloor([DISCLOSURES.members_only]), 0);
     assert.equal(ageFloor([]), 0);
     assert.equal(needsVerified([DISCLOSURES.members_only]), false);
-    assert.equal(needsVerified([CO]), true);
+    assert.equal(needsVerified([CO]), false, 'a fact about a venue is disclosed, not gated');
+    assert.equal(needsVerified([DISCLOSURES.twentyone_plus]), true, 'the law gates this one');
   });
 });
 
@@ -57,13 +62,24 @@ describe('who may be shown one', () => {
     );
   });
 
-  test('an unverified guest does not, and neither does one we know nothing about', () => {
+  test('an unverified guest is suggested it too — the disclosure is the protection', () => {
+    // 7 Sep, Dre: "always suggest it but we need to disclose its clothing
+    // optional." Gating on identity verification would mean it was essentially
+    // never named, which buries a business that signed up in good faith.
     const ask = 'a resort for the weekend';
-    assert.deepEqual(allowedFor([aroyo(), plain], { member: { identity_verified: 0 }, userText: ask })
-      .map((v) => v.name), ['The Inn']);
-    assert.deepEqual(allowedFor([aroyo(), plain], { member: null, userText: ask })
-      .map((v) => v.name), ['The Inn']);
-    assert.deepEqual(allowedFor([aroyo(), plain], { userText: ask }).map((v) => v.name), ['The Inn']);
+    for (const member of [{ identity_verified: 0 }, null, undefined]) {
+      assert.deepEqual(allowedFor([aroyo(), plain], { member, userText: ask }).map((v) => v.name),
+        ['Aroyo', 'The Inn'], 'a clothing-optional B&B was hidden from an ordinary adult guest');
+    }
+  });
+
+  test('a venue the law actually gates still needs a verified guest', () => {
+    // 21+ licensed premises, where ID is checked at the door, is a different
+    // thing from a fact about a venue.
+    const bar = { id: 'p_bar', name: 'The Bar', disclosures: [DISCLOSURES.twentyone_plus] };
+    assert.deepEqual(allowedFor([bar], { member: { identity_verified: 0 }, userText: 'a drink' }), []);
+    assert.deepEqual(allowedFor([bar], { ...verified, userText: 'a drink' }).map((v) => v.name),
+      ['The Bar']);
   });
 
   test('a family ask returns nothing at all, however well it matches', () => {
@@ -128,10 +144,39 @@ describe('what the brain is told', () => {
       'the venue is being described to a guest, not flagged to a moderator');
   });
 
+  test('it sends the venue to picks, so the guest gets a link to look', () => {
+    // A guest told a place is clothing optional wants to look before deciding,
+    // and a name inside a sentence cannot be tapped.
+    const block = disclosureBlock([aroyo()]);
+    assert.match(block, /go in `picks`/);
+    assert.match(block, /card and the link/);
+  });
+
   test('nothing to disclose means no block at all', () => {
     assert.equal(disclosureBlock([plain]), '');
     assert.equal(disclosureBlock([]), '');
     assert.equal(disclosureBlock(null), '');
+  });
+});
+
+describe('the answer path actually carries it', () => {
+  const read = (f) => readFileSync(join(HERE, f), 'utf8');
+
+  test('grounding annotates and gates the rows it already chose', () => {
+    const g = read('grounding.mjs');
+    assert.match(g, /venuedisclosure\.mjs/, 'nothing in the answer path reads disclosures');
+    assert.match(g, /disclosures: disclosureBlock\(annotated\)/);
+    assert.match(g, /partners: annotated/, 'the gated list is not the one handed to the model');
+  });
+
+  test('the block is pushed into the system prompt as its own block', () => {
+    const i = read('index.mjs');
+    assert.match(i, /grounding\?\.disclosures\) system\.push/,
+      'the block is built and then never given to the model');
+  });
+
+  test('the guest is passed through, so a law-gated venue can be gated', () => {
+    assert.match(read('index.mjs'), /member: parsed\.state\?\.me/);
   });
 });
 
@@ -168,7 +213,7 @@ describe('annotating rows', () => {
     const broken = { DB: { prepare() { throw new Error('down'); } } };
     const out = await annotate(broken, [{ id: 'p_aroyo', name: 'Aroyo' }]);
     assert.equal(out[0].disclosures_unknown, true);
-    assert.deepEqual(allowedFor(out, { ...verified, userText: 'a resort' }).map((v) => v.name),
+    assert.deepEqual(allowedFor(out, { userText: 'a resort' }).map((v) => v.name),
       ['Aroyo'], 'an unknown-but-present venue still passes the ordinary gate');
   });
 

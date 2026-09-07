@@ -119,8 +119,29 @@ async function ensure(env) {
  * and nobody is waiting on it. Same total work, most of the value in the
  * first afternoon.
  *
- * `reviews` is nullable across much of the directory, hence COALESCE — a row
- * with no review count sorts last rather than sorting unpredictably.
+ * ── AND THE SIGNAL HAD TO CHANGE, BECAUSE THE FIRST ONE WAS EMPTY ────────
+ *
+ * The version above ranked by review count. Checked against the live table an
+ * hour later, of 313,248 restaurants with a website:
+ *
+ *     with a review count ....... 123      (0.04%)
+ *     with a rating ............. 123
+ *     with opening hours ..... 31,767      (10%)
+ *
+ * So `ORDER BY reviews DESC` sorted 313,125 rows that were all zero. It read
+ * as a sensible optimisation, it passed its test against a fixture that had
+ * review counts, and it did NOTHING — every venue tied and the order fell back
+ * to whatever the query planner felt like. The only reason it surfaced is that
+ * the live queue came back with `rank 1, reviews 0` for every city.
+ *
+ * A ranking column nobody checked for coverage is worse than no ranking: it
+ * looks deliberate in the source and is random in production.
+ *
+ * `hours_mask` is the signal this directory actually has. A venue that
+ * publishes structured opening hours has been enriched and is a real,
+ * established business — which is also the kind that runs OpenTable. Ten per
+ * cent is not a lot, but it is a genuine ten per cent, and reviews stay as a
+ * tiebreak for the hundred-odd rows that carry them.
  *
  * ── AND ROUND-ROBIN ACROSS CITIES (added after 160 live rows) ─────────────
  *
@@ -144,8 +165,15 @@ export async function candidates(env, { limit = 40 } = {}) {
   // few from every city each tick is what stops one city eating the queue.
   const { results } = await env.DB.prepare(
     `WITH queue AS (
-       SELECT p.id, p.name, p.website, p.dest, COALESCE(p.reviews, 0) AS rv,
-              ROW_NUMBER() OVER (PARTITION BY p.dest ORDER BY COALESCE(p.reviews, 0) DESC) AS rank
+       SELECT p.id, p.name, p.website, p.dest,
+              (CASE WHEN p.hours_mask IS NOT NULL AND p.hours_mask <> '' THEN 1 ELSE 0 END) AS rv,
+              -- Established-venue first: published hours, then whatever review
+              -- count exists. See the note above on why reviews alone was inert.
+              ROW_NUMBER() OVER (
+                PARTITION BY p.dest
+                ORDER BY (CASE WHEN p.hours_mask IS NOT NULL AND p.hours_mask <> '' THEN 1 ELSE 0 END) DESC,
+                         COALESCE(p.reviews, 0) DESC
+              ) AS rank
          FROM places p
          LEFT JOIN num_booking_scan s ON s.place_id = p.id
         WHERE p.website IS NOT NULL AND p.website <> ''

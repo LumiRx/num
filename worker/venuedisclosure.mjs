@@ -30,18 +30,32 @@
  *
  * ── WHAT IT REFUSES ──────────────────────────────────────────────────────
  *
- *   1. An unverified guest. Identity-verified 18+ only, using the same member
- *      check `delivery.mjs` already runs for age-restricted partners. NUM
- *      knowing somebody's age is what makes this a gate rather than a hope.
- *   2. A family ask. "Somewhere for us and the kids" must never return this,
+ *   1. A family ask. "Somewhere for us and the kids" must never return this,
  *      whatever the ranking says and however well it matches on category.
  *      A disclosure read out first does not repair that suggestion; it should
  *      not be made.
- *   3. Inventing the disclosure. It is only ever what the BUSINESS put on
+ *   2. Inventing the disclosure. It is only ever what the BUSINESS put on
  *      their own profile. Nothing here infers "clothing optional" from a
  *      category, a name, or a description, because a venue wrongly labelled
  *      this way is a libel and a venue wrongly labelled the other way is a
  *      guest walking into a surprise.
+ *
+ * ── WHY IDENTITY VERIFICATION IS NOT ONE OF THOSE REFUSALS ───────────────
+ *
+ * It was, for about an hour on 7 Sep, and it was wrong. Dre: "always suggest
+ * it but we need to disclose its clothing optional."
+ *
+ * Requiring NUM to have verified a guest's identity before naming a
+ * clothing-optional B&B would mean it was essentially never named, because
+ * most guests are not verified — which is the opposite of always suggesting
+ * it, and it quietly buries a business that signed up in good faith.
+ *
+ * And the premise was wrong anyway. A bed and breakfast described accurately
+ * is a bed and breakfast; the disclosure is what makes naming it safe, not a
+ * gate in front of it. `verified_only` stays on the catalogue for things that
+ * are genuinely age-restricted in law — a 21+ licensed premises where ID is
+ * checked at the door — and comes off the ones that are simply a fact about
+ * the venue.
  */
 
 /**
@@ -57,7 +71,8 @@ export const DISCLOSURES = Object.freeze({
     id: 'clothing_optional',
     lead: 'clothing optional',
     age_min: 18,
-    verified_only: true,
+    // Not verified_only: see the note above. The disclosure is the protection.
+    verified_only: false,
     why: 'A guest has to know before they book, not when they arrive.',
   },
   adults_only: {
@@ -116,12 +131,18 @@ export const familyAsk = (text) => FAMILY.test(String(text ?? ''));
  * age — all of them mean no. A gate that opens when it is unsure is not a gate.
  */
 export function allowedFor(venues, { member, userText = '' } = {}) {
+  // The one refusal. Kept against an explicit "always suggest it" because the
+  // harm runs both ways: a family arriving at a clothing-optional B&B is a
+  // ruined holiday for them AND a bad morning for the business that signed up
+  // expecting NUM to send it the right people.
   if (familyAsk(userText)) return [];
   return (venues ?? []).filter((v) => {
     const list = v.disclosures ?? [];
     if (!list.length) return true;
+    // Only where the law actually gates the door — a 21+ licensed premises.
+    // A fact about a venue is disclosed, not gated.
     if (needsVerified(list) && !member?.identity_verified) return false;
-    return ageFloor(list) === 0 || !!member?.identity_verified;
+    return true;
   });
 }
 
@@ -146,6 +167,12 @@ export function disclosureBlock(venues) {
     + 'with cedar tubs" is right; "Aroyo is a hillside resort with cedar tubs, and it is also clothing '
     + 'optional" is wrong, because by then the guest has already pictured their holiday. '
     + 'Never leave it out to make a suggestion land better.',
+    // The disclosure and the way to check it belong together. A guest told a
+    // place is clothing optional wants to look at it before they decide, and
+    // a name in a sentence is not something anybody can tap.
+    'These places go in `picks` like any other, so the guest gets the card and the link. '
+    + 'A venue you disclosed something about and then did not give them a way to look at is worse '
+    + 'than not mentioning it.',
   );
   return lines.join('\n');
 }

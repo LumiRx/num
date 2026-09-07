@@ -40,13 +40,13 @@ const fetcher = (byUrl) => async (url) => {
 
 beforeEach(() => {
   db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, website TEXT, dest TEXT, category TEXT, reviews INTEGER, booking_platform TEXT, booking_ref TEXT)`);
+  db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, website TEXT, dest TEXT, category TEXT, reviews INTEGER, hours_mask TEXT, booking_platform TEXT, booking_ref TEXT)`);
   db.exec(`INSERT INTO places VALUES
-    ('p1','Bestia','https://bestia.example','los-angeles','restaurant',4200,NULL,NULL),
-    ('p2','Quiet Cafe','https://quiet.example','los-angeles','cafe',NULL,NULL,NULL),
-    ('p3','A Museum','https://museum.example','los-angeles','museum',900,NULL,NULL),
-    ('p4','No Site','','los-angeles','restaurant',10,NULL,NULL),
-    ('p5','Already Known','https://known.example','los-angeles','restaurant',50,'resy','known-la')`);
+    ('p1','Bestia','https://bestia.example','los-angeles','restaurant',4200,'ffff',NULL,NULL),
+    ('p2','Quiet Cafe','https://quiet.example','los-angeles','cafe',NULL,NULL,NULL,NULL),
+    ('p3','A Museum','https://museum.example','los-angeles','museum',900,'ffff',NULL,NULL),
+    ('p4','No Site','','los-angeles','restaurant',10,'ffff',NULL,NULL),
+    ('p5','Already Known','https://known.example','los-angeles','restaurant',50,'ffff','resy','known-la')`);
   env = { DB: d1(db) };
 });
 
@@ -72,10 +72,10 @@ describe('who it looks at', () => {
     // worked through the city with the biggest review counts. Los Angeles and
     // London, where a booking link is worth the most, sat behind it.
     db.exec(`INSERT INTO places VALUES
-      ('l1','Big LA','https://la1.example','los-angeles','restaurant',9000,NULL,NULL),
-      ('l2','Also LA','https://la2.example','los-angeles','restaurant',8000,NULL,NULL),
-      ('k1','Big London','https://ldn.example','london','restaurant',7000,NULL,NULL),
-      ('r1','Big Paris','https://par.example','paris','restaurant',6000,NULL,NULL)`);
+      ('l1','Big LA','https://la1.example','los-angeles','restaurant',9000,'ffff',NULL,NULL),
+      ('l2','Also LA','https://la2.example','los-angeles','restaurant',8000,'ffff',NULL,NULL),
+      ('k1','Big London','https://ldn.example','london','restaurant',7000,'ffff',NULL,NULL),
+      ('r1','Big Paris','https://par.example','paris','restaurant',6000,'ffff',NULL,NULL)`);
     // Three cities are waiting and the tick has room for three. Every city
     // must get its best venue looked at before ANY city gets its second.
     const dests = (await candidates(env, { limit: 3 })).map((r) => r.dest);

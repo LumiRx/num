@@ -1406,6 +1406,8 @@ async function adminClaims(env, url) {
   ]);
 
   const rows = queue.results ?? [];
+  // The people the morning alert names and this page could not show.
+  const stalled = await stalledClaims(env);
 
   // The THIRD claim table. itsnum.com's merchant form (num-growth worker,
   // claim-uk.html — the UK funnel) writes to `claims`, a table this console
@@ -1449,6 +1451,10 @@ async function adminClaims(env, url) {
     // rather than leaving an operator to work it out from timestamps.
     to_call: rows.map((r) => ({ ...r, overdue: Number(r.age_h) > 24 })),
     awaiting_review: review.results ?? [],
+    // Claims that never got past 'pending'. The morning alert has been naming
+    // these people for two weeks; this page could not show a single one of
+    // them, because it only ever read state='verified'.
+    stalled,
   });
 }
 
@@ -1586,6 +1592,137 @@ async function adminSubmissionLink(env, req) {
  * slugs (scripts/destinations.mjs), not free text — it is how the concierge,
  * the map and every ingester key a place.
  */
+/**
+ * The statements that turn a listing into somebody's account.
+ *
+ * Extracted because there are now two doors a human can vouch through — a
+ * self-submitted business being promoted, and an existing listing whose
+ * claimant is stuck — and the day those two drift is the day one of them
+ * forgets `onboardStatements` and quietly creates a business that cannot
+ * transact.
+ *
+ * `method` is always 'admin_promote'. Never 'sms', never 'email': those mean a
+ * one-time code reached a contact ALREADY PUBLISHED on the listing, which is
+ * the whole anti-hijack property of claiming. A person vouching is a weaker
+ * and different fact, and the register has to keep saying which one it was.
+ */
+async function ownershipWork(env, { placeId, place, businessId, claimId, who, note }) {
+  const { onboardStatements } = await import('../claim/onboard.mjs');
+  return [
+    env.DB.prepare(
+      `INSERT INTO businesses (id, name, kind, category, territory, status, onboarded_by, notes)
+       VALUES (?1,?2,'merchant',?3,?4,'active','admin-promote',?5)`,
+      // The note says which door this came through as well as who opened it.
+      // "granted by dre" and "promoted by dre" are different events and a year
+      // from now the difference is the only thing anyone will want.
+    ).bind(businessId, place.name, place.category ?? null, place.dest ?? null,
+      note || `granted by ${who}${claimId ? ` on claim ${claimId}` : ''}`),
+    env.DB.prepare(
+      `INSERT INTO num_place_owners (place_id, business_id, claim_id, method, phone)
+       VALUES (?1,?2,?3,'admin_promote',?4)
+       ON CONFLICT(place_id) DO UPDATE SET business_id=excluded.business_id,
+             claim_id=excluded.claim_id, method=excluded.method, phone=excluded.phone,
+             verified_at=datetime('now'), revoked_at=NULL`,
+    ).bind(placeId, businessId, claimId ?? null, place.phone ?? null),
+    env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1")
+      .bind(placeId, businessId),
+    ...(await onboardStatements(env, businessId, place, `admin-promote:${who}`)),
+  ];
+}
+
+/**
+ * A claimant who started, was sent a code, and was never heard from again.
+ *
+ * ── WHY THESE PEOPLE WAITED FOURTEEN DAYS ────────────────────────────────
+ *
+ * `nudge.mjs` texts every morning: "[biz] 3 claim(s) waiting on us". It reads
+ * every non-final state. This console read `state = 'verified'` and nothing
+ * else — so the alert named Adam at the Holiday Inn Express for two weeks
+ * running, and the page a human opens to do something about it had no row for
+ * him. The tally even counted him, under `pending`, with nothing to click.
+ *
+ * A claim goes 'pending' the moment a code is sent, and the code is sent to
+ * the contact ALREADY PUBLISHED on the listing — a reception inbox, usually,
+ * not the person who filled in the form. When nobody in that inbox forwards
+ * it, the code expires and the row stays 'pending' for ever: no sweep moves it
+ * on, and the claimant has no way to ask again.
+ *
+ * So this exists to be acted on, not admired. Every row carries how long they
+ * have waited and where the code actually went, because those two facts
+ * together are the whole explanation.
+ */
+async function stalledClaims(env, limit = 100) {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.place_id, c.state, c.channel, c.channel_value, c.created_at,
+            c.claimant_name, c.claimant_email, c.claimant_phone,
+            ROUND((julianday('now') - julianday(c.created_at)) * 24, 1) AS age_h,
+            p.name AS place_name, p.area, p.dest, p.email AS place_email, p.phone AS place_phone,
+            p.status AS place_status
+       FROM num_claims c JOIN places p ON p.id = c.place_id
+      WHERE c.state NOT IN ('verified','approved','rejected','expired')
+        AND c.created_at < datetime('now', '-2 hours')
+      ORDER BY c.created_at ASC LIMIT ?1`,
+  ).bind(limit).all().catch(() => ({ results: [] }));
+  return (results ?? []).map((r) => ({
+    ...r,
+    days_waiting: Math.floor((r.age_h ?? 0) / 24),
+    // The sentence that explains the silence, written once here rather than
+    // re-derived by whoever reads this next.
+    why_stuck: `The code went to ${r.channel_value || 'the listing\'s published contact'}`
+      + `${r.claimant_email ? `, not to ${r.claimant_email} who filled in the form` : ''}.`,
+    already_claimed: r.place_status === 'claimed',
+  }));
+}
+
+/**
+ * Vouch for a stuck claimant and hand them their account.
+ *
+ * The same act as `owner: true` on a submission, for a listing that already
+ * exists. Requires `by`, for the same reason: an assertion with nobody's name
+ * on it is not an assertion.
+ */
+async function adminClaimGrant(env, req) {
+  const b = await readBody(req);
+  const placeId = clip(b.place_id, 64);
+  const who = clip(b.by, 60);
+  const claimId = b.claim_id != null ? clip(b.claim_id, 64) : null;
+  if (!placeId) return json({ error: 'place_id is required' }, 400);
+  if (!who) return json({ error: 'granting ownership records that a person vouched — "by" must name them' }, 400);
+
+  const place = await env.DB.prepare(
+    `SELECT id, name, category, dest, country, area, address, lat, lng, phone, email, website, status
+       FROM places WHERE id=?1`,
+  ).bind(placeId).first();
+  if (!place) return json({ error: 'no such listing' }, 404);
+  if (place.status === 'claimed') {
+    return json({ error: 'that listing already has an owner', place_id: placeId }, 409);
+  }
+
+  const businessId = `biz_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+  const work = await ownershipWork(env, { placeId, place, businessId, claimId, who });
+  if (claimId) {
+    work.push(env.DB.prepare(
+      `UPDATE num_claims SET state='verified', business_id=?2, code_hash=NULL, code_salt=NULL,
+              decided_at=datetime('now'), decided_by=?3 WHERE id=?1`,
+    ).bind(claimId, businessId, `admin:${who}`));
+  }
+  await env.DB.batch(work);
+
+  // After the batch, never inside it: a sign-in link to a business whose
+  // creation then rolled back is a link to nothing, handed to a real person.
+  let signinUrlOut = null;
+  try {
+    const { mintSigninLink, signinUrl } = await import('./bizsignin.mjs');
+    const token = await mintSigninLink(env, { placeId, businessId, purpose: 'welcome' });
+    if (token) signinUrlOut = signinUrl(new URL(req.url).origin, token);
+  } catch (e) { console.warn('[grant] sign-in link', e?.message ?? e); }
+
+  return json({
+    ok: true, place_id: placeId, business_id: businessId, claim_id: claimId,
+    owner: 'admin_promote', signin_url: signinUrlOut,
+  });
+}
+
 async function adminSubmissionPromote(env, req) {
   const b = await readBody(req);
   const id = clip(b.submission_id ?? b.id, 64);
@@ -1689,23 +1826,10 @@ async function adminSubmissionPromote(env, req) {
       email: sub.email,
       website: sub.website,
     };
-    const { onboardStatements } = await import('../claim/onboard.mjs');
-    work.push(
-      env.DB.prepare(
-        `INSERT INTO businesses (id, name, kind, category, territory, status, onboarded_by, notes)
-         VALUES (?1,?2,'merchant',?3,?4,'active','admin-promote',?5)`,
-      ).bind(businessId, sub.name, sub.category ?? null, dest, `submission ${id} promoted by ${who}`),
-      env.DB.prepare(
-        `INSERT INTO num_place_owners (place_id, business_id, claim_id, method, phone)
-         VALUES (?1,?2,?3,'admin_promote',?4)
-         ON CONFLICT(place_id) DO UPDATE SET business_id=excluded.business_id,
-               claim_id=excluded.claim_id, method=excluded.method, phone=excluded.phone,
-               verified_at=datetime('now'), revoked_at=NULL`,
-      ).bind(placeId, businessId, sub.claim_id ?? null, sub.phone ?? null),
-      env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1")
-        .bind(placeId, businessId),
-      ...(await onboardStatements(env, businessId, place, `admin-promote:${who}`)),
-    );
+    work.push(...await ownershipWork(env, {
+      placeId, place, businessId, claimId: sub.claim_id ?? null, who,
+      note: `submission ${id} promoted by ${who}`,
+    }));
   }
 
   await env.DB.batch(work);
@@ -1742,7 +1866,9 @@ async function adminSubmissionPromote(env, req) {
 // Exported so the behavioral test can call these directly, the same way
 // bizconsole.mjs's __testables does, instead of re-deriving an admin
 // session token just to exercise the logic.
-export const __testables = { adminSubmissions, adminSubmissionLink, adminSubmissionPromote };
+export const __testables = {
+  adminSubmissions, adminSubmissionLink, adminSubmissionPromote, adminClaims, adminClaimGrant,
+};
 
 // ── router ────────────────────────────────────────────────────────────────
 
@@ -1770,6 +1896,7 @@ export async function handleConsole(request, env, path) {
       if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
       if (path === '/admin/overview') return await adminOverview(env, url, request);
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);
+      if (path === '/admin/claims/grant' && post) return await adminClaimGrant(env, request);
       if (path === '/admin/claims/contacted' && post) return await adminClaimContacted(env, request);
       if (path === '/admin/resolve' && post) return await adminResolve(env, request);
       if (path === '/admin/submissions' && !post) return await adminSubmissions(env, url);

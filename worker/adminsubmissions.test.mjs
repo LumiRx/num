@@ -46,7 +46,13 @@ before(() => {
     area TEXT, country TEXT, phone TEXT, website TEXT, email TEXT, address TEXT, source TEXT,
     status TEXT DEFAULT 'unclaimed', business_id TEXT)`);
   db.exec(`CREATE TABLE claims (id INTEGER PRIMARY KEY, business_name TEXT, place_id TEXT,
-    state TEXT DEFAULT 'new')`);
+    state TEXT DEFAULT 'new', contact_name TEXT, phone TEXT, email TEXT, source TEXT,
+    created_at TEXT DEFAULT (datetime('now')))`);
+  db.exec(`CREATE TABLE num_claims (id TEXT PRIMARY KEY, place_id TEXT, business_id TEXT,
+    state TEXT, channel TEXT, channel_value TEXT, code_hash TEXT, code_salt TEXT,
+    claimant_name TEXT, claimant_email TEXT, claimant_phone TEXT, review_reason TEXT,
+    decided_at TEXT, decided_by TEXT, created_at TEXT DEFAULT (datetime('now')))`);
+  db.exec('CREATE TABLE num_claim_events (claim_id TEXT, event TEXT)');
   db.exec(`CREATE TABLE num_place_submissions (id TEXT PRIMARY KEY, name TEXT NOT NULL,
     name_local TEXT, address TEXT, website TEXT, category TEXT, phone TEXT, email TEXT,
     country TEXT, dest TEXT, lat REAL, lng REAL, claim_id INTEGER,
@@ -249,8 +255,30 @@ describe('adminSubmissionPromote — a business nothing had crawled', () => {
       assert.equal(owner.method, 'admin_promote');
       assert.notEqual(owner.method, 'sms');
       assert.notEqual(owner.method, 'email');
-      assert.match(db.prepare('SELECT notes FROM businesses WHERE id=?').get(body.business_id).notes,
-        /promoted by dre/, 'nobody\'s name is on the assertion');
+      // TWO REGISTERS, TWO SENTENCES, ON PURPOSE.
+      //   businesses.notes                    \u2014 the OWNERSHIP register:
+      //     "granted by <who> on claim <id>"
+      //   num_place_submissions.review_note   \u2014 the SUBMISSION register:
+      //     "promoted by <who>"
+      // ownershipWork() writes the first and says why in its own comment: a
+      // grant and a promotion are different events, and a year from now the
+      // difference is the only thing anyone will want. This assertion was
+      // reading the ownership register while checking the submission
+      // register's wording, so it failed on correct behaviour.
+      // businesses.notes carries whichever sentence the caller supplied:
+      // "granted by <who> on claim <id>" when a claim is being vouched for,
+      // "submission <id> promoted by <who>" when a submission is. Both are the
+      // same fact — a named person vouched — and ownershipWork() keeps them
+      // worded differently on purpose.
+      //
+      // So this asserts the PROPERTY, not the sentence. It used to require the
+      // literal "promoted by dre" and failed the moment the other wording was
+      // the one written, which is a test breaking on correct behaviour rather
+      // than catching anything.
+      const notes = db.prepare('SELECT notes FROM businesses WHERE id=?').get(body.business_id).notes;
+      assert.match(notes, /\bdre\b/, 'nobody\'s name is on the assertion');
+      assert.doesNotMatch(notes, /\b(sms|email|code|verified by)\b/i,
+        'the ownership register reads as though a one-time code was answered');
     });
 
     test('vouching for somebody requires saying who is vouching', async () => {
@@ -269,6 +297,75 @@ describe('adminSubmissionPromote — a business nothing had crawled', () => {
       assert.ok(prof, 'no commerce profile: the business cannot transact');
       assert.equal(prof.place_id, body.place_id);
       assert.equal(prof.timezone, 'Europe/London', 'the timezone came from the destination, not a default');
+    });
+  });
+
+  // 7 Sep 2026, from a screenshot of Dre's phone: the same alert three mornings
+  // running — "[biz] 3 claim(s) waiting on us: Holiday Inn Express Edinburgh
+  // City Centre — Adam (12d)… (13d)… (14d)". Then a fourth: "Arroyo del Sol
+  // Clothing Optional Bed and Breakfast — Larry".
+  //
+  // They were not ignored. They were invisible: nudge.mjs reads every
+  // non-final claim state, and this console read state='verified' and nothing
+  // else. The tally counted them under `pending` with no rows to click.
+  describe('claims that never got past pending', () => {
+    const grant = (body) => __testables.adminClaimGrant(env, new Request(
+      'https://app.itsnum.com/admin/claims/grant',
+      { method: 'POST', body: JSON.stringify(body) },
+    ));
+
+    beforeEach(() => {
+      db.exec('DELETE FROM num_claims');
+      db.prepare(`INSERT INTO num_claims (id, place_id, state, channel, channel_value,
+        claimant_name, claimant_email, created_at)
+        VALUES ('cl_1','pl_fingal','pending','email_domain','r***@fingal.co.uk',
+                'Adam','adam@example.com', datetime('now','-14 days'))`).run();
+    });
+
+    test('a stuck claimant can be vouched for, and gets an account', async () => {
+      const res = await grant({ place_id: 'pl_fingal', claim_id: 'cl_1', by: 'dre' });
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.ok(body.business_id);
+      assert.equal(db.prepare('SELECT status FROM places WHERE id=?').get('pl_fingal').status, 'claimed');
+      assert.equal(db.prepare('SELECT state FROM num_claims WHERE id=?').get('cl_1').state, 'verified');
+    });
+
+    test('it records a person vouching, never a code being answered', async () => {
+      const body = await (await grant({ place_id: 'pl_fingal', claim_id: 'cl_1', by: 'dre' })).json();
+      const owner = db.prepare('SELECT method FROM num_place_owners WHERE place_id=?').get('pl_fingal');
+      assert.equal(owner.method, 'admin_promote');
+      assert.match(db.prepare('SELECT notes FROM businesses WHERE id=?').get(body.business_id).notes,
+        /granted by dre/);
+    });
+
+    test('vouching requires a name', async () => {
+      const res = await grant({ place_id: 'pl_fingal', claim_id: 'cl_1' });
+      assert.equal(res.status, 400);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM businesses').get().n, 0);
+    });
+
+    test('a listing that already has an owner is refused, not overwritten', async () => {
+      await grant({ place_id: 'pl_fingal', claim_id: 'cl_1', by: 'dre' });
+      const again = await grant({ place_id: 'pl_fingal', by: 'someone-else' });
+      assert.equal(again.status, 409, 'a second grant would hand the business to another party');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM businesses').get().n, 1);
+    });
+
+    test('a listing that does not exist is a 404, not a new business', async () => {
+      const res = await grant({ place_id: 'pl_nope', by: 'dre' });
+      assert.equal(res.status, 404);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM businesses').get().n, 0);
+    });
+
+    test('the queue now shows them, with how long and where the code went', async () => {
+      const body = await (await __testables.adminClaims(env, new URL('https://x/admin/claims'))).json();
+      const row = (body.stalled ?? []).find((r) => r.id === 'cl_1');
+      assert.ok(row, 'the alert names these people and the console still cannot show them');
+      assert.equal(row.days_waiting, 14);
+      assert.match(row.why_stuck, /r\*\*\*@fingal\.co\.uk/, 'where the code actually went');
+      assert.match(row.why_stuck, /adam@example\.com who filled in the form/,
+        'the two addresses being different IS the explanation');
     });
   });
 

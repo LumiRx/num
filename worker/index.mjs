@@ -145,6 +145,15 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   ];
   const brief = specialistBrief(specialist);
   if (brief) system.push({ type: 'text', text: brief });
+  // What a venue has published about itself that a guest has to hear before
+  // they picture the trip rather than when they arrive.
+  //
+  // Its own block, not a line inside the partner list, and pushed here so it
+  // sits after the context and cannot be skimmed past: the rule it carries is
+  // about the ORDER of a sentence, and a rule about order buried mid-block
+  // gets applied at the end of the paragraph, which is exactly the failure.
+  if (grounding?.disclosures) system.push({ type: 'text', text: grounding.disclosures });
+
   // Where the traveller is standing changes what may be said. Pushed near the
   // end so it sits AFTER the specialist brief that might otherwise cheerfully
   // recommend a bar, and screened again after generation — a prompt is a
@@ -679,6 +688,8 @@ export async function handleNum(request, env, ctx) {
         fix: parsed.here && Number.isFinite(parsed.here.lat) && Number.isFinite(parsed.here.lng)
           ? { lat: parsed.here.lat, lng: parsed.here.lng }
           : null,
+        // Only read for the handful of venues that are age-gated in law.
+        member: parsed.state?.me ?? null,
       }),
       memberId ? loadFacts(env, memberId).catch(() => ({})) : Promise.resolve({}),
       turnSubject ? loadTurns(env, turnSubject).catch(() => []) : Promise.resolve([]),

@@ -17,8 +17,8 @@ import { cityEventsFor, wantsEvents } from './cityevents.mjs';
  *
  * @returns {Promise<{place: object|null, partners: array, guide: string|null}>}
  */
-export async function groundRequest(env, { userText, statedPlace, cf, fix = null }) {
-  const none = { place: null, partners: [], guide: null, buzz: [], events: [] };
+export async function groundRequest(env, { userText, statedPlace, cf, fix = null, member = null }) {
+  const none = { place: null, partners: [], disclosures: '', guide: null, buzz: [], events: [] };
   if (!env?.DB) return none; // local dev without the binding — Claude flies on general knowledge
 
   try {
@@ -71,6 +71,14 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         ? cityEventsFor(env, loc.dest.slug).catch(() => [])
         : Promise.resolve([]),
     ]);
+
+    // A venue can have published something about itself that a guest has to
+    // know before they arrive rather than when they do — Arroyo del Sol is
+    // clothing optional. This annotates the rows some ordinary piece of
+    // ranking already chose; it never adds one, and it never removes one
+    // except on a family ask, where naming it at all is the mistake.
+    const { annotate, allowedFor, disclosureBlock } = await import('./venuedisclosure.mjs');
+    const annotated = allowedFor(await annotate(env, rows ?? []), { member, userText });
 
     // OUR OWN LIST FIRST; A LIVE SEARCH ONLY WHEN IT IS EMPTY.
     //
@@ -128,7 +136,10 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         // it in passing rather than treat it as fact.
         inferred: loc.source === 'ip_location',
       },
-      partners: rows ?? [],
+      partners: annotated,
+      // Facts these venues have published about themselves that a guest has to
+      // hear BEFORE they picture the trip. Empty for almost every answer.
+      disclosures: disclosureBlock(annotated),
       guide,
       buzz,
       showtimes,
