@@ -58,6 +58,7 @@
 // own number is the $1-for-★5,000 hole again in a different shirt. Change them
 // here, or override with MEMBERSHIP_TIERS (JSON) without a deploy.
 import { STAR_PACKS } from './preflight.mjs';
+import { starTiers, quote as starQuote, buyWithStars, spendable as starSpendable } from './starmembership.mjs';
 
 /**
  * Capabilities that must be TRUE on every tier, including the free one and
@@ -281,10 +282,27 @@ export async function countUse(env, memberId, key, by = 1) {
  * payment — never from a client request, for the same reason the client can't
  * price a Star pack.
  */
-export async function grantTier(env, memberId, tier, { source = 'stripe', ref = null, months = 1, sub = null } = {}) {
+export async function grantTier(env, memberId, tier, { source = 'stripe', ref = null, months = 1, sub = null, extend = false } = {}) {
   await ensure(env);
   if (!tiers(env)[tier]) return { ok: false, error: 'unknown tier' };
-  const renews = new Date(Date.now() + months * 30 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
+  // `extend` adds the months to whatever is left rather than replacing it.
+  //
+  // Without it, buying three months on the twentieth day of a paid month is a
+  // downgrade wearing an upgrade's clothes: the twenty days you already paid
+  // for vanish the moment the new grant overwrites renews_at. Stripe never hit
+  // this because Stripe sends its own period end; a member topping up with
+  // Stars picks their own moment, and it is usually before they run out.
+  let from = Date.now();
+  if (extend) {
+    const cur = await env.DB.prepare('SELECT tier, renews_at FROM num_memberships WHERE member_id=?1')
+      .bind(memberId).first().catch(() => null);
+    // Only carry time forward on the SAME tier. Rolling three months of Plus
+    // into Pro would hand over the more expensive plan for time bought at the
+    // cheaper price.
+    const left = cur?.tier === tier && cur?.renews_at ? Date.parse(`${cur.renews_at}Z`) : NaN;
+    if (Number.isFinite(left) && left > from) from = left;
+  }
+  const renews = new Date(from + months * 30 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
   await env.DB.prepare(
     `INSERT INTO num_memberships (member_id, tier, renews_at, source, ref, stripe_sub) VALUES (?1,?2,?3,?4,?5,?6)
      ON CONFLICT(member_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5, stripe_sub=COALESCE(?6, stripe_sub)`,
@@ -346,6 +364,9 @@ export async function handleMembership(request, env, path) {
         id, name: t.name, price_cents: t.price_cents, blurb: t.blurb, entitlements: t.entitlements,
       })),
       star_packs: STAR_PACKS,
+      // The same plans, priced in Stars. On the public list because a price
+      // the client cannot see is a price the client ends up guessing.
+      star_tiers: starTiers(env),
       principle: 'The concierge, plans, friends and live fare search are free forever. Paying raises limits, depth and speed.',
       // Said out loud on the public price list, because it is the fact the
       // whole structure rests on: no travel benefit is reserved for payers.
@@ -420,6 +441,31 @@ export async function handleMembership(request, env, path) {
     return json(out.ok
       ? { ok: true, note: `Done — ${row.tier} stays active until ${row.renews_at}, then won’t charge again.` }
       : out, out.ok ? 200 : 502);
+  }
+
+  // What would this cost me in Stars, and can I afford it? Asked before the
+  // button is pressed, so the app shows a number instead of a failure.
+  if (path === '/stars') {
+    const me = clip(url.searchParams.get('me'), 40);
+    const tier = clip(url.searchParams.get('tier'), 20);
+    const months = Number(url.searchParams.get('months') ?? 1);
+    const wallet = await starSpendable(env, me);
+    if (!tier) return json({ ok: true, star_tiers: starTiers(env), ...wallet });
+    const q = await starQuote(env, { memberId: me, tier, months });
+    return json({ ...q, star_tiers: starTiers(env) }, q.ok ? 200 : 400);
+  }
+
+  // Upgrade, paid in Stars. Priced by US — the body says which plan and how
+  // many months, never how much. See starmembership.mjs rule 1.
+  if (path === '/upgrade-with-stars' && request.method === 'POST') {
+    const b = await request.json().catch(() => ({}));
+    const out = await buyWithStars(env, {
+      memberId: clip(b.me, 40),
+      tier: clip(b.tier, 20),
+      months: b.months ?? 1,
+      idem: clip(b.idem, 80),
+    });
+    return json(out, out.ok ? 200 : (out.status ?? 400));
   }
 
   return json({ error: 'not found' }, 404);
