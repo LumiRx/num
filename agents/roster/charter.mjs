@@ -166,6 +166,16 @@ const TRIPWIRES = Object.freeze([
     rule: 'impersonate_human' },
   { re: /\bverified (restaurants?|bars?|hotels?|venues?|places?|businesses|business|listings?)\b/i,
     rule: 'invent_fact', why: '"verified" describes a person or a claimed listing, never a place' },
+  // Both of these arrived from LetsGo2Trip's material (30 Aug 2026) — their
+  // result card says "Verified Direct Inventory" over a TripJack/GDS fare,
+  // and their homepage advertises "no third-party markups" while their own
+  // deck adds a $15 surcharge on Num's partner slug. Repeating a supplier's
+  // claim makes it Num's claim, and Num cannot see their cost base or their
+  // supplier to check either one.
+  { re: /\bverified\b[^.]{0,20}\b(direct )?inventory\b/i,
+    rule: 'invent_fact', why: 'Num cannot inspect a partner\'s inventory and must not vouch for it' },
+  { re: /\bno[- ](third[- ]party[- ])?markups?\b|\bno hidden (fees|markups?)\b|\bzero markup\b/i,
+    rule: 'invent_fact', why: 'Num cannot see a partner\'s cost base, and a fee we do charge makes this false' },
 ]);
 
 /** @returns {Array<{rule:string, why:string, match:string}>} empty when clean. */

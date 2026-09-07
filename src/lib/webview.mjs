@@ -136,11 +136,22 @@ export function escapeInstruction(ua, opts = {}) {
   const where = d.name ? `${d.name}’s built-in browser` : 'an app’s built-in browser';
   return {
     name: d.name,
-    eyebrow: 'OPEN NUM IN YOUR BROWSER',
-    heading: d.name ? `You’re in ${d.name}’s browser` : 'You’re in an in-app browser',
+    eyebrow: 'KEEP NUM HANDY',
+    heading: d.name ? `Add Num from ${d.name}? Not quite.` : 'Add Num from here? Not quite.',
     // Says the payoff, not the mechanics. "Add to Home Screen" is not on offer
     // in here at all, so leading with it would be the old bug in new words.
-    body: `Num can’t be added to your home screen from ${where}, and anything you set up here may not be kept.`,
+    // ── WHAT CHANGED, 2 SEP 2026 ──────────────────────────────────────
+    //
+    // This used to say the account might not be kept, because storage in a
+    // webview is partitioned and can vanish. That is still true of the
+    // STORAGE and no longer true of the ACCOUNT: an account belongs to a
+    // verified phone number now, so signing in anywhere brings it back.
+    //
+    // Which turns this card from a warning into an offer. Keep using Num
+    // here — it works — and put it on the home screen when you want it one
+    // tap away. Saying "may not be kept" now would be frightening someone
+    // about a problem that has been fixed.
+    body: `Num works fine in here. To keep it one tap away, open it in your own browser — your account travels with your number either way.`,
     steps: isIos(ua)
       ? ['Tap the ⋯ or Share icon in this bar', 'Choose “Open in Safari”', 'Then add Num to your home screen']
       : ['Tap the ⋮ menu in this bar', 'Choose “Open in Chrome” or “Open in browser”', 'Then add Num to your home screen'],

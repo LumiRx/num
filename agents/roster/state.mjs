@@ -62,6 +62,34 @@ export const RESOLVERS = Object.freeze({
       ? { ok: true }
       : { ok: false, why: 'RESEND_KEY is not bound on this worker' },
 
+  /**
+   * The A2P lesson, a second time, on the other channel.
+   *
+   * `resend_key_present` above answers "is a secret bound", and on 30 Aug 2026
+   * it answered YES while every single send was being refused:
+   *
+   *   resend 403 — This API key is not authorized to send emails from itsnum.com
+   *
+   * The key was set. The domain was verified. SPF, DKIM and the SES feedback MX
+   * were all live in DNS. The key was simply a restricted sending key with no
+   * authorised domain attached, and asking "is the key present" could never
+   * have found that. The cron fired every five minutes for five days, failed
+   * every time, and the only evidence was the `error` column nobody read.
+   *
+   * So this precondition is answered by what HAPPENED, not by what is
+   * configured. `facts` comes from sendFacts() below — a query, not a flag —
+   * and the question is whether the last attempt actually left the building.
+   */
+  send_path_proven: (_env, facts = {}) => {
+    if (facts.lastSendError) {
+      return { ok: false, why: `the last outbound attempt failed: ${facts.lastSendError}` };
+    }
+    if (facts.lastSendAt === null) {
+      return { ok: false, why: 'no invite has ever been sent successfully, so the send path is unproven rather than working' };
+    }
+    return { ok: true };
+  },
+
   lead_batch_configured: (env) =>
     env?.INVITE_LEAD_BATCH
       ? { ok: true }
@@ -82,10 +110,48 @@ export const RESOLVERS = Object.freeze({
 });
 
 /**
+ * What the database says about whether NUM's outbound mail actually works.
+ *
+ * The one query this file needs, kept here rather than in the agent, because
+ * "did the last send leave the building" is a question about the roster's
+ * preconditions and not about any one agent's job.
+ *
+ * Deliberately reads the LATEST attempt rather than a success rate: a send
+ * path that worked in July and has failed every time since is broken now, and
+ * an average over the month would report it as mostly fine.
+ *
+ * @param {{prepare:Function}} db a D1 binding
+ * @returns {Promise<{lastSendAt:string|null, lastSendError:string|null, failedSince:number}>}
+ */
+export async function sendFacts(db) {
+  if (!db?.prepare) return {};
+  const last = await db.prepare(
+    "SELECT status, error, COALESCE(sent_at, queued_at) AS at FROM num_invites ORDER BY COALESCE(sent_at, queued_at) DESC LIMIT 1",
+  ).first();
+  const sent = await db.prepare(
+    "SELECT MAX(sent_at) AS at FROM num_invites WHERE status = 'sent'",
+  ).first();
+  const failed = await db.prepare(
+    "SELECT COUNT(*) AS n FROM num_invites WHERE status = 'failed'",
+  ).first();
+  return {
+    lastSendAt: sent?.at ?? null,
+    lastSendError: last?.status === 'failed' ? (last.error || 'failed with no error recorded') : null,
+    failedSince: Number(failed?.n || 0),
+  };
+}
+
+/**
  * Answer every precondition a charter names.
+ *
+ * `facts` is derived — sendFacts() above, or an equivalent query — never a
+ * flag a person set. That distinction is the whole reason this file exists:
+ * a human asked "is A2P approved?" answered yes, truthfully, for a month while
+ * every message failed.
+ *
  * @returns {{ok:boolean, state:object, blocked:Array<{name,why}>}}
  */
-export function resolve(ch, env = {}) {
+export function resolve(ch, env = {}, facts = {}) {
   const state = {};
   const blocked = [];
   for (const name of ch.requires) {
@@ -94,7 +160,7 @@ export function resolve(ch, env = {}) {
       blocked.push({ name, why: `no resolver knows how to answer "${name}" — add one to state.mjs or drop it from the charter` });
       continue;
     }
-    const r = fn(env);
+    const r = fn(env, facts);
     state[name] = r.ok ? 1 : 0;
     if (!r.ok) blocked.push({ name, why: r.why });
   }
@@ -110,9 +176,9 @@ export function resolve(ch, env = {}) {
  * on production — useful for a dry check, not a substitute for the health
  * endpoint, which reads the deployed bindings.
  */
-export function report(roster, env) {
+export function report(roster, env, facts = {}) {
   return roster.map((ch) => {
-    const r = resolve(ch, env);
+    const r = resolve(ch, env, facts);
     return { id: ch.id, ok: r.ok, blocked: r.blocked };
   });
 }

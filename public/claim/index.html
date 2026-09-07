@@ -119,6 +119,12 @@
   .done ol{padding-left:20px;margin:14px 0 0}
   .done ol li{margin:0 0 9px;font-size:15px}
   .hidden{display:none}
+table.pricetbl{width:100%;border-collapse:collapse;font-size:15px}
+table.pricetbl td{padding:7px 0;border-bottom:1px solid var(--line,#e7ecea)}
+table.pricetbl tr:last-child td{border-bottom:0}
+.pricelink{color:var(--pri,#0e8a63);font-weight:600;text-decoration:none}
+.pricelink:hover{text-decoration:underline}
+table.pricetbl td:last-child{text-align:right;white-space:nowrap}
 </style>
 <link rel="canonical" href="https://itsnum.com/claim/">
 <meta property="og:type" content="website">
@@ -134,8 +140,69 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:image" content="https://itsnum.com/assets/og.jpg">
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1091773503496521');
+fbq('track', 'PageView');
+</script>
+<noscript><img alt="" width="1" height="1" style="display:none"
+src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
+<link rel="stylesheet" href="/assets/nav.css">
+<script src="/assets/nav.js" defer></script>
 </head>
 <body>
+<!-- ONE NAV, EVERY PAGE. See assets/nav.css for why it is self-contained. -->
+<nav class="nv">
+  <div class="nv-bar">
+    <a class="nv-brand" href="/"><span class="nv-dot"></span>NUM <small>travel concierge</small></a>
+    <div class="nv-links">
+      <a href="/what-we-do/">What we do</a>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/destinations/">Destinations</a>
+      <span class="nv-sep"></span>
+      <a href="/business/">For business</a>
+      <a href="/hosts/">For hosts</a>
+      <a href="/agents/">For AI agents</a>
+    </div>
+    <div class="nv-end">
+      <a class="nv-signin" id="navAuth" href="/signin/">Sign in</a>
+      <a class="nv-cta" href="/app/">Get the app</a>
+    </div>
+    <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
+  </div>
+  <div class="nv-menu" hidden>
+    <p class="nv-group">Travellers</p>
+    <a href="/what-we-do/">What we do</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/destinations/">Destinations</a>
+    <a href="/perks/">Perks</a>
+    <p class="nv-group">Partners</p>
+    <a href="/business/">For business</a>
+    <a href="/claim/">List your business</a>
+    <a href="/hosts/">For hosts</a>
+    <a href="/agents/">For AI agents</a>
+    <p class="nv-group">Account</p>
+    <a href="/signin/">Sign in</a>
+    <a href="/contact/">Contact</a>
+  </div>
+</nav>
+
 <div class="wrap">
 
   <header>
@@ -225,15 +292,23 @@
         <input id="contact_name" name="contact_name" type="text" required
                autocomplete="name">
 
-        <label for="phone" id="l-phone">Mobile number</label>
-        <input id="phone" name="phone" type="tel" required
+        <!-- Phone and email are BOTH optional here, and the server requires one
+             of the two rather than a particular one. It used to demand a mobile
+             number: 19 businesses clicked through to this form pre-filled with
+             their own name and one finished it. Every one of them arrived by
+             clicking a link in an email we had already sent — we had the
+             address and asked for a phone instead. The verification code goes
+             to the contact published on their own listing either way, so the
+             number never proved anything. -->
+        <label for="phone" id="l-phone">Mobile number <span class="opt">(optional)</span></label>
+        <input id="phone" name="phone" type="tel"
                autocomplete="tel" inputmode="tel" placeholder="081 234 5678">
         <p class="hint" id="hint-phone"></p>
 
         <label for="line_id" id="l-line" class="hidden">LINE ID <span class="opt"></span></label>
         <input id="line_id" name="line_id" type="text" class="hidden" autocomplete="off">
 
-        <label for="email" id="l-email">Email <span class="opt">(optional)</span></label>
+        <label for="email" id="l-email">Email</label>
         <input id="email" name="email" type="email"
                autocomplete="email" inputmode="email">
 
@@ -261,6 +336,21 @@
         <ul class="facts" id="more-list"></ul>
       </div>
     </details>
+
+    <!-- WHAT IT COSTS, AT THE MOMENT THEY DECIDE.
+         Dre, 3 Sep 2026: the business page leads on features and puts pricing
+         at the bottom; the sign-up is where the numbers belong. Kept numeric
+         on purpose — the figures need no translation, so only the one-line
+         label above them does. -->
+    <div class="card" style="margin-top:14px">
+      <div id="t-price-title" style="font-weight:700;margin-bottom:8px">What it costs</div>
+      <table class="pricetbl">
+        <tr><td id="t-price-list">Listing</td><td><b>Free</b></td></tr>
+        <tr><td id="t-price-fee">Completed booking</td><td><b>10%</b></td></tr>
+        <tr><td id="t-price-dash">Optional dashboard</td><td><b>$9.99 &middot; $19.99 &middot; $50</b> / mo</td></tr>
+      </table>
+      <p class="under" style="margin-top:8px"><a class="pricelink" href="/pricing/" id="t-price-link">See what each plan adds</a></p>
+    </div>
   </main>
 
   <!-- ============ SUCCESS VIEW ============ -->
@@ -471,6 +561,11 @@
         "You set your own hours and how much you can take.",
         "You can take your listing down at any time."
       ],
+      priceTitle: "What it costs",
+      priceList: "Listing",
+      priceFee: "Completed booking",
+      priceDash: "Optional dashboard",
+      priceLink: "See what each plan adds",
       errBiz: "Please tell us the business name.",
       errContact: "Please tell us your name, so we know who to ask for.",
       errPhone: "Please give a mobile number we can reach you on — that's where bookings arrive.",
@@ -549,6 +644,11 @@
         "Jam buka dan berapa banyak yang sanggup Anda terima, Anda sendiri yang tentukan.",
         "Anda bisa menghapus data usaha Anda kapan saja."
       ],
+      priceTitle: "Biayanya",
+      priceList: "Pendaftaran",
+      priceFee: "Pesanan yang selesai",
+      priceDash: "Dasbor opsional",
+      priceLink: "Lihat isi tiap paket",
       errBiz: "Mohon isi nama usaha.",
       errContact: "Mohon isi nama Anda, supaya kami tahu harus mencari siapa.",
       errPhone: "Mohon beri nomor HP yang bisa kami hubungi — ke situlah pesanan masuk.",
@@ -618,6 +718,11 @@
         "คุณกำหนดเองว่าเปิดกี่โมง และรับได้กี่โต๊ะ",
         "เอาร้านออกจากระบบเมื่อไหร่ก็ได้"
       ],
+      priceTitle: "ค่าใช้จ่าย",
+      priceList: "ลงร้าน",
+      priceFee: "การจองที่สำเร็จ",
+      priceDash: "แดชบอร์ด (ไม่บังคับ)",
+      priceLink: "ดูรายละเอียดแต่ละแพ็กเกจ",
       errBiz: "กรุณากรอกชื่อร้าน",
       errContact: "กรุณากรอกชื่อคุณ เราจะได้ถามหาถูกคน",
       errPhone: "กรุณากรอกเบอร์มือถือที่ติดต่อได้ การจองจะส่งเข้าเบอร์นี้",
@@ -747,6 +852,12 @@
     setText("hint-phone", T.hintPhone);
     setText("t-more", T.more);
     fill("more-list", T.moreList);
+
+    setText("t-price-title", T.priceTitle);
+    setText("t-price-list", T.priceList);
+    setText("t-price-fee", T.priceFee);
+    setText("t-price-dash", T.priceDash);
+    setText("t-price-link", T.priceLink);
 
     if (pickRefresh) pickRefresh();
 

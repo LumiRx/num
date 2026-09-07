@@ -46,10 +46,17 @@ test('the boundary is declared one-way', () => {
  *                 none reaches outside.
  *   pay.mjs     — a Stripe-paid top-up, only after a verified signature.
  *   cashout.mjs — the rollback when filing a cash-out request fails.
+ *   starmembership.mjs — (added 2026-09-07) the REFUND when a membership
+ *                 purchase fails after the Stars were taken. It only ever puts
+ *                 back Stars this same function debited moments earlier, it is
+ *                 never reachable without that debit having changed exactly one
+ *                 row, and the amount is the server's own price rather than
+ *                 anything a client sent. It cannot mint and it cannot reach
+ *                 outside Num.
  *
  * Note what is NOT here and never should be: anything sourced from 5arz.
  */
-const CREDIT_SITES = { 'errands.mjs': 2, 'social.mjs': 4, 'pay.mjs': 1, 'cashout.mjs': 1, 'bizreferral.mjs': 1 };
+const CREDIT_SITES = { 'errands.mjs': 2, 'social.mjs': 4, 'pay.mjs': 1, 'cashout.mjs': 1, 'bizreferral.mjs': 1, 'starmembership.mjs': 1 };
 
 test('the set of places a Num balance can grow is exactly the reviewed set', () => {
   const found = {};

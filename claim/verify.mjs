@@ -117,7 +117,99 @@ const REGIONS = {
   AU: { cc: '61', nat: [9] },
   SG: { cc: '65', nat: [8] },
   AE: { cc: '971', nat: [8, 9] },
+  // Added 2 Sep 2026. The one real campaign arrival who ever tried to sign in
+  // typed a bare ten-digit number that began 99 while standing in the UK. The
+  // server put +44 on it, Twilio answered 60200, and he never got a code. A
+  // 10-digit number starting 99 is not a British number in any range — it is
+  // the shape of an Indian mobile. Num's whole customer is a person far from
+  // home, so "where they are" is the wrong guess for "where their SIM is
+  // from"; the rows below at least let a person AT home type their number
+  // plainly, and `normaliseMobile` refuses shapes that cannot receive a text.
+  IN: { cc: '91', nat: [10] },
+  MY: { cc: '60', nat: [9, 10] },
+  ID: { cc: '62', nat: [9, 10, 11, 12] },
+  PH: { cc: '63', nat: [10] },
+  VN: { cc: '84', nat: [9, 10] },
+  JP: { cc: '81', nat: [9, 10] },
+  KR: { cc: '82', nat: [9, 10] },
+  HK: { cc: '852', nat: [8] },
+  DE: { cc: '49', nat: [10, 11] },
+  FR: { cc: '33', nat: [9] },
+  ES: { cc: '34', nat: [9] },
+  IT: { cc: '39', nat: [9, 10] },
+  NL: { cc: '31', nat: [9] },
+  IE: { cc: '353', nat: [9] },
+  NZ: { cc: '64', nat: [8, 9, 10] },
+  ZA: { cc: '27', nat: [9] },
+  MX: { cc: '52', nat: [10] },
+  BR: { cc: '55', nat: [10, 11] },
 };
+
+/**
+ * What the first digits of a NATIONAL number look like when it is a mobile —
+ * i.e. something that can receive an SMS code. Landlines are deliberately
+ * excluded here and deliberately kept in `normalisePhone`: the booking desk
+ * phones restaurants, and restaurants are landlines.
+ *
+ * Only countries whose numbering plan is settled enough to write down. A
+ * country absent from this table passes on `normalisePhone` alone.
+ */
+const MOBILE_NSN = {
+  1: /^[2-9]\d{2}[2-9]\d{6}$/,     // NANP: area code and exchange never start 0/1
+  44: /^7\d{9}$/,                   // UK mobiles are 07xxx — ten digits starting 7
+  66: /^[689]\d{8}$/,               // Thai mobiles 06/08/09, nine digits
+  61: /^4\d{8}$/,                   // Australian mobiles 04
+  65: /^[89]\d{7}$/,                // Singapore mobiles 8/9
+  971: /^5\d{8}$/,                  // UAE mobiles 05
+  91: /^[6-9]\d{9}$/,               // Indian mobiles 6–9, ten digits
+  60: /^1\d{8,9}$/,                 // Malaysian mobiles 01x
+  62: /^8\d{8,11}$/,                // Indonesian mobiles 08
+  63: /^9\d{9}$/,                   // Philippine mobiles 09
+  84: /^[35789]\d{8}$/,             // Vietnamese mobiles 03/05/07/08/09
+  81: /^[789]0\d{8}$/,              // Japanese mobiles 070/080/090
+  82: /^10\d{8}$/,                  // Korean mobiles 010
+  49: /^1[5-7]\d{8,9}$/,            // German mobiles 015/016/017
+  33: /^[67]\d{8}$/,                // French mobiles 06/07
+  34: /^[67]\d{8}$/,                // Spanish mobiles 6/7
+  39: /^3\d{8,9}$/,                 // Italian mobiles 3xx
+  31: /^6\d{8}$/,                   // Dutch mobiles 06
+  353: /^8\d{8}$/,                  // Irish mobiles 08
+  64: /^2\d{7,9}$/,                 // NZ mobiles 02
+  27: /^[678]\d{8}$/,               // South African mobiles 06/07/08
+};
+
+/**
+ * Could this E.164 number receive a text? True when the country is one we
+ * have not written down (no opinion), false only when we KNOW the shape is
+ * wrong for that country. `+44 991…` is the row this exists for.
+ */
+export function plausibleMobile(e164) {
+  if (!e164 || !e164.startsWith('+')) return false;
+  const digits = e164.slice(1);
+  // Longest country code first, so 971 is not read as 9 + 71.
+  const ccs = Object.keys(MOBILE_NSN).sort((a, b) => b.length - a.length);
+  for (const cc of ccs) {
+    if (!digits.startsWith(cc)) continue;
+    return MOBILE_NSN[cc].test(digits.slice(cc.length));
+  }
+  return true;
+}
+
+/**
+ * `normalisePhone`, then "and can it be texted". This is the gate for every
+ * path that is about to SEND A CODE — sign-up, sign-in recovery, resend. It
+ * is not the gate for storing a venue's phone, which is allowed to be a
+ * landline.
+ *
+ * Refusing here costs one sentence on screen. Not refusing costs a 60200
+ * from Twilio, a `send failed` row, and a person who never finds out why
+ * nothing arrived.
+ */
+export function normaliseMobile(raw, region) {
+  const e164 = normalisePhone(raw, region);
+  if (!e164) return null;
+  return plausibleMobile(e164) ? e164 : null;
+}
 
 /** Country code -> allowed total digit counts, for validating a +number. */
 const CC_LENGTHS = {

@@ -17,6 +17,7 @@
 //     the 5s cost, and it stops the moment the tab is hidden.
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
+import { guestMessage } from './saferr';
 
 const IDLE_MS = 5_000;
 
@@ -148,7 +149,7 @@ export async function sendDm(to: string, text: string, opts: { id?: string } = {
     void loadDmThread(to);
     return true;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'That didn’t send.';
+    const message = guestMessage(err, 'That didn’t send.');
     store.set((s) => ({
       dmThread: s.dmThread.map((m) => (m.id === id ? { ...m, pending: false, failed: true } : m)),
       dmError: message,

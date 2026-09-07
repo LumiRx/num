@@ -158,6 +158,54 @@ const TOOLS = [
     },
   },
   {
+    name: 'list_offerings',
+    description:
+      'Read what this business offers and what it charges — its menu, treatments, room types or tours. Requires api_key. '
+      + 'A price may be absent: "market price" is a real answer for a seasonal dish or a tour priced by headcount, and '
+      + 'those items come back with a price_note instead of a number. Do not fill in a figure of your own — a guest '
+      + 'arrives expecting whatever you say.',
+    inputSchema: {
+      type: 'object',
+      required: ['api_key'],
+      properties: { api_key: { type: 'string' } },
+    },
+  },
+  {
+    name: 'set_offering',
+    description:
+      'Add an item to what this business offers, or change one. Omit id to create; pass id to update. Requires api_key. '
+      + 'Currency is NOT settable — it comes from where the business is, because a Thai restaurant priced in dollars is '
+      + 'wrong in a way a traveller acts on. Leave price empty when it varies and say how it is priced in price_note. '
+      + 'What you put here is what Num tells a traveller the business SAYS it charges; it is never quoted as a bill, '
+      + 'and nothing here is bookable or payable.',
+    inputSchema: {
+      type: 'object',
+      required: ['api_key', 'name'],
+      properties: {
+        api_key: { type: 'string' },
+        id: { type: 'string', description: 'Omit to create a new item.' },
+        name: { type: 'string', description: 'What a guest would hear, e.g. "Green curry", "60-minute Thai massage".' },
+        description: { type: 'string' },
+        section: { type: 'string', description: 'The business own grouping, e.g. "Mains", "Treatments", "Rooms".' },
+        price: { type: 'string', description: 'A number in the local currency. Leave empty if it varies.' },
+        price_note: { type: 'string', description: 'How it is priced when there is no fixed number: "Market price", "From".' },
+        unit: { type: 'string', description: 'item | person | night | hour | day | session | group. Default item.' },
+        available: { type: 'string', description: 'When, if not always, e.g. "Lunch only, 12-3".' },
+      },
+    },
+  },
+  {
+    name: 'hide_offering',
+    description:
+      'Stop Num mentioning one item, without deleting it. Requires api_key. Use this for anything seasonal or sold out — '
+      + 'the owner gets it back without retyping, and the concierge stops saying it immediately either way.',
+    inputSchema: {
+      type: 'object',
+      required: ['api_key', 'id'],
+      properties: { api_key: { type: 'string' }, id: { type: 'string' } },
+    },
+  },
+  {
     name: 'get_insights',
     description:
       'How often Num surfaced this business to a guest. Requires api_key. ' +
@@ -196,6 +244,14 @@ function toRequest(name, a, base) {
       const { api_key, ...fields } = a;
       return [new Request(`${base}/v1/profile`, { method: 'PATCH', headers: H, body: JSON.stringify(fields) }), '/v1/profile'];
     }
+    case 'list_offerings':
+      return [new Request(`${base}/v1/offerings`, { method: 'GET', headers: H }), '/v1/offerings'];
+    case 'set_offering': {
+      const { api_key: _k, ...fields } = a;
+      return [new Request(`${base}/v1/offerings`, { method: 'POST', headers: H, body: JSON.stringify(fields) }), '/v1/offerings'];
+    }
+    case 'hide_offering':
+      return [new Request(`${base}/v1/offerings/hide`, { method: 'POST', headers: H, body: JSON.stringify({ id: a.id }) }), '/v1/offerings/hide'];
     case 'get_insights': {
       const u = new URL(`${base}/v1/insights`);
       if (a.days) u.searchParams.set('days', String(a.days));

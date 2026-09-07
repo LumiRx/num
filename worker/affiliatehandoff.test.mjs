@@ -20,6 +20,7 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
 import { __testables } from './index.mjs';
 import { _resetForTests } from './affiliateclicks.mjs';
 
@@ -201,4 +202,26 @@ describe('the concierge path records its handoffs', () => {
     await new Promise((r) => setImmediate(r));
     assert.ok(rows().length > 0, 'a missing execution context must not lose the row');
   });
+});
+
+/* ── the promise nobody awaited ─────────────────────────────────────────── */
+
+test('a caller with no execution context AWAITS the log write', async () => {
+  // `logHandoffs` returns null when it handed the work to ctx.waitUntil, and
+  // the PROMISE when it could not. An un-awaited promise left running after
+  // the response has been returned is cancelled by the Workers runtime, and
+  // the row silently never lands.
+  //
+  // `partnermcp.mjs` calls handleBookLink with NO ctx, so every booking link
+  // handed to a partner agent was at risk of going unrecorded. The tests hid
+  // it: they had been passing on incidental microtask ordering, and Node 24's
+  // runner scheduled one turn differently and lost the race. A timing
+  // accident is not a guarantee.
+  const src = readFileSync(new URL('./openapi.mjs', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
+  const call = src.slice(src.indexOf('const logged = logHandoffs('));
+  assert.ok(call.length > 40, 'handleBookLink no longer captures the log promise');
+  assert.match(call.slice(0, 400), /if \(logged\) await logged;/,
+    'the handoff write is fired and forgotten — with no ctx it will be cancelled');
 });

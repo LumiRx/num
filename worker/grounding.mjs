@@ -72,6 +72,27 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         : Promise.resolve([]),
     ]);
 
+    // OUR OWN LIST FIRST; A LIVE SEARCH ONLY WHEN IT IS EMPTY.
+    //
+    // num_city_events covers 25 of 77 live destinations, so a guest in the
+    // other 52 asking what is on gets nothing — and a concierge that shrugs is
+    // the one thing this product cannot be. events.tm.mjs has been a complete
+    // Ticketmaster search this whole time with nothing calling it.
+    //
+    // Curated rows always win: they are verified, grounded against places we
+    // hold, and safe to state outright. The search runs only when we have
+    // none, is cached per destination, and arrives in its OWN block with its
+    // own provenance — two levels of confidence must not share a heading.
+    let searchedEvents = null;
+    if (wantsEvents(userText) && !(events ?? []).length) {
+      const { searchEvents } = await import('./eventsearch.mjs');
+      searchedEvents = await searchEvents(env, {
+        dest: loc.dest.slug,
+        lat: loc.dest.lat, lng: loc.dest.lng,
+        country: loc.dest.country,
+      }).catch(() => null);
+    }
+
     return {
       place: {
         name: loc.dest.name,
@@ -112,6 +133,9 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
       buzz,
       showtimes,
       events,
+      // Its own field, never merged into `events` — the two carry different
+      // levels of confidence and the block that renders them says so.
+      searchedEvents,
     };
   } catch (err) {
     // Grounding is an enhancement, never a dependency — a D1 hiccup must not

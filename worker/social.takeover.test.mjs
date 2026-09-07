@@ -126,6 +126,18 @@ before(async () => {
 
 // ── the exploit, verbatim ──────────────────────────────────────────────────
 
+/**
+ * Move every recorded send into the past.
+ *
+ * `sendGate` refuses a second code within 60s of a successful one — correct,
+ * and an artefact of tests that sign up and recover inside the same second. A
+ * real person changing phone does it hours later, so this is what the clock
+ * would have done on its own.
+ */
+const timePasses = () => {
+  try { db.prepare("UPDATE num_signin_events SET ts = datetime('now','-2 hours')").run(); } catch { /* table may not exist yet */ }
+};
+
 describe('the takeover request itself', () => {
   test('phone + verify:false does not return the victim’s member ID', async () => {
     const target = await victim('+66811110001');
@@ -302,16 +314,73 @@ describe('onboarding is untouched', () => {
     assert.deepEqual(body.me.bio, { diet: 'no shellfish' });
   });
 
-  test('a verified number stays shut, as it always did', async () => {
+  test('a verified number releases NO identity to a stranger', async () => {
+    // This test used to assert 409 — a verified number could not be recovered
+    // at all. That was changed deliberately on 1 Sep 2026: it inverted the
+    // security property, because a verified number is the one we can PROVE
+    // reaches its owner. What protects this route was never the refusal; it is
+    // that the code goes to the number on file and that /me hands back no id.
+    // So the assertion that matters is unchanged and now stands alone.
     const id = 'mem_verified00000001';
     await post('/me', { id, name: 'Verified', phone: '+66811110050' });
-    const code = outbox.at(-1).code;
-    await post('/verify', { id, code });
+    await post('/verify', { id, code: outbox.at(-1).code });
     assert.equal(db.prepare('SELECT phone_verified v FROM num_members WHERE id=?1').get(id).v, 1);
 
+    timePasses();
+    const before = outbox.length;
     const { status, body } = await read(await post('/me', { id: 'mem_attacker00000050', name: 'Mallory', phone: '+66811110050', verify: false }));
-    assert.equal(status, 409);
-    assert.ok(!idsIn(body).includes(id));
+
+    assert.ok(!idsIn(body).includes(id), 'the victim id came back to an unauthenticated caller');
+    assert.equal(body.me, undefined);
+    assert.equal(body.ref, undefined, 'the referral code is a share credential of the victim');
+    assert.equal(status, 202, 'recovery should be offered, not refused');
+
+    // The warning IS the mechanism: the code lands on the owner's handset, so
+    // a stranger poking at their number is something they find out about.
+    assert.equal(outbox.length, before + 1, 'no code was sent, so the owner is never told');
+    assert.equal(outbox.at(-1).to, '+66811110050', 'the code went somewhere other than the number on the account');
+
+    // And the attacker's own name must not touch the victim's profile.
+    assert.equal(db.prepare('SELECT name FROM num_members WHERE id=?1').get(id).name, 'Verified');
+  });
+
+  test('THE LOCKOUT: a verified member signs in on a new device', async () => {
+    // Reported 1 Sep 2026: "my number is already signed in on Num, sign in
+    // from the device that has it." That device is the one you just lost,
+    // wiped or replaced — the single most common reason anybody needs to sign
+    // in again, and there was no other way in.
+    const id = 'mem_verified00000060';
+    await post('/me', { id, name: 'Traveller', phone: '+66811110060' });
+    await post('/verify', { id, code: outbox.at(-1).code });
+    assert.equal(db.prepare('SELECT phone_verified v FROM num_members WHERE id=?1').get(id).v, 1);
+
+    // New phone. No id, no session, nothing but the number and the handset.
+    timePasses();
+    const start = await read(await post('/me', { name: 'Traveller', phone: '+66811110060' }));
+    assert.equal(start.status, 202);
+    assert.equal(start.body.recovery, 'code_sent');
+    assert.ok(!idsIn(start.body).includes(id), 'the id must not ride back on /me, even now');
+
+    const code = outbox.at(-1).code;
+    assert.equal(outbox.at(-1).to, '+66811110060');
+
+    const done = await read(await post('/verify', { phone: '+66811110060', code }));
+    assert.equal(done.status, 200);
+    assert.equal(done.body.me?.id, id, 'the account did not come back — the member is still locked out');
+    assert.equal(done.body.me.name, 'Traveller', 'they got a different account than the one they own');
+  });
+
+  test('a wrong code still gets a verified member nowhere', async () => {
+    const id = 'mem_verified00000061';
+    await post('/me', { id, name: 'Guarded', phone: '+66811110061' });
+    await post('/verify', { id, code: outbox.at(-1).code });
+
+    timePasses();
+    await post('/me', { name: 'Guarded', phone: '+66811110061' });
+    const bad = await read(await post('/verify', { phone: '+66811110061', code: '000000' }));
+    assert.notEqual(bad.status, 200);
+    assert.ok(!idsIn(bad.body).includes(id),
+      'a verified account is now reachable by phone — the CODE is the only thing standing in front of it');
   });
 
   test('the ordinary verify path does not start handing out IDs', async () => {

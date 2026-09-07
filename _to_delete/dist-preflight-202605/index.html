@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- interactive-widget: on browsers that support it the keyboard resizes the
+         layout viewport natively, so 100dvh is already correct and the JS below
+         never has to intervene. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="description" content="Num — your concierge. One thread, one calendar, zero forms." />
+    <!-- Matches the aurora's top colour so the status bar blends into the app -->
+    <meta name="theme-color" content="#faf7f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS home-screen install: full-screen, dark status-bar text on our light ground -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Num" />
+    <title>Num — Your Concierge</title>
+      <!-- Cloudflare Web Analytics, via the worker so the token is config.
+         Deferred and last: measurement must never cost the app a millisecond
+         of first paint. -->
+    <!-- Analytics and the tracker are loaded from main.tsx via apiUrl(), NOT with a
+         bare absolute path. On iOS the web view origin is capacitor://localhost, so
+         `/api/analytics.js` resolves against the LOCAL BUNDLE and 404s — the same
+         class of bug documented at length in src/lib/apibase.ts, in the one place
+         apiUrl() cannot reach because it is static HTML rather than JS. A bare tag
+         here also makes Vite warn that it cannot bundle a non-module script.
+         See src/lib/analyticsLoader.ts. -->
+  <!-- THE PIXEL BELONGS HERE MORE THAN ANYWHERE ELSE ON THE ESTATE.
+     This is the page the live Reddit campaign actually points at — 2,305 of
+     the 3,479 visitors NUM has ever had landed on this exact URL. It had no
+     ad pixel of any kind, on either network, so every one of those clicks was
+     invisible to the thing that decides who sees the ad next.
+     The conversions themselves are reported from num-track.js. -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
+    <script type="module" crossorigin src="/assets/index-Ccah2Tdq.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-nFBGFPrY.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Captured HERE, not in React: Chrome fires beforeinstallprompt once,
+      // early — often before the bundle has parsed. Miss it and the one-tap
+      // install is gone for the whole visit; every "Add to home screen"
+      // button falls back to a manual instruction card on the exact devices
+      // that support doing it natively. e.preventDefault() also stops
+      // Chrome's own mini-infobar so the ONLY prompt the guest sees is the
+      // one our button triggers.
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__numInstall = e;
+        window.dispatchEvent(new Event('num-installable'));
+      });
+      window.addEventListener('appinstalled', function () {
+        window.__numInstall = null;
+        window.dispatchEvent(new Event('num-installed'));
+      });
+    </script>
+  </body>
+</html>

@@ -15,6 +15,7 @@
  * invented figure is the most damaging thing this file could produce. When
  * there is nothing to show it says so in words a person can act on.
  */
+import { NOT_PROBE } from './asks.mjs';
 
 /**
  * The dashboard's version, shown to the owner and returned by the API.
@@ -44,6 +45,7 @@ export async function travellerDemand(env, { dest, days = 30, limit = 8 } = {}) 
       `SELECT text, COUNT(*) AS n
          FROM num_asks
         WHERE dest = ?1 AND ts >= datetime('now', ?2)
+          AND ${NOT_PROBE}
         GROUP BY lower(trim(text))
         ORDER BY n DESC
         LIMIT ?3`,
@@ -107,10 +109,12 @@ export async function verification(env, placeId) {
  * numbers is a preview of a screen nobody has.
  */
 export async function dashboardData(env, { place, plan, insights, bookings }) {
-  const [demand, qr, verified] = await Promise.all([
+  const [demand, qr, verified, events] = await Promise.all([
     travellerDemand(env, { dest: place?.dest, days: Math.min(30, plan?.analytics_days ?? 7) }),
     payQr(env, { placeId: place?.place_id ?? place?.id, businessId: plan?.business_id }),
     verification(env, place?.place_id ?? place?.id),
+    // Parties members are hosting AT this business — worker/venueevents.mjs.
+    import('./venueevents.mjs').then((m) => m.upcomingEvents(env, { businessId: plan?.business_id })).catch(() => []),
   ]);
   return {
     version: DASHBOARD_VERSION,
@@ -122,5 +126,6 @@ export async function dashboardData(env, { place, plan, insights, bookings }) {
     demand,
     pay_qr: qr,
     verification: verified,
+    events,
   };
 }

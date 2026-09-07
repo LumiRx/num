@@ -18,6 +18,7 @@
 // on acceptance, comes from the SERVER (`note`), so the app cannot soften it.
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
+import { guestMessage } from './saferr';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/travel') + path, {
@@ -128,7 +129,7 @@ export async function referTravel(d: TravelDraft): Promise<{ ok: boolean; messag
     await loadMyReferrals();
     return { ok: true, message: out.note, ref: out.ref };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : 'That didn’t go through.' };
+    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
   }
 }
 
@@ -151,7 +152,7 @@ export async function acceptQuote(ref: string): Promise<{ ok: boolean; message: 
     await loadMyReferrals();
     return { ok: true, message: out.note };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : 'That didn’t go through.' };
+    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
   }
 }
 

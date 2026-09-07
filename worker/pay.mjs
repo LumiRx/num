@@ -32,6 +32,11 @@ import { alert } from './health.mjs';
 
 const STRIPE = 'https://api.stripe.com/v1';
 
+// Whether Num can issue a ticket decides how travel settles, and therefore
+// which compliance claim this endpoint is allowed to publish. One definition,
+// in services.mjs, rather than a second opinion here.
+import { canIssueFlight } from './services.mjs';
+
 /**
  * NUM Stars have TWO POOLS, and the split is the whole design:
  *
@@ -81,9 +86,51 @@ export const STAR_POLICY = Object.freeze({
   cash_out_destination: '5arz',
   spends_on: ['errands', 'tabs', 'tables', 'bounties'],
   never_spends_on: ['flights', 'hotels', 'cruises', 'rail', 'transfers', 'any travel'],
-  travel_settlement: 'never — the traveller pays the travel partner directly (B&P §17550.20(g)(5))',
   statement: 'Stars you earn can be cashed out. Stars you buy spend inside Num — never on travel.',
 });
+
+/**
+ * How travel is settled — DERIVED, because it stopped being a constant.
+ *
+ * This field used to read, as a frozen literal:
+ *
+ *   'never — the traveller pays the travel partner directly (B&P §17550.20(g)(5))'
+ *
+ * §17550.20(g)(5) is the California seller-of-travel exemption for somebody
+ * who does not handle the money. It was true, it was published live at
+ * /api/pay/status, and it was the whole basis on which Num had not registered.
+ *
+ * The moment Num can issue a ticket and charge a card for it, that sentence
+ * becomes false — and a false compliance claim published by our own API is
+ * `invent_fact` aimed at ourselves, which is the one direction nobody audits.
+ * So it is computed from whether Num can actually issue, and the two claims
+ * cannot both be made.
+ *
+ * Note what does NOT change: Stars still never buy travel. That is a separate
+ * guardrail about what a purchased credit may be spent on, and it holds
+ * whichever way this resolves.
+ */
+export function travelSettlement(env) {
+  return canIssueFlight(env ?? {})
+    ? {
+      mode: 'num_is_merchant_of_record',
+      summary: 'Num charges the traveller and is the merchant of record on the ticket.',
+      // Said plainly, because the point of computing this is that somebody
+      // reading the endpoint learns the true posture.
+      seller_of_travel: 'Num takes payment for air transport, so the §17550.20(g)(5) exemption does not apply. '
+        + 'Registration with the California Attorney General (and the Florida and Washington equivalents) is required.',
+      chargebacks: 'land on Num',
+    }
+    : {
+      mode: 'direct_to_partner',
+      summary: 'The traveller pays the travel partner directly. Num never holds the money.',
+      seller_of_travel: 'Exempt under B&P §17550.20(g)(5) — Num does not handle the funds.',
+      chargebacks: 'land on the partner',
+    };
+}
+
+/** Everything about Stars, plus how travel settles today. */
+export const starPolicy = (env) => Object.freeze({ ...STAR_POLICY, travel_settlement: travelSettlement(env) });
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -139,6 +186,14 @@ function form(obj, prefix = '') {
   }
   return out.join('&');
 }
+
+/**
+ * Exported so flightpay.mjs speaks to Stripe through THIS client rather than
+ * standing up a second one. Two Stripe clients means two opinions about
+ * timeouts, error shape and idempotency, and the one that gets it wrong is
+ * always the newer one nobody has watched fail yet.
+ */
+export { stripe as stripeCall, form as stripeForm };
 
 async function stripe(env, path, body, idem) {
   const res = await fetch(`${STRIPE}${path}`, {
@@ -276,7 +331,7 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
  *   - payment_intent_data is NOT sent: Stripe rejects it in subscription
  *     mode; the subscription carries the metadata instead.
  */
-export async function requestSubscription(env, { memberId, businessId, amountCents, name, ref, successUrl, cancelUrl }) {
+export async function requestSubscription(env, { memberId, businessId, hostId, amountCents, name, ref, successUrl, cancelUrl, currency = 'usd' }) {
   await ensure(env);
   const mode = payMode(env);
   if (mode !== 'stripe') {
@@ -292,8 +347,11 @@ export async function requestSubscription(env, { memberId, businessId, amountCen
   // (num_member vs num_business), never by both at once, so the webhook can
   // never mistake a business for a member — the notify-a-member push below
   // only ever fires on num_member, and a business subscription never sets it.
-  const ownerId = businessId || memberId || null;
-  const ownerMetaKey = businessId ? 'num_business' : 'num_member';
+  // A VIP host (worker/hostmoney.mjs) is the third owner kind, keyed on
+  // num_host and priced in GBP. Same rule: exactly one metadata key.
+  const ownerId = hostId || businessId || memberId || null;
+  const ownerMetaKey = hostId ? 'num_host' : businessId ? 'num_business' : 'num_member';
+  const cur = /^[a-z]{3}$/i.test(String(currency)) ? String(currency).toLowerCase() : 'usd';
 
   const id = `pay_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
@@ -309,7 +367,7 @@ export async function requestSubscription(env, { memberId, businessId, amountCen
         {
           quantity: 1,
           price_data: {
-            currency: 'usd',
+            currency: cur,
             unit_amount: amount,
             recurring: { interval: 'month' },
             product_data: { name: clip(name, 120) || 'Num membership' },
@@ -326,9 +384,9 @@ export async function requestSubscription(env, { memberId, businessId, amountCen
 
   await env.DB?.prepare(
     'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
-  ).bind(id, clip(ownerId, 40), 'stripe-sub', clip(ref, 60), amount, 'usd', clip(name, 200), session.id, session.url).run().catch(() => {});
+  ).bind(id, clip(ownerId, 40), 'stripe-sub', clip(ref, 60), amount, cur, clip(name, 200), session.id, session.url).run().catch(() => {});
 
-  return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: 'usd' };
+  return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: cur };
 }
 
 /**
@@ -454,6 +512,22 @@ export async function handlePay(request, env, path) {
           }
         }
 
+        // A VIP host plan — third owner kind, GBP, keyed on num_host.
+        // worker/hostmoney.mjs owns the prices and the grant.
+        const hostTierMatch = /^hosttier:([a-z_]{2,20})$/.exec(ref);
+        const hostId = s.metadata?.num_host;
+        if (firstTime && hostTierMatch && hostId) {
+          const { grantHostTier, HOST_PLANS, HOST_CURRENCY } = await import('./hostmoney.mjs');
+          const { tierPaidRight } = await import('./preflight.mjs');
+          const owed = HOST_PLANS[hostTierMatch[1]]?.pence;
+          if (!tierPaidRight(s, owed, HOST_CURRENCY)) {
+            console.error(`[pay] HOST TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${HOST_CURRENCY}. Grant refused; refund ${id}.`);
+          } else {
+            const g = await grantHostTier(env, hostId, hostTierMatch[1], { ref: id, sub: s.subscription ?? null, customer: s.customer ?? null });
+            console.log('[pay] host tier', hostTierMatch[1], g.ok ? 'granted to' : 'FAILED for', hostId);
+          }
+        }
+
         const packMatch = /^stars:(\d{1,7})$/.exec(ref);
         if (firstTime && packMatch && memberId && env.STARS_SALE_OK === '1') {
           const n = Number(packMatch[1]);
@@ -521,7 +595,12 @@ export async function handlePay(request, env, path) {
           // the two tables, so try the business side before giving up.
           const { recordBizRenewal } = await import('./bizbilling.mjs');
           const rb = await recordBizRenewal(env, subId, periodEnd);
-          console.log('[pay] renewal', subId, rb.ok ? `extended (business) to ${rb.renews_at}` : 'MATCHED NO MEMBER OR BUSINESS');
+          if (rb.ok) console.log('[pay] renewal', subId, `extended (business) to ${rb.renews_at}`);
+          else {
+            const { recordHostRenewal } = await import('./hostmoney.mjs');
+            const rh = await recordHostRenewal(env, subId, periodEnd);
+            console.log('[pay] renewal', subId, rh.ok ? `extended (host) to ${rh.renews_at}` : 'MATCHED NO MEMBER, BUSINESS OR HOST');
+          }
         }
       }
       return json({ received: true });
@@ -536,7 +615,12 @@ export async function handlePay(request, env, path) {
       } else {
         const { lapseBizBySub } = await import('./bizbilling.mjs');
         const rb = await lapseBizBySub(env, sub.id);
-        console.log('[pay] subscription ended', sub.id, rb.ok ? '— business plan lapsed' : '— no membership or business plan held it');
+        if (rb.ok) console.log('[pay] subscription ended', sub.id, '— business plan lapsed');
+        else {
+          const { lapseHostBySub } = await import('./hostmoney.mjs');
+          const rh = await lapseHostBySub(env, sub.id);
+          console.log('[pay] subscription ended', sub.id, rh.ok ? '— host plan lapsed' : '— no membership, business or host plan held it');
+        }
       }
       return json({ received: true });
     }
@@ -553,11 +637,39 @@ export async function handlePay(request, env, path) {
 
     if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
       const c = event.data?.object ?? {};
-      const id = c.metadata?.num_payment_id;
-      const memberId = c.metadata?.num_member;
-      const ref = c.metadata?.num_ref ?? '';
       const disputed = event.type === 'charge.dispute.created';
       const state = disputed ? 'disputed' : 'refunded';
+
+      // ── WHY THIS IS NOT JUST `c.metadata.num_payment_id` ──────────────
+      //
+      // On `charge.dispute.created` the object is a DISPUTE, not a charge.
+      // A dispute carries its own metadata — which is empty — plus
+      // `payment_intent` and `charge` pointers. So reading metadata alone
+      // resolved every dispute to "unknown payment", logged a useless alert,
+      // and left the ledger row saying the money was still ours.
+      //
+      // Flights make this worse: they are PaymentIntents created directly,
+      // never Checkout Sessions, so `num_payment_id` only reaches us on the
+      // intent. Hence the second lookup — by intent id, against the
+      // session_id column where flightpay records it.
+      let id = c.metadata?.num_payment_id;
+      let memberId = c.metadata?.num_member;
+      let ref = c.metadata?.num_ref ?? '';
+      const intentId = typeof c.payment_intent === 'string' ? c.payment_intent : c.payment_intent?.id;
+      if (!id && intentId) {
+        await ensure(env);
+        const row = await env.DB?.prepare(
+          'SELECT id, member_id, ref FROM num_payments WHERE session_id = ?1 LIMIT 1',
+        ).bind(intentId).first().catch(() => null);
+        if (row) {
+          id = row.id;
+          memberId = memberId ?? row.member_id;
+          ref = ref || (row.ref ?? '');
+          console.log(`[pay] ${state} resolved ${id} from intent ${intentId}`);
+        } else {
+          console.error(`[pay] ${state} for intent ${intentId} matches no payment row — money moved and nothing recorded it`);
+        }
+      }
 
       if (id) {
         await ensure(env);
@@ -643,7 +755,7 @@ export async function handlePay(request, env, path) {
       // "Never sell Stars." It stays refused until Duke sets STARS_SALE_OK=1
       // on the record. Bills, tabs, bookings and bounties are unaffected.
       stars_sale: env.STARS_SALE_OK === '1',
-      stars: STAR_POLICY,
+      stars: starPolicy(env),
       // The packs, priced HERE. The wallet used to carry its own copy of these
       // numbers, which is the $1-for-★5,000 hole in a different shirt: two
       // sources of truth for a price, and the client's is the one an attacker

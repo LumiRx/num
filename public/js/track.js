@@ -18,9 +18,63 @@
  * To activate: paste the Pixel ID from Meta Events Manager
  * (business.facebook.com/events_manager2) into PIXEL_ID below. Empty string
  * keeps the whole file inert, banner and all.
+ *
+ * ── WHAT META NEEDS FROM US, AND WHY PageView IS NOT IT ──────────────────
+ * Meta's delivery is only as good as the conversion you report. With nothing
+ * but PageView it optimises for people who LOAD A PAGE, which is the cheapest
+ * and least valuable human on the internet to buy — and it can build no
+ * lookalike worth having. So this file also exposes `window.numMetaEvent`,
+ * and the homepage calls it at the two moments that actually mean something:
+ *
+ *   Lead              the visitor sent Num their FIRST message. This is the
+ *                     event to optimise the campaign for. It is the moment a
+ *                     stranger became a user, and on 1 Sep 2026 it had never
+ *                     happened once in the product's history.
+ *   ViewContent       Num answered twice — they are in a conversation, not a
+ *                     bounce. Good for a warm retargeting audience.
+ *   CompleteRegistration  they added Num to their home screen.
+ *
+ * Standard event names on purpose: Meta optimises and reports far better
+ * against its own vocabulary than against custom events, and `Lead` is the
+ * one every campaign objective knows how to bid for.
+ *
+ * Consent still gates everything. No consent → no pixel → no events, and the
+ * page keeps working exactly as it does now.
  */
 (function () {
-  var PIXEL_ID = ''; // ← Meta Pixel ID goes here; empty keeps everything off
+  // The pixel is now loaded by the base code in each page's <head>, the way
+  // Meta's installer requires — Meta's own detector only looks there, and it
+  // will not verify a pixel that loads later from a script file.
+  //
+  // So this stays EMPTY on purpose. It does not mean the pixel is off. It
+  // means this file must not init a SECOND one: a double fbq('init') double
+  // counts every PageView, and the consent bar below would be a control that
+  // no longer controls anything, which is worse than no bar at all.
+  //
+  // What this file still does, and why it must stay loaded: numMetaEvent()
+  // above sees the head pixel on window.fbq and reports Lead, ViewContent and
+  // CompleteRegistration through it. Those are the events a campaign actually
+  // bids for. PageView alone optimises for people who load a page.
+  //
+  // To go back to consent-gated loading: put the ID here AND remove the base
+  // code from the page heads. Never both.
+  var PIXEL_ID = ''; // pixel 1091773503496521 loads from <head> — see above
+
+  /* Queue events even before (or without) a pixel, so a page can call
+   * numMetaEvent() unconditionally and never has to know whether the visitor
+   * consented. A page that has to ask "is the pixel on?" before every call is
+   * a page where somebody eventually forgets to ask. */
+  var queue = [];
+  window.numMetaEvent = function (name, params) {
+    if (window.fbq) { try { window.fbq('track', name, params || {}); } catch (e) {} return; }
+    if (queue.length < 20) queue.push([name, params || {}]);
+  };
+  function flush() {
+    while (queue.length) {
+      var e = queue.shift();
+      try { window.fbq('track', e[0], e[1]); } catch (err) {}
+    }
+  }
 
   if (!PIXEL_ID) return;
   var KEY = 'num_ads_consent'; // 'yes' | 'no'
@@ -34,6 +88,10 @@
     })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
     window.fbq('init', PIXEL_ID);
     window.fbq('track', 'PageView');
+    // Anything the page reported before consent landed. Without this, the
+    // visitor who asks Num a question and THEN accepts the banner is the one
+    // conversion Meta never hears about — and they are the best one.
+    flush();
   }
 
   var choice = null;

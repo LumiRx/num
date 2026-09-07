@@ -11,9 +11,9 @@ import { offerService } from './services';
 import { runFlightSearch, type FlightQuery } from './flights';
 import { createEvent } from './events';
 import { observeUserMessage, styleForRequest, tripCheck } from './prefs';
-import { trackOnce } from './track';
+import { trackOnce, webEventOnce } from './track';
 import type { ServiceHandoff, AppState } from './types';
-import type { Booking, Chip, Meeting, Msg } from './types';
+import type { Booking, Chip, Meeting, Msg, Pick } from './types';
 import { apiUrl } from '../lib/apibase';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
@@ -458,6 +458,7 @@ interface NumAction {
   mode?: 'connected' | 'handoff';
   options?: ServiceHandoff['options'];
   /** create_event */
+  place_id?: string | null;
   day?: string | null;
   time?: string | null;
   place?: string | null;
@@ -470,6 +471,8 @@ interface NumAction {
 interface NumReply {
   reply: string;
   card: Msg['card'] | null;
+  /** Verified places to show as cards. Links are attached server-side. */
+  picks?: Pick[] | null;
   chips: Chip[] | null;
   actions: NumAction[];
   /** Where the server resolved the user to be (drives the header). */
@@ -541,6 +544,9 @@ function applyAction(a: NumAction) {
       address: a.address ?? null,
       dress: a.dress ?? null,
       note: a.note ?? null,
+      // The verified place the event is at, when there is one — the server
+      // turns it into the business, so the venue can see the party coming.
+      place_id: a.place_id ?? null,
       // Named guests go with the event, so the people already on Num are asked
       // in the same round trip that creates it.
       ask: a.ask ?? [],
@@ -566,18 +572,41 @@ export async function askNum(text: string) {
   // A reply is already in flight — a double-tap must not double-send.
   if (store.get().typing) return;
 
-  // Somewhere-specific advice, and we still don't know where they are. This is
-  // the honest moment to ask: they just asked for something local, so the
-  // permission dialog explains itself. Asking at launch instead would earn a
-  // permanent "Don't allow" before Num had done anything for them.
-  if (wantsLocalAdvice(text) && !store.get().place && !store.get().here) {
-    await ensurePlaceForRecommendation();
-  }
-
+  // ── WHAT THE GUEST SAID GOES ON SCREEN FIRST. ALWAYS. ─────────────────
+  //
+  // This used to sit BELOW the location prompt, and that ordering was the bug.
+  // `send()` clears the composer the instant you press Enter, so the text is
+  // already gone from the input; if anything below could hang before this
+  // line, the question vanished completely — out of the box, never into the
+  // thread, never to the server, no typing dots, no row in the log. Nothing to
+  // retry and nothing to look at.
+  //
+  // And the thing below COULD hang: iOS does not run getCurrentPosition's
+  // timeout while its permission dialog is up, so an unanswered dialog left
+  // the await pending forever. It bit exactly the questions people actually
+  // type first — "where should we eat tonight" matches wantsLocalAdvice; the
+  // starter chips mostly do not, which is why tapping a chip looked like it
+  // worked and typing did not.
+  //
+  // Echo, then set typing, then go looking for a location. In that order there
+  // is no code path where a guest's words are lost.
   observeUserMessage(text);
   push({ who: 'u', text });
   // A new question retires the last provider tray — it belonged to the old one.
   store.set({ typing: true, chips: [], handoff: null });
+
+  // Somewhere-specific advice, and we still don't know where they are. This is
+  // the honest moment to ask: they just asked for something local, so the
+  // permission dialog explains itself. Asking at launch instead would earn a
+  // permanent "Don't allow" before Num had done anything for them.
+  //
+  // Bounded, and its result is not required. If the guest ignores the dialog
+  // the question still goes to the server without a fix — a recommendation
+  // grounded on a named city is a good answer, and a good answer beats a
+  // frozen app every time.
+  if (wantsLocalAdvice(text) && !store.get().place && !store.get().here) {
+    try { await ensurePlaceForRecommendation(); } catch { /* answer anyway */ }
+  }
   // Auto-update reads this and postpones a reload while a reply is in flight.
   // Losing a guest's question to a background refresh is a worse bug than the
   // one auto-update exists to fix.
@@ -624,6 +653,10 @@ export async function askNum(text: string) {
   // did not just land and sign up, they asked Num for something. A signup is a
   // form; this is the product working. Fires once per device — see trackOnce.
   trackOnce('first-ask', 'first_ask');
+  // Same moment, second pipe: the row the nightly analytics reads. Named by
+  // growth/worker.js as the only event meaning the product was used, and
+  // never fired by the app until 2 Sep 2026.
+  webEventOnce('first-message', 'first_message_sent');
 
   try {
     const res = await fetch(apiUrl('/api/num'), {
@@ -654,7 +687,7 @@ export async function askNum(text: string) {
       typing: false,
       // Unread only counts while the thread is closed — the dot carries it.
       unread: prev.threadOpen ? 0 : prev.unread + 1,
-      msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}) }],
+      msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}), ...(out.picks?.length ? { picks: out.picks } : {}) }],
       chips: out.chips ?? defChips(),
       // The server resolves location against the shared destination database;
       // once it knows where we are, the header follows and onboarding is done.

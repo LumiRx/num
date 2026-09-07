@@ -71,14 +71,22 @@ function changelog(version, note) {
 switch (cmd) {
   case 'stage': {
     if (dirty()) console.warn('\n⚠  Working tree has uncommitted changes — staging them anyway.\n');
+    // Tests BEFORE the build. A preview URL is something a person will open
+    // and trust; a broken store selector or an unguarded credit site must not
+    // be able to reach one.
+    //
+    // And tests before the BUMP, which is the newer half of this ordering.
+    // `bump` rewrites package.json, so running it first meant every failed
+    // stage moved the version number with nothing released — package.json
+    // reached 0.8.231 while the last thing actually live was 0.8.229. A
+    // version number that counts attempts rather than releases makes the
+    // stale-stage guard below impossible to write, because there is no longer
+    // any version the two files can agree on.
+    sh('npm test');
     const version = bump(process.env.BUMP || 'patch');
     // The build stamps the version in, so a running app can say what it is.
     process.env.VITE_NUM_VERSION = version;
     process.env.VITE_NUM_SHA = gitSha();
-    // Tests BEFORE the build. A preview URL is something a person will open
-    // and trust; a broken store selector or an unguarded credit site must not
-    // be able to reach one.
-    sh('npm test');
     sh('npm run build');
     changelog(version, arg);
     console.log(`\n── uploading ${version} as a version (NOT live yet)\n`);
@@ -107,6 +115,33 @@ switch (cmd) {
     if (pct === 100) {
       if (!staged?.id) {
         console.error('\nNothing staged. Run `node scripts/release.mjs stage "what changed"` first.\n');
+        process.exit(1);
+      }
+      // ── THE STALE-STAGE GUARD ───────────────────────────────────────────
+      //
+      // `.release-staged.json` is written by `stage` and never cleared. If a
+      // stage FAILS — tests, build, upload — the file keeps pointing at
+      // whatever was last uploaded successfully, which may be weeks old. Then
+      // `ship` deploys that, and because Cloudflare has no idea you meant to
+      // go forwards, it is a silent ROLLBACK of everything since.
+      //
+      // This happened on 2 Sep 2026: two failed stages left package.json at
+      // 0.8.231 while this file still named 0.8.229 from 31 August. `ship`
+      // tried to deploy the August version over a week of live work. The only
+      // thing that stopped it was Cloudflare noticing a secret had changed and
+      // refusing — and the message it prints suggests `?force=true`, which
+      // would have completed the rollback.
+      //
+      // So: the staged version must BE the version in package.json. If it is
+      // not, the stage that was supposed to produce it did not finish.
+      if (staged.version !== pkg.version) {
+        console.error(`\n✘ Nothing to ship for ${pkg.version}.`);
+        console.error(`  The last successful upload was ${staged.version}${staged.at ? ` (${staged.at})` : ''}.`);
+        console.error('  Shipping it now would ROLL PRODUCTION BACK to that version.');
+        console.error('\n  A stage since then failed before it uploaded. Run it again:');
+        console.error('    node scripts/release.mjs stage "what changed"\n');
+        console.error('  Do NOT pass --force to wrangler to get past a "secret has changed"');
+        console.error('  error here. That error is this same problem, caught downstream.\n');
         process.exit(1);
       }
       console.log(`\n── sending all traffic to ${staged.version} (${staged.id})\n`);

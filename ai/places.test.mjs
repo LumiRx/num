@@ -32,7 +32,9 @@ function mockEnv({ areas = [] } = {}) {
         : [],
     }),
     first: async () => {
-      if (/FROM places WHERE area LIKE/.test(sql)) {
+      // isKnownArea reads the precomputed num_dest_areas table (0016) and
+      // falls back to the places scan when it is absent — model both.
+      if (/FROM num_dest_areas WHERE area = /.test(sql) || /FROM places WHERE area LIKE/.test(sql)) {
         const want = String(args[0] || '').toLowerCase();
         return areas.some(a => a.toLowerCase() === want) ? { 1: 1 } : null;
       }

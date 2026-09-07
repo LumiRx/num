@@ -10,6 +10,7 @@
 // with no reason given is a step people skip.
 import { useEffect, useState } from 'react';
 import { pressable } from '../../lib/a11y';
+import { store } from '../../lib/store';
 
 const DISMISS_KEY = 'num-install-dismissed';
 
@@ -112,9 +113,26 @@ export default function InstallPrompt({
     // bounces in four seconds was never going to install; asking them only
     // spends the one impression we get.
     //
-    // The web-view escape card is exempt and shows immediately: it is not a
-    // request, it is a warning that this browser cannot keep their account.
-    if (escape) { setShow(true); return; }
+    // ── THE ESCAPE CARD WAITS FOR THE FIRST MESSAGE ─────────────────────
+    //
+    // It used to show the instant the page loaded, on the reasoning that it
+    // was a warning rather than a request: this browser cannot keep your
+    // account. That reasoning EXPIRED when accounts became portable. An
+    // account now belongs to a verified phone number, not to this webview's
+    // storage — sign in from anywhere and it follows. So there is nothing
+    // urgent to warn about, and interrupting a stranger before Num has said
+    // anything useful spends the one impression we get on a scolding.
+    //
+    // Num works perfectly well inside Instagram. Let them use it. The offer
+    // to put it on a home screen makes sense AFTER they have asked something
+    // and got a real answer back — at which point it is an upgrade rather
+    // than a toll gate.
+    if (escape) {
+      const asked = () => store.get().msgs.some((m) => m.who === 'u');
+      if (asked()) { setShow(true); return; }
+      const stop = store.subscribe(() => { if (asked()) { setShow(true); stop(); } });
+      return () => { stop(); };
+    }
 
     let done = false;
     const fire = () => {

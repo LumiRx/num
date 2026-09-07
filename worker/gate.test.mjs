@@ -53,9 +53,18 @@ test('the cookie parser is exact', () => {
   assert.equal(sessionCookie(null), null);
 });
 
-test('a cookie that fails right after login names itself', () => {
-  assert.match(api, /\/ops\/\?in=1/, 'the login redirect lost its marker — a dead cookie is indistinguishable from a first visit');
-  assert.match(page, /cookie did not stick/, 'the page no longer explains a cookie failure — silence returns wearing new clothes');
+test('a session that fails right after login names itself', () => {
+  assert.match(api, /\/ops\/\?in=1/, 'the login redirect lost its marker — a dead session is indistinguishable from a first visit');
+  // This used to assert the page said "cookie did not stick". It was a guess,
+  // and it was wrong for 23 days: the cookie was fine and the marker it keys
+  // off was being erased by the fragment collector before boot() could read
+  // it. The page now ASKS the server which carrier failed and why. The test
+  // that matters is unchanged — a rejected fresh session must never be
+  // reported as nothing at all.
+  assert.match(page, /\/api\/admin\/why/,
+    'the page no longer diagnoses a rejected fresh session — silence returns wearing new clothes');
+  assert.match(page, /Password accepted, but the session was rejected/,
+    'a failure seconds after a correct password must say the password was accepted, or it reads as a wrong password');
 });
 
 test('the session survives a browser that refuses cookies', () => {
@@ -84,7 +93,12 @@ test('the business page sells the moment, honestly', () => {
   const biz = readFileSync(join(HERE, '..', 'public', 'business', 'index.html'), 'utf8');
   assert.match(biz, /NUM will answer with three names/, 'the hero lost the moment — back to the rate card');
   assert.match(biz, /my group wants somewhere lively for dinner in kata/, 'the real conversation is gone — the page tells instead of showing');
-  assert.match(biz, /somebody else&#039;s is|somebody else's is/, 'the turn — the reason to care — is gone');
+  // Any apostrophe spelling. This asserted &#039; and a straight quote only,
+  // and broke on 3 Sep 2026 when the copy was rewritten with a typographic
+  // &rsquo; — a test that fails on an entity change is testing encoding, not
+  // the sentence. The intent is "the turn is still on the page"; all three
+  // spellings satisfy it.
+  assert.match(biz, /somebody else(?:&#039;|&rsquo;|&#8217;|['\u2019])s is/, 'the turn — the reason to care — is gone');
   assert.match(biz, /survives the audit/, 'the honest-counter promise is gone; the differentiator with proof became a claim without it');
   assert.match(biz, /passed over is not counted/i, 'the impressions rule on the page no longer matches what impressions.mjs actually records');
   assert.ok(!/pay to rank|boost your position|top of the list/i.test(biz), 'the page implies placement can be bought — the one promise that must never appear');

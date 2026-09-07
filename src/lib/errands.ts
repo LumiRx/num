@@ -7,6 +7,7 @@
 import { store } from './store';
 import { refreshStars } from './stars';
 import { apiUrl } from '../lib/apibase';
+import { guestMessage } from './saferr';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/errands') + path, {
@@ -115,7 +116,7 @@ export async function postErrand(e: {
     await loadBoard(store.get().place);
     return { ok: true, message: `Posted — ★${out.held.toLocaleString()} is held until it's done.` };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : 'That didn’t post.' };
+    return { ok: false, message: guestMessage(err, 'That didn’t post.') };
   }
 }
 
@@ -133,7 +134,7 @@ export async function act(
     await loadBoard(store.get().place);
     return { ok: true, message: '' };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : 'That didn’t go through.' };
+    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
   }
 }
 

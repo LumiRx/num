@@ -113,7 +113,7 @@ export async function decideClaim(env, { id, decision, by, note = null }) {
   await ensure(env);
 
   const claim = await env.DB.prepare(
-    'SELECT id, business_name, contact_name, email, country, state FROM claims WHERE id = ?1 LIMIT 1',
+    'SELECT id, business_name, contact_name, email, country, state, place_id FROM claims WHERE id = ?1 LIMIT 1',
   ).bind(claimId).first();
   if (!claim) return { ok: false, error: 'no such claim' };
 

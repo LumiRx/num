@@ -8,6 +8,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan, removePlan, planFit, shareWithPlan } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
+import { calendarUrl } from '../../lib/calendar';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -235,6 +236,16 @@ export default function PartySheet() {
                   style={{ ...field, flex: 1, height: 40, fontSize: 14, opacity: plan.starts_on ? 1 : 0.5 }}
                 />
               </div>
+              {/* Once it has a date, it can live in the diary too — the plan
+                  and every dated item, as one file. Ideas stay labelled ideas. */}
+              {plan.starts_on && me?.id && (
+                <a
+                  href={calendarUrl('plan', plan.id, me.id)}
+                  style={{ display: 'inline-block', marginTop: 8, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', textDecoration: 'none' }}
+                >
+                  ADD TO MY CALENDAR →
+                </a>
+              )}
             </div>
 
             {/* Everyone answers the plan itself — in or out — before anything

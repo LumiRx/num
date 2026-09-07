@@ -27,6 +27,18 @@
          apiUrl() cannot reach because it is static HTML rather than JS. A bare tag
          here also makes Vite warn that it cannot bundle a non-module script.
          See src/lib/analyticsLoader.ts. -->
+  <!-- THE PIXEL BELONGS HERE MORE THAN ANYWHERE ELSE ON THE ESTATE.
+     This is the page the live Reddit campaign actually points at — 2,305 of
+     the 3,479 visitors NUM has ever had landed on this exact URL. It had no
+     ad pixel of any kind, on either network, so every one of those clicks was
+     invisible to the thing that decides who sees the ad next.
+     The conversions themselves are reported from num-track.js. -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
   </head>
   <body>
     <div id="root"></div>

@@ -131,3 +131,40 @@ describe('nothing is accepted that could not be dialled', () => {
     }
   });
 });
+
+// ── 2 Sep 2026: the only real campaign arrival who tried to sign in ──────────
+//
+// `num_signin_events` row 6: member `mem_48bc80d044…`, stage `send`, outcome
+// `failed`, reason `60200`. His stored number was `+44 991…` — ten digits
+// after +44, beginning 99. Nothing in the UK numbering plan starts 99; an
+// Indian mobile does. He typed a bare number while standing in Britain and
+// the server put the country it could SEE on it. Sign-up now refuses a shape
+// that cannot receive a text, and says which country it guessed.
+import { normaliseMobile, plausibleMobile } from '../claim/verify.mjs';
+
+describe('a number Twilio would answer 60200 to never reaches Twilio', () => {
+  test('the exact shape from row 6: ten digits starting 99, region GB', () => {
+    assert.equal(normaliseMobile('9919876543', 'GB'), null);
+    assert.equal(normaliseMobile('+449919876543'), null);
+  });
+  test('the same digits with the right country code are a mobile', () => {
+    assert.equal(normaliseMobile('9919876543', 'IN'), '+919919876543');
+    assert.equal(normaliseMobile('+919919876543'), '+919919876543');
+  });
+  test('a real UK mobile still passes, with and without the trunk zero', () => {
+    assert.equal(normaliseMobile('07391794169', 'GB'), '+447391794169');
+    assert.equal(normaliseMobile('+447391794169'), '+447391794169');
+  });
+  test('a Thai landline is a phone but not a mobile — the desk may call it, sign-up may not text it', () => {
+    assert.equal(normalisePhone('076360333', 'TH'), '+6676360333');
+    assert.equal(normaliseMobile('076360333', 'TH'), null);
+    assert.equal(normaliseMobile('0812345678', 'TH'), '+66812345678');
+  });
+  test('NANP: an area code cannot start 0 or 1', () => {
+    assert.equal(normaliseMobile('1437079219', 'US'), null);
+    assert.equal(normaliseMobile('4437079219', 'US'), '+14437079219');
+  });
+  test('a country we have no rule for passes on length alone — no opinion is not a refusal', () => {
+    assert.equal(plausibleMobile('+2348012345678'), true);
+  });
+});

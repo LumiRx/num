@@ -103,7 +103,7 @@ export async function select(env, limit = 100) {
     `SELECT c.phone, c.first_name
        FROM num_sms_consent c
       WHERE c.revoked_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM num_optouts o WHERE o.contact = c.phone)
+        AND NOT EXISTS (SELECT 1 FROM num_text_optouts o WHERE o.phone = c.phone)
       ORDER BY c.created_at ASC
       LIMIT ?1`,
   ).bind(Math.max(1, Math.min(limit, 500))).all().catch(() => ({ results: [] }));

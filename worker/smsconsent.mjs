@@ -42,6 +42,16 @@
 
 export const CONSENT_VERSION = 'v1';
 
+/**
+ * The sentence shown under the phone field at sign-up (InviteSheet.tsx) and
+ * recorded, verbatim, the moment the number is verified. Until 4 Sep 2026 a
+ * verified member had NO consent row — so every "text the guest" path failed
+ * closed for everyone, and the code they asked for was the only text they
+ * ever got. A test pins that the app shows exactly this sentence.
+ */
+export const SIGNUP_CONSENT_TEXT =
+  'By continuing, Num may text this number to sign you in and about your own bookings, plans and friends\u2019 invites. Message rates may apply. Reply STOP any time.';
+
 /** How consent arrived, strongest first. */
 export const SOURCE = Object.freeze({
   INBOUND_SMS: 'inbound_sms', // they texted us — the strongest there is
@@ -114,9 +124,12 @@ export async function reachable(env, phone) {
     ).bind(String(phone).trim()).first();
     if (!row) return { ok: false, why: 'no consent on file' };
     if (row.revoked_at) return { ok: false, why: 'they opted out' };
-    const out = await env.DB.prepare('SELECT 1 AS x FROM num_optouts WHERE contact = ?1 LIMIT 1')
-      .bind(String(phone).trim()).first().catch(() => null);
-    if (out) return { ok: false, why: 'on the opt-out list' };
+    // The opt-out table this worker actually owns and writes (worker/optout.mjs).
+    // The old read here was `num_optouts.contact` — a column that does not
+    // exist on a table keyed by another codebase's salted hash — so every
+    // STOP recorded anywhere but the consent row was invisible to this check.
+    const { optedOut } = await import('./optout.mjs');
+    if (await optedOut(env, phone)) return { ok: false, why: 'on the opt-out list' };
     return { ok: true };
   } catch (e) {
     // Fail CLOSED. An error reading the consent register must never be read

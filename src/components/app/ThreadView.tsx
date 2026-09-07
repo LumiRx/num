@@ -1,6 +1,8 @@
 // THREAD tab — the conversation: messages, cards, typing dots, chips, input bar.
+import PickCards from './PickCards';
 import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
+import { apiUrl } from '../../lib/apibase';
 import { checkOffer, duration, stillValid, type FlightOffer } from '../../lib/flights';
 import { pressable } from '../../lib/a11y';
 import { tagOf } from '../../lib/derive';
@@ -211,6 +213,9 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
         }}
       >
         <div style={{ whiteSpace: 'pre-line' }}>{u ? m.text : cleanText(m.text)}</div>
+        {/* Recommended places, each with a real link. Rendered as cards rather
+            than prose since 3 Sep 2026 — see PickCards.tsx for why. */}
+        {!u && m.picks?.length ? <PickCards picks={m.picks} /> : null}
         {m.card && ct && (
           <div
             {...pressable(() => {
@@ -250,31 +255,94 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
   );
 }
 
-// Live-mode capability discovery — a strip of fun starters above the chips.
-const DISCOVER: Array<[emoji: string, label: string, prompt: string]> = [
-  ['🚗', 'Request a car', 'Get me a car to the airport tomorrow morning'],
-  ['🍜', 'Order food', 'Order dinner to my hotel tonight'],
-  ['💆', 'Book a massage', 'Book me a massage nearby tomorrow afternoon'],
-  ['🍽️', 'Table tonight', 'Book me a great dinner table tonight'],
-  ['🎉', 'Club table', 'Get me a table at the best club this weekend'],
-  ['₿', 'Check crypto', 'What are bitcoin and ethereum at right now?'],
-  ['🤝', 'Meet Num users', 'Set up a meeting with another Num user'],
-  ['🛠️', 'Hire help · 5arz', 'I need to hire someone for a small job through 5arz'],
-  ['💌', 'Invite a friend', 'Send an invite to a friend so we can plan together'],
-  ['🧳', 'Plan with friends', 'Start a group plan I can build with my friends'],
+// Live-mode capability discovery — a strip of starters above the chips.
+//
+// These used to be ten hard-coded prompts, identical in every city: "Club
+// table" and "Check crypto" shipped to a guest in a town with neither. A
+// suggestion that cannot be fulfilled is worse than no suggestion, because it
+// is the first thing a new guest taps and the next screen breaks the promise.
+//
+// The list now comes from /api/suggest, which derives it from the places the
+// directory actually holds in this destination (worker/suggest.mjs). It costs
+// one indexed read and no tokens, and it self-populates: a new city starts
+// offering coffee the moment its cafés land, with no deploy.
+//
+// FALLBACK stays here deliberately. A guest whose network drops, or whose
+// destination is not known yet, must still see what Num can do — an empty
+// strip teaches a brand-new user that Num does nothing. Every line in it is a
+// capability that is true everywhere, independent of any local directory.
+type Starter = { emoji: string; label: string; prompt: string };
+
+const FALLBACK: Starter[] = [
+  { emoji: '🚗', label: 'Car to the airport', prompt: 'Get me a car to the airport tomorrow morning' },
+  { emoji: '🍽️', label: 'Dinner tonight', prompt: 'Where should we eat tonight?' },
+  { emoji: '✈️', label: 'Find a flight', prompt: 'What flights are there to Bangkok on Friday?' },
+  { emoji: '🧳', label: 'Plan with friends', prompt: 'Start a group plan I can build with my friends' },
 ];
+
+/**
+ * The starters for wherever the guest is, plus the one rotating line that
+ * shows off something they have not tried.
+ *
+ * Never throws and never blocks the thread: on any failure the guest keeps the
+ * universal fallback, which is a worse strip and a working app.
+ */
+function useSuggestions(dest: string | null, meId: string | null) {
+  const [starters, setStarters] = useState<Starter[]>(FALLBACK);
+  const [rotating, setRotating] = useState<string | null>(null);
+  // Num speaking first: one line about what THIS member has coming up, from
+  // worker/briefing.mjs. Null for guests and for members with nothing dated.
+  const [briefing, setBriefing] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const load = () => {
+      const q = new URLSearchParams();
+      if (dest) q.set('dest', dest);
+      if (meId) {
+        q.set('me', meId);
+        try { q.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone); } catch { /* server default */ }
+      }
+      const qs = q.toString();
+      fetch(apiUrl(`/api/suggest${qs ? `?${qs}` : ''}`))
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!live || !j) return;
+          if (Array.isArray(j.starters) && j.starters.length) setStarters(j.starters);
+          setRotating(typeof j.rotating === 'string' ? j.rotating : null);
+          setBriefing(typeof j.briefing === 'string' && j.briefing ? j.briefing : null);
+        })
+        .catch(() => { /* the fallback is already on screen */ });
+    };
+    load();
+    // The server rotates its showcase line on a 90s window; re-reading on the
+    // same cadence is what makes the line feel alive without any client state.
+    const t = setInterval(load, 90_000);
+    return () => { live = false; clearInterval(t); };
+  }, [dest, meId]);
+
+  return { starters, rotating, briefing };
+}
 
 export default function ThreadView() {
   // Whole-state subscription on purpose: the design's componentDidUpdate snaps
   // the thread to the bottom after EVERY state change while the thread is
   // visible (sheets opening, notifications, chips), not just on new messages.
-  const { msgs, typing, chips, demo } = useApp((s) => s);
+  const { msgs, typing, chips, demo, place, me } = useApp((s) => s);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
+  // The DISPLAY name is all the app has ever held; the server resolves it to
+  // a destination (worker/suggest.mjs resolveDest). Reading a `.slug` off this
+  // string here is the bug that would have made this feature look alive while
+  // always serving the generic fallback.
+  const { starters, rotating, briefing } = useSuggestions(place ?? null, me?.id ?? null);
 
   const send = () => {
     const text = draft.trim();
-    if (!text || typing) return;
+    // `typing` from render can be one tick stale; the store cannot. Clearing
+    // the composer for a send that askNum will then refuse destroys the
+    // guest's words with nothing on screen to show for it.
+    if (!text || store.get().typing) return;
     setDraft('');
     void askNum(text);
   };
@@ -314,9 +382,27 @@ export default function ThreadView() {
       <div className="glass-bar" style={{ padding: '10px 14px max(env(safe-area-inset-bottom), 14px)', flex: 'none' }}>
         <FlightTray />
         <ServiceTray />
+        {/* One line, changing every 90s, showing a thing Num can do that this
+            guest has probably not tried. Only ever claims a capability the
+            destination can actually serve — see worker/suggest.mjs. */}
+        {/* Num speaks first. When the member has a plan coming up this line
+            outranks the showcase, stays visible deeper into the thread, and
+            reads as a sentence from Num rather than a feature hint. */}
+        {!demo && briefing && msgs.length < 12 && (
+          <div style={{ padding: '0 4px 7px', fontSize: 12.5, lineHeight: 1.4, fontWeight: 600 }}>
+            <SparklesIcon size={12} style={{ color: 'var(--color-accent)', verticalAlign: '-1px', marginRight: 5 }} />
+            {briefing}
+          </div>
+        )}
+        {!demo && !briefing && rotating && msgs.length < 6 && (
+          <div style={{ padding: '0 4px 7px', fontSize: 11.5, lineHeight: 1.35, opacity: 0.62, fontWeight: 500 }}>
+            <SparklesIcon size={11} style={{ color: 'var(--color-accent)', verticalAlign: '-1px', marginRight: 5 }} />
+            {rotating}
+          </div>
+        )}
         {!demo && (
           <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 42, alignItems: 'center', padding: '0 2px' }}>
-            {DISCOVER.map(([emoji, label, prompt]) => (
+            {starters.map(({ emoji, label, prompt }) => (
               <div
                 key={label}
                 {...pressable(() => { if (!store.get().typing) void askNum(prompt); })}
@@ -354,6 +440,9 @@ export default function ThreadView() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
             placeholder="Message Num…"
+            /* The iOS return key reads "send" instead of "return", which is
+               the only affordance telling a guest that enter submits. */
+            enterKeyHint="send"
             /* 16px: iOS zooms the page in on focus for anything smaller, and
                that zoom is itself a viewport resize — i.e. a second glitch. */
             style={{ flex: 1, height: 44, borderRadius: 999, border: '1px solid var(--glass-border)', padding: '0 16px', fontSize: 16, color: 'var(--color-text)', background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-read)', minWidth: 0 }}

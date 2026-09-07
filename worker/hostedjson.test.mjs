@@ -27,12 +27,25 @@ test('plain prose from a vendor that ignored response_format still works', () =>
   assert.equal(r.chips, null);
 });
 
-test('broken JSON is shown as prose, never lost', () => {
-  // The guarantee: no input to this function costs a guest their answer.
+test('broken JSON gives up the answer inside it, never the JSON', () => {
+  // CHANGED 7 Sep 2026, and the old behaviour was worse than it looked.
+  //
+  // This used to return the broken object verbatim, on the reasoning that no
+  // input should cost a guest their answer. But the returned string starts
+  // with a brace, so worker/router.mjs guardReply refuses it — correctly,
+  // because `{"reply":"Krua Thai is the one,` is exactly the kind of thing a
+  // guest must never be shown. The turn then fell through to a weaker brain
+  // AFTER we had already been billed for the good sentence sitting inside the
+  // broken wrapper. Truncation is the documented failure mode of DeepSeek's
+  // json mode, so this was not rare.
+  //
+  // The guarantee is unchanged and now actually holds: no input to this
+  // function costs a guest their answer. The reply is pulled out by hand.
   const half = '{"reply":"Krua Thai is the one, ';
-  // Compared trimmed: the reader trims, which is right — a reply with
-  // trailing whitespace renders as an odd gap in the bubble.
-  assert.equal(readHosted(half).reply, half.trim());
+  assert.equal(readHosted(half).reply, 'Krua Thai is the one,');
+  // Nothing left to salvage returns EMPTY, so the caller fails the brain
+  // honestly rather than shipping a fragment of JSON to a person.
+  assert.equal(readHosted('{"picks":[{"id"').reply, '');
   assert.equal(readHosted('').reply, '');
   assert.equal(readHosted(null).reply, '');
 });
@@ -62,9 +75,22 @@ test('the cheap lane can never mint a card or an action', () => {
   const r = readHosted('{"reply":"done","card":{"title":"Table","meta":"8pm","tag":"confirmed"},"actions":[{"type":"air"}]}');
   assert.equal(r.card, undefined, 'the hosted parser now returns a card');
   assert.equal(r.actions, undefined, 'the hosted parser now returns actions');
+  // The structural half of the check, read from the source so a future edit
+  // to the return has to come past it.
+  //
+  // Comments are stripped first: on 7 Sep the return grew `picks: read.picks`
+  // and three lines of prose explaining why places are safe when bookings are
+  // not, and a whitespace-exact regex over the raw file could not survive
+  // that. What it must still prove is unchanged — card and actions are
+  // CONSTANTS in this return, never read from the model.
   const src = readFileSync(join(HERE, 'brains.mjs'), 'utf8');
-  assert.match(src, /card: null,\s*\n\s*chips: read\.chips,\s*\n\s*actions: \[\],/,
-    'the hosted return grew a card or an action — that is a security boundary, not a feature gap');
+  const code = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const at = code.indexOf('const read = wantJson');
+  const ret = code.slice(at, code.indexOf('_tried: tried', at));
+  assert.match(ret, /card: null,/, 'the hosted return no longer hard-codes card null');
+  assert.match(ret, /actions: \[\],/, 'the hosted return no longer hard-codes actions empty');
+  assert.doesNotMatch(ret, /card: read\./, 'a card from the model reached the return — that is a security boundary, not a feature gap');
+  assert.doesNotMatch(ret, /actions: read\./, 'actions from the model reached the return — that is a security boundary, not a feature gap');
 });
 
 test('degraded means the turn needed something we could not do', () => {

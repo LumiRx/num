@@ -44,7 +44,7 @@ before(() => {
   db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, name_local TEXT, category TEXT,
     lat REAL NOT NULL, lng REAL NOT NULL, cell_lat INTEGER, cell_lng INTEGER, dest TEXT NOT NULL,
     area TEXT, country TEXT, phone TEXT, website TEXT, email TEXT, address TEXT, source TEXT,
-    status TEXT DEFAULT 'unclaimed')`);
+    status TEXT DEFAULT 'unclaimed', business_id TEXT)`);
   db.exec(`CREATE TABLE claims (id INTEGER PRIMARY KEY, business_name TEXT, place_id TEXT,
     state TEXT DEFAULT 'new')`);
   db.exec(`CREATE TABLE num_place_submissions (id TEXT PRIMARY KEY, name TEXT NOT NULL,
@@ -52,10 +52,31 @@ before(() => {
     country TEXT, dest TEXT, lat REAL, lng REAL, claim_id INTEGER,
     status TEXT NOT NULL DEFAULT 'new', place_id TEXT, review_note TEXT,
     created_at TEXT DEFAULT (datetime('now')), reviewed_at TEXT)`);
+
+  // The tables the owner path writes. Promotion used to stop at `places`,
+  // which is exactly why a business that had already signed up was made to
+  // sign up again.
+  db.exec(`CREATE TABLE businesses (id TEXT PRIMARY KEY, name TEXT, kind TEXT, category TEXT,
+    territory TEXT, status TEXT, onboarded_by TEXT, notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')))`);
+  db.exec(`CREATE TABLE num_place_owners (place_id TEXT PRIMARY KEY, business_id TEXT NOT NULL,
+    claim_id INTEGER, method TEXT, phone TEXT,
+    verified_at TEXT DEFAULT (datetime('now')), revoked_at TEXT)`);
+  db.exec(`CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, vertical TEXT,
+    country TEXT, city TEXT, area TEXT, address TEXT, lat REAL, lng REAL, timezone TEXT,
+    place_id TEXT, phone_e164 TEXT, email TEXT, website TEXT, verified_by TEXT,
+    verified_at INTEGER, created_at INTEGER, updated_at INTEGER)`);
+  db.exec(`CREATE TABLE num_business_settings (business_id TEXT PRIMARY KEY,
+    commission_bps INTEGER, currency TEXT, created_at INTEGER, updated_at INTEGER,
+    updated_by TEXT)`);
+  db.exec(`CREATE TABLE destinations (slug TEXT PRIMARY KEY, name TEXT, tz TEXT, country TEXT)`);
+  db.exec(`INSERT INTO destinations (slug,name,tz,country)
+    VALUES ('edinburgh','Edinburgh','Europe/London','GB')`);
 });
 
 beforeEach(() => {
   db.exec('DELETE FROM places; DELETE FROM claims; DELETE FROM num_place_submissions;');
+  db.exec('DELETE FROM businesses; DELETE FROM num_place_owners; DELETE FROM num_business_profiles;');
   db.prepare(`INSERT INTO places (id,name,lat,lng,dest,area,country,phone,email,website)
     VALUES ('pl_fingal','Fingal Hotel',55.98,-3.17,'edinburgh','Edinburgh','GB',
             '+441313575000','reservations@fingal.co.uk','https://fingal.co.uk')`).run();
@@ -174,6 +195,81 @@ describe('adminSubmissionPromote — a business nothing had crawled', () => {
     assert.equal(res.status, 400);
     const places = db.prepare('SELECT COUNT(*) n FROM places').get().n;
     assert.equal(places, 1, 'a places row was written despite no coordinates');
+  });
+
+  // 7 Sep 2026. Dre: "he's already signed up so he shouldn't have to sign up
+  // again. we just need him to sign in again."
+  //
+  // Before this, promotion built the listing and stopped. The person who had
+  // filled in the form weeks earlier came back to find their own name in a
+  // search box and claim the listing from scratch — retyping what they had
+  // already told us, in order to prove they were the person who told us.
+  describe('owner: true — the submitter already signed up', () => {
+    const promote = (extra = {}) => adminSubmissionPromote(env, new Request(
+      'https://app.itsnum.com/admin/submissions/promote',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          submission_id: 'sub_fingal', lat: 55.98, lng: -3.17, dest: 'edinburgh', ...extra,
+        }),
+      },
+    ));
+
+    test('without it, promotion still stops at an unclaimed listing', async () => {
+      const body = await (await promote({ by: 'dre' })).json();
+      assert.equal(db.prepare('SELECT status FROM places WHERE id=?').get(body.place_id).status,
+        'unclaimed', 'the default must not quietly hand out ownership');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM businesses').get().n, 0);
+      assert.equal(body.signin_url, undefined);
+    });
+
+    test('with it, the business exists and the listing is theirs', async () => {
+      const res = await promote({ by: 'dre', owner: true });
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.ok(body.business_id, 'no business was created, so there is nothing to sign in to');
+
+      const place = db.prepare('SELECT status, business_id FROM places WHERE id=?').get(body.place_id);
+      assert.equal(place.status, 'claimed');
+      assert.equal(place.business_id, body.business_id);
+
+      const owner = db.prepare('SELECT * FROM num_place_owners WHERE place_id=?').get(body.place_id);
+      assert.equal(owner.business_id, body.business_id);
+      assert.equal(owner.claim_id, 15, 'their original signup was not carried across');
+      assert.equal(owner.phone, '+441313575000');
+    });
+
+    test('the register says a person vouched — never that a code was answered', async () => {
+      // 'sms' and 'email' mean a one-time code reached a contact ALREADY
+      // published on the listing. That is the whole anti-hijack property of
+      // claiming. This is a weaker and different fact, and if the two ever
+      // record the same way the strong one stops being checkable.
+      const body = await (await promote({ by: 'dre', owner: true })).json();
+      const owner = db.prepare('SELECT method FROM num_place_owners WHERE place_id=?').get(body.place_id);
+      assert.equal(owner.method, 'admin_promote');
+      assert.notEqual(owner.method, 'sms');
+      assert.notEqual(owner.method, 'email');
+      assert.match(db.prepare('SELECT notes FROM businesses WHERE id=?').get(body.business_id).notes,
+        /promoted by dre/, 'nobody\'s name is on the assertion');
+    });
+
+    test('vouching for somebody requires saying who is vouching', async () => {
+      const res = await promote({ owner: true });
+      assert.equal(res.status, 400);
+      assert.match((await res.json()).error, /by/);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM places').get().n, 1,
+        'the listing was created anyway despite the refusal');
+    });
+
+    test('the business is operable, not just present', async () => {
+      // A businesses row with no profile is verified and inert — the exact
+      // state claim/onboard.mjs exists to prevent.
+      const body = await (await promote({ by: 'dre', owner: true })).json();
+      const prof = db.prepare('SELECT * FROM num_business_profiles WHERE business_id=?').get(body.business_id);
+      assert.ok(prof, 'no commerce profile: the business cannot transact');
+      assert.equal(prof.place_id, body.place_id);
+      assert.equal(prof.timezone, 'Europe/London', 'the timezone came from the destination, not a default');
+    });
   });
 
   test('refuses a dest that is not one of Num’s own destination slugs', async () => {

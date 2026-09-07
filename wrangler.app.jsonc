@@ -83,10 +83,28 @@
     // its MX points at an SES inbound host with no receipt rule set, so
     // it rejects at the SMTP layer. Move these to info@itsnum.com only
     // once Email Routing is enabled and a test reply actually arrives.
-    // The sending domain, live and DNS-configured 31 Aug. Cloudflare will only
-    // send FROM a domain it holds; itsnum.com is not one, which is why every
-    // attempt read "could not find domain config of sending domain".
-    "MAIL_FROM": "NUM <hello@mail.itsnum.com>",
+    // WHY THIS IS itsnum.com AND NOT mail.itsnum.com (changed 1 Sep).
+    //
+    // The onboarding batch to six businesses went to junk. mail.itsnum.com
+    // publishes `_dmarc … p=reject` and has NO SPF record and NO DKIM key at
+    // any selector — we told every receiver to reject what does not
+    // authenticate, then published nothing it could authenticate with. Junk
+    // was the LENIENT outcome; a strict receiver drops it and says nothing.
+    //
+    // itsnum.com has a working Resend DKIM key at resend._domainkey, an SPF
+    // record, and DMARC p=none with reports coming to andre@. It authenticates
+    // today with no DNS work, and Resend — the primary transport — has it
+    // verified. Move back to the subdomain once it is verified in Resend and
+    // its DMARC is relaxed to p=quarantine with a rua while it warms.
+    "MAIL_FROM": "NUM <hello@itsnum.com>",
+    // Cloudflare only sends FROM a domain it holds, and it holds
+    // mail.itsnum.com, not itsnum.com — without this the fallback transport
+    // dies with "could not find domain config of sending domain" the moment
+    // Resend has a bad minute. mailer.viaCloudflare preserves the real From as
+    // Reply-To when it substitutes, so a reply still reaches a human.
+    // Delivered-to-junk beats not delivered; this stays until the subdomain
+    // is fixed, and then both become the same address again.
+    "MAIL_CF_FROM": "NUM <hello@mail.itsnum.com>",
     "MAIL_REPLY_TO": "info@thatislumi.com",
     "MAIL_BCC": "info@thatislumi.com" },
   // The concierge model. Opus is the default in code; set it here to flip the

@@ -178,9 +178,66 @@ export async function claimSweep(env) {
     ).catch(() => {});
   }
 
+  // ── API claims that started and went nowhere ────────────────────────────
+  //
+  // THE TABLE THIS WATCHES WAS THE WRONG ONE.
+  //
+  // The stalled sweep below reads `num_app_claims`. The /api/claims/* flow
+  // writes `num_claims`. They are different tables, so a claim opened through
+  // the API could never appear in any alert — and on 24 Aug 2026 one did:
+  //
+  //   Adam, reception@hieedinburgh.co.uk, Holiday Inn Express Edinburgh
+  //   City Centre, state 'pending', one event: 'started'.
+  //
+  // He was still waiting seven days later. The listing's own published email
+  // was the address he typed, so verification was available and never fired;
+  // nothing alerted because nothing looked here.
+  //
+  // Deliberately NOT gated on the 10am hour, and deliberately not gated on
+  // `expires_at` — Adam's row had `expires_at` NULL, and `NULL < now()` is
+  // NULL, so an expiry test would have missed him a second time. A business
+  // raising its hand is the "wake him for money" case.
+  const { results: apiStalled } = await env.DB.prepare(
+    `SELECT c.id, c.state, c.created_at, c.claimant_name, c.claimant_email, p.name, p.dest
+       FROM num_claims c JOIN places p ON p.id = c.place_id
+      WHERE c.state NOT IN ('approved', 'rejected', 'expired')
+        AND c.created_at < datetime('now', '-2 hours')
+      ORDER BY c.created_at ASC LIMIT 12`,
+  ).all().catch(() => ({ results: [] }));
+
+  const freshApi = [];
+  for (const c of apiStalled ?? []) {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: PHUKET.tz }).format(new Date());
+    const claimed = await env.DB.prepare(
+      'INSERT OR IGNORE INTO num_nudges (id, member_id, plan_id, moment) VALUES (?1, ?2, ?3, ?4)',
+    ).bind(crypto.randomUUID(), 'desk', String(c.id), `apiclaim:${today}`).run().catch(() => null);
+    if (claimed?.meta?.changes) freshApi.push(c);
+  }
+  if (freshApi.length) {
+    const { alert } = await import('./health.mjs');
+    await alert(
+      env,
+      `[biz] ${freshApi.length} claim(s) waiting on us: `
+      + freshApi.slice(0, 6).map((c) => {
+        const who = [c.claimant_name, c.claimant_email].filter(Boolean).join(' ');
+        const days = Math.floor((Date.now() - new Date(`${c.created_at}Z`).getTime()) / 86400000);
+        return `${c.name}${who ? ` — ${who}` : ''}${days >= 1 ? ` (${days}d)` : ''}`;
+      }).join('; ')
+      + (freshApi.length > 6 ? ` +${freshApi.length - 6} more` : '')
+      + ' — they started a claim and are waiting.',
+    ).catch(() => {});
+  }
+
   const hour = phuketHour();
   // Once a day, mid-morning Phuket — when a follow-up call can actually happen.
-  if (hour !== 10) return { alerted: unseen.length > 0, web_new: unseen.length, skipped: 'not the hour' };
+  if (hour !== 10) {
+    return {
+      alerted: unseen.length > 0 || freshApi.length > 0,
+      web_new: unseen.length,
+      api_claims: freshApi.length,
+      skipped: 'not the hour',
+    };
+  }
 
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.state, c.created_at, p.name, p.dest

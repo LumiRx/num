@@ -12,6 +12,8 @@ import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
 import { createEvent, eventDashboard, inviteGuests, listEvents, chaseText } from '../../lib/events';
 import type { EventDashboard, GuestInvite } from '../../lib/events';
 import { shareNative } from '../../lib/services';
+import { calendarUrl } from '../../lib/calendar';
+import { guestMessage } from '../../lib/saferr';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -85,7 +87,7 @@ export default function EventSheet() {
       setPlace('');
       setDress('');
     } catch (err) {
-      setNote(err instanceof Error ? err.message : 'Couldn’t create that.');
+      setNote(guestMessage(err, 'Couldn’t create that.'));
     } finally {
       setBusy(false);
     }
@@ -104,7 +106,7 @@ export default function EventSheet() {
       setGuestPhone('');
       void eventDashboard(eventId).then(setDash);
     } catch (err) {
-      setNote(err instanceof Error ? err.message : 'Couldn’t create that invite.');
+      setNote(guestMessage(err, 'Couldn’t create that invite.'));
     } finally {
       setBusy(false);
     }
@@ -132,7 +134,7 @@ export default function EventSheet() {
       );
       void eventDashboard(eventId).then(setDash);
     } catch (err) {
-      setNote(err instanceof Error ? err.message : 'Couldn’t ask them.');
+      setNote(guestMessage(err, 'Couldn’t ask them.'));
     } finally {
       setAsking(null);
     }
@@ -230,6 +232,14 @@ export default function EventSheet() {
                     </div>
                   ))}
                 </div>
+                {me?.id && dash.event.day && (
+                  <a
+                    href={calendarUrl('event', dash.event.id, me.id)}
+                    style={{ display: 'inline-block', marginTop: 10, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', textDecoration: 'none' }}
+                  >
+                    ADD TO MY CALENDAR →
+                  </a>
+                )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                   <div
                     {...pressable(() => void shareNative({ title: dash.event.title, text: `${dash.event.title} — details and RSVP:`, url: dash.url }))}

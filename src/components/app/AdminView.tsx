@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState, createContext, useContext } from 'rea
 import { pressable } from '../../lib/a11y';
 import { ChevronRightIcon, XIcon } from '../../lib/icons';
 import { apiUrl } from '../../lib/apibase';
+import { guestMessage } from '../../lib/saferr';
 
 const TOKEN_KEY = 'num-admin-session';
 const PAYOUT_TOKEN_KEY = 'num-payout-session';
@@ -269,7 +270,7 @@ function PayoutPanel() {
         if (!r.ok) throw new Error(r.status === 401 ? 'Sign in again to reach the payout desk.' : `payouts ${r.status}`);
         setData((await r.json()) as Roster);
       })
-      .catch((e) => setErr(e instanceof Error ? e.message : 'unavailable'));
+      .catch((e) => setErr(guestMessage(e, 'unavailable')));
   }, []);
 
   const tone = (s: string) => (s === 'block' ? 'var(--color-accent-700)' : s === 'hold' ? 'var(--color-accent)' : 'var(--ink-60)');
@@ -377,7 +378,7 @@ export default function AdminView() {
       setKey('');
       setErr(null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'That did not work.');
+      setErr(guestMessage(e, 'That did not work.'));
     } finally {
       setBusy(false);
     }
@@ -404,7 +405,7 @@ export default function AdminView() {
       setData((await res.json()) as Overview);
       setErr(null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'failed');
+      setErr(guestMessage(e, 'failed'));
     }
   }, [token, days]);
 

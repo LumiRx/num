@@ -18,6 +18,7 @@ import {
   SparklesIcon, StarIcon, UsersIcon, WalletIcon,
 } from '../../lib/icons';
 import type { Booking, Connections, WidgetId } from '../../lib/types';
+import { guestMessage } from '../../lib/saferr';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 13 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -66,7 +67,7 @@ function RequestsWidget() {
       setDraft('');
       setWhen('');
     } catch (err) {
-      setNote(err instanceof Error ? err.message : 'That didn’t go through.');
+      setNote(guestMessage(err, 'That didn’t go through.'));
     } finally {
       setBusy(null);
     }

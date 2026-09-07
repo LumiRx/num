@@ -34,7 +34,7 @@ function db(claims = []) {
       if (reminders.has(k)) return { meta: { changes: 0 } };
       reminders.add(k); return { meta: { changes: 1 } };
     }
-    if (/UPDATE num_claim_decisions SET onboarded/.test(q)) {
+    if (/UPDATE num_claim_decisions\s+SET onboarded/.test(q)) {
       const d = decisions.get(String(a[0])); if (d) d.onboarded = 1; return { meta: { changes: 1 } };
     }
     return { meta: { changes: 0 } };

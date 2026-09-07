@@ -3,7 +3,7 @@
 // Every hard check below is a bug that reached a paying guest. The most
 // important test in this file is the last one: grading must never be able to
 // produce silence.
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { inspect, figuresIn } from './quality.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CONTEXT = 'VERIFIED\nKrua Thai — Kata Road — 4.6 (312 reviews) — mains from THB 180\nBaan Rim Pa — Patong — 4.4 (890 reviews)\nA long block of verified grounding so the deflection check has something to argue with. '.padEnd(500, '.');
+const CONTEXT = 'VERIFIED NEARBY PARTNERS (real places from Num’s database — prefer these, details are exact):\nKrua Thai — Kata Road — 4.6 (312 reviews) — mains from THB 180\nBaan Rim Pa — Patong — 4.4 (890 reviews)\nA long block of verified grounding so the deflection check has something to argue with. '.padEnd(500, '.');
 
 test('an invented price is caught; a quoted one is not', () => {
   const invented = inspect({
@@ -66,6 +66,18 @@ test('deflection with a full context block is caught', () => {
   // But an honest gap with nothing to work from is not a failure.
   assert.ok(!inspect({ ask: 'where should I eat in Ulaanbaatar', reply: "I don't have anything verified there yet.", context: '' }).hard,
     'honesty about an empty directory was punished');
+  // The real shape of that gap: the context block is NOT empty — it carries
+  // the date line, the location rules and the unsupported-city instruction,
+  // ~850 characters with no partner in it. The old check keyed on length and
+  // flagged this, then told the model to "answer from the verified block
+  // above". There was none. Honesty must pass on the block as it is actually
+  // rendered, not only on an empty string.
+  const EMPTY_BLOCK = ('Today is Thu 4 Sep 2026, 21:10 UTC. If the guest has said where they are, convert to THEIR timezone. ' +
+    'The user is asking about Del Mar. Num has NO partner network there yet — no verified places, no booking, no car. ' +
+    'Answer as well as general knowledge allows, and say plainly that booking and partner perks aren\'t live there yet. ' +
+    'NEVER answer about a different city instead, and NEVER invent partner venues, exact prices, or opening hours. Create no booking actions. ').padEnd(900, '.');
+  assert.ok(!inspect({ ask: 'where should I eat in Del Mar', reply: "I don't have anywhere verified in Del Mar yet — here's what I'd do from general knowledge.", context: EMPTY_BLOCK }).hard,
+    'an honest decline over a partner-less block was flagged as deflection');
 });
 
 test('a reply that is only a question is caught', () => {
@@ -98,7 +110,10 @@ test('grading can never produce silence', () => {
   // cannot withhold one. And the caller keeps the original whenever the retry
   // is not strictly better.
   const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
-  assert.match(index, /if \(!after\.hard\) \{\s*\n\s*result = \{ \.\.\.fixed/,
+  // `keepRouting(...)` since 3 Sep 2026 — the retry is still gated on
+  // `!after.hard`, it just no longer throws away the record of which brain
+  // answered on its way through. See worker/routinglabel.mjs.
+  assert.match(index, /if \(!after\.hard\) \{\s*\n\s*result = keepRouting\(\{ \.\.\.fixed/,
     'the retry is taken unconditionally — a worse retry would replace a good answer');
   assert.match(index, /flags: \[\.\.\.quality\.flags, 'retry-error'\]/,
     'a thrown retry is no longer caught — a failed grade would cost the guest the reply they already had');
@@ -115,4 +130,88 @@ test('the ask row carries the flags', () => {
   // grade of a reply that was then replaced.
   assert.ok(index.indexOf('let quality = inspect(') < index.indexOf('quality: quality.flags'),
     'the ask is recorded before the reply is graded');
+});
+
+// ── 3 Sep 2026: every recommendation carries a link ─────────────────────────
+//
+// Dre: "If we are giving a recommendation for a restaurant, it needs to be
+// clear... every time we give a recommendation for a place, we need to give a
+// link to the location. The AI agent that checks the message before it is sent
+// needs to be checking that the message is clean and organized."
+//
+// These are that check.
+describe('a recommendation without linked picks does not ship', () => {
+  const ASK = 'where should we eat tonight in kata?';
+  const PICK = { id: 'p1', name: 'Baan Rim Pa', link: 'https://baanrimpa.com/', phone: '+66 76 340 789', why: 'Cliffside tables' };
+  const PICK2 = { id: 'p2', name: 'Suay', link: 'https://maps.example/2', phone: null, why: 'Chef-led, walkable' };
+
+  test('places listed in prose with an empty picks array is a HARD flag', () => {
+    const out = inspect({
+      ask: ASK,
+      reply: 'Baan Rim Pa is lovely, or try Suay Restaurant, or Kan Eang at Chalong.',
+      picks: [],
+      context: 'VERIFIED NEARBY PARTNERS…',
+    });
+    assert.equal(out.hard, true);
+    assert.ok(out.flags.includes('recommendation-without-picks'));
+    assert.match(out.note, /`picks`/);
+  });
+
+  test('honestly having nothing is NOT flagged — it must never be retried into an invention', () => {
+    const out = inspect({
+      ask: ASK,
+      reply: 'I have nothing verified near you for that tonight. Want me to look further out?',
+      picks: [],
+      context: 'x',
+    });
+    assert.equal(out.flags.includes('recommendation-without-picks'), false);
+  });
+
+  test('picks present → no flag, whatever the prose says', () => {
+    const out = inspect({ ask: ASK, reply: 'Three near you — the first is what I would do.', picks: [PICK, PICK2], context: 'x' });
+    assert.equal(out.flags.includes('recommendation-without-picks'), false);
+  });
+
+  test('picks null (not a recommendation turn) is never flagged', () => {
+    const out = inspect({ ask: 'is the beach walkable?', reply: 'Yes — about ten minutes.', picks: null, context: 'x' });
+    assert.equal(out.flags.includes('recommendation-without-picks'), false);
+  });
+});
+
+describe('the model never writes a URL', () => {
+  test('an http link in the prose is a hard flag', () => {
+    const out = inspect({ ask: 'where should we eat?', reply: 'Try https://baanrimpa.com for the menu.', picks: [], context: 'x' });
+    assert.equal(out.hard, true);
+    assert.ok(out.flags.includes('model-written-url'));
+    assert.match(out.note, /verified directory/);
+  });
+  test('a bare domain counts too', () => {
+    assert.ok(inspect({ ask: 'x', reply: 'See baanrimpa.com', picks: null, context: 'x' }).flags.includes('model-written-url'));
+    assert.ok(inspect({ ask: 'x', reply: 'See www.baanrimpa.co.uk', picks: null, context: 'x' }).flags.includes('model-written-url'));
+  });
+  test('prices and times are not URLs — the check must not cry wolf', () => {
+    for (const r of ['They open at 7.30 and it is about £24.50.', 'Roughly 1.2 km away, 4.5 stars.', 'Ready in 2.5 hours.']) {
+      assert.equal(inspect({ ask: 'x', reply: r, picks: null, context: r }).flags.includes('model-written-url'), false, r);
+    }
+  });
+});
+
+describe('the message does not repeat the cards', () => {
+  const PICKS = [
+    { name: 'Baan Rim Pa', link: 'https://a', phone: '+66 76 340 789' },
+    { name: 'Suay', link: 'https://b', phone: null },
+  ];
+  test('restating every pick in prose is flagged (softly)', () => {
+    const out = inspect({ ask: 'where should we eat?', reply: 'Baan Rim Pa is great, and Suay is also good.', picks: PICKS, context: 'x' });
+    assert.ok(out.flags.includes('picks-restated-in-prose'));
+    assert.equal(out.hard, false);
+  });
+  test('naming only your top pick is good writing, not clutter', () => {
+    const out = inspect({ ask: 'where should we eat?', reply: 'Three near you — Baan Rim Pa is what I would do.', picks: PICKS, context: 'x' });
+    assert.equal(out.flags.includes('picks-restated-in-prose'), false);
+  });
+  test('a phone number in the prose is always duplication now', () => {
+    const out = inspect({ ask: 'where should we eat?', reply: 'Call them on +66 76 340 789.', picks: PICKS, context: 'x' });
+    assert.ok(out.flags.includes('phone-in-prose'));
+  });
 });

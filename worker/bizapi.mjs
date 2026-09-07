@@ -530,8 +530,70 @@ export async function handleBizApi(request, env, path) {
   if (path === '/v1/profile' && request.method === 'GET') return getProfile(env, auth.businessId, auth.placeId);
   if (path === '/v1/profile' && request.method === 'PATCH') return patchProfile(env, auth.businessId, auth.placeId, request);
   if (path === '/v1/insights' && request.method === 'GET') return getInsights(env, auth.businessId, auth.placeId, url);
+  if (path === '/v1/offerings' && request.method === 'GET') return listOfferings(env, auth.businessId);
+  if (path === '/v1/offerings' && post) return saveOffering(env, auth.businessId, request);
+  if (path === '/v1/offerings/hide' && post) return setOfferingVisible(env, auth.businessId, request, false);
+  if (path === '/v1/offerings/show' && post) return setOfferingVisible(env, auth.businessId, request, true);
 
   return err('not_found', `No such endpoint: ${request.method} ${path}. See GET /api/biz/v1 for the index.`, 404);
+}
+
+/**
+ * What this business offers, over the API.
+ *
+ * A restaurateur will not open a dashboard every week to change a menu; a
+ * point-of-sale integration or an assistant will. Same reasoning bizmcp.mjs
+ * gives for existing at all, applied to the one thing that changes most often.
+ *
+ * The console and these routes call the SAME functions in bizoffer.mjs, so
+ * neither can drift into a second set of rules about what a price may be.
+ */
+async function listOfferings(env, businessId) {
+  const { listFor, currencyFor } = await import('./bizoffer.mjs');
+  const items = await listFor(env, businessId);
+  const prof = await env.DB.prepare('SELECT country FROM num_business_profiles WHERE business_id=?1')
+    .bind(businessId).first().catch(() => null);
+  return json({
+    currency: currencyFor(prof?.country),
+    // Said out loud, because an integration that assumes a price is required
+    // will send "0" for a market-price dish and a guest will be quoted nothing.
+    price_may_be_absent: true,
+    count: items.length,
+    offerings: items.map((o) => ({
+      id: o.id,
+      section: o.section,
+      name: o.name,
+      description: o.description,
+      price_minor: o.price_minor,
+      price_note: o.price_note,
+      price: o.price_label,
+      currency: o.currency,
+      unit: o.unit,
+      available: o.available,
+      active: o.active,
+    })),
+  });
+}
+
+async function saveOffering(env, businessId, request) {
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== 'object') return err('bad_body', 'Send a JSON object.', 400);
+  const { upsert } = await import('./bizoffer.mjs');
+  const out = await upsert(env, businessId, body);
+  if (!out.ok) return err('rejected', out.error, 400);
+  return json({ ok: true, id: out.id, updated: !!out.updated }, out.updated ? 200 : 201);
+}
+
+async function setOfferingVisible(env, businessId, request, visible) {
+  const body = await request.json().catch(() => ({}));
+  const id = String(body?.id ?? '').slice(0, 40);
+  if (!id) return err('bad_body', 'Which one? Send { "id": "off_…" }.', 400);
+  const bizoffer = await import('./bizoffer.mjs');
+  const out = visible ? await bizoffer.show(env, businessId, id) : await bizoffer.hide(env, businessId, id);
+  if (!out.ok) return err('not_found', 'That item is not on this business list.', 404);
+  // Hidden, not deleted: an owner who takes a seasonal dish off in October
+  // wants it back in June. The concierge stops saying it either way.
+  return json({ ok: true, id, active: visible });
 }
 
 /** The index. A developer or an agent should be able to start from one URL. */
@@ -551,6 +613,10 @@ export function bizApiIndex() {
       { method: 'GET', path: '/v1/insights?days=7', auth: true, does: 'How often Num surfaced you — lookback window depends on your plan.' },
       { method: 'GET', path: '/v1/insights?format=csv', auth: true, does: 'The same data as a CSV download. Paid plans only.' },
       { method: 'GET', path: '/v1/locations', auth: true, does: 'Every listing this business owns.' },
+      { method: 'GET', path: '/v1/offerings', auth: true, does: 'What this business offers, with prices — the menu, treatments, rooms or tours.' },
+      { method: 'POST', path: '/v1/offerings', auth: true, body: { id: 'string (omit to create)', name: 'string', description: 'string', section: 'string', price: 'string — omit or leave empty if it varies', price_note: 'string, e.g. "Market price", "From"', unit: 'item | person | night | hour | day | session | group', available: 'string, e.g. "Lunch only, 12-3"' }, does: 'Add or change one item. Currency comes from where the business is and cannot be set here.' },
+      { method: 'POST', path: '/v1/offerings/hide', auth: true, body: { id: 'string' }, does: 'Stop Num mentioning it, without deleting it.' },
+      { method: 'POST', path: '/v1/offerings/show', auth: true, body: { id: 'string' }, does: 'Put it back.' },
       { method: 'GET', path: '/v1/billing/tiers', auth: false, does: 'The price list. Public, so it can never disagree with what you are charged.' },
       { method: 'GET', path: '/v1/billing/me', auth: true, does: 'Your current plan and renewal date.' },
       { method: 'POST', path: '/v1/billing/subscribe', auth: true, body: { tier: 'small | pro | full' }, does: 'Start a Stripe Checkout session for that plan. Returns a url to redirect to.' },

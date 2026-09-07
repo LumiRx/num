@@ -53,11 +53,22 @@ const LOOKS_IDENTIFYING = [
   /\b\d{13,19}\b/,                     // card-length digit runs
 ];
 
+/**
+ * A date is not a phone number. `2026-09-01` is ten characters of digits and
+ * hyphens, which is exactly the shape the phone pattern above was written to
+ * catch, so `trip_dates: "2026-09-01 to 2026-09-08"` was being redacted on
+ * every turn — and the model, told to never re-ask what it has been told,
+ * asked for the dates again. Dates are struck out before the phone test runs;
+ * a phone number sitting beside a date in the same value is still caught.
+ */
+const ISO_DATE = /\b\d{4}-\d{2}-\d{2}\b/g;
+
 /** True when this key/value pair should never reach a model. */
 export function isIdentifying(key, value) {
   if (IDENTIFYING.test(String(key))) return true;
   const v = String(value ?? '');
-  return LOOKS_IDENTIFYING.some((re) => re.test(v));
+  const sansDates = v.replace(ISO_DATE, ' ');
+  return LOOKS_IDENTIFYING.some((re) => re.test(sansDates));
 }
 
 /**

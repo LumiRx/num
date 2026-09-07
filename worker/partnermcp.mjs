@@ -497,6 +497,15 @@ async function callTool(env, request, name, args, ctx) {
         // partner in the world shares one 'unknown' rate-limit bucket and the
         // busiest one throttles everybody else.
         'CF-Connecting-IP': request.headers.get('CF-Connecting-IP') ?? 'partner',
+        // Forwarded, never invented. This tool runs the full guest pipeline,
+        // so the integrity monitor's one question (scripts/mcp-integrity.mjs)
+        // was being recorded as a traveller's: 12 of the 30 asks logged
+        // between 31 Aug and 3 Sep 2026 were that robot, on the most-used
+        // lane, inside every funnel number. Passing the header through lets
+        // /api/num keep it out of the analytics tables — while a real
+        // partner's question, which is a real person asking through somebody
+        // else's app, still counts, because a real partner does not send it.
+        ...(request.headers.get('X-Num-Probe') === '1' ? { 'X-Num-Probe': '1' } : {}),
       },
       body: JSON.stringify({
         messages: [{ role: 'user', content }],

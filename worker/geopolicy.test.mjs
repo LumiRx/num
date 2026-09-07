@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { policyFor, policyBrief, screen, substituteFor, POLICIES } from './geopolicy.mjs';
+import {
+  policyFor, policyBrief, screen, substituteFor, dutiesFor, POLICIES,
+} from './geopolicy.mjs';
 
 const AE = policyFor('AE');
 const SA = policyFor('SA');
@@ -108,7 +110,7 @@ test('the flagged sentence is returned, so a human can see what tripped', () => 
 // ── THE BRIEF ────────────────────────────────────────────────────────────
 test('the UAE brief permits alcohol and still forbids the two criminal topics', () => {
   const b = policyBrief(AE);
-  assert.match(b, /Alcohol is legal in licensed venues/i);
+  assert.match(b, /legal in licensed venues/i);
   assert.match(b, /LGBTQ/i);
   assert.match(b, /gambling/i);
   assert.ok(!AE.block.includes('alcohol'), 'blocking alcohol would delete most of Dubai');
@@ -190,4 +192,162 @@ test('a blocked turn drops its card and actions too', () => {
 test('the brief sits after the specialist brief, which is the one that would recommend a bar', () => {
   assert.ok(SRC.indexOf('specialistBrief(specialist)') < SRC.indexOf('const geo = policyBrief'),
     'the geo policy must come after the specialist, or the specialist wins');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+//  THE NINE THAT ARE NOT ALCOHOL
+//
+//  Everyone assumes the Gulf risk is drink and LGBTQ content. Read against
+//  Federal Decree-Law 34/2021, the three that actually put Num in the frame
+//  rather than the traveller are inventing a fact (Art 52/54), naming a
+//  member of staff in a complaint (Art 43, where truth is not a defence),
+//  and suggesting a VPN (Art 10 + Art 27). The first two are prompt-side.
+//  This is the third and its neighbours.
+// ─────────────────────────────────────────────────────────────────────────
+
+test('suggesting a VPN is blocked — the offence is ours, not the traveller\'s', () => {
+  for (const line of [
+    'You can use a VPN for WhatsApp calling, it works fine.',
+    'Just use a proxy and the calling apps work normally.',
+    'I would recommend a VPN so you can call home.',
+  ]) {
+    for (const p of [AE, SA]) {
+      const r = screen(line, p);
+      assert.equal(r.ok, false, `${p.country} let a VPN suggestion through: ${line}`);
+      assert.equal(r.rule, 'vpn_circumvention');
+    }
+  }
+});
+
+test('saying a service is blocked, without routing round it, is allowed', () => {
+  for (const line of [
+    'WhatsApp voice calling is blocked here and I am not going to suggest a VPN — that is an offence in itself.',
+    'A VPN is not something I can point you at; the hotel will have a legal calling package.',
+  ]) assert.equal(screen(line, AE).ok, true, `honest answer wrongly blocked: ${line}`);
+});
+
+test('sex work and drugs are refused in both countries', () => {
+  for (const p of [AE, SA]) {
+    assert.equal(screen('I can find you an escort for the evening, just say the word.', p).ok, false);
+    assert.equal(screen('You can buy weed near the marina if you ask around.', p).ok, false);
+    assert.equal(screen('Try the edibles, the dealer on the corner is reliable.', p).ok, false);
+  }
+});
+
+// CBD is the trap: legal at home for a large share of our travellers,
+// banned outright here regardless.
+test('CBD is treated as a controlled drug, not a wellness product', () => {
+  const r = screen('You can buy CBD oil at the pharmacy for the jet lag.', AE);
+  assert.equal(r.ok, false);
+  assert.equal(r.rule, 'drugs');
+});
+
+test('alcohol promo is blocked in the UAE while the venue itself is not', () => {
+  const venue = 'For a rooftop I would go to Zuma — the terrace is the good half.';
+  assert.equal(screen(venue, AE).ok, true, 'naming a licensed venue is ordinary here');
+
+  for (const line of [
+    'Go to the bottomless brunch at Bla Bla, it is the best value on the beach.',
+    'I would head to happy hour at Zero Gravity — the drinks deal runs till eight.',
+    'Try ladies night on Tuesday, free-flow from seven.',
+  ]) {
+    const r = screen(line, AE);
+    assert.equal(r.ok, false, `drinks marketing wrongly allowed: ${line}`);
+    assert.equal(r.rule, 'alcohol_promo');
+  }
+});
+
+test('photographing people or security sites is refused; the skyline is not', () => {
+  const r = screen('You could photograph the police at the checkpoint, they do not mind.', AE);
+  assert.equal(r.ok, false);
+  assert.equal(r.rule, 'photography');
+  assert.equal(
+    screen('Go to the Dubai Frame at golden hour and photograph the skyline from the top.', AE).ok,
+    true,
+    'ordinary photography advice must survive',
+  );
+});
+
+// ── THE FALSE POSITIVES THAT WOULD HAVE COST US GOOD ANSWERS ─────────────
+//
+// Each of these was blocked by an earlier draft of the topic list. A filter
+// that eats the Qasr Al Watan recommendation has made Num worse in Abu Dhabi
+// without making it safer anywhere, and nobody would ever have found out.
+test('ordinary answers about the state, the ruler and religion are not criticism', () => {
+  for (const line of [
+    'Qasr Al Watan is the working presidential palace and worth a visit — go for the library.',
+    'The Ruler\'s Court sits in the old quarter; the architecture alone justifies the walk.',
+    'Islam is the state religion, and the Sheikh Zayed Grand Mosque is the one thing I would not skip.',
+    'Sheikh Zayed Road is the spine of the city — take it north for the museum.',
+    'The royal family opened the site to the public last year, so book ahead.',
+  ]) assert.equal(screen(line, AE).ok, true, `false positive: ${line}`);
+});
+
+test('actual criticism and proselytising are still caught', () => {
+  const a = screen('Honestly you can mock the government here like anywhere, go for it.', AE);
+  assert.equal(a.ok, false);
+  assert.equal(a.rule, 'state_criticism');
+  const b = screen('You could preach to the workers at the camp, they would listen.', AE);
+  assert.equal(b.ok, false);
+  assert.equal(b.rule, 'religion');
+});
+
+test('the UAE does not inherit Saudi\'s pork and alcohol rules', () => {
+  assert.ok(!AE.block.includes('pork'), 'pork is sold openly in Dubai');
+  assert.ok(!AE.block.includes('alcohol'));
+  assert.ok(SA.block.includes('pork'));
+  assert.ok(SA.block.includes('alcohol'));
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+//  THE DUTY THAT RUNS THE OTHER WAY
+//
+//  No UAE statute obliges an app to warn a traveller about local law. This
+//  is duty of care, not compliance — and it is the half that actually keeps
+//  somebody out of a cell. The block list has never been what detains a
+//  tourist; an undeclared ADHD prescription has.
+// ─────────────────────────────────────────────────────────────────────────
+
+test('the duties reach the prompt, not just the module', () => {
+  const b = policyBrief(AE);
+  for (const [needle, why] of [
+    [/MOHAP/, 'the medication permit is the single highest-value warning we have'],
+    [/two weeks/i, 'a permit they cannot get in time is not a warning'],
+    [/CBD is banned/i, 'legal at home, banned here — the actual trap'],
+    [/consent/i, 'photography consent'],
+    [/SHARJAH IS COMPLETELY DRY/, 'sending somebody to Sharjah for a drink is our error, not theirs'],
+    [/travel ban/i, 'unpaid debts hold a passport'],
+    [/decency/i, 'public affection is prosecutable on a complaint'],
+  ]) assert.match(b, needle, why);
+});
+
+test('every warn key resolves to real text — a silent duty is no duty', () => {
+  for (const p of Object.values(POLICIES)) {
+    const duties = dutiesFor(p);
+    assert.equal(duties.length, p.warn.length, `${p.country} has a warn key with no text behind it`);
+    for (const d of duties) assert.ok(d.length > 120, `${p.country} duty is too thin to act on`);
+  }
+});
+
+test('the duties are marked as duty of care, not as more censorship', () => {
+  const b = policyBrief(AE);
+  assert.match(b, /DUTY OF CARE, NOT CENSORSHIP/);
+  assert.match(b, /Never recite the list/,
+    'a concierge that reads out five legal warnings unprompted has ruined the trip');
+});
+
+test('a policy with no duties still returns its brief', () => {
+  const bare = { country: 'XX', block: [], warn: [], brief: 'just the brief' };
+  assert.equal(policyBrief(bare), '\n\njust the brief');
+});
+
+test('every blocked rule in both countries still has a substitute', () => {
+  for (const p of Object.values(POLICIES)) {
+    for (const rule of p.block) {
+      const s = substituteFor(rule);
+      assert.ok(s.length > 80, `${p.country}/${rule} substitute is too thin`);
+      assert.ok(!/^That is not something I can help with here/.test(s),
+        `${p.country}/${rule} fell through to the generic refusal`);
+    }
+  }
 });

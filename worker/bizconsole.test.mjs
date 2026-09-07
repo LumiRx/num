@@ -22,6 +22,7 @@
 // real restaurant is not a test.
 import { test, describe, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import worker from './index.mjs';
 import { __testables } from './bizconsole.mjs';
@@ -87,6 +88,11 @@ before(() => {
       CHECK (state IN ('pending','verified','failed','expired','review','rejected','revoked')),
     review_reason TEXT, evidence TEXT, ip TEXT, user_agent TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')), decided_at TEXT, decided_by TEXT)`);
+  db.exec(`CREATE TABLE num_place_submissions (id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    name_local TEXT, lang TEXT, address TEXT, website TEXT, category TEXT, phone TEXT, email TEXT,
+    country TEXT, dest TEXT, lat REAL, lng REAL, claim_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'new', place_id TEXT, review_note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')), reviewed_at TEXT)`);
   db.exec(`CREATE TABLE num_place_owners (
     place_id TEXT PRIMARY KEY, business_id TEXT NOT NULL, claim_id TEXT NOT NULL,
     method TEXT NOT NULL, phone TEXT,
@@ -210,10 +216,40 @@ describe('claim → verify → dashboard, without traveller sign-in', () => {
     assert.ok(html.includes('Claim this listing'));
   });
 
-  test('a search with no match says so and offers a human', async () => {
+  test('a search with no match is not a dead end — it offers to add the business', async () => {
+    // It used to say "No listing found... or email info@5arz.com" and stop.
+    // `places` is 2.5M rows and still not everyone, and a business NUM has
+    // never heard of is exactly the business it most wants. Emailing a support
+    // address is not a signup flow.
     const html = await (await post({ action: 'find', q: 'Definitely Not A Real Place' })).text();
-    assert.match(html, /No listing found/);
-    assert.ok(html.includes('info@5arz.com'), 'a dead end with no way out');
+    assert.match(html, /do not have a listing/i);
+    assert.match(html, /Add your business/, 'a dead end with no way out');
+    assert.match(html, /action" value="submit"/, 'the offer has no form behind it');
+    // And it must ask for the two things that make the row reviewable.
+    assert.ok(html.includes('name="address"'));
+    assert.ok(html.includes('name="email"') && html.includes('name="phone"'));
+  });
+
+  test('a business NUM has never heard of gets in, and is told what happens next', async () => {
+    const html = await (await post({
+      action: 'submit', name: 'Baan Rim Nam', address: '12 Soi Romanee, Phuket Old Town',
+      email: 'owner@baanrimnam.example',
+    })).text();
+    assert.match(html, /Got it/);
+    assert.match(html, /couple of days|email you/i, 'it does not say what happens next');
+    const row = db.prepare("SELECT * FROM num_place_submissions WHERE name='Baan Rim Nam'").get();
+    assert.ok(row, 'the submission was not recorded');
+    assert.equal(row.status, 'new');
+    // Never straight into the directory: places.lat/lng are NOT NULL and a
+    // typed address is not coordinates. See migration 0007.
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM places WHERE name='Baan Rim Nam'").get().n, 0);
+  });
+
+  test('a submission with no way to reach them is refused, kindly', async () => {
+    const html = await (await post({ action: 'submit', name: 'No Contact Cafe', address: '1 Nowhere Rd' })).text();
+    assert.match(html, /email or a phone/i);
+    // And the form comes back with what they already typed, not blank.
+    assert.ok(html.includes('No Contact Cafe'), 'it made them type it all again');
   });
 
   test('claiming sends a code to the contact PUBLISHED on the listing', async () => {
@@ -273,7 +309,36 @@ describe('the session', () => {
     assert.ok(html.includes('Suay Restaurant'));
     assert.match(html, /7[\s\S]{0,80}times NUM showed you/, 'impressions are not shown');
     assert.ok(html.includes('Viv'), 'the booking request is missing');
-    assert.ok(html.includes('Mon-Sun 17:00-23:00'), 'the editable hours are not prefilled');
+    // The console is paged now: the editable listing lives on ?p=listing.
+    // Same property, new address — an owner must still find their own hours
+    // prefilled rather than a blank box that silently blanks the directory.
+    const listing = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=listing`)).text();
+    assert.ok(listing.includes('Mon-Sun 17:00-23:00'), 'the editable hours are not prefilled');
+  });
+
+  test('every page in the nav opens, and a locked one explains itself', async () => {
+    const token = await __testables.mintSession(env, 'pl_suay');
+    const { PAGES } = await import('./bizpages.mjs');
+    for (const page of PAGES) {
+      const r = await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=${page.id}`);
+      assert.equal(r.status, 200, `${page.id} did not open`);
+      const html = await r.text();
+      assert.ok(html.includes('Suay Restaurant'), `${page.id} lost the business name`);
+      assert.ok(!/undefined|\[object Object\]/.test(html), `${page.id} rendered a hole`);
+    }
+    // pl_suay is on the free plan, so promotions is locked — and a locked page
+    // must still say what it is and what opens it. Hiding it means a business
+    // cannot find out what it would be buying.
+    const locked = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=promotions`)).text();
+    assert.match(locked, /Small Business/, 'a locked page does not name the plan that opens it');
+    assert.match(locked, /\$9\.99/, 'a locked page does not say what it costs');
+  });
+
+  test('an unknown page is the overview, never a 404', async () => {
+    const token = await __testables.mintSession(env, 'pl_suay');
+    const r = await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=../../etc/passwd`);
+    assert.equal(r.status, 200);
+    assert.ok((await r.text()).includes('Suay Restaurant'));
   });
 
   test('a session carries NO key — a credential in a URL is a leaked credential', async () => {
@@ -311,10 +376,14 @@ describe('editing', () => {
   test('an owner can change what NUM says, and it lands in the directory', async () => {
     const token = await __testables.mintSession(env, 'pl_suay');
     const html = await (await post({
-      action: 'save', s: token, name: 'Suay Restaurant', phone: '+66762917971',
+      action: 'save', s: token, p: 'listing', name: 'Suay Restaurant', phone: '+66762917971',
       website: 'https://suay.example/new', hours: 'Daily 17:00-24:00', cuisine: 'Thai', address: '50 Takua Pa Rd',
     })).text();
     assert.match(html, /Saved/);
+    // A save must come back to the page the form was on. Bouncing to the
+    // overview puts the change two clicks away, which reads as "it did not
+    // save" — and the owner types it again.
+    assert.ok(html.includes('Daily 17:00-24:00'), 'saving did not return to the listing page');
     const row = db.prepare("SELECT phone, hours FROM places WHERE id='pl_suay'").get();
     assert.equal(row.phone, '+66762917971');
     assert.equal(row.hours, 'Daily 17:00-24:00');
@@ -337,7 +406,10 @@ describe('editing', () => {
 
   test('the dashboard states plainly what cannot be bought', async () => {
     const token = await __testables.mintSession(env, 'pl_suay');
-    const html = await (await hit(`/api/biz/console?s=${token}`)).text();
+    // It has to be on the page where an owner is actually editing things —
+    // a promise about what money cannot buy is worth nothing on a page nobody
+    // reaches while trying to buy something.
+    const html = await (await hit(`/api/biz/console?s=${token}&p=listing`)).text();
     assert.match(html, /not.{0,20}editable/i);
     assert.match(html, /position can be bought|belong to the traveller/i);
   });
@@ -357,4 +429,37 @@ describe('hostile input', () => {
     const html = await (await post({ action: 'find', q: '"><img onerror=x>' })).text();
     assert.ok(!html.includes('<img onerror'));
   });
+});
+
+// ── the console is read on a phone, behind a counter ─────────────────────
+//
+// It shipped with a viewport tag, a 760px max-width and NOT ONE media query,
+// so it scaled on a phone rather than fitting one. The people who use it are
+// restaurant and hotel owners standing at a till; a business console read at a
+// desk is the exception.
+test('the business console is actually built for a phone', () => {
+  const src = readFileSync(new URL('./bizconsole.mjs', import.meta.url), 'utf8');
+  assert.match(src, /@media \(max-width:560px\)/, 'no mobile breakpoint — the console only scales, it does not fit');
+  // A four-column table at 390px either overflows the page sideways or
+  // squeezes every column unreadable. It must scroll inside its own box.
+  assert.match(src, /table\{display:block;overflow-x:auto/, 'wide tables will push the page sideways on a phone');
+  // Under 16px, iOS Safari zooms the page on focus and never zooms back.
+  assert.match(src, /input,select\{font-size:16px\}/, 'inputs under 16px make iOS zoom and stay zoomed');
+});
+
+test('the home-screen prompt appears only where it can work, and only once signed in', () => {
+  const src = readFileSync(new URL('./bizconsole.mjs', import.meta.url), 'utf8');
+  assert.match(src, /function addToHomeScreen\(\)/);
+  // Never on the sign-in page: a stranger asked to install has been asked a
+  // favour; an owner looking at their own dashboard has a reason.
+  const landing = src.slice(src.indexOf('function landing('), src.indexOf('function results('));
+  assert.ok(!/addToHomeScreen\(\)/.test(landing), 'the install ask is on the sign-in page — that is the mistake /install/ made');
+  // An in-app webview (a link tapped inside Gmail or Outlook — exactly how a
+  // merchant arrives from our invitation) cannot install a PWA at all.
+  assert.match(src, /inApp=.*Outlook/s, 'in-app browsers not detected — the button will be dead for anyone arriving from our own email');
+  assert.match(src, /if\(standalone\) return;/, 'the prompt nags someone who already installed it');
+  // A console session lives in the query string. An icon that captured the
+  // current URL would put a credential on a home screen and break on expiry.
+  const fn = src.slice(src.indexOf('function addToHomeScreen'), src.indexOf('function dashboard('));
+  assert.ok(!/location\.href|location\.search/.test(fn), 'the home-screen icon would capture the session URL');
 });

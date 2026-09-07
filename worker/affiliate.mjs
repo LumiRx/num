@@ -30,6 +30,46 @@
  * Add a programme by updating a secret. No deploy, no code review, no
  * credential in the repository.
  *
+ * ── TWO MECHANISMS, AND WHY THE SECOND ONE HAD TO EXIST ──────────────────
+ *
+ * Everything above assumes a programme is a PARAMETER you add to the
+ * merchant's own URL. That is how OpenTable and the smaller engines work, and
+ * for two years it was the only shape this file knew.
+ *
+ * The hotel chains do not work that way. Marriott and Hilton run on
+ * impact.com; IHG runs on Partnerize. Both are CLICK-REDIRECT networks: the
+ * cookie that earns the commission is set by the network's own domain, which
+ * the guest must actually pass through. A ref parameter appended to
+ * `hilton.com/...` sets nothing, is ignored by Hilton, and pays nothing —
+ * while looking, in our own click log, exactly like a tagged link that works.
+ *
+ * That is the worst possible failure: an affiliate table that reports revenue
+ * we are not earning. So a rule may instead carry a `wrap` template:
+ *
+ *   {dest} — the destination URL, percent-encoded
+ *   {sub}  — a short attribution string (see `extra` below)
+ *
+ *   "hilton.com": {
+ *     "wrap": "https://hilton.sjv.io/c/MPID/ADID/CAMPID?subId1={sub}&u={dest}"
+ *   },
+ *   "ihg.com": {
+ *     "wrap": "https://prf.hn/click/camref:CAMREF/pubref:{sub}/destination:{dest}"
+ *   }
+ *
+ * One placeholder mechanism covers both networks — Impact puts its sub-id in
+ * the query and Partnerize puts it in the path, and neither needs a line of
+ * network-specific code here. If a third network appears, it is a string in a
+ * secret, not a deploy.
+ *
+ * ── WHAT {sub} IS FOR, AND WHY IT MATTERS MORE THAN THE FEE ──────────────
+ *
+ * `subId1` (Impact, 64 chars) and `pubref` (Partnerize, 100 chars) come back
+ * on the network's own payout report. So putting a scout's code there means
+ * the question "was this booking one of Adam's?" is answered by HILTON'S
+ * statement, not only by our database. Two independent records that have to
+ * agree is what makes a commission owed to a real person checkable rather
+ * than assertable.
+ *
  * ── THE RULES THAT KEEP THIS HONEST ──────────────────────────────────────
  *
  * 1. **Tagging never changes which place is recommended.** This function runs
@@ -82,6 +122,67 @@ function ruleFor(table, host) {
 }
 
 /**
+ * Build a click-redirect URL from a template.
+ *
+ * @param template  carries `{dest}` and optionally `{sub}`.
+ * @param dest      the destination, already validated as https by the caller.
+ * @param sub       attribution string, or null.
+ *
+ * Returns null — never a half-built URL — when anything is wrong, so the
+ * caller falls back to the untagged link. A guest who cannot reach the hotel
+ * is a worse outcome than a commission we did not earn, every time.
+ *
+ * ── THE ENCODING IS THE WHOLE JOB ────────────────────────────────────────
+ *
+ * `{dest}` is a URL going INSIDE another URL. Its `?`, `&`, `=` and `:` must
+ * be percent-encoded or the network reads the destination's own query string
+ * as its own parameters and sends the guest to the chain's home page — an
+ * error that looks like a working link right up until nobody can find their
+ * hotel. `encodeURIComponent` is correct here and `appendParams` is not,
+ * because this value is a path or parameter of somebody else's URL rather
+ * than a parameter appended to our own.
+ *
+ * Partnerize is the reason `{dest}` is also allowed in a PATH segment
+ * (`/destination:https%3A%2F%2F…`). Same encoding either way.
+ */
+export function wrap(template, dest, sub = null) {
+  const t = String(template ?? '');
+  const d = String(dest ?? '');
+  if (!t || !d) return null;
+  // A template that does not say where the destination goes would silently
+  // send every guest to the network's own landing page.
+  if (!t.includes('{dest}')) return null;
+  // The template is a credential-bearing string typed by hand into a secret.
+  // If it is not itself an https URL, something is wrong with the secret and
+  // guessing is not the right response.
+  if (!/^https:\/\//i.test(t)) return null;
+
+  // Sub-ids are reporting keys, not free text: both networks expect something
+  // short and alphanumeric, and a stray `/` would end a Partnerize path
+  // segment early. 64 is Impact's subId1 limit, the smaller of the two.
+  const s = sub == null ? '' : String(sub).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+
+  const out = t
+    .replace(/\{sub\}/g, encodeURIComponent(s))
+    .replace(/\{dest\}/g, encodeURIComponent(d));
+
+  // Prove it survived templating. A malformed result is a link a guest cannot
+  // follow, which is the one thing this file must never produce.
+  try {
+    const u = new URL(out);
+    if (u.protocol !== 'https:') return null;
+    // Never wrap a link that is already on this network. A double redirect
+    // through the same tracker overwrites the first click's attribution with
+    // the second — which, when a partner sent us the wrapped link in the
+    // first place, is taking a commission that was already theirs.
+    if (new URL(d).hostname.toLowerCase() === u.hostname.toLowerCase()) return null;
+  } catch {
+    return null;
+  }
+  return out;
+}
+
+/**
  * Tag an outbound URL and say what happened to it.
  *
  * `tag()` below is this function's `.url`, and is what every caller that only
@@ -95,6 +196,10 @@ function ruleFor(table, host) {
  *
  * @returns {{url: string, host: string|null, programme: string|null,
  *            tagged: boolean, reason: string}}
+ * `reason` is 'tagged' when a ref parameter landed, 'wrapped' when the link
+ * was rewritten through a click-redirect network, and otherwise says why
+ * neither happened. The two earn money by different mechanisms and a report
+ * that cannot tell them apart cannot be reconciled against a payout.
  * `url` is the tagged URL, or the ORIGINAL string unchanged when there is no
  * rule, the URL is malformed, or a parameter is already present. Never throws
  * and never returns null: a link a guest cannot follow is worse than a link
@@ -121,7 +226,25 @@ export function tagged(url, env, { extra = null } = {}) {
   if (u.protocol !== 'https:') return no('not_https', host);
 
   const { key, rule } = ruleFor(table, u.hostname);
-  if (!rule?.ref) return no('no_programme', host);
+  if (!rule) return no('no_programme', host);
+
+  // ── the click-redirect networks ────────────────────────────────────────
+  //
+  // Checked BEFORE the parameter path, because a rule that has both is a
+  // configuration mistake and the wrap is the one that actually earns.
+  //
+  // The KEY is what signals intent, not its value. A rule whose `wrap` is an
+  // empty string or a typo is a broken programme, and saying so beats
+  // reporting 'no_programme' — which sends whoever is debugging it hunting
+  // for a missing rule that is in fact present and wrong.
+  if (Object.prototype.hasOwnProperty.call(rule, 'wrap')) {
+    const wrapped = wrap(rule.wrap, original, extra);
+    return wrapped
+      ? { url: wrapped, host, programme: key, tagged: true, reason: 'wrapped' }
+      : no('bad_wrap', host, key);
+  }
+
+  if (!rule.ref) return no('no_programme', host);
   const param = String(rule.param || 'ref');
 
   // Somebody else's attribution already on the link stays theirs.
@@ -151,5 +274,10 @@ export const tag = (url, env, opts = {}) => tagged(url, env, opts).url;
 /** Which hosts we currently earn on — for the ops page, not for ranking. */
 export const programmes = (env) =>
   Object.entries(affiliates(env))
-    .filter(([, v]) => v?.ref)
-    .map(([host, v]) => ({ host, param: v.param || 'ref' }));
+    // A wrap rule is a live programme with no `ref` field at all. Filtering on
+    // `ref` alone made every chain invisible on the ops page — reporting that
+    // NUM earns on nothing while it was earning.
+    .filter(([, v]) => v?.ref || v?.wrap)
+    .map(([host, v]) => (v.wrap
+      ? { host, mode: 'wrap', sub: /\{sub\}/.test(String(v.wrap)) }
+      : { host, mode: 'param', param: v.param || 'ref' }));

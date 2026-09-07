@@ -26,6 +26,11 @@ import {
   recordFailure as recordBrainFailure,
   recordSuccess as recordBrainSuccess,
 } from './brainstate.mjs';
+// The default output guard. Imported rather than optional — see the call site.
+import { guardReply } from './router.mjs';
+// The one REPLY_SCHEMA, translated for vendors that promise strict shapes.
+import { REPLY_SCHEMA, normalizeReply } from './prompt.mjs';
+import { responseFormat } from './strictschema.mjs';
 
 export const BRAINS = [
   {
@@ -60,6 +65,47 @@ export const BRAINS = [
     structured: true,
     ready: (env) => !!env.ANTHROPIC_API_KEY,
     note: 'The bulk lane. Recommendations and lookups at a fifth of Opus, with the full schema — so a cheap answer can still offer a booking.',
+  },
+  {
+    // ── THE BACKUP THAT CAN ACTUALLY BOOK (7 Sep 2026) ────────────────────
+    //
+    // Every brain under the two Anthropic ones has been prose-only, and on
+    // 7 Sep they gained `picks` — so a backup answer now arrives as tappable
+    // place cards. What it still could not do was produce a booking card or an
+    // action, and that is the gap that made sixty hours of Anthropic being out
+    // of credit feel like an outage even though nothing errored.
+    //
+    // The reason was never the vendor's intelligence, it was the CONTRACT.
+    // DeepSeek's JSON mode promises "some JSON"; a booking state we merely
+    // hope is well formed is not a booking state. OpenAI's strict mode
+    // promises the response matches a schema we supply — so this brain can be
+    // handed the full REPLY_SCHEMA and trusted with the shape that comes back.
+    // See worker/strictschema.mjs for the translation.
+    //
+    // WHY IT SITS BELOW HAIKU AND ABOVE EVERYTHING ELSE: it is a third
+    // independent bill, it produces the same SHAPE of answer as the Anthropic
+    // lane, and at our measured token shape it costs about $0.002 a turn
+    // against Opus's $0.105. It is the first brain in this list that is both
+    // cheap and complete.
+    //
+    // ACTIONS ARE OFF BY DEFAULT, AND THAT IS NOT A DETAIL. An action makes
+    // something happen in the world — a table requested, a delivery ordered, a
+    // fact remembered. Until 7 Sep only Claude could reach them. Widening that
+    // to a new vendor on its first day, quietly, is exactly the kind of change
+    // that is discovered later rather than decided now. So this brain produces
+    // cards and picks immediately, and `NUM_OPENAI_ACTIONS=1` is the separate,
+    // deliberate decision to let it act — made after watching it, not before.
+    //
+    // Set NUM_OPENAI_BASE_URL (https://api.openai.com/v1), NUM_OPENAI_KEY and
+    // NUM_OPENAI_MODEL (gpt-5-mini). Any vendor with STRICT schema support
+    // fits the same three variables — Gemini and xAI both do.
+    id: 'openai',
+    label: 'GPT-5 mini (strict schema)',
+    kind: 'openai-compatible',
+    structured: true,
+    env: { base: ['NUM_OPENAI_BASE_URL'], key: ['NUM_OPENAI_KEY'], model: ['NUM_OPENAI_MODEL'] },
+    ready: (env) => !!env.NUM_OPENAI_BASE_URL,
+    note: 'A strict-schema brain on a third independent bill — full cards and places, at about 2% of the frontier model. Actions stay off until NUM_OPENAI_ACTIONS=1.',
   },
   {
     // A hosted model on a SEPARATE bill from Anthropic and from Workers AI.
@@ -176,12 +222,27 @@ export function chain(env) {
  *
  * ── WHAT A CHEAP BRAIN IS TRUSTED TO PRODUCE ─────────────────────────────
  *
- * Only two fields: `reply` and `chips`. That is a deliberate boundary, not a
- * limitation we ran out of time to lift.
+ * Three fields: `reply`, `chips` and `picks`. That is a deliberate boundary,
+ * not a limitation we ran out of time to lift.
  *
  *   reply  — prose. Already guarded downstream.
  *   chips  — follow-up suggestions. Pure text, no side effects, and the one
  *            thing everyday turns were actually losing.
+ *   picks  — (added 7 Sep 2026) the places being recommended, as `id`, `name`
+ *            and `why` and NOTHING else. This is safe for exactly the reason
+ *            it is safe on Claude: the model never supplies a link, a phone
+ *            number, an address, an opening time or a bookable flag. Every one
+ *            of those is attached SERVER-SIDE from the verified row by
+ *            placelink.resolvePicks and pickdetail.enrichPicks, and a pick
+ *            that matches no verified row is DROPPED before the guest sees it.
+ *            A model that cannot type a URL cannot get one wrong.
+ *
+ *            Why it was worth adding: from 5 Sep both Anthropic brains were
+ *            out of credit for sixty hours, and for those sixty hours every
+ *            recommendation arrived as a paragraph — no card, no tappable
+ *            phone, no map, no booking offer — because picks were the one
+ *            thing the backup lane could not carry. The backup existed and it
+ *            still felt like an outage. It does not any more.
  *
  * NOT `card`: every card tag in REPLY_SCHEMA is a booking state — confirmed,
  * hold, deposit, paid. A recommendation turn has `card: null` even on Claude,
@@ -202,23 +263,62 @@ export function chain(env) {
  */
 export function readHosted(text) {
   const raw = String(text ?? '').trim();
-  if (!raw) return { reply: '', chips: null };
+  if (!raw) return { reply: '', chips: null, picks: null };
   // A fenced block is the single most common shape when a model is asked for
   // JSON and also told to be conversational.
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(raw);
   const candidate = (fenced ? fenced[1] : raw).trim();
-  if (!candidate.startsWith('{')) return { reply: raw, chips: null };
+  if (!candidate.startsWith('{')) return { reply: raw, chips: null, picks: null };
   let j;
   try {
     j = JSON.parse(candidate);
   } catch {
-    return { reply: raw, chips: null };
+    // TRUNCATED JSON IS THE COMMON FAILURE, AND IT USED TO COST US TWICE.
+    //
+    // DeepSeek's own JSON-mode documentation warns that a low token ceiling
+    // truncates the object and that the API can return empty content. When
+    // that happened the whole broken object became the reply, guardReply
+    // rightly refused to show a guest a half-written `{"reply": "...`, the
+    // turn fell through to a weaker brain — and we had already paid for the
+    // good answer sitting inside the broken wrapper.
+    //
+    // So pull the reply string out by hand. It is the first quoted value after
+    // `"reply":`, with escaped quotes respected; if there is nothing there,
+    // returning an empty reply lets the caller fail the brain honestly rather
+    // than shipping JSON to a person.
+    const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(candidate);
+    if (!m) return { reply: '', chips: null, picks: null };
+    let salvaged;
+    try {
+      salvaged = JSON.parse(`"${m[1]}"`);
+    } catch {
+      salvaged = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+    salvaged = String(salvaged).trim();
+    return salvaged ? { reply: salvaged, chips: null, picks: null } : { reply: '', chips: null, picks: null };
   }
-  if (!j || typeof j !== 'object') return { reply: raw, chips: null };
+  if (!j || typeof j !== 'object') return { reply: raw, chips: null, picks: null };
   const reply = typeof j.reply === 'string' && j.reply.trim() ? j.reply.trim() : null;
   // JSON that parsed but carries no reply is worse than no JSON: returning it
   // would show a guest an empty bubble. Keep the raw text instead.
-  if (!reply) return { reply: raw, chips: null };
+  if (!reply) return { reply: raw, chips: null, picks: null };
+  // ONLY these three keys survive. A hosted brain that invents `card`,
+  // `actions`, `link`, `phone` or `bookable` has them silently ignored — the
+  // boundary is enforced by what is READ, not by what the model was asked for,
+  // because a security rule that lives only in a prompt is a request.
+  const picks = Array.isArray(j.picks)
+    ? j.picks
+        .map((pk) => {
+          if (!pk || typeof pk !== 'object') return null;
+          const name = typeof pk.name === 'string' ? pk.name.trim().slice(0, 120) : '';
+          if (!name) return null;
+          const why = typeof pk.why === 'string' ? pk.why.trim().slice(0, 160) : '';
+          const id = pk.id == null ? null : String(pk.id).slice(0, 60);
+          return { ...(id ? { id } : {}), name, ...(why ? { why } : {}) };
+        })
+        .filter(Boolean)
+        .slice(0, 5)
+    : null;
   const chips = Array.isArray(j.chips)
     ? j.chips
         .map((c) => (typeof c === 'string'
@@ -229,7 +329,7 @@ export function readHosted(text) {
         .filter(Boolean)
         .slice(0, 4)
     : null;
-  return { reply, chips: chips?.length ? chips : null };
+  return { reply, chips: chips?.length ? chips : null, picks: picks?.length ? picks : null };
 }
 
 /**
@@ -248,11 +348,26 @@ function proseSystem({ persona, voice, context, style, json = false }) {
     // returns `{"reply": "..."}` alone is correct, and demanding four chips
     // produces four bad ones.
     json
-      ? 'OUTPUT FORMAT: reply with a single JSON object and nothing else — no code fence, no commentary.\n' +
-        '{"reply": "<your answer, following every rule below>", "chips": [{"id":"short-slug","label":"Under 22 chars"}]}\n' +
+      ? 'OUTPUT FORMAT: reply with a single json object and nothing else — no code fence, no commentary.\n' +
+        '{"reply": "<your answer, following every rule below>", "picks": [{"id":"<id copied from the verified block>","name":"<name copied exactly>","why":"<twelve words or fewer>"}], "chips": [{"id":"short-slug","label":"Under 22 chars"}]}\n' +
         'The `reply` string is the whole message the guest reads; every length, honesty and format rule below applies to it exactly as if you were writing it directly.\n' +
+        // PLACES GO IN `picks`. This is the whole reason the field exists.
+        //
+        // Num attaches the real link, phone, address, walking time and opening
+        // state to each pick from its own verified directory and renders it as
+        // a tappable card. A place named in prose gets none of that — it is a
+        // name in a sentence that a guest standing in a city cannot act on.
+        //
+        // It also has to say "instead of listing them", because the brief
+        // further down TELLS this model to name three places on three short
+        // lines. That instruction is right for a brain with no picks field and
+        // wrong for one with it, and a model handed two rules follows the last
+        // one it can see.
+        'PLACES GO IN `picks`, NOT IN `reply`. When you are recommending somewhere — one place or three — put each one in `picks` and keep `reply` to ONE short framing line plus, at most, one line saying which you would choose. This REPLACES the "three short lines" instruction below: do not also list them in the reply, or the guest reads every name twice.\n' +
+        'Every pick MUST be copied from the verified partners block above — its `id` and `name` exactly as written. A pick that is not in that block is thrown away before the guest sees it, so inventing one costs them the recommendation. Give three when the block holds three.\n' +
+        'Put NOTHING else in a pick. No link, no phone number, no address, no price, no opening hours, no rating — Num attaches all of those itself from its verified records, and it renders each pick as a card with a call button and a map button. Anything you type there is discarded.\n' +
         '`chips` are up to 3 tappable follow-ups — the obvious next thing THIS guest would ask, e.g. "Book a table", "Somewhere cheaper", "How do I get there". Omit chips entirely rather than pad with generic ones.\n' +
-        'Never put JSON, brackets or field names inside the `reply` string itself.'
+        'Never put json, brackets or field names inside the `reply` string itself.'
       : '',
     // The response brain's whole brief. It is NOT a degraded stand-in any
     // more — from 11 Aug it answers the everyday turn by design, so this text
@@ -270,11 +385,11 @@ function proseSystem({ persona, voice, context, style, json = false }) {
       '',
       'NUMBERS — quote a rating, distance or price ONLY if it appears in the context above, verbatim. No "around", no "about", no estimates. A traveller budgets on your numbers.',
       '',
-      'WHAT YOU CANNOT DO: book, hold, cancel, change, charge, or issue a ticket. Never imply you have. No "I\'ve booked", no "that\'s held", no confirmation numbers. If they want something actually booked, say you will get it locked in shortly and ask them to say the word again in a minute.',
+      'WHAT YOU CANNOT DO: book, hold, cancel, change, charge, or issue a ticket. Never imply you have. No "I\'ve booked", no "that\'s held", no confirmation numbers. If they want something actually booked, say plainly what you can do instead — point them at the venue\'s number from the verified block, or the booking link — and never promise it will be "locked in shortly": nothing is queued behind that sentence, so it is a stall dressed as service.',
       '',
       'FORMAT: plain prose. No JSON, no brackets, no markdown headers, no bullet lists, no role labels, no emoji. Reply in the language the guest wrote in.',
       '',
-      'ONE GOOD PICK beats three hedged ones. Name it, give the single detail that makes it right for them (distance, or rating, or the thing they asked for), offer the next step in six words or fewer.',
+      'FOR EVERYTHING THAT IS NOT A PLACE — a time, a route, which product, yes or no — ONE answer with its single deciding detail, then the next step in six words or fewer. Three is for places (above); one is for decisions. Never hedge across both.',
     ].join('\n'),
   ]
     .filter(Boolean)
@@ -328,6 +443,78 @@ function extractText(res) {
 /** Workers AI and OpenAI-compatible endpoints both take chat messages.
  *  `model` overrides the brain's default — used by the director for per-class
  *  model selection (flash for bulk, kimi for harder prose). */
+/**
+ * A STRUCTURED call to an OpenAI-compatible vendor.
+ *
+ * The same REPLY_SCHEMA the Anthropic lane uses, translated into strict mode
+ * (strictschema.mjs) and sent as `response_format`. Strict mode means the
+ * vendor guarantees the shape, which is the entire reason this path is allowed
+ * to produce cards at all — see the header on the `openai` brain.
+ *
+ * Deliberately its own function rather than a flag on callProse: the prose
+ * path is tolerant by construction, falling back to "the whole text is the
+ * reply" whenever parsing fails, and that tolerance is exactly wrong here. A
+ * booking card recovered from half-parsed text is worse than no card. So this
+ * path is strict all the way down: if the shape is not what we asked for, it
+ * throws and the chain moves on.
+ */
+async function callStructuredJson(env, brain, { messages, system, model = null, maxTokens = 1400 }) {
+  const pick = (names) => names.map((n) => env[n]).find((v) => v);
+  const base = String(pick(brain.env.base)).replace(/\/+$/, '');
+  const key = pick(brain.env.key);
+  // Same rule as the prose path, same reason: guest conversations and a bearer
+  // key travel in this request, and over http they travel readable.
+  if (!/^https:\/\//.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/.test(base)) {
+    throw new Error(`${brain.id} base URL must be https (or localhost) — refusing to send guest data in cleartext`);
+  }
+
+  const format = responseFormat(REPLY_SCHEMA);
+  // A schema that cannot be expressed strictly is a reason to SKIP this brain,
+  // not a reason to send it loosely and hope. strictschema.problems() has
+  // already logged what was wrong.
+  if (!format) throw new Error(`${brain.id} cannot be sent the reply schema strictly`);
+
+  const res = await fetch(`${base}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+    body: JSON.stringify({
+      model: model || pick(brain.env.model) || 'gpt-5-mini',
+      messages: [{ role: 'system', content: system }, ...messages.slice(-8)],
+      max_completion_tokens: maxTokens,
+      response_format: format,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const why = await res.text().catch(() => '');
+    const err = new Error(`${brain.id} HTTP ${res.status}${why ? ` — ${why.slice(0, 160)}` : ''}`);
+    // Carried so brainstate.classify() files a 402 as `quota` rather than
+    // retrying it every twenty seconds for ever.
+    err.status = res.status;
+    throw err;
+  }
+
+  const body = await res.json();
+  const choice = body?.choices?.[0];
+  // A vendor refusal is a first-class field in strict mode, not an error. It
+  // means the model declined rather than failed, and the honest handling is to
+  // let the chain try somebody else rather than show a guest a refusal aimed
+  // at us.
+  if (choice?.message?.refusal) throw new Error(`${brain.id} refused: ${String(choice.message.refusal).slice(0, 120)}`);
+  if (choice?.finish_reason === 'length') throw new Error(`${brain.id} ran out of room mid-object`);
+
+  const text = extractText(body);
+  if (!text) throw new Error(`${brain.id} returned nothing (fields: ${Object.keys(choice?.message ?? body ?? {}).join(',') || 'none'})`);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`${brain.id} returned unparseable JSON despite strict mode`);
+  }
+  return { reply: normalizeReply(parsed), usage: body?.usage ?? null, model: body?.model ?? model ?? null };
+}
+
 async function callProse(env, brain, { messages, system, maxTokens = 700, model = null, wantJson = false }) {
   const chat = [{ role: 'system', content: system }, ...messages.slice(-8)];
 
@@ -377,10 +564,34 @@ async function callProse(env, brain, { messages, system, maxTokens = 700, model 
       // A brain behind a home tunnel must never hold a user's turn hostage.
       signal: AbortSignal.timeout(20_000),
     });
-    if (!res.ok) throw new Error(`${brain.id} HTTP ${res.status}`);
+    // 6 Sep 2026: carry the STATUS on the error, not just in its text.
+    // `brainstate.classify()` reads `err.status` first and only then pattern-
+    // matches the message — so a bare `Error("hosted HTTP 402")` was being
+    // filed as `transient` and retried every 20 seconds, for ever, silently.
+    // A provider that is out of credit or has a dead key is not transient, and
+    // the difference is the difference between an alert and an eternal shrug.
+    if (!res.ok) {
+      const why = await res.text().catch(() => '');
+      const err = new Error(`${brain.id} HTTP ${res.status}${why ? ` — ${why.slice(0, 160)}` : ''}`);
+      err.status = res.status;
+      throw err;
+    }
     const body = await res.json();
-    const text = body?.choices?.[0]?.message?.content ?? '';
-    if (!text) throw new Error(`${brain.id} returned nothing`);
+    // Read the SAME way Workers AI is read.
+    //
+    // This path used to look in exactly one place — `choices[0].message.content`
+    // — while the Workers AI path next door used `extractText`, which also
+    // knows about content arrays and `reasoning_content`. Reasoning models
+    // (deepseek among them) routinely answer with `content` empty and the
+    // answer in a sibling field, so a perfectly good, already-PAID-FOR reply
+    // was thrown away and the turn fell through to a weaker brain. The brain
+    // was billed and the guest got the worse answer: the most expensive
+    // possible way to fail. Same reader, both paths, one behaviour.
+    const text = extractText(body);
+    if (!text) {
+      const shape = Object.keys(body?.choices?.[0]?.message ?? body ?? {}).join(',') || 'none';
+      throw new Error(`${brain.id} returned nothing (fields: ${shape})`);
+    }
     // The vendor's own token counts. Dropping these on the floor is why every
     // DeepSeek day cost $0.00 in our ledger — see console.mjs PRICES.
     return { text, usage: body?.usage ?? null, model: body?.model ?? model ?? pick(brain.env.model) ?? null };
@@ -438,6 +649,42 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
   for (const brain of order) {
     const started = Date.now();
     try {
+      // A STRUCTURED brain that is not Anthropic. Same schema, same shape of
+      // answer, different vendor and a different bill — and, until somebody
+      // says otherwise, no ability to act. See canAct().
+      if (brain.structured && brain.kind === 'openai-compatible') {
+        const modelFor = (directive?.steps ?? []).find((s2) => s2.brain === brain.id)?.model ?? null;
+        const out = await callStructuredJson(env, brain, {
+          messages,
+          // The FULL concierge system prompt, exactly as the Anthropic lane
+          // gets it. A brain producing the same schema on a thinner brief
+          // would produce the same shape and a worse answer, which is the
+          // harder failure to notice.
+          system: [persona, voice, context, style].filter(Boolean).join('\n\n'),
+          model: modelFor,
+        });
+        const clean = (guard ?? guardReply)(out.reply?.reply ?? '');
+        if (!clean.ok) throw new Error(`${brain.id} output failed the guard`);
+        await recordBrainSuccess(env, brain.id, state);
+        const mayAct = canAct(brain, env);
+        return {
+          ...out.reply,
+          reply: clean.cleaned,
+          // Stripped unless this brain has been explicitly trusted to act.
+          // An action makes something happen in the world; a card only says
+          // that something already did.
+          actions: mayAct ? (out.reply?.actions ?? []) : [],
+          _brain: brain.id,
+          _tried: tried,
+          _ms: Date.now() - started,
+          _usage: out.usage,
+          _model: out.model,
+          // Not degraded: this brain produced the same schema the Anthropic
+          // lane produces. It is degraded only when the turn wanted an action
+          // it is not allowed to take.
+          _degraded: !mayAct && (out.reply?.actions?.length ?? 0) > 0,
+        };
+      }
       if (brain.structured) {
         // The directive names WHICH Anthropic model this tier deserves —
         // Haiku for the bulk, Opus for money and trouble. Without passing it
@@ -447,7 +694,11 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
           (directive?.steps ?? []).find((s2) => s2.brain === brain.id)?.model ?? null;
         const out = await structuredCall(null, structuredModel);
         await recordBrainSuccess(env, brain.id, state);
-        return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started, _model: structuredModel };
+        // `?? out._model`: when the directive names no model for this brain,
+        // structuredModel is null and used to overwrite the model askNum
+        // actually chose — so every un-directed Claude turn priced at the
+        // default rate whether pickModel had chosen Opus or Sonnet.
+        return { ...out, _brain: brain.id, _tried: tried, _ms: Date.now() - started, _model: structuredModel ?? out._model ?? null };
       }
       // The director may name a model for this brain (per-class override).
       // Match the FIRST step naming this brain — not step 0. With the chain
@@ -467,15 +718,36 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
         system: proseSystem({ persona, voice, context, style, json: wantJson }),
         model: modelOverride,
         wantJson,
+        // Room for the wrapper AND three picks. 700 was set when the object
+        // held a reply and three chips; picks add roughly a third again, and a
+        // reasoning model spends tokens thinking before it writes any of it.
+        // A ceiling that truncates the object is not a saving — the answer is
+        // billed either way and then thrown away. See the salvage in
+        // readHosted for what truncation actually cost us.
+        ...(wantJson ? { maxTokens: 1100 } : {}),
       });
-      const read = wantJson ? readHosted(prose.text) : { reply: prose.text, chips: null };
-      const clean = guard ? guard(read.reply) : { ok: true, cleaned: read.reply };
+      const read = wantJson ? readHosted(prose.text) : { reply: prose.text, chips: null, picks: null };
+      // The guard is NOT optional. It used to be — `guard ? … : passthrough`
+      // — which meant any future caller that forgot the argument would ship
+      // raw model text to a guest. One forgotten parameter should not be able
+      // to undo worker/router.mjs. Callers may pass a stricter guard; nobody
+      // gets to pass none.
+      const clean = (guard ?? guardReply)(read.reply);
       if (!clean.ok) throw new Error(`${brain.id} output failed the guard`);
       await recordBrainSuccess(env, brain.id, state);
       return {
         reply: clean.cleaned,
+        // NEVER a card and NEVER an action from this lane, whatever the model
+        // returned. Every card tag is a booking state and every action makes
+        // something happen in the world; a prose brain reaches neither. That
+        // boundary is unchanged and is not negotiable.
         card: null,
         chips: read.chips,
+        // Places, though, are safe: the model supplies a name and a reason,
+        // and index.mjs resolves each one against the verified row it was
+        // shown. An unmatched pick is dropped, and nothing actionable on a
+        // pick ever came from the model. See readHosted.
+        picks: read.picks,
         actions: [],
         _brain: brain.id,
         // DEGRADED MEANS "THIS TURN NEEDED SOMETHING WE COULD NOT DO", not
@@ -581,6 +853,42 @@ export async function probe(env) {
   return out;
 }
 
+/**
+ * Can this brain name places the app will render as cards?
+ *
+ * Not the same question as `structured`. A structured brain produces the whole
+ * REPLY_SCHEMA — picks, cards, actions, bookings. The hosted JSON lane
+ * produces picks and nothing else that matters, which is enough for a
+ * recommendation to arrive with a link, a map and a phone number instead of as
+ * a paragraph. Workers AI stays on plain prose: those models are small enough
+ * that asking for a wrapper reliably costs more answers than it gains.
+ *
+ * Stated as a function so /api/brains can report it, because "the backup can
+ * still show you a restaurant card" is the single most useful thing to know
+ * about the chain on a night the top of it is down.
+ */
+/**
+ * May this brain's actions actually run?
+ *
+ * An action is the only thing a brain produces that changes the world — a
+ * table requested, a delivery placed, a fact written to somebody's record.
+ * Claude has always been the only brain allowed to reach them, and that stays
+ * true unless somebody deliberately says otherwise for a specific brain.
+ *
+ * Stated as a function rather than a field so the answer can depend on env:
+ * turning it on is a secret, not a deploy, which means it can also be turned
+ * off in the same instant if the answers are wrong.
+ */
+export const canAct = (brain, env = {}) => {
+  if (!brain?.structured) return false;
+  if (brain.kind === 'anthropic') return true;
+  if (brain.id === 'openai') return env.NUM_OPENAI_ACTIONS === '1';
+  return false;
+};
+
+export const emitsPicks = (brain) =>
+  !!brain && (brain.structured === true || brain.kind === 'openai-compatible');
+
 /** For the operator dashboard: what is wired up, and what each one is for. */
 export const roster = (env) =>
   BRAINS.map((b) => ({
@@ -594,6 +902,11 @@ export const roster = (env) =>
     // secret; who we are talking to must never be.
     model: b.model ?? (b.env?.model ? (b.env.model.map((n) => env[n]).find((v) => v) ?? null) : null),
     structured: b.structured,
+    picks: emitsPicks(b),
+    // Said out loud on the roster because "it can produce a booking card" and
+    // "it is allowed to actually request the booking" are different claims,
+    // and on a bad night the difference is the whole question.
+    can_act: canAct(b, env),
     ready: b.ready(env),
     note: b.note ?? null,
     in_chain: chain(env).some((c) => c.id === b.id),

@@ -109,6 +109,18 @@ export function parseHours(text) {
   if (!s) return null;
   // Quoted comments carry no schedule and break the tokeniser.
   s = s.replace(/"[^"]*"/g, ' ').trim();
+  // Two OSM spellings that refused 3 Sep 2026's backfill and mean something
+  // simple: `PH,Mo-Su …` says "public holidays too", which changes nothing
+  // about the weekly mask; `23:59+` says "open until at least", which for a
+  // weekly grid is the same hour. Both are normalised, not guessed at.
+  // A rule that is ONLY about public holidays (`PH off`, `PH 10:00-14:00`)
+  // says nothing about the weekly grid and is dropped whole; a `PH,` prefix on
+  // a weekly rule is just dropped.
+  s = s.split(';').map((r) => r.trim()).filter((r) => r && !/^ph(\s|$)/.test(r))
+    .map((r) => r.replace(/(^|[,\s])ph(?=[,\s])/g, '$1').replace(/^[,\s]+/, ''))
+    .join('; ');
+  s = s.replace(/(\d{1,2}:\d{2})\+/g, '$1');
+  s = s.trim();
   if (!s) return null;
   if (/^(24\/7|24x7|open 24 hours)$/.test(s)) { const m = empty(); m.fill(0xff); return m; }
   // Anything with grammar we do not model is refused outright rather than

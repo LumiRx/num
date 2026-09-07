@@ -173,11 +173,29 @@ export function validatePayload(raw) {
  * the header entirely for anything else — a cross-site page can still POST,
  * but the browser won't let it read the response.
  */
+/* Our own marketing site, by exact origin.
+ *
+ * An EXACT LIST, never a pattern. `/itsnum\.com$/` also matches
+ * `https://evilitsnum.com`, and a regex on your own domain is the classic way
+ * an allowlist quietly stops being one. Three literals cost nothing to read.
+ *
+ * Why this exists: the concierge answers unauthenticated on /api/num, but only
+ * app.itsnum.com could reach it from a browser — so itsnum.com could show
+ * pictures of Num and never Num itself. Every visitor had to be talked into a
+ * second page before the product could say a single word, and on 1 Sep 2026
+ * the marketing homepage had taken 577 paid visitors and recorded zero scroll
+ * events and zero first messages. Ever.
+ */
+export const SITE_ORIGINS = Object.freeze([
+  'https://itsnum.com',
+  'https://www.itsnum.com',
+]);
+
 export function corsHeaders(request, selfOrigin) {
   const origin = request.headers.get('Origin');
   const allowed =
     origin &&
-    (origin === selfOrigin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || /^(capacitor|ionic):\/\/localhost$/.test(origin));
+    (origin === selfOrigin || SITE_ORIGINS.includes(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || /^(capacitor|ionic):\/\/localhost$/.test(origin));
   return {
     // X-Partner-Key belongs here for the same reason Content-Type does: it is
     // a header a browser will actually send. The partner surfaces authenticate

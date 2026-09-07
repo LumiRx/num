@@ -46,6 +46,33 @@
     // is what makes public/sitemap.xml the real one. Do not remove it without
     // first checking what num-biz-site still serves.
     { "pattern": "itsnum.com/sitemap.xml", "zone_name": "itsnum.com" },
+    // /business claimed EXPLICITLY, for exactly the same reason and by exactly
+    // the same mechanism as /sitemap.xml above.
+    //
+    // 31 Aug 2026: `npm run mcp:integrity` reported six UNDOCUMENTED failures —
+    // the published business page named none of the six MCP tools. It named
+    // all six locally. `npx wrangler deploy` then said "No updated asset files
+    // to upload", which was true and looked like a contradiction.
+    //
+    // It was not. www.itsnum.com/business/ served the correct 17,471-byte page
+    // and itsnum.com/business/ served a 15,929-byte one with a different
+    // <title>. Same worker, same config, two hostnames, two answers — because
+    // num-biz-site (deployed 9 Aug, source not in this repo) holds a prefix
+    // route on the apex and beats this file's itsnum.com/* catch-all. The
+    // page anyone edits here was reaching almost nobody.
+    //
+    // BOTH spellings, because a route without a wildcard matches ONE exact URL
+    // and /business and /business/ are two.
+    //
+    // Deliberately NOT "itsnum.com/business*": num-biz-site is the only thing
+    // serving /business/pricing/, /business/verification/ and
+    // /business/signup/ — all three are live, all three return 200, and none
+    // of them exists in public/. A wildcard here would 404 the page businesses
+    // sign up on. Claim the two URLs we can actually serve and leave the rest
+    // where they are until that worker's source is found or its pages are
+    // rehomed.
+    { "pattern": "itsnum.com/business",  "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/business/", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/signin*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/console*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/privacy*", "zone_name": "itsnum.com" },

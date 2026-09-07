@@ -19,6 +19,10 @@
 // Ranking is deliberate: the first entry is the one most people there actually
 // use, so "the easiest way" means something.
 
+// issuer.mjs owns the question of who can put a ticket in somebody's hand.
+// It does not import this file back — the dependency runs one way on purpose.
+import { canIssue } from './issuer.mjs';
+
 /** ISO-3166 alpha-2 → the providers worth naming there, best first. */
 const BY_COUNTRY = {
   TH: {
@@ -406,12 +410,32 @@ export function optionsFor(kind, ctxIn = {}, env = {}) {
  * connected, without being told where connection stops, will book something
  * that does not exist.
  */
+/**
+ * Can Num put a ticket in somebody's hand ITSELF?
+ *
+ * Booking is a separate permission from shopping and is off by default even
+ * when the credentials that could do it are present. Sabre shops but does not
+ * issue; Duffel could issue but whether Num becomes merchant of record is a
+ * legal decision (see the §17550 note below), not a consequence of holding an
+ * access token.
+ *
+ * Exported because the LetsGo2Trip fallback in letsgo2trip.mjs asks the same
+ * question, and two places with their own opinion about whether Num can book
+ * is how a fallback quietly becomes the primary route — or stops firing on
+ * the day Num finally can issue and nobody notices. One definition.
+ */
+export const canIssueFlight = (env) =>
+  (env?.SABRE_BOOKING_ENABLED === 'true' && !!env?.SABRE_BOOKING_PATHS)
+  // Or a configured issuer that actually issues. `canIssue` is false for the
+  // simulator by construction — see issuer.mjs — so running the full booking
+  // pipeline for a demo cannot make the concierge tell a real traveller that
+  // Num can book their flight.
+  || canIssue(env);
+
 function airBlock(env) {
   const air = connected(env, 'sabre_air');
   const stay = connected(env, 'sabre_hotel');
-  // Booking is a separate permission from shopping and is off by default even
-  // when the credentials that could do it are present.
-  const canBook = env.SABRE_BOOKING_ENABLED === 'true' && !!env.SABRE_BOOKING_PATHS;
+  const canBook = canIssueFlight(env);
   if (!air && !stay) {
     return (
       '\n\nFLIGHTS & HOTELS: you cannot see live fares, so never state a price as current and never claim a fare is the ' +

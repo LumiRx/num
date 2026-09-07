@@ -83,6 +83,48 @@ export const REPLY_TRIAGE = charter({
   requires: ['inbox_configured'],
 });
 
-export const ROSTER = Object.freeze([OUTREACH_EMAIL, OUTREACH_SMS, REPLY_TRIAGE]);
+/* ── the closer ──────────────────────────────────────────────────────────
+   Asked for on 30 Aug: "get us a business signed up in the next 24 hours".
+
+   The tempting build is OUTREACH_EMAIL with the brakes off — 92,198 addresses
+   sit in `leads` untouched. This is deliberately the opposite. NUM has already
+   written to 1,051 businesses; exactly one filled in the claim form, six days
+   ago, and is still waiting. A funnel that ignores the person who said yes
+   does not have a top-of-funnel problem, and a wider net would only have
+   produced a second person to ignore.
+
+   So the budget is small on purpose. `perDay: 12` is not timidity — this agent
+   is measured on one signed merchant, and an agent measured on one outcome
+   that is allowed to send a thousand emails will send a thousand emails.
+
+   It carries NO windows, unlike the other two. The Tue/Wed/Thu ramp exists to
+   keep a cold campaign from burning the sending domain; answering somebody who
+   wrote to us first is correspondence, not campaign, and making Adam wait
+   until Tuesday because a cron says so is the failure this agent was created
+   to end. The ramp still binds every cold contact it touches, because
+   FORBIDDEN.outrun_ramp is merged in below and names no exception. */
+export const FIRST_CLOSE = charter({
+  id: 'first-close',
+  role: 'Convert the single warmest business contact NUM already holds into a signed, logged-in merchant.',
+  may: [
+    'Answer a business that filled in the claim form, before contacting anybody who did not.',
+    'Verify a claim against evidence the claimant supplies, and approve or refuse it.',
+    'Walk a named person at that business through claiming, logging in and correcting their listing.',
+    'Quote the rate they will be billed, exactly as worker/commission.mjs computes it, before any booking exists.',
+    'Say plainly that nothing is owed until a traveller completes a booking — that is the offer, not a concession.',
+    'Escalate to a human the moment the business asks for anything NUM has not built.',
+  ],
+  never: [
+    'Contact a cold lead while a claim sits unanswered. The queue is ranked and the ranking is the point.',
+    'Promise a booking, a traveller, or a volume. NUM had 380 asks from roughly nineteen people; saying more than that is inventing demand.',
+    'Describe a signed merchant as a paying one. Every NUM rate bills after a completed booking, so signed and paying are different days.',
+    'Offer a discount, a free period or a rate outside commission.mjs to close faster. A rate agreed under deadline pressure is a rate renegotiated in public later.',
+    'Approve a claim without evidence, however plausible the claimant sounds and however much we want the number.',
+  ],
+  budget: { perRun: 4, perDay: 12 },
+  requires: ['resend_key_present', 'send_path_proven', 'inbox_configured'],
+});
+
+export const ROSTER = Object.freeze([OUTREACH_EMAIL, OUTREACH_SMS, REPLY_TRIAGE, FIRST_CLOSE]);
 
 export const byId = (id) => ROSTER.find((c) => c.id === id) || null;

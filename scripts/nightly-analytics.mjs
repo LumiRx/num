@@ -100,6 +100,9 @@ const OWNED_TABLES = {
   num_star_balances: 'worker/social.mjs — current balance per member',
   num_place_impressions: 'worker/impressions.mjs — which business Num actually showed',
   num_affiliate_clicks: 'worker/affiliateclicks.mjs — outbound partner links handed over, and whether they were tagged',
+  num_scouts: 'worker/migrations/0006_scouts.sql — people credited with introducing a business',
+  num_scout_places: 'worker/migrations/0006_scouts.sql — one business, one scout, first come',
+  num_scout_earnings: 'worker/migrations/0006_scouts.sql — what a scout is owed, gated on real revenue',
   num_health: 'worker/health.mjs — 5-minute self-check verdicts',
   num_brain_events: 'worker/brainstate.mjs — brain failures and their class',
   num_answer_cache: 'worker/answercache.mjs — cached concierge answers',
@@ -639,8 +642,8 @@ function metrics(d) {
         'as traffic delivered.\n' +
         'Two call sites write it: worker/index.mjs (surface=service_option — every provider link in a ' +
         'concierge reply, and today the only one that fires) and worker/openapi.mjs (surface=book_link ' +
-        '— POST /api/book/link, which returns bookable:false for every venue because 0 rows in ' +
-        '`places` carry a booking_platform).\n' +
+        '— POST /api/book/link, which returns bookable:false for almost every venue because only a ' +
+        'handful of rows in `places` carry a booking_platform).\n' +
         'tagged=1 means a ref parameter actually landed on the URL, so the destination could pay us. ' +
         'tagged=0 means we handed the traffic away for nothing — and the hosts at the top of that ' +
         'list, ranked by volume, ARE the list of programmes to apply for next. That is what this ' +
@@ -658,6 +661,72 @@ function metrics(d) {
             WHERE event = 'handoff' AND ts >= strftime('%s','now','-${d} days')
             GROUP BY host, programme
             ORDER BY handoffs DESC`,
+    }),
+
+    M({
+      id: 'sourced_handoffs',
+      section: 'money',
+      definition:
+        'Handoffs for venues somebody INTRODUCED, grouped by the scout credited with them.\n' +
+        'This is the answer to "if we use one of the links Adam and Sean brought us, is their ' +
+        'commission tied to it" — a question that had no answer anywhere in the system until ' +
+        'num_affiliate_clicks.place_id and .scout_id existed, because the click log recorded a HOST ' +
+        '(synxis.com, one engine a thousand hotels share) and never the PLACE.\n' +
+        'scout_id is COPIED onto the row at the moment of the handoff, not joined at read time. So ' +
+        'this number keeps saying what it said even after an introduction is transferred, ended or ' +
+        'voided — it is a record of what happened, not a live view of the programme.\n' +
+        'HANDOFFS ARE NOT MONEY, and this is the metric where that mistake would be most expensive. ' +
+        'A handoff is a link Num put in front of a guest; whether anyone booked is known only to the ' +
+        "booking platform, and what NUM collected on it lives in num_commissions. Nothing here is " +
+        'owed to anybody. What is owed is num_scout_earnings, gated on the venue having produced its ' +
+        'first finder_gate_minor of real revenue — see worker/migrations/0006_scouts.sql for why ' +
+        'paying on anything earlier is a trap.\n' +
+        'attributed_places < the scout\'s total introductions is normal and not a fault: it counts ' +
+        'the venues whose links were actually handed out in the window.',
+      requires: ['num_affiliate_clicks', 'num_scouts'],
+      sql: `SELECT COALESCE(s.name, '(scout ' || a.scout_id || ')') AS scout,
+                   s.code AS code,
+                   COUNT(*) AS handoffs,
+                   COUNT(DISTINCT a.place_id) AS attributed_places,
+                   SUM(CASE WHEN a.tagged = 1 THEN 1 ELSE 0 END) AS tagged_handoffs,
+                   COUNT(DISTINCT a.host) AS hosts,
+                   MAX(a.ts) AS last_ts
+            FROM num_affiliate_clicks a
+            LEFT JOIN num_scouts s ON s.id = a.scout_id
+            WHERE a.scout_id IS NOT NULL
+              AND a.event = 'handoff'
+              AND a.ts >= strftime('%s','now','-${d} days')
+            GROUP BY a.scout_id
+            ORDER BY handoffs DESC`,
+    }),
+
+    M({
+      id: 'unattributed_bookable_handoffs',
+      section: 'money',
+      definition:
+        'Venue booking links handed out for places NOBODY is credited with. The counterpart to ' +
+        'sourced_handoffs, and the more useful of the two while the scout programme is young: a ' +
+        'venue appearing here with real volume is either genuinely unsourced, or an introduction ' +
+        'that was never recorded. The second case is the expensive one, because usage that happens ' +
+        'before a record exists is usage nobody can ever reconstruct.\n' +
+        'Rows with a NULL place_id are excluded on purpose — those are city-level provider links ' +
+        '(a ride app, an airline) which belong to nobody in particular and never will.',
+      requires: ['num_affiliate_clicks'],
+      sql: `SELECT a.place_id,
+                   COALESCE(p.name, '(unknown place)') AS name,
+                   a.dest AS dest,
+                   COUNT(*) AS handoffs,
+                   COUNT(DISTINCT a.host) AS hosts,
+                   MAX(a.ts) AS last_ts
+            FROM num_affiliate_clicks a
+            LEFT JOIN places p ON p.id = a.place_id
+            WHERE a.place_id IS NOT NULL
+              AND a.scout_id IS NULL
+              AND a.event = 'handoff'
+              AND a.ts >= strftime('%s','now','-${d} days')
+            GROUP BY a.place_id
+            ORDER BY handoffs DESC
+            LIMIT 25`,
     }),
 
     /* ══════════════════ 5 · THE 5arz LINK RATE ══════════════════ */

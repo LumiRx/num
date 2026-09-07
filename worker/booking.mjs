@@ -325,6 +325,82 @@ export const PLATFORMS = {
     pattern: /([\w-]+)\.roomraccoon\.co(?:m|\.uk)/i,
     link: (ref) => `https://${ref}.roomraccoon.com`,
   },
+
+  /* ── THE CHAINS ────────────────────────────────────────────────────────
+   *
+   * Everything above is an independent hotel's own engine. These three are
+   * the big brands' own booking sites, and they behave differently in one
+   * way that matters: a chain property is identified by a SHORT CODE that
+   * appears in both its marketing URL and its booking URL.
+   *
+   *   Hilton    ednchqq   hilton.com/en/hotels/ednchqq-…       ctyhocn=
+   *   Marriott  edilg     marriott.com/en-gb/hotels/edilg-…    propertyCode=
+   *   IHG       edigs     ihg.com/…/edigs/hoteldetail          hotelCode=
+   *
+   * That is what makes them worth adding: the code is already sitting in
+   * `places.website` on rows the directory has had all along, so a scrape
+   * that has already run can name the property exactly. No guessing from a
+   * hotel name, which is the failure mode that puts a guest at the wrong
+   * Sheraton.
+   *
+   * NONE OF THE THREE PREFILLS DATES, deliberately. Each of these engines
+   * answers HTTP 200 to any query string it does not recognise, so an
+   * invented `checkInDate` yields a page that opens cleanly on TODAY while
+   * the traveller believes they are looking at their weekend — a failure
+   * nobody sees until someone arrives at a hotel with no room. Omitting
+   * `dates` makes `bookingLink().dated` report false, which is what stops
+   * NUM saying "dates already filled in" over a link that has none. If the
+   * chains' date parameters are ever read off a live page, they can be added
+   * then and not before.
+   *
+   * The deep-link ENDPOINTS below came from a partner's list rather than
+   * from a page NUM has opened itself. They are the same forms the brands
+   * publish, and the property codes in them are confirmed against
+   * `places.website` — but the endpoint shape is second-hand, so a link that
+   * ever stops resolving should be checked here first.
+   */
+
+  hilton: {
+    // Same label as every independent engine above, and for the same reason:
+    // the label is what a guest READS, and its job is to say the reservation
+    // lands with the hotel rather than an OTA. hilton.com is the hotel's own
+    // site — no OTA commission, no third party holding the booking — so the
+    // sentence is true here too. The brand is not hidden; it travels as
+    // `booking.platform` in the API response, where a caller can use it
+    // without a guest being told they are booking somewhere they are not.
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Either the booking deep link (ctyhocn=) or the property page path.
+    pattern: /hilton\.com\/[^"'\s]*?(?:ctyhocn=([A-Za-z0-9]{5,8})|\/hotels\/([a-z0-9]{5,8})-)/i,
+    link: (ref) =>
+      `https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=${String(ref).toUpperCase()}`,
+  },
+
+  marriott: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // Three live shapes, all seen in the directory today:
+    //   /reservation/availability.mi?propertyCode=edilg
+    //   /en-gb/hotels/edilg-the-edinburgh-grand-…/overview/
+    //   /hotels/travel/EDISI            ← older form, ends at the code
+    // The lookahead is what lets the last one match without a trailing
+    // character to anchor on.
+    pattern: /marriott\.com\/[^"'\s]*?(?:propertyCode=([A-Za-z0-9]{5,7})|hotels\/(?:travel\/)?([A-Za-z0-9]{5,7})(?=[-/?#]|$))/i,
+    link: (ref) =>
+      `https://www.marriott.com/reservation/availability.mi?propertyCode=${String(ref).toLowerCase()}`,
+  },
+
+  ihg: {
+    label: 'the hotel’s own booking page',
+    kind: 'stay',
+    mode: 'deeplink',
+    // IHG puts the code in the path segment before /hoteldetail, across every
+    // brand: intercontinental/…/edigs/hoteldetail, kimptonhotels/…/edics/…
+    pattern: /ihg\.com\/[^"'\s]*?(?:hotelCode=([A-Za-z0-9]{5,7})|\/([a-z0-9]{5,7})\/hoteldetail)/i,
+    link: (ref) => `https://www.ihg.com/redirect?hotelCode=${String(ref).toUpperCase()}`,
+  },
 };
 
 /** The engines whose date parameters have been confirmed on a live page. */
@@ -407,6 +483,95 @@ export function bookingLink(place, when = {}) {
   } catch {
     return null;
   }
+}
+
+/* ──────────────────────── when we have no ref for the venue ───────────────
+ *
+ * 6 Sep 2026. `bookingLink` above needs a STORED ref — the venue's own id on
+ * OpenTable or Resy. Across 2.7 million places we hold exactly 17 of those,
+ * and every one is a hotel. So for restaurants — the thing guests actually ask
+ * for — the deeplink path returns null and the guest is handed nothing.
+ *
+ * That is the wrong end of the promise. Num's own booking desk is the good
+ * answer and stays first: we have a phone number for 1.86 million places, and
+ * texting the venue ends in a table that is actually held. But when the desk
+ * cannot serve — no phone on file, or a guest who would rather do it
+ * themselves — the honest fallback is not silence. It is the same thing a
+ * concierge would say: "they take bookings on OpenTable, here it is."
+ *
+ * A SEARCH link needs no ref. It is one degree less convenient than a
+ * deeplink and infinitely better than a dead end, and it never pretends to be
+ * a reservation — `mode: 'search'` is how the app knows to label the button
+ * "Find a table on OpenTable" rather than "Book".
+ *
+ * Region matters: OpenTable is thin in Thailand where Num's guests actually
+ * are, and TheFork/Chope are not. So the platform offered is chosen by the
+ * place's country, not by which brand is most famous in California.
+ */
+const SEARCH_ENGINES = Object.freeze({
+  opentable: {
+    label: 'OpenTable',
+    url: (q) => `https://www.opentable.com/s?term=${encodeURIComponent(q)}`,
+  },
+  thefork: {
+    label: 'TheFork',
+    url: (q) => `https://www.thefork.com/search?cityName=${encodeURIComponent(q)}`,
+  },
+  chope: {
+    label: 'Chope',
+    url: (q) => `https://www.chope.co/search?q=${encodeURIComponent(q)}`,
+  },
+});
+
+/**
+ * Which engine a country's diners actually use. Anything not listed gets
+ * OpenTable, which is the broadest — never nothing.
+ */
+const ENGINE_BY_COUNTRY = Object.freeze({
+  TH: 'chope', SG: 'chope', HK: 'chope', MY: 'chope', ID: 'chope',
+  FR: 'thefork', ES: 'thefork', IT: 'thefork', PT: 'thefork', BE: 'thefork', CH: 'thefork',
+  US: 'opentable', CA: 'opentable', GB: 'opentable', IE: 'opentable', AU: 'opentable',
+  AE: 'opentable', JP: 'opentable', DE: 'opentable', NL: 'opentable', MX: 'opentable',
+});
+
+/**
+ * The handoff for a table Num cannot hold itself.
+ *
+ * Returns null for a place with no name — never a link to a search for
+ * nothing. `kind` is always 'table': hotels have real deeplinks above and do
+ * not need this.
+ */
+export function bookingSearch(place) {
+  const name = String(place?.name ?? '').trim();
+  if (!name) return null;
+  const engine = SEARCH_ENGINES[ENGINE_BY_COUNTRY[String(place?.country ?? '').toUpperCase()] ?? 'opentable'];
+  const where = String(place?.city ?? place?.area ?? '').trim();
+  return {
+    label: engine.label,
+    kind: 'table',
+    mode: 'search',
+    url: engine.url(where ? `${name} ${where}` : name),
+    dated: false,
+  };
+}
+
+/**
+ * Everything Num can offer for this place, best first.
+ *
+ *   1. `desk`   — Num texts the venue and holds the table. Needs a phone.
+ *   2. `deep`   — the venue's own page on its booking engine, prefilled.
+ *   3. `search` — find it on the engine their country uses.
+ *
+ * The caller shows the best one it can honour. Returning all three rather than
+ * "the best" keeps the choice where the context is: a guest who has already
+ * declined the desk should still be handed the link.
+ */
+export function bookingOptions(place, when = {}) {
+  return {
+    desk: place?.phone ? { kind: 'table', mode: 'desk', label: 'Ask them to hold a table', phone: String(place.phone) } : null,
+    deep: bookingLink(place, when),
+    search: bookingSearch(place),
+  };
 }
 
 /** True when this place can be booked at all — the flag the API exposes. */

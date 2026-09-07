@@ -22,7 +22,7 @@ const xmlReply = (body) =>
     { headers: { 'Content-Type': 'text/xml' } },
   );
 
-async function validSignature(env, url, params, given) {
+export async function validSignature(env, url, params, given) {
   if (!env.TWILIO_TOKEN || !given) return false;
   // Twilio's recipe: full URL, then each POST param appended as key+value in
   // byte-sorted key order, HMAC-SHA1, base64.
@@ -74,7 +74,7 @@ export async function handleSmsInbound(request, env) {
   // concierge, not an opt-out.
   const single = text.toUpperCase().replace(/[^A-Z]/g, '');
   if (text.split(/\s+/).length === 1 && (STOP_WORDS.has(single) || START_WORDS.has(single))) {
-    await applyOptOut(env, from, single);
+    await applyOptOut(env, from, single, text);
     return xmlOk();
   }
 
@@ -93,6 +93,27 @@ export async function handleSmsInbound(request, env) {
     console.warn(`[sms] HELP from ${from}`);
     return xmlReply(HELP_REPLY);
   }
+
+  // ── EVERY ORDINARY INBOUND MESSAGE IS CONSENT ─────────────────────────
+  //
+  // Not just START. Somebody who texts a concierge "table for two tonight"
+  // has initiated contact with a published business number, which is the
+  // strongest and least arguable consent there is — stronger than a ticked
+  // box, because they wrote the evidence themselves.
+  //
+  // This is where Num's lawful audience comes from. Not from the 1,830,191
+  // scraped numbers in `places`, which nobody agreed to anything.
+  //
+  // Runs after the STOP branch above, so a revocation is never mistaken for
+  // an opt-in, and it swallows its own failures: a bookkeeping problem must
+  // never cost somebody their answer.
+  await import('./smsconsent.mjs')
+    .then((c) => c.record(env, {
+      phone: from,
+      source: c.SOURCE.INBOUND_SMS,
+      consentText: c.inboundConsentText(text),
+    }))
+    .catch((e) => console.warn('[sms] consent record failed', e?.message ?? e));
 
   // Whose world does this text belong to? Exact phone match, verified first.
   const member = await env.DB.prepare(
@@ -146,7 +167,7 @@ CREATE TABLE IF NOT EXISTS num_sms_delivery (
 CREATE INDEX IF NOT EXISTS idx_num_sms_delivery_status ON num_sms_delivery(status, updated_at);
 `;
 let deliveryReady = false;
-async function ensureDelivery(env) {
+export async function ensureDelivery(env) {
   if (deliveryReady) return;
   await env.DB.batch(DELIVERY_SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
   deliveryReady = true;
@@ -156,7 +177,7 @@ async function ensureDelivery(env) {
 // us, translated into the sentence someone reading the ops console needs —
 // because "30034" sent us down the wrong path for a day, and the fix for each
 // of these lives in a completely different place.
-const CARRIER_HINTS = {
+export const CARRIER_HINTS = {
   30003: 'Handset unreachable or switched off.',
   30004: 'The recipient has blocked this number.',
   30005: 'Unknown or retired number.',
@@ -289,9 +310,36 @@ export const HELP_REPLY =
   'NUM travel concierge. Msg&data rates may apply. Msg freq varies. '
   + 'Reply STOP to opt out. Help: info@5arz.com or itsnum.com/sms';
 
-/** Record an opt-out or opt-back-in against the consent register. */
-async function applyOptOut(env, phone, word) {
+/**
+ * Record an opt-out or opt-back-in against the consent register.
+ *
+ * The opt-IN branch used to be an UPDATE and nothing else, which meant a
+ * person texting START with no existing row changed nothing at all: zero rows
+ * matched, no consent was recorded, and they stayed unreachable. On 30 Aug
+ * 2026 `num_sms_consent` held ZERO rows while 1.8m scraped numbers sat in
+ * `places` — so the one path that could have built a lawful audience was the
+ * one that silently did nothing.
+ *
+ * Somebody texting START is consenting. That is the strongest consent there
+ * is, and it now gets written down.
+ */
+async function applyOptOut(env, phone, word, body = '') {
   const stopping = STOP_WORDS.has(word);
+  // Recorded FIRST, in a table this worker owns, whether or not we ever held
+  // consent for the number. Before 4 Sep a STOP from a number with no consent
+  // row updated nothing and evaporated. worker/optout.mjs.
+  {
+    const { recordStop, recordStart } = await import('./optout.mjs');
+    await (stopping ? recordStop(env, phone, { evidence: body || word }) : recordStart(env, phone)).catch(() => {});
+  }
+  if (!stopping) {
+    const { record, SOURCE, inboundConsentText } = await import('./smsconsent.mjs');
+    await record(env, {
+      phone,
+      source: SOURCE.KEYWORD,
+      consentText: inboundConsentText(body || word),
+    }).catch(() => {});
+  }
   try {
     await env.DB.prepare(
       `UPDATE num_sms_consent SET revoked_at = ${stopping ? 'unixepoch()' : 'NULL'} WHERE phone = ?1`,

@@ -66,7 +66,17 @@ if (raw) {
     process.exit(1);
   }
   for (const [host, rule] of Object.entries(parsed)) {
-    if (!rule?.ref) console.error(`  ! ${host}: no "ref" — this rule does nothing.`);
+    if (host.startsWith('_')) continue; // "_readme" and friends: notes, not hosts
+    // Two modes (affiliate.mjs): `ref` appends a parameter; `wrap` is a
+    // click-redirect template that must carry {dest} — the hotel chains'
+    // networks (Impact, Partnerize) and Travelpayouts all work this way.
+    if (rule?.wrap) {
+      if (!/\{dest\}/.test(String(rule.wrap))) console.error(`  ! ${host}: "wrap" has no {dest} placeholder — the guest would never reach the site.`);
+      if (/[A-Z]{4,}_[A-Z_]+/.test(String(rule.wrap))) console.error(`  ! ${host}: "wrap" still contains an UPPERCASE placeholder — paste your real ids first.`);
+      continue;
+    }
+    if (!rule?.ref) console.error(`  ! ${host}: no "ref" and no "wrap" — this rule does nothing.`);
+    if (/^[A-Z]{4,}_[A-Z_]+$/.test(String(rule?.ref ?? ''))) console.error(`  ! ${host}: "ref" is still a placeholder.`);
     if (rule?.param && /[?&=]/.test(String(rule.param))) {
       console.error(`  ! ${host}: "param" is a parameter NAME, not a query string (got ${JSON.stringify(rule.param)}).`);
     }

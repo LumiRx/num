@@ -77,15 +77,61 @@ async function ensure(env) {
  *   rate      — too many requests per unit time. Short and self-healing.
  *   auth      — a key that is wrong, revoked or expired. No amount of waiting
  *               fixes this; a human must act, so stand it down hard and shout.
+ *   blocked   — refused IN FRONT OF the vendor's API: an edge, a WAF, a
+ *               proxy, a region rule. Looks like auth, is not auth, and
+ *               heals on its own. See below.
  *   model     — the model name is not recognised. Also needs a human, and
  *               retrying is pure waste.
  *   transient — timeouts, 5xx, socket errors. Genuinely worth another go.
+ *
+ * ── WHY `blocked` EXISTS — 31 Aug 2026 ───────────────────────────────────
+ *
+ * At 13:33:23 both Anthropic brains failed in the same second with
+ * `403 {"error":{"type":"forbidden","message":"Request not allowed"}}`. Any
+ * 403 was classified `auth`, so both stood down for the full hour and the
+ * health check printed its auth remedy: "mint a new key and
+ * `wrangler versions secret put`". That advice was wrong, and following it
+ * would have cost an evening rotating a credential that was never broken —
+ * `haiku` made a successful call on the SAME key at 14:29, unprompted.
+ *
+ * The body is what gives it away. A real Anthropic API error is shaped
+ * `{"type":"error","error":{...},"request_id":"req_…"}` — we have one on file
+ * from 28 Aug. This one has no `type: error` envelope and no `request_id`,
+ * because it never reached the API: something in front of it said no. That is
+ * a condition measured in seconds, not a credential that needs replacing.
+ *
+ * So the shape of the body decides, not the status code alone. A 403 that
+ * really is a permission problem still says so in Anthropic's own envelope and
+ * still classifies as `auth`; anything else 403-shaped is `blocked`, cooled
+ * down for a minute, and never tells a human to go and change a key.
  */
+
+/**
+ * Did this error come from the vendor's API, or from something in front of it?
+ *
+ * Every major vendor wraps its own errors in a documented envelope and stamps
+ * them with a request id. An edge rejection has neither — it is generic HTML
+ * or a bare JSON object, because the request died before anything that knows
+ * about our account ever saw it.
+ */
+export function fromVendorApi(message) {
+  const m = String(message ?? '');
+  return /"type"\s*:\s*"error"/.test(m)
+    || /request_id/.test(m)
+    || /permission_error|authentication_error|invalid_api_key/.test(m);
+}
+
 export function classify(err) {
   const m = String(err?.message ?? err ?? '').toLowerCase();
+  const raw = String(err?.message ?? err ?? '');
   const status = Number(err?.status ?? err?.statusCode ?? 0);
 
-  if (status === 401 || status === 403 || /unauthor|forbidden|invalid.*(api.?key|token)|authentication/.test(m)) return 'auth';
+  // 401 is always the credential. 403 depends on WHO refused — see above.
+  if (status === 401 || /unauthor|invalid.*(api.?key|token)|authentication_error/.test(m)) return 'auth';
+  if (status === 403 || /\b403\b|forbidden/.test(m)) {
+    return fromVendorApi(raw) && /permission_error|authentication|api.?key/.test(m) ? 'auth' : 'blocked';
+  }
+  if (/unauthor|invalid.*(api.?key|token)|authentication/.test(m)) return 'auth';
   if (/model.*(not found|does not exist|unknown|invalid)|no such model|404.*model/.test(m)) return 'model';
   if (status === 402 || /credit|quota|billing|insufficient funds|spend limit|usage limit|out of (credits|tokens)|neuron/.test(m)) return 'quota';
   if (status === 429 || /rate.?limit|too many requests|overloaded|capacity|throttl/.test(m)) return 'rate';
@@ -93,7 +139,10 @@ export function classify(err) {
 }
 
 /** How long a brain stands down, by class and by how many times it has failed in a row. */
-const BASE_COOLDOWN_SEC = { auth: 3600, model: 3600, quota: 900, rate: 60, transient: 20 };
+// `blocked` sits with `rate`, not with `auth`: an edge refusal is a condition
+// with a duration, and standing a working brain down for an hour because
+// something upstream sneezed is self-inflicted downtime.
+const BASE_COOLDOWN_SEC = { auth: 3600, model: 3600, quota: 900, rate: 60, blocked: 60, transient: 20 };
 const MAX_COOLDOWN_SEC = 3600;
 
 export function cooldownFor(cls, fails) {
@@ -182,8 +231,13 @@ export async function recordSuccess(env, brainId, state) {
   if (!had || (!had.fails && !had.cooling)) return;
   try {
     await ensure(env);
+    // last_error IS CLEARED TOO. It used not to be, and on 31 Aug 2026 that
+    // left `haiku` displaying a 403 for an hour after it had started working
+    // again — fails 0, cooldown 0, and a scary sentence still attached to it.
+    // Anyone reading the state saw a broken brain and a healthy one that
+    // looked broken, which is a worse diagnostic than no state at all.
     await env.DB.prepare(
-      'UPDATE num_brain_state SET fails = 0, class = NULL, cooldown_until = 0, updated_at = ?2 WHERE brain = ?1',
+      'UPDATE num_brain_state SET fails = 0, class = NULL, last_error = NULL, cooldown_until = 0, updated_at = ?2 WHERE brain = ?1',
     ).bind(brainId, Math.floor(Date.now() / 1000)).run();
   } catch (e) {
     console.warn('[brainstate] recordSuccess failed:', e?.message ?? e);

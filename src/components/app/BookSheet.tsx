@@ -20,6 +20,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, XIcon } from '../../lib/icons';
 import { draftLine, loadMyRequests, requestTable, startBookSync, stateLine } from '../../lib/bookdesk';
+import { calendarUrl } from '../../lib/calendar';
 
 const button: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
@@ -168,7 +169,19 @@ export default function BookSheet() {
                   : note ?? 'You can close this — your phone buzzes the moment they answer.'}
             </div>
 
-            <div {...pressable(close)} style={{ ...(answered ? button : ghost), marginTop: 14 }}>
+            {/* The one thing a confirmed table should end with: a place in
+                the diary they actually look at. Server-built .ics, in the
+                venue's own clock time. */}
+            {sent?.state === 'confirmed' && me?.id && (
+              <a
+                href={calendarUrl('booking', sent.id, me.id)}
+                className="glass press"
+                style={{ ...ghost, marginTop: 14, textDecoration: 'none', display: 'flex', justifyContent: 'center' }}
+              >
+                ADD TO MY CALENDAR
+              </a>
+            )}
+            <div {...pressable(close)} style={{ ...(answered ? button : ghost), marginTop: sent?.state === 'confirmed' ? 8 : 14 }}>
               {answered ? 'DONE' : 'CLOSE — I’LL TELL YOU'}
             </div>
           </div>

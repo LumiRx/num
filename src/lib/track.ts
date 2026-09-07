@@ -54,3 +54,38 @@ export function trackOnce(key: string, event: string, params: Params = {}): void
     track(event, params);
   }
 }
+
+/**
+ * The OTHER analytics pipe: `num-track.js` → `POST /api/ev` → `num_web_events`
+ * in D1. gtag is what Google Ads optimises toward; this is what the nightly
+ * analytics can actually read. Until 2 Sep 2026 the React app called neither
+ * `window.numTrack` nor anything like it, so `first_message_sent` — the one
+ * event the worker's own comment calls "the only event that means the product
+ * was used" — had ZERO call sites, and the 5arz consent ask had no "shown"
+ * row, which left the wall metric with a numerator (0 linked) and no
+ * denominator for nine consecutive nightly editions.
+ *
+ * Any name passed here must ALSO be in `KNOWN` (app-public/num-track.js) and
+ * `EVENTS` (growth/worker.js), or it dissolves into a 200 {"ignored":true}.
+ * `worker/analytics.test.mjs` pins the three lists together.
+ */
+export function webEvent(event: string, detail?: string): void {
+  try {
+    const w = window as unknown as { numTrack?: (e: string, extra?: Record<string, string>) => void };
+    w.numTrack?.(event, detail ? { detail } : undefined);
+  } catch {
+    /* never in a user's face */
+  }
+}
+
+/** `webEvent`, at most once per device — for "shown" and "first" events. */
+export function webEventOnce(key: string, event: string, detail?: string): void {
+  try {
+    const k = `num-webfired-${key}`;
+    if (localStorage.getItem(k)) return;
+    localStorage.setItem(k, String(Date.now()));
+  } catch {
+    /* private mode: lose the dedupe, keep the event */
+  }
+  webEvent(event, detail);
+}

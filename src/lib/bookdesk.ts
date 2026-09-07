@@ -12,6 +12,7 @@
 // server is the only thing allowed to say it.
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
+import { guestMessage } from './saferr';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/book') + path, {
@@ -102,7 +103,7 @@ export async function requestTable(d: TableDraft): Promise<{ ok: boolean; messag
     await loadMyRequests();
     return { ok: true, message: out.note, id: out.id };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : 'That didn’t go through.' };
+    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
   }
 }
 

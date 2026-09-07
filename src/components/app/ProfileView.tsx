@@ -18,11 +18,14 @@ import { THEMES, setTheme } from '../../lib/themes';
 import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
 import Verify5arz from './Verify5arz';
+import AppleSignIn from './AppleSignIn';
 import PairBridge from './PairBridge';
 import PeopleCard from './PeopleCard';
 import MembershipCard from './MembershipCard';
 import DangerZone from './DangerZone';
 import { disablePush, enablePush, pushState } from '../../lib/push';
+import { apiUrl } from '../../lib/apibase';
+import { guestMessage } from '../../lib/saferr';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -162,7 +165,7 @@ export default function ProfileView() {
       setNote(null);
       setTimeout(() => setSaved(false), 2600);
     } catch (err) {
-      setNote(err instanceof Error ? err.message : 'Couldn’t save that.');
+      setNote(guestMessage(err, 'Couldn’t save that.'));
     }
   };
 
@@ -171,7 +174,7 @@ export default function ProfileView() {
     try {
       await uploadAvatar(file);
     } catch (err) {
-      setNote(err instanceof Error ? err.message : 'That image didn’t take.');
+      setNote(guestMessage(err, 'That image didn’t take.'));
     }
   };
 
@@ -194,8 +197,15 @@ export default function ProfileView() {
           <span style={{ position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 999, background: '#fff', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,.18)' }}>
             <CameraIcon size={12} />
           </span>
+          {/* The picker this opens offers "Take Photo", which touches the
+              camera — so Info.plist MUST carry NSCameraUsageDescription.
+              Without it iOS terminates the process the instant the sheet
+              appears (TCC SIGABRT), which is exactly how 1.0(2) crashed in
+              review on an iPad. The key is in ios/App/App/Info.plist; do not
+              remove it, and do not add another media input without checking
+              the matching usage description exists. */}
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0])} />
         </div>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0])} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={kicker}>YOU</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 2 }}>{me.name ?? 'Traveller'}</div>
@@ -222,6 +232,7 @@ export default function ProfileView() {
       </div>
       {/* Its own block UNDER the identity row. As a third flex child it was
           being squeezed into the name column and printing over "Dre". */}
+      <AppleSignIn />
       <Verify5arz />
       {/* Finish a connection that opened in the browser instead of the app. */}
       <PairBridge installed />
@@ -248,6 +259,8 @@ export default function ProfileView() {
       <MembershipCard />
 
       <PeopleCard />
+
+      <HostCard />
 
       <ThemePicker />
 
@@ -407,6 +420,67 @@ function NotificationsCard() {
         </div>
       )}
       {msg && <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.5 }}>{msg}</div>}
+    </div>
+  );
+}
+
+/**
+ * Your VIP host, if you have one. Until 4 Sep 2026 the app had no host
+ * surface at all: a member could not discover that hosts exist, and a member
+ * who HAD a host saw nothing about them here. The server decides who your
+ * host is (worker/hostaware.mjs, matched on your verified number); this only
+ * shows it, with the two links that matter — their page and their calendar
+ * feed of what they have confirmed for you — or, with no host, where to find
+ * one. Nothing here sends anything.
+ */
+interface MyHost {
+  host: { name: string; services: string[]; since: string | null } | null;
+  page?: string | null;
+  calendar?: string | null;
+  find?: string | null;
+}
+const SERVICE_WORDS: Record<string, string> = {
+  car: 'cars', reservation: 'tables', stay: 'stays', activity: 'activities', appointment: 'appointments', delivery: 'deliveries',
+};
+function HostCard() {
+  const me = useApp((s) => s.me);
+  const [mine, setMine] = useState<MyHost | null>(null);
+  useEffect(() => {
+    if (!me?.id) { setMine(null); return; }
+    let live = true;
+    fetch(`${apiUrl('/api/host/mine')}?me=${encodeURIComponent(me.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: MyHost | null) => { if (live) setMine(j); })
+      .catch(() => { if (live) setMine(null); });
+    return () => { live = false; };
+  }, [me?.id]);
+  if (!me?.id || !mine) return null;
+  const link: React.CSSProperties = {
+    display: 'inline-block', marginTop: 10, marginRight: 8, borderRadius: 999, padding: '9px 14px', textDecoration: 'none',
+    fontWeight: 700, fontSize: 11, letterSpacing: '.06em', color: 'var(--ink)', border: '1px solid var(--ink-12)',
+  };
+  if (!mine.host) {
+    return (
+      <div className="glass" style={{ ...card }}>
+        <div style={kicker}>A PERSON, NOT JUST AN APP</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>Want a VIP host?</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
+          A real concierge who knows the city and knows you. Num does the finding; your host does the arranging, in person.
+        </div>
+        {mine.find && <a href={mine.find} target="_blank" rel="noreferrer" style={link}>FIND A HOST NEAR YOU</a>}
+      </div>
+    );
+  }
+  const does = mine.host.services.map((k) => SERVICE_WORDS[k] ?? k).join(', ');
+  return (
+    <div className="glass" style={{ ...card }}>
+      <div style={kicker}>YOUR HOST</div>
+      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>{mine.host.name}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
+        {does ? `Arranges ${does} for you.` : 'Arranges things for you, in person.'} Ask Num for any of it and say “send it to {mine.host.name}” — it lands in their console, and they confirm with you directly.
+      </div>
+      {mine.page && <a href={mine.page} target="_blank" rel="noreferrer" style={link}>MY HOST PAGE</a>}
+      {mine.calendar && <a href={mine.calendar.replace(/^https?:/, 'webcal:')} style={link}>SUBSCRIBE TO THEIR BOOKINGS</a>}
     </div>
   );
 }

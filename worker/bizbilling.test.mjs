@@ -350,15 +350,23 @@ describe('CSV export — a paid perk, not a wall for the free number', () => {
 });
 
 describe('the console renders the plan, and locks what is not paid for', () => {
-  test('a free-plan dashboard shows the plan section with upgrade buttons, and a locked promo field', async () => {
+  test('a free-plan dashboard shows the plan ladder, and promotions locked but explained', async () => {
     const { __testables } = await import('./bizconsole.mjs');
     await claimAndGetKey();
     const token = await __testables.mintSession(env, 'pl_billing');
-    const html = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}`)).text();
-    assert.ok(html.includes('Your plan'), 'no plan section on the dashboard');
-    assert.ok(html.includes('Small Business'), 'the small tier is not listed');
-    assert.match(html, /name="tier" value="small"/);
-    assert.ok(html.includes('disabled') && html.includes('promo_text'), 'the promo field is not shown as locked for a free plan');
+    const plan = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=plan`)).text();
+    assert.ok(plan.includes('Your plan'), 'no plan page on the dashboard');
+    assert.ok(plan.includes('Small Business'), 'the small tier is not listed');
+    assert.match(plan, /name="tier" value="small"/);
+
+    // Promotions moved from a greyed-out input halfway down someone else's
+    // page to a page of its own. A locked page must still OPEN and still say
+    // what it is and what it costs — a business that cannot see what it would
+    // be buying cannot decide to buy it.
+    const promo = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=promotions`)).text();
+    assert.ok(!promo.includes('name="promo_text"'), 'a free plan was handed the promotion field');
+    assert.match(promo, /Small Business/, 'the locked page does not name the plan that opens it');
+    assert.match(promo, /\$9\.99/, 'the locked page does not say what it costs');
   });
 
   test('after upgrading, the dashboard shows the paid plan as current and unlocks the promo field', async () => {
@@ -367,10 +375,12 @@ describe('the console renders the plan, and locks what is not paid for', () => {
     await grantBizTier(env, business_id, 'full', {});
     const { __testables } = await import('./bizconsole.mjs');
     const token = await __testables.mintSession(env, place_id);
-    const html = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}`)).text();
+    const html = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=plan`)).text();
     assert.match(html, /Full[\s\S]{0,20}<span class="tag">you<\/span>/, 'Full is not shown as the current plan');
-    assert.ok(!/id="promo_text" disabled/.test(html), 'the promo field is still locked on a paid plan');
     assert.ok(html.includes('Cancel plan'), 'no way to cancel a paid plan');
+    const promo = await (await hit(`/api/biz/console?s=${encodeURIComponent(token)}&p=promotions`)).text();
+    assert.ok(promo.includes('name="promo_text"'), 'a paid plan is still locked out of promotions');
+    assert.ok(!/Small Business is/.test(promo), 'a paid plan is being upsold its own feature');
   });
 
   test('POST action=upgrade redirects the browser straight to Stripe, priced by us', async () => {

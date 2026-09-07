@@ -3,6 +3,7 @@
 // would be a bug waiting to happen.
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
+import { guestMessage } from './saferr';
 
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,7 +45,7 @@ export async function payStars(to: string, amount: number, note?: string, idem?:
     void refreshStars();
     return { ok: true, message: out.already ? `Already sent to ${out.to}.` : `Sent ★${amount} to ${out.to}.` };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : 'That didn’t go through.' };
+    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
   }
 }
 

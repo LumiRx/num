@@ -113,11 +113,23 @@ async function createEvent(env, req, origin) {
 
   const id = uid('evt');
   const slug = token(8);
+  // The business the event is AT. Resolved server-side from the directory
+  // place the model or the app named — a client-supplied business id is
+  // accepted only as a fallback. Until 4 Sep 2026 nothing ever filled this,
+  // so an event at a partner venue was invisible to that venue.
+  let businessId = clip(b.business_id, 40);
+  const placeId = clip(b.place_id, 120);
+  if (placeId) {
+    const pl = await env.DB.prepare('SELECT business_id, name, address FROM places WHERE id=?1').bind(placeId).first().catch(() => null);
+    if (pl?.business_id) businessId = String(pl.business_id);
+    if (pl && !b.place) b.place = pl.name;
+    if (pl && !b.address && pl.address) b.address = pl.address;
+  }
   await env.DB.prepare(
     `INSERT INTO num_events (id, host_id, business_id, title, day, time, place, address, dress, note, capacity, plan_id, slug)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`,
   ).bind(
-    id, hostId, clip(b.business_id, 40), clip(b.title, 120) || 'Our event', clip(b.day, 20), clip(b.time, 10),
+    id, hostId, businessId, clip(b.title, 120) || 'Our event', clip(b.day, 20), clip(b.time, 10),
     clip(b.place, 120), clip(b.address, 200), clip(b.dress, 80), clip(b.note, 600),
     b.capacity == null ? null : Number(b.capacity) || null, clip(b.plan_id, 40), slug,
   ).run();

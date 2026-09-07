@@ -82,3 +82,27 @@ test('lean-mode answers are never cached', () => {
   assert.match(index, /!_degraded && cacheable\(/,
     'a degraded reply can be written to the cache — lean mode would become permanent for that question');
 });
+
+test('"near me" is a question about a position, and is not shared without one', () => {
+  // The Kata/Patong failure: the partners were chosen from a 4 km ring
+  // around one guest, normalize() strips "near", and the key was
+  // text|city|lang — so for seven days everyone in Phuket who asked for
+  // something "near me" got the first asker's neighbourhood.
+  for (const q of ['good coffee near me', 'what is walking distance from here', 'closest pharmacy', 'anything good around here']) {
+    assert.equal(cacheable({ userText: q, profile: {}, state: {}, reply: {} }), false,
+      `"${q}" would be served to a guest standing somewhere else`);
+    assert.equal(cacheable({ userText: q, profile: {}, state: {}, reply: {}, pos: { lat: 7.89, lng: 98.30 } }), true,
+      `"${q}" with a position is a shareable answer for that cell`);
+  }
+  // A question that is not about position is unaffected.
+  assert.equal(cacheable({ userText: 'best beach in phuket', profile: {}, state: {}, reply: {} }), true);
+});
+
+test('the request path stores picks and keys on the cell', () => {
+  // Read the source rather than a DB: the contract is that `picks` reach
+  // the payload and the key carries the position when one is given.
+  const src = readFileSync(join(HERE, 'answercache.mjs'), 'utf8');
+  assert.match(src, /picks: Array\.isArray\(reply\.picks\)/, 'picks are no longer stored — a cache hit will have no cards');
+  assert.match(src, /KEY\(userText, place, lang, pos\)/, 'the key ignores position again');
+  assert.match(src, /toFixed\(2\)/, 'the cell is not ~1 km');
+});

@@ -43,9 +43,18 @@
     'install_cta_click', 'install_tab_view', 'install_prompt_shown',
     'install_accepted', 'install_dismissed', 'app_launched_standalone',
     'open_in_browser_click', 'first_message_sent', 'watch_film_click',
+    // Added 3 Sep 2026, the day the ads moved to /ask/. `first_message_sent`
+    // had no partner: we could see that somebody asked and never whether Num
+    // answered — and a failure showed the guest a polite line and told us
+    // nothing at all, on the one page paid traffic lands on.
+    'num_answered', 'ask_failed',
     'scroll_50', 'scroll_90',
     'desktop_handoff_shown', 'desktop_qr_shown', 'desktop_link_sent',
-    'lang_offer_shown', 'lang_switched'
+    'lang_offer_shown', 'lang_switched',
+    // --- the app's own moments (added 2 Sep 2026) ---
+    'consent_prompt_shown', 'consent_prompt_engaged',
+    // --- recommendation cards (added 3 Sep 2026) ---
+    'pick_link_click', 'pick_map_click', 'pick_call_click'
   ];
 
   var qs = new URLSearchParams(location.search);
@@ -100,6 +109,36 @@
     // Mirror to GA4 when it is present, so the same funnel is visible in both.
     if (typeof window.gtag === 'function') {
       window.gtag('event', event, body);
+    }
+
+    // Mirror to the Reddit pixel where it is present. THE conversion is
+    // `first_message_sent`: the moment a stranger became a user. Reddit is 87%
+    // of every visitor NUM has ever had, and until 3 Sep 2026 the campaign
+    // could see none of this — so it optimised for people who load a page,
+    // which is the cheapest and least valuable human on the internet to buy.
+    //
+    // Standard event names, because Reddit's optimiser and its reporting both
+    // work far better against its own vocabulary than against custom ones.
+    // Everything else stays unreported on purpose: a conversion signal made of
+    // scroll depth teaches the auction to buy scrollers.
+    if (typeof window.rdt === 'function') {
+      var RED = {
+        first_message_sent: 'Lead',
+        install_accepted: 'SignUp',
+        app_launched_standalone: 'SignUp',
+      };
+      if (RED[event]) {
+        try {
+          window.rdt('track', RED[event], {
+            // Same id shape the marketing site uses (public/js/reddit.js), so
+            // the Conversions API can de-duplicate these later without a
+            // window of double-counted conversions nobody can untangle.
+            conversionId: (window.crypto && crypto.randomUUID)
+              ? crypto.randomUUID()
+              : 'c-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10),
+          });
+        } catch (e) { /* a blocked pixel must never break the page */ }
+      }
     }
   }
 

@@ -8,34 +8,92 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tag, tagged, affiliates, programmes } from './affiliate.mjs';
 import { recordHandoffs, logHandoffs, _resetForTests } from './affiliateclicks.mjs';
+import { _resetForTests as _resetSourcing } from './sourcing.mjs';
 
-/** Worker env whose `DB` is a D1 stand-in remembering every bound row. */
-function db({ failOn = null } = {}) {
+/**
+ * Worker env whose `DB` is a D1 stand-in remembering every bound row.
+ *
+ * `scouts` maps a place id to the scout credited with introducing it, so the
+ * attribution lookup in sourcing.mjs has something real to answer with. An
+ * empty map is the honest default: almost no place has a scout.
+ *
+ * A value may be a bare scout id, or `{ id, code }` where the two differ —
+ * which in production they always do: the id is `sc_adam` and the code, the
+ * thing that travels to the affiliate network, is `ADAM`. Tests that assert
+ * on what reaches the network must use the second form or they are asserting
+ * on a value production never produces.
+ */
+function db({ failOn = null, scouts = {} } = {}) {
   const inserted = [];
   const ddl = [];
+  const migrations = [];
   const api = {
     prepare(q) {
       const isInsert = /^\s*INSERT/i.test(q);
-      if (!isInsert) ddl.push(q.replace(/\s+/g, ' ').trim());
+      const isScoutLookup = /FROM num_scout_places/i.test(q);
+      const bound = (args) => ({
+        __q: q,
+        __args: args,
+        __insert: isInsert,
+        // The attribution query, answered from `scouts`.
+        async all() {
+          if (!isScoutLookup) return { results: [] };
+          const results = args
+            .filter((id) => scouts[id])
+            .map((id) => {
+              const v = scouts[id];
+              const scoutId = typeof v === 'string' ? v : v.id;
+              return {
+                place_id: id,
+                scout_place_id: `sp_${id}`,
+                scout_id: scoutId,
+                state: 'activated',
+                code: typeof v === 'string' ? String(v).toUpperCase() : v.code,
+              };
+            });
+          return { results };
+        },
+        async first() { return (await this.all()).results[0] ?? null; },
+        async run() { return { success: true }; },
+      });
       return {
+        // Carried so that batch() can tell what it was handed. `ddl` is
+        // recorded THERE and not here, because the difference between a
+        // statement in the SCHEMA batch and one run on its own afterwards is
+        // exactly what the migration-ordering test needs to see.
+        __q: q,
+        __insert: isInsert,
+        __scoutLookup: isScoutLookup,
         // `bind` must return the STATEMENT, so a batch of bound statements is
         // a list of things D1 can run — not a list of databases.
-        bind(...args) { return { __q: q, __args: args, __insert: isInsert }; },
+        bind(...args) { return bound(args); },
+        // ALTER TABLE and CREATE INDEX are run un-bound. Recording them is how
+        // the migration test can prove the new columns are actually added to
+        // the table that already exists in production.
+        async run() { migrations.push(q.replace(/\s+/g, ' ').trim()); return { success: true }; },
       };
     },
     async batch(stmts) {
       if (failOn === 'batch') throw new Error('D1_ERROR: no such table');
-      for (const s of stmts) if (s.__insert) inserted.push(s.__args);
+      for (const s of stmts) {
+        if (s.__insert) inserted.push(s.__args);
+        else if (!s.__scoutLookup) ddl.push(String(s.__q ?? '').replace(/\s+/g, ' ').trim());
+      }
       return stmts.map(() => ({ success: true }));
     },
   };
-  return { DB: api, inserted, ddl };
+  return { DB: api, inserted, ddl, migrations };
 }
 
-const COLS = ['host', 'programme', 'tagged', 'event', 'surface', 'kind', 'member_id', 'dest', 'ts'];
+// Column order matters here in the same way it matters in the INSERT: this
+// list IS the mapping from bound argument to column name, so a column added
+// in the middle of the statement and not added here silently renames every
+// assertion after it.
+const COLS = ['host', 'programme', 'tagged', 'event', 'surface', 'kind', 'member_id', 'dest',
+  'place_id', 'scout_id', 'ts'];
 const row = (args) => Object.fromEntries(COLS.map((c, i) => [c, args[i]]));
 
-test.beforeEach(() => _resetForTests());
+test.beforeEach(() => { _resetForTests(); _resetSourcing(); });
 
 /* ── affiliate.tagged(): the three facts the log needs ──────────────────── */
 
@@ -103,7 +161,11 @@ test('the shipped NUM_AFFILIATES catch-all parses and tags every host', () => {
   const SECRET = '{"*":{"ref":"num","param":"utm_source"}}';
   const env = { NUM_AFFILIATES: SECRET };
   assert.deepEqual(affiliates(env), { '*': { ref: 'num', param: 'utm_source' } });
-  assert.deepEqual(programmes(env), [{ host: '*', param: 'utm_source' }],
+  // `mode` distinguishes the two ways a programme earns: appending a ref
+  // parameter, or rewriting the link through a click-redirect network. They
+  // are reconciled against completely different payout reports, so an ops page
+  // that cannot tell them apart cannot check either one.
+  assert.deepEqual(programmes(env), [{ host: '*', mode: 'param', param: 'utm_source' }],
     'programmes() must accept the catch-all, or the ops page shows nothing after activation');
   for (const u of [
     'https://hungryhub.com/en/',
@@ -295,4 +357,283 @@ test('the booking API tags and logs the link it hands out', async () => {
   assert.equal(row(d.inserted[0]).programme, 'opentable.com');
   assert.equal(row(d.inserted[0]).tagged, 1);
   assert.equal(row(d.inserted[0]).surface, 'book_link');
+});
+
+/* ── whose link was it ──────────────────────────────────────────────────── */
+//
+// Until these columns existed, a handoff for a hotel somebody sourced looked
+// exactly like a handoff for a hotel that came off OpenStreetMap: same host,
+// same programme, same kind. The tests below are the ones that would have
+// caught that, and the ones that keep it fixed.
+
+test('the migration adds the two new columns to the table already in production', async () => {
+  // CREATE TABLE IF NOT EXISTS is a no-op against an existing table, so the
+  // columns arrive by ALTER or they do not arrive at all — and the table has
+  // been live and collecting rows since before either column was thought of.
+  const d = db();
+  await recordHandoffs(d, [{ host: 'x.test' }], {});
+  const m = d.migrations.join('\n');
+  assert.match(m, /ALTER TABLE num_affiliate_clicks ADD COLUMN place_id TEXT/);
+  assert.match(m, /ALTER TABLE num_affiliate_clicks ADD COLUMN scout_id TEXT/);
+});
+
+test('the scout index is created AFTER the column it names', async () => {
+  // A partial index naming scout_id, run in the SCHEMA batch, would be
+  // created before the ALTER that adds the column — and because SCHEMA runs
+  // as one batch, that single failure rolls back the whole batch and leaves
+  // the click log writing nothing at all.
+  const d = db();
+  await recordHandoffs(d, [{ host: 'x.test' }], {});
+  const m = d.migrations;
+  const alter = m.findIndex((q) => /ADD COLUMN scout_id/.test(q));
+  const index = m.findIndex((q) => /idx_affclick_scout/.test(q));
+  assert.ok(alter >= 0 && index > alter, `index must follow its column: ${JSON.stringify(m)}`);
+  assert.ok(!/idx_affclick_scout/.test(d.ddl.join('\n')), 'the partial index must not be in the SCHEMA batch');
+});
+
+test('a handoff for a sourced place records the place AND the scout', async () => {
+  const d = db({ scouts: { 'hotel-adam-1': 'sc_adam' } });
+  const out = await recordHandoffs(d, [
+    { host: 'be.synxis.com', programme: null, tagged: false, kind: 'synxis', placeId: 'hotel-adam-1' },
+  ], { surface: 'book_link', dest: 'bath' });
+  assert.equal(out.logged, 1);
+  assert.equal(out.attributed, 1);
+  const r = row(d.inserted[0]);
+  assert.equal(r.place_id, 'hotel-adam-1');
+  assert.equal(r.scout_id, 'sc_adam');
+});
+
+test('a handoff for a place nobody sourced records the place and no scout', async () => {
+  // The place id still lands. Attribution and evidence are different jobs, and
+  // the row is worth keeping either way.
+  const d = db({ scouts: { 'hotel-adam-1': 'sc_adam' } });
+  const out = await recordHandoffs(d, [
+    { host: 'be.synxis.com', kind: 'synxis', placeId: 'osm-hotel' },
+  ], {});
+  assert.equal(out.attributed, 0);
+  assert.equal(row(d.inserted[0]).place_id, 'osm-hotel');
+  assert.equal(row(d.inserted[0]).scout_id, null, 'an unsourced place must not inherit anybody');
+});
+
+test('a city-level provider link belongs to nobody and says so', async () => {
+  const d = db({ scouts: { 'hotel-adam-1': 'sc_adam' } });
+  await recordHandoffs(d, [{ host: 'food.grab.com', kind: 'food' }], { surface: 'concierge' });
+  assert.equal(row(d.inserted[0]).place_id, null);
+  assert.equal(row(d.inserted[0]).scout_id, null);
+});
+
+test('two hotels on the SAME booking engine are two rows, not one', async () => {
+  // The dedupe key used to be host|kind. Two different hotels booked through
+  // synxis share both, so one reply offering a sourced hotel and an unsourced
+  // one would collapse to a single row and silently drop whichever
+  // attribution came second. That is a lost payment to a real person.
+  const d = db({ scouts: { 'hotel-adam-1': 'sc_adam' } });
+  const out = await recordHandoffs(d, [
+    { host: 'be.synxis.com', kind: 'synxis', placeId: 'hotel-adam-1' },
+    { host: 'be.synxis.com', kind: 'synxis', placeId: 'osm-hotel' },
+  ], {});
+  assert.equal(out.logged, 2, 'two venues collapsed into one row');
+  const ids = d.inserted.map((a) => row(a).place_id).sort();
+  assert.deepEqual(ids, ['hotel-adam-1', 'osm-hotel']);
+  assert.equal(out.attributed, 1);
+});
+
+test('the same venue offered twice in one reply is still one row', async () => {
+  const d = db({ scouts: { 'hotel-adam-1': 'sc_adam' } });
+  const out = await recordHandoffs(d, [
+    { host: 'be.synxis.com', kind: 'synxis', placeId: 'hotel-adam-1' },
+    { host: 'be.synxis.com', kind: 'synxis', placeId: 'hotel-adam-1' },
+  ], {});
+  assert.equal(out.logged, 1, 'the dedupe must still dedupe');
+});
+
+test('a scout the caller already resolved is used without asking again', async () => {
+  const d = db();  // the stand-in knows about no scouts at all
+  const out = await recordHandoffs(d, [
+    { host: 'be.synxis.com', kind: 'synxis', placeId: 'hotel-adam-1', scoutId: 'sc_adam' },
+  ], {});
+  assert.equal(row(d.inserted[0]).scout_id, 'sc_adam');
+  assert.equal(out.attributed, 1);
+});
+
+test('the booking API carries place_id and the scout onto the row it logs', async () => {
+  // End to end through the real handler: /api/book/link is the single choke
+  // point every venue booking link passes through, including the partner MCP.
+  const { handleBookLink } = await import('./openapi.mjs');
+  const place = {
+    id: 'hotel-adam-1', name: 'The Yard', dest: 'bath', category: 'Hotel',
+    booking_platform: 'siteminder', booking_ref: 'theyardbathdirect',
+    hours_mask: null, phone: '+44', website: 'https://x.test/',
+  };
+  const d = db({ scouts: { 'hotel-adam-1': 'sc_adam' } });
+  const env = { ...d, NUM_AFFILIATES: '{}' };
+  env.DB = {
+    ...d.DB,
+    prepare(q) {
+      const s = d.DB.prepare(q);
+      return {
+        ...s,
+        bind: (...a) => ({
+          ...s.bind(...a),
+          first: async () => (/FROM places/.test(q) ? place
+            : /FROM destinations/.test(q) ? { tz: 'Europe/London' }
+            : s.bind(...a).first()),
+        }),
+      };
+    },
+  };
+  const req = new Request('https://app.itsnum.com/api/book/link', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ place_id: 'hotel-adam-1' }),
+  });
+  const body = await (await handleBookLink(req, env)).json();
+  assert.equal(body.bookable, true);
+  assert.equal(d.inserted.length, 1);
+  assert.equal(row(d.inserted[0]).place_id, 'hotel-adam-1',
+    'the handler had the place id in hand and dropped it');
+  assert.equal(row(d.inserted[0]).scout_id, 'sc_adam');
+});
+
+test('attribution never reaches the URL that was handed out', async () => {
+  // The safety property. A scout share must not be able to change what a
+  // guest is shown, and the cheapest proof is that the same place produces a
+  // byte-identical link whether or not anybody is credited with it.
+  const { handleBookLink } = await import('./openapi.mjs');
+  const place = {
+    id: 'hotel-adam-1', name: 'The Yard', dest: 'bath', category: 'Hotel',
+    booking_platform: 'siteminder', booking_ref: 'theyardbathdirect',
+    hours_mask: null, phone: '+44', website: 'https://x.test/',
+  };
+  const run = async (scouts) => {
+    _resetForTests(); _resetSourcing();
+    const d = db({ scouts });
+    const env = { ...d, NUM_AFFILIATES: '{}' };
+    env.DB = {
+      ...d.DB,
+      prepare(q) {
+        const s = d.DB.prepare(q);
+        return { ...s, bind: (...a) => ({ ...s.bind(...a), first: async () => (/FROM places/.test(q) ? place : { tz: 'Europe/London' }) }) };
+      },
+    };
+    const req = new Request('https://app.itsnum.com/api/book/link', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ place_id: 'hotel-adam-1' }),
+    });
+    return (await (await handleBookLink(req, env)).json()).url;
+  };
+  assert.equal(await run({ 'hotel-adam-1': 'sc_adam' }), await run({}));
+});
+
+test('no comment in the schema contains a semicolon', async () => {
+  // The schema is split on ';' to make a batch. A semicolon inside a SQL
+  // COMMENT therefore cuts a statement in half, and the halves are still
+  // valid-looking strings — so the failure is not a syntax error you can read,
+  // it is CREATE TABLE silently never running and every later write saying
+  // "no such table". This cost a real debugging round the day the two new
+  // columns were commented.
+  const d = db();
+  await recordHandoffs(d, [{ host: 'x.test' }], {});
+  const creates = d.ddl.filter((q) => /^CREATE TABLE/i.test(q));
+  assert.equal(creates.length, 1, `the CREATE TABLE was split: ${JSON.stringify(d.ddl)}`);
+  assert.match(creates[0], /\)$/, 'the CREATE TABLE does not end in a closing paren — it was cut short');
+  assert.match(creates[0], /place_id TEXT/);
+  assert.match(creates[0], /scout_id TEXT/);
+  for (const q of d.ddl) assert.ok(q.length, 'an empty statement means a stray semicolon');
+});
+
+test('end to end: a chain hotel Adam sourced goes out through the network, carrying his code', async () => {
+  // The whole chain in one assertion, because every link in it was broken
+  // separately at the start of the day:
+  //   places.website  →  property code  →  chain deep link
+  //                   →  wrapped through impact.com
+  //                   →  subId1 = the scout's code   (Hilton's own report)
+  //                   →  scout_id on the click row   (NUM's own report)
+  // Two independent records that have to agree is what makes a commission
+  // owed to a real person checkable rather than assertable.
+  const { handleBookLink } = await import('./openapi.mjs');
+  const place = {
+    id: 'hotel-cal', name: 'The Caledonian Edinburgh', dest: 'edinburgh', category: 'Hotel',
+    booking_platform: 'hilton', booking_ref: 'ednchqq',
+    hours_mask: null, phone: '+44', website: 'https://www.hilton.com/en/hotels/ednchqq-the-caledonian-edinburgh/',
+  };
+  const d = db({ scouts: { 'hotel-cal': { id: 'sc_adam', code: 'ADAM' } } });
+  const env = {
+    ...d,
+    NUM_AFFILIATES: JSON.stringify({
+      'hilton.com': { wrap: 'https://hilton.sjv.io/c/1234567/1958948/12674?subId1={sub}&u={dest}' },
+    }),
+  };
+  env.DB = {
+    ...d.DB,
+    prepare(q) {
+      const s = d.DB.prepare(q);
+      return {
+        ...s,
+        bind: (...a) => ({
+          ...s.bind(...a),
+          first: async () => (/FROM places/.test(q) ? place
+            : /FROM destinations/.test(q) ? { tz: 'Europe/London' }
+            : s.bind(...a).first()),
+        }),
+      };
+    },
+  };
+  const req = new Request('https://app.itsnum.com/api/book/link', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ place_id: 'hotel-cal' }),
+  });
+  const body = await (await handleBookLink(req, env)).json();
+
+  assert.equal(body.bookable, true);
+  const u = new URL(body.url);
+  assert.equal(u.hostname, 'hilton.sjv.io',
+    'the guest went straight to hilton.com — a ref parameter there earns nothing');
+  assert.equal(u.searchParams.get('subId1'), 'ADAM',
+    "the network's own payout report will not name the scout");
+  assert.equal(u.searchParams.get('u'),
+    'https://www.hilton.com/en/book/reservation/deeplink/?ctyhocn=EDNCHQQ',
+    'the destination was mangled on the way into the wrapper');
+
+  const r = row(d.inserted[0]);
+  assert.equal(r.place_id, 'hotel-cal');
+  assert.equal(r.scout_id, 'sc_adam');
+  assert.equal(r.tagged, 1, 'a wrapped link must count as earning, or the report understates it');
+  assert.equal(r.host, 'hilton.com', 'the log must name the hotel, not the tracker');
+});
+
+test('the same hotel with NO scout still books, and still earns', async () => {
+  // Attribution is not a precondition for revenue. A venue nobody introduced
+  // must still go out through the network — otherwise adding a scout
+  // programme would have quietly switched off earnings on everything else.
+  const { handleBookLink } = await import('./openapi.mjs');
+  const place = {
+    id: 'hotel-cal', name: 'The Caledonian Edinburgh', dest: 'edinburgh', category: 'Hotel',
+    booking_platform: 'hilton', booking_ref: 'ednchqq',
+    hours_mask: null, phone: '+44', website: 'https://x.test/',
+  };
+  const d = db();
+  const env = {
+    ...d,
+    NUM_AFFILIATES: JSON.stringify({
+      'hilton.com': { wrap: 'https://hilton.sjv.io/c/1/2/3?subId1={sub}&u={dest}' },
+    }),
+  };
+  env.DB = {
+    ...d.DB,
+    prepare(q) {
+      const s = d.DB.prepare(q);
+      return { ...s, bind: (...a) => ({ ...s.bind(...a), first: async () => (/FROM places/.test(q) ? place : { tz: 'Europe/London' }) }) };
+    },
+  };
+  const req = new Request('https://app.itsnum.com/api/book/link', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ place_id: 'hotel-cal' }),
+  });
+  const body = await (await handleBookLink(req, env)).json();
+  const u = new URL(body.url);
+  assert.equal(u.hostname, 'hilton.sjv.io');
+  // Falls back to the destination slug, which is what this argument carried
+  // before scouts existed.
+  assert.equal(u.searchParams.get('subId1'), 'edinburgh');
+  assert.equal(row(d.inserted[0]).scout_id, null);
 });

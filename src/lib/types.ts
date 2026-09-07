@@ -65,10 +65,44 @@ export interface CardRef {
   photoLicense?: string | null;
 }
 
+/**
+ * One recommended place, as the server assembled it.
+ *
+ * Every field here comes from a verified directory row — the model supplied
+ * only the name and the one-line reason. `link` is guaranteed present: a pick
+ * the server could not attach a link to is dropped before it reaches the app
+ * (worker/placelink.mjs resolvePicks), because a place a guest cannot open is
+ * a name, not a recommendation.
+ */
+export interface Pick {
+  id: string | null;
+  name: string;
+  name_local?: string | null;
+  /** Why this one and not the other two, in a few words. */
+  why?: string | null;
+  /** Always present. The venue's own site, or a map pinned to its coordinates. */
+  link: string;
+  link_kind?: 'website' | 'map' | null;
+  /** A map link is offered even when `link` is the venue's website. */
+  map?: string | null;
+  phone?: string | null;
+  tel?: string | null;
+  address?: string | null;
+  /** true / false where Num has verified hours; null means unknown, never assume. */
+  open_now?: boolean | null;
+  bookable?: boolean;
+  category?: string | null;
+  area?: string | null;
+  km?: number | null;
+  rating?: number | null;
+}
+
 export interface Msg {
   who: 'c' | 'u';
   text: string;
   card?: CardRef;
+  /** Recommended places, rendered as cards under the message. */
+  picks?: Pick[];
 }
 
 export interface Chip {
@@ -280,6 +314,8 @@ export interface InviteDraft {
     sms_url: string;
     whatsapp_url: string;
     install_steps: { ios: string[]; android: string[] };
+    /** True = Num can text this invite for the member (verified sender, a number, texting on). */
+    num_text?: boolean;
   };
 }
 
