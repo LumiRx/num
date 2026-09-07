@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.249 — 2026-09-07 20:14 UTC
+
+backfill: round-robin destinations
+
+- commit `ef2d380`
+
 ## 0.8.248 — 2026-09-07 20:10 UTC
 
 backfill: retry bad moments, crawl the recommended first
