@@ -11,7 +11,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { candidates, scanOne, backfillBookings, progress, NONE } from './bookingbackfill.mjs';
+import { candidates, scanOne, backfillBookings, progress, NONE, FINAL, isFinal, MAX_ATTEMPTS } from './bookingbackfill.mjs';
 
 let db; let env;
 const d1 = (database) => ({
@@ -78,9 +78,45 @@ describe('who it looks at', () => {
     assert.equal(order.at(-1), 'p2');
   });
 
-  test('a place already looked at is not looked at twice', async () => {
+  test('a place with a real ANSWER is not looked at twice', async () => {
     await backfillBookings(env, { fetchImpl: fetcher({}) });
     assert.deepEqual(await candidates(env), [], 'the job would loop on the same venues for ever');
+  });
+});
+
+describe('A RATE-LIMIT IS NOT AN ANSWER', () => {
+  // Found in the first live tick: of 40 venues, two returned HTTP 429 and one
+  // 403. The first version wrote all three down as checked, which meant never
+  // looked at again — a restaurant that happened to be busy when we knocked
+  // would be recorded as having no booking system for ever, and its guests
+  // sent to a phone number instead of its reservation page.
+  test('only a real reading counts as final', () => {
+    assert.deepEqual([...FINAL], ['found', 'none', 'http-404', 'no-site']);
+    for (const bad of ['http-429', 'http-403', 'http-500', 'unreachable']) {
+      assert.equal(isFinal(bad), false, `${bad} was treated as a settled answer`);
+    }
+  });
+
+  test('a rate-limited venue comes back into the queue once it has cooled off', async () => {
+    await backfillBookings(env, { fetchImpl: async () => ({ ok: false, status: 429, url: 'x', text: async () => '' }) });
+    // Not immediately — hammering a site that just said "too many" is how you
+    // earn a block.
+    assert.deepEqual(await candidates(env), []);
+    db.exec(`UPDATE num_booking_scan SET checked_at = datetime('now','-30 days')`);
+    assert.ok((await candidates(env)).length > 0, 'a busy moment became a permanent verdict');
+  });
+
+  test('but it gives up eventually rather than knocking for ever', async () => {
+    await backfillBookings(env, { fetchImpl: async () => ({ ok: false, status: 429, url: 'x', text: async () => '' }) });
+    db.exec(`UPDATE num_booking_scan SET checked_at = datetime('now','-30 days'), attempts = ${MAX_ATTEMPTS}`);
+    assert.deepEqual(await candidates(env), []);
+  });
+
+  test('progress names the ones still being retried, so a wall of 429s is visible', async () => {
+    await backfillBookings(env, { fetchImpl: async () => ({ ok: false, status: 429, url: 'x', text: async () => '' }) });
+    const p = await progress(env);
+    assert.ok(p.retrying > 0, 'rate-limits hid inside "checked" and looked like progress');
+    assert.equal(p.found, 0);
   });
 });
 

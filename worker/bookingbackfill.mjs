@@ -46,12 +46,38 @@ import { detectBooking } from './booking.mjs';
 /** Marked into booking_platform when a site was read and had no booking system. */
 export const NONE = '-';
 
+/**
+ * Outcomes that are an ANSWER, and outcomes that are just a bad moment.
+ *
+ * ── FOUND IN THE FIRST LIVE TICK, 7 Sep 2026 ──────────────────────────────
+ *
+ * Forty venues checked. Two came back HTTP 429 — rate-limited — and one 403.
+ * Every one of them was written down as checked, which in the first version
+ * meant NEVER LOOKED AT AGAIN. A restaurant that happened to be busy at the
+ * moment we knocked would have been recorded as having no booking system, for
+ * ever, and its guests sent to a phone number instead of its reservation page.
+ *
+ * That is the quietest kind of data bug: nothing errors, the job reports
+ * progress, and the directory fills with confident wrong answers.
+ *
+ * So: `none`, `found`, `http-404` and `no-site` are answers — the site was
+ * read, or it genuinely is not there. Everything else is a bad moment, and a
+ * bad moment earns another look later.
+ */
+export const FINAL = Object.freeze(['found', 'none', 'http-404', 'no-site']);
+export const isFinal = (outcome) => FINAL.includes(String(outcome ?? ''));
+
+/** How long before a bad moment is worth another try, and how many times. */
+export const RETRY_AFTER_DAYS = 7;
+export const MAX_ATTEMPTS = 3;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS num_booking_scan (
   place_id TEXT PRIMARY KEY,
   checked_at TEXT NOT NULL DEFAULT (datetime('now')),
   outcome TEXT NOT NULL,
-  platform TEXT
+  platform TEXT,
+  attempts INTEGER NOT NULL DEFAULT 1
 );
 `;
 // Per DATABASE, not a module-level boolean — see the same note in devapi.mjs.
@@ -59,6 +85,9 @@ const readied = new WeakSet();
 async function ensure(env) {
   if (!env?.DB || readied.has(env.DB)) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // The table shipped without `attempts`. Duplicate-column on a re-run is the
+  // expected no-op — the same lazy migration pattern used across this Worker.
+  await env.DB.prepare('ALTER TABLE num_booking_scan ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1').run().catch(() => {});
   readied.add(env.DB);
 }
 
@@ -95,18 +124,27 @@ async function ensure(env) {
  */
 export async function candidates(env, { limit = 40 } = {}) {
   await ensure(env);
+  const FINAL_MARKS = FINAL.map((_, i) => `?${i + 2}`).join(',');
   const { results } = await env.DB.prepare(
     `SELECT p.id, p.name, p.website, p.dest
        FROM places p
        LEFT JOIN num_booking_scan s ON s.place_id = p.id
       WHERE p.website IS NOT NULL AND p.website <> ''
         AND (p.booking_platform IS NULL OR p.booking_platform = '')
-        AND s.place_id IS NULL
         AND (p.category LIKE '%restaurant%' OR p.category LIKE '%bar%' OR p.category LIKE '%cafe%'
              OR p.category LIKE '%food%' OR p.category LIKE '%dining%')
+        AND (
+          s.place_id IS NULL
+          OR (
+            -- A bad moment, cooled off, and not yet given up on. See FINAL.
+            s.outcome NOT IN (${FINAL_MARKS})
+            AND COALESCE(s.attempts, 1) < ?${2 + FINAL.length}
+            AND s.checked_at < datetime('now', ?${3 + FINAL.length})
+          )
+        )
       ORDER BY COALESCE(p.reviews, 0) DESC
       LIMIT ?1`,
-  ).bind(limit).all().catch(() => ({ results: [] }));
+  ).bind(limit, ...FINAL, MAX_ATTEMPTS, `-${RETRY_AFTER_DAYS} days`).all().catch(() => ({ results: [] }));
   return results ?? [];
 }
 
@@ -166,8 +204,9 @@ export async function backfillBookings(env, { limit = 40, fetchImpl } = {}) {
   for (const r of results) {
     if (!r?.id) continue;
     stmts.push(env.DB.prepare(
-      `INSERT INTO num_booking_scan (place_id, outcome, platform) VALUES (?1,?2,?3)
-       ON CONFLICT(place_id) DO UPDATE SET outcome=?2, platform=?3, checked_at=datetime('now')`,
+      `INSERT INTO num_booking_scan (place_id, outcome, platform, attempts) VALUES (?1,?2,?3,1)
+       ON CONFLICT(place_id) DO UPDATE SET outcome=?2, platform=?3, checked_at=datetime('now'),
+                                           attempts = COALESCE(attempts, 1) + 1`,
     ).bind(r.id, r.outcome, r.platform ?? null));
     if (r.outcome === 'found') {
       // Only ever fills a BLANK. A platform recorded by hand, or by a partner
@@ -195,11 +234,15 @@ export async function progress(env) {
   const r = await env.DB.prepare(
     `SELECT (SELECT COUNT(*) FROM num_booking_scan) checked,
             (SELECT COUNT(*) FROM num_booking_scan WHERE outcome='found') found,
+            (SELECT COUNT(*) FROM num_booking_scan WHERE outcome NOT IN ('found','none','http-404','no-site')) retrying,
             (SELECT COUNT(*) FROM places WHERE booking_platform IS NOT NULL AND booking_platform<>'') bookable`,
   ).first().catch(() => null);
   return {
     checked: Number(r?.checked ?? 0),
     found: Number(r?.found ?? 0),
+    // Named separately so a wall of rate-limits is visible rather than
+    // hiding inside "checked" and looking like progress.
+    retrying: Number(r?.retrying ?? 0),
     bookable: Number(r?.bookable ?? 0),
     note: 'Found means the venue advertises a booking system on its own site. Num links guests straight to that page — it does not book through it.',
   };

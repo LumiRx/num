@@ -614,6 +614,14 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     });
   };
   var SYM = { GBP: '£', USD: '$', EUR: '€', THB: '฿', AED: 'AED ' };
+  /* The database stores ISO, and the diary was rendering it raw \u2014 a host saw
+     "2026-09-10T11 05" where a date belongs. Anything that does not parse is
+     shown exactly as stored, because a wrong date is worse than an ugly one. */
+  var when = function (v) {
+    if (!v) return '\u2014';
+    var m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    return m ? m[3] + '/' + m[2] + '/' + m[1] + ' ' + m[4] + ':' + m[5] : String(v);
+  };
   var money = function (minor, cur) {
     return (SYM[cur] || (cur + ' ')) + (Number(minor || 0) / 100).toFixed(2);
   };
@@ -1081,19 +1089,18 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         if (/^[\u2714\u2716]/.test(last)) answer = '<br><span class="hint">' + esc(last) + '</span>';
       }
       return '<tr><td><b>' + esc(r.title) + '</b>' + (r.city ? '<br><span class="hint">' + esc(r.city) + '</span>' : '') + answer +
-        '</td><td>' + esc(r.client_name || '—') + '</td><td>' + esc(r.starts_at || '—') + '</td><td class="tnum">' +
+        '</td><td>' + esc(r.client_name || '—') + '</td><td>' + esc(when(r.starts_at)) + '</td><td class="tnum">' +
         (r.quote_only ? 'On request' : money(r.price_minor, r.currency)) + '</td><td>' + esc(r.status) +
         '</td><td>' + acts + '</td></tr>' +
         '<tr id="venue-' + r.id + '" hidden><td colspan="6"></td></tr>';
     }).join('') : '<tr><td colspan="6" style="color:var(--slate)">Nothing logged yet.</td></tr>';
 
-    // Beside the work, not on a statement a month later.
-    if (d.fees_minor != null) {
-      note($('rqErr'), d.fees_minor
-        ? 'NUM fees on your confirmed work so far: ' + money(d.fees_minor, $('currency').value || 'GBP') +
-          ' \u2014 \u00a35 a booking, billed to you, never to your client.'
-        : 'No NUM fees yet. We charge \u00a35 when you confirm a booking, and nothing on one you decline.', 'ok');
-    }
+    /* There is no per-booking fee any more, so there is nothing to report here.
+       This block kept saying "we charge \u00a35 when you confirm a booking" after the
+       fee was removed on 7 Sep 2026 \u2014 contradicting the line printed directly
+       above it and the one-pager we hand to hosts. A host who reads both learns
+       to trust neither. Removed rather than reworded: the truthful version of
+       this message is silence. */
 
     Array.prototype.forEach.call($('rqRows').querySelectorAll('[data-rq]'), function (b) {
       b.onclick = function () {
@@ -1416,6 +1423,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
      from itsnum.com, so these are the only cross-origin calls on this page. */
   var PLAN_API = 'https://app.itsnum.com/api/host';
   var PLAN_ORDER = ['free', 'small', 'pro', 'full'];
+  /* What each plan costs, as we advertise it on itsnum.com/hosts and on the
+     one-pager. The live figure comes from Stripe, but when billing has not
+     answered we show the list price rather than an em dash \u2014 a host being
+     asked to upgrade has to be able to see what they are agreeing to. */
+  var PLAN_LIST = { free: 'Free', small: '\u00a39.99/mo', pro: '\u00a319.99/mo', full: '\u00a350/mo' };
   var PLAN_BUYS = {
     free:  'Unlimited clients, your services and prices, every request read and drafted',
     small: 'Everything in Free, plus your calendar feed and text alerts',
@@ -1429,7 +1441,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     $('plRows').innerHTML = PLAN_ORDER.map(function (k) {
       var mine = k === current;
       var price = k === 'free' ? 'Free'
-        : plans[k] ? '£' + (plans[k].pence / 100).toFixed(2) + '/mo' : '—';
+        : plans[k] ? '£' + (plans[k].pence / 100).toFixed(2) + '/mo'
+        : (PLAN_LIST[k] || '—');
       var action = mine
         ? '<span class="hint">Your plan</span>'
         : k === 'free'

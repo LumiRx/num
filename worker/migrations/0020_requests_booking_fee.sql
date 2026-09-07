@@ -1,0 +1,32 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0020_requests_booking_fee.sql — the column that was never added
+--
+-- WHAT BROKE. GET /api/host/requests returned 500 in production for every
+-- host, while every other console endpoint returned 200. The console caught
+-- the failure and rendered an empty list, so from the host's side the
+-- Requests section simply looked empty and "Log it" appeared to do nothing —
+-- no error, no message, no clue.
+--
+-- WHY. num_host_requests already existed in production before 0014 ran.
+-- 0014 creates it with CREATE TABLE IF NOT EXISTS, so on an existing table
+-- the whole statement is a silent no-op — including the booking_fee_minor
+-- column 0014 added to the definition. The column therefore only ever
+-- existed on fresh databases. Production never got it, and the SELECT in
+-- growth/worker.js that names r.booking_fee_minor failed on every call.
+--
+-- THE LESSON, worth more than the fix. A column added to a
+-- CREATE TABLE IF NOT EXISTS reaches new databases and no existing one.
+-- Any column added to an existing table's definition needs its own ALTER,
+-- every time, or it silently exists only in the tests.
+--
+-- The fee itself is dead — NUM charges no per-booking fee, and
+-- worker/servicefee.mjs holds BOOKING_FEE_MINOR at 0. The column stays at 0
+-- forever. It is added rather than removed from the query because the
+-- historic rows that carry a fee from before 7 September 2026 are what the
+-- integrity checker reads to prove nobody was charged after it was removed.
+--
+-- Semicolons never appear inside a comment in this file — the migration
+-- runner splits on them.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE num_host_requests ADD COLUMN booking_fee_minor INTEGER NOT NULL DEFAULT 0;

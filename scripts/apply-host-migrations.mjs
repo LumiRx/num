@@ -36,6 +36,10 @@ const FILES = [
   // The CREATEs are IF NOT EXISTS and safe to re-run — the ALTERs are not, so a
   // second pass reports 'duplicate column name' and is tolerated below.
   'worker/migrations/0019_suppliers.sql',
+  // 0020 adds num_host_requests.booking_fee_minor, which 0014 only ever gave
+  // to fresh databases — see the header of that file. A second pass reports
+  // 'duplicate column name' and is tolerated below.
+  'worker/migrations/0020_requests_booking_fee.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
