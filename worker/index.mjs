@@ -2409,6 +2409,21 @@ export default {
           if (h.scanned) console.log(`[hoursbackfill] ${h.parsed} parsed, ${h.refused} refused of ${h.scanned}`);
         } catch (e) { console.warn('[cron] hours backfill', e?.message ?? e); }
 
+        // WHICH BOOKING SYSTEM DOES THIS RESTAURANT ALREADY USE?
+        //
+        // `bookingLink()` has been able to send a guest to a venue's own
+        // OpenTable or Resy page since August, and it almost never fires:
+        // 17 places in a directory of 1.86 million carry a booking platform,
+        // because nothing had ever gone and looked. This reads the venue's
+        // OWN homepage — the page they publish for customers — and notices
+        // the booking widget they already advertise. Forty a tick, politely,
+        // for as long as it takes. See worker/bookingbackfill.mjs.
+        try {
+          const { backfillBookings } = await import('./bookingbackfill.mjs');
+          const b = await backfillBookings(env);
+          if (b.looked) console.log(`[bookingbackfill] ${b.found} found of ${b.looked} looked at`);
+        } catch (e) { console.warn('[cron] booking backfill', e?.message ?? e); }
+
         // ACCEPTED IS NOT DELIVERED. Anything handed to a transport and still
         // unconfirmed after thirty minutes becomes a named, visible failure.
         // On 30 Aug this would have shown six of them by 20:56 — the evening
