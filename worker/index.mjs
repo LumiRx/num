@@ -1586,7 +1586,22 @@ export default {
         }
         return json(200, out);
       }
-      return json(200, { pending: await biz.pendingClaims(env) });
+      // ── THREE READERS, TWO TABLES, AND THE PEOPLE WHO WAIT IN NEITHER ──
+      //
+      // `pendingClaims` reads `claims` WHERE state='new'. The morning alert
+      // (nudge.mjs) reads `num_claims`, every unfinished state. So on 7 Sep
+      // 2026 this endpoint answered `pending: 0` while Dre's phone had been
+      // saying "3 claim(s) waiting on us" for three days running — Adam at the
+      // Holiday Inn Express, fourteen days in, plus Larry at Arroyo del Sol.
+      //
+      // Both readers were right about their own table and neither was right
+      // about the question. Merged here, at the one endpoint the console
+      // actually calls, rather than migrating a table under a live funnel.
+      const { stalledClaims } = await import('./console.mjs');
+      return json(200, {
+        pending: await biz.pendingClaims(env),
+        stalled: await stalledClaims(env).catch(() => []),
+      });
     }
 
     // SEE WHAT THEY SEE.

@@ -1651,7 +1651,7 @@ async function ownershipWork(env, { placeId, place, businessId, claimId, who, no
  * have waited and where the code actually went, because those two facts
  * together are the whole explanation.
  */
-async function stalledClaims(env, limit = 100) {
+export async function stalledClaims(env, limit = 100) {
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.place_id, c.state, c.channel, c.channel_value, c.created_at,
             c.claimant_name, c.claimant_email, c.claimant_phone,

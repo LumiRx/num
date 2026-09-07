@@ -13,10 +13,14 @@
 import { test, describe, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { __testables } from './console.mjs';
 import { DESTINATIONS } from '../scripts/destinations.mjs';
 
 const { adminSubmissions, adminSubmissionLink, adminSubmissionPromote } = __testables;
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 function d1(db) {
   const shape = (sql, args) => ({
@@ -356,6 +360,21 @@ describe('adminSubmissionPromote — a business nothing had crawled', () => {
       const res = await grant({ place_id: 'pl_nope', by: 'dre' });
       assert.equal(res.status, 404);
       assert.equal(db.prepare('SELECT COUNT(*) n FROM businesses').get().n, 0);
+    });
+
+    test('the endpoint the console actually calls is the one that got the list', () => {
+      // /api/admin/claims is intercepted by index.mjs BEFORE it reaches
+      // console.mjs — it is gated on X-Admin-Key and answers from `claims`,
+      // a different table from the one the morning alert reads. Adding the
+      // stalled list to console.mjs alone would have been dead code on the
+      // only path anybody opens.
+      const idx = readFileSync(join(HERE, 'index.mjs'), 'utf8');
+      const block = idx.slice(idx.indexOf("url.pathname === '/api/admin/claims'"));
+      const handler = block.slice(0, block.indexOf('SEE WHAT THEY SEE'));
+      assert.match(handler, /stalledClaims/,
+        'the console endpoint still cannot show the people the alert names');
+      assert.match(handler, /pending: await biz\.pendingClaims/,
+        'the existing approvals list must not be lost in the merge');
     });
 
     test('the queue now shows them, with how long and where the code went', async () => {
