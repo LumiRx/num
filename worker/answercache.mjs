@@ -42,7 +42,15 @@ export function normalize(text) {
     // the second person is served the answer to the first person's question.
     .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
     // Filler that changes the typing and not the question.
-    .replace(/\b(the|a|an|is|are|whats|what|s|please|pls|can|you|i|me|my|do|does|any|some|good|for|to|of|in|at|on|near|around)\b/g, ' ')
+    //
+    // `m`, `re`, `ve`, `ll`, `am` were added 7 Sep 2026. Stripping the
+    // apostrophe leaves the contraction's tail behind as a word of its own, so
+    // "I'm in phuket, where should we eat" normalised to "m phuket where
+    // should we eat" while "I am in phuket, where should we eat" normalised to
+    // "am phuket where should we eat" — the SAME QUESTION under two keys,
+    // neither of which could ever hit the other. That question was asked
+    // twelve times in a fortnight and cached nothing.
+    .replace(/\b(the|a|an|is|are|am|whats|what|s|m|re|ve|ll|d|please|pls|can|you|i|me|my|we|our|us|do|does|did|any|some|good|for|to|of|in|at|on|near|around|there|here)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     // "beach" and "beaches" are one question. Without stemming they are two
@@ -63,11 +71,34 @@ function stem(w) {
   return w;
 }
 
-/** How long an answer of this kind stays true, in seconds. */
+/**
+ * How long an answer of this kind stays true, in seconds.
+ *
+ * ── WHY "TONIGHT" NO LONGER MEANS ONE HOUR (7 Sep 2026) ──────────────────
+ *
+ * The volatile list held `tonight`, and nearly every dinner question a
+ * traveller asks contains it — "where should we eat tonight", "best late
+ * dinner tonight", "drinks tonight". So the single most repeated question in
+ * the product expired sixty minutes after it was answered, and the cache
+ * measured one entry and zero hits across its entire life.
+ *
+ * But "tonight" is not a volatile word. WHICH THREE RESTAURANTS ARE GOOD does
+ * not change between 7pm and 9pm; only whether a specific one is open right
+ * now does, and that is `open`/`close`/`now`, which are still here. The test
+ * is not "does the question mention time" — it is "would the answer be
+ * different in an hour".
+ *
+ * `today` goes for the same reason and `tonight` with it. A recommendation
+ * asked tonight and served to the next person tonight is the same good answer;
+ * one served tomorrow lunchtime is caught by the six-hour ceiling below.
+ */
 export function ttlFor(text) {
   const t = String(text ?? '').toLowerCase();
-  // Anything with a time or a price in it goes stale within the hour.
-  if (/\b(open|close|closing|hours|today|tonight|now|price|cost|how much|available|showtime|book)\b/.test(t)) return 3600;
+  // Genuinely volatile: a specific place's current state, a price, a seat.
+  if (/\b(open|close|closing|hours|now|price|cost|how much|available|showtime|book|tomorrow)\b/.test(t)) return 3600;
+  // Time-of-day questions: the SET of good answers is stable, but not for a
+  // week — six hours keeps "tonight" meaning tonight.
+  if (/\b(tonight|today|this (?:morning|afternoon|evening)|right now|late)\b/.test(t)) return 6 * 3600;
   // Recommendations drift with seasons and closures, but not by the day.
   if (/\b(best|where|recommend|top|good)\b/.test(t)) return 7 * 86400;
   return 86400;

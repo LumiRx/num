@@ -70,8 +70,24 @@ test('the model override cannot be chosen by the guest', () => {
   // test exists for is unchanged and still checked: the directive is built
   // here, by the director, from the server's own env — never read off the
   // request body.
-  assert.match(index, /const directive = direct\(lastUser, parsed\.state, env\)/,
+  //
+  // 7 Sep 2026: the call gained `prevUser` — the previous message in the
+  // thread — so a one-word reply can inherit the tier of what it replies to
+  // instead of being escalated to the frontier model on no signal at all.
+  //
+  // That IS user-supplied, and it is worth being precise about why it changes
+  // nothing here. It can influence the TIER; it can never name a MODEL.
+  // Tiers resolve to model strings through the director's own cost table, on
+  // the server, from env — which is the property this test exists to protect.
+  // And the worst a crafted `prevUser` can do is make a cheap message
+  // classify as an expensive one, which a guest can already do by simply
+  // typing the expensive message. Same cost, one fewer step.
+  assert.match(index, /const directive = direct\(lastUser, \{[\s\S]{0,60}?prevUser/,
     'the directive is no longer built server-side by the director');
+  assert.match(index, /direct\(lastUser, \{ \.\.\.\(parsed\.state \?\? \{\}\), prevUser/,
+    'the directive stopped being built from the server-side state');
+  assert.ok(!/direct\([^)]*body\.(model|brain|directive)/.test(index),
+    'the directive now reads a model or brain name off the request body');
   assert.ok(!/directive:\s*parsed\.(state\.)?directive/.test(index),
     'the directive is taken from the user payload — a guest could name the model on our bill');
 });
