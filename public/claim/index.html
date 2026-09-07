@@ -292,15 +292,23 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         <input id="contact_name" name="contact_name" type="text" required
                autocomplete="name">
 
-        <label for="phone" id="l-phone">Mobile number</label>
-        <input id="phone" name="phone" type="tel" required
+        <!-- Phone and email are BOTH optional here, and the server requires one
+             of the two rather than a particular one. It used to demand a mobile
+             number: 19 businesses clicked through to this form pre-filled with
+             their own name and one finished it. Every one of them arrived by
+             clicking a link in an email we had already sent — we had the
+             address and asked for a phone instead. The verification code goes
+             to the contact published on their own listing either way, so the
+             number never proved anything. -->
+        <label for="phone" id="l-phone">Mobile number <span class="opt">(optional)</span></label>
+        <input id="phone" name="phone" type="tel"
                autocomplete="tel" inputmode="tel" placeholder="081 234 5678">
         <p class="hint" id="hint-phone"></p>
 
         <label for="line_id" id="l-line" class="hidden">LINE ID <span class="opt"></span></label>
         <input id="line_id" name="line_id" type="text" class="hidden" autocomplete="off">
 
-        <label for="email" id="l-email">Email <span class="opt">(optional)</span></label>
+        <label for="email" id="l-email">Email</label>
         <input id="email" name="email" type="email"
                autocomplete="email" inputmode="email">
 

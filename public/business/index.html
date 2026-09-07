@@ -297,6 +297,9 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <li><code class="inl">get_listing</code> &mdash; read what NUM currently says about you.</li>
     <li><code class="inl">update_listing</code> &mdash; change name, phone, website, hours, cuisine, address. Category, rating and where you rank are <strong>not</strong> editable, and no key grants it.</li>
     <li><code class="inl">get_insights</code> &mdash; how often NUM surfaced you to a guest.</li>
+    <li><code class="inl">list_offerings</code> &mdash; read what you offer and what you charge: menu, treatments, rooms or tours. A price can be absent &mdash; &ldquo;market price&rdquo; is a real answer and comes back as a note rather than a number.</li>
+    <li><code class="inl">set_offering</code> &mdash; add or change one item. Currency is <strong>not</strong> settable: it comes from where your business is, so a Thai restaurant is never priced in dollars. Leave the price empty when it varies.</li>
+    <li><code class="inl">hide_offering</code> &mdash; stop NUM mentioning something seasonal or sold out, without deleting it. It comes back without retyping.</li>
   </ul>
   <p>The machine-readable index is at <code class="inl">/api/biz</code>. If this list and that endpoint disagree, the endpoint is right and this page is stale &mdash; tell us at <a href="mailto:info@itsnum.com">info@itsnum.com</a>.</p>
 </details>
