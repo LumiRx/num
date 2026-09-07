@@ -102,6 +102,41 @@ test('case never causes a false alarm', () => {
   assert.deepEqual(drift(d, live({ t: ['id', 'host_id'] })), []);
 });
 
+test('the LIVE stored schema parses exactly — comments, CHECKs, ALTERs and all', () => {
+  // This is the real sqlite_master.sql for num_host_requests, copied from
+  // production. It is the hardest input this parser will ever see:
+  //   - inline "--" comments, one containing an em dash
+  //   - CHECK (status IN ('new','drafted',...)) with commas that are not
+  //     column boundaries
+  //   - seven columns appended by ALTER, which SQLite splices onto the end of
+  //     the stored CREATE TABLE after a bare newline and comma
+  //   - no trailing semicolon
+  //
+  // The checker reads the live side through this same parser, so if it drifts
+  // the comparison silently starts agreeing with itself about the wrong thing.
+  const stored = `CREATE TABLE num_host_requests (
+  id             TEXT PRIMARY KEY,
+  host_id        TEXT NOT NULL,
+  service_key    TEXT NOT NULL,             -- car|reservation|stay|activity
+  starts_at      TEXT,                      -- ISO8601 local to the request
+  quote_only     INTEGER NOT NULL DEFAULT 0 CHECK (quote_only IN (0,1)),
+  status         TEXT NOT NULL DEFAULT 'new'
+                 CHECK (status IN ('new','drafted','awaiting_host','confirmed','declined','done','cancelled')),
+  -- Host-to-host: set when this request is fulfilled by ANOTHER host's
+  -- service. The client never learns this \u2014 the two hosts settle between them.
+  network_host_id TEXT,
+  network_fee_minor INTEGER NOT NULL DEFAULT 0,  -- NUM's flat fee
+  confirmed_at   TEXT
+, source TEXT NOT NULL DEFAULT 'host', host_notified_at TEXT, booking_fee_minor INTEGER NOT NULL DEFAULT 0)`;
+
+  const d = declaredColumns([stored.trim().replace(/;?$/, ';')]);
+  assert.deepEqual([...d.get('num_host_requests')].sort(), [
+    'booking_fee_minor', 'confirmed_at', 'host_id', 'host_notified_at', 'id',
+    'network_fee_minor', 'network_host_id', 'quote_only', 'service_key',
+    'source', 'starts_at', 'status',
+  ]);
+});
+
 test('the real migrations parse, and every host table is covered', () => {
   const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
   assert.ok(files.length > 10, 'the migrations directory looks wrong');

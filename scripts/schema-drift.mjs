@@ -112,20 +112,55 @@ export function drift(declared, liveByTable) {
 /* ── Reading the live schema ───────────────────────────────────────────── */
 
 function liveSchema(local) {
-  const sql = "SELECT m.name AS tbl, p.name AS col FROM sqlite_master m, "
-    + "pragma_table_info(m.name) p WHERE m.type='table'";
+  // SQLite rewrites sqlite_master.sql when a column is added, so the stored
+  // CREATE TABLE text IS the current shape of the table — ALTERs included.
+  // Reading that is one plain query. The first version of this used
+  // `pragma_table_info` as a table-valued function joined against
+  // sqlite_master, which is valid SQL that wrangler would not run, and it
+  // failed with nothing useful on screen.
+  const sql = "SELECT name, sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL";
   const args = ['wrangler', 'd1', 'execute', DB, local ? '--local' : '--remote',
     '--json', '--command', sql];
-  const raw = execFileSync('npx', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-  // wrangler prints a banner before the JSON on some versions.
-  const body = JSON.parse(raw.slice(raw.indexOf('[')));
-  const rows = body[0]?.results || [];
-  const map = new Map();
-  for (const r of rows) {
-    if (!map.has(r.tbl)) map.set(r.tbl, new Set());
-    map.get(r.tbl).add(String(r.col).toLowerCase());
+
+  let raw;
+  try {
+    raw = execFileSync('npx', args, {
+      cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    // Say what actually went wrong. The whole reason this script exists is
+    // that a failure reported nothing useful and everyone carried on.
+    const err = new Error('wrangler could not read the schema');
+    err.detail = [e.stderr, e.stdout].filter(Boolean).join('\n').trim()
+      || String(e.message || e);
+    throw err;
   }
-  return map;
+
+  const open = raw.indexOf('[');
+  if (open < 0) {
+    const err = new Error('wrangler returned no JSON');
+    err.detail = raw.slice(0, 800);
+    throw err;
+  }
+  let body;
+  try {
+    body = JSON.parse(raw.slice(open));
+  } catch (e) {
+    const err = new Error('wrangler returned something that is not JSON');
+    err.detail = raw.slice(open, open + 800);
+    throw err;
+  }
+
+  const rows = body[0]?.results || body?.result?.[0]?.results || [];
+  if (!rows.length) {
+    const err = new Error('the database reported no tables at all');
+    err.detail = 'That is almost certainly the wrong database, not an empty one.';
+    throw err;
+  }
+
+  // Reuse the parser the migrations go through, so both sides of the
+  // comparison are read the same way and a parser bug cannot fake a match.
+  return declaredColumns(rows.map((r) => String(r.sql).trim().replace(/;?$/, ';')));
 }
 
 /* ── Run ───────────────────────────────────────────────────────────────── */
@@ -141,8 +176,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     live = liveSchema(local);
   } catch (e) {
-    console.error('Could not read the live schema. Is wrangler logged in?');
-    console.error(String(e.message || e).split('\n').slice(0, 4).join('\n'));
+    console.error(`\nCould not read the live schema: ${e.message}\n`);
+    if (e.detail) console.error(e.detail.split('\n').slice(0, 12).join('\n'));
+    console.error(`
+Try the same read by hand — if this works, the fault is in this script:
+  npx wrangler d1 execute ${DB} ${local ? '--local' : '--remote'} \\
+    --command "SELECT name FROM sqlite_master WHERE type='table' LIMIT 3"
+`);
     process.exit(2);
   }
 
