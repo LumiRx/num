@@ -157,3 +157,62 @@ describe('what a business is told it gets', () => {
     }
   });
 });
+
+// ── THREE FILES DESCRIBE THE SAME NINE RAILS ─────────────────────────────
+//
+// Found 8 Sep 2026 while auditing for duplicated work:
+//
+//   services.mjs   ADAPTERS    — the runtime registry. Is it connected?
+//   connectors.mjs CONNECTORS  — the operator pipeline. How do we get it, and
+//                                what is the next step? (44 entries: the 9
+//                                live rails plus 35 prospects.)
+//   connections.mjs MEANING    — the public page. What does a guest get?
+//
+// That is not a mistake. An operator needs "credentials are already set, this
+// one books"; a guest needs "a courier between any two addresses". Same rail,
+// two readers, two registers of language — collapsing them would make one of
+// the two worse.
+//
+// What WAS a mistake is that nothing defended them. Add a rail to ADAPTERS and
+// the other two stay silent; edit a vendor name in one and the others keep the
+// old one; and the public page is the copy nobody re-reads. So the drift is
+// caught here instead: a rail that exists in the runtime must be explained to
+// both audiences, and the three must agree on who the vendor is.
+describe('the three rail registries cannot drift apart', () => {
+  test('every runtime rail is explained to BOTH audiences', async () => {
+    const [{ ADAPTERS }, { CONNECTORS }] = await Promise.all([
+      import('./services.mjs'), import('./connectors.mjs'),
+    ]);
+    const ids = Object.keys(ADAPTERS);
+    const operator = new Set(CONNECTORS.map((c) => c.adapter ?? c.id));
+    for (const id of ids) {
+      assert.ok(MEANING[id], `${id} is a live rail with nothing to say to a guest — add it to connections.MEANING`);
+      assert.ok(operator.has(id), `${id} is a live rail missing from connectors.CONNECTORS — the operator page cannot see it`);
+    }
+  });
+
+  test('nothing is explained to guests that the runtime does not have', async () => {
+    // The reverse drift: a rail deleted from ADAPTERS but left on the public
+    // page is the exact false claim this whole file exists to prevent.
+    const { ADAPTERS } = await import('./services.mjs');
+    for (const id of Object.keys(MEANING)) {
+      assert.ok(ADAPTERS[id], `${id} is described on the public page and does not exist in the runtime`);
+    }
+  });
+
+  test('the three agree on who the vendor actually is', async () => {
+    const [{ ADAPTERS }, { CONNECTORS }] = await Promise.all([
+      import('./services.mjs'), import('./connectors.mjs'),
+    ]);
+    // Compared on the first word — the registers differ on purpose
+    // ("Sabre (flights — quotes only)" vs "Sabre — flights") and the thing
+    // that must never differ is WHICH COMPANY it is.
+    const firstWord = (s) => String(s ?? '').trim().split(/[\s(—-]/)[0].toLowerCase();
+    for (const [id, a] of Object.entries(ADAPTERS)) {
+      const c = CONNECTORS.find((x) => (x.adapter ?? x.id) === id);
+      if (!c) continue;
+      assert.equal(firstWord(MEANING[id].title), firstWord(a.label), `${id}: the public page names a different vendor than the runtime`);
+      assert.equal(firstWord(c.vendor), firstWord(a.label), `${id}: the operator page names a different vendor than the runtime`);
+    }
+  });
+});

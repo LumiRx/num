@@ -209,6 +209,21 @@ export function rank(env = {}, tier = TIERS.MODERATE, health = {}, quality = {},
  * because that is the number a budget is built from. An unknown model reports
  * null rather than a made-up figure.
  */
+/**
+ * ⚠️ THERE IS A SECOND `plan()` IN THIS CODEBASE — brainstate.plan().
+ *
+ * They are not duplicates today and they must not both drive the chain
+ * tomorrow. brainstate.plan() orders the chain by HEALTH alone and is the one
+ * currently wired into brains.ask(). This one orders by capability, then
+ * health and quality, then price, and is deliberately not driving traffic yet
+ * — it is reachable through /api/brains?plan= so the policy can be inspected
+ * before it is trusted.
+ *
+ * When the chain is switched over, brainstate.plan() must be REMOVED from
+ * brains.ask() in the same change. Two functions both deciding what order the
+ * brains are tried in, disagreeing quietly, is the kind of bug that only shows
+ * up on the night something is already down.
+ */
 export function plan(env, tier, health = {}, quality = {}) {
   const { steps, dropped, degraded, reason } = rank(env, tier, health, quality);
   const first = steps[0];
