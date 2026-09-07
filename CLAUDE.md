@@ -34,11 +34,18 @@ set of files whatever branch is checked out. Branches protect history, not the
 tree.
 
 ```bash
+cd ~/num-worktrees/app-main            # these paths are relative to the worktree
 node scripts/claim.mjs status                                   # who holds what
 node scripts/claim.mjs take edit "what you are doing" --who ME  # before editing
 node scripts/claim.mjs renew edit --who ME                      # every ~15 min
 node scripts/claim.mjs release edit --who ME                    # when done
 ```
+
+`npm run claim -- status` does the same from any subdirectory of the worktree —
+npm runs a script from the package root whatever folder you are standing in.
+From a *different* repo you get a bare `MODULE_NOT_FOUND` stack, which is Node
+failing before the script exists to say anything more useful; the fix is the
+`cd`.
 
 A claim goes stale after 20 minutes without a renew, so a crashed session never
 blocks the tree. `--force` breaks a claim you know is dead.

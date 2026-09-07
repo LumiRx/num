@@ -2,6 +2,66 @@
 
 Every version that has been live, newest first.
 
+## 0.8.244 — 2026-09-07 19:40 UTC
+
+clarify venue bookings vs flight ticketing
+
+- commit `5195065`
+
+## 0.8.243 — 2026-09-07 19:24 UTC
+
+works-with: bookings and pickup now derived, not asserted
+
+- commit `5195065`
+
+## 0.8.242 — 2026-09-07 19:15 UTC
+
+brains, works-with, courier, dev API
+
+- commit `5195065`
+
+## 0.8.241 — 2026-09-07 02:13 UTC
+
+(no note given)
+
+- commit `5195065`
+
+## 0.8.240 — 2026-09-07 00:12 UTC
+
+(no note given)
+
+- commit `5195065`
+
+## 0.8.239 — 2026-09-06 16:11 UTC
+
+no code or vendor errors ever shown to a guest; standalone brain reads reasoning replies
+
+- commit `5195065`
+
+## 0.8.238 — 2026-09-05 05:05 UTC
+
+fix: fresh-install crash (React #310); delivery from a partner; NUM texts a friend; add-to-calendar
+
+- commit `5195065`
+
+## 0.8.237 — 2026-09-05 03:39 UTC
+
+fix: fresh-install crash (React #310); delivery from a partner; NUM texts a friend; add-to-calendar
+
+- commit `5195065`
+
+## 0.8.236 — 2026-09-04 19:34 UTC
+
+member calendar; concierge knows your host; ask_host relay; honest venue page
+
+- commit `5195065`
+
+## 0.8.235 — 2026-09-04 18:24 UTC
+
+(no note given)
+
+- commit `5195065`
+
 ## 0.8.234 — 2026-09-03 21:31 UTC
 
 failure ledger, mail delivery evidence, resend webhook

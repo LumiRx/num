@@ -1,7 +1,7 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.234",
+  "version": "0.8.244",
   "engines": {
     "node": ">=20"
   },
@@ -25,6 +25,7 @@
     "app:sync": "npm run build && npx cap sync",
     "app:ios": "npm run app:sync && npx cap open ios",
     "app:android": "npm run app:sync && npx cap open android",
+    "claim": "node scripts/claim.mjs",
     "mcp:integrity": "node scripts/mcp-integrity.mjs",
     "mcp:integrity:offline": "node scripts/mcp-integrity.mjs --offline"
   },

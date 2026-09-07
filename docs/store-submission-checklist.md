@@ -56,6 +56,16 @@ populated for a reviewer — so the review notes must tell them to *ask Num
 something*, which works immediately, rather than promising history that will
 not be there.
 
+> **PARTLY RESOLVED 2026-09-02, verified live 07 Sep.** The concierge THREAD is
+> now hydrated server-side: `worker/turns.mjs` keeps the last 24 turns per
+> member (or per device), `/api/num` merges them under whatever the client
+> already holds, and a signed-in reviewer on a clean device gets the
+> conversation back. Live: `num_member_turns` holds 36 turns across 4 subjects.
+> Still device-only, so the paragraph above still applies to them: the Today
+> canvas, saved Places and visit history. Seed the demo account's BOOKINGS and
+> Stars server-side as before, and keep "ask Num something" in the notes — it
+> is still the fastest thing that works.
+
 ## C. App Review notes — template (Apple 2.3.1(a): generic notes get rejected)
 
 > **Rewritten 2026-08-30 for build 1.0(3), after the 1.0(2) rejection.** Every sentence
