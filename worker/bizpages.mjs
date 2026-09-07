@@ -53,6 +53,16 @@ export const PAGES = Object.freeze([
     blurb: 'The hours, phone, address and description NUM reads out to travellers. Yours to change, any time.',
   },
   {
+    id: 'offerings', label: 'What you offer', nav: true, needs: null,
+    blurb: 'Your menu, treatments, rooms or tours, with prices \u2014 so NUM can answer "what do they do" '
+      + 'with more than one word.',
+  },
+  {
+    id: 'delivery', label: 'Delivery', nav: true, needs: null,
+    blurb: 'Deliver what you list to travellers nearby, inside the NUM app \u2014 your licence, radius, fee, '
+      + 'and every order with one button to move it along.',
+  },
+  {
     id: 'requests', label: 'Booking requests', nav: true, needs: null,
     blurb: 'Every traveller who asked NUM for a table at your place.',
   },

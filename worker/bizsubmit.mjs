@@ -79,6 +79,11 @@ export function validate(input = {}) {
   if (!email && !phone) {
     return { ok: false, error: 'Leave an email or a phone number, or we have no way to come back to you.' };
   }
+  // A licensed trade without its licence is not a listing we can carry. Said
+  // once, plainly, at the moment it can still be fixed.
+  if (input.regulated && !clean(input.licence, 60)) {
+    return { ok: false, error: 'A cannabis business needs its licence number before we can list it. Add the number your regulator issued you.' };
+  }
   return {
     ok: true,
     value: {
@@ -89,11 +94,30 @@ export function validate(input = {}) {
       phone,
       website: cleanUrl(input.website),
       category: clean(input.category, 60),
+      // A regulated trade declares itself here, with its licence, or it is
+      // refused above. Carried into review so a person sees it before the
+      // listing exists — never inferred from the category text.
+      regulated: input.regulated ? 'cannabis' : null,
+      licence: clean(input.licence, 60),
       dest: clean(input.dest, 40),
       country: country ? country.toUpperCase() : null,
       lang: /^[a-z]{2}$/.test(String(input.lang ?? '')) ? String(input.lang) : null,
     },
   };
+}
+
+/**
+ * Self-migrating, like the rest of this codebase. A duplicate-column error is
+ * the steady state, not a fault — it means the column is already there.
+ *
+ * `regulated` names the trade ('cannabis'); `licence` is what the regulator
+ * issued. Kept on the SUBMISSION, not only on the later business row, so the
+ * person reviewing the queue sees it before a listing exists at all.
+ */
+async function ensure(env) {
+  for (const col of ['regulated TEXT', 'licence TEXT']) {
+    await env.DB.prepare(`ALTER TABLE num_place_submissions ADD COLUMN ${col}`).run().catch(() => {});
+  }
 }
 
 /**
@@ -110,6 +134,7 @@ export async function submit(env, input, { source = 'console' } = {}) {
   const v = validate(input);
   if (!v.ok) return v;
   const b = v.value;
+  await ensure(env);
 
   const existing = await env.DB.prepare(
     `SELECT id, status, place_id FROM num_place_submissions
@@ -121,11 +146,11 @@ export async function submit(env, input, { source = 'console' } = {}) {
   const id = `sub_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   await env.DB.prepare(
     `INSERT INTO num_place_submissions
-       (id,name,name_local,lang,address,website,category,phone,email,country,dest,created_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now'))`,
+       (id,name,name_local,lang,address,website,category,phone,email,country,dest,regulated,licence,created_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,datetime('now'))`,
   ).bind(
     id, b.name, b.name_local, b.lang, b.address, b.website, b.category,
-    b.phone, b.email, b.country, b.dest,
+    b.phone, b.email, b.country, b.dest, b.regulated, b.licence,
   ).run();
 
   // Somebody has to know. The submissions queue lives in the ops console, and

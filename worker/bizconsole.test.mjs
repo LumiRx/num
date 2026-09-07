@@ -22,6 +22,7 @@
 // real restaurant is not a test.
 import { test, describe, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import worker from './index.mjs';
 import { __testables } from './bizconsole.mjs';
@@ -428,4 +429,37 @@ describe('hostile input', () => {
     const html = await (await post({ action: 'find', q: '"><img onerror=x>' })).text();
     assert.ok(!html.includes('<img onerror'));
   });
+});
+
+// ── the console is read on a phone, behind a counter ─────────────────────
+//
+// It shipped with a viewport tag, a 760px max-width and NOT ONE media query,
+// so it scaled on a phone rather than fitting one. The people who use it are
+// restaurant and hotel owners standing at a till; a business console read at a
+// desk is the exception.
+test('the business console is actually built for a phone', () => {
+  const src = readFileSync(new URL('./bizconsole.mjs', import.meta.url), 'utf8');
+  assert.match(src, /@media \(max-width:560px\)/, 'no mobile breakpoint — the console only scales, it does not fit');
+  // A four-column table at 390px either overflows the page sideways or
+  // squeezes every column unreadable. It must scroll inside its own box.
+  assert.match(src, /table\{display:block;overflow-x:auto/, 'wide tables will push the page sideways on a phone');
+  // Under 16px, iOS Safari zooms the page on focus and never zooms back.
+  assert.match(src, /input,select\{font-size:16px\}/, 'inputs under 16px make iOS zoom and stay zoomed');
+});
+
+test('the home-screen prompt appears only where it can work, and only once signed in', () => {
+  const src = readFileSync(new URL('./bizconsole.mjs', import.meta.url), 'utf8');
+  assert.match(src, /function addToHomeScreen\(\)/);
+  // Never on the sign-in page: a stranger asked to install has been asked a
+  // favour; an owner looking at their own dashboard has a reason.
+  const landing = src.slice(src.indexOf('function landing('), src.indexOf('function results('));
+  assert.ok(!/addToHomeScreen\(\)/.test(landing), 'the install ask is on the sign-in page — that is the mistake /install/ made');
+  // An in-app webview (a link tapped inside Gmail or Outlook — exactly how a
+  // merchant arrives from our invitation) cannot install a PWA at all.
+  assert.match(src, /inApp=.*Outlook/s, 'in-app browsers not detected — the button will be dead for anyone arriving from our own email');
+  assert.match(src, /if\(standalone\) return;/, 'the prompt nags someone who already installed it');
+  // A console session lives in the query string. An icon that captured the
+  // current URL would put a credential on a home screen and break on expiry.
+  const fn = src.slice(src.indexOf('function addToHomeScreen'), src.indexOf('function dashboard('));
+  assert.ok(!/location\.href|location\.search/.test(fn), 'the home-screen icon would capture the session URL');
 });

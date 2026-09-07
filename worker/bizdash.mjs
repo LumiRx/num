@@ -109,10 +109,12 @@ export async function verification(env, placeId) {
  * numbers is a preview of a screen nobody has.
  */
 export async function dashboardData(env, { place, plan, insights, bookings }) {
-  const [demand, qr, verified] = await Promise.all([
+  const [demand, qr, verified, events] = await Promise.all([
     travellerDemand(env, { dest: place?.dest, days: Math.min(30, plan?.analytics_days ?? 7) }),
     payQr(env, { placeId: place?.place_id ?? place?.id, businessId: plan?.business_id }),
     verification(env, place?.place_id ?? place?.id),
+    // Parties members are hosting AT this business — worker/venueevents.mjs.
+    import('./venueevents.mjs').then((m) => m.upcomingEvents(env, { businessId: plan?.business_id })).catch(() => []),
   ]);
   return {
     version: DASHBOARD_VERSION,
@@ -124,5 +126,6 @@ export async function dashboardData(env, { place, plan, insights, bookings }) {
     demand,
     pay_qr: qr,
     verification: verified,
+    events,
   };
 }
