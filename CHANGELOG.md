@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.254 — 2026-09-07 20:45 UTC
+
+defend the three rail registries against drift
+
+- commit `8569348`
+
 ## 0.8.253 — 2026-09-07 20:44 UTC
 
 (no note given)
