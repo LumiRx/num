@@ -57,3 +57,6 @@ affiliates.json
 # Local edit/deploy claims — see scripts/claim.mjs. One machine's worktree, never shared.
 .claims/
 .secrets/
+
+# Local pre-edit backups. Never committed.
+_to_delete/
