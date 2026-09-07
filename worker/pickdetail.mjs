@@ -16,6 +16,9 @@
  * the one the guest stops trusting the first time it is wrong.
  */
 import { fromHex, getBit, localSlot, WIDTH } from './hours.mjs';
+// How a guest actually gets a table here — Num's own desk first, the venue's
+// booking engine second, a search on the engine their country uses last.
+import { bookingOptions } from './booking.mjs';
 
 /** Walking minutes from a distance, at a comfortable city pace (~80 m/min). */
 export function walkMinutes(km) {
@@ -102,7 +105,7 @@ export function openLabel(s) {
  * @param row   the matching directory row
  * @param tz    the destination's IANA zone
  */
-export function detail(pick, row, tz, now = new Date()) {
+export function detail(pick, row, tz, now = new Date(), country = null) {
   if (!pick || !row) return pick;
   const out = { ...pick };
 
@@ -133,24 +136,69 @@ export function detail(pick, row, tz, now = new Date()) {
   if (Number.isFinite(nr) && nrn > 0) out.guest_rating = { score: Math.round(nr * 10) / 10, n: nrn };
 
   if (row.cuisine) out.cuisine = String(row.cuisine);
+  /**
+   * WHAT THEY ACTUALLY OFFER, IN THE BUSINESS'S OWN WORDS.
+   *
+   * `cuisine` is one word — "Thai" — and the question every guest asks second
+   * is what the place does and what it costs. A claimed business can now list
+   * that itself (worker/bizoffer.mjs) and it rides here, attached to the row
+   * by the caller so this function stays pure and synchronous.
+   *
+   * Already formatted as strings by `bizoffer.forPlaces`: a price reaches this
+   * file as "฿180", never as 18000 minor units. A model handed a raw integer
+   * eventually reads it out as eighteen thousand, and the guest arrives
+   * expecting a number nobody quoted.
+   *
+   * It is what the business SAYS it charges, and the answer must carry it that
+   * way — never as a quote, and never as what the bill will be.
+   */
+  if (Array.isArray(row.offerings) && row.offerings.length) out.offerings = row.offerings;
   if (row.name_local && row.name_local !== row.name) out.name_local = String(row.name_local);
   // A photo only when it is ours to show: the licence rides with it so a
   // client can attribute, and a photo with no licence is not shown.
   if (row.photo_url && row.photo_license) {
     out.photo = { url: String(row.photo_url), attribution: row.photo_attr ?? null, license: String(row.photo_license) };
   }
+
+  /**
+   * HOW TO ACTUALLY GET A TABLE — added 6 Sep 2026.
+   *
+   * `booking.mjs` has carried OpenTable, Resy, Tock and SevenRooms since day
+   * one and NOTHING IN THE ANSWER PATH HAS EVER CALLED IT. `index.mjs` reads
+   * `pick.bookable` and no code has ever set it, so that branch has been dead
+   * since it was written. A guest asking for dinner got a name, a distance and
+   * no way to sit down.
+   *
+   * Three offers, best first, and the app shows the best one it can honour:
+   *   desk   — Num texts the venue and holds it. The thing no hand-off does.
+   *   deep   — the venue's own booking page, prefilled.
+   *   search — find it on the engine their country uses.
+   *
+   * `bookable` now means what its name says: Num itself can hold this table.
+   * A search link is emphatically NOT bookable — that flag drives whether the
+   * reply may offer to book, and a model told "bookable" about a search link
+   * would promise a reservation nobody made.
+   */
+  // `country` comes from the destination, not the row: places rows carry
+  // `area` but no country, and the booking engine a diner actually uses is a
+  // country question. Passed in so this function stays pure.
+  const book = bookingOptions({ ...row, country, city: row.area ?? null });
+  if (book.desk || book.deep || book.search) {
+    out.book = book.desk ? { ...book.desk, alt: book.deep ?? book.search ?? null } : (book.deep ?? book.search);
+    out.bookable = !!book.desk;
+  }
   return out;
 }
 
 /** Apply `detail` across a reply's picks, keyed by id. Never throws. */
-export function enrichPicks(picks, rows, tz, now = new Date()) {
+export function enrichPicks(picks, rows, tz, now = new Date(), country = null) {
   if (!Array.isArray(picks) || !picks.length) return picks ?? [];
   const byId = new Map();
   for (const r of rows ?? []) if (r?.id != null) byId.set(String(r.id), r);
   return picks.map((p) => {
     try {
       const row = p?.id != null ? byId.get(String(p.id)) : null;
-      return row ? detail(p, row, tz, now) : p;
+      return row ? detail(p, row, tz, now, country) : p;
     } catch { return p; }
   });
 }

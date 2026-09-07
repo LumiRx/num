@@ -25,11 +25,32 @@ test('a place with no address is not given a fake one — the field is simply ab
   assert.match(block, /No Address Place — Bar$/m);
 });
 
-test('the CONTACT RULE tells the model to hand over phone/address when it cannot book', () => {
+test('the CONTACT RULE points at the card, not at the prose', () => {
+  // This test used to assert the opposite: "never leave a recommendation as a
+  // bare name" — meaning hand the number and address over IN THE REPLY. That
+  // was correct until `picks` shipped on 3 Sep and the app began rendering a
+  // tappable call button, a map and the address on each pick's own card.
+  //
+  // From then on the model was reading two rules on the same turn: the reply
+  // schema saying "do NOT repeat the names, phone numbers, addresses or links
+  // in this prose field", and this one saying hand them over. This one sits
+  // next to the actual rows, so this one won — and on 7 Sep a guest was given
+  // "Lula is at 3542 Hollydale Dr #1/2 and their number is (213) 448-0661"
+  // typed into a sentence, where a thumb cannot tap it.
+  //
+  // The concern the old test guarded is real and is unchanged: a guest must
+  // never be left with a name they cannot act on. What changed is WHERE the
+  // means of acting lives.
   const block = contextBlock({ partners: [{ name: 'X', category: 'Restaurant' }] });
   assert.match(block, /CONTACT RULE/);
   assert.match(block, /no "bookable via" tag means Num cannot complete a reservation there/);
-  assert.match(block, /never leave a recommendation as a bare name/i);
+  assert.match(block, /PUT THE PLACE IN `picks`/,
+    'the rule no longer routes the guest to the card');
+  assert.ok(!/never leave a recommendation as a bare name/i.test(block),
+    'the old prose-handover rule is back, and it beats the reply schema every time');
+  // The honest half is not lost: where Num holds nothing, it must say so
+  // rather than implying the guest can reach them.
+  assert.match(block, /neither a number nor an address/i);
 });
 
 test('the BOOKING and OPENING HOURS rules survive — the new CONTACT rule must not replace them', () => {

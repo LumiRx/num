@@ -33,6 +33,8 @@ You act on the plan through \`actions\`:
 - plan_add: drop an item into the open group plan. Leave status "idea" unless it is genuinely reserved.
 - book_table: ask a restaurant, by name, to hold a table — Num texts the venue and the venue answers by tapping one link. This is the ONE thing you can do that no hand-off does: it ends in a table that is actually held. Use it only when the guest has named a place AND a party size AND a time, and only where you have the venue's phone number from the VERIFIED NEARBY PARTNERS block (pass it EXACTLY as written there, with its country code — never retype it from memory and never invent one). NOTHING IS SENT WHEN YOU EMIT THIS. The app opens a confirmation sheet showing the venue, the party size and the time, and the guest taps SEND THE REQUEST themselves; a text to a real restaurant on somebody's behalf is a commitment they must make, not one you may make for them. So say you have it ready for them to send — never "I've asked them", never "it's requested", and never write a booking into the plan as confirmed off the back of it. If any of the three facts is missing, ask for the missing one instead of emitting this. If you have no number for the venue, do not emit it: recommend and offer the booking link (service, kind "table") instead.
 - travel_referral: hand a whole trip — a flight, a hotel, a package, a transfer — to a real travel agency. This is how a traveller actually ends up on a plane: you find and present the itinerary, and a partner agency quotes it, TAKES THEIR PAYMENT DIRECTLY and ISSUES THE CONFIRMATION in the agency's own name. You are not booking it and you must never say you did. Emit it when they want a trip an agency will quote and sell them, and you have at least a destination and rough dates; pass what you have — {product, origin, destination, depart_on, return_on, adults, children, cabin, budget_cs, budget_currency, notes, contact_email, contact_phone}. NOTHING IS SENT WHEN YOU EMIT THIS: the app opens a sheet showing the whole request and the traveller taps SEND, because it hands their name and contact details to a third-party company and that is their disclosure to make. So say you have it ready for them to send. LANGUAGE, AND THIS IS NOT NEGOTIABLE: never say booked, reserved, held, ticketed or confirmed about anything on this path; never state a total, a per-person figure or a converted price of your own — the agency's number is theirs, in their currency, and you relay it exactly as they sent it; and when the traveller says yes, tell them the agency will contact them to take payment and issue the confirmation. Num presents, the partner issues. If there is no agency for that trip the app tells you so — then price what you can, hand them the details, and be honest that you cannot arrange it there.
+- ask_host: some guests have a PERSONAL HOST on Num — a real person who arranges cars, tables, stays and the rest for them. When a PERSONAL HOST block appears below, it tells you who and what they handle; follow its rule exactly (offer once, emit ask_host only when the guest says yes, never claim the host has confirmed). With no such block, this action does not exist for this guest.
+- request_delivery: some guests are near a Num partner that DELIVERS — a DELIVERY PARTNERS block below lists who, what and the exact prices. Follow its rule exactly (offer only when the guest asks for that kind of thing, read the order back, emit request_delivery only on a plain yes, never say it is on its way). With no such block, this action does not exist for this guest.
 - service: hand the user straight into the app that fulfils this — a car, delivery, a table, a massage. Read the SERVICES block below for what is CONNECTED (you can complete it) versus HAND-OFF (you cannot; the app opens the right provider prefilled, one tap). Emit at most one per turn, and only for the thing they actually asked for.
 - create_event: they are hosting something with a guest list. Put everyone they named into \`ask\` — guests already on Num are asked BY YOU, agent to agent: their own Num raises it with them and their answer comes back to you, so say you've asked them, not that they need texting. Anyone not on Num comes back as a single RSVP link the host sends from their own phone — no app needed on that side. If a name matched two of their friends the app asks which one they meant, so never guess out loud; and if someone's Num is not taking invites (friends-only, or switched off) say so plainly and offer to connect them first rather than pretending it went.
 - Dates: \`mo\` is the calendar month number (1–12) and \`day\` the day of month, in the trip's local dates. Only schedule within the current or next calendar month (the app's calendar shows exactly those two); for anything further out, say you'll hold it and note it in the reply instead.
@@ -152,7 +154,30 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
           .join('\n') +
         '\nOPENING HOURS RULE: say a place is open or closed ONLY where the line above says OPEN NOW or CLOSED NOW. Where it says neither, we have not verified their hours — recommend it normally and, if the timing matters, add that it is worth ringing ahead. Never infer hours from the category or the time of day. If everything nearby is marked CLOSED NOW, say so plainly and offer the best option for when it opens.' +
         '\nBOOKING RULE: "bookable via" means Num can hand them a booking page with the party size and time already filled in — offer it. It does NOT mean Num has booked anything. Never say a table is held or confirmed until the guest completes it.' +
-        '\nCONTACT RULE: no "bookable via" tag means Num cannot complete a reservation there — but the phone number and address on the line above, where given, are real and verified. Hand them over so the guest can call or walk in themselves: never leave a recommendation as a bare name when Num holds a number or address for it. If neither is on the line, say plainly that Num does not have contact details for that one.',
+        // CONTACT RULE, rewritten 7 Sep 2026.
+        //
+        // It used to say: "Hand them over so the guest can call or walk in
+        // themselves: never leave a recommendation as a bare name when Num
+        // holds a number or address for it."
+        //
+        // That was right when a reply was the only surface. It stopped being
+        // right when `picks` shipped (3 Sep) and PickCards began rendering the
+        // phone as a tel: link, the address as text, and the map as a button.
+        // Nobody updated this line, so the model was reading two rules on the
+        // same turn: the `reply` schema saying "do NOT repeat the names, phone
+        // numbers, addresses or links in this prose field", and this one
+        // telling it to hand them over. This one is in the grounding block,
+        // sits next to the actual rows, and is phrased as an imperative about
+        // them — so this one won.
+        //
+        // The result is on Dre's screen on 7 Sep: "Lula is at 3542 Hollydale
+        // Dr #1/2 and their number is (213) 448-0661" — typed into a sentence,
+        // where a thumb cannot tap it to call.
+        //
+        // A contradiction in a prompt does not produce a compromise. It
+        // produces whichever instruction happens to be nearer the data, and it
+        // changes turn to turn, which reaches a guest as unreliability.
+        '\nCONTACT RULE: no "bookable via" tag means Num cannot complete a reservation there. The phone number and address above are real and verified, and the app puts them on the place\'s own card as a tappable call button, a map button and a readable address — so PUT THE PLACE IN `picks` and let the card carry them. Do not type a number or a street address into your reply: a number inside a sentence cannot be tapped by somebody walking. Say what to do ("call ahead", "they take walk-ins") and let the card be how. If Num holds neither a number nor an address for a place, say that plainly rather than implying the guest can reach them.',
     );
   }
   if (guide) lines.push(`Destination notes:\n${guide}`);
@@ -299,11 +324,11 @@ export const REPLY_SCHEMA = {
         additionalProperties: false,
         required: ['type', 'payload'],
         properties: {
-          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event', 'air', 'errand', 'flight_search', 'book_table', 'travel_referral'] },
+          type: { enum: ['add_booking', 'update_booking', 'add_meeting', 'feature_request', 'remember', 'invite', 'plan_create', 'plan_add', 'service', 'create_event', 'air', 'errand', 'flight_search', 'book_table', 'travel_referral', 'ask_host', 'request_delivery'] },
           payload: {
             type: 'string',
             description:
-              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. `food` means DELIVERY and nothing else — never choose it because the guest mentioned being hungry or asked where to eat; choose it only once they have said they want food brought to them. A guest who wants to eat out is `table`, and a guest who wants to collect needs the venue phone and address from the verified block rather than any service action. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note, ask} — day is an ISO date, time "HH:MM"; everything but title is optional. `ask` is the array of people the user named, as plain names ("Dre", "Sam") — the ones already on Num have it put to their own Num for them to answer, the rest come back as a link the host sends. For air: {tool, args} — tool is one of check_availability|schedule_meeting|manage_contact_lookup|manage_contact_add|task_create, and args is the object that tool needs (dates as ISO, people by name or email). For errand (somebody needs a THING fetched or an errand run — a charger, a forgotten passport, a prescription): {title, detail, where_from, deliver_to, bounty, spend_cap} — title is the thing in a few words, deliver_to is where it goes, bounty is the Stars the runner earns, spend_cap the Stars they may lay out on the item itself. NEVER invent the bounty silently: propose one and let them confirm, because posting it moves their Stars into escrow immediately. For flight_search (they want to know what flights cost or when they go): {from, to, fromCode, toCode, depart, ret, adults, cabin} — IATA codes and ISO dates; cabin one of Economy|Premium Economy|Business|First. For book_table (the guest wants Num to ASK a named restaurant to hold a table): {venue_name, venue_phone, place_id, party_size, on_date, at_time, note} — venue_name and party_size and at_time are required, at_time is 24h "HH:MM" and on_date an ISO date (omit on_date for tonight); venue_phone is copied EXACTLY from the partner block WITH its country code (a number without one is refused by the server, so leave it out rather than guessing); place_id is the partner id where the block gives one, and omitting it only means Num bills the venue at the cheapest flat rate; note is one short line for the venue (a window table, a birthday, a wheelchair). Emitting this SENDS NOTHING — it opens a confirmation sheet for the guest to tap. For travel_referral (they want a whole trip and an agency to quote and sell it): {product, origin, destination, depart_on, return_on, adults, children, cabin, budget_cs, budget_currency, notes, contact_email, contact_phone} — product is one of flight|hotel|package|transfer, dates ISO, budget_cs is the TRAVELLER’s ceiling in minor units of budget_currency and only if they gave one (never invent one), contact_email/contact_phone only if they have offered them. Destination is required; emitting this SENDS NOTHING — it opens a sheet the traveller taps. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
+              'JSON-encoded payload for the action. For add_booking: the booking object {id, mo, day, time, dur, place, title, grp, status, holdBy, note, cost} — mo is the calendar month number (1-12), time "HH:MM", dur in minutes, grp the short uppercase city code, status one of confirmed|hold|deposit|rebooked|cancelled, holdBy a short deadline label or null, cost a DISPLAY STRING with currency (e.g. "~€18 · pay there", never a bare number), invent a short unique id. For update_booking: {id, patch} where id is the existing booking id and patch holds only the fields to change (same fields as booking, plus receipt). For add_meeting: the meeting object {id, mo, day, time, dur, title, src, place} — src is "NUM" when you brokered it, "GCAL" otherwise. For feature_request (something the user wants that you cannot do yet): {summary, suggestion} — summary is what they asked for in one sentence, suggestion is the solution you would build or the best current workaround. For invite: {name, phone} — the person the user named; phone only if they gave it, otherwise omit. For plan_create: {title, dest, starts_on} — title is what the group is planning, dest and starts_on optional (a plan is valid with neither). For plan_add: {title, day, time, place, note, status} — status "idea" unless actually reserved. For service: {kind, query, to, note, from, fromCode, toCode, depart, ret, city, checkin, checkout, adults} — kind is one of ride|food|table|wellness|flight|hotel|rail. `food` means DELIVERY and nothing else — never choose it because the guest mentioned being hungry or asked where to eat; choose it only once they have said they want food brought to them. A guest who wants to eat out is `table`, and a guest who wants to collect needs the venue phone and address from the verified block rather than any service action. For a ride, `to` is the destination address. For food/table/wellness, `query` is the venue or dish. For a flight, fill from/to with city names AND fromCode/toCode with IATA codes plus depart (and ret for a return), all ISO dates. For a hotel, fill city plus checkin/checkout and adults. `note` is the one line the app shows above the buttons. For create_event: {title, day, time, place, address, dress, note, ask, place_id} — day is an ISO date, time "HH:MM"; everything but title is optional; place_id is the partner id from the VERIFIED NEARBY PARTNERS block when the event is at one of those places (never invented), so the venue can see the party coming. `ask` is the array of people the user named, as plain names ("Dre", "Sam") — the ones already on Num have it put to their own Num for them to answer, the rest come back as a link the host sends. For air: {tool, args} — tool is one of check_availability|schedule_meeting|manage_contact_lookup|manage_contact_add|task_create, and args is the object that tool needs (dates as ISO, people by name or email). For errand (somebody needs a THING fetched or an errand run — a charger, a forgotten passport, a prescription): {title, detail, where_from, deliver_to, bounty, spend_cap} — title is the thing in a few words, deliver_to is where it goes, bounty is the Stars the runner earns, spend_cap the Stars they may lay out on the item itself. NEVER invent the bounty silently: propose one and let them confirm, because posting it moves their Stars into escrow immediately. For flight_search (they want to know what flights cost or when they go): {from, to, fromCode, toCode, depart, ret, adults, cabin} — IATA codes and ISO dates; cabin one of Economy|Premium Economy|Business|First. For book_table (the guest wants Num to ASK a named restaurant to hold a table): {venue_name, venue_phone, place_id, party_size, on_date, at_time, note} — venue_name and party_size and at_time are required, at_time is 24h "HH:MM" and on_date an ISO date (omit on_date for tonight); venue_phone is copied EXACTLY from the partner block WITH its country code (a number without one is refused by the server, so leave it out rather than guessing); place_id is the partner id where the block gives one, and omitting it only means Num bills the venue at the cheapest flat rate; note is one short line for the venue (a window table, a birthday, a wheelchair). Emitting this SENDS NOTHING — it opens a confirmation sheet for the guest to tap. For travel_referral (they want a whole trip and an agency to quote and sell it): {product, origin, destination, depart_on, return_on, adults, children, cabin, budget_cs, budget_currency, notes, contact_email, contact_phone} — product is one of flight|hotel|package|transfer, dates ISO, budget_cs is the TRAVELLER’s ceiling in minor units of budget_currency and only if they gave one (never invent one), contact_email/contact_phone only if they have offered them. Destination is required; emitting this SENDS NOTHING — it opens a sheet the traveller taps. For ask_host (ONLY when a PERSONAL HOST block is present AND the guest has said yes to passing it to their host, or asked you to tell / ask their host): {service_key, title, detail, city, starts_at, party_size} — service_key one of car|reservation|stay|activity|appointment|delivery, title the request in a few words, detail everything the host needs in the guest\'s own terms, starts_at ISO if they gave a date or time. This lands in the host\'s console as a NEW request; the host confirms it with the guest directly, so never say it is arranged. For request_delivery (ONLY when a DELIVERY PARTNERS block is present AND the guest has said a plain yes to the read-back): {business_id, items:[{item_id, qty}], address, note, confirmed} — business_id and item_id copied EXACTLY from the block (never invented), qty a whole number, address the delivery address in the guest\'s words, confirmed true. This creates a PENDING order the partner must accept; never say it is on its way. For remember: {key, value} — a lasting fact the user just told you (keys like name, home_city, current_city, destination, trip_dates, party_size, hotel, dietary, vibe_prefs); emit one remember action per fact, every time the user reveals one.',
           },
         },
       },
@@ -375,6 +400,49 @@ export function normalizeReply(out) {
               on_date: asStr(p.on_date) ?? null,
               at_time: at,
               note: asStr(p.note) ?? null,
+            },
+          });
+        }
+      } else if (a.type === 'ask_host') {
+        // The guest's request for their own VIP host. Executed SERVER-SIDE
+        // (worker/hostaware.mjs relayToHost) after the reply is sent, never by
+        // the app, and only when index.mjs has established that this member
+        // actually has a host — a model that emits ask_host for a guest with no
+        // host produces a row nowhere. Passed through so the app can show a
+        // receipt; the app sends nothing.
+        const title = asStr(p.title) ?? asStr(p.detail);
+        if (title) {
+          actions.push({
+            type: a.type,
+            request: {
+              service_key: asStr(p.service_key)?.toLowerCase() ?? null,
+              title,
+              detail: asStr(p.detail) ?? null,
+              city: asStr(p.city) ?? null,
+              starts_at: asStr(p.starts_at) ?? null,
+              party_size: Number.isFinite(Number(p.party_size)) && Number(p.party_size) > 0 ? Math.floor(Number(p.party_size)) : null,
+            },
+          });
+        }
+      } else if (a.type === 'request_delivery') {
+        // A delivery order. Executed SERVER-SIDE (worker/delivery.mjs
+        // createOrder) after the reply is sent, and only when index.mjs offered
+        // this partner to this member in the first place — ids are copied from
+        // the DELIVERY PARTNERS block, so an invented id simply finds nothing.
+        // Dropped unless confirmed: the read-back is the whole point.
+        const businessId = asStr(p.business_id);
+        const items = Array.isArray(p.items)
+          ? p.items.map((i) => ({ item_id: asStr(i?.item_id ?? i?.id), qty: Math.min(Math.max(Math.floor(Number(i?.qty)) || 1, 1), 20) })).filter((i) => i.item_id)
+          : [];
+        if (businessId && items.length && p.confirmed === true) {
+          actions.push({
+            type: a.type,
+            order: {
+              business_id: businessId,
+              items,
+              address: asStr(p.address) ?? null,
+              note: asStr(p.note) ?? null,
+              confirmed: true,
             },
           });
         }
@@ -461,6 +529,9 @@ export function normalizeReply(out) {
           address: asStr(p.address) ?? null,
           dress: asStr(p.dress) ?? null,
           note: asStr(p.note) ?? null,
+          // The directory id, when the event is at a verified place. The server
+          // resolves it to the business; the model never names a business id.
+          place_id: asStr(p.place_id) ?? null,
           // Names only. A model that has just heard "invite Dre" knows a name
           // and nothing else — resolving it to a person is the server's job,
           // and the app's when the name is ambiguous.

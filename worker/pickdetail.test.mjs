@@ -122,7 +122,10 @@ test('enrichPicks matches by id and survives a bad row', () => {
 test('the handler enriches picks after resolving them, on both paths', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('./index.mjs', import.meta.url), 'utf8');
-  assert.match(src, /enrichPicks\(resolved\.picks, grounding\?\.partners \?\? \[\], grounding\?\.place\?\.tz\)/);
+  // 6 Sep 2026: the country now rides along too. A booking engine is a country
+  // question — offering OpenTable in Bangkok is offering nothing — so a call
+  // that drops it silently gives every guest the American engine.
+  assert.match(src, /enrichPicks\(resolved\.picks, grounding\?\.partners \?\? \[\], grounding\?\.place\?\.tz, new Date\(\), grounding\?\.place\?\.country \?\? null\)/);
   assert.match(src, /enrichAgain\(reFixedRaw\.picks/, 'the quality-retry path ships picks without the details');
 });
 

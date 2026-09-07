@@ -68,3 +68,50 @@ test('the app itself carries the OpenStreetMap attribution', () => {
   assert.match(profile, /<SourcesLine \/>/,
     'SourcesLine is defined but never rendered — an attribution nobody sees is no attribution');
 });
+
+// ── 7 Sep 2026: the strip list that went stale ──────────────────────────────
+//
+// `/api/num` stripped internals by NAMING them:
+//   const { _usage, _specialist, _brain, _tried, _ms, _degraded, ...clean }
+// `_model` was added to every brain's return on 30 Aug (so a Haiku turn prices
+// as Haiku) and nobody added it here, so it shipped to every guest for a week.
+// `_blocked` — the moderation rule a reply tripped — leaked the same way.
+//
+// The fix drops every underscore-prefixed key instead. This test pins the
+// CONVENTION, so the next internal field is covered the day it is written.
+import { test as leakTest } from 'node:test';
+import assertLeak from 'node:assert/strict';
+import { readFileSync as readLeak } from 'node:fs';
+import { join as joinLeak, dirname as dirnameLeak } from 'node:path';
+import { fileURLToPath as fileURLToPathLeak } from 'node:url';
+
+const HERE_LEAK = dirnameLeak(fileURLToPathLeak(import.meta.url));
+
+leakTest('the reply is stripped by convention, not by a list that can go stale', () => {
+  const src = readLeak(joinLeak(HERE_LEAK, 'index.mjs'), 'utf8');
+  assertLeak.match(
+    src,
+    /Object\.entries\(withServices\)\.filter\(\(\[k\]\) => !k\.startsWith\('_'\)\)/,
+    'the underscore-prefix strip is gone — a named list will drop the next internal field the day it is added',
+  );
+  assertLeak.ok(
+    !/const \{ _usage, _specialist, _brain, _tried, _ms, _degraded, \.\.\.clean \} = withServices/.test(src),
+    'the old named strip list is back; _model and _blocked leaked to guests for a week under it',
+  );
+});
+
+leakTest('the internals the reply path carries are all underscore-prefixed', () => {
+  // The convention only holds while internals keep being marked this way.
+  // `_usage`/`_model` come from brains.mjs; `_specialist`/`_blocked` are added
+  // on the reply path in index.mjs.
+  const src = [
+    readLeak(joinLeak(HERE_LEAK, 'index.mjs'), 'utf8'),
+    readLeak(joinLeak(HERE_LEAK, 'brains.mjs'), 'utf8'),
+  ].join('\n');
+  for (const name of ['_usage', '_specialist', '_model', '_degraded']) {
+    assertLeak.ok(
+      src.includes(name),
+      `${name} is no longer produced — if it was renamed without its underscore it now ships to guests`,
+    );
+  }
+});
