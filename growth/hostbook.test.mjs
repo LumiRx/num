@@ -210,7 +210,14 @@ test('nearest-host matching queries an indexed table, not a JSON scan', () => {
   // nothing to match on. A LIKE scan over JSON is the version of the fix that
   // quietly stops working at a few hundred hosts and is never noticed.
   assert.match(worker, /async function syncHostAreas/, 'the areas shadow table is never written');
-  assert.match(worker, /await syncHostAreas\(env, host\.id, areas\)/, 'saving a profile does not sync the areas table');
+  assert.match(worker, /await syncHostAreas\(env, host\.id, await fillAreaCoords\(env, areas\)\)/,
+    'saving a profile does not sync the areas table, or no longer geocodes it on the way');
+  // Writing the city was only half of it. lat and lng stayed null for every
+  // host until 7 Sep 2026, and the coordinate match filters on
+  // `a.lat BETWEEN ? AND ?` — which null never passes. A city with no
+  // coordinates is findable by someone who types the same string and by
+  // nobody who is standing in it.
+  assert.match(worker, /async function fillAreaCoords/, 'host coverage is written to the map without ever being put on it');
   assert.match(worker, /FROM num_host_areas a JOIN num_hosts h/, 'matching does not use the indexed areas table');
   assert.match(migration, /idx_host_areas_geo/, 'there is no geo index to match against');
   assert.match(consolePage, /id="areas"/, 'the console has no way to enter a city, so coverage stays empty');

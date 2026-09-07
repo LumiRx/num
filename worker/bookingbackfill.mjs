@@ -121,28 +121,49 @@ async function ensure(env) {
  *
  * `reviews` is nullable across much of the directory, hence COALESCE — a row
  * with no review count sorts last rather than sorting unpredictably.
+ *
+ * ── AND ROUND-ROBIN ACROSS CITIES (added after 160 live rows) ─────────────
+ *
+ * Ordering by reviews ALONE had an obvious flaw the moment real data arrived:
+ * 144 of the first 160 venues checked were in Phuket, 16 in Lisbon, and
+ * nowhere else had been touched. Phuket's restaurants carry high review
+ * counts, so a global sort simply worked through Phuket — and Los Angeles,
+ * London and New York, where OpenTable and Resy penetration is far higher and
+ * where a booking link is worth the most, sat behind it for weeks.
+ *
+ * So the queue takes the top few venues from EVERY destination each tick,
+ * ranked within that destination. Every city advances together, the famous
+ * places everywhere get done first, and no single city can block the rest.
+ * Same total work; the difference is only which order the value arrives in,
+ * and that turns out to be the whole game.
  */
 export async function candidates(env, { limit = 40 } = {}) {
   await ensure(env);
   const FINAL_MARKS = FINAL.map((_, i) => `?${i + 2}`).join(',');
+  // `rank` is the venue's position WITHIN its own destination. Taking the top
+  // few from every city each tick is what stops one city eating the queue.
   const { results } = await env.DB.prepare(
-    `SELECT p.id, p.name, p.website, p.dest
-       FROM places p
-       LEFT JOIN num_booking_scan s ON s.place_id = p.id
-      WHERE p.website IS NOT NULL AND p.website <> ''
-        AND (p.booking_platform IS NULL OR p.booking_platform = '')
-        AND (p.category LIKE '%restaurant%' OR p.category LIKE '%bar%' OR p.category LIKE '%cafe%'
-             OR p.category LIKE '%food%' OR p.category LIKE '%dining%')
-        AND (
-          s.place_id IS NULL
-          OR (
-            -- A bad moment, cooled off, and not yet given up on. See FINAL.
-            s.outcome NOT IN (${FINAL_MARKS})
-            AND COALESCE(s.attempts, 1) < ?${2 + FINAL.length}
-            AND s.checked_at < datetime('now', ?${3 + FINAL.length})
+    `WITH queue AS (
+       SELECT p.id, p.name, p.website, p.dest, COALESCE(p.reviews, 0) AS rv,
+              ROW_NUMBER() OVER (PARTITION BY p.dest ORDER BY COALESCE(p.reviews, 0) DESC) AS rank
+         FROM places p
+         LEFT JOIN num_booking_scan s ON s.place_id = p.id
+        WHERE p.website IS NOT NULL AND p.website <> ''
+          AND (p.booking_platform IS NULL OR p.booking_platform = '')
+          AND (p.category LIKE '%restaurant%' OR p.category LIKE '%bar%' OR p.category LIKE '%cafe%'
+               OR p.category LIKE '%food%' OR p.category LIKE '%dining%')
+          AND (
+            s.place_id IS NULL
+            OR (
+              -- A bad moment, cooled off, and not yet given up on. See FINAL.
+              s.outcome NOT IN (${FINAL_MARKS})
+              AND COALESCE(s.attempts, 1) < ?${2 + FINAL.length}
+              AND s.checked_at < datetime('now', ?${3 + FINAL.length})
+            )
           )
-        )
-      ORDER BY COALESCE(p.reviews, 0) DESC
+     )
+     SELECT id, name, website, dest FROM queue
+      ORDER BY rank ASC, rv DESC
       LIMIT ?1`,
   ).bind(limit, ...FINAL, MAX_ATTEMPTS, `-${RETRY_AFTER_DAYS} days`).all().catch(() => ({ results: [] }));
   return results ?? [];

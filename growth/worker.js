@@ -357,6 +357,7 @@ import {
   readSettings, writeSettings, settingHistory,
 } from './venuesettings.mjs';
 import { foodAndDrink } from '../worker/commission.mjs';
+import { geocode, geocodeReady } from '../worker/geocode.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
 // The screen after the table. worker/aftertable.mjs had rate(), tip() and
@@ -2316,7 +2317,7 @@ async function hostProfile(req, env, url, ctx) {
   }
 
   // The shadow table follows the host's own copy, never the other way round.
-  await syncHostAreas(env, host.id, areas);
+  await syncHostAreas(env, host.id, await fillAreaCoords(env, areas));
 
   const after = await env.DB.prepare(
     `SELECT services_json, pricing_json, areas_json, charge_mode, currency, tier,
@@ -4022,6 +4023,59 @@ function kmBetween(aLat, aLng, bLat, bLng) {
  *  areas_json stays the host's editable copy; this table is what nearest-host
  *  matching queries, because a JSON scan across every host is the version that
  *  quietly stops working at a few hundred rows and is never noticed. */
+/**
+ * PUT THE HOST ON THE MAP, OR SAY NOTHING AND CARRY ON.
+ *
+ * A host types a city. Until now that is all we stored: num_host_areas.lat and
+ * .lng stayed null for every host who ever saved a profile, because nothing in
+ * this path ever asked the geocoder where the city was.
+ *
+ * The city-NAME match in hostNearby still worked, which is why nobody noticed.
+ * The COORDINATE match — the one a phone uses, the one that answers "who is
+ * near me" rather than "who typed the same string as me" — filters on
+ * `a.lat BETWEEN ? AND ?`, and null passes no BETWEEN. It could never return
+ * anybody, for any host, and it failed silently by returning an empty list,
+ * which is indistinguishable from "no host covers you".
+ *
+ * Three deliberate choices here:
+ *  - A geocode failure NEVER blocks the save. The host's coverage is what they
+ *    typed, and the coordinates are our enrichment of it. Losing a profile save
+ *    because a third party was down would be a much worse bug than the one this
+ *    fixes.
+ *  - The country goes into the TEXT, not into the country filter, unless it is
+ *    already a two-letter code. The form collects "United States" and the
+ *    filter compares against "us" — passing the name straight through would
+ *    fail every single lookup with wrong_country, which is worse than not
+ *    trying.
+ *  - Five per save. A host editing their profile should not wait on twenty
+ *    round trips, and anything past the fifth city gets its coordinates the
+ *    next time they save.
+ */
+async function fillAreaCoords(env, areas) {
+  if (!geocodeReady(env)) return areas;
+  let spent = 0;
+  const out = [];
+  for (const a of areas) {
+    const needs = a.city && (a.lat == null || a.lng == null);
+    if (!needs || spent >= 5) { out.push(a); continue; }
+    spent++;
+    try {
+      const cc = /^[a-z]{2}$/i.test(String(a.country || "").trim())
+        ? String(a.country).trim() : null;
+      const r = await geocode(env, {
+        text: [a.city, a.country].filter(Boolean).join(", "),
+        country: cc,
+      });
+      out.push(r && r.ok && isFinite(r.lat) && isFinite(r.lng)
+        ? Object.assign({}, a, { lat: r.lat, lng: r.lng })
+        : a);
+    } catch (e) {
+      out.push(a);
+    }
+  }
+  return out;
+}
+
 async function syncHostAreas(env, hostId, areas) {
   await env.DB.prepare("DELETE FROM num_host_areas WHERE host_id = ?").bind(hostId).run();
   const rows = areas.slice(0, 20).map(function (a) {

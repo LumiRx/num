@@ -66,12 +66,32 @@ describe('who it looks at', () => {
     assert.ok(!(await candidates(env)).some((r) => r.id === 'p5'));
   });
 
+  test('NO SINGLE CITY CAN EAT THE QUEUE', async () => {
+    // Found after 160 live rows: 144 of them were Phuket and 16 Lisbon, and
+    // nowhere else had been touched — because a global sort by reviews simply
+    // worked through the city with the biggest review counts. Los Angeles and
+    // London, where a booking link is worth the most, sat behind it.
+    db.exec(`INSERT INTO places VALUES
+      ('l1','Big LA','https://la1.example','los-angeles','restaurant',9000,NULL,NULL),
+      ('l2','Also LA','https://la2.example','los-angeles','restaurant',8000,NULL,NULL),
+      ('k1','Big London','https://ldn.example','london','restaurant',7000,NULL,NULL),
+      ('r1','Big Paris','https://par.example','paris','restaurant',6000,NULL,NULL)`);
+    // Three cities are waiting and the tick has room for three. Every city
+    // must get its best venue looked at before ANY city gets its second.
+    const dests = (await candidates(env, { limit: 3 })).map((r) => r.dest);
+    assert.equal(new Set(dests).size, 3, 'one destination took the whole tick');
+    // Los Angeles has the highest review count in the fixture, so a global
+    // sort would have taken LA twice before touching London at all.
+    assert.ok(dests.includes('london') && dests.includes('paris'));
+  });
+
   test('THE MOST-RECOMMENDED VENUES ARE CHECKED FIRST', async () => {
     // A guest is shown three places, and those three are the well-reviewed
     // ones — the exact venues most likely to run OpenTable AND the only ones
     // whose booking link anybody will ever tap. 348,408 rows at 40 a tick is
     // thirty days; ordering by reviews puts most of the value in the first
     // afternoon and lets the long tail fill in behind it.
+    // Within a destination, the best-reviewed venue leads.
     const order = (await candidates(env)).map((r) => r.id);
     assert.equal(order[0], 'p1', 'the 4,200-review restaurant is not first in the queue');
     // A row with no review count sorts last rather than unpredictably.
