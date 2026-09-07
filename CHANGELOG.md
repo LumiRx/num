@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.253 — 2026-09-07 20:44 UTC
+
+(no note given)
+
+- commit `c2eb7cc`
+
 ## 0.8.252 — 2026-09-07 20:38 UTC
 
 backfill: rank by a signal the directory actually has
