@@ -1497,6 +1497,21 @@ async function consent(req, env) {
  * was actually on screen when they were signed.
  */
 const SMS_CONSENT_VERSION = "2026-08-04.1";
+/**
+ * The partner opt-in wording — businesses and hosts.
+ *
+ * This is a VERBATIM copy of PARTNER_CONSENT_TEXT in worker/partnersms.mjs.
+ * The two workers are separate bundles and cannot import from each other, so
+ * the string is duplicated and `partnersms.test.mjs` pins the copies
+ * byte-for-byte. The day they drift, the consent register stops holding the
+ * words the person actually read, and the register is only worth having
+ * because it holds exactly that.
+ */
+const PARTNER_CONSENT_TEXT =
+  "Yes — NUM may text this number about my listing: when it goes live, when it needs " +
+  "something, and when there are requests waiting. A few messages a month. " +
+  "Message and data rates may apply. Reply STOP to stop, HELP for help.";
+
 const SMS_CONSENT_TEXT =
   "Text me about my NUM travel concierge requests and bookings. " +
   "Message frequency varies. Message and data rates may apply. " +
@@ -1722,8 +1737,29 @@ async function claims(req, env, ctx) {
   const email = String(b.email || "").trim();
 
   if (!business) return J({ ok: false, error: "no_business" }, 400);
-  if (!okPhone(phone)) return J({ ok: false, error: "bad_phone" }, 400);
+
+  /* ── A WAY TO REACH THEM, NOT A PARTICULAR WAY ──────────────────────────
+   *
+   * This used to be `if (!okPhone(phone)) return bad_phone` with email
+   * optional, which meant a business holding out its EMAIL ADDRESS was
+   * rejected outright — while every one of these businesses reached this form
+   * by clicking a link in an email we had already sent them. We had the
+   * address. We demanded a mobile number instead.
+   *
+   * On 7 Sep 2026: 503 invitations, 200 opened, 19 businesses clicked through
+   * to a form pre-filled with their own name, and ONE completed it. A required
+   * phone field is the most-refused input in B2B signup, and it was gating a
+   * thing we give away free.
+   *
+   * The real requirement is that we can reach them at all. Verification does
+   * not depend on which one they give — the code goes to the contact already
+   * published on their listing, never to a value typed into this form, so the
+   * phone number was never proof of anything either. */
+  const hasPhone = okPhone(phone);
+  const hasEmail = !!email && okEmail(email);
+  if (phone && !hasPhone) return J({ ok: false, error: "bad_phone" }, 400);
   if (email && !okEmail(email)) return J({ ok: false, error: "bad_email" }, 400);
+  if (!hasPhone && !hasEmail) return J({ ok: false, error: "need_contact" }, 400);
 
   const vid = await visitorId(req, env);
   const source = clean(b.source, 80) || "claim";
@@ -1745,7 +1781,7 @@ async function claims(req, env, ctx) {
                          country,dest,place_id,created_at)
      VALUES (?,?,?,?,?,?,'new',?,?,?,?)`
   ).bind(
-    business, contact, localE164(phone, req, b.country),
+    business, contact, hasPhone ? localE164(phone, req, b.country) : null,
     // line_id has existed on this table since the beginning and was always
     // written NULL. In Thailand LINE is how a business is actually reached, so
     // the Thai form offers it and it is now stored.
@@ -1984,23 +2020,33 @@ async function hostJoin(req, env, ctx) {
           max_conversions,max_reward_total_cs,active,expires_at,created_at)
        VALUES (?,'agent',?,NULL,0,0,NULL,NULL,1,NULL,?)`
     ).bind(code, hostId, epoch()),
+    // 6 Sep 2026 - THE LINE THAT COST US EVERY FOUNDING HOST.
+    //
+    // "Who you look after, and where they travel" used to be written by a
+    // THIRD statement in this batch: `UPDATE num_hosts SET about = ?`. There
+    // is no `about` column on num_hosts - the column is `notes`. Every real
+    // signup threw `no such column: about`, and because a D1 batch is ATOMIC
+    // the host row and the referral code rolled back with it. The endpoint
+    // 500d, the page's `r.json()` threw on the HTML error body, and the
+    // person read "Could not reach NUM. Check your connection - nothing was
+    // created."
+    //
+    // Accidentally true and completely misleading: their connection was fine,
+    // it was OUR write that failed. `num_hosts` held ZERO rows - this had
+    // never once worked, and every founding host who tried was lost in
+    // silence. Folded into the INSERT: one statement cannot disagree with
+    // itself, and a column that does not exist now fails where a test sees it.
     env.DB.prepare(
       `INSERT INTO num_hosts
          (id,name,company,email,phone,country,code,host_bps,term_months,status,
-          terms_version,agreed_at,agreed_ip,console_key,created_at)
-       VALUES (?,?,?,?,?,?,?,?,12,'active',?,?,?,?,?)`
+          terms_version,agreed_at,agreed_ip,console_key,created_at,notes)
+       VALUES (?,?,?,?,?,?,?,?,12,'active',?,?,?,?,?,?)`
     ).bind(
       hostId, name, clean(b.company, 120), email, e164(b.phone), country(req),
       code, bps, TERMS_VERSION, now(),
-      String(b.terms_text || "").slice(0, 1200), consoleKey, now()
+      String(b.terms_text || "").slice(0, 1200), consoleKey, now(),
+      clean(b.notes || b.about, 4000)
     ),
-    // The signup form asks "who you look after, and where they travel" and
-    // tells them "it is what we read first". The browser has been sending it
-    // as `notes` since the form went live and nothing read it. Asking a
-    // question and discarding the answer is worse than not asking, because
-    // they believe we know.
-    env.DB.prepare("UPDATE num_hosts SET about = ? WHERE id = ?")
-      .bind(clean(b.notes || b.about, 4000), hostId),
   ]);
 
   const link = site + "/r/" + code;
@@ -2028,12 +2074,14 @@ Your clients stay yours. NUM does not become their concierge, does not
 charge them anything, and does not take a commission from what they
 spend with you. We are the back office, not the front desk.
 
-What you pay: a monthly plan to be on NUM, free to start, and £5 for
-each booking we arrange for you. That's it. Your plan does not limit how
-many clients you can have — we are not going to charge you for the size
-of a book you spent years building. Paying more unlocks more of the tool
-— text alerts, then the host network and new clients from us, then
-products — never more room.
+What you pay: one monthly plan, free to start. That is the whole of it —
+no fee per booking, no commission on your work, no cut of anything you
+arrange. Confirm one job this month or a hundred and the bill is the
+same. Your plan does not limit how many clients you can have either — we
+are not going to charge you for the size of a book you spent years
+building. Paying more unlocks more of the tool: the calendar feed and
+text alerts, then the host network and new clients from us, then
+products. Never more room.
 
 This is your invite link, for anyone you want to bring in yourself:
 
@@ -2141,8 +2189,8 @@ async function hostProfile(req, env, url, ctx) {
     in_network: !!(row && row.in_network),
     blurb: (row && row.blurb) || "",
     tiers: HOST_TIERS.map(function (t) {
-      return { key: t, price: HOST_TIER_PRICE[t], clients: HOST_TIER_CLIENTS,
-               features: HOST_TIER_FEATURES[t] || [] };
+      return { key: t, price: HOST_TIER_PRICE[t], pence: HOST_TIER_PENCE[t],
+               clients: HOST_TIER_CLIENTS, features: HOST_TIER_FEATURES[t] || [] };
     }),
     vocabulary: { services: HOST_SERVICES, units: HOST_UNITS, fulfilment: HOST_FULFILMENT },
   });
@@ -2192,7 +2240,22 @@ async function hostProfile(req, env, url, ctx) {
 
   const currency = /^[A-Za-z]{3}$/.test(String(b.currency || ""))
     ? String(b.currency).toUpperCase() : "GBP";
-  const tier = HOST_TIERS.indexOf(String(b.tier || "")) === -1 ? "free" : String(b.tier);
+
+  /* THE PLAN IS NOT A FIELD ON THIS FORM.
+   *
+   * It used to be. `tier` arrived in the profile body and was written straight
+   * to num_hosts.tier — which was harmless while tiers were a note about what
+   * a host intended to buy, and became a FREE UPGRADE BUTTON the moment
+   * FEATURE_MIN_TIER started gating the network, introductions and products on
+   * that same column. Anyone holding a console key could POST {"tier":"full"}
+   * and unlock everything.
+   *
+   * A tier is now only ever set by money changing hands: grantHostTier() on a
+   * Stripe webhook, or lapseHostBySub() on cancellation, both in
+   * worker/hostmoney.mjs. This endpoint reads the current value and writes it
+   * back unchanged, so a host editing their prices cannot move their plan and
+   * a stale form cannot silently downgrade them either. */
+  const tier = (row && HOST_TIER_PRICE[row.tier] !== undefined) ? row.tier : "free";
 
   /* SMS consent is a positive act, and the number has to survive it.
    * `sms_opt_in` can only be 1 when there is a valid number to send to —
@@ -2222,6 +2285,35 @@ async function hostProfile(req, env, url, ctx) {
     chargeMode, currency, tier, notifyPhone, smsOptIn, calendarToken,
     acceptsIntros, inNetwork, blurb, now(), now(), host.id
   ).run();
+
+  /* Ticking the box has to reach the consent register, or it is a switch
+   * wired to nothing.
+   *
+   * Since migration 0013 a host could tick "text me", see it saved, and never
+   * receive anything — because every sender in this codebase asks
+   * num_sms_consent first and fails closed, correctly, when there is no row.
+   * The box set a boolean nobody consulted. This is the wire. */
+  if (smsOptIn && notifyPhone) {
+    await ensureSmsConsent(env);
+    await env.DB.prepare(
+      `INSERT INTO num_sms_consent
+         (id, phone, first_name, consent_text, consent_version, page, ip, user_agent, country, created_at, revoked_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,NULL)
+       ON CONFLICT(phone) DO UPDATE SET revoked_at = NULL`
+    ).bind(
+      "smsc_" + token(8), notifyPhone, clean(host.name, 60),
+      "[host/updates] " + PARTNER_CONSENT_TEXT, SMS_CONSENT_VERSION,
+      "/host (profile)", req.headers.get("cf-connecting-ip") || "0",
+      clean(req.headers.get("user-agent"), 200), country(req), now()
+    ).run().catch(function () { /* a failed write must not lose the profile */ });
+  } else if (notifyPhone) {
+    /* Unticking is a withdrawal, and it has to travel. A host who turns texts
+     * off on their dashboard and still gets one has been ignored, whatever the
+     * boolean says. */
+    await env.DB.prepare(
+      "UPDATE num_sms_consent SET revoked_at = ? WHERE phone = ?"
+    ).bind(now(), notifyPhone).run().catch(function () {});
+  }
 
   // The shadow table follows the host's own copy, never the other way round.
   await syncHostAreas(env, host.id, areas);
@@ -2345,6 +2437,19 @@ async function hostSummary(req, env, url) {
  *  because a host wants to know the size of their own book — but it is never a
  *  ceiling, and no code path anywhere refuses a client because of it. */
 const HOST_TIER_CLIENTS = -1;                                        // every tier. no exceptions.
+
+/* THE PRICES A HOST IS SHOWN.
+ *
+ * The prices a host is CHARGED live in worker/hostmoney.mjs `HOST_PLANS`, in
+ * pence, because that is what mints the Stripe session. These two lists sit in
+ * different workers on different hostnames and cannot import each other, so
+ * one number exists twice — the exact shape of bug where a host reads £9.99
+ * and is charged something else.
+ *
+ * growth/hostbilling.test.mjs reads both files and fails if they disagree. It
+ * is the only thing keeping them honest: change a price here, change it there
+ * in the same commit. */
+const HOST_TIER_PENCE  = { free: 0, small: 999, pro: 1999, full: 5000 };
 const HOST_TIER_PRICE  = { free: "Free", small: "£9.99/mo", pro: "£19.99/mo", full: "£50/mo" };
 const HOST_TIER_FEATURES = {
   free:  ["Unlimited clients", "Your services and prices", "Requests and drafts"],
@@ -2438,6 +2543,7 @@ async function hostPlan(env, hostId) {
     plan_status: (row && row.plan_status) || "none",
     renews_at: (row && row.plan_renews_at) || null,
     booking_fee_minor: BOOKING_FEE_MINOR,
+    pence: HOST_TIER_PENCE[tier],
     can: Object.keys(FEATURE_MIN_TIER).reduce(function (acc, f) {
       acc[f] = hostCan(tier, f); return acc;
     }, {}),
@@ -2503,7 +2609,8 @@ async function hostClients(req, env, url, ctx) {
    *
    * Remove ends a relationship with a person who is not in the room, so it
    * goes through endClient — which records who ended it, tells them, and
-   * moves the £5 booking fee back onto them. Silently flipping a status
+   * stops billing the host the £5. The fee moves to nobody: NUM does not
+   * charge a traveller (worker/servicefee.mjs). Silently flipping a status
    * would leave that person believing they still have a concierge. */
   if (action === "remove") {
     const id = clean(b.id, 40);
@@ -2761,9 +2868,10 @@ async function hostRequests(req, env, url, ctx) {
       ok: true,
       requests: list_,
       statuses: HOST_REQ_STATUS,
-      booking_fee_minor: BOOKING_FEE_MINOR,
-      // What the host owes us this cycle, from their own confirmed work. Shown
-      // beside the work itself so it is never a surprise on an invoice.
+      booking_fee_minor: BOOKING_FEE_MINOR,          // 0 — see worker/servicefee.mjs
+      // Historical only. Anything accrued before 7 Sep 2026 stays visible so a
+      // host can see it was never collected, rather than a number quietly
+      // disappearing from a page they had already read.
       fees_minor: list_.reduce(function (n, r) { return n + (r.booking_fee_minor || 0); }, 0),
     });
   };
@@ -2795,15 +2903,20 @@ async function hostRequests(req, env, url, ctx) {
                : action === "done" ? "done" : "cancelled";
     /* THE BOOKING FEE LANDS HERE, ON THE HOST, AND ONLY ON CONFIRM.
      *
-     * £5 per booking NUM arranged, billed to the host — never to their client,
-     * who must never see a NUM line item on anything. It attaches at confirm
-     * rather than at creation because a request that was logged, drafted and
-     * then declined is work we did not complete, and charging for it would
-     * teach hosts to stop logging the ones they are unsure about, which is
-     * exactly the data the agent needs most.
+     * CHANGED 7 SEP 2026 — there is no per-booking fee. BOOKING_FEE_MINOR is
+     * 0, so the write below stamps a zero and nothing accrues.
      *
-     * `CASE WHEN` rather than a second statement so a repeated confirm cannot
-     * stack a second fee onto the same booking. */
+     * The reason is worth keeping, because someone will propose it again: a
+     * per-booking fee is a tax on using the product. Every confirm cost the
+     * host money, so the rational move was to confirm less in NUM and keep the
+     * rest on WhatsApp — starving the system of the data that makes it useful,
+     * to collect five pounds. And it could not be collected anyway: most hosts
+     * sit on free, a free host has no card, and the sweep skipped them.
+     *
+     * The column and the write stay rather than being deleted: rows from
+     * before today keep their history, worker/hostmoney.mjs's sweep selects
+     * `booking_fee_minor > 0` and so finds nothing new, and if a fee ever
+     * returns it returns in exactly one place. Revenue is the subscription. */
     await env.DB.prepare(
       `UPDATE num_host_requests
           SET status = ?,
@@ -3357,9 +3470,9 @@ async function hostCalendar(req, env, url) {
  * If a host removes a client and the client is not told, the client goes on
  * believing they have a concierge. If a member leaves and the host is not
  * told, the host goes on holding — and working from — details of somebody who
- * withdrew. And in both cases the £5 booking fee keeps landing on whichever
- * of them the stale row says it should, which is the version of this failure
- * that shows up on a card statement.
+ * withdrew. And in both cases the host's console keeps showing work for
+ * are no longer making, which is the version of this failure that shows up on
+ * a card statement.
  *
  * So every path here does the same four things, in the same order, and
  * `endClient` is the only place any of them happens:
@@ -3484,8 +3597,8 @@ What this means for you: nothing stops working. NUM still books your travel
 directly, the same way, with the same answer at whatever hour you ask. A VIP
 host was always an added service, never a requirement.
 
-One thing does change: while a host was looking after you, NUM's £5 booking
-fee was billed to them. From now on it is billed to you.
+Nothing changes about what you pay, either: NUM does not charge you a booking
+fee, with a host or without one.
 
 If you would like another host near you, there may be one:
 ${site}/find-a-host/
@@ -3580,12 +3693,13 @@ async function memberLink(req, env, url, ctx) {
 
   const row = await env.DB.prepare(
     `SELECT c.*, h.name AS host_name, h.company AS host_company, h.email AS host_email,
-            h.status AS host_status
+            h.status AS host_status, h.services_json, h.pricing_json, h.currency
        FROM num_host_clients c JOIN num_hosts h ON h.id = c.host_id
       WHERE c.member_token = ?`
   ).bind(t).first();
   if (!row) return J({ ok: false, error: "unauthorised" }, 401);
   if (!sameSecret(row.member_token, t)) return J({ ok: false, error: "unauthorised" }, 401);
+  const hostRow = row;
 
   const bookings = async () => {
     const rows = await env.DB.prepare(
@@ -3597,9 +3711,44 @@ async function memberLink(req, env, url, ctx) {
     return (rows && rows.results) || [];
   };
 
+  /* THE MENU.
+   *
+   * A client who can only write "can you sort me a car" is asking a stranger's
+   * assistant to guess. A client who is shown what their host actually does,
+   * with the host's own words and the host's own prices, is choosing — and the
+   * request that comes back is one the host can act on without three messages
+   * of clarification.
+   *
+   * Built from the SAME pricing_json the host edits in their console, so a
+   * price can never be shown here that the host did not set. A service the
+   * host has un-ticked does not appear. A line they marked "agreed per
+   * request" shows no number, because inventing one is how a host ends up
+   * held to a figure they never quoted. */
+  const menu = () => {
+    const on = JSON.parse(hostRow.services_json || "[]");
+    const priced = JSON.parse(hostRow.pricing_json || "[]");
+    const byKey = {};
+    priced.forEach(function (x) { byKey[x.key] = x; });
+    return on.map(function (k) {
+      const line = byKey[k] || {};
+      return {
+        key: k,
+        label: line.label || k,
+        // No price at all rather than a zero: "£0.00" reads as free.
+        price_minor: line.unit === "quote" ? null : (line.price_minor || null),
+        currency: hostRow.currency || "GBP",
+        unit: line.unit || "quote",
+        fulfilment: line.fulfilment || "either",
+        notes: line.notes || "",
+      };
+    });
+  };
+
   const read = async () => J({
     ok: true,
     you: row.name,
+    // What this host can do for you, in their words and at their prices.
+    services: menu(),
     // What their host has actually confirmed for them. Confirmed and done
     // only: a client must never be shown a booking their host has not agreed
     // to, which is the same rule that governs the confirmation email.
@@ -3627,7 +3776,7 @@ async function memberLink(req, env, url, ctx) {
     if_you_leave: [
       "They are told, and you are removed from their console.",
       "NUM keeps booking your travel directly, exactly as it does now.",
-      "NUM's £5 booking fee moves from them to you.",
+      "Nothing starts costing you money — NUM does not charge you a booking fee.",
       "You can ask a different host, or the same one again, whenever you like.",
     ],
   });
@@ -3665,6 +3814,54 @@ async function memberLink(req, env, url, ctx) {
       note: out.delivered
         ? String(row.host_name || "Your host").split(/\s+/)[0] + " has it."
         : "Saved. We could not email them just now, so they will see it in their console.",
+    });
+  }
+
+  /* ASKING FOR ONE. The client-side intake, and the reason the menu exists.
+   *
+   * The request lands with source='client' and host_notified_at NULL, which is
+   * exactly what worker/hostaware.mjs's sweep looks for — so the host is told
+   * by the path that already exists rather than a second one built here.
+   *
+   * NUM says nothing to the client beyond "they have it". No price is agreed,
+   * nothing is confirmed, and the host remains the only person who can commit
+   * to anything. */
+  if (action === "ask") {
+    if (row.status === "removed") return J({ ok: false, error: "ended" }, 409);
+    if (hostRow.host_status !== "active") return J({ ok: false, error: "host_unavailable" }, 409);
+
+    const key = String(b.service_key || "").trim().toLowerCase();
+    // Only from the menu. A key the host does not offer is not a request they
+    // can fulfil, and accepting it would put a job in their console that they
+    // never said they do.
+    const offered = menu().some(function (m) { return m.key === key; });
+    if (!offered) return J({ ok: false, error: "not_offered" }, 400);
+
+    const title = clean(b.title, 160);
+    if (!title) return J({ ok: false, error: "no_title" }, 400);
+
+    const line = menu().filter(function (m) { return m.key === key; })[0] || {};
+    const reqId = "hr_" + token(10);
+    await env.DB.prepare(
+      `INSERT INTO num_host_requests
+         (id,host_id,client_id,service_key,title,detail,city,starts_at,party_size,
+          price_minor,currency,unit,quote_only,status,source,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'new','client',?)`
+    ).bind(
+      reqId, row.host_id, row.id, key, title, clean(b.detail, 4000),
+      clean(b.city, 80) || row.home_city || null, clean(b.starts_at, 40),
+      Math.max(0, Math.min(99, Math.round(Number(b.party_size)) || 0)) || null,
+      // The host's own price, copied at the moment of asking so a later edit to
+      // their list cannot silently change what this client was shown.
+      line.price_minor || 0, line.currency || "GBP", line.unit || "quote",
+      line.unit === "quote" ? 1 : 0, now()
+    ).run().catch(function () { return null; });
+
+    return J({
+      ok: true,
+      asked: true,
+      note: String(hostRow.host_name || "Your host").split(/\s+/)[0] +
+            " has it. Nothing is booked until they confirm, and they will come back to you.",
     });
   }
 

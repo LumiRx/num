@@ -139,7 +139,7 @@ test('MODERATE with a hosted brain: Haiku first, hosted behind it, Claude last',
   assert.equal(d.steps[2].model, 'kimi-k2.6');
   assert.equal(d.steps[3].brain, 'claude');
   assert.equal(d.steps[3].model, 'claude-opus-5');
-  assert.equal(d.estCostUsd, 0.0022, 'first step should cost as Haiku');
+  assert.equal(d.estCostUsd, MODEL_COSTS['claude-haiku-4-5'], 'first step should cost as Haiku');
 });
 
 test('MODERATE without a hosted brain: Haiku then Claude', () => {
@@ -155,7 +155,7 @@ test('SIMPLE goes to Haiku too', () => {
   const d = direct('what time do shops open', {}, env);
   assert.equal(d.tier, TIERS.SIMPLE);
   assert.equal(d.steps[0].brain, 'haiku');
-  assert.equal(d.estCostUsd, 0.0022);
+  assert.equal(d.estCostUsd, MODEL_COSTS['claude-haiku-4-5']);
 });
 
 test('the bulk model is overridable without a deploy', () => {
@@ -171,7 +171,7 @@ test('CRITICAL and COMPLEX go straight to Claude, no escalation path needed', ()
     assert.equal(d.steps.length, 1);
     assert.equal(d.steps[0].brain, 'claude');
     assert.equal(d.steps[0].model, 'claude-opus-5');
-    assert.equal(d.estCostUsd, 0.0532);
+    assert.equal(d.estCostUsd, MODEL_COSTS['claude-opus-5']);
 
     const c = direct('plan our day tomorrow', {}, env);
     assert.equal(c.tier, TIERS.COMPLEX);
@@ -219,7 +219,7 @@ test('afterFailure advances to the next step', () => {
   assert.ok(d3);
   assert.equal(d3.steps.length, 1);
   assert.equal(d3.steps[0].brain, 'claude');
-  assert.equal(d3.estCostUsd, 0.0532);
+  assert.equal(d3.estCostUsd, MODEL_COSTS['claude-opus-5']);
 
   // Claude is the end of the path
   assert.equal(afterFailure(d3, 0), null, 'no step after Claude');
@@ -326,4 +326,59 @@ test('placing an order spends money, so it never reaches the cheap lane', () => 
   // ...without swallowing the idiom, which carries no commitment at all.
   assert.equal(direct('in order to get there faster what should i do', {}, {}).tier, TIERS.MODERATE,
     '"in order to" was read as placing an order');
+});
+
+// ── Added 7 Sep 2026, all four from measured production traffic ──────────
+//
+// Every case below was found in num_asks, not imagined. Each one was going to
+// a model between fifteen and a hundred times more expensive than it needed,
+// and none of them errored — which is why nobody noticed for a fortnight.
+
+test('a late DINNER is a meal; a late FLIGHT is a problem', () => {
+  // Asked three times in a fortnight and sent to the frontier model every
+  // time, because `late` sat in the trouble list on its own.
+  assert.equal(classifyDemand('Best late dinner in Bangkok tonight, somewhere local').tier, TIERS.MODERATE);
+  assert.equal(classifyDemand('my flight is late').tier, TIERS.CRITICAL);
+  assert.equal(classifyDemand('we are running late').tier, TIERS.CRITICAL);
+  assert.equal(classifyDemand('too late to book?').tier, TIERS.CRITICAL);
+});
+
+test('a comma is punctuation, not a second task', () => {
+  // "dinner" followed within 30 characters by a comma used to mean
+  // "multi-step planning". Asked five times, frontier model five times.
+  assert.equal(classifyDemand('Dinner tonight in Edinburgh, somewhere I could not find on my own').tier, TIERS.MODERATE);
+  // Two actual services still escalate, which is the whole point of the rule.
+  assert.equal(classifyDemand('dinner, then drinks').tier, TIERS.COMPLEX);
+  assert.equal(classifyDemand('give me a hotel and a transfer').tier, TIERS.COMPLEX);
+});
+
+test('a question about opening hours is a lookup, wherever the question word sits', () => {
+  assert.equal(classifyDemand("I land in Bangkok at 11pm and I'm starving. What's actually open?").tier, TIERS.SIMPLE);
+  assert.equal(classifyDemand('what time does it open').tier, TIERS.SIMPLE);
+  assert.equal(classifyDemand('how far is it').tier, TIERS.SIMPLE);
+});
+
+test('a one-word reply inherits the tier of what it replies to', () => {
+  assert.equal(classifyDemand('Yes', { prevUser: 'Can you book me a hotel in Edinburgh' }).tier, TIERS.CRITICAL);
+  assert.equal(classifyDemand('Yes', { prevUser: 'where should we eat tonight' }).tier, TIERS.MODERATE);
+  assert.equal(classifyDemand('what else?', { prevUser: 'where should we eat tonight' }).tier, TIERS.MODERATE);
+  assert.equal(classifyDemand('Eat there', { prevUser: "I'm in phuket. where should we eat tonight?" }).tier, TIERS.MODERATE);
+  // And a greeting with nothing behind it is the cheapest turn there is.
+  assert.equal(classifyDemand('Hi').tier, TIERS.SIMPLE);
+  assert.equal(classifyDemand('Yes').tier, TIERS.SIMPLE);
+});
+
+test('a continuation never drags a real question down with it', () => {
+  // Long enough to stand on its own is not a continuation, whatever it starts
+  // with — otherwise "yes, and can you cancel my booking" answers cheaply.
+  assert.equal(classifyDemand('yes, and can you cancel my booking and refund it', { prevUser: 'hi' }).tier, TIERS.CRITICAL);
+});
+
+test('the cost table is pessimistic about price, never optimistic', () => {
+  // The old table was 6-20x low because it assumed a 700-token prompt against
+  // a real one of 4,320. A router that under-prices a model keeps reaching for
+  // it, and the bill it produces is not the bill it predicted.
+  assert.ok(MODEL_COSTS['claude-opus-5'] > MODEL_COSTS['claude-haiku-4-5']);
+  assert.ok(MODEL_COSTS['claude-haiku-4-5'] > MODEL_COSTS['deepseek-v4-flash']);
+  assert.equal(MODEL_COSTS['workers-ai'], 0);
 });

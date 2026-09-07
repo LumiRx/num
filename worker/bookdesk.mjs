@@ -235,6 +235,9 @@ export const bookdeskEnabled = (env) => env?.BOOKDESK_ENABLED === 'true';
  * in the request path imports this; see worker/bookdesk.consent.test.mjs.
  */
 export const __testables = { smsPartner, partnerMayBeTexted, PARTNER_SMS_FOOTER };
+// The host desk (worker/hostbookdesk.mjs) sends a venue the SAME signed
+// links, so a venue's answer to a host's request lands in the same handler.
+export { sign as signBookingAnswer };
 
 export async function handleBooking(request, env, path) {
   await ensure(env);
@@ -357,9 +360,14 @@ export async function handleBooking(request, env, path) {
       });
     }
 
+    // "The guest has been told" was printed on the venue's page for every
+    // answer, on the strength of a push that reaches the two members who have
+    // a subscription. For everyone else the note is queued and shown the
+    // next time they open Num — which is true, and is what the page says now.
+    let reached = 0;
     if (flip.meta.changes > 0) {
       const { notify } = await import('./push.mjs');
-      await notify(env, {
+      reached = await notify(env, {
         memberId: row.member_id,
         kind: 'plan',
         title: verdict === 'confirmed'
@@ -370,8 +378,11 @@ export async function handleBooking(request, env, path) {
           : 'Want me to find you somewhere just as good?',
         url: '/?go=plan',
         tag: `book:${id}`,
-      }).catch(() => {});
+      }).then((r) => r?.sent ?? 0).catch(() => 0);
     }
+    const guestLine = flip.meta.changes === 0
+      ? '<br>(already answered)'
+      : reached > 0 ? '<br>The guest has been told.' : '<br>The guest will see this the moment they open Num.';
 
     // The partner sees a page, not JSON — they tapped this on a phone.
     return new Response(
@@ -380,7 +391,7 @@ export async function handleBooking(request, env, path) {
       `<div style="text-align:center;padding:24px"><div style="font-size:40px">${verdict === 'confirmed' ? '✓' : '—'}</div>` +
       `<h2 style="margin:8px 0 4px">${verdict === 'confirmed' ? 'Confirmed' : 'Declined'}</h2>` +
       `<p style="color:#777">${row.venue_name} · party of ${row.party_size}${row.on_date ? ` · ${row.on_date}` : ''}` +
-      `${flip.meta.changes === 0 ? '<br>(already answered)' : '<br>The guest has been told.'}</p></div>`,
+      `${guestLine}</p></div>`,
       { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
     );
   }

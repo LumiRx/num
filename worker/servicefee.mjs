@@ -1,68 +1,61 @@
 /**
- * WHO PAYS THE £5, AND WHY IT IS NEVER THE HOST'S CLIENT.
+ * WHO PAYS NUM, AND WHO NEVER DOES.
  *
- * NUM has four revenue lines. Keeping them apart matters more than any of
- * them individually, because two of them touch people who are not our
- * customers, and the moment those blur we are billing a concierge's private
- * client — the exact thing /hosts/ promises we will not do.
+ * ── THE CHANGE, 7 SEP 2026 ──────────────────────────────────────────────
+ * There was a £5 per-booking fee, charged to the host on confirm. It is GONE.
  *
- *   1. THE PLATFORM FEE — one flat monthly fee for a VIP host to be on NUM.
- *      Not priced per client. Ever. A concierge's book is the thing they
- *      spent years building; charging per head charges them for their own
- *      success, and makes their first instinct to keep clients OUT of NUM,
- *      which breaks the product long before it improves the invoice.
+ * It was removed for a reason worth keeping written down, because someone will
+ * propose it again: a per-booking fee is a tax on the host using the product.
+ * Every confirm cost them money, so the rational move was to confirm less in
+ * NUM and keep the rest on WhatsApp — which starves the system of exactly the
+ * data that makes it useful, to collect five pounds. And it could not even be
+ * collected: most hosts sit on the free plan because no plan caps clients, a
+ * free host has no card on file, and the invoicing sweep skipped them.
  *
- *   2. TIERED ACCESS — the same host, paying more, unlocks more of the tool:
- *      texts and calendar, then the host network and introductions, then
- *      products and Ghost Message. Tiers buy CAPABILITY, never headroom.
+ * NUM's host revenue is now ONE line: **the subscription.** Want more? Upgrade.
+ * That is the whole model, and it has the property the per-booking fee never
+ * had — the host's incentive and ours point the same way. We earn more when
+ * they need more reach, not when they do more work.
  *
- *   3. THE SUPPLIER COMMISSION — our ~10% from the venue, hotel or driver.
- *      Already live in worker/commission.mjs. The traveller never sees it.
+ * ── WHAT REMAINS TRUE ───────────────────────────────────────────────────
+ *   1. THE SUBSCRIPTION — flat, monthly, per host. Never priced per client: a
+ *      concierge's book is what they spent years building, and charging per
+ *      head makes their first instinct to keep clients out of NUM.
+ *   2. TIERED ACCESS — the same host paying more unlocks more of the tool.
+ *      Capability, never headroom.
+ *   3. THE SUPPLIER COMMISSION — our ~10% from the venue, hotel or driver on a
+ *      booking we made. worker/commission.mjs. The traveller never sees it.
  *
- *   4. THE BOOKING FEE — £5 per booking NUM arranges. This file is about the
- *      one question that matters here: who it lands on.
- *
- * ── THE RULE ────────────────────────────────────────────────────────────
- * The booking fee is paid by WHOEVER NUM'S CUSTOMER IS IN THAT RELATIONSHIP.
- *
- *   • Member has a VIP host  → THE HOST pays it. The client pays NUM nothing
- *     and never sees a NUM line item, because the host is the one with the
- *     commercial relationship and the one we are actually working for.
- *   • Member has no host     → THE MEMBER pays it. For that person NUM *is*
- *     the concierge, and there is nobody else to pay for the work.
- *
- * Somebody always pays £5 for the arranging. It is simply never two people,
- * and never the person a host is protecting.
- *
- * ── THE CONFLICT THIS CREATES, NAMED OUT LOUD ───────────────────────────
- * NUM collects the fee from an unhosted member directly, and from a host on
- * behalf of a hosted one. Those are the same £5, which is the point: we have
- * NO revenue reason to prefer one over the other, and therefore no reason to
- * introduce fewer people to hosts than we should.
- *
- * That symmetry is load-bearing. If either number ever moves independently,
- * the recommendation engine acquires a financial opinion about who a member
- * should be looked after by — and nobody will notice for a year. The guard is
- * structural: /api/host/nearby in growth/worker.js ranks strictly by distance
- * and by the host's own stated radius, with no revenue term, no scoring and
- * no suppression, and there is a test asserting it stays that way.
+ * And the rule that outranks all three: **a VIP host's client is never charged
+ * by NUM, for anything, on any plan.** That has not moved and must not.
  */
 
-/** The fee, in minor units. ONE number for both sides of the rule above —
- *  see the conflict note. If this ever becomes two numbers, or a percentage,
- *  read that paragraph again before you change it. */
-export const BOOKING_FEE_MINOR = 500;
+/**
+ * The per-booking fee, in minor units. ZERO, and deliberately still exported.
+ *
+ * Deleting the constant would have meant hunting every caller in two workers
+ * in one pass and hoping. Exporting 0 makes every existing call site correct
+ * by arithmetic: nothing accrues, `worker/hostmoney.mjs`'s invoicing sweep
+ * selects `WHERE booking_fee_minor > 0` and therefore finds nothing, and no
+ * host can be billed for work. A test pins it at 0 so it cannot drift back up
+ * without someone deciding to.
+ */
+export const BOOKING_FEE_MINOR = 0;
 
-/** Kept as the old name so existing callers do not silently read undefined. */
-export const MEMBER_SERVICE_FEE_MINOR = BOOKING_FEE_MINOR;
+/** Older name, same zero. */
+export const MEMBER_SERVICE_FEE_MINOR = 0;
 
 /**
- * Does this member belong to a VIP host's book right now?
+ * Does this member belong to a VIP host's book right now? Returns the host id,
+ * or false.
+ *
+ * Still here, and still worth having: it is how the app answers "who looks
+ * after me", how a client's page finds their host, and how we know not to
+ * offer someone an introduction they already have. It simply no longer decides
+ * who is charged, because nobody is.
  *
  * `status = 'active'` only. A paused client is one the host has stepped back
- * from and is not paying for, so the fee returns to the member — which is
- * also why pausing has to stay a deliberate act in the console and never a
- * side effect of anything else.
+ * from, and a removed one has gone.
  */
 export async function memberHasHost(env, memberId) {
   if (!memberId) return false;
@@ -73,33 +66,27 @@ export async function memberHasHost(env, memberId) {
 }
 
 /**
- * Who is billed for arranging this, how much, and why.
+ * What NUM charges for arranging this: nothing, on either side.
  *
- * The reason travels with the number so that no surface has to reinvent the
- * explanation, and so a member is never shown a charge without being told
- * what it is for.
+ * The shape is kept so callers do not need rewriting, and so the answer can be
+ * shown to a person rather than assumed. `payer: "nobody"` is a real state, not
+ * a null — it is the thing we want a host and a client to both be told.
  */
 export async function bookingFeeFor(env, memberId) {
   const hostId = await memberHasHost(env, memberId);
-  return hostId
-    ? {
-        fee_minor: BOOKING_FEE_MINOR,
-        payer: "host",
-        host_id: hostId,
-        member_pays_minor: 0,
-        why: "Your VIP host is billed for this. NUM does not charge you.",
-      }
-    : {
-        fee_minor: BOOKING_FEE_MINOR,
-        payer: "member",
-        host_id: null,
-        member_pays_minor: BOOKING_FEE_MINOR,
-        why: "A booking fee for arranging this. Members looked after by a VIP host never pay it — their host is billed instead.",
-      };
+  return {
+    fee_minor: 0,
+    payer: "nobody",
+    host_id: hostId || null,
+    member_pays_minor: 0,
+    why: hostId
+      ? "Nothing to pay. Your VIP host subscribes to NUM; you are never charged."
+      : "Nothing to pay. NUM does not charge a booking fee.",
+  };
 }
 
-/** Older name, same answer, shaped the way the first caller expected it. */
+/** Older name, same answer. */
 export async function serviceFeeFor(env, memberId) {
   const f = await bookingFeeFor(env, memberId);
-  return { fee_minor: f.member_pays_minor, exempt: f.payer === "host", why: f.why };
+  return { fee_minor: 0, exempt: true, why: f.why };
 }

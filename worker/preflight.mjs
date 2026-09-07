@@ -199,10 +199,10 @@ export function checkPayment(intent = {}) {
  * right money moved, and it is the only check standing between fifty cents
  * and a $28.98 membership.
  */
-export function tierPaidRight(session, owedCents) {
+export function tierPaidRight(session, owedCents, currency = 'usd') {
   return Number.isFinite(owedCents)
     && Number(session?.amount_total) === owedCents
-    && String(session?.currency ?? '').toLowerCase() === 'usd';
+    && String(session?.currency ?? '').toLowerCase() === String(currency).toLowerCase();
 }
 
 export function checkStars({ amount, available, label = 'move', max = 1_000_000, purpose = null } = {}) {

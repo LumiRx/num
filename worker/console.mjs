@@ -1609,6 +1609,45 @@ async function adminSubmissionPromote(env, req) {
 
   const placeId = `p_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   const who = clip(b.by, 60) || 'admin';
+
+  /**
+   * ── PROMOTING SOMEBODY WHO ALREADY SIGNED UP ───────────────────────────
+   *
+   * Dre, 7 Sep 2026: "he's already signed up so he shouldn't have to sign up
+   * again. we just need him to sign in again."
+   *
+   * He is right, and until now he was not served. Promotion built the listing
+   * and stopped: `places.status` stayed 'unclaimed', no `businesses` row, no
+   * `num_place_owners`. The person who filled in the form weeks earlier had to
+   * come back, find their own name in a search, and claim the listing from
+   * scratch — retyping what they had already told us, to prove they were the
+   * person who had told us.
+   *
+   * `owner: true` says the reviewer has read this submission and is satisfied
+   * the submitter is the business. That IS the check migration 0007 was
+   * waiting for. bizsubmit.mjs states it plainly: a self-submitted listing has
+   * no already-published contact to send a code to, because the submitter
+   * supplied every contact on it — "that is not a reason to turn them away; it
+   * is a reason their row is treated differently until something else confirms
+   * it." A human promoting it by hand is that something else.
+   *
+   * ── WHAT IS DELIBERATELY NOT CLAIMED BY DOING THIS ─────────────────────
+   *
+   * `method` is recorded as 'admin_promote', never 'sms' or 'email'. Those two
+   * mean a one-time code reached a contact that was already published on the
+   * listing, which is the entire anti-hijack property of claiming. This is a
+   * weaker, different fact — a named person vouched — and the register has to
+   * say which one it was, forever, or the strong claim quietly becomes
+   * unfalsifiable.
+   *
+   * `by` is required for the same reason. An assertion with nobody's name on
+   * it is not an assertion.
+   */
+  const asOwner = b.owner === true || b.owner === 'true' || b.owner === 1;
+  if (asOwner && !clip(b.by, 60)) {
+    return json({ error: 'owner: true records that a person vouched — "by" must name them' }, 400);
+  }
+
   const work = [
     env.DB.prepare(
       `INSERT INTO places (id,name,name_local,category,lat,lng,cell_lat,cell_lng,dest,country,
@@ -1629,9 +1668,75 @@ async function adminSubmissionPromote(env, req) {
       env.DB.prepare('UPDATE claims SET place_id=?2 WHERE id=?1 AND place_id IS NULL').bind(sub.claim_id, placeId),
     );
   }
+
+  let businessId = null;
+  if (asOwner) {
+    businessId = `biz_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+    // The place row is written in this same batch and cannot be SELECTed yet,
+    // so the shape onboardStatements needs is built from the submission — the
+    // same values the INSERT above is using.
+    const place = {
+      id: placeId,
+      name: sub.name,
+      category: sub.category,
+      dest,
+      country: sub.country,
+      area: null,
+      address: sub.address,
+      lat,
+      lng,
+      phone: sub.phone,
+      email: sub.email,
+      website: sub.website,
+    };
+    const { onboardStatements } = await import('../claim/onboard.mjs');
+    work.push(
+      env.DB.prepare(
+        `INSERT INTO businesses (id, name, kind, category, territory, status, onboarded_by, notes)
+         VALUES (?1,?2,'merchant',?3,?4,'active','admin-promote',?5)`,
+      ).bind(businessId, sub.name, sub.category ?? null, dest, `submission ${id} promoted by ${who}`),
+      env.DB.prepare(
+        `INSERT INTO num_place_owners (place_id, business_id, claim_id, method, phone)
+         VALUES (?1,?2,?3,'admin_promote',?4)
+         ON CONFLICT(place_id) DO UPDATE SET business_id=excluded.business_id,
+               claim_id=excluded.claim_id, method=excluded.method, phone=excluded.phone,
+               verified_at=datetime('now'), revoked_at=NULL`,
+      ).bind(placeId, businessId, sub.claim_id ?? null, sub.phone ?? null),
+      env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1")
+        .bind(placeId, businessId),
+      ...(await onboardStatements(env, businessId, place, `admin-promote:${who}`)),
+    );
+  }
+
   await env.DB.batch(work);
 
-  return json({ ok: true, submission_id: id, place_id: placeId, status: 'promoted' });
+  /**
+   * The link that makes "sign in" true rather than aspirational.
+   *
+   * Minted after the batch, never inside it: a sign-in link to a listing whose
+   * creation then rolled back is a link to nothing, handed to a real person.
+   * One use, fourteen days (worker/bizsignin.mjs). Best-effort — a business
+   * that exists and cannot be linked to is recoverable; one that was never
+   * created is not.
+   */
+  let signinUrlOut = null;
+  if (asOwner) {
+    try {
+      const { mintSigninLink, signinUrl } = await import('./bizsignin.mjs');
+      const token = await mintSigninLink(env, { placeId, businessId, purpose: 'welcome' });
+      if (token) signinUrlOut = signinUrl(new URL(req.url).origin, token);
+    } catch (e) {
+      console.warn('[promote] sign-in link', e?.message ?? e);
+    }
+  }
+
+  return json({
+    ok: true,
+    submission_id: id,
+    place_id: placeId,
+    status: 'promoted',
+    ...(asOwner ? { business_id: businessId, owner: 'admin_promote', signin_url: signinUrlOut } : {}),
+  });
 }
 
 // Exported so the behavioral test can call these directly, the same way

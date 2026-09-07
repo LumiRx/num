@@ -15,15 +15,27 @@ import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mj
 import { resolvePicks } from './placelink.mjs';
 import { redactProfile, redactState } from './redact.mjs';
 import { readCache, writeCache, cacheable } from './answercache.mjs';
+// Gate zero: the lookups that need no model at all. See knownanswer.mjs.
+import { knownAnswer } from './knownanswer.mjs';
 import { recordAsk, scrubAsk } from './asks.mjs';
 import { keepRouting, fallbackRouting, laneLabel } from './routinglabel.mjs';
 import { publicNumber as whatsAppNumber } from './whatsapp.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
+// How Num suggests a place — one house style, read on every turn.
+import { SUGGESTION_STYLE } from './suggestionstyle.mjs';
 import { formatEvents } from './cityevents.mjs';
 import { formatSearchedEvents } from './eventsearch.mjs';
 import { loadFacts, saveFacts } from './memory.mjs';
 import { loadTurns, saveTurn, mergeHistory, subjectFor } from './turns.mjs';
+// The member's VIP host, if they have one — looked up beside grounding, told
+// to the brain, and the `ask_host` action relayed into the host's console.
+// See worker/hostaware.mjs for why this bridge did not exist before 4 Sep.
+import { hostFor, hostBlock, relayToHost } from './hostaware.mjs';
+// Partners that DELIVER to where the guest is, offered to the brain as a
+// DELIVERY PARTNERS block, and the `request_delivery` action turned into a
+// real order server-side. In-app, never SMS — worker/delivery.mjs says why.
+import { partnersNear, allowedFor, deliveryBlock, createOrder } from './delivery.mjs';
 import { pickLane, pickModel, smallReply, guardReply, soundsLikeASwitchboard } from './router.mjs';
 import { scrubPayload as scrubTravelSpeak } from './travelspeak.mjs';
 import { direct } from './director.mjs';
@@ -106,7 +118,11 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
     console.log(`[num-ai] redacted ${safeProfile.removed + safeState.removed} identifying field(s) before the model saw them`);
   }
   const system = [
-    { type: 'text', text: PERSONA + '\n\n' + VOICE, cache_control: { type: 'ephemeral' } },
+    // The house style rides with the persona and shares its cache block: it is
+    // the same on every turn for every guest, so it costs nothing after the
+    // first call, and putting it anywhere else would mean some turns get it
+    // and some do not — which is exactly the inconsistency it exists to fix.
+    { type: 'text', text: PERSONA + '\n\n' + VOICE + '\n\n' + SUGGESTION_STYLE, cache_control: { type: 'ephemeral' } },
     {
       type: 'text',
       text: contextBlock({
@@ -655,7 +671,7 @@ export async function handleNum(request, env, ctx) {
     // The thread, server-side (worker/turns.mjs). Loaded in the same
     // Promise.all as facts, so continuity across devices costs no latency.
     const turnSubject = subjectFor({ memberId, anonId: parsed.state?.anon ?? null });
-    const [groundResult, rememberedFacts, storedTurns] = await Promise.all([
+    const [groundResult, rememberedFacts, storedTurns, memberHost] = await Promise.all([
       groundRequest(env, {
         userText: lastUser,
         statedPlace: parsed.place,
@@ -666,8 +682,29 @@ export async function handleNum(request, env, ctx) {
       }),
       memberId ? loadFacts(env, memberId).catch(() => ({})) : Promise.resolve({}),
       turnSubject ? loadTurns(env, turnSubject).catch(() => []) : Promise.resolve([]),
+      // Who looks after this person, if anyone. Null for the nine in ten asks
+      // with no member id, and for every member without a host.
+      memberId ? hostFor(env, memberId).catch(() => null) : Promise.resolve(null),
     ]);
     grounding = groundResult;
+
+    // Who delivers to where this guest is (worker/delivery.mjs). Members only:
+    // an order needs a member to belong to, so an anonymous guest is never
+    // read a menu that ends nowhere. A hosted member is never offered one —
+    // their host arranges it — and an age-gated partner reaches only a member
+    // whose identity Num has verified. Empty for nearly everyone.
+    let deliveryPartners = [];
+    if (memberId && env?.DB && grounding?.place?.lat != null && grounding?.place?.lng != null) {
+      try {
+        const near = await partnersNear(env, { lat: grounding.place.lat, lng: grounding.place.lng, dest: grounding.place.slug });
+        if (near.length) {
+          const member = near.some((p) => p.age_min)
+            ? await env.DB.prepare('SELECT identity_verified FROM num_members WHERE id=?1').bind(memberId).first().catch(() => null)
+            : null;
+          deliveryPartners = allowedFor(near, { member, hasHost: !!memberHost });
+        }
+      } catch (e) { console.warn('[delivery] near', e?.message ?? e); }
+    }
 
     // The browser's own preference, as a tiebreaker only. What the person
     // actually TYPED wins every time — somebody with an English phone asking
@@ -714,6 +751,45 @@ export async function handleNum(request, env, ctx) {
     // Where the asker is, to ~1 km, so "near me" answers are shared only
     // among people standing in the same place (answercache.mjs).
     const cachePos = grounding.place?.lat != null ? { lat: grounding.place.lat, lng: grounding.place.lng } : null;
+
+    // ── GATE ZERO: the answer is already in our hand ──────────────────────
+    //
+    // "What time does it open." "What's the address." The verified row that
+    // built the partner block above holds the answer, and sending 4,000
+    // tokens to a language model so it can read one field out of a block we
+    // just constructed is a lookup with a surcharge.
+    //
+    // Zero tokens, milliseconds, and it cannot be wrong because it does not
+    // generate — there is no temperature on a database field. It fires only
+    // when exactly ONE verified place is in play and the field is actually
+    // populated; anything else falls through to a brain, which is the right
+    // way round. See worker/knownanswer.mjs for the three rules.
+    //
+    // Runs before the cache read because it is cheaper still: the cache costs
+    // a D1 round trip, this costs nothing at all.
+    {
+      const prevAssistant = [...history].reverse().find((m) => m?.role === 'assistant')?.content ?? '';
+      const known = knownAnswer({
+        text: lastUser,
+        prevAssistant: typeof prevAssistant === 'string' ? prevAssistant : '',
+        partners: grounding?.partners ?? [],
+        tz: grounding?.place?.tz ?? null,
+      });
+      if (known) {
+        // The place still goes through resolvePicks and enrichPicks, so the
+        // guest gets the identical card — link, map, tappable call button,
+        // opening state — that a model answer would have produced. They
+        // cannot tell this one was free, which is the point.
+        const resolved = resolvePicks([known.pick], grounding?.partners ?? []);
+        const { enrichPicks } = await import('./pickdetail.mjs');
+        const picks = enrichPicks(resolved.picks, grounding?.partners ?? [], grounding?.place?.tz, new Date(), grounding?.place?.country ?? null);
+        console.log(`[num-ai] answered from the row (${known.fact}), no model called`);
+        ctx.waitUntil(recordAsk(env, { text: lastUser, dest: grounding.place?.slug ?? null, lane: `known:${known.fact}`, cached: true, memberId: parsed.state?.me?.id ?? null }));
+        if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, known.reply));
+        return json(200, { reply: known.reply, card: null, chips: null, actions: [], picks, place: grounding.place?.name ?? null });
+      }
+    }
+
     if (cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: {}, pos: cachePos })) {
       const hit = await readCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, pos: cachePos });
       if (hit) {
@@ -763,6 +839,14 @@ export async function handleNum(request, env, ctx) {
       // note (a quality retry), in which case fixing the answer outranks
       // learning something new.
       extraSystem = extraSystem ?? earnedBlock;
+      // The host rides on every call, retries included: a corrected answer
+      // that forgets the guest has a host is a second wrong answer.
+      const hostNote = hostBlock(memberHost);
+      if (hostNote) extraSystem = [hostNote, extraSystem].filter(Boolean).join('\n\n');
+      // Same for who delivers here: the prices the guest was read must be the
+      // prices the retry reads too.
+      const deliveryNote = deliveryBlock(deliveryPartners);
+      if (deliveryNote) extraSystem = [deliveryNote, extraSystem].filter(Boolean).join('\n\n');
       try {
         return await askNum(client, history, parsed.state, grounding, profile, extraSystem, env, lastUser, acceptLang, modelOverride);
       } catch (err) {
@@ -802,7 +886,13 @@ export async function handleNum(request, env, ctx) {
     // what this turn was. Computing it inline meant the tier existed for one
     // expression and was never written down — see the lane/category note
     // below.
-    const directive = direct(lastUser, parsed.state, env);
+    // The PREVIOUS user message rides along so the classifier can tell a
+    // continuation from a question. "Yes" on its own carries no signal and was
+    // being escalated to the frontier model; "yes" after "shall I book it?"
+    // inherits critical, and "yes" after "want three more?" inherits the bulk
+    // lane. See director.isContinuation.
+    const prevUser = [...history].reverse().find((m) => m?.role === 'user' && m.content !== lastUser)?.content ?? null;
+    const directive = direct(lastUser, { ...(parsed.state ?? {}), prevUser: typeof prevUser === 'string' ? prevUser : null }, env);
     // The chain, not one model. Claude first for the full concierge; if it
     // fails for any reason, an open model on Cloudflare's edge (or a
     // self-hosted one) answers in prose rather than the user hitting a wall.
@@ -905,7 +995,30 @@ export async function handleNum(request, env, ctx) {
       // count that earned it. All from the row, none invented, and absent
       // where the row is silent. See worker/pickdetail.mjs.
       const { enrichPicks } = await import('./pickdetail.mjs');
-      result = { ...result, picks: enrichPicks(resolved.picks, grounding?.partners ?? [], grounding?.place?.tz) };
+      // WHAT EACH OF THESE PLACES OFFERS, WHERE THE BUSINESS HAS TOLD US.
+      //
+      // One indexed read across every row already in hand, attached before
+      // enrichment so pickdetail stays pure. Capped per place inside
+      // bizoffer.forPlaces — a concierge reciting a 200-line menu is worse
+      // than one that says nothing. Best-effort: a business with nothing
+      // listed, or a read that fails, simply produces the answer NUM gave
+      // before this existed.
+      // Attached to the grounding rows in place, so the enrichPicks call below
+      // stays byte-for-byte what pickdetail.test.mjs pins — that test is the
+      // guard on both the first-answer and the quality-retry path, and it is
+      // worth more than a local variable.
+      try {
+        const { forPlaces } = await import('./bizoffer.mjs');
+        const rows = grounding?.partners ?? [];
+        const byPlace = await forPlaces(env, rows.map((r) => r?.id).filter(Boolean));
+        if (byPlace.size) {
+          for (const r of rows) {
+            const offers = r?.id != null ? byPlace.get(String(r.id)) : null;
+            if (offers?.length) r.offerings = offers;
+          }
+        }
+      } catch (e) { console.warn('[bizoffer]', e?.message ?? e); }
+      result = { ...result, picks: enrichPicks(resolved.picks, grounding?.partners ?? [], grounding?.place?.tz, new Date(), grounding?.place?.country ?? null) };
       // A FIRST ANSWER WITH PLACES ALWAYS OFFERS A NEXT TAP.
       //
       // The bulk lane (Haiku) reliably returns picks and reliably returns no
@@ -939,7 +1052,7 @@ export async function handleNum(request, env, ctx) {
         if (fixedGuard.ok) {
           const reFixedRaw = resolvePicks(fixed.picks, grounding?.partners ?? []);
           const { enrichPicks: enrichAgain } = await import('./pickdetail.mjs');
-          const reFixed = { ...reFixedRaw, picks: enrichAgain(reFixedRaw.picks, grounding?.partners ?? [], grounding?.place?.tz) };
+          const reFixed = { ...reFixedRaw, picks: enrichAgain(reFixedRaw.picks, grounding?.partners ?? [], grounding?.place?.tz, new Date(), grounding?.place?.country ?? null) };
           const after = inspect({ ask: lastUser, reply: fixedGuard.cleaned, picks: reFixed.picks, context: groundingBlock });
           // Take the retry only if it is genuinely better. A retry that
           // trades an invented price for an off-topic answer is not a fix.
@@ -1052,11 +1165,19 @@ export async function handleNum(request, env, ctx) {
       memberId: parsed.state?.me?.id ?? null,
     });
     // Internals never leave the Worker.
-    const { _usage, _specialist, _brain, _tried, _ms, _degraded, ...clean } = withServices;
-    void _usage;
-    void _specialist;
-    void _tried;
-    void _ms;
+    //
+    // Written as "drop every underscore-prefixed key", not a named list, since
+    // 7 Sep 2026: the list was the bug. `_model` was added to every brain's
+    // return on 30 Aug so a Haiku turn could be priced as Haiku, and nothing
+    // added it here — so it shipped to every guest for a week, alongside
+    // `_blocked`, which names the moderation rule a reply tripped. Found by
+    // reading a live /api/num response during a status check, not by a test.
+    // A convention the compiler cannot forget beats a list someone must
+    // remember to update.
+    // `_brain` is re-published deliberately below as `brain` on a degraded
+    // reply, so the app can say which fallback answered — keep the handle.
+    const { _degraded, _brain } = withServices;
+    const clean = Object.fromEntries(Object.entries(withServices).filter(([k]) => !k.startsWith('_')));
     // `degraded` tells the app a fallback brain answered, so it can avoid
     // treating a prose reply as if it created bookings.
     // Pay for this answer once. cacheable() is strict — anything shaped by
@@ -1073,6 +1194,28 @@ export async function handleNum(request, env, ctx) {
     // failing to save costs nothing this turn, only a possible re-ask
     // later, which is the status quo everywhere today.
     if (memberId) ctx.waitUntil(saveFacts(env, memberId, clean.actions));
+    // The guest said "send it to my host": their words become a NEW request in
+    // the host's console. Executed here, not in the app — the app sends
+    // nothing — and only for a member whose host we established above.
+    if (memberId && memberHost) {
+      ctx.waitUntil(relayToHost(env, { memberId, host: memberHost, actions: clean.actions, userText: lastUser })
+        .then((r) => { if (r.relayed) console.log(`[hostaware] ${r.relayed} request(s) relayed to ${memberHost.hostName}`); })
+        .catch((e) => console.warn('[hostaware] relay', e?.message ?? e)));
+    }
+    // The guest said yes to a delivery read-back: the order is created HERE,
+    // never by the app, and only for a partner this very call offered — an
+    // invented business_id, or one from a block the guest never saw, creates
+    // nothing. delivery.mjs prices it from the partner's own list, tells the
+    // guest it is pending, and emails the partner.
+    if (memberId && deliveryPartners.length) {
+      const offered = new Set(deliveryPartners.map((p) => p.business_id));
+      for (const a of clean.actions ?? []) {
+        if (a?.type !== 'request_delivery' || !a.order?.confirmed || !offered.has(a.order.business_id)) continue;
+        ctx.waitUntil(createOrder(env, { businessId: a.order.business_id, memberId, items: a.order.items, address: a.order.address, note: a.order.note, channel: 'agent' })
+          .then((r) => console.log(r.ok ? `[delivery] order ${r.short_code} pending at ${r.partner}` : `[delivery] refused: ${r.error}`))
+          .catch((e) => console.warn('[delivery] order', e?.message ?? e)));
+      }
+    }
     // The exchange itself, so the next device picks up mid-thought. Degraded
     // replies are stored too: the person saw them, so the thread has them.
     if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, typeof clean.reply === 'string' ? clean.reply : ''));
@@ -1274,6 +1417,40 @@ export default {
     if (url.pathname.startsWith('/e/')) {
       return await handleEventPage(request, env, url.pathname.slice(3).split('/')[0], url.origin);
     }
+    // The member's calendar: a confirmed table, a plan, an event, as .ics.
+    // Read-only, floating local times, bearer-safe headers. worker/calendar.mjs.
+    // The host programme, from the app's side: who my host is, my host's
+    // confirmed work as a calendar feed, the host's plan and the host desk.
+    // worker/hostmoney.mjs (the growth worker keeps the host console routes on itsnum.com).
+    // "Something is wrong." Open to everyone, signed in or not — the guest
+    // most likely to hit a bug is the one who could not finish signing up.
+    // worker/support.mjs.
+    if (url.pathname.startsWith('/api/support')) {
+      const { handleSupport } = await import('./support.mjs');
+      const res = await handleSupport(request, env, url);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    // Delivery from a Num partner, from the app's side: my orders, a web
+    // order, who delivers near here (coarse). worker/delivery.mjs.
+    if (url.pathname.startsWith('/api/delivery/')) {
+      const { handleDelivery } = await import('./delivery.mjs');
+      const res = await handleDelivery(request, env, url);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname.startsWith('/api/host/')) {
+      const { handleHost } = await import('./hostmoney.mjs');
+      const res = await handleHost(request, env, url);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname.startsWith('/api/calendar/')) {
+      const { handleCalendar } = await import('./calendar.mjs');
+      const res = await handleCalendar(request, env, url);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
     if (url.pathname.startsWith('/api/events')) {
       const res = await handleEvents(request, env, url.pathname.slice('/api/events'.length) || '/', url.origin);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -1304,15 +1481,69 @@ export default {
       return json(200, envelope);
     }
 
+    // WHAT NUM WORKS WITH — public, and generated from what is actually
+    // configured rather than from a list somebody typed.
+    //
+    // Named `/api/works-with` and not `/api/connections` on purpose: there is
+    // already an admin-gated `/api/connectors`, and two routes one letter
+    // apart, one public and one privileged, is a mistake waiting to be made at
+    // 2am. See worker/connections.mjs for why the page is generated.
+    // NUM FOR AI — the self-serve developer API. Sign up, get a key, serve
+    // your own users local information. Read-only and nothing that touches a
+    // person; see worker/devapi.mjs for why that is the whole reason a key
+    // can be issued in one click.
+    if (url.pathname === '/api/dev' || url.pathname.startsWith('/api/dev/')) {
+      const { handleDevApi } = await import('./devapi.mjs');
+      return handleDevApi(request, env, url.pathname.slice('/api/dev'.length) || '/');
+    }
+
+    if (url.pathname === '/api/works-with') {
+      const { connectionsPayload } = await import('./connections.mjs');
+      return json(200, connectionsPayload(env), { 'Cache-Control': 'public, max-age=300' });
+    }
+
     if (url.pathname === '/api/air') {
       return json(200, { connected: airReady(env), tools: AIR_TOOLS });
     }
 
     if (url.pathname === '/api/brains') {
+      const admin = env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
       // The probe costs Workers AI neurons and takes seconds, so it is gated
       // on the admin key rather than left open.
-      if (url.searchParams.get('probe') && env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY) {
+      if (url.searchParams.get('probe') && admin) {
         return json(200, { brains: brainRoster(env), probe: await brainProbe(env) });
+      }
+      // WHICH Anthropic account is answering our guests. Admin-gated because
+      // the organisation we buy from is a commercial fact, not a public one —
+      // and because it costs an outbound call. See worker/brainorg.mjs.
+      // WHAT WOULD THE SCORER CHOOSE FOR THIS QUESTION?
+      //
+      // `?plan=<any question>` runs the whole routing web — classify the
+      // demand, rank every configured brain by capability, health and price —
+      // and shows the answer WITHOUT calling anything. It is the way to see
+      // the policy before trusting it with traffic, and the way to check a
+      // surprising bill afterwards. Admin-gated: it names our costs.
+      if (url.searchParams.get('plan') != null && admin) {
+        const [{ classifyDemand }, score, brainstate] = await Promise.all([
+          import('./director.mjs'), import('./brainscore.mjs'), import('./brainstate.mjs'),
+        ]);
+        const text = url.searchParams.get('plan') ?? '';
+        const prevUser = url.searchParams.get('prev') ?? null;
+        const demand = classifyDemand(text, { prevUser });
+        const health = score.healthFrom(await brainstate.load(env));
+        return json(200, {
+          ask: text,
+          demand,
+          needs: score.NEEDS[demand.tier],
+          health,
+          plan: score.plan(env, demand.tier, health),
+          slots: score.SLOTS,
+        });
+      }
+      if (url.searchParams.get('org') && admin) {
+        const { brainOrg, matchesExpected } = await import('./brainorg.mjs');
+        const org = await brainOrg(env, { force: !!url.searchParams.get('fresh') });
+        return json(200, { brains: brainRoster(env), org, expected: matchesExpected(org, env.BRAIN_ORG_EXPECT) });
       }
       return json(200, { brains: brainRoster(env) });
     }
@@ -2108,6 +2339,32 @@ export default {
         .then((m) => m.claimSweep(env))
         .catch((e) => console.error('[claimsweep]', e?.message ?? e)),
     );
+    // ...and the other half of it. nudge.mjs alerts US about a business that
+    // started a claim and stopped; it has done so correctly since 24 Aug 2026
+    // and nobody acted for fourteen days. This writes to the BUSINESS, which
+    // is the only message that was ever going to move the thing along.
+    // At-most-once per round, forever — see worker/claimchase.mjs.
+    ctx.waitUntil(
+      import('./claimchase.mjs')
+        .then(async (m) => {
+          const r = await m.chaseStalledClaims(env);
+          if (r.sent) console.log('[claimchase]', r.sent, 'chased', JSON.stringify(r.rows));
+          if (r.failed) console.warn('[claimchase]', r.failed, 'could not be sent', JSON.stringify(r.rows));
+        })
+        .catch((e) => console.error('[claimchase]', e?.message ?? e)),
+    );
+    // Before and after a confirmed table: the reminder three hours out, and
+    // the after-visit ask the next morning. worker/tablefollowup.mjs. Same
+    // dedup discipline as nudge.mjs, its own failure domain.
+    ctx.waitUntil(
+      import('./tablefollowup.mjs')
+        .then(async (m) => {
+          const before = await m.reminderSweep(env);
+          const after = await m.afterVisitSweep(env);
+          if (before.sent || after.sent) console.log(`[table] reminded ${before.sent} (texted ${before.texted}), asked ${after.sent} (texted ${after.texted})`);
+        })
+        .catch((e) => console.error('[table]', e?.message ?? e)),
+    );
     // A BUSINESS SIGNUP MUST NOT BE LOST TO ONE DROPPED TEXT.
     //
     // claimSweep already alerts on every new claim, once, deduped forever.
@@ -2161,6 +2418,47 @@ export default {
           await checkUnconfirmed(env);
         } catch (e) { console.warn('[cron] unconfirmed sweep', e?.message ?? e); }
 
+        // A client asked NUM for their host: the host is told by email, once,
+        // with a receipt, and a host the mailer cannot reach is a named
+        // failure. The writer never emails; this watchman does.
+        try {
+          const { notifyHosts } = await import('./hostaware.mjs');
+          const h = await notifyHosts(env);
+          if (h.sent || h.failed) console.log(`[hostaware] told ${h.sent} host(s), ${h.failed} failed`);
+        } catch (e) { console.warn('[cron] host requests', e?.message ?? e); }
+
+        // The rest of the host loop that runs without a host typing:
+        // NUM's draft reply on each new request, the venue's answer written
+        // back onto a request that went through the desk, and the monthly
+        // booking-fee invoice (dry until HOST_FEE_INVOICING=on).
+        try {
+          const { draftSweep } = await import('./hostdraft.mjs');
+          const d = await draftSweep(env);
+          if (d.drafted || d.skipped) console.log(`[hostdraft] drafted ${d.drafted}, skipped ${d.skipped}`);
+        } catch (e) { console.warn('[cron] host drafts', e?.message ?? e); }
+        try {
+          const { venueAnswerSweep } = await import('./hostbookdesk.mjs');
+          const v = await venueAnswerSweep(env);
+          if (v.written) console.log(`[hostbookdesk] ${v.written} venue answer(s) written back`);
+        } catch (e) { console.warn('[cron] host venue answers', e?.message ?? e); }
+        try {
+          const { feeSweep } = await import('./hostmoney.mjs');
+          const f = await feeSweep(env);
+          if (f.hosts) console.log(`[hostmoney] fees owed by ${f.hosts} host(s): ${f.pence}p${f.dry ? ' (dry — HOST_FEE_INVOICING is off)' : `, ${f.invoiced} invoiced`}`);
+        } catch (e) { console.warn('[cron] host fees', e?.message ?? e); }
+
+        // A LISTING THAT WENT LIVE AND NOBODY WAS TOLD.
+        //
+        // bizsubmit promises, in writing on the owner's screen, "we will email
+        // you the moment your listing is live". Promoting it wrote the places
+        // row and told the admin who pressed the button. This keeps the other
+        // half of that promise. Same switch as the onboarding email.
+        const { goLiveSweep } = await import('./bizgolive.mjs');
+        const live = await goLiveSweep(env);
+        if (live.failed) {
+          const { alert } = await import('./health.mjs');
+          await alert(env, `[biz] ${live.failed} go-live email(s) failed: ${(live.errors ?? []).join(' | ')}`);
+        }
         const digest = await staleDigest(env);
         if (digest) {
           const { alert } = await import('./health.mjs');

@@ -331,7 +331,7 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
  *   - payment_intent_data is NOT sent: Stripe rejects it in subscription
  *     mode; the subscription carries the metadata instead.
  */
-export async function requestSubscription(env, { memberId, businessId, amountCents, name, ref, successUrl, cancelUrl }) {
+export async function requestSubscription(env, { memberId, businessId, hostId, amountCents, name, ref, successUrl, cancelUrl, currency = 'usd' }) {
   await ensure(env);
   const mode = payMode(env);
   if (mode !== 'stripe') {
@@ -347,8 +347,11 @@ export async function requestSubscription(env, { memberId, businessId, amountCen
   // (num_member vs num_business), never by both at once, so the webhook can
   // never mistake a business for a member — the notify-a-member push below
   // only ever fires on num_member, and a business subscription never sets it.
-  const ownerId = businessId || memberId || null;
-  const ownerMetaKey = businessId ? 'num_business' : 'num_member';
+  // A VIP host (worker/hostmoney.mjs) is the third owner kind, keyed on
+  // num_host and priced in GBP. Same rule: exactly one metadata key.
+  const ownerId = hostId || businessId || memberId || null;
+  const ownerMetaKey = hostId ? 'num_host' : businessId ? 'num_business' : 'num_member';
+  const cur = /^[a-z]{3}$/i.test(String(currency)) ? String(currency).toLowerCase() : 'usd';
 
   const id = `pay_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
@@ -364,7 +367,7 @@ export async function requestSubscription(env, { memberId, businessId, amountCen
         {
           quantity: 1,
           price_data: {
-            currency: 'usd',
+            currency: cur,
             unit_amount: amount,
             recurring: { interval: 'month' },
             product_data: { name: clip(name, 120) || 'Num membership' },
@@ -381,9 +384,9 @@ export async function requestSubscription(env, { memberId, businessId, amountCen
 
   await env.DB?.prepare(
     'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
-  ).bind(id, clip(ownerId, 40), 'stripe-sub', clip(ref, 60), amount, 'usd', clip(name, 200), session.id, session.url).run().catch(() => {});
+  ).bind(id, clip(ownerId, 40), 'stripe-sub', clip(ref, 60), amount, cur, clip(name, 200), session.id, session.url).run().catch(() => {});
 
-  return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: 'usd' };
+  return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: cur };
 }
 
 /**
@@ -509,6 +512,22 @@ export async function handlePay(request, env, path) {
           }
         }
 
+        // A VIP host plan — third owner kind, GBP, keyed on num_host.
+        // worker/hostmoney.mjs owns the prices and the grant.
+        const hostTierMatch = /^hosttier:([a-z_]{2,20})$/.exec(ref);
+        const hostId = s.metadata?.num_host;
+        if (firstTime && hostTierMatch && hostId) {
+          const { grantHostTier, HOST_PLANS, HOST_CURRENCY } = await import('./hostmoney.mjs');
+          const { tierPaidRight } = await import('./preflight.mjs');
+          const owed = HOST_PLANS[hostTierMatch[1]]?.pence;
+          if (!tierPaidRight(s, owed, HOST_CURRENCY)) {
+            console.error(`[pay] HOST TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${HOST_CURRENCY}. Grant refused; refund ${id}.`);
+          } else {
+            const g = await grantHostTier(env, hostId, hostTierMatch[1], { ref: id, sub: s.subscription ?? null, customer: s.customer ?? null });
+            console.log('[pay] host tier', hostTierMatch[1], g.ok ? 'granted to' : 'FAILED for', hostId);
+          }
+        }
+
         const packMatch = /^stars:(\d{1,7})$/.exec(ref);
         if (firstTime && packMatch && memberId && env.STARS_SALE_OK === '1') {
           const n = Number(packMatch[1]);
@@ -576,7 +595,12 @@ export async function handlePay(request, env, path) {
           // the two tables, so try the business side before giving up.
           const { recordBizRenewal } = await import('./bizbilling.mjs');
           const rb = await recordBizRenewal(env, subId, periodEnd);
-          console.log('[pay] renewal', subId, rb.ok ? `extended (business) to ${rb.renews_at}` : 'MATCHED NO MEMBER OR BUSINESS');
+          if (rb.ok) console.log('[pay] renewal', subId, `extended (business) to ${rb.renews_at}`);
+          else {
+            const { recordHostRenewal } = await import('./hostmoney.mjs');
+            const rh = await recordHostRenewal(env, subId, periodEnd);
+            console.log('[pay] renewal', subId, rh.ok ? `extended (host) to ${rh.renews_at}` : 'MATCHED NO MEMBER, BUSINESS OR HOST');
+          }
         }
       }
       return json({ received: true });
@@ -591,7 +615,12 @@ export async function handlePay(request, env, path) {
       } else {
         const { lapseBizBySub } = await import('./bizbilling.mjs');
         const rb = await lapseBizBySub(env, sub.id);
-        console.log('[pay] subscription ended', sub.id, rb.ok ? '— business plan lapsed' : '— no membership or business plan held it');
+        if (rb.ok) console.log('[pay] subscription ended', sub.id, '— business plan lapsed');
+        else {
+          const { lapseHostBySub } = await import('./hostmoney.mjs');
+          const rh = await lapseHostBySub(env, sub.id);
+          console.log('[pay] subscription ended', sub.id, rh.ok ? '— host plan lapsed' : '— no membership, business or host plan held it');
+        }
       }
       return json({ received: true });
     }

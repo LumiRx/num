@@ -118,6 +118,44 @@ const LEAK_PATTERNS = [
   /<br\s*\/?\s*>/i, // html linebreaks — the app renders text, the model leaked markup
   /\b(?:produce|output|emit)\b.{0,20}\b(?:json|final answer)/i, // "let me produce final answer…"
   /\bI need to output\b/i,
+
+  // ── 6 Sep 2026: CODE AND VENDOR ERRORS. ────────────────────────────────
+  //
+  // The 9 Aug patterns above describe ONE model's draft leak. They do not
+  // describe the two things a guest was actually shown while Claude was out
+  // of credit and the chain fell to unstructured models:
+  //
+  //   1. Code. A fenced block, a thinking channel, a stack trace, a line of
+  //      JavaScript. Unstructured brains emit these constantly; Opus does not,
+  //      which is exactly why nothing caught it until the strong brain went
+  //      away. A concierge that answers with ```json has stopped being a
+  //      concierge.
+  //   2. The vendor's own error text. "Your credit balance is too low",
+  //      "invalid_request_error", a request_id. Our billing is not the
+  //      guest's business, and a paying customer reading it loses confidence
+  //      in everything else we say.
+  //
+  // Rejecting costs a guest nothing: index.mjs already answers from the
+  // verified directory, and failing that says one warm human line. A worse
+  // answer is always better than a leaked one.
+  /```/, // a fenced code block, any language
+  /<\|[a-z_]+\|>/i, // harmony/channel tokens — gpt-oss: <|channel|>analysis
+  /<\/?(?:think|thinking|reasoning|scratchpad)\b/i, // exposed chain-of-thought
+  // NOTE the boundaries: a leading \b in front of this group can never match
+  // `=>`, because `=` is not a word character — which is exactly how an arrow
+  // function slipped past the first version of this line.
+  /(?:\bconsole\.log|\bfunction\s*\(|=>\s*[{(]|\bimport\s+\{|\brequire\()/, // javascript
+  /^\s*[{[][\s\S]*[}\]]\s*$/, // the whole reply is a bare JSON blob
+  /"(?:error|error_type|request_id|status_code)"\s*:/i, // an API error object
+  /\b(?:invalid_request_error|authentication_error|rate_limit_error|insufficient_quota)\b/i,
+  /\bcredit balance is too low\b/i, // the exact line Anthropic returns
+  /\bPlans\s*&\s*Billing\b/i,
+  /\breq_[A-Za-z0-9]{16,}\b/, // a vendor request id
+  /\bsk-[A-Za-z0-9_-]{12,}\b/, // an API key, ever, anywhere
+  /\b(?:TypeError|ReferenceError|SyntaxError|RangeError)\b/, // a stack trace
+  /\bat\s+(?:async\s+)?[\w.$]+\s+\(.*:\d+:\d+\)/, // "at fn (file.js:12:3)"
+  /\bHTTP\s+(?:4|5)\d{2}\b/, // "HTTP 402" — our own brain-failure wording
+  /\b(?:undefined is not|null is not|Cannot read propert)/i,
 ];
 
 const bracketCount = (s) => (s.match(/[[\]{}]/g) ?? []).length;

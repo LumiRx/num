@@ -235,6 +235,22 @@ export async function claimStart(req, env, deps) {
   ).run();
   await logEvent(env, id, 'started', owner ? 'contested: listing already owned' : place.name, ip);
 
+  /* Credit the invite that produced this, matching on the EMAIL DOMAIN.
+   *
+   * `num_invites.claimed_at` was joined on the exact address, so the campaign
+   * reported zero conversions while it had at least one: the invite went to
+   * info@c-ohomenetwork.com and Larry claimed from larry@c-ohomenetwork.com
+   * four minutes after opening it. info@ receives and the owner replies —
+   * that is the ordinary shape of a real signup, not an edge case, and every
+   * decision made about outreach while the number reads zero is made wrong.
+   *
+   * Never throws and never blocks the claim: bookkeeping must not be able to
+   * cost us the thing it is keeping books on. */
+  try {
+    const { attributeClaim } = await import('../worker/claimchase.mjs');
+    await attributeClaim(env, { claimId: id, email: deps.clean(b.email, 200) });
+  } catch { /* attribution is not worth a failed claim */ }
+
   // Link the lead the public form wrote to the proof it is now attempting.
   const leadId = Number(b.lead_id);
   if (Number.isFinite(leadId) && leadId > 0) {

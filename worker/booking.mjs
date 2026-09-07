@@ -485,5 +485,94 @@ export function bookingLink(place, when = {}) {
   }
 }
 
+/* ──────────────────────── when we have no ref for the venue ───────────────
+ *
+ * 6 Sep 2026. `bookingLink` above needs a STORED ref — the venue's own id on
+ * OpenTable or Resy. Across 2.7 million places we hold exactly 17 of those,
+ * and every one is a hotel. So for restaurants — the thing guests actually ask
+ * for — the deeplink path returns null and the guest is handed nothing.
+ *
+ * That is the wrong end of the promise. Num's own booking desk is the good
+ * answer and stays first: we have a phone number for 1.86 million places, and
+ * texting the venue ends in a table that is actually held. But when the desk
+ * cannot serve — no phone on file, or a guest who would rather do it
+ * themselves — the honest fallback is not silence. It is the same thing a
+ * concierge would say: "they take bookings on OpenTable, here it is."
+ *
+ * A SEARCH link needs no ref. It is one degree less convenient than a
+ * deeplink and infinitely better than a dead end, and it never pretends to be
+ * a reservation — `mode: 'search'` is how the app knows to label the button
+ * "Find a table on OpenTable" rather than "Book".
+ *
+ * Region matters: OpenTable is thin in Thailand where Num's guests actually
+ * are, and TheFork/Chope are not. So the platform offered is chosen by the
+ * place's country, not by which brand is most famous in California.
+ */
+const SEARCH_ENGINES = Object.freeze({
+  opentable: {
+    label: 'OpenTable',
+    url: (q) => `https://www.opentable.com/s?term=${encodeURIComponent(q)}`,
+  },
+  thefork: {
+    label: 'TheFork',
+    url: (q) => `https://www.thefork.com/search?cityName=${encodeURIComponent(q)}`,
+  },
+  chope: {
+    label: 'Chope',
+    url: (q) => `https://www.chope.co/search?q=${encodeURIComponent(q)}`,
+  },
+});
+
+/**
+ * Which engine a country's diners actually use. Anything not listed gets
+ * OpenTable, which is the broadest — never nothing.
+ */
+const ENGINE_BY_COUNTRY = Object.freeze({
+  TH: 'chope', SG: 'chope', HK: 'chope', MY: 'chope', ID: 'chope',
+  FR: 'thefork', ES: 'thefork', IT: 'thefork', PT: 'thefork', BE: 'thefork', CH: 'thefork',
+  US: 'opentable', CA: 'opentable', GB: 'opentable', IE: 'opentable', AU: 'opentable',
+  AE: 'opentable', JP: 'opentable', DE: 'opentable', NL: 'opentable', MX: 'opentable',
+});
+
+/**
+ * The handoff for a table Num cannot hold itself.
+ *
+ * Returns null for a place with no name — never a link to a search for
+ * nothing. `kind` is always 'table': hotels have real deeplinks above and do
+ * not need this.
+ */
+export function bookingSearch(place) {
+  const name = String(place?.name ?? '').trim();
+  if (!name) return null;
+  const engine = SEARCH_ENGINES[ENGINE_BY_COUNTRY[String(place?.country ?? '').toUpperCase()] ?? 'opentable'];
+  const where = String(place?.city ?? place?.area ?? '').trim();
+  return {
+    label: engine.label,
+    kind: 'table',
+    mode: 'search',
+    url: engine.url(where ? `${name} ${where}` : name),
+    dated: false,
+  };
+}
+
+/**
+ * Everything Num can offer for this place, best first.
+ *
+ *   1. `desk`   — Num texts the venue and holds the table. Needs a phone.
+ *   2. `deep`   — the venue's own page on its booking engine, prefilled.
+ *   3. `search` — find it on the engine their country uses.
+ *
+ * The caller shows the best one it can honour. Returning all three rather than
+ * "the best" keeps the choice where the context is: a guest who has already
+ * declined the desk should still be handed the link.
+ */
+export function bookingOptions(place, when = {}) {
+  return {
+    desk: place?.phone ? { kind: 'table', mode: 'desk', label: 'Ask them to hold a table', phone: String(place.phone) } : null,
+    deep: bookingLink(place, when),
+    search: bookingSearch(place),
+  };
+}
+
 /** True when this place can be booked at all — the flag the API exposes. */
 export const bookable = (place) => !!bookingLink(place);

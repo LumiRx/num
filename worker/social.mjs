@@ -23,6 +23,9 @@ import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy
 import { markReferralEarned } from './referral.mjs';
 import { logSignin } from './signinlog.mjs';
 import { verifyAppleToken } from './appleauth.mjs';
+// NUM texts the friend the plan — the member's own phone stays the default,
+// this is the one-tap alternative. See worker/friendtext.mjs for the rules.
+import { handleTextInvite, textingAvailable, textPlanUpdate } from './friendtext.mjs';
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
@@ -147,6 +150,7 @@ CREATE TABLE IF NOT EXISTS num_item_attendees (
 );
 CREATE INDEX IF NOT EXISTS idx_num_item_attendees ON num_item_attendees(item_id);
 CREATE INDEX IF NOT EXISTS idx_num_item_attendees_member ON num_item_attendees(member_id);
+CREATE TABLE IF NOT EXISTS num_plan_item_votes (item_id TEXT NOT NULL, member_id TEXT NOT NULL, vote TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (item_id, member_id));
 CREATE TABLE IF NOT EXISTS num_plan_events (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id TEXT NOT NULL, ts TEXT NOT NULL DEFAULT (datetime('now')), by_id TEXT, by_name TEXT, kind TEXT NOT NULL, summary TEXT NOT NULL, payload TEXT);
 CREATE INDEX IF NOT EXISTS idx_num_plan_events_plan ON num_plan_events(plan_id, id);
 CREATE TABLE IF NOT EXISTS num_star_balances (member_id TEXT PRIMARY KEY, stars INTEGER NOT NULL DEFAULT 0);
@@ -196,6 +200,13 @@ async function event(env, planId, by, kind, summary, payload) {
     );
   } catch (err) {
     console.warn('[plan-notify]', err?.message ?? err);
+  }
+  // The friends who are NOT on Num yet — texted only if they wrote back,
+  // never more than once per six hours per plan. worker/friendtext.mjs.
+  try {
+    await textPlanUpdate(env, { planId, kind, summary, byName: by?.name });
+  } catch (err) {
+    console.warn('[plan-text]', err?.message ?? err);
   }
 }
 
@@ -974,6 +985,21 @@ async function verifyMe(env, req) {
   markReferralEarned(env, row.id, 'phone_verified').catch(() => {});
   await env.DB.prepare('UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL WHERE id=?1')
     .bind(row.id).run();
+  // THE CONSENT ROW. A verified number with no consent row was a member Num
+  // could never text — not a confirmation, not a reminder, not a friend's
+  // plan. The sentence they were shown is recorded, not a boolean. Fire and
+  // forget: bookkeeping must never fail a verification.
+  import('./smsconsent.mjs')
+    .then((c) => c.record(env, {
+      phone: row.phone,
+      source: c.SOURCE.WEB_FORM,
+      consentText: c.SIGNUP_CONSENT_TEXT,
+      page: '/signup',
+      firstName: row.name ?? null,
+      userAgent: String(req.headers.get('User-Agent') ?? '').slice(0, 200) || null,
+      country: req.cf?.country ?? null,
+    }))
+    .catch((e) => console.warn('[verify] consent record failed', e?.message ?? e));
   // SIGNING UP MUST NOT COST THEM WHAT NUM ALREADY LEARNED.
   //
   // Everything noticed before this moment is filed against the device, because
@@ -1135,6 +1161,9 @@ async function invite(env, req) {
     whatsapp_url: `https://wa.me/${toPhone ? toPhone.replace(/\D/g, '') : ''}?text=${encodeURIComponent(message)}`,
     share: { title: 'Join me on NUM', text: message, url: link },
     install_steps: INSTALL_STEPS,
+    // Can NUM text this one for them? Only with a number to text, a verified
+    // sender, and texting switched on — the app shows the button only then.
+    num_text: !!toPhone && !existing && textingAvailable(env, sender),
   });
 }
 
@@ -2421,15 +2450,38 @@ async function planRead(env, url) {
     if (!byItem.has(g.item_id)) byItem.set(g.item_id, []);
     byItem.get(g.item_id).push({ member_id: g.member_id, name: g.name, rsvp: g.rsvp });
   }
+  // How the group feels about each idea, in one query alongside the rest.
+  const tally = await voteTally(env, id);
 
   return json({
+    /**
+     * THE PLAN OWN DOOR INTO THE CHAT - added 6 Sep 2026.
+     *
+     * A plan is where a group decides, and until now the only way to get an
+     * idea into one was to already be in the chat with the plan already open.
+     * So the person with the idea had to explain the app to everyone else.
+     * This is one link: it opens Num, selects THIS plan, and starts a thread
+     * on the plan own subject, so whatever Num suggests can be dropped
+     * straight in and voted on.
+     *
+     * The join code is the key, exactly as the invite path already uses it, so
+     * a friend who follows it and is not on the plan yet joins by following.
+     */
+    ask_link: plan?.join_code
+      ? `https://app.itsnum.com/?plan=${encodeURIComponent(plan.join_code)}&ask=1`
+      : null,
     plan,
     members: members ?? [],
     items: (items ?? []).map((i) => {
       const attendees = byItem.get(i.id) ?? [];
+      const v = tally[i.id] ?? { up: 0, down: 0, voters: [] };
       return {
         ...i,
         attendees,
+        // The group feeling on THIS idea, and my own tap so the button can
+        // render pressed without a second request.
+        votes: { up: v.up, down: v.down },
+        my_vote: (v.voters ?? []).find((x) => x.member_id === meId)?.vote ?? null,
         // The number that matters to a restaurant. Anyone who has said no is
         // not a seat, and a booking held for a party that shrank is the most
         // common way a table gets given away.
@@ -2566,6 +2618,80 @@ async function planJoin(env, req) {
 // stop telling Num anything — which kills the whole feature layer above it.
 
 /** Flip my own sharing for one plan. Nobody can flip it for me. */
+/**
+ * A thumb up or down on ONE idea in the plan.
+ *
+ * ── WHY THIS IS NOT THE VOTE WE ALREADY HAD ────────────────────────────────
+ *
+ * `num_plan_members.vote` answers "am I coming at all" — one answer per person
+ * for the whole plan. It has been mistaken for choosing between ideas since it
+ * shipped, and it cannot do that job: five people who are all "in" still have
+ * no way to say which of the four restaurants they want.
+ *
+ * That is the actual failure mode of planning with friends. Somebody drops
+ * three ideas in, everyone says "any of those works", and forty minutes later
+ * the group eats at the place they can see from the hotel door. A vote per
+ * IDEA is the smallest thing that ends that.
+ *
+ * ── THE RULES ──────────────────────────────────────────────────────────────
+ *
+ * One vote per person per item, changeable — a group decision that cannot be
+ * changed is an argument, not a decision. Voting the same way twice clears it
+ * (tap again to un-vote), because the alternative is a tally nobody can
+ * correct. Only members of the plan may vote, checked against the item's own
+ * plan, so an item id from another group is refused rather than counted.
+ */
+async function itemVote(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const itemId = clip(b.item_id, 40);
+  const want = b.vote === 'up' ? 'up' : b.vote === 'down' ? 'down' : null;
+  if (!meId || !itemId || !want) return json({ error: 'me, item_id and vote (up|down) required' }, 400);
+
+  const item = await env.DB.prepare('SELECT id, plan_id, title FROM num_plan_items WHERE id=?1').bind(itemId).first();
+  if (!item) return json({ error: 'That idea is no longer on the plan.' }, 404);
+  if (!(await memberOf(env, item.plan_id, meId))) return json({ error: 'not your plan' }, 403);
+
+  const prev = await env.DB.prepare('SELECT vote FROM num_plan_item_votes WHERE item_id=?1 AND member_id=?2')
+    .bind(itemId, meId).first();
+  const mine = prev?.vote === want ? null : want;   // tapping the same way clears it
+  if (mine) {
+    await env.DB.prepare(
+      `INSERT INTO num_plan_item_votes (item_id, member_id, vote) VALUES (?1,?2,?3)
+       ON CONFLICT(item_id, member_id) DO UPDATE SET vote=excluded.vote, created_at=datetime('now')`,
+    ).bind(itemId, meId, mine).run();
+  } else {
+    await env.DB.prepare('DELETE FROM num_plan_item_votes WHERE item_id=?1 AND member_id=?2').bind(itemId, meId).run();
+  }
+
+  const tally = await voteTally(env, item.plan_id);
+  const self = await env.DB.prepare('SELECT name FROM num_plan_members WHERE plan_id=?1 AND member_id=?2')
+    .bind(item.plan_id, meId).first();
+  // Narrated to the group only when a vote is CAST. "Someone un-voted" is
+  // noise in a feed that people read to know what changed.
+  if (mine) {
+    await event(env, item.plan_id, { id: meId, name: self?.name }, 'item_vote',
+      `${self?.name || 'Someone'} ${mine === 'up' ? 'likes' : 'passed on'} ${item.title}`);
+  }
+  return json({ ok: true, vote: mine, votes: tally[itemId] ?? { up: 0, down: 0 } });
+}
+
+/** Every item's tally on one plan, in one query. Never throws. */
+async function voteTally(env, planId) {
+  const { results } = await env.DB.prepare(
+    `SELECT v.item_id, v.member_id, v.vote FROM num_plan_item_votes v
+       JOIN num_plan_items i ON i.id = v.item_id
+      WHERE i.plan_id = ?1`,
+  ).bind(planId).all().catch(() => ({ results: [] }));
+  const out = {};
+  for (const r of results ?? []) {
+    const t = (out[r.item_id] ??= { up: 0, down: 0, voters: [] });
+    if (r.vote === 'up') t.up += 1; else t.down += 1;
+    t.voters.push({ member_id: r.member_id, vote: r.vote });
+  }
+  return out;
+}
+
 async function planShare(env, req) {
   const b = await readBody(req);
   const me = clip(b.me, 40);
@@ -2656,6 +2782,7 @@ export async function handleSocial(request, env, path) {
   if (path === '/verify' && post) return await verifyMe(env, request);
   if (path === '/resend' && post) return await resendCode(env, request);
   if (path === '/invite' && post) return await invite(env, request);
+  if (path === '/invite/text' && post) return await handleTextInvite(env, request);
   if (path === '/accept' && post) return await accept(env, request);
   if (path === '/connect' && post) return await connect(env, request);
   if (path === '/pair/mint' && post) return await pairMint(env, request);
@@ -2687,6 +2814,7 @@ export async function handleSocial(request, env, path) {
   if (path === '/plan/join' && post) return await planJoin(env, request);
   if (path === '/plan/comment' && post) return await planComment(env, request);
   if (path === '/plan/vote' && post) return await planVote(env, request);
+  if (path === '/plan/item/vote' && post) return await itemVote(env, request);
   if (path === '/plan/share' && post) return await planShare(env, request);
   if (path === '/plan/fit') return await planFit(env, url);
   if (path === '/lookup' && post) return await lookupPhones(env, request);

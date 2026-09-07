@@ -27,6 +27,20 @@ function walk(dir = PUBLIC, out = []) {
 }
 const PAGES = walk().map((p) => [p.slice(PUBLIC.length + 1).split(sep).join('/'), readFileSync(p, 'utf8')]);
 
+/**
+ * How a page is recognised as having the site navigation.
+ *
+ * It used to be the bare string `class="nv"`, which is two letters any page
+ * may reuse for something else — and one did. The hosts one-pager has three
+ * "Never" cards styled `<div class="nv">`, and this file read them as three
+ * site navigations and failed four tests on a page that was perfectly fine.
+ *
+ * A marker for "this page has the nav" has to name the nav element, or it is
+ * really a marker for "this page contains two particular letters".
+ */
+const NAV_TAG = '<nav class="nv">';
+const hasNav = (s) => s.includes(NAV_TAG);
+
 // Pages that must NOT carry the nav, each for a stated reason. A page missing
 // from BOTH this list and the nav is a bug, not a judgement call.
 const NO_NAV = {
@@ -42,10 +56,12 @@ const NO_NAV = {
   'host/index.html': 'the private host console, key-gated and noindex',
   'flyers/business/index.html': 'print artwork',
   'flyers/hosts/index.html': 'print artwork',
+  'flyers/hosts/onepager/index.html': 'print artwork',
+  'flyers/hosts/onepager/usd/index.html': 'print artwork, the US price version',
 };
 
 test('every page has the nav, except the ones we decided should not', () => {
-  const missing = PAGES.filter(([p, s]) => !NO_NAV[p] && !s.includes('class="nv"')).map(([p]) => p);
+  const missing = PAGES.filter(([p, s]) => !NO_NAV[p] && !hasNav(s)).map(([p]) => p);
   assert.deepEqual(missing, [], `pages with no way out: ${missing.join(', ')}`);
 });
 
@@ -54,13 +70,13 @@ test('the ads landing page still has no nav', () => {
   // sent — and a nav is six ways to leave before that happens.
   const ask = PAGES.find(([p]) => p === 'ask/index.html');
   assert.ok(ask, 'the ads landing page is gone');
-  assert.equal(ask[1].includes('class="nv"'), false, 'the ads page grew a navigation');
+  assert.equal(hasNav(ask[1]), false, 'the ads page grew a navigation');
 });
 
 test('the nav appears once per page, with one auth hook', () => {
   for (const [p, s] of PAGES) {
-    if (!s.includes('class="nv"')) continue;
-    assert.equal(s.split('class="nv"').length - 1, 1, `${p}: two navs`);
+    if (!hasNav(s)) continue;
+    assert.equal(s.split(NAV_TAG).length - 1, 1, `${p}: two navs`);
     // site.js swaps this one element to "Sign out" when a session exists. Two
     // of them and only the first would ever update.
     assert.equal(s.split('id="navAuth"').length - 1, 1, `${p}: navAuth is not unique`);
@@ -71,7 +87,7 @@ test('the VIP host page is in the nav on every page that has one', () => {
   // Asked for by name on 3 Sep 2026. /hosts/ is the public host page;
   // /host/ (singular) is the key-gated console and must never be linked.
   for (const [p, s] of PAGES) {
-    if (!s.includes('class="nv"')) continue;
+    if (!hasNav(s)) continue;
     const nav = s.slice(s.indexOf('<nav class="nv">'), s.indexOf('</nav>'));
     assert.match(nav, /href="\/hosts\/"[^>]*>For hosts</, `${p}: the host page is not in the nav`);
     assert.equal(/href="\/host\/"/.test(nav), false, `${p}: the nav links the PRIVATE host console`);
@@ -79,7 +95,7 @@ test('the VIP host page is in the nav on every page that has one', () => {
 });
 
 test('every nav link points at a page that exists', () => {
-  const sample = PAGES.find(([, s]) => s.includes('class="nv"'))[1];
+  const sample = PAGES.find(([, s]) => hasNav(s))[1];
   const nav = sample.slice(sample.indexOf('<nav class="nv">'), sample.indexOf('</nav>'));
   const hrefs = [...nav.matchAll(/href="(\/[^"]*)"/g)].map((m) => m[1]);
   assert.ok(hrefs.length >= 8, 'the nav lost its links');
@@ -94,7 +110,7 @@ test('the nav carries its own stylesheet and script, in the head', () => {
   // 41 of these pages do not load assets/site.css. If the nav depended on it
   // they would show unstyled markup, which is worse than no nav.
   for (const [p, s] of PAGES) {
-    if (!s.includes('class="nv"')) continue;
+    if (!hasNav(s)) continue;
     const head = s.indexOf('</head>');
     assert.ok(s.includes('/assets/nav.css'), `${p}: no nav stylesheet`);
     assert.ok(s.includes('/assets/nav.js'), `${p}: no nav script`);
@@ -140,7 +156,7 @@ test('the menu can be closed without a mouse', () => {
 
 test('the nav does not offer the same button twice on one screen', () => {
   for (const [p, s] of PAGES) {
-    if (!s.includes('class="nv"')) continue;
+    if (!hasNav(s)) continue;
     const nav = s.slice(s.indexOf('<nav class="nv">'), s.indexOf('</nav>'));
     assert.equal(nav.split('class="nv-cta"').length - 1, 1, `${p}: "Get the app" appears twice in the nav`);
   }
