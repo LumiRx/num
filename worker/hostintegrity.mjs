@@ -75,13 +75,22 @@ export function checkHostData(d) {
       doubled.flatMap(([, ids]) => ids)));
   }
 
-  // Work we completed and did not record a fee for. Under-charging is not a
-  // safe failure: it hides that the fee logic stopped running.
-  const unbilled = requests.filter((r) => r.status === "confirmed" && !r.booking_fee_minor);
-  if (unbilled.length) {
-    out.push(F("breach", "confirmed_without_fee",
-      "Confirmed bookings carrying no booking fee — the fee did not attach on confirm.",
-      unbilled.map((r) => r.id)));
+  /* THERE IS NO PER-BOOKING FEE ANY MORE (7 Sep 2026), so the two checks that
+   * used to live here — work confirmed without a fee, and fees accrued against
+   * a host with no card — are gone with it.
+   *
+   * What replaces them is the opposite check. A fee appearing on work
+   * confirmed AFTER the change means something reintroduced a charge that no
+   * host agreed to and no page mentions, which is worse than under-charging:
+   * it is money taken quietly. Rows from before the change are left alone,
+   * because they are history and were never collected. */
+  const NO_FEE_FROM = "2026-09-07";
+  const charged = requests.filter((r) =>
+    r.booking_fee_minor > 0 && String(r.confirmed_at || r.created_at || "") >= NO_FEE_FROM);
+  if (charged.length) {
+    out.push(F("breach", "fee_charged_after_it_was_removed",
+      "Bookings confirmed since the per-booking fee was removed are carrying one — a host is being charged for work.",
+      charged.map((r) => r.id)));
   }
 
   // A client who cannot leave. Without a token there is no page that lets

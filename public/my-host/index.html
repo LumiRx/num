@@ -41,7 +41,47 @@ ul b{color:var(--ink)}
 .field label{display:block;font-weight:650;font-size:14px;margin-bottom:6px}
 .field textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:11px;font:inherit;background:var(--bg);resize:vertical}
 .hide{display:none}
+
+/* THE MENU SHEET.
+   A dialog, not a div pretending to be one: <dialog> gives focus trapping,
+   Escape, and inert background for free, and a hand-rolled modal gets all
+   three wrong in ways only a keyboard user notices. */
+dialog.sheet{border:none;border-radius:16px;padding:0;max-width:520px;width:calc(100% - 32px);
+  background:var(--card);color:var(--ink);box-shadow:0 24px 60px rgba(0,0,0,.28)}
+dialog.sheet::backdrop{background:rgba(8,20,14,.55)}
+.sheet-in{padding:24px}
+.sheet-in h2{margin:0 0 6px}
+.svc{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:13px;
+  padding:13px 15px;margin-bottom:9px;background:var(--bg);font:inherit;color:var(--ink);cursor:pointer}
+.svc:hover,.svc:focus-visible{border-color:var(--pri);outline:none}
+.svc b{display:block;font-size:15px}
+.svc span{display:block;color:var(--slate);font-size:13.5px;margin-top:3px;line-height:1.5}
+.svc .price{float:right;font-weight:650;font-family:var(--disp);font-variant-numeric:tabular-nums}
+.sheet-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 </style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1091773503496521');
+fbq('track', 'PageView');
+</script>
+<noscript><img alt="" width="1" height="1" style="display:none"
+src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<!-- Reddit Pixel -->
+<script>
+!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+</script>
+<!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
+<!-- End Reddit Pixel -->
 </head>
 <body>
 
@@ -95,6 +135,11 @@ ul b{color:var(--ink)}
 
     <!-- The reason this page is not only an exit door. A client who can do
          nothing here except leave will, eventually, leave. -->
+    <h2 style="margin-top:22px">Ask them for something</h2>
+    <p class="sub" style="margin-bottom:12px">These are the things <span id="askWho2">your host</span> does, at
+      their prices. Nothing is booked until they confirm it themselves.</p>
+    <p><button class="btn pri" id="openMenu">See what they can do</button></p>
+
     <h2 style="margin-top:22px">What they have confirmed for you</h2>
     <div id="bookings"></div>
 
@@ -103,6 +148,43 @@ ul b{color:var(--ink)}
     <p class="hint">You do not have to give a reason, and nothing here asks you to justify it.</p>
     <p style="margin-top:16px"><button class="btn danger" id="startLeave">Remove this host</button></p>
   </section>
+
+  <dialog class="sheet" id="menuSheet">
+    <div class="sheet-in">
+      <span class="tag">Their services</span>
+      <h2 id="menuTitle">What they can do</h2>
+      <p class="sub" id="menuSub"></p>
+      <div class="note bad" id="menuErr"></div>
+      <div id="menuList"></div>
+
+      <div id="askForm" class="hide">
+        <div class="field">
+          <label for="askTitle">What do you need?</label>
+          <input id="askTitle" type="text" placeholder="Car from LAX Thursday, meeting the 11:05">
+        </div>
+        <div class="field">
+          <label for="askWhen">When <span class="hint" style="display:inline">optional</span></label>
+          <input id="askWhen" type="datetime-local">
+        </div>
+        <div class="field">
+          <label for="askCity">Where <span class="hint" style="display:inline">optional</span></label>
+          <input id="askCity" type="text" placeholder="Los Angeles">
+        </div>
+        <div class="field">
+          <label for="askDetail">Anything they should know <span class="hint" style="display:inline">optional</span></label>
+          <textarea id="askDetail" rows="2"></textarea>
+        </div>
+        <p class="hint">This goes to them, not to NUM. Nothing is booked and nothing is charged until they
+          confirm it.</p>
+      </div>
+
+      <div class="sheet-foot">
+        <button class="btn pri hide" id="askSend">Send it</button>
+        <button class="btn hide" id="askBack">Back to the list</button>
+        <button class="btn" id="menuClose">Close</button>
+      </div>
+    </div>
+  </dialog>
 
   <section class="card2 hide" id="replyCard">
     <span class="tag">Message</span>
@@ -190,6 +272,8 @@ ul b{color:var(--ink)}
     $('since').textContent = 'Looking after you' + (d.since ? ' since ' + d.since : '') +
       '. You are never charged by NUM while they are.';
     $('sees').innerHTML = (d.what_they_see || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('');
+    SERVICES = d.services || [];
+    $('askWho2').textContent = d.host && d.host.name ? d.host.name.split(/\s+/)[0] : 'your host';
 
     var SYM = { GBP: '£', USD: '$', EUR: '€', THB: '฿', AED: 'AED ' };
     var bk = d.bookings || [];
@@ -218,6 +302,104 @@ ul b{color:var(--ink)}
     $('ifLeave').innerHTML = (d.if_you_leave || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('');
     $('confirmWho').textContent = 'Remove ' + d.host.name + '?';
   }
+
+  /* ── the service menu ───────────────────────────────────────────────────
+     Two states in one sheet: the list of what this host does, and the short
+     form for the one you picked. Two dialogs would mean two focus traps and a
+     back button that closes the wrong thing. */
+  var SERVICES = [];
+  var PICKED = null;
+  var SYMB = { GBP: '£', USD: '$', EUR: '€', THB: '฿', AED: 'AED ' };
+  var LABEL2 = {
+    car: 'Cars and drivers', reservation: 'Restaurants and reservations', stay: 'Stays',
+    activity: 'Activities and tours', appointment: 'Appointments', delivery: 'Deliveries'
+  };
+
+  function priceLabel(m) {
+    if (m.price_minor == null || !m.price_minor) return 'On request';
+    var unit = m.unit && m.unit !== 'quote' ? ' / ' + m.unit : '';
+    return (SYMB[m.currency] || m.currency + ' ') + (m.price_minor / 100).toFixed(2) + unit;
+  }
+
+  function showList() {
+    PICKED = null;
+    $('askForm').classList.add('hide');
+    $('askSend').classList.add('hide');
+    $('askBack').classList.add('hide');
+    $('menuList').classList.remove('hide');
+    $('menuTitle').textContent = 'What they can do';
+    note($('menuErr'), '');
+    $('menuSub').textContent = SERVICES.length
+      ? 'Pick one. Nothing is booked until they confirm it themselves.'
+      : '';
+
+    $('menuList').innerHTML = SERVICES.length ? SERVICES.map(function (m, i) {
+      return '<button class="svc" data-i="' + i + '">' +
+        '<span class="price">' + esc(priceLabel(m)) + '</span>' +
+        '<b>' + esc(m.label || LABEL2[m.key] || m.key) + '</b>' +
+        '<span>' + esc(LABEL2[m.key] || m.key) +
+        (m.fulfilment === 'delivered' ? ' · they deliver'
+          : m.fulfilment === 'on_site' ? ' · they come to you' : '') +
+        (m.notes ? ' · ' + esc(m.notes) : '') + '</span></button>';
+    }).join('')
+      // A host who has not finished their profile has an empty menu. Say that,
+      // rather than showing a blank box that looks broken.
+      : '<p class="hint">They have not listed their services yet. Message them below and they will sort it — ' +
+        'nothing about your travel depends on this list.</p>';
+
+    Array.prototype.forEach.call($('menuList').querySelectorAll('[data-i]'), function (b) {
+      b.onclick = function () { pick(SERVICES[Number(b.getAttribute('data-i'))]); };
+    });
+  }
+
+  function pick(m) {
+    PICKED = m;
+    $('menuList').classList.add('hide');
+    $('askForm').classList.remove('hide');
+    $('askSend').classList.remove('hide');
+    $('askBack').classList.remove('hide');
+    $('menuTitle').textContent = m.label || LABEL2[m.key] || m.key;
+    $('menuSub').textContent = priceLabel(m) === 'On request'
+      ? 'They agree the price with you per request.'
+      : 'Their price: ' + priceLabel(m) + '.';
+    $('askTitle').value = '';
+    $('askDetail').value = '';
+    setTimeout(function () { $('askTitle').focus(); }, 30);
+  }
+
+  $('openMenu').onclick = function () { showList(); $('menuSheet').showModal(); };
+  $('menuClose').onclick = function () { $('menuSheet').close(); };
+  $('askBack').onclick = showList;
+
+  $('askSend').onclick = function () {
+    note($('menuErr'), '');
+    var title = $('askTitle').value.trim();
+    if (!title) return note($('menuErr'), 'Say what you need first.');
+    if (!PICKED) return showList();
+    $('askSend').disabled = true;
+    fetch('/api/host/link?t=' + encodeURIComponent(T), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'ask', service_key: PICKED.key, title: title,
+        detail: $('askDetail').value, city: $('askCity').value, starts_at: $('askWhen').value
+      })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      $('askSend').disabled = false;
+      if (!d.ok) {
+        return note($('menuErr'), d.error === 'not_offered'
+          ? 'They have stopped offering that one. Pick another, or message them.'
+          : d.error === 'host_unavailable'
+            ? 'They are not taking requests through NUM right now.'
+            : 'That did not send. Nothing has changed.');
+      }
+      $('menuSheet').close();
+      note($('replyOk'), d.note || 'Sent.', 'ok');
+      $('replyCard').classList.remove('hide');
+    }).catch(function () {
+      $('askSend').disabled = false;
+      note($('menuErr'), 'Could not reach NUM. Nothing was sent.');
+    });
+  };
 
   var REPLY_TO = null;
   $('replyCancel').onclick = function () { $('replyCard').classList.add('hide'); };

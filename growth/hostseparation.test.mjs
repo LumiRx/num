@@ -46,7 +46,8 @@ test('the member page is not behind a NUM login', () => {
 test('the member page tells them what leaving costs before they do it', () => {
   const link = worker.slice(worker.indexOf('async function memberLink'), worker.indexOf('async function hostClose'));
   assert.match(link, /what_they_see/, 'the member is not told what their host can see');
-  assert.match(link, /booking fee moves from them to you/i, 'the member is not told the fee moves to them');
+  assert.match(link, /does not charge you a booking fee/i,
+    'the member is not told plainly that leaving costs them nothing');
   assert.match(memberPage, /id="sees"/, 'the page does not render what the host can see');
   assert.match(memberPage, /You do not have to give a reason/i, 'the page asks the member to justify leaving');
 });
@@ -106,7 +107,8 @@ test('the other side is the one who gets told', () => {
   assert.match(end, /endedBy === "member" && host\.email/, 'a host is not told when their client leaves');
   assert.match(end, /endedBy !== "member" && row\.email/, 'a member is not told when their host ends it');
   // And the member's notice has to carry the thing that changes for them.
-  assert.match(end, /billed to them\.\s*\n?From now on it is billed to you/, 'the member is not told the fee moves to them');
+  assert.match(end, /does not charge you a booking\s*\n?fee/i,
+    'the member is not told plainly that nothing starts costing them money');
   assert.match(end, /notified_at = \?/, 'nothing records that the notice was actually sent');
 });
 
@@ -181,12 +183,24 @@ test('it catches a client with no way to leave', () => {
   assert.equal(hit.severity, 'breach', 'a one-directional consent is not a breach');
 });
 
-test('it catches work confirmed with no fee attached', () => {
+test('it catches a per-booking fee creeping back in', () => {
+  // This test used to assert the opposite — that confirmed work MUST carry a
+  // fee. The per-booking fee was removed on 7 Sep 2026, so the danger reversed:
+  // under-charging is now correct, and a charge appearing on work confirmed
+  // since is money taken from a host that no page mentions.
   const f = checkHostData({
     hosts: [HOST],
-    requests: [{ id: 'r1', host_id: 'h1', status: 'confirmed', booking_fee_minor: 0 }],
+    requests: [{ id: 'r1', host_id: 'h1', status: 'confirmed', booking_fee_minor: 500, confirmed_at: '2026-09-09 09:00:00' }],
   });
-  assert.ok(codes(f).includes('confirmed_without_fee'), 'under-charging passed silently');
+  assert.ok(codes(f).includes('fee_charged_after_it_was_removed'), 'a reintroduced charge passed');
+
+  // And correct data — confirmed work with no fee — is silent.
+  const g = checkHostData({
+    hosts: [HOST],
+    requests: [{ id: 'r2', host_id: 'h1', status: 'confirmed', booking_fee_minor: 0, confirmed_at: '2026-09-09 09:00:00' }],
+  });
+  assert.ok(!codes(g).includes('fee_charged_after_it_was_removed'), 'correct data was flagged');
+  assert.ok(!codes(g).includes('confirmed_without_fee'), 'the old demand-a-fee check is still running');
 });
 
 test('it catches everything left pointing at a closed host', () => {
@@ -286,13 +300,22 @@ test('every host SQL statement the worker holds is valid against the migrations'
   // The pre-0013 shape of num_hosts, which lives in production and has no
   // CREATE TABLE anywhere in this repo. If that ever changes, this is the
   // line to reconcile rather than the migrations.
+  // Corrected 6 Sep 2026 by reading production's own pragma_table_info rather
+  // than trusting this hand-written copy. It was missing `notes`, which
+  // production has always had — and that single omission is what let the
+  // hostJoin drift hide: the fixture disagreed with reality, so the test
+  // could not see the column the live worker actually needed.
   db.exec(`CREATE TABLE num_hosts (id TEXT PRIMARY KEY, name TEXT, company TEXT, email TEXT,
     phone TEXT, country TEXT, code TEXT, host_bps INTEGER, term_months INTEGER, status TEXT,
-    terms_version TEXT, agreed_at TEXT, agreed_ip TEXT, console_key TEXT, created_at TEXT, updated_at TEXT)`);
+    terms_version TEXT, agreed_at TEXT, agreed_ip TEXT, notes TEXT, console_key TEXT,
+    created_at TEXT, updated_at TEXT)`);
 
+  // 0018 is listed because the client-side intake writes num_host_requests.source,
+  // which only exists after it. Leave it out and this test fails on correct code.
   for (const f of ['worker/migrations/0013_host_profile.sql',
                    'worker/migrations/0014_host_clients.sql',
-                   'worker/migrations/0015_host_separation.sql']) {
+                   'worker/migrations/0015_host_separation.sql',
+                   'worker/migrations/0018_host_client_intake.sql']) {
     const sql = read(f);
     for (const line of sql.split('\n')) {
       const c = line.indexOf('--');
@@ -301,7 +324,14 @@ test('every host SQL statement the worker holds is valid against the migrations'
     }
     const stmts = sql.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n')
       .split(';').map((s) => s.trim()).filter(Boolean);
-    for (const s of stmts) db.exec(s);
+    for (const s of stmts) {
+      try { db.exec(s); }
+      catch (e) {
+        // 0018 re-adds host_notified_at, which 0015 already creates. The real
+        // applier treats that as "already done"; so does this.
+        if (!/duplicate column name/i.test(String(e.message))) throw e;
+      }
+    }
   }
 
   const HOST_TABLES = ['num_host_clients', 'num_host_requests', 'num_host_products',
@@ -311,11 +341,19 @@ test('every host SQL statement the worker holds is valid against the migrations'
   const LEGACY = ['num_host_uploads', 'num_host_contacts', 'num_host_earnings',
     'num_web_events', 'num_referral_codes', 'num_suppressions', 'num_members'];
 
+  // Read the CODE, not the commentary. Added 6 Sep 2026: the fix for the
+  // hostJoin outage left a comment quoting the broken statement verbatim so
+  // the next reader would understand it, and this scanner read that quote as
+  // a live query and reported the very bug it was describing. A guard that
+  // cannot tell an explanation from an instruction cries wolf until somebody
+  // deletes the explanation — which is how the reason for a fix gets lost.
+  const code = worker.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
   const found = [];
-  for (const m of worker.matchAll(/`([^`]*?)`/gs)) {
+  for (const m of code.matchAll(/`([^`]*?)`/gs)) {
     if (/^\s*(SELECT|INSERT|UPDATE|DELETE)\b/i.test(m[1])) found.push(m[1].trim());
   }
-  for (const m of worker.matchAll(/"((?:SELECT|INSERT|UPDATE|DELETE)[^"]*)"/gs)) found.push(m[1].trim());
+  for (const m of code.matchAll(/"((?:SELECT|INSERT|UPDATE|DELETE)[^"]*)"/gs)) found.push(m[1].trim());
 
   let checked = 0;
   const broken = [];

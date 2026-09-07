@@ -80,7 +80,21 @@ CREATE INDEX IF NOT EXISTS idx_host_sep_client ON num_host_separations(client_id
 -- piece of writing a founding host actually composes for us has been dropped
 -- on the floor. Asking a question and discarding the answer is worse than
 -- not asking, because they think we know.
-ALTER TABLE num_hosts ADD COLUMN about TEXT;
+-- CORRECTED 6 Sep 2026. This line used to read
+--   ALTER TABLE num_hosts ADD COLUMN about TEXT   (semicolon omitted on
+--   purpose: a semicolon inside a comment splits a statement in half in a
+--   naive runner, which a test in growth/hostseparation.test.mjs pins.)
+-- It was never run in production. Meanwhile hostJoin was already writing
+-- `UPDATE num_hosts SET about = ?`, so every founding host signup threw
+-- `no such column: about` and, because a D1 batch is atomic, the host row and
+-- the referral code rolled back too. The endpoint 500'd and the page told the
+-- person their CONNECTION had failed. num_hosts held zero rows.
+--
+-- Production num_hosts already carries a `notes` column (read from D1,
+-- 6 Sep 2026). Adding `about` would give one answer two homes and leave the
+-- reader guessing which is current, so this migration adds nothing and
+-- hostJoin writes `notes` instead. Nothing ever read `about`.
+-- (No statement here on purpose.)
 
 -- ── THE THREAD ──────────────────────────────────────────────────────────
 -- One request, two people, and the messages between them.

@@ -38,9 +38,10 @@ test('the signup checkbox agrees to the plan model, not the 3% model', () => {
   );
   assert.match(box, /monthly plan/i, 'the checkbox does not mention the plan the host is actually agreeing to');
   assert.match(box, /clients stay mine|stay mine/i, 'the checkbox no longer says the clients stay the host’s');
-  // The host must agree to BOTH charges, in the words they are billed in.
-  assert.match(box, /per booking/i, 'the checkbox does not mention the per-booking fee the host is charged');
-  assert.match(box, /billed\s+to me/i, 'the checkbox does not make clear the booking fee lands on the host');
+  // One charge now, and the checkbox must rule out the others — "monthly plan"
+  // alone leaves a concierge wondering whether we take a cut of their work.
+  assert.match(box, /no per-booking fee/i, 'the checkbox does not rule out a per-booking fee');
+  assert.match(box, /no commission on\s+my work/i, 'the checkbox does not rule out a commission');
   assert.match(box, /does not limit how many\s+clients/i, 'the checkbox does not say the plan is not a client cap');
   assert.ok(!/free while I have 3/i.test(box), 'the checkbox still describes a client cap');
 });
@@ -51,7 +52,8 @@ test('the welcome email describes the same deal the page does', () => {
   assert.ok(!/3% of what/.test(mail), 'the welcome email still promises 3% of NUM’s commission');
   assert.ok(!/yours for 12 months/.test(mail), 'the welcome email still claims NUM owns the client for 12 months');
   assert.match(mail, /does not take a commission/i, 'the welcome email does not say NUM takes no commission from the client');
-  assert.match(mail, /£5 for\s+each booking/i, 'the welcome email does not state the per-booking fee');
+  assert.match(mail, /no fee per booking/i, 'the welcome email does not rule out a per-booking fee');
+  assert.ok(!/£5 for\s+each booking/i.test(mail), 'the welcome email still promises a £5 booking fee');
   assert.match(mail, /does not limit how\s+many clients/i, 'the welcome email still implies a client cap');
 });
 
@@ -108,46 +110,41 @@ test('a downgraded host disappears from the public directory too', () => {
     'a host who downgraded between being listed and being tapped can still be sent a member');
 });
 
-test('the booking fee lands on the host, on confirm, once', () => {
+test('confirming costs the host nothing', () => {
+  // Was: "the booking fee lands on the host, on confirm, once". Removed on
+  // 7 Sep 2026 — a per-booking charge is a tax on using the product, and it
+  // taught hosts to confirm elsewhere. Revenue is the plan.
   assert.match(worker, /import \{ BOOKING_FEE_MINOR \} from '\.\.\/worker\/servicefee\.mjs'/,
     'the fee is no longer read from the one place that defines it');
   const reqs = worker.slice(worker.indexOf('async function hostRequests'), worker.indexOf('async function hostNetwork'));
-  assert.match(reqs, /booking_fee_minor = CASE WHEN \? = 'confirmed' AND booking_fee_minor = 0/,
-    'a repeated confirm can stack a second fee onto one booking');
-  // Not on create. A request logged and then declined is work we did not do,
-  // and charging for it teaches hosts to stop logging the uncertain ones.
-  const create = reqs.slice(reqs.indexOf('// CREATE'));
-  assert.ok(!/booking_fee_minor/.test(create), 'the fee is charged when a request is logged, not when it is confirmed');
-  assert.match(migration, /booking_fee_minor INTEGER NOT NULL DEFAULT 0/, 'the column is missing from 0014');
+  assert.match(reqs, /booking_fee_minor = CASE WHEN \? = 'confirmed'/, 'the fee column write vanished — history will not survive');
+  assert.ok(!/BOOKING_FEE_MINOR\s*=\s*[1-9]/.test(worker), 'a non-zero fee is back in the growth worker');
 });
 
-test('the two sides of the fee are one number, on purpose', async () => {
+test('the fee constant is zero under both of its names', async () => {
   const fee = await import('../worker/servicefee.mjs');
-  assert.equal(fee.BOOKING_FEE_MINOR, 500);
-  assert.equal(fee.MEMBER_SERVICE_FEE_MINOR, fee.BOOKING_FEE_MINOR,
-    'the hosted and unhosted fees have diverged — NUM now has a financial opinion about who should look after a member');
-  const src = read('worker/servicefee.mjs');
-  assert.match(src, /no revenue term/, 'the conflict-of-interest guard is no longer written down');
+  assert.equal(fee.BOOKING_FEE_MINOR, 0, 'the per-booking fee is back');
+  assert.equal(fee.MEMBER_SERVICE_FEE_MINOR, 0, 'the member-side fee is back');
+  assert.match(read('worker/servicefee.mjs'), /revenue is now ONE line/i,
+    'the file no longer says what replaced the fee');
 });
 
-test('a member with an active host is never billed by NUM', async () => {
+test('nobody is billed for a booking — hosted or not', async () => {
   const { bookingFeeFor } = await import('../worker/servicefee.mjs');
   const db = (row) => ({ DB: { prepare: () => ({ bind: () => ({ first: async () => row }) }) } });
 
   const hosted = await bookingFeeFor(db({ host_id: 'h_1' }), 'm_1');
-  assert.equal(hosted.payer, 'host', 'a hosted member is billed directly by NUM');
-  assert.equal(hosted.member_pays_minor, 0, 'a hosted member is charged despite having a host');
+  assert.equal(hosted.member_pays_minor, 0, 'a hosted member is charged');
+  assert.equal(hosted.fee_minor, 0, 'a fee is charged on a hosted booking');
+  assert.equal(hosted.host_id, 'h_1', 'the host is no longer identified — the app needs this');
 
   const alone = await bookingFeeFor(db(null), 'm_2');
-  assert.equal(alone.payer, 'member', 'a member with no host is not billed by anyone');
-  assert.equal(alone.member_pays_minor, 500, 'an unhosted member is not charged the booking fee');
+  assert.equal(alone.member_pays_minor, 0, 'a member with no host is charged a booking fee');
 });
 
-test('only an ACTIVE client counts as hosted', async () => {
-  // A paused client is one the host stepped back from and is not paying for,
-  // so the fee returns to the member rather than being quietly absorbed.
-  const src = read('worker/servicefee.mjs');
-  assert.match(src, /status = 'active'/, 'a paused or removed client still counts as hosted');
+test('only an ACTIVE client counts as hosted', () => {
+  assert.match(read('worker/servicefee.mjs'), /status = 'active'/,
+    'a paused or removed client still counts as hosted');
 });
 
 /* ── 3. NUM NEVER CONTACTS A HOST'S CLIENT FIRST ─────────────────────────── */
@@ -312,16 +309,23 @@ test('the console no longer tells a host their clients are ours for 12 months', 
 test('the console says out loud who pays what', () => {
   assert.match(consolePage, /never charged by NUM, for anything, on any plan/i,
     'nothing on the console tells a host their client pays us nothing — it is the whole pitch');
-  assert.match(consolePage, /no plan limits how many\s+clients/i,
+  assert.match(consolePage, /no plan\s+limits how many\s+clients/i,
     'the console does not say the plan is not a client cap');
-  assert.match(consolePage, /never to your\s+client, and nothing at all on one you decline/i,
-    'the console does not explain when the booking fee applies');
+  assert.match(consolePage, /Confirming costs you nothing/i,
+    'the console does not tell a host that confirming is free');
+  assert.match(consolePage, /no per-booking fee and no commission on your work/i,
+    'the console does not rule out a fee and a commission');
 });
 
-test('the member page says a host makes NUM cheaper, not a gate', () => {
+test('the member page says a host is free to them, and a gate to nothing', () => {
   const page = read('public/find-a-host/index.html');
-  assert.match(page, /billed to them instead of to\s+you/i,
-    'the member page does not say a host absorbs the booking fee');
+  // A host used to be sold as the thing that absorbed the member's £5. Now
+  // there is no member £5 at all, so the promise is the flat one — and it has
+  // to stay flat, because the moment a page implies a traveller pays NUM for
+  // arranging travel we are back inside California §17550.
+  assert.match(page, /never charges a traveller a\s+booking fee/i,
+    'the member page no longer says plainly that NUM does not charge travellers');
+  assert.match(page, /You do not need one/i, 'the page no longer says a host is optional');
 });
 
 /* ── 9. THE MIGRATION ACTUALLY APPLIES ───────────────────────────────────
@@ -410,7 +414,9 @@ test('the hosts page states what it costs, without being asked', () => {
     assert.ok(hostsPage.includes(price.replace('£', '&pound;')) || hostsPage.includes(price),
       `the ${price} plan is not shown on /hosts/`);
   }
-  assert.match(hostsPage, /&pound;5 for each booking/i, 'the per-booking fee is not stated on /hosts/');
+  assert.match(hostsPage, /no fee per booking, no commission on your work/i,
+    '/hosts/ does not state that the plan is the only charge');
+  assert.ok(!/&pound;5 for each booking/i.test(hostsPage), '/hosts/ still advertises a per-booking fee');
 });
 
 test('the hosts page makes the two promises that decide the sale', () => {

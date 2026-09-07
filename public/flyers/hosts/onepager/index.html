@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Night Shift</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+   NUM · one-page host flyer · A4 portrait, print-committed.
+   Single visual world on purpose: this is a piece of paper a concierge is
+   handed. It does not follow the viewer's dark mode, so every colour is
+   painted explicitly and nothing is left to inherit.
+   Palette: bottle green ground, emerald accent, brass reserved for exactly
+   one idea — the client is the host's, not ours.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --paper:#F6F5F0;      /* warm chalk, faint green bias */
+  --card:#FFFFFF;
+  --ink:#0A1712;        /* near-black bottle green */
+  --ink2:#38473F;
+  --mute:#6A7A70;
+  --rule:#D3DBD3;
+  --rule2:#BCC8BE;
+  --emerald:#1E7A4D;
+  --emerald-d:#14603A;
+  --forest:#0B2418;
+  --forest-ink:#D9E4DC;
+  --brass:#9C7833;
+  --brass-lt:#C9A45C;
+  --brass-soft:#EFE4CB;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:#E4E7E2;
+  color:var(--ink);
+  font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;align-items:center;
+  padding:20px 12px 28px;
+}
+
+/* Screen-only download bar. Never printed. */
+.dl{width:210mm;max-width:100%;display:flex;gap:8px;justify-content:flex-end;margin:0 0 10px}
+.dl a{font:600 11.5px/1 "Plus Jakarta Sans",sans-serif;letter-spacing:.02em;color:#0B2418;
+  background:#FFFFFF;border:1px solid #C6D2C9;padding:9px 14px;text-decoration:none}
+.dl a:first-child{background:#0B2418;color:#F6F5F0;border-color:#0B2418}
+.dl a:focus-visible{outline:2px solid #1E7A4D;outline-offset:2px}
+@media print{.dl{display:none}}
+
+/* ── The sheet ─────────────────────────────────────────────────────────── */
+.sheet{
+  width:210mm;height:297mm;
+  background:var(--paper);
+  color:var(--ink);
+  padding:11mm 13mm 10mm;
+  display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+  box-shadow:0 2px 34px rgba(10,23,18,.16);
+}
+.sheet::before{  /* a hairline of brass down the bound edge */
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3.2mm;background:var(--forest);
+}
+.sheet::after{
+  content:"";position:absolute;left:3.2mm;top:0;bottom:0;width:.7mm;background:var(--brass);
+}
+
+h1,h2,h3,.num,.price,.go{font-family:"Space Grotesk","Plus Jakarta Sans",sans-serif}
+p{margin:0}
+
+/* ── Masthead ──────────────────────────────────────────────────────────── */
+.mast{
+  display:flex;align-items:center;justify-content:space-between;
+  padding-bottom:3.4mm;border-bottom:1.5px solid var(--ink);
+}
+.wordmark{
+  font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:17.5pt;
+  letter-spacing:-.02em;display:flex;align-items:center;gap:2.2mm;color:var(--ink);
+}
+.wordmark .dot{width:2.6mm;height:2.6mm;border-radius:50%;background:var(--emerald);display:block}
+.mast .tag{
+  font-size:7.2pt;font-weight:700;letter-spacing:.17em;text-transform:uppercase;
+  color:var(--mute);text-align:right;
+}
+
+/* ── Headline ──────────────────────────────────────────────────────────── */
+.hero{padding:6mm 0 5.5mm;border-bottom:1px solid var(--rule)}
+h1{
+  margin:0;font-size:30pt;line-height:1.0;letter-spacing:-.035em;font-weight:700;
+  color:var(--ink);text-wrap:balance;
+}
+h1 .green{color:var(--emerald-d)}
+.lede{
+  margin-top:3.6mm;font-size:10.3pt;line-height:1.48;color:var(--ink2);
+  max-width:150mm;font-weight:500;
+}
+.lede b{color:var(--ink);font-weight:700}
+
+/* ── The three figures ─────────────────────────────────────────────────── */
+.figures{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  border-bottom:1px solid var(--rule);
+}
+.fig{padding:4.5mm 0 4.8mm;display:flex;flex-direction:column;gap:1.5mm}
+.fig + .fig{border-left:1px solid var(--rule);padding-left:6mm}
+.fig .num{
+  font-size:27pt;font-weight:700;line-height:.88;letter-spacing:-.035em;
+  font-variant-numeric:tabular-nums;color:var(--emerald-d);
+}
+.fig.brass .num{color:var(--brass)}
+.fig .lab{font-size:8.2pt;line-height:1.35;color:var(--ink2);font-weight:600}
+.fig .sub{font-size:7.4pt;line-height:1.35;color:var(--mute);letter-spacing:.01em}
+
+/* ── Feature grid ──────────────────────────────────────────────────────── */
+.feats{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  column-gap:7mm;row-gap:0;
+  padding:1mm 0 0;
+}
+.ft{padding:4mm 0;display:flex;flex-direction:column;gap:1.8mm}
+.feats .ft:nth-child(-n+3){border-bottom:1px solid var(--rule)}
+.ft svg{width:6.4mm;height:6.4mm;display:block}
+.ft .name{
+  font-size:7.4pt;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--emerald-d);
+}
+.ft .txt{font-size:8.5pt;line-height:1.42;color:var(--ink2)}
+.ft .txt b{color:var(--ink);font-weight:700}
+
+/* ── The reach chart ───────────────────────────────────────────────────── */
+.chart{
+  margin-top:2mm;padding:5.5mm 0 0;border-top:1.5px solid var(--ink);
+  display:flex;flex-direction:column;gap:3.2mm;
+}
+.chead{display:flex;align-items:baseline;justify-content:space-between;gap:6mm}
+.chead h2{font-size:12pt;font-weight:700;letter-spacing:-.02em;line-height:1;color:var(--ink)}
+.chead .note{font-size:8pt;color:var(--mute);text-align:right;line-height:1.35}
+.chead .note b{color:var(--ink);font-weight:700}
+
+.axis{
+  display:grid;grid-template-columns:26mm 1fr;gap:0 4mm;align-items:center;
+}
+.axis .spacer{grid-column:1}
+.axis .ticks{
+  grid-column:2;display:grid;grid-template-columns:repeat(4,1fr);gap:1.2mm;
+}
+.axis .ticks span{
+  font-size:6.6pt;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mute);line-height:1.25;padding-bottom:1.4mm;
+}
+.row{
+  display:grid;grid-template-columns:26mm 1fr;gap:0 4mm;align-items:center;
+  padding:1.4mm 0;border-top:1px solid var(--rule);
+}
+.row .plan{display:flex;align-items:baseline;gap:2mm}
+.row .pname{font-size:8pt;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink)}
+.row .price{
+  font-family:"Space Grotesk",sans-serif;font-size:11pt;font-weight:700;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);
+}
+.row .price small{font-size:6.6pt;font-weight:500;color:var(--mute);letter-spacing:0}
+.bar{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2mm}
+.seg{height:5.2mm;background:#E3E8E2;border-radius:.6mm}
+.seg.on{background:var(--emerald)}
+.row.small .seg.on{background:#1B6E46}
+.row.pro   .seg.on{background:#125639}
+.row.full  .seg.on{background:var(--forest)}
+.row.full .pname,.row.full .price{color:var(--forest)}
+
+/* ── The nevers ────────────────────────────────────────────────────────── */
+.band{
+  margin-top:5mm;background:var(--forest);color:var(--forest-ink);
+  padding:4.8mm 6.5mm 5.2mm;display:flex;flex-direction:column;gap:3mm;
+}
+.band h2{
+  font-size:11pt;font-weight:700;letter-spacing:-.015em;line-height:1.1;color:#FFFFFF;margin:0;
+}
+.nevers{display:grid;grid-template-columns:repeat(3,1fr);gap:0 6mm}
+.nv{display:flex;flex-direction:column;gap:1.6mm}
+.nv + .nv{border-left:1px solid rgba(217,228,220,.2);padding-left:6mm}
+.nv .k{
+  font-size:7pt;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--brass-lt);
+}
+.nv .v{font-size:8.7pt;line-height:1.4;color:#EAF1EC}
+.nv .v b{color:#FFFFFF;font-weight:700}
+
+/* ── Close ─────────────────────────────────────────────────────────────── */
+.close{
+  position:relative;margin-top:auto;padding-top:4.4mm;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:8mm;
+}
+.close::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:.5mm;background:var(--ink);
+}
+.close .go{font-size:15pt;font-weight:700;letter-spacing:-.025em;line-height:1.05;color:var(--ink)}
+.close .go span{display:block;font-family:"Plus Jakarta Sans",sans-serif;font-size:8.4pt;
+  font-weight:500;color:var(--ink2);letter-spacing:0;margin-top:1.6mm}
+.close .url{text-align:right;flex:none}
+.close .url .u{
+  font-family:"Space Grotesk",sans-serif;font-size:11.5pt;font-weight:700;
+  letter-spacing:-.015em;color:var(--emerald-d);line-height:1;
+}
+.close .url .fine{font-size:7pt;color:var(--mute);line-height:1.45;margin-top:1.8mm}
+
+/* ── Print ─────────────────────────────────────────────────────────────── */
+@page{size:A4 portrait;margin:0}
+@media print{
+  body{background:#fff;padding:0;display:block}
+  .sheet{box-shadow:none;width:210mm;height:296.4mm;break-after:avoid}
+  html,body{height:auto;overflow:hidden;margin:0}
+}
+@media (max-width:230mm){
+  body{padding:12px 0}
+  .sheet{transform-origin:top center}
+}
+</style>
+</head>
+<body>
+<div class="dl"><a href="NUM-VIP-Hosts-Onepager.pdf" download>Download PDF</a><a href="/hosts">Become a host</a></div>
+<div class="sheet">
+
+  <header class="mast">
+    <div class="wordmark"><span class="dot"></span>NUM</div>
+    <div class="tag">For VIP hosts · founding cohort</div>
+  </header>
+
+  <section class="hero">
+    <h1>You already have the book.<br><span class="green">NUM runs the night shift.</span></h1>
+    <p class="lede">An AI concierge that answers your clients at 3am, in the language they asked in —
+      <b>in your name, at your prices</b>. When it needs a driver, it texts <i>your</i> driver.</p>
+  </section>
+
+  <section class="figures">
+    <div class="fig">
+      <div class="num">£0</div>
+      <div class="lab">Your client pays. Ever.</div>
+      <div class="sub">They never see a NUM line item</div>
+    </div>
+    <div class="fig">
+      <div class="num">£0</div>
+      <div class="lab">Per booking. No commission.</div>
+      <div class="sub">No cut of anything you arrange</div>
+    </div>
+    <div class="fig brass">
+      <div class="num">∞</div>
+      <div class="lab">Clients, on every plan.</div>
+      <div class="sub">Including the free one</div>
+    </div>
+  </section>
+
+  <section class="feats">
+
+    <div class="ft">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#1E7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v15H5.5A1.5 1.5 0 0 0 4 19.5z"></path>
+        <path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H19v-3"></path>
+        <path d="M8 7.5h7M8 11h5"></path>
+      </svg>
+      <div class="name">The book</div>
+      <p class="txt">Your clients, your notes. <b>Unlimited on every plan.</b></p>
+    </div>
+
+    <div class="ft">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#1E7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M13 2.5 4.5 13.5H11l-.5 8L19.5 10.5H13z"></path>
+      </svg>
+      <div class="name">Requests</div>
+      <p class="txt">Priced from <b>your own list</b>, in your currency. You confirm.</p>
+    </div>
+
+    <div class="ft">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#1E7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h12a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 16H9l-5.5 4z"></path>
+        <path d="M8 8.5h8M8 12h5"></path>
+      </svg>
+      <div class="name">Threads</div>
+      <p class="txt">A thread per request. <b>Signed by you</b> — replies reach only you.</p>
+    </div>
+
+    <div class="ft">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#1E7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2"></rect>
+        <path d="M3.5 9.5h17M8 3v4M16 3v4"></path>
+        <path d="M8 13.5h3M8 17h6"></path>
+      </svg>
+      <div class="name">Calendar</div>
+      <p class="txt">Confirmed work in your own diary. <b>Read-only, permanently.</b></p>
+    </div>
+
+    <div class="ft">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#1E7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <path d="M3.5 12h17"></path>
+        <path d="M12 3.5c2.4 2.6 3.6 5.5 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.1-3.6-5-3.6-8.5S9.6 6.1 12 3.5z"></path>
+      </svg>
+      <div class="name">The network</div>
+      <p class="txt">A city you don't cover, covered by a host who does. <b>They invoice you.</b></p>
+    </div>
+
+    <div class="ft">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#1E7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3.5" y="9" width="17" height="11.5" rx="1.5"></rect>
+        <path d="M2.5 5.5h19V9h-19zM12 5.5v15"></path>
+        <path d="M12 5.5S10.6 2.5 8.6 2.5a2 2 0 0 0 0 3zM12 5.5s1.4-3 3.4-3a2 2 0 0 1 0 3z"></path>
+      </svg>
+      <div class="name">Products</div>
+      <p class="txt">Your hampers and packages — plus <b>Ghost Message</b> to offer on.</p>
+    </div>
+
+  </section>
+
+  <section class="chart">
+    <div class="chead">
+      <h2>A plan buys reach. Never room.</h2>
+      <p class="note">No tier caps your client list.<br><b>Every plan is unlimited.</b></p>
+    </div>
+
+    <div class="axis">
+      <div class="spacer"></div>
+      <div class="ticks">
+        <span>Console &amp; requests</span>
+        <span>Calendar &amp; alerts</span>
+        <span>Network &amp; intros</span>
+        <span>Products &amp; promotion</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="plan"><span class="pname">Free</span><span class="price">£0</span></div>
+      <div class="bar"><i class="seg on"></i><i class="seg"></i><i class="seg"></i><i class="seg"></i></div>
+    </div>
+    <div class="row small">
+      <div class="plan"><span class="pname">Small</span><span class="price">£9.99<small>/mo</small></span></div>
+      <div class="bar"><i class="seg on"></i><i class="seg on"></i><i class="seg"></i><i class="seg"></i></div>
+    </div>
+    <div class="row pro">
+      <div class="plan"><span class="pname">Pro</span><span class="price">£19.99<small>/mo</small></span></div>
+      <div class="bar"><i class="seg on"></i><i class="seg on"></i><i class="seg on"></i><i class="seg"></i></div>
+    </div>
+    <div class="row full">
+      <div class="plan"><span class="pname">Full</span><span class="price">£50<small>/mo</small></span></div>
+      <div class="bar"><i class="seg on"></i><i class="seg on"></i><i class="seg on"></i><i class="seg on"></i></div>
+    </div>
+  </section>
+
+  <section class="band">
+    <h2>Three things NUM will never do.</h2>
+    <div class="nevers">
+      <div class="nv">
+        <div class="k">Never</div>
+        <p class="v"><b>Bills your client.</b> Or bills you per booking. The plan is the whole of it.</p>
+      </div>
+      <div class="nv">
+        <div class="k">Never</div>
+        <p class="v"><b>Contacts them first.</b> And never in its own voice afterwards.</p>
+      </div>
+      <div class="nv">
+        <div class="k">Never</div>
+        <p class="v"><b>Confirms for you.</b> There is no auto-confirm to find later.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="close">
+    <div class="go">Become a founding host.
+      <span>Name and email. Your console opens straight away.</span>
+    </div>
+    <div class="url">
+      <div class="u">itsnum.com/hosts</div>
+      <div class="fine">No fee to apply · no exclusivity · no client cap<br>NUM is a 5arz company · prices in GBP</div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -26,6 +26,16 @@ const FILES = [
   'worker/migrations/0013_host_profile.sql',
   'worker/migrations/0014_host_clients.sql',
   'worker/migrations/0015_host_separation.sql',
+  // 0018 is the client-intake half, written alongside 0015 by another pass. It
+  // re-adds host_notified_at, which 0015 already creates — that lands as
+  // "duplicate column", is treated as already-applied, and is expected rather
+  // than a sign something is wrong. It is listed here so one run leaves the
+  // host schema whole, in order, instead of two people each applying half.
+  'worker/migrations/0018_host_client_intake.sql',
+  // 0019 is the supplier layer — eight new tables plus two ALTERs on num_hosts.
+  // The CREATEs are IF NOT EXISTS and safe to re-run — the ALTERs are not, so a
+  // second pass reports 'duplicate column name' and is tolerated below.
+  'worker/migrations/0019_suppliers.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

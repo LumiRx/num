@@ -205,16 +205,15 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
           </select>
         </div>
         <div class="field">
-          <label for="tier">Your plan</label>
-          <select id="tier">
-            <option value="free">Listed — free</option>
-            <option value="small">Small Business — £9.99/mo</option>
-            <option value="pro">Pro — £19.99/mo</option>
-            <option value="full">Full — £50/mo</option>
-          </select>
-          <p class="hint">Every plan holds unlimited clients. What a plan buys is reach: text alerts and calendar,
-            then the host network and introductions from NUM, then products and Ghost Message. Changing this here
-            records your choice; billing is set up separately and you are never charged from this page.</p>
+          <label>Your plan</label>
+          <!-- Read-only on purpose. This was a <select> that wrote straight to
+               your plan, which stopped being harmless the moment plans began
+               unlocking features. Plans change where money changes hands and
+               nowhere else — the card lower down. -->
+          <p class="mono" id="tierNow" style="font-size:16px;font-weight:650;margin:6px 0 0">Free</p>
+          <p class="hint">Every plan holds unlimited clients. What a plan buys is reach: the calendar feed and text
+            alerts, then the host network and introductions from NUM, then products and Ghost Message.
+            <a href="#planCard">Change your plan below.</a></p>
         </div>
       </div>
 
@@ -247,12 +246,18 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
             the person, not the office.</p>
         </div>
         <div class="field">
-          <label for="smsopt" style="display:flex;align-items:center;gap:8px;font-weight:600">
-            <input id="smsopt" type="checkbox" style="width:auto">
-            Text me when a request comes in
+          <!-- The words here are recorded verbatim against this host in
+               num_sms_consent. They are a copy of PARTNER_CONSENT_TEXT in
+               worker/partnersms.mjs and a test pins them identical: a label
+               that says something different from what gets written down makes
+               the register evidence of nothing. -->
+          <label for="smsopt" style="display:flex;align-items:flex-start;gap:8px;font-weight:600">
+            <input id="smsopt" type="checkbox" style="width:auto;margin-top:3px">
+            Yes — NUM may text this number about my listing: when it goes live, when it needs
+            something, and when there are requests waiting. A few messages a month.
+            Message and data rates may apply. Reply STOP to stop, HELP for help.
           </label>
-          <p class="hint">Only possible with a valid mobile above. Standard rates apply; reply STOP to any message
-            and they end.</p>
+          <p class="hint">Only possible with a valid mobile above.</p>
         </div>
       </div>
 
@@ -279,8 +284,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <span class="tag">Your book</span>
     <h2>Your clients</h2>
     <p class="sub">The people you look after. <b>They are never charged by NUM, for anything, on any plan.</b>
-      You pay to use NUM — a monthly plan and £5 per booking we arrange — and <b>no plan limits how many
-      clients you can have</b>. We are not going to charge you for the size of your own book.</p>
+      You pay one monthly plan to use NUM — <b>no per-booking fee, no commission on your work</b> — and <b>no plan
+      limits how many clients you can have</b>. We are not going to charge you for the size of your own book.</p>
 
     <div class="note" id="planNote"></div>
     <div class="note bad" id="clErr"></div>
@@ -346,8 +351,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <p class="sub">What your clients have asked for. NUM drafts, prices from your list and reminds you —
       <b>it never confirms anything to your client on your behalf</b>. You are the first point of contact;
       we make you look organised, not absent.</p>
-    <p class="sub">Confirming is the moment NUM charges: <b>£5, to you, once per booking</b> — never to your
-      client, and nothing at all on one you decline. The running total sits with the work, below.</p>
+    <p class="sub">Confirming costs you nothing. <b>There is no per-booking fee and no commission on your work</b>
+      — your plan is the whole of what you pay NUM, however much you confirm.</p>
 
     <div class="note bad" id="rqErr"></div>
 
@@ -479,6 +484,27 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <div id="ntDir"></div>
   </section>
 
+  <!-- ── YOUR PLAN ────────────────────────────────────────────────────
+       The one place a plan changes. The billing endpoints live in the APP
+       worker on app.itsnum.com, not here on itsnum.com, so these calls are
+       absolute and cross-origin on purpose — everything else on this page is
+       same-origin against num-growth. -->
+  <section class="card2" id="planCard">
+    <span class="tag">Your plan</span>
+    <h2>What you pay, and what it unlocks</h2>
+    <p class="sub">Every plan holds <b>unlimited clients</b>, including the free one. A plan buys reach, never room
+      &mdash; and <b>it is the only thing you pay NUM</b>. No per-booking fee, no commission on your work.</p>
+
+    <div class="note bad" id="plErr"></div>
+    <div class="note ok" id="plNote"></div>
+    <div class="note warn" id="plOwed"></div>
+
+    <div id="plRows"></div>
+
+    <p class="hint" id="plStatus" style="margin-top:14px"></p>
+    <p style="margin-top:10px"><button class="btn" type="button" id="plCancel" style="display:none">Cancel my plan</button></p>
+  </section>
+
   <!-- ── REMOVING SOMEONE ─────────────────────────────────────────────
        Its own card, not a confirm() dialog, because the thing that needs
        saying is what happens to THEM afterwards — and a browser dialog has
@@ -488,8 +514,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <h2>Remove <span id="rmWho"></span> from your book?</h2>
     <p class="sub">This is not the same as pausing. <b><span id="rmName"></span> is told by NUM that you have removed
       them</b>, they leave your console, and you are not billed for anything of theirs again. NUM keeps booking
-      their travel directly, as it does for any member without a host, and the &pound;5 booking fee moves from you
-      to them.</p>
+      their travel directly, as it does for any member without a host &mdash; and it is not charged to them
+      either, because NUM never bills a traveller.</p>
     <p class="sub">You cannot undo this from here. If they come back it is a new consent, and it is theirs to give.
       If you only want them out of the way for a while, <b>pause them instead</b> &mdash; a paused client is not
       billed and is not told anything.</p>
@@ -707,7 +733,9 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     pricing = {};
     (p.pricing || []).forEach(function (x) { pricing[x.key] = x; });
     $('currency').value = p.currency || 'GBP';
-    $('tier').value = p.tier || 'free';
+    var TIERNAME = { free: 'Free', small: 'Small — £9.99/mo', pro: 'Pro — £19.99/mo', full: 'Full — £50/mo' };
+    $('tierNow').textContent = TIERNAME[p.tier || 'free'] || 'Free';
+    loadPlan(p.tier || 'free');
     var r = document.querySelector('input[name=charge][value="' + (p.charge_mode || 'own') + '"]');
     if (r) r.checked = true;
     $('notify_phone').value = p.notify_phone || '';
@@ -750,7 +778,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         services: on, pricing: collectPricing(), areas: collectAreas(),
-        currency: $('currency').value, tier: $('tier').value,
+        currency: $('currency').value,
         accepts_intros: $('introSwitch').checked,
         in_network: $('netSwitch').checked, blurb: $('netBlurb').value,
         charge_mode: (document.querySelector('input[name=charge]:checked') || {}).value || 'own',
@@ -1037,10 +1065,26 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
           ? '<button class="btn" data-rq="' + r.id + '" data-act="done">Mark done</button>'
           : '';
       acts += ' <button class="btn" data-msg="' + r.id + '" data-t="' + esc(r.title) + '">Message</button>';
-      return '<tr><td><b>' + esc(r.title) + '</b>' + (r.city ? '<br><span class="hint">' + esc(r.city) + '</span>' : '') +
+      // A reservation can go to the venue through NUM's booking desk: the venue
+      // gets the same one-tap confirm text an app member's table gets, and
+      // its answer lands back here as a line under the request. NUM never
+      // confirms to your client for you — that stays the Confirm button.
+      var openish = (r.status === 'new' || r.status === 'drafted' || r.status === 'awaiting_host');
+      if (r.service_key === 'reservation' && openish) {
+        acts += ' <button class="btn" data-venue="' + r.id + '" data-city="' + esc(r.city || '') + '">Send to venue</button>';
+      }
+      // The venue's answer (written back by NUM) is the last line of the detail.
+      var answer = '';
+      if (r.detail) {
+        var lines = String(r.detail).split('\n');
+        var last = lines[lines.length - 1];
+        if (/^[\u2714\u2716]/.test(last)) answer = '<br><span class="hint">' + esc(last) + '</span>';
+      }
+      return '<tr><td><b>' + esc(r.title) + '</b>' + (r.city ? '<br><span class="hint">' + esc(r.city) + '</span>' : '') + answer +
         '</td><td>' + esc(r.client_name || '—') + '</td><td>' + esc(r.starts_at || '—') + '</td><td class="tnum">' +
         (r.quote_only ? 'On request' : money(r.price_minor, r.currency)) + '</td><td>' + esc(r.status) +
-        '</td><td>' + acts + '</td></tr>';
+        '</td><td>' + acts + '</td></tr>' +
+        '<tr id="venue-' + r.id + '" hidden><td colspan="6"></td></tr>';
     }).join('') : '<tr><td colspan="6" style="color:var(--slate)">Nothing logged yet.</td></tr>';
 
     // Beside the work, not on a statement a month later.
@@ -1061,6 +1105,62 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     Array.prototype.forEach.call($('rqRows').querySelectorAll('[data-msg]'), function (b) {
       b.onclick = function () { openThread(b.getAttribute('data-msg'), b.getAttribute('data-t')); };
     });
+
+    Array.prototype.forEach.call($('rqRows').querySelectorAll('[data-venue]'), function (b) {
+      b.onclick = function () { openVenuePicker(b.getAttribute('data-venue'), b.getAttribute('data-city')); };
+    });
+  }
+
+  /* ── send a reservation to the venue through NUM's desk ─────────────── */
+  // The directory is searched on app.itsnum.com (public, read-only); the
+  // send goes to the same origin with this console key. Both answer with
+  // plain sentences, which are shown as they are.
+  var APP = 'https://app.itsnum.com';
+  function openVenuePicker(requestId, city) {
+    var row = document.getElementById('venue-' + requestId);
+    if (!row) return;
+    var cell = row.firstChild;
+    row.hidden = false;
+    cell.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 2fr auto;gap:8px;align-items:end">' +
+        '<div><label class="hint">City</label><input type="text" data-v="city" value="' + esc(city || '') + '" placeholder="London"></div>' +
+        '<div><label class="hint">Venue name</label><input type="text" data-v="q" placeholder="Gymkhana"></div>' +
+        '<button class="btn" data-v="find">Find</button>' +
+      '</div><div data-v="results" class="hint" style="margin-top:8px"></div>';
+    var find = function () {
+      var c = cell.querySelector('[data-v="city"]').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      var q = cell.querySelector('[data-v="q"]').value.trim();
+      var out = cell.querySelector('[data-v="results"]');
+      if (!c || !q) { out.textContent = 'A city and a venue name, please.'; return; }
+      out.textContent = 'Looking\u2026';
+      fetch(APP + '/api/open?dest=' + encodeURIComponent(c) + '&q=' + encodeURIComponent(q) + '&limit=8')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var places = (d && (d.places || d.results)) || [];
+          if (!places.length) { out.textContent = d && d.error ? d.error : 'Nothing by that name in ' + c + '. Try another spelling, or the city NUM lists it under.'; return; }
+          out.innerHTML = places.map(function (p) {
+            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#eee)">' +
+              '<span><b>' + esc(p.name) + '</b>' + (p.area ? ' \u00b7 ' + esc(p.area) : '') + (p.phone ? ' \u00b7 ' + esc(p.phone) : ' \u00b7 <i>no number on file \u2014 NUM\u2019s desk works the phone</i>') + '</span>' +
+              '<button class="btn pri" data-pick="' + esc(p.place_id || p.id) + '">Send</button></div>';
+          }).join('');
+          Array.prototype.forEach.call(out.querySelectorAll('[data-pick]'), function (b) {
+            b.onclick = function () {
+              b.disabled = true; b.textContent = 'Sending\u2026';
+              fetch(APP + '/api/host/book?k=' + encodeURIComponent(K), {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ request_id: requestId, place_id: b.getAttribute('data-pick') })
+              }).then(function (r) { return r.json(); }).then(function (d) {
+                out.innerHTML = '<span class="hint">' + esc(d.note || d.error || (d.ok ? 'Sent.' : 'Not sent.')) + '</span>';
+                if (d.ok) api('requests').then(function (x) { if (x.ok) paintRequests(x); });
+              }).catch(function () { out.textContent = 'Could not reach NUM\u2019s desk. Try again in a minute.'; });
+            };
+          });
+        })
+        .catch(function () { out.textContent = 'Could not reach the directory. Try again in a minute.'; });
+    };
+    cell.querySelector('[data-v="find"]').onclick = find;
+    cell.querySelector('[data-v="q"]').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); find(); } };
+    cell.querySelector('[data-v="q"]').focus();
   }
 
   function fillRequestVocab() {
@@ -1311,6 +1411,95 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     });
   };
 
+  /* ── the plan ───────────────────────────────────────────────────────
+     Billing lives in the app worker on app.itsnum.com. The console is served
+     from itsnum.com, so these are the only cross-origin calls on this page. */
+  var PLAN_API = 'https://app.itsnum.com/api/host';
+  var PLAN_ORDER = ['free', 'small', 'pro', 'full'];
+  var PLAN_BUYS = {
+    free:  'Unlimited clients, your services and prices, every request read and drafted',
+    small: 'Everything in Free, plus your calendar feed and text alerts',
+    pro:   'Everything in Small, plus the host network and introductions from NUM',
+    full:  'Everything in Pro, plus products, Ghost Message and promotion'
+  };
+
+  function paintPlan(d, profileTier) {
+    var current = d && d.tier ? d.tier : (profileTier || 'free');
+    var plans = (d && d.plans) || {};
+    $('plRows').innerHTML = PLAN_ORDER.map(function (k) {
+      var mine = k === current;
+      var price = k === 'free' ? 'Free'
+        : plans[k] ? '£' + (plans[k].pence / 100).toFixed(2) + '/mo' : '—';
+      var action = mine
+        ? '<span class="hint">Your plan</span>'
+        : k === 'free'
+          ? '<span class="hint">Cancel below to return to Free</span>'
+          : '<button class="btn pri" data-buy="' + k + '">' +
+            (PLAN_ORDER.indexOf(k) > PLAN_ORDER.indexOf(current) ? 'Upgrade' : 'Switch') + '</button>';
+      return '<div class="choice" style="display:block' + (mine ? ';border-color:var(--pri)' : '') + '">' +
+        '<b>' + esc(k.charAt(0).toUpperCase() + k.slice(1)) + ' — ' + esc(price) + '</b>' +
+        '<span>' + esc(PLAN_BUYS[k]) + '</span>' +
+        '<div style="margin-top:10px">' + action + '</div></div>';
+    }).join('');
+
+    $('plStatus').textContent = d && d.plan_status && d.plan_status !== 'none'
+      ? 'Status: ' + d.plan_status + (d.renews_at ? ' — renews ' + d.renews_at : '')
+      : 'You are on the free plan. Nothing is being charged.';
+    $('plCancel').style.display = (d && d.plan_status === 'active') ? '' : 'none';
+
+    // Billing genuinely off is different from a plan you have not bought, and
+    // a host should not be clicking Upgrade into a checkout that cannot mint.
+    if (d && d.billing_on === false) {
+      note($('plNote'), 'Billing is not switched on yet, so nothing can be charged and nothing is owed. ' +
+        'Your plan is recorded and the features follow it.', 'ok');
+      Array.prototype.forEach.call($('plRows').querySelectorAll('[data-buy]'), function (b) { b.disabled = true; });
+    }
+
+    Array.prototype.forEach.call($('plRows').querySelectorAll('[data-buy]'), function (b) {
+      b.onclick = function () {
+        note($('plErr'), '');
+        b.disabled = true;
+        fetch(PLAN_API + '/plan/subscribe?k=' + encodeURIComponent(K), {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tier: b.getAttribute('data-buy') })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          b.disabled = false;
+          if (d && d.url) { location.href = d.url; return; }
+          note($('plErr'), (d && d.error) ? esc(d.error) : 'Could not start checkout. Nothing was charged.', 'bad');
+        }).catch(function () {
+          b.disabled = false;
+          note($('plErr'), 'Could not reach billing. Nothing was charged.', 'bad');
+        });
+      };
+    });
+  }
+
+  $('plCancel').onclick = function () {
+    note($('plErr'), '');
+    $('plCancel').disabled = true;
+    fetch(PLAN_API + '/plan/cancel?k=' + encodeURIComponent(K), { method: 'POST' })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        $('plCancel').disabled = false;
+        note($('plNote'), (d && d.note) || 'Cancelled.', 'ok');
+        loadPlan();
+      }).catch(function () {
+        $('plCancel').disabled = false;
+        note($('plErr'), 'Could not reach billing. Your plan is unchanged.', 'bad');
+      });
+  };
+
+  function loadPlan(profileTier) {
+    return fetch(PLAN_API + '/plan?k=' + encodeURIComponent(K))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { paintPlan(d && !d.error ? d : null, profileTier); })
+      .catch(function () {
+        // The console still works without billing. Say so rather than showing
+        // an empty card that looks broken.
+        paintPlan(null, profileTier);
+        note($('plErr'), 'Could not reach billing just now. Everything else on this page is live.', 'bad');
+      });
+  }
+
   /* ── loaders ────────────────────────────────────────────────────────── */
   function loadClients() { return api('clients').then(function (d) { if (d.ok) paintClients(d); }); }
   function loadBook() {
@@ -1319,7 +1508,22 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     // that is their working tool.
     loadClients().catch(function () {});
     api('intros').then(function (d) { if (d.ok) paintIntros(d); }).catch(function () {});
-    api('requests').then(function (d) { if (d.ok) paintRequests(d); }).catch(function () {});
+    api('requests').then(function (d) {
+      if (!d.ok) return;
+      paintRequests(d);
+      // What NUM will invoice, shown against the plan card as well as the work,
+      // because a host who has never paid for a plan has no card on file and
+      // the fee cannot be collected until they do.
+      // Only ever shown to a host who accrued fees before 7 Sep 2026. A number
+      // that quietly vanishes from a page someone already read is worse than
+      // one that is explained.
+      if (d.fees_minor) {
+        note($('plOwed'), 'You have ' + money(d.fees_minor, $('currency').value || 'GBP') +
+          ' of booking fees on record from before we removed them. ' +
+          'They were never collected and never will be. There is no per-booking fee now — your plan is all you pay.',
+          'ok');
+      }
+    }).catch(function () {});
     api('products').then(function (d) { if (d.ok) paintProducts(d); }).catch(function () {});
     api('network').then(function (d) { if (d.ok) paintNetwork(d); }).catch(function () {});
   }
