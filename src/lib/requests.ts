@@ -12,16 +12,51 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/**
+ * Three arrays, always — whatever came back.
+ *
+ * ── THE CRASH THIS FIXES ─────────────────────────────────────────────────
+ *
+ * 9 Sep 2026, on an iPhone opening the app:
+ *
+ *   undefined is not an object (evaluating 'e.connects.length')
+ *
+ * `DashView` reads `inbox.connects.length` on every render. The store starts
+ * out correct — data.ts seeds `{ connects: [], plans: [], events: [] }` — and
+ * then this function replaced the whole object with whatever the endpoint
+ * returned, unread. A response missing one key, an error body that still came
+ * back 200, a shape change on the worker side: any of those turn a required
+ * array into `undefined`, and the next paint takes the entire app down to the
+ * error screen. Not the dashboard. The app.
+ *
+ * A component reading its own store should not have to defend against the
+ * store being malformed, so the guarantee is made here, at the one place the
+ * server's answer becomes local state. Anything that is not an array becomes
+ * an empty one: an inbox that renders empty is wrong in a way the next poll
+ * fixes, and a white screen is wrong in a way only a reinstall fixes.
+ */
+const asInbox = (raw: unknown): InboxRequests => {
+  const o = (raw ?? {}) as Partial<InboxRequests>;
+  const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+  return {
+    connects: arr(o.connects),
+    plans: arr(o.plans),
+    events: arr(o.events),
+  } as InboxRequests;
+};
+
 export async function refreshRequests(): Promise<void> {
   const me = store.get().me;
   if (!me) return;
   try {
     const out = await api<InboxRequests>(`/requests?me=${encodeURIComponent(me.id)}`);
-    store.set({ inbox: out });
+    store.set({ inbox: asInbox(out) });
   } catch (err) {
     console.warn('[requests]', err);
   }
 }
+
+export const __testables = { asInbox };
 
 /**
  * Answer one. `propose` and `message` post into the group's feed, so the other

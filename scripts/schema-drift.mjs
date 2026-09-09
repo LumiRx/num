@@ -64,7 +64,7 @@ export function declaredColumns(sqlByFile) {
       .replace(/\/\*[\s\S]*?\*\//g, ' ');
 
     for (const m of clean.matchAll(
-      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_][\w]*)\s*\(([\s\S]*?)\)\s*;/gi
+      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`[]?([A-Za-z_][\w]*)["`\]]?\s*\(([\s\S]*?)\)\s*;/gi
     )) {
       const table = m[1];
       // Split the body on top-level commas only — a CHECK (x IN ('a','b'))
@@ -89,7 +89,7 @@ export function declaredColumns(sqlByFile) {
     }
 
     for (const m of clean.matchAll(
-      /ALTER\s+TABLE\s+([A-Za-z_][\w]*)\s+ADD\s+COLUMN\s+["`[]?([A-Za-z_][\w]*)["`\]]?/gi
+      /ALTER\s+TABLE\s+["`[]?([A-Za-z_][\w]*)["`\]]?\s+ADD\s+COLUMN\s+["`[]?([A-Za-z_][\w]*)["`\]]?/gi
     )) {
       add(m[1], m[2]);
     }
@@ -97,12 +97,41 @@ export function declaredColumns(sqlByFile) {
   return tables;
 }
 
+/**
+ * DECLARED, DELIBERATELY ABSENT, AND NOT A PROBLEM.
+ *
+ * A migration can declare a table that was never applied and never will be,
+ * because the design it belonged to was replaced. Reporting those forever is
+ * how a checker becomes noise, and a noisy checker gets ignored on the one day
+ * it is right.
+ *
+ * Each entry needs a reason. A table missing from BOTH this list and the
+ * database is a finding, not a judgement call — the same rule nav.test.mjs
+ * already uses for pages without a navigation.
+ *
+ * Before adding anything here, check that no code references it:
+ *   grep -rn "<table>" --include=*.mjs --include=*.js worker growth src | grep -v migrations
+ * If something does reference it, this is the wrong list — write the migration.
+ */
+export const RETIRED = {
+  num_dispatch_requests: '0004: the first dispatch design. Replaced by the supplier layer in 0019 (num_jobs). No code references it.',
+  num_dispatch_offers: '0004: the first dispatch design. Replaced by the supplier layer in 0019 (num_jobs). No code references it.',
+  num_member_contacts: '0004: never built. num_host_clients and num_host_contacts do this work now. No code references it.',
+};
+
 /** Compare declared against live. Only ever reports the dangerous direction. */
 export function drift(declared, liveByTable) {
   const out = [];
   for (const [table, cols] of declared) {
     const live = liveByTable.get(table);
-    if (!live) { out.push({ table, missing: null }); continue; }   // whole table absent
+    if (!live) {
+      // A retired declaration is expected to be absent, and saying so every
+      // deploy is how this becomes noise. It is skipped, not silenced: if the
+      // table ever appears, the column comparison below runs as normal.
+      if (RETIRED[table]) continue;
+      out.push({ table, missing: null });
+      continue;
+    }
     const missing = [...cols].filter((c) => !live.has(c));
     if (missing.length) out.push({ table, missing });
   }

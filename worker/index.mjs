@@ -1517,6 +1517,25 @@ export default {
       return json(200, { connected: airReady(env), tools: AIR_TOOLS });
     }
 
+    // WHAT DID THE PANEL AGREE ON? Admin-gated: what several models
+    // independently converge on is a commercial asset, and publishing it
+    // would also let anyone reconstruct our ranking. `?run=1` forces a tick
+    // rather than waiting for the cron, so a change can be seen immediately.
+    if (url.pathname === '/api/consensus') {
+      const admin = env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
+      if (!admin) return json(403, { error: 'admin only' });
+      const m = await import('./consensus.mjs');
+      const ran = url.searchParams.get('run') ? await m.runConsensus(env) : null;
+      const dest = url.searchParams.get('dest');
+      return json(200, {
+        panel: m.voters(env).map((b) => ({ id: b.id, label: b.label, kind: b.kind })),
+        min_agreement: m.MIN_AGREEMENT,
+        min_rounds: m.MIN_ROUNDS,
+        ran,
+        top: dest ? await m.consensusFor(env, { dest, cat: url.searchParams.get('cat') ?? '' }) : null,
+      });
+    }
+
     if (url.pathname === '/api/brains') {
       const admin = env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
       // The probe costs Workers AI neurons and takes seconds, so it is gated
@@ -2333,6 +2352,18 @@ export default {
         })
         .catch((e) => console.error('[brainprobe]', e?.message ?? e)),
     );
+    // AND NOW SOMEBODY IS TOLD. The probe above has recovered brains silently
+    // since August; the 5 and 6 Sep outages were found by a person opening the
+    // app. This texts Dre when no structured brain is left, or when a brain is
+    // stuck on something retrying cannot fix — a dead key or an empty balance.
+    // Deliberately its own waitUntil: an alert that can be taken down by the
+    // thing it is reporting is not an alert. See worker/brainalert.mjs.
+    ctx.waitUntil(
+      import('./brainalert.mjs')
+        .then((m) => m.alertOnBrains(env))
+        .then((r) => { if (r?.sent?.length) console.warn('[brainalert]', JSON.stringify(r.sent)); })
+        .catch((e) => console.error('[brainalert]', e?.message ?? e)),
+    );
     // DID THE SIGN-IN CODES ACTUALLY ARRIVE?
     //
     // Twilio Verify has no StatusCallback, so unlike Programmable Messaging
@@ -2449,6 +2480,18 @@ export default {
           const b = await backfillBookings(env);
           if (b.looked) console.log(`[bookingbackfill] ${b.found} found of ${b.looked} looked at`);
         } catch (e) { console.warn('[cron] booking backfill', e?.message ?? e); }
+
+        // CROSS-ANALYSIS. Replays a few real questions past the cheap brains
+        // and banks where they independently converge. Runs here, on the
+        // cron, so it never sits between a guest and their answer — and it
+        // cannot reach Anthropic by construction (callProse has no Anthropic
+        // path), so the one brain we run out of is the one it never spends.
+        // See worker/consensus.mjs.
+        try {
+          const { runConsensus } = await import('./consensus.mjs');
+          const c = await runConsensus(env);
+          if (c.rounds) console.log(`[consensus] ${c.rounds} rounds, ${c.voters} voters, ${c.agreed} agreements`);
+        } catch (e) { console.warn('[cron] consensus', e?.message ?? e); }
 
         // ACCEPTED IS NOT DELIVERED. Anything handed to a transport and still
         // unconfirmed after thirty minutes becomes a named, visible failure.

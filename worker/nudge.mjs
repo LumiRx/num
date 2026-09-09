@@ -136,6 +136,18 @@ export async function nudgeSweep(env) {
  * with names — because "3 claims stalled" prompts a query, but "Baan Rim Pa
  * stalled" prompts a phone call.
  */
+/**
+ * The `num_claims` states that mean a human still has to do something.
+ *
+ * An ALLOWLIST on purpose. 'verified' is success — the owner has proved the
+ * listing is theirs and already has their tools. 'expired' is closed. Neither
+ * is a job. Only these are.
+ */
+export const WAITING_ON_US = Object.freeze(['pending', 'started', 'sent', 'review', 'locked']);
+
+/** Claim states that mean the job is finished, either way. Never alerted on. */
+export const SETTLED = Object.freeze(['verified', 'expired', 'approved', 'rejected']);
+
 export async function claimSweep(env) {
   if (!env.DB) return { alerted: false };
   await ensure(env);
@@ -197,13 +209,37 @@ export async function claimSweep(env) {
   // `expires_at` — Adam's row had `expires_at` NULL, and `NULL < now()` is
   // NULL, so an expiry test would have missed him a second time. A business
   // raising its hand is the "wake him for money" case.
+  //
+  // ── 8 SEP 2026: THIS ALERTED ON SUCCESS FOR FIFTEEN DAYS ────────────────
+  //
+  // The filter above used to be `state NOT IN ('approved','rejected','expired')`
+  // — three state names borrowed from `num_app_claims`, applied to
+  // `num_claims`, which has never used any of them. num_claims only ever
+  // holds 'verified' and 'expired'. So the condition evaluated to
+  // `state <> 'expired'`, and EVERY SUCCESSFULLY VERIFIED CLAIM was reported
+  // daily, for ever, as "waiting on us".
+  //
+  //   Adam / Holiday Inn Express Edinburgh — verified 24 Aug — 10 texts.
+  //   Larry / Arroyo del Sol — verified 7 Sep — 2 texts.
+  //
+  // Both had finished. 'verified' is the SUCCESS state: claim.mjs writes
+  // num_place_owners and tells the owner "you'll find the owner tools
+  // waiting". Nothing was waiting on us in either case.
+  //
+  // The fix is not to add 'verified' to a denylist. A denylist of another
+  // table's vocabulary is what caused this. WAITING_ON_US is an explicit
+  // allowlist of the states that genuinely need a human, and any state not in
+  // it is silently ignored — so the next new state defaults to quiet rather
+  // than to waking someone every morning. worker/nudge.test.mjs asserts that
+  // every state num_claims can actually produce is classified.
+  const marks = WAITING_ON_US.map((_, i) => `?${i + 1}`).join(', ');
   const { results: apiStalled } = await env.DB.prepare(
     `SELECT c.id, c.state, c.created_at, c.claimant_name, c.claimant_email, p.name, p.dest
        FROM num_claims c JOIN places p ON p.id = c.place_id
-      WHERE c.state NOT IN ('approved', 'rejected', 'expired')
+      WHERE c.state IN (${marks})
         AND c.created_at < datetime('now', '-2 hours')
       ORDER BY c.created_at ASC LIMIT 12`,
-  ).all().catch(() => ({ results: [] }));
+  ).bind(...WAITING_ON_US).all().catch(() => ({ results: [] }));
 
   const freshApi = [];
   for (const c of apiStalled ?? []) {

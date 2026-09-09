@@ -33,8 +33,25 @@ test('the sweep watches the table the API flow actually writes', () => {
 test('a claim with no expiry is still caught', () => {
   const q = NUDGE.slice(NUDGE.indexOf('FROM num_claims c'), NUDGE.indexOf('FROM num_claims c') + 320);
   assert.ok(!/expires_at/.test(q), 'NULL < now() is NULL — an expiry test loses exactly this row');
-  assert.match(q, /state NOT IN \('approved', 'rejected', 'expired'\)/);
   assert.match(q, /created_at < datetime\('now', '-2 hours'\)/, 'two hours, not a day');
+});
+
+// 8 Sep 2026. This test used to pin the filter as
+// `state NOT IN ('approved','rejected','expired')` — and that filter was
+// itself the bug. Those three names come from num_app_claims; num_claims only
+// ever holds 'verified' and 'expired', so the condition reduced to
+// `<> 'expired'` and every COMPLETED claim was reported daily as waiting.
+// Adam got ten of those texts about a listing he had finished on day one.
+//
+// The selector is now an allowlist, and pinning it here is the point: a
+// denylist quietly admits every state nobody thought of, an allowlist quietly
+// excludes them. That default is the whole fix. See worker/claimsweep.test.mjs.
+test('the sweep selects the states that need us, rather than excluding some that do not', () => {
+  const q = NUDGE.slice(NUDGE.indexOf('FROM num_claims c'), NUDGE.indexOf('FROM num_claims c') + 320);
+  assert.match(q, /state IN \(\$\{marks\}\)/, 'an allowlist, bound from WAITING_ON_US');
+  assert.ok(!/state NOT IN/.test(q), 'a denylist here is what caused the false alarm');
+  assert.match(NUDGE, /export const WAITING_ON_US/);
+  assert.match(NUDGE, /ALERTED ON SUCCESS FOR FIFTEEN DAYS/, 'the incident stays written down');
 });
 
 // The daily 10am gate is right for a follow-up call and wrong for somebody

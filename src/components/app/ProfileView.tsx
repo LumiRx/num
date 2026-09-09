@@ -204,7 +204,28 @@ export default function ProfileView() {
               review on an iPad. The key is in ios/App/App/Info.plist; do not
               remove it, and do not add another media input without checking
               the matching usage description exists. */}
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0])} />
+          {/* NOT `hidden`, AND THAT IS THE WHOLE POINT ON iPad.
+              On iPhone WKWebView shows the media picker as a sheet, which
+              needs no anchor. On iPad it shows a POPOVER, anchored to the
+              input's own rect — and `hidden` is display:none, so the rect is
+              zero and there is nothing to anchor to. That is a second,
+              independent iPad-only failure sitting behind the TCC one, on the
+              exact device class review used (iPad Air 11-inch M3).
+              So the input stays laid out and merely invisible: it covers the
+              avatar, is transparent, and gives iOS a real rectangle. Do not
+              put `hidden` or display:none back on it. */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            aria-hidden="true"
+            tabIndex={-1}
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              opacity: 0, pointerEvents: 'none', border: 0, padding: 0,
+            }}
+            onChange={(e) => void pickPhoto(e.target.files?.[0])}
+          />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={kicker}>YOU</div>

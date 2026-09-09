@@ -126,20 +126,20 @@ test('NUM_MODEL kill switch overrides everything', () => {
 //
 // The escalation shape is unchanged and still tested: cheapest capable first,
 // Claude Opus as the floor, and nothing can strand a turn.
-test('MODERATE with a hosted brain: Haiku first, hosted behind it, Claude last', () => {
+test('MODERATE with only a hosted brain: DeepSeek leads, Anthropic behind it', () => {
+  // CHANGED 7 Sep 2026. This used to pin Haiku at the front, from 30 Aug when
+  // the hosted lane was failing 66% of the time and could not produce a card.
+  // Both of those facts have since changed: the hosted lane is at zero
+  // failures and now returns picks, and it costs 1/48th of Haiku. So the
+  // cheap independent bill leads and Anthropic is the backstop.
   const env = { NUM_LLM_BASE_URL: 'https://api.example.com/v1' };
   const d = direct('where should I get breakfast', {}, env);
   assert.equal(d.tier, TIERS.MODERATE);
-  assert.equal(d.steps.length, 4);
-  assert.equal(d.steps[0].brain, 'haiku');
-  assert.equal(d.steps[0].model, 'claude-haiku-4-5-20251001');
-  assert.equal(d.steps[1].brain, 'hosted');
-  assert.equal(d.steps[1].model, 'deepseek-v4-flash');
-  assert.equal(d.steps[2].brain, 'hosted');
-  assert.equal(d.steps[2].model, 'kimi-k2.6');
-  assert.equal(d.steps[3].brain, 'claude');
+  assert.deepEqual(d.steps.map((x) => x.brain), ['hosted', 'hosted', 'haiku', 'claude']);
+  assert.equal(d.steps[0].model, 'deepseek-v4-flash');
+  assert.equal(d.steps[1].model, 'kimi-k2.6');
   assert.equal(d.steps[3].model, 'claude-opus-5');
-  assert.equal(d.estCostUsd, MODEL_COSTS['claude-haiku-4-5'], 'first step should cost as Haiku');
+  assert.equal(d.estCostUsd, MODEL_COSTS['deepseek-v4-flash'], 'the quote must be the brain that will answer');
 });
 
 test('MODERATE without a hosted brain: Haiku then Claude', () => {
@@ -150,12 +150,12 @@ test('MODERATE without a hosted brain: Haiku then Claude', () => {
   assert.equal(d.steps[1].model, 'claude-opus-5');
 });
 
-test('SIMPLE goes to Haiku too', () => {
+test('SIMPLE takes the same lane as MODERATE — a lookup deserves no more', () => {
   const env = { NUM_LLM_BASE_URL: 'https://api.example.com/v1' };
   const d = direct('what time do shops open', {}, env);
   assert.equal(d.tier, TIERS.SIMPLE);
-  assert.equal(d.steps[0].brain, 'haiku');
-  assert.equal(d.estCostUsd, MODEL_COSTS['claude-haiku-4-5']);
+  assert.equal(d.steps[0].brain, 'hosted');
+  assert.equal(d.estCostUsd, MODEL_COSTS['deepseek-v4-flash']);
 });
 
 test('the bulk model is overridable without a deploy', () => {
@@ -164,20 +164,34 @@ test('the bulk model is overridable without a deploy', () => {
   assert.equal(d.steps[0].model, 'claude-sonnet-5');
 });
 
-test('CRITICAL and COMPLEX go straight to Claude, no escalation path needed', () => {
+test('a BOOKING goes straight to Claude — no economising on the money lane', () => {
+  // Unchanged and not negotiable: a turn where something happens in the world
+  // goes to a brain that is allowed to make it happen. Only NUM_OPENAI_ACTIONS
+  // adds a second one, and that is a deliberate decision somebody has to take.
   for (const env of [{}, { NUM_LLM_BASE_URL: 'https://api.example.com/v1' }]) {
     const d = direct('book a table for tonight', {}, env);
     assert.equal(d.tier, TIERS.CRITICAL);
-    assert.equal(d.steps.length, 1);
-    assert.equal(d.steps[0].brain, 'claude');
+    assert.deepEqual(d.steps.map((x) => x.brain), ['claude']);
     assert.equal(d.steps[0].model, 'claude-opus-5');
     assert.equal(d.estCostUsd, MODEL_COSTS['claude-opus-5']);
-
-    const c = direct('plan our day tomorrow', {}, env);
-    assert.equal(c.tier, TIERS.COMPLEX);
-    assert.equal(c.steps.length, 1);
-    assert.equal(c.steps[0].brain, 'claude');
   }
+});
+
+test('PLANNING keeps Anthropic behind it, and gains a cheaper lead when one exists', () => {
+  // COMPLEX used to be Claude alone. It still is when nothing cheaper can
+  // carry the full schema — the change is that a strict-schema brain may now
+  // lead it, because a plan needs the SHAPE of a full answer and nothing has
+  // to happen yet.
+  // Without a strict-schema brain this tier is EXACTLY what it was before —
+  // Claude, first and only. Haiku is cheaper, not equivalent, and "plan
+  // saturday with 6 friends" starting on it was the regression this catches.
+  const bare = direct('plan our day tomorrow', {}, {});
+  assert.equal(bare.tier, TIERS.COMPLEX);
+  assert.deepEqual(bare.steps.map((x) => x.brain), ['claude']);
+
+  const withGpt = direct('plan our day tomorrow', {}, GPT);
+  assert.equal(withGpt.steps[0].brain, 'openai');
+  assert.ok(withGpt.steps.map((x) => x.brain).includes('claude'));
 });
 
 test('book my trip to Japan — the user example — is CRITICAL', () => {
@@ -196,24 +210,28 @@ test('env overrides for hosted model names', () => {
     NUM_HOSTED_MID: 'custom-mid',
   };
   const d = direct('where should I get breakfast', {}, env);
-  // Haiku leads now, so the hosted overrides sit one place further down.
-  assert.equal(d.steps[1].model, 'custom-flash');
-  assert.equal(d.steps[2].model, 'custom-mid');
+  // The hosted lane leads again as of 7 Sep, so its overrides are back at the
+  // front. Both rungs of the one bill, in order.
+  assert.equal(d.steps[0].model, 'custom-flash');
+  assert.equal(d.steps[1].model, 'custom-mid');
 });
 
 // ── escalation ─────────────────────────────────────────────────────────────
 
 test('afterFailure advances to the next step', () => {
   const d = direct('best beach in Phuket', {}, { NUM_LLM_BASE_URL: 'https://api.example.com/v1' });
-  // After Haiku fails (index 0) the independent-bill brain is next.
+  // The path walks DOWN the chain a rung at a time, and every rung is a
+  // different bill or a better model. What this test is really protecting is
+  // that it always ends somewhere, and that the end is Claude.
+  assert.equal(d.steps[0].model, 'deepseek-v4-flash');
+
   const d1 = afterFailure(d, 0);
   assert.ok(d1, 'should have a next step');
-  assert.equal(d1.steps.length, 3);
-  assert.equal(d1.steps[0].model, 'deepseek-v4-flash');
+  assert.equal(d1.steps[0].model, 'kimi-k2.6');
 
   const d2 = afterFailure(d1, 0);
   assert.ok(d2);
-  assert.equal(d2.steps[0].model, 'kimi-k2.6');
+  assert.equal(d2.steps[0].brain, 'haiku');
 
   const d3 = afterFailure(d2, 0);
   assert.ok(d3);
@@ -221,7 +239,7 @@ test('afterFailure advances to the next step', () => {
   assert.equal(d3.steps[0].brain, 'claude');
   assert.equal(d3.estCostUsd, MODEL_COSTS['claude-opus-5']);
 
-  // Claude is the end of the path
+  // Claude is the end of the path — a turn can never be stranded.
   assert.equal(afterFailure(d3, 0), null, 'no step after Claude');
 });
 
@@ -289,7 +307,10 @@ test('the phrasings real guests actually use reach the cheap lane', () => {
     'food near me',
     'massage recommendations',
   ]) {
-    assert.equal(direct(q, {}, env).steps[0].brain, 'haiku',
+    // The point of this test is that the phrasing is RECOGNISED as everyday
+    // and does not land on the frontier model — not which cheap brain leads.
+    const first = direct(q, {}, env).steps[0].brain;
+    assert.notEqual(first, 'claude',
       `"${q}" escalated to Claude — the router saves nothing on phrasings it does not recognise`);
   }
 });
@@ -381,4 +402,66 @@ test('the cost table is pessimistic about price, never optimistic', () => {
   assert.ok(MODEL_COSTS['claude-opus-5'] > MODEL_COSTS['claude-haiku-4-5']);
   assert.ok(MODEL_COSTS['claude-haiku-4-5'] > MODEL_COSTS['deepseek-v4-flash']);
   assert.equal(MODEL_COSTS['workers-ai'], 0);
+});
+
+// ── THE ORDER DRE SET, 7 Sep 2026 ────────────────────────────────────────
+//
+// GPT-5 mini leads, DeepSeek behind it, Anthropic behind both. Written after
+// four days of the Anthropic account being out of credit — but it is the right
+// order on the numbers too, not only on the scar tissue.
+const GPT = { NUM_OPENAI_BASE_URL: 'https://api.openai.com/v1', NUM_OPENAI_MODEL: 'gpt-5-mini', NUM_LLM_BASE_URL: 'https://x/v1' };
+const ids = (d) => d.steps.map((s) => s.brain);
+
+test('the everyday turn leads with GPT-5, then DeepSeek, then Anthropic', () => {
+  const d = direct('where should we eat tonight', {}, GPT);
+  assert.deepEqual(ids(d).slice(0, 2), ['openai', 'hosted']);
+  assert.deepEqual(ids(d).slice(-2), ['haiku', 'claude']);
+  // Three independent vendors in the chain: no single account going dark can
+  // take the concierge down again. That is the whole point of the order.
+  assert.equal(new Set(ids(d)).size, 4);
+});
+
+test('planning goes to GPT-5 — it was going to Opus at 55x the price', () => {
+  const d = direct('plan my day in Bangkok', {}, GPT);
+  assert.equal(d.tier, TIERS.COMPLEX);
+  assert.equal(ids(d)[0], 'openai');
+  assert.ok(d.estCostUsd < MODEL_COSTS['claude-opus-5'] / 20);
+  // And Anthropic is still right behind it, not removed.
+  assert.ok(ids(d).includes('claude'));
+});
+
+test('A BOOKING STAYS WITH ANTHROPIC UNTIL SOMEBODY SAYS OTHERWISE', () => {
+  // GPT-5 mini can produce a booking card from its first minute. Whether it
+  // may REQUEST the booking is a separate, deliberate decision. The cheapest
+  // answer is never worth a booking that silently did not happen.
+  const d = direct('book me a table tonight', {}, GPT);
+  assert.equal(d.tier, TIERS.CRITICAL);
+  assert.deepEqual(ids(d), ['claude']);
+  // One secret, and only then does it lead the money lane.
+  const on = direct('book me a table tonight', {}, { ...GPT, NUM_OPENAI_ACTIONS: '1' });
+  assert.deepEqual(ids(on), ['openai', 'claude']);
+});
+
+test('with no OpenAI key the chain is exactly what it was yesterday', () => {
+  // Adding a brain must never change the behaviour of a deployment that has
+  // not configured it.
+  const d = direct('where should we eat tonight', {}, { NUM_LLM_BASE_URL: 'https://x/v1' });
+  assert.ok(!ids(d).includes('openai'));
+  assert.equal(ids(d)[0], 'hosted');
+  assert.ok(ids(d).includes('claude'));
+});
+
+test('the quoted cost is the brain that will actually answer', () => {
+  // estCostUsd is what a budget is built from, so it must be the FIRST step
+  // rather than whatever used to lead the lane.
+  assert.equal(direct('where should we eat tonight', {}, GPT).estCostUsd, MODEL_COSTS['gpt-5-mini']);
+  assert.equal(direct('book me a table tonight', {}, GPT).estCostUsd, MODEL_COSTS['claude-opus-5']);
+});
+
+test('every lane still ends at a brain that can do the whole job', () => {
+  // The safety property: economising must never strand a turn. Whatever the
+  // tier, Claude is the last thing standing.
+  for (const q of ['what time does it open', 'where should we eat', 'plan my trip', 'book me a table']) {
+    assert.ok(ids(direct(q, {}, GPT)).includes('claude'), q);
+  }
 });

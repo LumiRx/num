@@ -329,6 +329,13 @@ export function direct(text, state = {}, env = {}) {
   const strong = env.NUM_MODEL_STRONG || 'claude-opus-5';
   const bulk = env.NUM_MODEL_BULK || 'claude-haiku-4-5-20251001';
   const hosted = !!env.NUM_LLM_BASE_URL;
+  // The strict-schema brain. Configured or not, and — separately — trusted to
+  // act or not. Both matter: it can lead the everyday and planning lanes the
+  // moment it exists, and it may only lead a BOOKING lane once somebody has
+  // deliberately allowed it to make things happen. See brains.canAct().
+  const gpt = !!env.NUM_OPENAI_BASE_URL;
+  const gptModel = env.NUM_OPENAI_MODEL || 'gpt-5-mini';
+  const gptActs = env.NUM_OPENAI_ACTIONS === '1';
   const flash = env.NUM_HOSTED_FLASH || 'deepseek-v4-flash';
   const mid = env.NUM_HOSTED_MID || 'kimi-k2.6';
 
@@ -357,22 +364,83 @@ export function direct(text, state = {}, env = {}) {
       // time (81 of 122 turns degraded) and a Workers AI lane that failed
       // 100% of the time (10 of 10). Both stay in the chain underneath as
       // free backstops; neither is asked to carry traffic any more.
-      const steps = [{ brain: 'haiku', model: bulk }];
-      // A configured hosted brain is still worth a try before the frontier
-      // model — it is on an independent bill, which is the whole reason it
-      // exists — but it now sits BEHIND Haiku rather than in front of it.
+      // ── THE ORDER, AS OF 7 Sep 2026: GPT-5 mini, then DeepSeek, then
+      //    Anthropic ───────────────────────────────────────────────────────
+      //
+      // Set by Dre after four days of the Anthropic account being out of
+      // credit, and it is the right order on the numbers as well as on the
+      // scar tissue. Measured cost of one turn at our token shape:
+      //
+      //     DeepSeek V4 Flash ..... $0.0010   places, no cards
+      //     GPT-5 mini ............ $0.0019   FULL schema — cards and picks
+      //     Claude Haiku 4.5 ...... $0.048    full schema
+      //     Claude Opus 5 ......... $0.105    full schema, the best thinking
+      //
+      // GPT-5 mini produces the same SHAPE of answer as the Anthropic lane at
+      // 4% of Haiku's price, because strict schema mode guarantees it — see
+      // worker/strictschema.mjs. So it leads. DeepSeek sits behind it as the
+      // cheapest independent bill, and Anthropic sits behind BOTH as the
+      // quality backstop rather than the default.
+      //
+      // Three independent vendors, in cost order, each capable of the turn it
+      // is given. No single account going dark can take the concierge down
+      // again — which is the whole point, and it is why the order is written
+      // here rather than left to whoever edits this next.
+      const steps = [];
+      if (gpt) steps.push({ brain: 'openai', model: gptModel });
       if (hosted) steps.push({ brain: 'hosted', model: flash }, { brain: 'hosted', model: mid });
-      steps.push({ brain: 'claude', model: strong });
-      return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(bulk)] ?? null, signals, reason };
+      steps.push({ brain: 'haiku', model: bulk }, { brain: 'claude', model: strong });
+      const lead = gpt ? gptModel : (hosted ? flash : bulk);
+      return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(lead)] ?? null, signals, reason };
     }
-    default: // COMPLEX and CRITICAL — the frontier model, first and only.
+    case TIERS.COMPLEX: {
+      // Planning needs the full schema — an itinerary, a card — but nothing
+      // has to HAPPEN yet, so a strict-schema brain can carry it whether or
+      // not it is trusted to act. This tier was going to Opus at $0.105 for
+      // 32 of 138 asks in a fortnight; GPT-5 mini does the same shape at
+      // $0.0019 and Anthropic stays right behind it.
+      // ⚠️ WITHOUT A STRICT-SCHEMA BRAIN, THIS TIER DOES NOT GET CHEAPER.
+      //
+      // Caught by director.test.mjs on the first run of this change: "plan
+      // saturday with 6 friends" started on Haiku. COMPLEX has always begun on
+      // Claude, and the rule the old test protected is worth restating —
+      // money, bookings, groups and trouble start on the best brain we have.
+      //
+      // GPT-5 mini may lead here because it produces the same SHAPE of answer
+      // under a guaranteed schema, which is a capability argument rather than
+      // a price one. Haiku is not a substitute for that: it is simply cheaper.
+      // So when no strict-schema brain is configured this tier is exactly what
+      // it was yesterday — Claude, first and only.
+      if (!gpt) {
+        return { tier, steps: [{ brain: 'claude', model: strong }], estCostUsd: MODEL_COSTS[strong] ?? null, signals, reason };
+      }
+      const steps = [
+        { brain: 'openai', model: gptModel },
+        { brain: 'haiku', model: bulk },
+        { brain: 'claude', model: strong },
+      ];
+      return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(gptModel)] ?? null, signals, reason };
+    }
+    default: {
+      // CRITICAL — money, commitment, trouble, a group. The turn where
+      // something actually happens in the world.
+      //
+      // A brain may only lead here if it is ALLOWED TO ACT. GPT-5 mini can
+      // produce a booking card from its first minute; whether it may request
+      // the booking is a separate, deliberate decision (NUM_OPENAI_ACTIONS).
+      // Until that is made, this tier stays with Anthropic — the cheapest
+      // answer is never worth a booking that silently did not happen.
+      const steps = [];
+      if (gpt && gptActs) steps.push({ brain: 'openai', model: gptModel });
+      steps.push({ brain: 'claude', model: strong });
       return {
         tier,
-        steps: [{ brain: 'claude', model: strong }],
-        estCostUsd: MODEL_COSTS[strong] ?? null,
+        steps,
+        estCostUsd: MODEL_COSTS[normaliseModel(steps[0].model)] ?? null,
         signals,
         reason,
       };
+    }
   }
 }
 

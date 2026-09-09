@@ -515,7 +515,14 @@ async function callStructuredJson(env, brain, { messages, system, model = null, 
   return { reply: normalizeReply(parsed), usage: body?.usage ?? null, model: body?.model ?? model ?? null };
 }
 
-async function callProse(env, brain, { messages, system, maxTokens = 700, model = null, wantJson = false }) {
+/**
+ * Exported for worker/consensus.mjs, which needs a prose call it can point at
+ * ONE named brain rather than walking the chain. Exporting it is also the
+ * structural guarantee that job relies on: this function has no Anthropic
+ * path — workers-ai, openai-compatible, then throw — so a background job
+ * built on it can never spend Anthropic credit, however it is configured.
+ */
+export async function callProse(env, brain, { messages, system, maxTokens = 700, model = null, wantJson = false }) {
   const chat = [{ role: 'system', content: system }, ...messages.slice(-8)];
 
   if (brain.kind === 'workers-ai') {

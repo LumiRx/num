@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { declaredColumns, drift } from './schema-drift.mjs';
+import { declaredColumns, drift, RETIRED } from './schema-drift.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = join(HERE, '..', 'worker', 'migrations');
@@ -135,6 +135,50 @@ test('the LIVE stored schema parses exactly — comments, CHECKs, ALTERs and all
     'network_fee_minor', 'network_host_id', 'quote_only', 'service_key',
     'source', 'starts_at', 'status',
   ]);
+});
+
+test('a table SQLite has rebuilt, and therefore quoted, is still found', () => {
+  // This one cost a false alarm on a real deploy. SQLite writes
+  // CREATE TABLE "name" when a table has been rebuilt, and the parser skipped
+  // every quoted name — so num_business_settings, which was plainly in
+  // production, was reported as a whole missing table.
+  //
+  // A checker that cries wolf about a table you can see with your own eyes is
+  // worse than no checker, because the next real finding gets waved away too.
+  const d = declaredColumns(['CREATE TABLE "num_business_settings" (\n  business_id TEXT PRIMARY KEY,\n  f_bookings INTEGER\n);']);
+  assert.ok(d.has('num_business_settings'), 'a quoted table name was skipped');
+  assert.deepEqual([...d.get('num_business_settings')].sort(), ['business_id', 'f_bookings']);
+  assert.deepEqual(drift(d, live({ num_business_settings: ['business_id', 'f_bookings'] })), []);
+});
+
+test('a column added by a quoted ALTER is found too', () => {
+  const d = declaredColumns([
+    'CREATE TABLE `t` (id TEXT);',
+    'ALTER TABLE "t" ADD COLUMN "note" TEXT;',
+  ]);
+  assert.deepEqual([...d.get('t')].sort(), ['id', 'note']);
+});
+
+test('a retired declaration is not reported, and its reason is stated', () => {
+  // 0004 declared a dispatch design that 0019 replaced. Nothing references
+  // those tables, they will never be applied, and reporting them every deploy
+  // trains everyone to scroll past the output.
+  const d = declaredColumns([
+    'CREATE TABLE IF NOT EXISTS num_dispatch_requests (id TEXT);',
+    'CREATE TABLE IF NOT EXISTS num_jobs (id TEXT);',
+  ]);
+  const found = drift(d, live({ num_jobs: ['id'] }));
+  assert.deepEqual(found, [], 'a retired table was reported as drift');
+  for (const [t, why] of Object.entries(RETIRED)) {
+    assert.ok(why.length > 30, `${t} is retired without a stated reason`);
+  }
+});
+
+test('a table missing from BOTH the database and the retired list IS reported', () => {
+  // The rule that keeps the retired list honest: silence has to be a decision
+  // somebody wrote down, never a default.
+  const d = declaredColumns(['CREATE TABLE num_something_new (id TEXT);']);
+  assert.deepEqual(drift(d, live({})), [{ table: 'num_something_new', missing: null }]);
 });
 
 test('the real migrations parse, and every host table is covered', () => {

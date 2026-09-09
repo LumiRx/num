@@ -1920,6 +1920,27 @@ export async function handleConsole(request, env, path) {
       if (path === '/admin/overview') return await adminOverview(env, url, request);
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);
       if (path === '/admin/claims/grant' && post) return await adminClaimGrant(env, request);
+      if (path === '/admin/neighbours' && !post) {
+        const { neighboursOf, neighbourEmail } = await import('./bizneighbours.mjs');
+        const out = await neighboursOf(env, {
+          placeId: clip(url.searchParams.get('place_id'), 64),
+          km: Number(url.searchParams.get('km')) || undefined,
+          limit: Number(url.searchParams.get('limit')) || undefined,
+        });
+        if (!out.ok) return json(out, 400);
+        // The letter is returned WITH the list, so whoever reviews the batch is
+        // reading the words that would actually go out rather than approving a
+        // count and trusting the copy.
+        return json({
+          ...out,
+          sample: neighbourEmail({
+            anchorName: out.anchor.name,
+            name: out.neighbours[0]?.name,
+            placeId: out.neighbours[0]?.place_id,
+            origin: new URL(request.url).origin.replace('app.', ''),
+          }),
+        });
+      }
       if (path === '/admin/claims/contacted' && post) return await adminClaimContacted(env, request);
       if (path === '/admin/resolve' && post) return await adminResolve(env, request);
       if (path === '/admin/submissions' && !post) return await adminSubmissions(env, url);

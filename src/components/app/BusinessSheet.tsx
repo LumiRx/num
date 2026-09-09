@@ -7,6 +7,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, StarIcon, XIcon } from '../../lib/icons';
 import { businessOverview, businessUpdate } from '../../lib/profile';
+import { nativePlatform } from '../../lib/native';
 import type { BusinessOverview } from '../../lib/profile';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -82,9 +83,32 @@ export default function BusinessSheet() {
               {data.hint ?? 'No verified listing on this account yet.'} We send a code to the number your business already
               publishes — never to one you type in. That is the whole point: receiving it proves the place is yours.
             </div>
-            <a href="https://itsnum.com/claim" target="_blank" rel="noreferrer" style={{ ...primary, display: 'block', marginTop: 14, textDecoration: 'none', color: '#fff' }}>
-              START A CLAIM
-            </a>
+            {/* GUIDELINE 4 — DESIGN. 30 Aug 2026, iOS 1.0(2):
+                "the user is taken to the default web browser to sign in or
+                register for an account, which provides a poor user
+                experience."
+                itsnum.com/claim IS a registration flow — it takes a business
+                name and sends a verification code — so linking out to it from
+                inside the app is the exact thing that rule forbids. There is
+                no in-app claim flow yet to point at instead, so on iOS the
+                link is not offered at all and the sheet says plainly where the
+                thing can be done.
+                Same decision, same reason, as the "Continue with Google" card
+                in Verify5arz.tsx: 4.0 is about LEAVING THE APP, and no
+                alternative login or nicer button fixes that.
+                When an in-app claim exists, replace this branch with it —
+                do not restore the outbound link. */}
+            {nativePlatform() === 'ios' ? (
+              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 14, lineHeight: 1.55 }}>
+                To claim a listing, visit itsnum.com/claim on a computer or
+                phone browser and sign in there. Once the code arrives on your
+                business number, your listing appears here automatically.
+              </div>
+            ) : (
+              <a href="https://itsnum.com/claim" target="_blank" rel="noreferrer" style={{ ...primary, display: 'block', marginTop: 14, textDecoration: 'none', color: '#fff' }}>
+                START A CLAIM
+              </a>
+            )}
           </>
         )}
 
