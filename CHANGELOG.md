@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.259 — 2026-09-09 20:21 UTC
+
+fix app-wide crash on undefined inbox.connects
+
+- commit `eeffc8e`
+
 ## 0.8.255 — 2026-09-07 20:57 UTC
 
 (no note given)
