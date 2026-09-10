@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.260 — 2026-09-10 22:10 UTC
+
+chat X safe-area, delete row, profile grouping
+
+- commit `1a5d5a0`
+
 ## 0.8.259 — 2026-09-09 20:21 UTC
 
 fix app-wide crash on undefined inbox.connects
