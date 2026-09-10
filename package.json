@@ -1,7 +1,7 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.262",
+  "version": "0.8.263",
   "engines": {
     "node": ">=20"
   },

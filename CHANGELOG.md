@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.263 — 2026-09-10 23:24 UTC
+
+delete opens the confirmation; identity hats, codes and connections
+
+- commit `4642107`
+
 ## 0.8.262 — 2026-09-10 22:57 UTC
 
 delete account was unreachable for anyone holding Stars
