@@ -736,7 +736,8 @@ export async function removePlan(planId: string): Promise<string | null> {
  */
 export async function deleteAccount(confirm = false): Promise<{
   ok?: boolean; needs_confirm?: boolean; inventory?: Record<string, number>;
-  blockers?: string[]; can_delete?: boolean; note?: string;
+  blockers?: string[]; forfeits?: string[]; can_delete?: boolean; note?: string;
+  deleted?: boolean; restart?: boolean;
 } | null> {
   const me = store.get().me;
   if (!me) return null;
@@ -747,9 +748,30 @@ export async function deleteAccount(confirm = false): Promise<{
       body: JSON.stringify({ me: me.id, ...(confirm ? { confirm: 'DELETE' } : {}) }),
     }).then((r) => r.json());
     if (out?.ok && out?.deleted) {
-      // Leave nothing behind on the device either — a "deleted" account whose
-      // data is still in localStorage is not deleted.
+      // START THEM OVER, PROPERLY.
+      //
+      // Dre, 10 Sep 2026: "when pressed it will delete the account and start
+      // them over again to enter in their number and create an account again."
+      //
+      // localStorage alone was not enough. The app also keeps state in
+      // sessionStorage and an in-memory store, and the service worker holds a
+      // cached shell — so a reload could hand the "deleted" member straight
+      // back their old session and the deletion would look like it had failed.
+      // Everything the device holds goes, then a hard navigation to the root,
+      // which boots onboarding at the phone-number screen because there is no
+      // longer a member to restore.
       try { localStorage.clear(); } catch { /* private mode */ }
+      try { sessionStorage.clear(); } catch { /* private mode */ }
+      try {
+        const c = (globalThis as unknown as { caches?: CacheStorage }).caches;
+        if (c) await c.keys().then((ks) => Promise.all(ks.map((k) => c.delete(k)))).catch(() => {});
+      } catch { /* no cache API */ }
+      try {
+        const sw = navigator.serviceWorker;
+        if (sw) await sw.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))).catch(() => {});
+      } catch { /* no service worker */ }
+      store.set({ me: null });
+      // replace(), not assign(): Back must not return to a deleted account.
       window.location.replace('/');
     }
     return out;

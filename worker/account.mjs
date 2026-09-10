@@ -274,13 +274,35 @@ async function accountDelete(env, req) {
   };
 
   // ── Things that must be settled first ────────────────────────────────
+  //
+  // ── 10 SEP 2026: A STARS BALANCE USED TO MAKE DELETION IMPOSSIBLE ──────
+  //
+  // Holding any Stars was a BLOCKER: "Spend it first — deleting would destroy
+  // it." Cash-out is switched off, so for anyone with a balance there was no
+  // way to spend it and therefore no way to ever leave. Dre held ★100 and hit
+  // exactly that wall: the button opened, listed a blocker, and offered no
+  // path forward. Every member with Stars was in the same trap.
+  //
+  // That is also an App Store 5.1.1(v) failure. Apple requires deletion to be
+  // completable IN THE APP; a precondition the user cannot satisfy is the same
+  // as not offering deletion at all.
+  //
+  // THE DISTINCTION THAT FIXES IT: block only what hurts SOMEBODY ELSE.
+  //   - A live errand leaves a real person waiting. Blocker.
+  //   - An open tab leaves the rest of the table short. Blocker.
+  //   - A Stars balance harms only the person choosing to leave, and it is
+  //     theirs to give up. That is a WARNING, not a wall.
+  //
+  // Both blockers left are transient and self-clearing — the member can finish
+  // or cancel an errand and settle a tab without talking to anyone at 5arz,
+  // which is what keeps this side of the guideline.
   const blockers = [];
+  // Things the member permanently loses by leaving. Shown, acknowledged,
+  // never used to refuse. `forfeits` is a list so the next one that comes
+  // along is a line of copy, not another dead end.
+  const forfeits = [];
   if (stars > 0) {
-    // Do NOT offer cash-out here. It is switched off, and pointing someone at
-    // a door that doesn't open is worse than saying nothing — they'd go
-    // looking, fail, and conclude the app is broken rather than that the
-    // feature isn't live.
-    blockers.push(`You still hold ★${stars.toLocaleString()}. Spend it first — deleting would destroy it.`);
+    forfeits.push(`Your ★${stars.toLocaleString()} goes with the account. It cannot be refunded or moved.`);
   }
   if (liveErrands > 0) {
     blockers.push(`${liveErrands} errand${liveErrands === 1 ? ' is' : 's are'} still running. Finishing or cancelling them first keeps the other person whole.`);
@@ -297,6 +319,7 @@ async function accountDelete(env, req) {
       confirm_with: 'DELETE',
       inventory,
       blockers,
+      forfeits,
       can_delete: blockers.length === 0,
       note: blockers.length
         ? 'A couple of things to settle first — none of them take long.'
@@ -304,7 +327,7 @@ async function accountDelete(env, req) {
     }, 200);
   }
 
-  if (blockers.length) return json({ ok: false, blockers, inventory }, 409);
+  if (blockers.length) return json({ ok: false, blockers, forfeits, inventory }, 409);
 
   // ── Do it ────────────────────────────────────────────────────────────
   // Plans this member OWNS are deleted with their contents; plans they merely
@@ -362,7 +385,12 @@ async function accountDelete(env, req) {
   }
 
   console.log('[account] deleted', me);
-  return json({ ok: true, deleted: true, removed: inventory });
+  // `restart: true` is the client's instruction to wipe the device and return
+  // to the phone-number screen. Dre, 10 Sep: "when pressed it will delete the
+  // account and start them over again to enter in their number and create an
+  // account again." Sent by the server so the app cannot decide on its own
+  // that a deleted account may stay signed in.
+  return json({ ok: true, deleted: true, restart: true, removed: inventory });
 }
 
 export async function handleAccount(request, env, path) {

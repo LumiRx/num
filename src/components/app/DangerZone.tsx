@@ -23,6 +23,10 @@ const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', font
 type Look = {
   inventory?: Record<string, number>;
   blockers?: string[];
+  // What the member permanently gives up by leaving — a Stars balance, today.
+  // Shown and acknowledged, NEVER used to refuse: see the note in
+  // worker/account.mjs. Holding Stars used to make deletion impossible.
+  forfeits?: string[];
   can_delete?: boolean;
   note?: string;
 };
@@ -63,7 +67,14 @@ export default function DangerZone() {
     setBusy(false);
     // On success the helper wipes local storage and reloads, so anything
     // rendered after this point means it did not happen.
-    if (out && !out.ok) setNote(out.note ?? 'That didn’t go through.');
+    // A refusal must say what to do about it. `note` is absent on the 409
+    // blocked response, so falling straight to a shrug told the member
+    // nothing — which is how a working guard reads as a broken button.
+    if (out && !out.ok) {
+      setNote(out.blockers?.length ? out.blockers.join(' ') : (out.note ?? 'That didn’t go through.'));
+      if (out.blockers?.length) setLook({ ...(look ?? {}), ...out, can_delete: false });
+    }
+    if (!out) setNote('Couldn’t reach Num just now. Nothing was deleted.');
   };
 
   if (stage === 'shut') {
@@ -124,6 +135,16 @@ export default function DangerZone() {
             ))}
           </div>
         </>
+      )}
+
+      {/* What they lose by leaving. Always shown when present, on the same
+          screen as the confirmation, so nobody discovers it afterwards. */}
+      {!!(look?.forfeits ?? []).length && (
+        <div style={{ marginTop: 12, borderRadius: 12, background: 'var(--field-bg)', padding: 11 }}>
+          {(look?.forfeits ?? []).map((f) => (
+            <div key={f} style={{ fontSize: 11.5, color: 'var(--ink)', lineHeight: 1.5 }}>· {f}</div>
+          ))}
+        </div>
       )}
 
       {blocked ? (
