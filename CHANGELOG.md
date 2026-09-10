@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.261 — 2026-09-10 22:11 UTC
+
+chat X safe-area, delete row, profile grouping
+
+- commit `d4ddfdf`
+
 ## 0.8.260 — 2026-09-10 22:10 UTC
 
 chat X safe-area, delete row, profile grouping
