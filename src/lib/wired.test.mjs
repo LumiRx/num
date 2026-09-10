@@ -22,6 +22,9 @@ import { readFileSync } from 'node:fs';
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const SOCIAL = read('./social.ts');
 const DANGER = read('../components/app/DangerZone.tsx');
+const PROFILE = read('../components/app/ProfileView.tsx');
+const TYPES = read('./types.ts');
+const DATA = read('./data.ts');
 const INDEX = read('../../worker/index.mjs');
 const ACCOUNT = read('../../worker/account.mjs');
 
@@ -79,5 +82,75 @@ describe('nothing in the account flow can be satisfied only by us', () => {
     const guard = ACCOUNT.slice(i, j);
     assert.ok(!/blockers\.push\(`You still hold/.test(guard), 'Stars must not block deletion');
     assert.match(guard, /forfeits\.push\(`Your ★/);
+  });
+});
+
+
+describe('one tap on the profile row produces the question', () => {
+  test('the row opens the panel, it does not merely scroll', () => {
+    // The bug: it scrolled to a control that stayed shut, so the page moved
+    // and nothing else happened. Scrolling without opening is not an action.
+    const i = PROFILE.indexOf('aria-label="Delete my account"');
+    assert.ok(i > 0, 'the profile row is missing');
+    const el = PROFILE.slice(Math.max(0, i - 900), i);
+    assert.match(el, /store\.set\(\{ deleteOpen: true \}\)/, 'the row must open the flow');
+    assert.match(el, /scrollIntoView/, 'and then bring it into view');
+  });
+
+  test('the flag exists in the store and starts closed', () => {
+    assert.match(TYPES, /deleteOpen: boolean;/);
+    assert.match(DATA, /deleteOpen: false,/);
+  });
+
+  test('DangerZone acts on the flag and clears it', () => {
+    assert.match(DANGER, /useApp\(\(s\) => s\.deleteOpen\)/);
+    assert.match(DANGER, /store\.set\(\{ deleteOpen: false \}\)/, 'a one-shot request, not a mode');
+    assert.match(DANGER, /void inspect\(\)/);
+  });
+
+  test('inspect is defined before the effect that calls it', () => {
+    // Both must also sit above `if (!me) return null` — a render with no
+    // member would otherwise register an effect closing over an unassigned
+    // const and throw out of the temporal dead zone.
+    const ins = DANGER.indexOf('const inspect = async');
+    const eff = DANGER.indexOf('const asked = useApp');
+    const ret = DANGER.indexOf('if (!me) return null;');
+    assert.ok(ins > 0 && eff > ins, 'inspect must be declared before the effect');
+    assert.ok(ret > eff, 'both must sit above the early return');
+  });
+
+  test('inspecting asks before it destroys', () => {
+    // "are you sure" then confirm, never a one-tap delete.
+    assert.match(DANGER, /deleteAccount\(false\)/);
+    assert.match(DANGER, /typed\.trim\(\)\.toUpperCase\(\) !== 'DELETE'\) return;/);
+  });
+});
+
+describe('identity routes exist for every identity call the app will make', () => {
+  const IDENTITY = readFileSync(new URL('../../worker/identity.mjs', import.meta.url), 'utf8');
+  const WORKER = readFileSync(new URL('../../worker/index.mjs', import.meta.url), 'utf8');
+
+  test('the worker routes /api/identity', () => {
+    assert.match(WORKER, /url\.pathname\.startsWith\('\/api\/identity'\)/);
+  });
+
+  test('every sub-route the app needs is answered', () => {
+    // Written before the UI, on purpose. A screen may only be built against a
+    // route that already answers — that is the whole point of the
+    // wire-before-you-ship rule.
+    for (const rest of ["'/mine'", "'/scan'", "'/connections'", "'/claim-host'", "'/claim-business'"]) {
+      assert.ok(WORKER.includes(`rest === ${rest}`), `/api/identity${rest} is not routed`);
+    }
+  });
+
+  test('every route reaches a real exported function', () => {
+    for (const fn of ['identityPayload', 'recordScan', 'connectionsFor', 'claimHost', 'claimBusinessByPhone', 'identitiesFor']) {
+      assert.ok(WORKER.includes(`m.${fn}(`), `${fn} is imported but never called`);
+      assert.ok(IDENTITY.includes(`export async function ${fn}(`), `${fn} is called but not exported`);
+    }
+  });
+
+  test('a member cannot read another identity’s connections', () => {
+    assert.match(WORKER, /not one of your identities/);
   });
 });

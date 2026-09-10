@@ -1536,6 +1536,52 @@ export default {
       });
     }
 
+    // ── HATS, CODES AND WHO YOU HAVE MET ────────────────────────────────
+    //
+    // One account, many hats: the member is the identity and a business or a
+    // host is something they own. Every route here keys off the member id the
+    // caller already signed in with, so a dashboard switch is a read rather
+    // than a second login. See worker/identity.mjs.
+    if (url.pathname.startsWith('/api/identity')) {
+      const m = await import('./identity.mjs');
+      const rest = url.pathname.slice('/api/identity'.length) || '/';
+      const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
+      const me = String(body.me ?? url.searchParams.get('me') ?? '').trim();
+      const base = url.origin;
+
+      // The hats this member wears, each with its stable code and link.
+      if (rest === '/' || rest === '/mine') {
+        if (!me) return json(400, { error: 'who?' });
+        return json(200, { identities: await m.identityPayload(env, me, base) });
+      }
+      // A scan, or the same code opened as a link. Both sides are recorded.
+      if (rest === '/scan' && request.method === 'POST') {
+        return json(200, await m.recordScan(env, {
+          code: body.code, scannerMemberId: me,
+          via: body.via === 'link' ? 'link' : 'qr', place: body.place ?? null,
+        }));
+      }
+      // Who an identity has met. A member may only read their own hats.
+      if (rest === '/connections') {
+        if (!me) return json(400, { error: 'who?' });
+        const type = url.searchParams.get('type') || 'member';
+        const id = url.searchParams.get('id') || me;
+        const mine = await m.identitiesFor(env, me);
+        if (!mine.some((h) => h.type === type && String(h.id) === String(id))) {
+          return json(403, { error: 'not one of your identities' });
+        }
+        return json(200, { connections: await m.connectionsFor(env, { ownerType: type, ownerId: id }) });
+      }
+      // Attaching an existing host or business to this account.
+      if (rest === '/claim-host' && request.method === 'POST') {
+        return json(200, await m.claimHost(env, { memberId: me, consoleKey: body.console_key }));
+      }
+      if (rest === '/claim-business' && request.method === 'POST') {
+        return json(200, await m.claimBusinessByPhone(env, { memberId: me, phone: body.phone }));
+      }
+      return json(404, { error: 'no such identity route' });
+    }
+
     if (url.pathname === '/api/brains') {
       const admin = env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
       // The probe costs Workers AI neurons and takes seconds, so it is gated

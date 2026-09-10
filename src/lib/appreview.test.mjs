@@ -75,14 +75,16 @@ describe('5.1.1(v) — deletion has to be findable, not merely present', () => {
     // It was at the bottom of a long scroll. Apple reported it missing and
     // Dre could not find it in his own app on 9 Sep. A destructive action
     // should be quiet, not hidden.
-    assert.match(PROFILE, /aria-label="Go to delete my account"/);
-    assert.match(PROFILE, /delete my account/i, 'the row must say what it does in words');
+    // The label is the action itself, not a direction to it: one tap now
+    // opens the confirmation rather than scrolling to a shut control.
+    assert.match(PROFILE, /aria-label="Delete my account"/);
+    assert.match(PROFILE, /store\.set\(\{ deleteOpen: true \}\)/, 'the row must open the flow');
     assert.match(PROFILE, /getElementById\('delete-account'\)/);
     assert.match(DANGER, /id="delete-account"/, 'the signpost needs something to point at');
   });
 
   test('the signpost sits above the danger zone it points to', () => {
-    assert.ok(PROFILE.indexOf('Go to delete my account') < PROFILE.indexOf('<DangerZone />'));
+    assert.ok(PROFILE.indexOf('aria-label="Delete my account"') < PROFILE.indexOf('<DangerZone />'));
   });
 });
 
@@ -114,8 +116,8 @@ describe('the profile reads as a page, not a stack of squares', () => {
   });
 
   test('the delete row is a line, not another big card', () => {
-    const i = PROFILE.indexOf('aria-label="Go to delete my account"');
-    const el = PROFILE.slice(i, i + 600);
+    const i = PROFILE.indexOf('aria-label="Delete my account"');
+    const el = PROFILE.slice(i, i + 900);
     assert.ok(!/\.\.\.card,/.test(el), 'it should not reuse the full card style');
     assert.match(el, /minHeight: 44/, 'still a full-size tap target');
   });

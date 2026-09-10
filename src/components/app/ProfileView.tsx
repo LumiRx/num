@@ -290,10 +290,18 @@ export default function ProfileView() {
           feature nobody can navigate to does not satisfy it. */}
       <div
         {...pressable(() => {
-          document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // OPEN IT, then scroll to it. Scrolling alone was the bug: the page
+          // moved, the control at the bottom was still shut, and from the
+          // member's side absolutely nothing had happened. Dre, 10 Sep 2026:
+          // "it scrolls to the bottom of the page and still does nothing".
+          // One tap must produce the question.
+          store.set({ deleteOpen: true });
+          requestAnimationFrame(() => {
+            document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
         })}
         role="button"
-        aria-label="Go to delete my account"
+        aria-label="Delete my account"
         className="glass lift"
         style={{
           margin: '2px 12px 0', padding: '11px 14px', borderRadius: 'var(--r-md, 12px)',

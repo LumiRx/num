@@ -12,8 +12,8 @@
 // And the server refuses outright while they hold Stars or stand in a live
 // errand or open tab, because deleting then destroys their own money or
 // strands somebody who is waiting on them.
-import { useState } from 'react';
-import { useApp } from '../../lib/store';
+import { useEffect, useState } from 'react';
+import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { deleteAccount } from '../../lib/social';
 
@@ -49,8 +49,6 @@ export default function DangerZone() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  if (!me) return null;
-
   const inspect = async () => {
     setBusy(true);
     const out = await deleteAccount(false);
@@ -59,6 +57,25 @@ export default function DangerZone() {
     setLook(out);
     setStage('look');
   };
+
+  // THE ROW AT THE TOP OF THE PROFILE OPENS THIS.
+  //
+  // Without it the row scrolled here and left the panel shut, so one tap
+  // produced a scroll and nothing else. The flag is consumed immediately —
+  // it is a one-shot request to open, not a mode — so closing the panel and
+  // reopening it behaves normally.
+  const asked = useApp((s) => s.deleteOpen);
+  useEffect(() => {
+    if (!asked) return;
+    store.set({ deleteOpen: false });
+    if (stage === 'shut' && !busy) void inspect();
+    // `inspect` is stable enough for this one-shot; re-running on every render
+    // would re-open a panel the member has just closed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked]);
+
+  if (!me) return null;
+
 
   const destroy = async () => {
     if (typed.trim().toUpperCase() !== 'DELETE') return;

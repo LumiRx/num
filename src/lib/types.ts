@@ -368,6 +368,13 @@ export interface AppState {
   theme: ThemeId;
   /** The owner console, open only for a claimed business. */
   businessOpen: boolean;
+  /**
+   * The delete-account confirmation, asked for from the row near the top of
+   * the profile. A flag rather than a scroll target: scrolling to a closed
+   * control and leaving it closed is what made the row look dead — the member
+   * arrived at the bottom of the page and nothing had happened.
+   */
+  deleteOpen: boolean;
   /** YOU lives in the header now, not the tab bar — it opens as an overlay. */
   profileOpen: boolean;
 

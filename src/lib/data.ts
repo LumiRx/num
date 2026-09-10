@@ -110,6 +110,7 @@ function baseState() {
     pushOn: false,
     theme: 'ember' as const,
     businessOpen: false,
+    deleteOpen: false,
     profileOpen: false,
     style: {},
     reactions: {},
