@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.262 — 2026-09-10 22:57 UTC
+
+delete account was unreachable for anyone holding Stars
+
+- commit `0313a43`
+
 ## 0.8.261 — 2026-09-10 22:11 UTC
 
 chat X safe-area, delete row, profile grouping
