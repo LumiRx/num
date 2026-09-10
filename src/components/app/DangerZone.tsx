@@ -79,7 +79,7 @@ export default function DangerZone() {
     // quiet, still last, still two confirmations away from destroying
     // anything, but no longer hiding.
     return (
-      <div style={{ ...card, padding: '2px 14px 0' }}>
+      <div id="delete-account" style={{ ...card, padding: '2px 14px 0' }}>
         <div
           {...pressable(() => { if (!busy) void inspect(); })}
           role="button"

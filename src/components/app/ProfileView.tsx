@@ -28,6 +28,29 @@ import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
+
+/**
+ * ELEVEN IDENTICAL SQUARES IS NOT A PAGE.
+ *
+ * Dre, 10 Sep 2026: "lets organize the home profile page its a bunch of ugly
+ * squares." He was right — every block used the same glass card, the same
+ * margin and the same radius, in one unbroken column, so nothing looked more
+ * or less important than anything else and the eye had nowhere to rest.
+ *
+ * The cards are unchanged. What was missing was RHYTHM: a quiet label every
+ * few blocks that says what the next group is for. Grouping is cheaper than
+ * redesigning and it is what actually makes a long settings page readable.
+ */
+const Group = ({ children }: { children: React.ReactNode }) => (
+  <div
+    style={{
+      margin: '26px 22px 6px', fontSize: 10, letterSpacing: '.16em',
+      fontWeight: 800, color: 'var(--ink-40)',
+    }}
+  >
+    {children}
+  </div>
+);
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
 const field: React.CSSProperties = {
   width: '100%', height: 42, borderRadius: 12, border: '1px solid var(--ink-12)', padding: '0 13px',
@@ -254,6 +277,36 @@ export default function ProfileView() {
       {/* Its own block UNDER the identity row. As a third flex child it was
           being squeezed into the name column and printing over "Dre". */}
       <AppleSignIn />
+
+      {/* FINDING IT IS THE FEATURE.
+          Account deletion has worked since August and sits at the very bottom
+          of a long profile, so in practice nobody reached it — Apple's
+          reviewer reported it missing (5.1.1(v), 30 Aug 2026) and on 9 Sep
+          Dre could not find it either, in his own app.
+          A destructive action should be quiet, not hidden. The button stays
+          exactly where it is, with all three of its frictions; this is a
+          signpost to it, near the top, where someone looking for it looks.
+          Apple's rule is that deletion must be discoverable in-app — a
+          feature nobody can navigate to does not satisfy it. */}
+      <div
+        {...pressable(() => {
+          document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        })}
+        role="button"
+        aria-label="Go to delete my account"
+        className="glass lift"
+        style={{
+          margin: '2px 12px 0', padding: '11px 14px', borderRadius: 'var(--r-md, 12px)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: 10, minHeight: 44,
+          background: 'transparent', border: '1px solid var(--line, rgba(0,0,0,.08))',
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-60)' }}>
+          Account &amp; data · delete my account
+        </div>
+        <ChevronRightIcon size={16} />
+      </div>
       <Verify5arz />
       {/* Finish a connection that opened in the browser instead of the app. */}
       <PairBridge installed />
@@ -287,6 +340,7 @@ export default function ProfileView() {
 
       <NotificationsCard />
 
+      <Group>TRAVEL</Group>
       <Section title="HOW YOU TRAVEL" summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
 
       {/* Passenger details live behind their own sheet rather than inline with
@@ -308,6 +362,7 @@ export default function ProfileView() {
         </div>
         <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
       </div>
+      <Group>TASTE</Group>
       <Section title="SO NUM GETS YOU RIGHT" summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
 
       {/* what Num has worked out on its own */}
@@ -338,6 +393,7 @@ export default function ProfileView() {
         )}
       </Collapsible>
 
+      <Group>ACCOUNT</Group>
       {/* business tools, only if they have one */}
       <div
         {...pressable(() => store.set({ businessOpen: true }))}

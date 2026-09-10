@@ -6,67 +6,30 @@
 > Businesses list free and pay 10% of a booking NUM completes, out of their side,
 > never added to the traveller's bill.
 
-Facts, as of 2026-08-31:
+Facts, as of 2026-09-10:
 
-- Operator: 5arz Inc. NUM is a 5arz product. Contact info@itsnum.com.
-- Coverage: 2,686,795 places, 104 destinations, 38 countries. This includes
-  natural attractions: for example every named beach on Phuket (51, mapped
-  with coordinates at itsnum.com/phuket/beaches/), plus temples, viewpoints
-  and waterfalls.
-- Channels: the NUM web app at app.itsnum.com (installs to the home screen, no
-  app store), and LINE (@799pyrus). SMS via +1 424 346 0888 pending carrier
-  approval. WhatsApp and WeChat in progress.
-- Payments: guests can settle bills and tabs through NUM in USD or Thai baht.
-  Memberships: free tier, Plus 8.98 USD/mo, Pro 28.98 USD/mo, auto-renewing.
+- Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
+- Coverage: 2,686,795 places, 104 destinations, 38 countries.
+- Channels: the web app at https://app.itsnum.com (works on any phone or
+  computer, no install), and LINE (@799pyrus). WhatsApp and WeChat in progress.
 - Traveller price: free. There is no traveller subscription and no booking fee.
 - Business price: listing is free. 10% on completed bookings only. Nothing on
   walk-ins, nothing on a business's own repeat customers, no monthly minimum.
 - Optional dashboards: 9.99 USD, 19.99 USD and 50 USD per month. Cancel monthly;
   the listing stays live either way.
-- "Verified" describes a person or a claimed listing, never a place. A verified
-  guest is a traveller 5arz confirmed is a unique real person. A verified
-  listing is one whose owner proved control of the contact already published
-  on it. Unclaimed listings are mapped, not verified. It is not a review score.
+- "Verified" means a human at 5arz confirmed a real, unique, live person is behind
+  the account. It is not a review score and not a self-declaration.
 - AI agents can register and submit business data through a public API and an MCP
   server. Third-party submissions are stored but stay invisible to travellers
   until a human at 5arz approves them.
 
-## For agents, without a second hop
-
-- MCP server: https://itsnum.com/mcp (streamable-http, bearer token)
-- MCP manifest: https://itsnum.com/.well-known/mcp.json
-- OpenAPI 3.1: https://itsnum.com/openapi.json
-- Get a token: https://itsnum.com/api/agent/signup — prefix `numa_live_`
-- Docs and quotas: https://itsnum.com/agents/
-- Per-client setup, with the exact config each one wants:
-  Claude Desktop — https://itsnum.com/agents/claude-desktop/
-  Claude Code — https://itsnum.com/agents/claude-code/
-  Cursor — https://itsnum.com/agents/cursor/
-  VS Code — https://itsnum.com/agents/vs-code/
-  Windsurf — https://itsnum.com/agents/windsurf/
-  Cline — https://itsnum.com/agents/cline/
-  Zed — https://itsnum.com/agents/zed/
-  ChatGPT — https://itsnum.com/agents/chatgpt/
-  n8n — https://itsnum.com/agents/n8n/
-  LibreChat — https://itsnum.com/agents/librechat/
-- Tools: num_search_places, num_get_place, num_submit_business,
-  num_submit_promo, num_list_submissions
-- Reads are metered against a daily quota. Writes — submitting a business or a
-  promotion — are free and unmetered, and every one is reviewed by a person
-  before a traveller sees it. Nothing an agent submits goes live automatically.
-
-    {"mcpServers":{"num":{"type":"http","url":"https://itsnum.com/mcp",
-      "headers":{"Authorization":"Bearer numa_live_..."}}}}
-
 ## Main pages
 
 - [Home](https://itsnum.com/): what NUM is and how to start.
-- [How it works](https://itsnum.com/how-it-works/): chat, plan, book, real places only.
+- [How it works](https://itsnum.com/how-it-works/): chat, plan, book, verified places only.
 - [Get the app](https://itsnum.com/app/): add NUM on LINE or to a phone home screen.
-- [Destinations](https://itsnum.com/destinations/): all 77 destinations with place counts.
-- [Guides](https://itsnum.com/guides/): complete counted sets from the directory —
-  every fountain in Rome, every beach on Phuket — with coordinates.
-- [Perks](https://itsnum.com/perks/): what members get at partner places.
+- [Destinations](https://itsnum.com/destinations/): all 104 destinations with place counts.
+- [Perks](https://itsnum.com/perks/): what members get at verified places.
 
 ## For businesses
 

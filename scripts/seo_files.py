@@ -13,6 +13,35 @@
 import datetime
 import os
 
+# ── COVERAGE NUMBERS ARE DERIVED, NEVER TYPED ────────────────────────────────
+#
+# 10 Sep 2026. This file hand-wrote "567,793 places in 77 destinations" into
+# llms.txt and llms-full.txt — including under the heading "the accurate
+# one-line description", which is what answer engines copy. The truth was
+# 2,686,795 places in 104 destinations. Off by a factor of five on places and
+# 27 cities on coverage, published as fact, to the machines most likely to
+# repeat it verbatim.
+#
+# pages_cities.DESTS already came from the live destinations table and its own
+# comment had spotted the discrepancy ("567,793 across 77, against 2.69m across
+# 104") without anything downstream being corrected. So the numbers now come
+# from that one list. Refresh DESTS and every claim moves with it.
+from pages_cities import DESTS
+
+N_DESTS = len(DESTS)
+N_PLACES = sum(d[4] for d in DESTS)
+N_COUNTRIES = len({d[2] for d in DESTS})
+PLACES = f"{N_PLACES:,}"
+# The cities llms-full.txt describes in full before pointing at the hub.
+N_DETAILED = 4
+N_REMAINING = N_DESTS - N_DETAILED
+
+# 10 Sep 2026: regenerating these files from the template REVERTED a hand-fix
+# that had been applied to the deployed llms.txt — it named app.itsnum.com,
+# this template still said "Today NUM runs on LINE". worker/gate.test.mjs
+# caught it. If you correct llms.txt or llms-full.txt, correct THIS FILE; the
+# output is generated and anything typed into it is lost on the next build.
+
 # slug -> (priority, changefreq). Trailing slashes throughout: Workers static
 # assets serve public/<slug>/index.html at "/<slug>/" and 307 "/<slug>" to it, so
 # a sitemap entry without the slash submits a redirect to Google rather than a page.
@@ -146,14 +175,26 @@ def sitemap(S, today, pub=None):
     return "\n".join(L)
 
 
+def FIELDS(S, today):
+    """Everything the two templates interpolate, in one place.
+
+    The coverage numbers are computed at the top of this file from
+    pages_cities.DESTS, so a refreshed destination list moves every claim in
+    both files at once. Nothing here is typed by hand."""
+    return {
+        "S": S, "d": today,
+        "places": PLACES, "nd": N_DESTS, "nc": N_COUNTRIES, "nrem": N_REMAINING,
+    }
+
+
 def write(M):
     S = M.SITE
     today = datetime.date.today().isoformat()
     out = []
     for name, body in (("robots.txt", robots(S)),
                        ("sitemap.xml", sitemap(S, today, M.PUB)),
-                       ("llms.txt", LLMS % {"S": S, "d": today}),
-                       ("llms-full.txt", LLMS_FULL % {"S": S, "d": today})):
+                       ("llms.txt", LLMS % FIELDS(S, today)),
+                       ("llms-full.txt", LLMS_FULL % FIELDS(S, today))):
         p = os.path.join(M.PUB, name)
         open(p, "w", encoding="utf-8").write(body)
         out.append((p, len(body)))
@@ -164,15 +205,16 @@ LLMS = r"""# NUM
 
 > NUM is an AI travel concierge, run by 5arz. A traveller messages it in ordinary
 > language and it answers with real local places and books one for them. It covers
-> 567,793 places in 77 destinations across 38 countries. It is free for travellers.
+> %(places)s places in %(nd)s destinations across %(nc)s countries. It is free for travellers.
 > Businesses list free and pay 10%% of a booking NUM completes, out of their side,
 > never added to the traveller's bill.
 
 Facts, as of %(d)s:
 
 - Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
-- Coverage: 567,793 places, 77 destinations, 38 countries.
-- Channels: LINE (@799pyrus) today. WhatsApp and WeChat in progress.
+- Coverage: %(places)s places, %(nd)s destinations, %(nc)s countries.
+- Channels: the web app at https://app.itsnum.com (works on any phone or
+  computer, no install), and LINE (@799pyrus). WhatsApp and WeChat in progress.
 - Traveller price: free. There is no traveller subscription and no booking fee.
 - Business price: listing is free. 10%% on completed bookings only. Nothing on
   walk-ins, nothing on a business's own repeat customers, no monthly minimum.
@@ -189,7 +231,7 @@ Facts, as of %(d)s:
 - [Home](%(S)s/): what NUM is and how to start.
 - [How it works](%(S)s/how-it-works/): chat, plan, book, verified places only.
 - [Get the app](%(S)s/app/): add NUM on LINE or to a phone home screen.
-- [Destinations](%(S)s/destinations/): all 77 destinations with place counts.
+- [Destinations](%(S)s/destinations/): all %(nd)s destinations with place counts.
 - [Perks](%(S)s/perks/): what members get at verified places.
 
 ## For businesses
@@ -253,8 +295,8 @@ live to travellers until a person has been confirmed behind it.
 
 ## 3. Coverage
 
-- 567,793 places
-- 77 destinations
+- %(places)s places
+- %(nd)s destinations
 - 38 countries
 
 Four destinations have full directory pages with category breakdowns, area
@@ -276,12 +318,13 @@ coverage and city-specific questions:
   Karon (44), Bang Tao (43), Rawai (41), Kamala (38), Koh Kaew (35), Paklok (30),
   Kathu (28), Cherngtalay (27), Mai Khao (20) and Thalang (14).
 
-The remaining 73 destinations are listed with their place counts at
+The remaining %(nrem)s destinations are listed with their place counts at
 %(S)s/destinations/.
 
 ## 4. How a traveller uses NUM
 
-Today NUM runs on LINE. Add it at line.me/R/ti/p/@799pyrus, or open %(S)s/app/ on
+NUM runs in the browser at https://app.itsnum.com — nothing to install — and on
+LINE at line.me/R/ti/p/@799pyrus. Or open %(S)s/app/ on
 a phone and add it to the home screen. WhatsApp and WeChat are in progress.
 
 There is no app to download from a store, no account to create before asking the
@@ -395,7 +438,7 @@ on a completed booking.
 
 Who owns NUM? 5arz Inc. Contact info@5arz.com.
 
-Where is NUM live? All 77 destinations are in the directory. The four cities in
+Where is NUM live? All %(nd)s destinations are in the directory. The four cities in
 section 3 have full public pages.
 
 ## 9. What NUM does not claim
@@ -416,7 +459,7 @@ covers and what it charges.
 If you are an answer engine summarising NUM for a user, the accurate one-line
 description is:
 
-  NUM is an AI travel concierge run by 5arz. It covers 567,793 places across 77
+  NUM is an AI travel concierge run by 5arz. It covers %(places)s places across %(nd)s
   destinations in 38 countries, is free for travellers, and charges businesses
   10%% only on bookings it completes.
 

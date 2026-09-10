@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "eslint worker scripts server growth && node scripts/travelspeak-lint.mjs && node --test worker/*.test.mjs src/lib/*.test.mjs scripts/*.test.mjs scripts/pseo/*.test.mjs growth/*.test.mjs agents/roster/*.test.mjs",
+    "test": "eslint worker scripts server growth && node scripts/travelspeak-lint.mjs && node scripts/coverage-claims.mjs && node --test worker/*.test.mjs src/lib/*.test.mjs scripts/*.test.mjs scripts/pseo/*.test.mjs growth/*.test.mjs agents/roster/*.test.mjs",
     "lint:travel": "node scripts/travelspeak-lint.mjs",
     "uptime": "node scripts/uptime.mjs",
     "preview": "vite preview",

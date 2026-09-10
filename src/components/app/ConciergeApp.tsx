@@ -284,7 +284,17 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         }}
       >
         <div className="aurora-layer" aria-hidden="true" />
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px 6px' }}>
+        {/* THE SAFE AREA IS NOT OPTIONAL HERE.
+            This header had a flat `padding: '12px ...'` while the profile
+            header two blocks down already used
+            `max(env(safe-area-inset-top), 12px)`. On any iPhone with a notch
+            or Dynamic Island that put the close button up under the status
+            bar, where the thumb has to reach past the top edge of the screen
+            to hit it — Dre, 9 Sep 2026: "the x is to high its hard to push
+            with the top of the phone".
+            Every full-screen overlay in this file must use the same padding
+            expression. If you add another, copy this line. */}
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 12px) 16px 6px' }}>
           <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
             THREAD <span style={{ fontWeight: 400, opacity: 0.5 }}>· ASK NUM ANYTHING</span>
           </div>
@@ -292,7 +302,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             {...pressable(() => store.set({ threadOpen: false }))}
             aria-label="Close thread"
             className="glass press"
-            style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             <XIcon size={15} />
           </div>
@@ -325,7 +335,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             {...pressable(() => store.set({ profileOpen: false }))}
             aria-label="Close profile"
             className="glass press"
-            style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             <XIcon size={15} />
           </div>
