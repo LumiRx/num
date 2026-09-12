@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.266 — 2026-09-12 16:24 UTC
+
+contact required at signup — mobile, email, or Apple
+
+- commit `7960d78`
+
 ## 0.8.265 — 2026-09-12 16:22 UTC
 
 host book: clients, requests and agenda in one call
