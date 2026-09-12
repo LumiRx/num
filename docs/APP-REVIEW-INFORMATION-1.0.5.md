@@ -52,11 +52,20 @@ published keys. The third-party "Continue with Google" option is no longer
 offered on iOS at all.
 
 WHAT THE REVIEWER SHOULD TRY
-The concierge is usable without signing in. Suggested walkthrough:
-  1. Open the app and enter any first name.
-  2. Ask: "where should we eat tonight near kata beach?"
-  3. Ask: "book us a table at 8 — four of us"   (shows the booking hand-off)
-  4. Ask: "flights to bangkok on friday?"       (live fares, read-only)
+About a second after the app opens, a sheet appears asking for a name and a
+way to reach you. IT CAN BE DISMISSED with the X in its top-right corner, and
+the concierge below is fully usable without an account, without a phone
+number, and without any payment. The sheet exists because bookings, shared
+plans and group bills need a way to reach the member; it does not gate the
+concierge itself.
+
+Suggested walkthrough, after dismissing that sheet:
+  1. Ask: "where should we eat tonight near kata beach?"
+  2. Ask: "book us a table at 8 - four of us"   (shows the booking hand-off)
+  3. Ask: "flights to bangkok on friday?"       (live fares, read-only)
+
+To review account deletion you will need to sign in, using the demo number and
+code above. Deletion is an account feature and does not exist for a guest.
 
 PLEASE NOTE ON TIMING: the first answer to any new question takes 20 to 40
 seconds. The app is searching a directory of 1.8 million verified venues and
