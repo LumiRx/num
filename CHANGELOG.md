@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.269 — 2026-09-12 17:11 UTC
+
+log why a bill-settled email did or did not send
+
+- commit `13bd25b`
+
 ## 0.8.268 — 2026-09-12 16:57 UTC
 
 guest bill receipt and venue settle confirmation
