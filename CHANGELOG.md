@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.264 — 2026-09-12 15:10 UTC
+
+business QR page, app-host identity links, crash capture, claim-by-phone hole closed
+
+- commit `83b498e`
+
 ## 0.8.263 — 2026-09-10 23:24 UTC
 
 delete opens the confirmation; identity hats, codes and connections
