@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.283 — 2026-09-12 20:17 UTC
+
+LGT fee disclosure + release stale-lock guard
+
+- commit `6605b6d`
+
 ## 0.8.282 — 2026-09-12 19:57 UTC
 
 (no note given)
