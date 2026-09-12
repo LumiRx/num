@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.270 — 2026-09-12 17:51 UTC
+
+log why a bill-settled email did or did not send
+
+- commit `1324b89`
+
 ## 0.8.269 — 2026-09-12 17:11 UTC
 
 log why a bill-settled email did or did not send
