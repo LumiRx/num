@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.268 — 2026-09-12 16:57 UTC
+
+guest bill receipt and venue settle confirmation
+
+- commit `cea6325`
+
 ## 0.8.267 — 2026-09-12 16:39 UTC
 
 host book view: who is waiting, and the month ahead
