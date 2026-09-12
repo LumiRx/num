@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.285 — 2026-09-12 22:59 UTC
+
+(no note given)
+
+- commit `ca20f1b`
+
 ## 0.8.284 — 2026-09-12 20:33 UTC
 
 (no note given)
