@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.277 — 2026-09-12 19:29 UTC
+
+site said 77 destinations, truth is 104 - corrected and guarded
+
+- commit `13759e7`
+
 ## 0.8.276 — 2026-09-12 19:07 UTC
 
 contact required at signup — mobile, email, or Apple
