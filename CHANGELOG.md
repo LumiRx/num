@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.282 — 2026-09-12 19:57 UTC
+
+(no note given)
+
+- commit `7dfce75`
+
 ## 0.8.281 — 2026-09-12 19:53 UTC
 
 host book: clients, requests and agenda in one call
