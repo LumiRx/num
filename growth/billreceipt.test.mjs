@@ -55,9 +55,27 @@ test('the venue is emailed once per bill, not once per tap of Settle', () => {
 
 test('settling does not make staff wait on an email', () => {
   // Staff are standing at a table with a guest in front of them.
-  assert.match(worker, /ctx\.waitUntil\(mailBillSettled\(env, who, b\.token, out\)/);
-  assert.match(worker, /\.catch\(\(\) => \{\}\)/,
+  assert.match(worker, /ctx\.waitUntil\(\s*\n\s*mailBillSettled\(env, who, b\.token, out\)/);
+  assert.match(worker, /\.catch\(\(e\) => console\.error\("billsettled mail threw"/,
     'a failed send must never turn a successful settle into an error');
+});
+
+test('a send that does not happen leaves a reason behind', () => {
+  // Found the hard way: the first real end-to-end settle in production sent
+  // nothing and the outcome was discarded, so there was no way to tell a
+  // refused send from one that never ran.
+  assert.match(worker, /console\.error\("billsettled mail not sent"/,
+    'a failed send must say so — a swallowed error reads as a working feature');
+  assert.match(worker, /console\.log\("billsettled mail sent"/,
+    'a success needs the provider id, or nobody can find the message later');
+  assert.ok(!/mailBillSettled\(env, who, b\.token, out\)\.catch\(\(\) => \{\}\)/.test(worker),
+    'the silent catch is back');
+});
+
+test('mailBillSettled names which precondition stopped it', () => {
+  const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  assert.match(fn, /bill not found: /);
+  assert.match(fn, /no address on file for /);
 });
 
 test('the venue is told plainly whether NUM will invoice on this bill', () => {
@@ -71,7 +89,7 @@ test('the venue is told plainly whether NUM will invoice on this bill', () => {
 
 test('no address on file means no send, not a crash', () => {
   const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
-  assert.match(fn, /if \(!bill\?\.venue_email\) return/,
+  assert.match(fn, /if \(!bill\.venue_email\) return/,
     'four of six live businesses have no email on file');
 });
 

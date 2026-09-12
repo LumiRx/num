@@ -5,6 +5,23 @@ On 2026-08-04 a session spent an hour walking toward a push that would have
 destroyed ~89 commits, and the rule forbidding it was sitting unread in
 `AGENTS.md` the whole time. Knowledge that isn't loaded isn't knowledge.
 
+## Read `STATUS.md` first
+
+`STATUS.md` in this directory is the ledger: one screen saying what is live,
+what is in flight, what is known broken, and the handful of facts that cost a
+session real tokens to rediscover — which of the two workers serves a route,
+why `/api/admin/claims` answers 404, that there are three claim tables, that
+the repo is fine and a Cowork shell simply cannot see `/Users`.
+
+**Read it before opening any source file.** Sessions have spent thousands of
+tokens re-deriving things already written there, and one of them drew a wrong
+conclusion four times running from a boundary of its own sandbox.
+
+Update it, and add a line to `RUNS.log`, at the end of every run. A ledger
+nobody updates is worse than none, because the next session trusts it.
+`recipes/` holds the procedures worth not re-inventing — start with
+`recipes/deploy.md`.
+
 **Read `AGENTS.md` in this directory now.** It is the canonical convention file
 (deploy discipline, branch policy, the binding §8 rules from the CTO handoff).
 

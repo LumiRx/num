@@ -8771,7 +8771,17 @@ async function qrBillSettle(req, env, url, ctx) {
   // Only on a settle that actually changed something. `already` means a second
   // tap on the same bill, and a venue does not need two emails for one dinner.
   if (out.ok && out.settled && ctx?.waitUntil) {
-    ctx.waitUntil(mailBillSettled(env, who, b.token, out).catch(() => {}));
+    ctx.waitUntil(
+      mailBillSettled(env, who, b.token, out)
+        .then((r) => {
+          if (!r?.ok) console.error("billsettled mail not sent", b.token, JSON.stringify(r));
+          else console.log("billsettled mail sent", b.token, (r.ids || []).join(","));
+        })
+        // Still never allowed to fail the settle — staff are at a table — but
+        // the reason has to survive, or the next person debugging this has
+        // exactly what I had: a correct-looking settle and a silent inbox.
+        .catch((e) => console.error("billsettled mail threw", b.token, String(e).slice(0, 300))),
+    );
   }
   return J(out, out.ok ? 200 : 404);
 }
@@ -8800,7 +8810,8 @@ async function mailBillSettled(env, who, token, out) {
       WHERE l.token = ?1`,
   ).bind(String(token || "").toUpperCase()).first().catch(() => null);
 
-  if (!bill?.venue_email) return { ok: false, reason: "no address on file" };
+  if (!bill) return { ok: false, reason: "bill not found: " + String(token).slice(0, 40) };
+  if (!bill.venue_email) return { ok: false, reason: "no address on file for " + bill.venue_name };
 
   const money = bill.amount ? bill.currency + " " + bill.amount : "the bill";
   const fee = out.billed
