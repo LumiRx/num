@@ -2002,9 +2002,45 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     });
   };
 
+  /* A card whose endpoints are not there HIDES ITSELF.
+   *
+   * This is not defensive decoration. On 12 Sep this exact card went live on
+   * itsnum.com while num-growth — which serves every endpoint it calls — had
+   * not been deployed, because the console and the API ship from two different
+   * workers and one of them went out alone. For as long as that lasted, a host
+   * opening their console saw a Fleet section where every single button did
+   * nothing at all.
+   *
+   * A section that is absent tells a host the truth: this is not ready yet. A
+   * section full of dead buttons tells them the product is broken. So when the
+   * fleet endpoint is not answering, the card comes off the page and the
+   * console's other panels carry on working. */
+  function fleetUnavailable(why) {
+    console.warn('[fleet] hiding the card:', why);
+    var card = $('fleetCard');
+    if (card) card.classList.add('hide');
+  }
+
   function loadFleet() {
-    api('assets').then(function (d) { if (d && d.ok) paintFleet(d); }).catch(function () {});
-    api('asset-holds').then(function (d) { if (d && d.ok) paintHolds(d.holds || []); }).catch(function () {});
+    // fetch() does not reject on a 404 — it resolves with ok:false, and the
+    // body is the site's 404 HTML, so .json() is what throws. Both paths must
+    // lead to the same place or the card stays up with nothing behind it.
+    fetch('/api/host/assets?k=' + encodeURIComponent(K), {
+      headers: { 'content-type': 'application/json' },
+    }).then(function (r) {
+      if (r.status === 404 || r.status === 503) {
+        fleetUnavailable('endpoint returned ' + r.status + ' — num-growth is probably not deployed');
+        return null;
+      }
+      return r.json();
+    }).then(function (d) {
+      if (!d) return;
+      if (!d.ok) return fleetUnavailable(d.error || 'endpoint refused');
+      paintFleet(d);
+      api('asset-holds').then(function (h) { if (h && h.ok) paintHolds(h.holds || []); }).catch(function () {});
+    }).catch(function (e) {
+      fleetUnavailable('could not parse the response: ' + (e && e.message));
+    });
   }
 
   function boot(quiet) {

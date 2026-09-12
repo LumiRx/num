@@ -2030,6 +2030,51 @@ export default {
 
     // Twilio's inbound-SMS webhook and the member's inbox view of it.
     if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+
+    // ── THE PHONE CALL THAT READS AN ORDER OUT ──────────────────────────
+    //
+    // Two routes, both spoken to by Twilio rather than by a person.
+    //
+    //   GET  /api/orders/voice/<id>   the TwiML: read the order, take a key
+    //   POST /api/orders/voice/<id>   the keypress comes back here
+    //
+    // For the shops nothing else reaches — a landline in a kitchen, no
+    // smartphone, no app, no data. See worker/orderalert.mjs.
+    if (url.pathname.startsWith('/api/orders/voice/')) {
+      const m = await import('./orderalert.mjs');
+      const orderId = decodeURIComponent(url.pathname.slice('/api/orders/voice/'.length));
+      const xml = (body) => new Response(body, { headers: { 'Content-Type': 'text/xml; charset=utf-8' } });
+
+      if (request.method === 'POST') {
+        const form = new URLSearchParams(await request.text());
+        const digit = String(form.get('Digits') ?? '').trim();
+        const from = form.get('To') || form.get('Called') || form.get('From');
+        if (digit !== '1' && digit !== '2') {
+          return xml('<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, I did not catch that. The order is waiting in your Num console.</Say></Response>');
+        }
+        const out = await m.acceptFrom(env, {
+          from, orderId, decision: digit === '1' ? 'accept' : 'decline',
+        }).catch(() => ({ ok: false }));
+        return xml(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>${
+          out?.ok
+            ? (digit === '1' ? 'Accepted. The guest has been told. Thank you.' : 'Declined. The guest has been told.')
+            : 'That could not be recorded. The order is waiting in your Num console.'
+        }</Say></Response>`);
+      }
+
+      const o = await env.DB?.prepare(
+        `SELECT o.short_code, o.total_cs, b.name AS partner FROM num_orders o
+           JOIN businesses b ON b.id = o.business_id WHERE o.id = ?1`,
+      ).bind(orderId).first().catch(() => null);
+      if (!o) return xml('<?xml version="1.0" encoding="UTF-8"?><Response><Say>That order is no longer waiting.</Say></Response>');
+      const { results: items } = await env.DB.prepare(
+        'SELECT name, qty FROM num_order_items WHERE order_id = ?1 LIMIT 12',
+      ).bind(orderId).all().catch(() => ({ results: [] }));
+      return xml(m.orderTwiml({
+        short: o.short_code, partner: o.partner, items: items ?? [], total: o.total_cs,
+        callbackUrl: `${url.origin}/api/orders/voice/${encodeURIComponent(orderId)}`,
+      }));
+    }
     // WhatsApp as a front door — same brain, same memory, same thread as the
     // app. Signed by Twilio, dark until WHATSAPP_ENABLED + TWILIO_WHATSAPP_FROM
     // are set. Its concierge turn rides on handleNum in-process; the per-sender
@@ -2734,6 +2779,30 @@ export default {
     // hour and the number it recomputes changes a few times a day, so eleven
     // of those passes would be a write over 2.5M-row table for nothing. See
     // worker/learn.mjs — this is the only closed loop NUM has.
+    // ── AN ORDER NOBODY ANSWERED ────────────────────────────────────────
+    //
+    // The text and the webhook went out the moment the order landed. If it is
+    // still unanswered a few minutes later, the phone rings — because at that
+    // point a guest has been staring at "sent to the restaurant" for four
+    // minutes and the quiet channels have had their chance.
+    //
+    // Voice only, and once per order: a venue rung twice about the same order
+    // stops answering the phone to us. See worker/orderalert.mjs.
+    ctx.waitUntil(
+      import('./orderalert.mjs')
+        .then(async (m) => {
+          const waiting = await m.needsEscalation(env);
+          for (const o of waiting) {
+            await m.alertOrder(env, {
+              id: o.id, short: o.short_code, business_id: o.business_id,
+              partner: o.partner, items: [], total: o.total_cs, fulfilment: o.fulfilment,
+            }, { escalation: true }).catch(() => {});
+          }
+          if (waiting.length) console.warn(`[orderalert] escalated ${waiting.length} unanswered order(s)`);
+        })
+        .catch((e) => console.error('[orderalert]', e?.message ?? e)),
+    );
+
     // ── THE MORNING DIGEST ──────────────────────────────────────────────
     //
     // The other half of the bargain struck in worker/alerttriage.mjs: a judge

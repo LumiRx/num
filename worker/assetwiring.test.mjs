@@ -188,9 +188,13 @@ test('the inbound handler actually calls the ingest and passes the bucket', () =
 });
 
 test('a supplier who texts a photo always gets an answer', () => {
-  const tail = SMS.slice(SMS.indexOf('if (media) {'));
-  assert.match(tail.slice(0, 300), /askWhichAsset\(media\)/);
-  assert.match(tail.slice(0, 300), /return xmlReply\(reply\)/);
+  // Sliced to the end of the BLOCK, not to a character count — a window
+  // measured in characters shrinks whenever somebody adds a comment, and a test
+  // that fails for a comment gets deleted rather than fixed.
+  const start = SMS.indexOf('if (media) {');
+  const tail = SMS.slice(start, SMS.indexOf('return xmlOk();', start) + 20);
+  assert.match(tail, /askWhichAsset\(media, \{ member \}\)/);
+  assert.match(tail, /return xmlReply\(reply\)/);
 });
 
 test('PHOTOS is bound on BOTH workers — one half is a broken feature', () => {
@@ -266,4 +270,60 @@ test('the served image is never sniffable and never cached while pending', () =>
   const img = ASSETS.slice(ASSETS.indexOf('export async function assetImage'));
   assert.match(img, /'x-content-type-options': 'nosniff'/);
   assert.match(img, /private, no-store/);
+});
+
+/* ───────── link 8: WhatsApp, the door that works outside North America ──── */
+
+test('the WhatsApp webhook also accepts a photo with no caption', () => {
+  const WA = read('./whatsapp.mjs');
+  assert.ok(!WA.includes("if (!text) return xmlOk();"),
+    'the old guard is back: a WhatsApp photo with no caption is being dropped');
+  assert.match(WA, /const numMedia = Number\(params\.get\('NumMedia'\)/);
+  assert.match(WA, /if \(!text && !numMedia\) return xmlOk\(\);/);
+});
+
+test('WhatsApp uses the same ingest as SMS, and records itself as whatsapp', () => {
+  const WA = read('./whatsapp.mjs');
+  assert.match(WA, /import \{ ingestMedia, askWhichAsset \} from '\.\/inboundmedia\.mjs'/);
+  assert.match(WA, /provider: 'whatsapp'/);
+  // And the schema permits that value, which is the half that fails silently.
+  assert.match(MIG, /CHECK \(provider IN \('twilio','whatsapp','upload'\)\)/);
+});
+
+test('WhatsApp passes the bucket, so a photo is not dropped for want of a binding', () => {
+  assert.match(read('./whatsapp.mjs'), /bucket: env\.PHOTOS/);
+});
+
+test('a known member who is not a supplier is never told we do not know them', () => {
+  // The reply function must return null for that case, so the message falls
+  // through to the concierge instead of getting a fleet answer.
+  assert.match(MEDIA, /if \(member\) return null;/);
+  const sms = SMS.slice(SMS.indexOf('const reply = askWhichAsset'));
+  assert.match(sms.slice(0, 120), /\{ member \}/, 'sms.mjs must pass the member into the decision');
+  assert.match(read('./whatsapp.mjs'), /askWhichAsset\(media, \{ member \}\)/);
+});
+
+/* ── link 9: the card refuses to exist when its endpoints do not ────────── */
+
+test('the fleet card hides itself when the API is not deployed', () => {
+  // The failure this guards against happened for real: the console and the API
+  // ship from two different workers, num-console went out alone, and the card
+  // was live on itsnum.com with every button hitting a 404.
+  assert.match(CONSOLE, /function fleetUnavailable\(/);
+  assert.match(CONSOLE, /card\.classList\.add\('hide'\)/);
+  const load = CONSOLE.slice(CONSOLE.indexOf('function loadFleet()'));
+  const body = load.slice(0, load.indexOf('\n  }') + 4);
+  assert.match(body, /r\.status === 404/, 'a 404 must take the card down');
+  assert.match(body, /r\.status === 503/, 'an unbound bucket must take the card down too');
+  // fetch() resolves on a 404 rather than rejecting, so the catch alone is not
+  // enough — both the status check and the catch must lead to fleetUnavailable.
+  assert.ok((body.match(/fleetUnavailable\(/g) || []).length >= 3,
+    'every way this can fail must hide the card');
+});
+
+test('a failing fleet does not take the rest of the console with it', () => {
+  const load = CONSOLE.slice(CONSOLE.indexOf('function loadFleet()'));
+  const body = load.slice(0, load.indexOf('\n  }') + 4);
+  assert.ok(!/location\.reload|showGate/.test(body),
+    'one broken panel must never blank the page a host works in');
 });

@@ -384,8 +384,27 @@ export async function createOrder(env, { businessId, memberId, items, address, n
     if (/UNIQUE.*short_code/i.test(String(e?.message ?? e))) { short = codeFor(); return createOrder(env, { businessId, memberId, items, address, note, channel }); }
     return { ok: false, error: String(e?.message ?? e) };
   }
-  // Tell the partner (their console lists it; email if they set one) and
-  // put the receipt in the guest's in-app queue.
+  // ── TELL THE KITCHEN, NOT THE INBOX ─────────────────────────────────────
+  //
+  // Until 12 Sep 2026 the only thing below this line was an email, and only
+  // when the venue had set one. A restaurant at 7pm is not reading email and
+  // is not refreshing a dashboard, so an order could sit unseen while the
+  // guest watched "sent to the restaurant" and heard nothing.
+  //
+  // orderalert.mjs fans out to every channel the venue has: a signed webhook
+  // for anyone with a POS, a text they can reply Y to, and — for the shops
+  // nothing else reaches — a phone call that reads the order out and takes a
+  // keypress. It never throws and one dead channel never stops another.
+  try {
+    const { alertOrder } = await import('./orderalert.mjs');
+    await alertOrder(env, {
+      id, short, business_id: businessId, partner: partner.name, items: lines,
+      subtotal, fee, total, fulfilment: 'delivery',
+      area: clip(addr.split(',').slice(-2).join(',').trim(), 80), note: clip(note, 200),
+    });
+  } catch (e) { console.warn('[order] alert fan-out', e?.message ?? e); }
+
+  // The email stays, demoted: it is the paper trail, not the alert.
   try {
     const { prefs } = await import('./biznotify.mjs');
     const n = await prefs(env, businessId).catch(() => null);

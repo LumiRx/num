@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,072 green, 0 lint errors, tsc clean |
+| Tests | 4,227 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -25,15 +25,53 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 
 ## In flight
 
-- **Luxury asset layer** (12 Sep) — migration `0021_luxury_assets.sql` + `worker/assetintegrity.mjs`
-  built and tested (47 tests). Four tables: `num_assets` (yachts, jets, cars, villas with spec,
-  home port, rate and settle mode), `num_asset_photos` (moderated), `num_asset_holds` (the table
-  that stops one hull being sold twice), `num_inbound_media` (a photo texted in before we know
-  which boat it is of). Service keys `yacht` / `jet` / `provisioning` added, and the three copies
-  of that list are now bound by `worker/hostservices.test.mjs`. **Not yet built:** R2 binding, the
-  Twilio MMS inbound route, endpoints, console cards.
+- **Luxury asset layer** (12 Sep) — WIRED END TO END, awaiting Dre's deploy. Migration `0021`
+  applied in production (all four tables and both ALTERs verified live). R2 bucket
+  `num-asset-photos` created and bound as `PHOTOS` on **both** `num-app` (writes: a photo arrives
+  by text) and `num-growth` (reads: the console serves and moderates it). `worker/inboundmedia.mjs`
+  is the ingest; `growth/hostassets.mjs` is the five endpoints (`/api/host/assets`,
+  `asset-photo`, `asset-holds`, `asset-image`, `offerable`) plus the public `/p/asset/:id`;
+  the Fleet card in `public/host/index.html` is the console. 4,227 tests green.
+
+  **Two live bugs fixed on the way through.** `worker/sms.mjs` and `worker/whatsapp.mjs` both had
+  `if (!text) return xmlOk()` — a photo sent with no caption was dropped before anything saw it,
+  and Twilio recorded a 200. Every photo-only message either webhook has ever received was lost,
+  silently, on both channels.
+
+  **The regional limit, which decides how this is actually used.** Twilio receives inbound MMS in
+  only a handful of regions and answers error 30011 elsewhere, so a supplier on a Thai or UK number
+  cannot text a photo to an MMS number at all — **WhatsApp is the working door outside North
+  America**, which is why it is wired too. Turning it on for suppliers is a config job
+  (`WHATSAPP_ENABLED` + the Twilio sandbox or a WhatsApp sender), not a code one.
+
+  **Still to build:** supplier create/invite endpoints (0019's tables have no endpoints yet, so a
+  host's own assets are owned by the host as their own supplier for now); the member-facing
+  charter browse that consumes `/api/host/offerable`; Duffel for flights.
 
 - **Host job board** — `growth/hostjobs.mjs` shaping layer built and tested (30 tests). Routes, `num_host_jobs` table, member-facing section and console card still to build. Three product questions open, below.
+
+## The console/API split — a live break on 12 Sep, and the guard for it
+
+`public/host/index.html` ships from **num-console**. Every endpoint it calls ships from
+**num-growth**. Two workers, two deploys, so one can go out alone — and on 12 Sep one did: the
+Fleet card was live on itsnum.com while `/api/host/assets` answered 404. A host opening their
+console found a section where every button did nothing.
+
+**No test can catch this.** The code was correct in both workers; only one of them was deployed.
+The live site is the only thing that knows.
+
+Two guards now exist:
+
+1. **`scripts/console-api-agree.mjs`** — reads the LIVE console, extracts every endpoint it calls,
+   and asks the live API about each one. A 404 fails the deploy. It retries a 404 as POST, because
+   several host endpoints are POST-only and reporting those as missing is how a check earns a
+   reputation for crying wolf and gets switched off. Wired into `scripts/deploy-host-system.sh`.
+   Run it any time: `node scripts/console-api-agree.mjs`.
+2. **The Fleet card takes itself off the page** when its endpoints answer 404 or 503. A section
+   that is absent says "not ready yet"; a section of dead buttons says the product is broken.
+
+If you deploy by hand, deploy **both** or run the script. `npx wrangler deploy` alone ships the
+console without its API.
 
 ## Open decisions (Dre's, not mine)
 

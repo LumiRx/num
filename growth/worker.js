@@ -363,6 +363,7 @@ import {
   readSettings, writeSettings, settingHistory,
 } from './venuesettings.mjs';
 import { CURRENCY_BY_COUNTRY, foodAndDrink } from '../worker/commission.mjs';
+import { fridayRules } from './fridayrules.mjs';
 import { geocode, geocodeReady } from '../worker/geocode.mjs';
 import {
   hostAssets, hostAssetPhoto, hostAssetHolds, assetImage, offerableAssets,
@@ -1086,6 +1087,10 @@ const WORKER = {
 
       if (p === "/api/growth/health") return health(env);
       if (p === "/num-capture.js") return captureAsset();
+      // The Friday draw's Official Rules. Every post about the draw links here,
+      // and a free prize draw is only lawful if the terms are stated in public —
+      // so if this route is down, the posts stop.
+      if (p === "/friday-rules" || p === "/friday-rules/") return fridayRules();
 
       if (p === "/api/ev" && req.method === "POST")
         return withCors(req, await ev(req, env));

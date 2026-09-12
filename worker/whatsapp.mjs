@@ -34,6 +34,10 @@
 // pattern. A half-configured door stays shut.
 
 import { validSignature } from './sms.mjs';
+// Photos sent on WhatsApp go through the same module the SMS webhook uses —
+// one ingest, two doors, so a photo cannot behave differently depending on
+// which app the supplier happened to open.
+import { ingestMedia, askWhichAsset } from './inboundmedia.mjs';
 
 const PUBLIC_PATH = '/api/whatsapp/inbound';
 export const MAX_REPLY = 1500;   // WhatsApp allows 4096; a concierge answer that needs more is a list, not an answer
@@ -156,9 +160,38 @@ export async function handleWhatsAppInbound(request, env, ctx, deps = {}) {
   const phone = phoneFrom(params.get('From'));
   if (!phone) return new Response('bad request', { status: 400 });
   const text = String(params.get('Body') ?? '').slice(0, MAX_INBOUND).trim();
-  if (!text) return xmlOk();
+
+  // The same hole that was in sms.mjs: a supplier sends a photo of the boat with
+  // no caption, Body is empty, and the old guard returned 200 with empty TwiML —
+  // success as far as Twilio is concerned, and the photo gone.
+  //
+  // WhatsApp matters MORE than MMS here, not less. Twilio receives inbound MMS
+  // in only a handful of regions (error 30011 everywhere else), so for a
+  // supplier on a Thai or a UK number this is the ONLY way a photo reaches us.
+  const numMedia = Number(params.get('NumMedia') || 0) || 0;
+  if (!text && !numMedia) return xmlOk();
 
   const member = await memberFor(env, phone);
+
+  // Photos first. A supplier sending pictures of a hull is not asking the
+  // concierge anything, so when the sender IS a known supplier the fleet
+  // acknowledgement is the whole answer and the brain is not troubled. For
+  // anybody else the photo is still kept (as unknown_sender) and the message
+  // goes to the concierge as normal — a guest photographing a menu asked a real
+  // question and must get a real answer.
+  let media = null;
+  if (numMedia > 0) {
+    media = await ingestMedia(env, { params, from: phone, bucket: env.PHOTOS, provider: 'whatsapp' })
+      .catch((e) => { console.warn('[whatsapp] media ingest failed', e?.message ?? e); return null; });
+    if (media) {
+      const ack = askWhichAsset(media, { member });
+      if (ack && (media.supplier || !text)) {
+        await send(phone, ack).catch(() => false);
+        return xmlOk();
+      }
+    }
+  }
+
   const payload = askPayload({ text, member, phone });
 
   // Filed alongside texts, so the desk can see what came in even when the
@@ -166,7 +199,10 @@ export async function handleWhatsAppInbound(request, env, ctx, deps = {}) {
   if (env?.DB) {
     await env.DB.prepare(
       'INSERT INTO num_inbox (id, member_id, kind, frm, subject, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
-    ).bind('inb_' + crypto.randomUUID().replace(/-/g, '').slice(0, 20), member?.id ?? null, 'whatsapp', phone, null, text)
+    ).bind('inb_' + crypto.randomUUID().replace(/-/g, '').slice(0, 20), member?.id ?? null, 'whatsapp', phone, null,
+      // A photo with no caption is not an empty message. Saying so keeps the desk
+      // from seeing a blank row and assuming a bug.
+      text || (media?.stored ? `[${media.stored} photo${media.stored === 1 ? '' : 's'} received]` : text))
       .run().catch((e) => console.warn('[whatsapp] inbox write failed', e?.message ?? e));
   }
 

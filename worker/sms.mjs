@@ -107,6 +107,39 @@ export async function handleSmsInbound(request, env) {
     return xmlReply(HELP_REPLY);
   }
 
+  // ── A VENUE ANSWERING AN ORDER ────────────────────────────────────────
+  //
+  // "Y A417" from the restaurant's own line accepts order A417. Handled here,
+  // above the concierge inbox, because a two-character reply from a kitchen is
+  // an operational decision with a guest waiting on it — filing it as a
+  // concierge request would leave the order pending and the guest watching
+  // nothing happen.
+  //
+  // Safe because `acceptFrom` requires the reply to come FROM a number Num
+  // actually alerted about THIS order. Knowing a short code is not enough; you
+  // have to be holding the venue's phone. It also refuses any transition
+  // ORDER_NEXT does not allow, so a text can do nothing the console could not.
+  //
+  // A reply that is not a decision falls through untouched — "Y" is a word
+  // people say to a concierge too, and parseReply only matches the exact
+  // shape.
+  {
+    const { parseReply, acceptFrom } = await import('./orderalert.mjs');
+    const reply = parseReply(text);
+    if (reply?.short) {
+      const out = await acceptFrom(env, { from, short: reply.short, decision: reply.decision })
+        .catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+      if (out?.ok) {
+        return xmlReply(reply.decision === 'accept'
+          ? `Order ${reply.short} accepted. The guest has been told.`
+          : `Order ${reply.short} declined. The guest has been told.`);
+      }
+      // Only answer when we recognised the order at all. A stranger texting
+      // "Y ABCD" must not learn whether ABCD exists.
+      if (out?.error && !/no such order/i.test(out.error)) return xmlReply(out.error);
+    }
+  }
+
   // ── EVERY ORDINARY INBOUND MESSAGE IS CONSENT ─────────────────────────
   //
   // Not just START. Somebody who texts a concierge "table for two tonight"
@@ -167,7 +200,10 @@ export async function handleSmsInbound(request, env) {
   // sends it again — and then a third time. One line back is the difference
   // between a feature and a black hole.
   if (media) {
-    const reply = askWhichAsset(media);
+    // The member is passed in so a guest photographing a menu for the concierge
+    // is never answered with "we do not recognise this number". A null reply
+    // means this message was not fleet business and the normal path owns it.
+    const reply = askWhichAsset(media, { member });
     if (reply) return xmlReply(reply);
   }
   return xmlOk();

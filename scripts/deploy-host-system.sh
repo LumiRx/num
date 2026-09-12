@@ -112,6 +112,20 @@ echo "   /api/host/nearby?city=edinburgh"
 curl -s "https://itsnum.com/api/host/nearby?city=edinburgh" | head -c 300
 echo
 
+# Does the page agree with the API that serves it?
+#
+# The console ships from num-console and its endpoints ship from num-growth, so
+# one can go out without the other. On 12 Sep 2026 that happened: the Fleet card
+# was live on itsnum.com while /api/host/assets answered 404, and for as long as
+# that lasted a host opened their working tool and found a section where every
+# button did nothing.
+#
+# No test can catch that. The code was right in both workers; only one was
+# deployed. The live site is the only thing that knows.
+echo
+echo "▸ Does the live console agree with the live API?"
+node scripts/console-api-agree.mjs
+
 if [[ -n "${ADMIN_KEY:-}" ]]; then
   echo
   echo "▸ Integrity"
