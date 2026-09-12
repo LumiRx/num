@@ -237,3 +237,47 @@ describe('the route', () => {
       'the route is deciding whose move it is again, in its own words');
   });
 });
+
+describe('the console shows it', () => {
+  const H = readFileSync(join(HERE, '..', 'public', 'host', 'index.html'), 'utf8');
+
+  test('the page reads the book, and survives it failing', () => {
+    // One broken panel must not take away a host's working tool.
+    assert.match(H, /api\('book'\)/, 'the console never calls the book');
+    const load = H.slice(H.indexOf("api('book')"), H.indexOf("api('intros')"));
+    assert.match(load, /loadClients\(\)/, 'no fallback if the book call fails');
+  });
+
+  test('a row says whose move it is, not how many requests exist', () => {
+    // "3 requests" is not something a host can act on at eight in the morning.
+    assert.match(H, /Your move/);
+    assert.match(H, /Waiting on them/);
+    assert.ok(!/requests?<\/b>\s*<\/td>/.test(H));
+  });
+
+  test('the people waiting are named, not counted', () => {
+    const paint = H.slice(H.indexOf('function paintBook'), H.indexOf('function loadBook'));
+    assert.match(paint, /waiting\.slice\(0, 6\)/, 'the overdue list is a number with no names');
+    assert.match(paint, /esc\(c\.name\)/);
+  });
+
+  test('the agenda says it is the same list the calendar subscribes to', () => {
+    assert.match(H, /the same list your calendar/);
+  });
+
+  test('unassigned work is surfaced rather than silently dropped', () => {
+    assert.match(H, /not attached to anyone in your book/);
+  });
+
+  test('every value painted into the book is escaped', () => {
+    const paint = H.slice(H.indexOf('function paintBook'), H.indexOf('function loadBook'));
+    for (const m of paint.matchAll(/\+ (r|c)\.(name|title|city|client_name)[^+]/g)) {
+      assert.fail(`unescaped value in the book view: ${m[0].trim()}`);
+    }
+  });
+
+  test('silence is only mentioned once it means something', () => {
+    // "Quiet 0 months" against a client seen last week is noise.
+    assert.match(H, /quiet_days >= 60/);
+  });
+});

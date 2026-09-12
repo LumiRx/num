@@ -1168,7 +1168,7 @@ const WORKER = {
       if (p === "/api/venue/tables/state" && req.method === "POST") return qrTableState(req, env, url);
       if (p === "/api/venue/tables/codes" && req.method === "POST") return qrIssueCodes(req, env, url);
       if (p === "/api/venue/bill" && req.method === "POST") return qrBillCreate(req, env, url);
-      if (p === "/api/venue/bill/settle" && req.method === "POST") return qrBillSettle(req, env, url);
+      if (p === "/api/venue/bill/settle" && req.method === "POST") return qrBillSettle(req, env, url, ctx);
       if (p === "/api/venue/bills" && req.method === "GET") return qrBillsOpen(req, env, url);
       if (p === "/api/venue/staff" && req.method === "GET") return qrStaffList(req, env, url);
       if (p === "/api/venue/staff" && req.method === "POST") return qrStaffAdd(req, env, url);
@@ -7536,7 +7536,7 @@ async function payLanding(req, env, tok) {
   const ptok = clean(tok, 40).toUpperCase();
   const link = await env.DB.prepare(
     `SELECT l.token, l.business_id, l.label, l.kind, l.target, l.amount, l.currency,
-            l.state, l.crypto_asset, l.crypto_base_units, l.crypto_quote,
+            l.state, l.crypto_asset, l.crypto_base_units, l.crypto_quote, l.settled_at,
             b.name AS business_name
        FROM num_paylinks l JOIN businesses b ON b.id = l.business_id
       WHERE l.token = ?`
@@ -7550,6 +7550,18 @@ async function payLanding(req, env, tok) {
     await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "retired_view" });
     return HTML(payPage({ state: "retired", venue: link.business_name }), 410);
   }
+  // A settled bill is a receipt, not a demand. Logged as its own kind and
+  // deliberately NOT billable: reopening a paid bill must never look like a
+  // fresh scan in a venue's numbers or in ours.
+  if (link.settled_at) {
+    await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "receipt_view" });
+    return HTML(payPage({
+      state: "paid", token: ptok, venue: link.business_name, label: link.label,
+      amount: link.amount, currency: link.currency,
+      settledOn: String(link.settled_at).slice(0, 10),
+    }));
+  }
+
   await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "scan", active: true });
   let cryptoInfo = null;
   let walletUri = null;
@@ -7901,6 +7913,34 @@ function payPage(o) {
     <p class="lede">${esc(o.venue)} replaced it. Ask staff for the current one —
     old codes stop working the moment they're replaced, which is the point.</p>
     <a class="btn ghost" href="https://itsnum.com/">Go to NUM</a>`, "Retired code — NUM");
+
+  /*
+   * The receipt.
+   *
+   * This page is the only confirmation that reaches a guest without us holding
+   * a single contact detail for them — they are already looking at it, and the
+   * link is in their phone's history. Num holds no member email addresses and
+   * a booking stores the guest's number encrypted, so until a receipt has
+   * somewhere to be sent, this IS the receipt.
+   *
+   * It also closes a real bug: `payLanding` never read `settled_at`, so
+   * reopening a paid bill showed "Pay THB 2,400" again, telling a guest who
+   * had already paid to pay a second time.
+   */
+  if (o.state === "paid") return payShell(`
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>Paid — thank you</h1>
+    ${o.amount ? `<div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>` : ""}
+    <p class="lede">${esc(o.venue)} marked this bill settled${o.settledOn ? ` on ${esc(o.settledOn)}` : ""}.
+    Nothing further is owed on this code and it cannot be paid again.</p>
+    <div class="ppbox">Your reference<br><span class="ppid">${esc(o.token)}</span><br>
+    <span class="note">Quote this if you need to ask ${esc(o.venue)} about the bill.</span></div>
+    <p class="note">The money went straight from you to ${esc(o.venue)}. NUM never
+    held it and never saw your card.</p>
+    <div class="warn">Asked to pay again after seeing this? Don't — show staff
+    this screen.</div>
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`,
+    "Paid — " + o.venue + " · NUM");
 
   const amt = o.amount ? `${esc(o.currency)} ${esc(o.amount)}` : null;
 
@@ -8720,14 +8760,82 @@ async function qrBillCreate(req, env, url) {
   return J(out);
 }
 
-async function qrBillSettle(req, env, url) {
+async function qrBillSettle(req, env, url, ctx) {
   const who = await qrWho(req, env, url);
   if (!who) return J({ ok: false, error: "unauthorised" }, 401);
   if (!QR.can(who.role, "settle")) return qrDeny("settle");
   let b;
   try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
   const out = await QR.settleBill(env, who.business.id, b.token, { settledBy: who.userId || "key" });
+
+  // Only on a settle that actually changed something. `already` means a second
+  // tap on the same bill, and a venue does not need two emails for one dinner.
+  if (out.ok && out.settled && ctx?.waitUntil) {
+    ctx.waitUntil(mailBillSettled(env, who, b.token, out).catch(() => {}));
+  }
   return J(out, out.ok ? 200 : 404);
+}
+
+/**
+ * Tell the venue a bill settled, and say plainly whether NUM will invoice on
+ * it. Before this, settling sent nothing at all: the ledger moved, the venue
+ * heard nothing, and the first they learned of a commission was a weekly
+ * statement. A venue that is surprised by an invoice is a venue we lose.
+ *
+ * Email, not SMS, and that is not a preference. Every text that has reached a
+ * handset since 20 Aug has been a Twilio Verify sign-in code; Verify is exempt
+ * from A2P 10DLC and a receipt is not a verification code, so a receipt has to
+ * ride Programmable Messaging, which last answered `30034`. Resend is the one
+ * transport with a delivery receipt we can read.
+ *
+ * Never blocks the settle. Staff are standing at a table.
+ */
+async function mailBillSettled(env, who, token, out) {
+  const bill = await env.DB.prepare(
+    `SELECT l.token, l.label, l.amount, l.currency, l.settled_at,
+            p.email AS venue_email, b.name AS venue_name
+       FROM num_paylinks l
+       JOIN businesses b ON b.id = l.business_id
+       LEFT JOIN num_business_profiles p ON p.business_id = l.business_id
+      WHERE l.token = ?1`,
+  ).bind(String(token || "").toUpperCase()).first().catch(() => null);
+
+  if (!bill?.venue_email) return { ok: false, reason: "no address on file" };
+
+  const money = bill.amount ? bill.currency + " " + bill.amount : "the bill";
+  const fee = out.billed
+    ? ["NUM brought this table, so NUM's 10% applies to this bill. It appears on",
+       "your next weekly statement — nothing is charged to you today and nothing",
+       "is taken out of what the guest paid you."]
+    : ["This was not a NUM booking, so NUM charges nothing on it. It is on your",
+       "statement as a settled bill with no fee, so the record is complete."];
+
+  return sendBatch(env, [{
+    // One receipt per bill, whatever happens upstream of this call.
+    __idem: "billsettled-" + bill.token,
+    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    to: [bill.venue_email],
+    reply_to: "info@itsnum.com",
+    subject: "Bill settled — " + money + (bill.label ? " · " + bill.label : ""),
+    text: [
+      "Bill " + bill.token + " is settled.",
+      "",
+      "  Venue    " + bill.venue_name,
+      "  Where    " + (bill.label || "—"),
+      "  Amount   " + money,
+      "  Settled  " + (bill.settled_at || "just now") + " by " + (who.name || "your staff"),
+      "",
+      ...fee,
+      "",
+      "The guest paid you directly. NUM never held the money.",
+      "",
+      "If this figure is wrong, reply to this email today — it is the figure your",
+      "statement is calculated from.",
+      "",
+      "NUM · 5arz Inc.",
+      LEGAL_LINE,
+    ].join("\n"),
+  }]);
 }
 
 async function qrBillsOpen(req, env, url) {

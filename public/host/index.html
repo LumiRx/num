@@ -280,6 +280,21 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
        The plan is priced on ACTIVE clients and nothing else. The bar shows
        the ceiling before it is hit, because "you have reached your limit"
        after the fact is a worse moment than "2 places left" before it. -->
+  <!-- ── THE WEEK, AND WHO IS WAITING ────────────────────────────────
+       Two lists a host was previously asked to merge in their head: the
+       people and the work. The only question a row answers is whose move it
+       is, because a count of requests is not something anyone can act on.
+
+       The agenda below reads the same rows the .ics feed publishes, so this
+       page and the calendar a host actually lives in cannot disagree. -->
+  <section class="card2" id="weekCard">
+    <span class="tag">Today</span>
+    <h2 id="weekHead">Your week</h2>
+    <p class="sub" id="weekSub">Everything confirmed, in the order it happens — and anyone still waiting on an answer from you.</p>
+    <div id="weekOwed"></div>
+    <div id="weekAgenda"></div>
+  </section>
+
   <section class="card2" id="clientsCard">
     <span class="tag">Your book</span>
     <h2>Your clients</h2>
@@ -947,7 +962,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     paintPlan(d.plan);
     $('clRows').innerHTML = CLIENTS.length ? CLIENTS.map(function (c) {
       var how = { host_added: 'You added them', num_offer: 'Introduced by NUM', self_joined: 'Joined themselves' }[c.source] || c.source;
-      return '<tr><td><b>' + esc(c.name) + '</b>' + (c.email ? '<br><span class="hint">' + esc(c.email) + '</span>' : '') +
+      return '<tr><td><b>' + esc(c.name) + '</b>' +
+        (c.turn ? '<br>' + turnLabel(c) : '') +
+        (c.next ? '<br><span class="hint">Next: ' + esc(when(c.next.starts_at)) + ' &middot; '
+          + esc(c.next.title || '') + '</span>' : '') +
+        (c.email ? '<br><span class="hint">' + esc(c.email) + '</span>' : '') +
         // Their own way out, for you to hand over. Not hidden from you: a host
         // who offers this looks better than one who does not.
         (c.member_link ? '<br><span class="hint">Their link: <span class="mono">' + esc(c.member_link) + '</span></span>' : '') +
@@ -1515,11 +1534,95 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
   /* ── loaders ────────────────────────────────────────────────────────── */
   function loadClients() { return api('clients').then(function (d) { if (d.ok) paintClients(d); }); }
+  /* ── THE BOOK: WHO IS WAITING, AND WHAT IS COMING ───────────────────
+   *
+   * One call (/api/host/book) returns every client with their work folded in,
+   * plus the next thirty days. The shaping — whose move it is, how long they
+   * have waited, who has gone quiet — is done in growth/hostbook.mjs and
+   * tested there; this paints it.
+   *
+   * The rule the copy follows: a row says whose move it is, never how many
+   * requests exist. "3 requests" is not something a host can act on at eight
+   * in the morning. "Priya, 9 days, your move" is. */
+  var BOOK = {};
+
+  function turnLabel(c) {
+    if (String(c.status) === 'paused') return '<span class="hint">Paused — not billed</span>';
+    if (c.turn === 'yours') {
+      return '<b style="color:var(--accent, #E03A1E)">Your move</b>'
+        + (c.days_waiting ? ' <span class="hint">' + c.days_waiting + (c.days_waiting === 1 ? ' day' : ' days') + '</span>' : '');
+    }
+    if (c.turn === 'theirs') return 'Waiting on them';
+    if (c.next) return 'Booked';
+    // Silence is the fact a request list cannot show, because nothing is not
+    // a row. Only said once it is long enough to mean something.
+    if (c.quiet_days != null && c.quiet_days >= 60) {
+      return '<span class="hint">Quiet ' + Math.floor(c.quiet_days / 30) + ' months</span>';
+    }
+    return '<span class="hint">Nothing open</span>';
+  }
+
+  function when(iso) {
+    if (!iso) return '';
+    var t = Date.parse(String(iso).indexOf('T') > -1 ? iso : String(iso).replace(' ', 'T') + 'Z');
+    if (!isFinite(t)) return '';
+    return new Date(t).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function paintBook(d) {
+    BOOK = d;
+    var owed = (d.counts && d.counts.waiting_on_you) || 0;
+    $('weekHead').textContent = owed
+      ? owed + (owed === 1 ? ' person is waiting on you' : ' people are waiting on you')
+      : 'Your week';
+
+    // Named, not counted. A number tells a host there is a problem; a name
+    // tells them which one to open.
+    var waiting = (d.clients || []).filter(function (c) { return c.turn === 'yours'; });
+    $('weekOwed').innerHTML = waiting.length
+      ? '<div class="note bad" style="margin-bottom:14px">' + waiting.slice(0, 6).map(function (c) {
+        return '<b>' + esc(c.name) + '</b>'
+          + (c.days_waiting ? ' <span class="hint">' + c.days_waiting + 'd</span>' : '');
+      }).join(' &middot; ') + (waiting.length > 6 ? ' &middot; +' + (waiting.length - 6) + ' more' : '') + '</div>'
+      : '';
+
+    var ag = d.agenda || [];
+    $('weekAgenda').innerHTML = ag.length
+      ? '<div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>What</th><th>Where</th></tr></thead><tbody>'
+        + ag.slice(0, 25).map(function (r) {
+          return '<tr><td><b>' + esc(when(r.starts_at)) + '</b></td>'
+            + '<td>' + esc(r.client_name || '—') + '</td>'
+            + '<td>' + esc(r.title || r.service_key || '—') + '</td>'
+            + '<td>' + esc(r.city || '—') + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<p class="hint">Nothing confirmed in the next month. Anything you confirm appears here and in your own calendar.</p>';
+
+    if (d.calendar_url) {
+      $('weekAgenda').innerHTML += '<p class="hint" style="margin-top:10px">This is the same list your calendar '
+        + 'subscribes to, so the two can never disagree.</p>';
+    }
+
+    // Anything with no client attached. Somebody's work, and a row that
+    // exists and is shown nowhere is how a host misses a job.
+    if ((d.unassigned || []).length) {
+      $('weekAgenda').innerHTML += '<div class="note" style="margin-top:12px"><b>'
+        + d.unassigned.length + ' request' + (d.unassigned.length === 1 ? '' : 's')
+        + ' not attached to anyone in your book.</b> They are in Requests below.</div>';
+    }
+
+    if (d.clients) { paintClients({ clients: d.clients, plan: d.plan }); }
+  }
+
   function loadBook() {
     // Each section fails on its own. A host whose network call 500s should
     // still be able to add a client — one broken panel must not blank a page
     // that is their working tool.
-    loadClients().catch(function () {});
+    // The book is the primary read. If it fails, the older clients endpoint
+    // still paints the table — one broken panel must not take away the tool.
+    api('book').then(function (d) {
+      if (d && d.ok) paintBook(d);
+      else loadClients().catch(function () {});
+    }).catch(function () { loadClients().catch(function () {}); });
     api('intros').then(function (d) { if (d.ok) paintIntros(d); }).catch(function () {});
     api('requests').then(function (d) {
       if (!d.ok) return;
