@@ -131,17 +131,6 @@ test('an open table code can never be settled', async () => {
   assert.equal(d.settles.length, 0, 'settling an open code would report a null bill');
 });
 
-test('a bill code with no booking settles but bills nothing', async () => {
-  // Founder decision: NUM-referred walk-ins are never charged.
-  const d = db({ paylinks: [{ ...TABLE_CODE }] });
-  const env = { DB: d.DB };
-  const mint = await mintBillCode(env, { businessId: 'biz1', amount: '900' });
-  const out = await settleBillCode(env, mint.token);
-  assert.equal(out.settled, true);
-  assert.equal(out.billed, false);
-  assert.equal(d.settles.length, 0);
-});
-
 test('unknown and revoked codes are refused', async () => {
   const d = db({ paylinks: [{ ...TABLE_CODE, token: 'DEAD', state: 'revoked', amount_mode: 'fixed', amount: '100.00' }] });
   assert.equal((await settleBillCode({ DB: d.DB }, 'NOPE')).ok, false);
@@ -292,4 +281,125 @@ test('the 10% is still taken on the baht bill, not on the token amount', async (
   const line = d.prepare('SELECT basis_cs, amount_cs FROM num_commissions WHERE booking_id=?').get('bk_crypto');
   assert.equal(line.basis_cs, 240000);
   assert.equal(line.amount_cs, 24000, 'the fee follows the bill, not the exchange rate');
+});
+
+/* ── A BILL NUM DID NOT EARN ──────────────────────────────────────────────
+ *
+ * Dre, 12 Sep 2026, on the 10% rate: it felt high enough to scare venues off,
+ * and PayPal charges ~3%, so why not 3%?
+ *
+ * Because the two fees buy different things. PayPal's 2.29%–3.49% is the price
+ * of moving money, and Num never holds this money — the guest is 302'd to the
+ * venue's own Stripe or PayPal link. A percentage from us would stack on top of
+ * theirs: ~6% all-in, for a guest we did not send, on a payment we did not
+ * process. So this path is FLAT, and these tests exist because a flat fee is
+ * one merchant-settings lookup away from silently becoming 10%.
+ *
+ * Before this date the path was free. */
+
+test('a walk-in bill now earns the flat fee instead of nothing', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Bang Tao','active')").run();
+  d.prepare("INSERT INTO num_business_settings (business_id,commission_bp) VALUES ('b1',1000)").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  // No bookingId — nobody was referred, somebody already there paid by QR.
+  const bill = await mintBillCode(env, { businessId: 'b1', amount: '2400' });
+  const out = await settleBillCode(env, bill.token);
+
+  assert.equal(out.settled, true);
+  assert.equal(out.billed, true, 'the walk-in path used to earn nothing at all');
+  assert.equal(out.booking_id, null);
+
+  const line = d.prepare('SELECT * FROM num_commissions WHERE booking_id=?').get(`bill:${bill.token}`);
+  assert.equal(line.amount_cs, 200, '$2 flat');
+  assert.equal(line.kind, 'flat');
+  assert.equal(line.category, 'payment');
+  assert.equal(line.state, 'accrued');
+  assert.equal(line.basis_cs, 240000, 'the bill is recorded even though we do not take a cut of it');
+  assert.match(line.note, /not referred by Num/, 'the row must explain itself to a venue on 10%');
+});
+
+test('THE TRAP: a venue on 10% is still billed $2, not 10%, on a walk-in', async () => {
+  // accrue() resolves its rate as `rateBp ?? terms.commission_bp ?? rate.bp`,
+  // and EVERY venue we have carries commission_bp = 1000. Routing the walk-in
+  // through it would have reached past a flat-only rate card and taken 10% of
+  // the bill on the one path that must never scale. 10% of 2,400 is 24,000
+  // satang — so if this ever reads 24000, the override got through.
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Bang Tao','active')").run();
+  d.prepare("INSERT INTO num_business_settings (business_id,commission_bp) VALUES ('b1',1000)").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  const bill = await mintBillCode(env, { businessId: 'b1', amount: '2400' });
+  await settleBillCode(env, bill.token);
+
+  const line = d.prepare('SELECT amount_cs, rate_bp FROM num_commissions WHERE booking_id=?')
+    .get(`bill:${bill.token}`);
+  assert.equal(line.amount_cs, 200);
+  assert.notEqual(line.amount_cs, 24000, 'the merchant commission_bp override got through');
+  assert.equal(line.rate_bp, null, 'a flat line must carry no rate at all');
+});
+
+test('the flat fee does not scale, so it can never tax a venue\'s regulars', async () => {
+  // The objection that actually loses merchants is a percentage of revenue they
+  // would have had anyway. $2 on a 500 dinner is 0.4%; 10% would be 50.
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Arroyo','active')").run();
+  d.prepare("INSERT INTO num_business_settings (business_id,commission_bp) VALUES ('b1',1500)").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','url','https://pay.example.com/arroyo','open','USD','active','2026-08-01',0)`).run();
+
+  for (const amount of ['40.00', '80.00', '500.00', '5000.00']) {
+    const bill = await mintBillCode(env, { businessId: 'b1', amount });
+    await settleBillCode(env, bill.token);
+    const line = d.prepare('SELECT amount_cs FROM num_commissions WHERE booking_id=?')
+      .get(`bill:${bill.token}`);
+    assert.equal(line.amount_cs, 200, `a ${amount} bill must still be $2`);
+  }
+});
+
+test('settling a walk-in bill twice creates one line, not two', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Bang Tao','active')").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  const bill = await mintBillCode(env, { businessId: 'b1', amount: '900' });
+  await settleBillCode(env, bill.token);
+  await settleBillCode(env, bill.token);
+
+  const n = d.prepare('SELECT COUNT(*) AS n FROM num_commissions WHERE booking_id=?')
+    .get(`bill:${bill.token}`);
+  assert.equal(n.n, 1);
+});
+
+test('a referred booking is UNAFFECTED — it still earns the full percentage', async () => {
+  // The whole point of splitting by attribution: the rate Num charges for
+  // actually sending somebody does not move.
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Bang Tao','active')").run();
+  d.prepare("INSERT INTO num_business_profiles (business_id,country) VALUES ('b1','TH')").run();
+  d.prepare("INSERT INTO num_business_settings (business_id,commission_bp) VALUES ('b1',1000)").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_referred', amount: '2400' });
+  await settleBillCode(env, bill.token);
+
+  const line = d.prepare('SELECT amount_cs, kind FROM num_commissions WHERE booking_id=?').get('bk_referred');
+  assert.equal(line.amount_cs, 24000, '10% of 2,400 — unchanged');
+  assert.equal(line.kind, 'percent');
 });

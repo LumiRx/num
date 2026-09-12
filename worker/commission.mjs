@@ -68,6 +68,43 @@ const money = (cs) => `$${cs % 100 ? (cs / 100).toFixed(2) : cs / 100}`;
  * now COMPUTED and only `basis` — the noun the rate applies to — is written by
  * hand, because a noun cannot disagree with an integer.
  */
+/**
+ * What a venue owes when Num did NOT send the guest.
+ *
+ * ── WHY THIS IS $2 AND NOT 3% ────────────────────────────────────────────
+ *
+ * Dre, 12 Sep 2026: 10% felt high enough to scare venues off, and PayPal
+ * charges about 3%, so why not 3%?
+ *
+ * Because PayPal's 3% buys something we do not sell. Checked the same day:
+ * PayPal takes 2.29% + $0.09 on a QR payment and 3.49% + $0.49 on online
+ * checkout — that is the price of MOVING MONEY. Num never holds this money;
+ * `payGo` 302s the guest to the venue's own Stripe or PayPal link. So the venue
+ * pays their processor ~2.9% whether we exist or not, and 3% from us would be
+ * stacked on top: roughly 6% all-in, for a guest we did not send, on a payment
+ * we did not process. That is the invoice a venue cancels over, and they would
+ * be right.
+ *
+ * It is also uncollectable at the bottom end. We invoice rather than deduct, so
+ * 3% of a $40 bill is a $1.20 line item, and chasing $1.20 costs more than
+ * $1.20. Collection cost is per invoice, not per dollar.
+ *
+ * $2 flat is the honest shape: it covers what the line costs to carry, it is
+ * the same floor venues already accept for a confirmed table, and because it
+ * does NOT scale it can never read as a tax on their own regulars — which is
+ * the objection that actually causes churn. On an $80 dinner it is 2.5%, inside
+ * the band Dre named. On a $500 dinner it is still $2, not $15.
+ *
+ * 3% becomes correct the day Num processes the payment itself, because then it
+ * REPLACES the processor's fee instead of stacking on it, and undercuts the
+ * 3.49% the venue pays today. Until then this is flat.
+ *
+ * Before 12 Sep 2026 this case was free. Free was defensible and generous; it
+ * was also the only path on the bill QR that earned nothing, while carrying the
+ * same support and invoicing cost as one that earns.
+ */
+export const PAYMENT_ONLY_FLAT_CS = 200;
+
 const rate = ({ basis, flatBasis, ...r }) =>
   Object.freeze({
     ...r,
@@ -111,6 +148,24 @@ export const RATES = Object.freeze({
   // On top of the courier's own fee, which Num passes through at cost.
   delivery: rate({ bp: 1000, flat_cs: 0, label: 'delivery', basis: 'the order value' }),
 });
+
+/**
+ * The walk-in fee, in a sentence a merchant can read.
+ *
+ * NOT a RATES entry, and that is the point. Every key in RATES is a thing a
+ * venue IS — a restaurant, a hotel, a spa — and `feeSentence()` derives the key
+ * from the venue's own category. "Payment" is not a kind of venue, it is a fact
+ * about one bill, so a `payment` row in RATES would be a category no place
+ * could ever have. `scripts/invite_fee.test.mjs` asserts every RATES key
+ * produces a quotable sentence, and it was right to reject this one.
+ *
+ * Computed from the constant for the same reason every other note is: a price
+ * typed into merchant copy by hand drifts the day the number changes, silently,
+ * in an artefact nobody re-reads.
+ */
+export const PAYMENT_ONLY_SENTENCE =
+  `${money(PAYMENT_ONLY_FLAT_CS)} per bill settled through Num by a guest we did not refer `
+  + '— flat, never a percentage.';
 
 /**
  * Per-country overrides on the table above.
@@ -417,6 +472,62 @@ export async function accrue(env, {
       currency, state, source, note,
     ).run();
     return { id, category, kind, amount_cs, state, note };
+  } catch (e) {
+    console.warn('[commission]', e?.message ?? e);
+    return null;
+  }
+}
+
+/**
+ * Record the flat fee on a bill Num did not earn.
+ *
+ * A SEPARATE FUNCTION, ON PURPOSE. The obvious implementation was to call
+ * accrue() with `category: 'payment'`, and it would have been wrong in a way
+ * nobody would have noticed until a merchant complained: accrue() resolves its
+ * rate as `rateBp ?? terms?.commission_bp ?? rate.bp`, and every venue we have
+ * carries `commission_bp = 1000`. So the merchant-terms override would have
+ * reached straight past a flat-only rate card and billed 10% of the bill on
+ * exactly the path that is supposed to be flat.
+ *
+ * There is no percentage anywhere in this function, so no override can
+ * resurrect one. That is the whole reason it is not a parameter.
+ *
+ * IDEMPOTENT ON THE BILL TOKEN. `num_commissions.booking_id` is NOT NULL with a
+ * unique index, so a walk-in borrows it as `bill:<token>`: unique because the
+ * token is, and it keeps the guard the table already enforces rather than
+ * inventing a second one. Nothing joins this column to num_bookings — `owed`
+ * and `invoiceVenue` select by business_id — so these lines invoice exactly
+ * like any other.
+ *
+ * Never throws. A guest's payment must not fail because our ledger did.
+ *
+ * @returns {Promise<object|null>} the accrual, or null if nothing was owed.
+ */
+export async function accrueBillPayment(env, {
+  token, businessId = null, placeId = null, venueName = null,
+  valueCents = null, currency = 'usd', source = 'billqr',
+} = {}) {
+  if (!env?.DB || !token) return null;
+  const amount_cs = PAYMENT_ONLY_FLAT_CS;
+  if (amount_cs <= 0) return null; // an agreed zero is valid — bill nothing
+  try {
+    await ensure(env);
+    const id = `cm_bill_${token}`;
+    const basis = Number.isFinite(valueCents) && valueCents > 0 ? valueCents : null;
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO num_commissions
+         (id, booking_id, business_id, place_id, venue_name, category, kind,
+          rate_bp, flat_cs, basis_cs, amount_cs, currency, state, source, note)
+       VALUES (?1,?2,?3,?4,?5,'payment','flat',NULL,?6,?7,?8,?9,'accrued',?10,?11)`,
+    ).bind(
+      id, `bill:${token}`, businessId, placeId, venueName,
+      amount_cs, basis, amount_cs, currency, source,
+      // Says WHY it is flat, because this is the line a venue queries. A
+      // merchant on a 10% rate seeing $2 deserves the reason in the row, not
+      // in a support reply.
+      `flat ${(amount_cs / 100).toFixed(2)} — bill paid through Num, guest not referred by Num`,
+    ).run();
+    return { id, category: 'payment', kind: 'flat', amount_cs, state: 'accrued' };
   } catch (e) {
     console.warn('[commission]', e?.message ?? e);
     return null;

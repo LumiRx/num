@@ -35,7 +35,7 @@
  * That is what makes this stronger than a self-report box in a dashboard.
  */
 
-import { settleValue, accrue } from './commission.mjs';
+import { settleValue, accrue, accrueBillPayment } from './commission.mjs';
 import { quote } from '../growth/crypto.mjs';
 
 /** Unambiguous when read aloud or typed off a printed slip: no 0/O, no 1/I/L. */
@@ -185,13 +185,39 @@ export async function settleBillCode(env, tokenValue, { settledBy = null } = {})
   ).bind(tokenValue, now, settledBy).run();
   if (!flip?.meta?.changes) return { ok: true, already: true, booking_id: row.booking_id };
 
-  // No booking means a walk-in paying through the venue's code. Founder
-  // decision: NUM-referred walk-ins are never charged, so there is nothing to
-  // bill — but the settle still stands so the code cannot be reused.
-  if (!row.booking_id) return { ok: true, settled: true, billed: false, reason: 'no booking — walk-ins are free' };
-
   const amt = parseAmount(row.amount);
   if (!amt.ok) return { ok: true, settled: true, billed: false, reason: 'stored amount unreadable' };
+
+  // ── NO BOOKING: NUM DID NOT SEND THIS GUEST ─────────────────────────────
+  //
+  // Somebody already in the venue, paying through our code. Until 12 Sep 2026
+  // this was free — `return { billed: false, reason: 'walk-ins are free' }`.
+  // Dre's call that day: a flat $2, never a percentage.
+  //
+  // The reasoning lives on PAYMENT_ONLY_FLAT_CS. The short version: the money
+  // goes straight to the venue, so a percentage from us would stack on their
+  // processor's ~2.9% and charge an acquisition rate for no acquisition. A flat
+  // fee cannot scale into a tax on their own regulars, which is the objection
+  // that loses merchants.
+  //
+  // It returns EARLY and never falls through to the percentage path below, so a
+  // venue's `commission_bp` cannot reach a bill Num did not earn.
+  if (!row.booking_id) {
+    const biz = await env.DB.prepare('SELECT id, name FROM businesses WHERE id = ?1')
+      .bind(row.business_id).first().catch(() => null);
+    const flat = await accrueBillPayment(env, {
+      token: row.token,
+      businessId: row.business_id,
+      venueName: biz?.name ?? null,
+      valueCents: amt.minor,
+      currency: (row.currency || 'THB').toLowerCase(),
+    }).catch(() => null);
+    return {
+      ok: true, settled: true, billed: !!flat, booking_id: null,
+      commission: flat,
+      reason: flat ? 'bill paid through Num — flat fee' : 'no booking and no fee recorded',
+    };
+  }
 
   let out = await settleValue(env, row.booking_id, amt.minor).catch(() => null);
 

@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production 0.8.270 (app, live) · tree 0.8.271 BUIL
 |---|---|
 | App (num-app) | **0.8.270 live; 0.8.271 in the tree, not shipped** — needs Dre, see below. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 3,922 green, 0 lint errors |
+| Tests | 3,929 green, 0 lint errors |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -124,6 +124,37 @@ state, country and session scores out of our parent's database. The 5arz id is n
 link *we* stored during the consented `/verify/5arz` flow and never from input, which enforces
 their hard rule and closes the oracle. Side effect: the 145 unlinked members no longer issue three
 cross-company reads that could never have returned anything, so the common path got faster.
+
+## Rate card — settled 12 Sep 2026
+
+Checked against the market rather than argued. PayPal takes 2.29%–3.49% — but that is the price of
+**moving money**, and NUM never holds it. For what NUM actually does (sending a guest who spends),
+the category is DoorDash/Uber Eats 15–30%, Grubhub 10–25%, Expedia 15–30%, Booking.com ~15%,
+Airbnb ~15.5%, OpenTable $1–1.50/cover **plus** $149–499/month. **10% is the floor, not a high rate.**
+
+| What happened | Charge |
+|---|---|
+| Num sent the guest, bill visible | 10% restaurants/bars · **15% hotels** |
+| Num sent the guest, bill not visible | $2 floor |
+| Guest was already theirs, paid via our QR | **$2 flat** |
+
+- **Hotels corrected to 1500 bp** (Arroyo del Sol, Holiday Inn Express Edinburgh) — live in D1, no
+  deploy. Closes the decision open since 30 Aug. Neither had taken a booking.
+- **Walk-ins were FREE and are now $2 flat.** Not 3%: the money goes straight to the venue, so a
+  percentage from Num stacks on their processor's ~2.9% and charges an acquisition rate for a guest
+  Num did not acquire — ~6% all-in. A flat fee also cannot scale into a tax on their own regulars,
+  which is the objection that actually loses merchants. 3% becomes right only if Num becomes the
+  processor (Stripe Connect), because then it REPLACES their fee. Parked, not rejected.
+- **`accrueBillPayment()` is a separate function on purpose.** `accrue()` resolves its rate as
+  `rateBp ?? terms?.commission_bp ?? rate.bp`, and every venue carries `commission_bp = 1000` — so
+  routing the walk-in through it would have billed 10% on the one path that must never scale. No
+  percentage exists in the new function, so no override can resurrect one.
+- Walk-in lines are keyed `bill:<token>` on `booking_id` (NOT NULL + unique index), so idempotency
+  reuses the guard the table already has. `owed()`/`invoiceVenue()` select by `business_id`, so they
+  invoice normally.
+- **The volume being priced for does not exist.** 0 paylinks, 0 bills, 0 commissions, 0 invoices;
+  15 scans, all unknown tokens, all from August test venues. Raising a price on a live merchant base
+  is far harder than lowering one — stay at the category floor with room to discount.
 
 ## Known gaps
 
