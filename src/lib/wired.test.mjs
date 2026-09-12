@@ -154,3 +154,86 @@ describe('identity routes exist for every identity call the app will make', () =
     assert.match(WORKER, /not one of your identities/);
   });
 });
+
+describe('the identity surfaces reach real data, not placeholders', () => {
+  const CARD = readFileSync(new URL('../components/app/IdentityCard.tsx', import.meta.url), 'utf8');
+  const PROFILE2 = readFileSync(new URL('../components/app/ProfileView.tsx', import.meta.url), 'utf8');
+  const WORKER = readFileSync(new URL('../../worker/index.mjs', import.meta.url), 'utf8');
+
+  test('the card is actually mounted in the profile', () => {
+    // A component nobody renders is the most expensive kind of unwired.
+    assert.match(PROFILE2, /import IdentityCard from '\.\/IdentityCard'/);
+    assert.match(PROFILE2, /<IdentityCard \/>/);
+  });
+
+  test('it reads its hats and connections from the server', () => {
+    assert.match(CARD, /import \{[^}]*myIdentities[^}]*\} from '\.\.\/\.\.\/lib\/social'/);
+    assert.match(CARD, /import \{[^}]*myConnections[^}]*\} from '\.\.\/\.\.\/lib\/social'/);
+    assert.match(CARD, /void myIdentities\(\)\.then\(setHats\)/);
+    assert.match(CARD, /void myConnections\(chosen\.type, chosen\.id\)\.then\(setMet\)/);
+  });
+
+  test('the QR encodes the same link that is copied and shared', () => {
+    // One code, one attribution path. Two would eventually disagree.
+    assert.match(CARD, /qrSvg\(chosen\.link/);
+    assert.match(CARD, /writeText\(h\.link \?\? ''\)/);
+    assert.match(CARD, /url: h\.link \?\? ''/);
+  });
+
+  test('the only dashboard button is the one that exists', () => {
+    // The business console is real (`businessOpen`). A host dashboard is still
+    // web-only, so there is deliberately no host button pretending otherwise.
+    assert.match(CARD, /h\.type === 'business'/);
+    assert.match(CARD, /store\.set\(\{ businessOpen: true \}\)/);
+    assert.ok(!/hostOpen|OPEN HOST DASHBOARD/.test(CARD), 'no button for a dashboard that does not exist');
+  });
+
+  /**
+   * Dre, 12 Sep 2026: "we need to connect the business owners with ther
+   * personal num through the telephone number." These follow that control all
+   * the way to the handler, because a LINK MY BUSINESS button that posts
+   * nowhere is the exact failure the wire-before-you-ship rule exists for.
+   */
+  test('LINK MY BUSINESS calls something that calls the server', () => {
+    assert.match(CARD, /import \{[^}]*linkMyBusiness[^}]*\} from '\.\.\/\.\.\/lib\/social'/);
+    assert.match(CARD, /LINK MY BUSINESS/);
+    assert.match(CARD, /void run\('business'\)/);
+    assert.match(SOCIAL, /export async function linkMyBusiness/);
+    assert.match(SOCIAL, /apiUrl\('\/api\/identity\/claim-business'\)/);
+    assert.match(WORKER, /rest === '\/claim-business' && request\.method === 'POST'/);
+    assert.match(WORKER, /m\.claimBusinessByPhone\(env, \{ memberId: me \}\)/);
+  });
+
+  test('LINK MY HOST calls something that calls the server', () => {
+    assert.match(CARD, /import \{[^}]*linkMyHost[^}]*\} from '\.\.\/\.\.\/lib\/social'/);
+    assert.match(CARD, /LINK MY HOST ACCOUNT/);
+    assert.match(CARD, /void run\('host'\)/);
+    assert.match(SOCIAL, /export async function linkMyHost/);
+    assert.match(SOCIAL, /apiUrl\('\/api\/identity\/claim-host'\)/);
+    assert.match(WORKER, /rest === '\/claim-host' && request\.method === 'POST'/);
+  });
+
+  test('neither control asks the person for a phone number', () => {
+    // A venue's number is printed on its own door. Asking for it would teach
+    // people that typing one is how you prove ownership, which it is not.
+    const i = CARD.indexOf('function LinkAccounts');
+    const block = CARD.slice(i, CARD.indexOf('export default function IdentityCard'));
+    assert.ok(!/type="tel"|inputMode="tel"|phone/i.test(block.replace(/verified for you[^<]*/i, '')),
+      'the number comes from the account, not from a field');
+  });
+
+  test('the offer disappears once the hat is worn', () => {
+    assert.match(CARD, /if \(hasBusiness && hasHost\) return null;/);
+    assert.match(CARD, /\{!hasBusiness &&/);
+    assert.match(CARD, /\{!hasHost &&/);
+  });
+
+  test('it renders nothing rather than an empty shell while loading', () => {
+    assert.match(CARD, /if \(!hats\?\.length\) return null;/);
+  });
+
+  test('every tappable row clears the 44pt minimum', () => {
+    const taps = CARD.match(/minHeight: 44/g) ?? [];
+    assert.ok(taps.length >= 4, `only ${taps.length} rows declare a 44pt target`);
+  });
+});

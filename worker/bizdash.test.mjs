@@ -55,14 +55,23 @@ test('a database failure is an absent figure, never a wrong one', async () => {
 test('the pay QR reports state and never promises a rail that is off', async () => {
   // num_paylinks has no rows in production. The dashboard must say "not set
   // up", not show a merchant a payment surface that cannot take money.
+  //
+  // Keyed on business_id, not place_id: the table has no place_id column, and
+  // the statement that named one threw on every call for weeks. See the note
+  // on payQr and worker/bizqrcode.test.mjs.
   const empty = { DB: DB({ 'FROM num_paylinks': () => null }) };
-  const out = await payQr(empty, { placeId: 'p1' });
+  const out = await payQr(empty, { businessId: 'biz1' });
   assert.equal(out.ready, false);
   assert.match(out.reason, /No pay code yet/);
   assert.doesNotMatch(out.reason, /\d+\s?%|fee/i, 'the setup copy quotes a commercial figure');
 
-  const live = { DB: DB({ 'FROM num_paylinks': () => ({ id: 'pl_1', label: 'Counter', created_at: '2026-08-01' }) }) };
-  assert.equal((await payQr(live, { placeId: 'p1' })).ready, true);
+  const live = { DB: DB({ 'FROM num_paylinks': () => ({ token: 'pl_1', label: 'Counter', created_at: '2026-08-01' }) }) };
+  const ok = await payQr(live, { businessId: 'biz1' });
+  assert.equal(ok.ready, true);
+  assert.equal(ok.token, 'pl_1');
+
+  // No business, nothing to answer about.
+  assert.equal((await payQr(live, {})).ready, false);
 });
 
 test('the verified badge is absent until something proved it', async () => {

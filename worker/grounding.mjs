@@ -72,13 +72,36 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         : Promise.resolve([]),
     ]);
 
+    // ── THE GUEST NAMED A PLACE ─────────────────────────────────────────
+    //
+    // Retrieval was category-only, so a sentence like "set up a delivery with
+    // LA Cannabis Club" put nothing about that business in front of the model
+    // even though it is in the directory and signed up. The model then
+    // answered from general knowledge and refused a real partner.
+    //
+    // Named matches go to the FRONT of the block and are deduped against the
+    // category rows, so the place the guest actually asked about is the first
+    // thing the model reads. See worker/namedplace.mjs.
+    let named = [];
+    try {
+      const { namedPlaces } = await import('./namedplace.mjs');
+      named = await namedPlaces(env, { dest: loc.dest.slug, text: userText });
+    } catch (e) {
+      console.warn('[grounding] named', e?.message ?? e);
+    }
+    const baseRows = rows ?? [];
+    const namedIds = new Set(named.map((n) => n.id));
+    const merged = named.length
+      ? [...named, ...baseRows.filter((r) => !namedIds.has(r.id))]
+      : baseRows;
+
     // A venue can have published something about itself that a guest has to
     // know before they arrive rather than when they do — Arroyo del Sol is
     // clothing optional. This annotates the rows some ordinary piece of
     // ranking already chose; it never adds one, and it never removes one
     // except on a family ask, where naming it at all is the mistake.
     const { annotate, allowedFor, disclosureBlock } = await import('./venuedisclosure.mjs');
-    const annotated = allowedFor(await annotate(env, rows ?? []), { member, userText });
+    const annotated = allowedFor(await annotate(env, merged), { member, userText });
 
     // OUR OWN LIST FIRST; A LIVE SEARCH ONLY WHEN IT IS EMPTY.
     //

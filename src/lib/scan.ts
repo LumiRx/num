@@ -14,7 +14,7 @@
 // already know). So we detect support honestly and point iPhone users at the
 // camera app, which does the job perfectly.
 
-import { connectByCode } from './social';
+import { connectByCode, isIdentityCode, recordIdentityScan } from './social';
 
 interface BarcodeDetectorLike {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
@@ -27,8 +27,24 @@ const detectorCtor = (): BarcodeDetectorCtor | null =>
 /** Can we scan in-app at all? False on iOS Safari — see the note above. */
 export const scanSupported = (): boolean => !!detectorCtor() && !!navigator.mediaDevices?.getUserMedia;
 
+// ── NOT WIRED TO ANY BUTTON YET (12 Sep 2026) ───────────────────────────────
+//
+// Nothing in the app imports startScan. That is deliberate rather than an
+// oversight, and it is written here so the next person does not go looking for
+// the scanner screen: on iPhone there is no BarcodeDetector, so the honest
+// in-app control would be a button that says "use your camera app instead",
+// and the camera app already does the whole job for both platforms. The
+// decoder below is correct and tested and can be mounted the day we ship the
+// native build with a scanner plugin.
+//
+// What was NOT correct until today: it only understood member ids, and sent
+// every code it read to connectByCode. Identity codes — a business, a host,
+// a member's own code from worker/identity.mjs — share the same /c/ path and
+// need /api/identity/scan instead. A scanner that silently did the wrong thing
+// with a venue's code would have been worse than no scanner.
+
 /**
- * Pull a member id out of whatever the camera read.
+ * Pull a code out of whatever the camera read.
  *
  * Accepts both shapes a Num code can take, because both exist in the wild: the
  * short path we mint today (`/c/mem_x`) and the query form the Worker redirects
@@ -106,7 +122,11 @@ export async function startScan(
         if (!id || handled) continue;
         handled = true;
         stop();
-        await connectByCode(id);
+        // Two kinds of code arrive on the same path — see bootSocial() in
+        // social.ts, which makes the same decision for a code that arrived as
+        // a link. A member id is always prefixed; an identity code never is.
+        if (isIdentityCode(id)) await recordIdentityScan(id);
+        else await connectByCode(id);
         on.found(id);
         return;
       }

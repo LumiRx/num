@@ -52,6 +52,11 @@ import { deliveryPage } from './bizdelivery.mjs';
 import { templateFor } from './biztemplates.mjs';
 import { consentCheckbox } from './partnersms.mjs';
 import { disclosureFields } from './venuedisclosure.mjs';
+// The SAME encoder the app draws a member's code with (src/lib/qr.ts re-exports
+// it). One implementation so a venue's printed code and a guest's on-screen code
+// cannot disagree about a mask.
+import { qrSvg } from './qr.mjs';
+import { codeFor, connectionsFor, linkFor } from './identity.mjs';
 
 const enc = new TextEncoder();
 const H = (v) => String(v ?? '')
@@ -140,6 +145,12 @@ table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(-
 th{text-align:left;padding:9px 12px;background:#faf9f7;color:var(--muted);font-size:12px;font-weight:600}
 td{padding:9px 12px;border-top:1px solid #f0eee9}
 .big{font-size:30px;font-weight:700;letter-spacing:-.02em;display:block;line-height:1.1}
+.qrcard{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.qrbox{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;line-height:0}
+.qrmeta{flex:1 1 240px;min-width:0}
+.qrmeta .big{font-family:ui-monospace,Menlo,monospace;letter-spacing:.14em;font-size:26px}
+.qrmeta code{word-break:break-all;font-size:13px}
+@media print{.pnav,.foot,.pblurb,form,button{display:none!important}body{background:#fff;padding:0}.card{border:0}}
 .ok{color:var(--ok)}.bad{color:var(--bad)}
 a{color:inherit}.foot{margin-top:32px;font-size:13px;color:var(--muted)}
 .plangrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 14px}
@@ -862,6 +873,69 @@ function demandSection(demand) {
     </table>`;
 }
 
+/**
+ * The venue's own code — the one that exists, works, and can be printed today.
+ *
+ * ── WHY THIS PAGE HAD TO BE BUILT ────────────────────────────────────────
+ * Until now the only thing in the console with "QR" on it was the payments
+ * page, which told a merchant "Pay code active — print it for the counter"
+ * and then rendered no code, no image and no link. There was nothing to
+ * print. Worse, the query behind it named columns `num_paylinks` does not
+ * have, so it threw on every call and the answer was always the negative one.
+ * A dashboard that promises a printable thing and shows a paragraph is the
+ * "button that doesn't work" failure with a laminator attached.
+ *
+ * ── WHAT THIS CODE ACTUALLY DOES ─────────────────────────────────────────
+ * It is the business's identity code from worker/identity.mjs. Scanning it
+ *   1. opens app.itsnum.com/c/<code>, which resolves to this business,
+ *   2. records the connection BOTH ways — the guest sees where they have
+ *      been, the venue sees who came in,
+ *   3. counts as the venue's referral, so walk-ins they send to Num are
+ *      theirs.
+ * One code, not three. A separate "connect" code, "referral" code and
+ * "check-in" code would be three things to print and three things to explain.
+ *
+ * The QR is drawn server-side from worker/qr.mjs — the same encoder the app
+ * uses for a member's code, so a venue's code and a guest's code cannot drift
+ * apart. No image request, no third party, works on a printed page.
+ */
+function codePage(code, link, connections = []) {
+  if (!code || !link) {
+    return `<div class="card"><span class="sub">Your code is being minted — refresh this page in a moment.
+      If it stays like this, tell us at <a href="mailto:info@itsnum.com">info@itsnum.com</a> and we will
+      issue it by hand.</span></div>`;
+  }
+  const svg = qrSvg(link, { size: 240, margin: 2, dark: '#111111', light: '#ffffff' });
+  const met = connections.length
+    ? `<table><tr><th>Who</th><th>Type</th><th>Times</th><th>Last seen</th></tr>
+        ${connections.slice(0, 25).map((c) => `<tr>
+          <td>${H(c.name ?? '—')}</td>
+          <td>${H(c.to_type ?? '')}</td>
+          <td>${H(c.times ?? 1)}</td>
+          <td>${H(String(c.last_met_at ?? '').slice(0, 10))}</td></tr>`).join('')}
+      </table>`
+    : `<p class="sub">Nobody has scanned it yet. Once someone does, they appear here — name, when, and how
+        many times they have been back.</p>`;
+
+  return `<h2>Your QR code</h2>
+    <div class="card qrcard">
+      <div class="qrbox">${svg}</div>
+      <div class="qrmeta">
+        <span class="big">${H(code)}</span>
+        <span class="sub">Print it, tape it to the counter, put it on the menu. A guest scans it with their
+          own phone camera — nothing to install on their side.</span>
+        <p class="sub" style="margin:8px 0 0">Same thing as a link, for a bio or a WhatsApp message:<br>
+          <code>${H(link)}</code></p>
+        <p style="margin:10px 0 0"><a href="${H(link)}" target="_blank" rel="noopener">Open it yourself to check</a>
+          &middot; <a href="#" onclick="window.print();return false">Print this page</a></p>
+      </div>
+    </div>
+    <h2>Who has scanned it</h2>
+    ${met}
+    <p class="sub" style="margin-top:14px">This is also your referral link. Anyone who joins Num from this code
+      is counted as yours.</p>`;
+}
+
 /** The QR a guest scans to pay. State, never a promise — see bizdash.payQr. */
 function payQrSection(qr) {
   if (qr?.ready) {
@@ -993,6 +1067,7 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
       case 'locations':     body = locationsPage(locations, plan, token); break;
       case 'ownership':     body = verifiedSection(extra.verification, extra.verifyToken, place); break;
       case 'notifications': body = notifySection(extra.notify, token); break;
+      case 'code':          body = codePage(extra.identityCode, extra.identityLink, extra.identityConnections ?? []); break;
       case 'payments':      body = payQrSection(extra.payQr); break;
       case 'api':           body = apiPage(place); break;
       case 'beta':          body = betaPage(); break;
@@ -1117,6 +1192,27 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
     } catch (e) { console.warn('[bizconsole] delivery', e?.message ?? e); }
   }
 
+  // ── The venue's own code ────────────────────────────────────────────────
+  // Minted on first read and stable forever after: a code that rotates
+  // invalidates every QR already printed and taped to a counter. codeFor()
+  // creates the row only if there is not one, so simply opening the page is
+  // enough to give a business a code — no separate "generate" button to press
+  // and forget.
+  //
+  // Read on every page, not only the code page, because it is cheap and the
+  // overview links to it. The scan list is only worth the query on the page
+  // that shows it.
+  let identityCode = null;
+  let identityLink = null;
+  let identityConnections = [];
+  if (businessId) {
+    identityCode = await codeFor(env, { ownerType: 'business', ownerId: businessId }).catch(() => null);
+    identityLink = identityCode ? linkFor(identityCode) : null;
+    if (String(page ?? '') === 'code') {
+      identityConnections = await connectionsFor(env, { ownerType: 'business', ownerId: businessId }).catch(() => []);
+    }
+  }
+
   // Their own words for their trade, from the listing. No new question asked.
   const tpl = templateFor(place?.category);
 
@@ -1166,6 +1262,7 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
     version: data.version, released: data.released, notify,
     demand: data.demand, payQr: data.pay_qr, verification: data.verification, events: data.events ?? [],
     verifyToken, readiness, page, pending, autofilled, offerings, offerCurrency, delivery, tpl,
+    identityCode, identityLink, identityConnections,
     pages: PAGES, pageFor, opens, cheapestTierFor,
   });
 }
@@ -1582,7 +1679,7 @@ export async function handleBizConsole(request, env, url) {
   return landing();
 }
 
-export const __testables = { mintSession, sessionPlace, sign };
+export const __testables = { mintSession, sessionPlace, sign, codePage, payQrSection };
 
 /** See-what-they-see (index.mjs /api/admin/biz-view) — the owner's own calculation. */
 export const insightsForAdmin = (env, placeId, days) => insightsFor(env, placeId, days);

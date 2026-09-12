@@ -106,8 +106,25 @@ export function newCode(len = 8, rnd = () => crypto.getRandomValues(new Uint8Arr
   return out;
 }
 
+/**
+ * Where every Num code points.
+ *
+ * This is app.itsnum.com and not itsnum.com, and the difference is the whole
+ * link working or not working. `/c/<code>` is a route on the APP Worker
+ * (worker/index.mjs). The marketing site is a different Worker and returns a
+ * flat 404 for it — verified against production on 12 Sep 2026:
+ * `itsnum.com/c/ABCD2345` → 404, `app.itsnum.com/c/ABCD2345` → 302 to
+ * `/?c=ABCD2345`. The default used to be the marketing host, which would have
+ * put a dead link under every business, host and member QR we printed.
+ *
+ * It matches APP_ORIGIN in src/lib/links.ts on purpose: the code a member sees
+ * in the app and the code their venue prints from the console have to be the
+ * same code, and connectlink.test.mjs holds the two files to it.
+ */
+export const APP_ORIGIN = 'https://app.itsnum.com';
+
 /** The one link shape. The QR encodes exactly this, so both paths agree. */
-export const linkFor = (code, base = 'https://itsnum.com') =>
+export const linkFor = (code, base = APP_ORIGIN) =>
   `${String(base).replace(/\/+$/, '')}/c/${encodeURIComponent(String(code))}`;
 
 /**
@@ -280,6 +297,18 @@ export async function claimHost(env, { memberId, consoleKey }) {
   return { ok: true, host: { id: host.id, name: host.company || host.name } };
 }
 
+/** Digits only, so +1 (310) 555-0134 and +13105550134 are the same number. */
+export const samePhone = (a, b) => {
+  const d = (v) => String(v ?? '').replace(/\D+/g, '');
+  const x = d(a);
+  const y = d(b);
+  if (x.length < 7 || y.length < 7) return false;
+  // Compare the last 10 digits: one side may carry a country code the other
+  // does not, and a venue's published number rarely matches a member's
+  // formatting exactly.
+  return x.slice(-10) === y.slice(-10);
+};
+
 /**
  * Attach a business the member has already proven they own.
  *
@@ -287,18 +316,40 @@ export async function claimHost(env, { memberId, consoleKey }) {
  * a verified email and phone but no member — the reason all three live rows
  * had a NULL member_ref. The proof is the verified phone on the ownership
  * record matching the member's own verified number; nothing weaker.
+ *
+ * ── THE PHONE IS READ, NEVER ACCEPTED ────────────────────────────────────
+ * This used to take `phone` from the caller. A venue's number is printed on
+ * its own listing, its own door and its own Google entry, so "send us the
+ * number" is not proof of anything — anyone who could read a signboard could
+ * have attached that business to their own account and opened its dashboard,
+ * its bookings and its guest list.
+ *
+ * So the number comes from `num_members` for the member who is asking, and
+ * only if `phone_verified` is set — meaning Num texted that handset and the
+ * person read the code off it. The client cannot influence which number is
+ * compared. Caught on review 12 Sep 2026, before it shipped.
  */
-export async function claimBusinessByPhone(env, { memberId, phone }) {
+export async function claimBusinessByPhone(env, { memberId }) {
   if (!env?.DB) return { ok: false, error: 'no database' };
   await ensure(env);
   const me = String(memberId ?? '').trim();
-  const ph = String(phone ?? '').trim();
-  if (!me || !ph) return { ok: false, error: 'missing details' };
+  if (!me) return { ok: false, error: 'missing details' };
 
-  const row = await env.DB.prepare(
-    `SELECT place_id, business_id, member_ref FROM num_place_owners
-      WHERE phone = ?1 AND revoked_at IS NULL`,
-  ).bind(ph).first().catch(() => null);
+  const member = await env.DB.prepare(
+    'SELECT phone, phone_verified FROM num_members WHERE id = ?1',
+  ).bind(me).first().catch(() => null);
+  if (!member?.phone || !Number(member.phone_verified)) {
+    return { ok: false, error: 'verify your phone number first — that is what proves the listing is yours' };
+  }
+  const ph = String(member.phone);
+
+  // Read the candidates and compare in code rather than in SQL: the stored
+  // formats differ between the claim flow and sign-up, and a `WHERE phone = ?`
+  // silently misses "+1 310 555 0134" against "+13105550134".
+  const { results } = await env.DB.prepare(
+    'SELECT place_id, business_id, member_ref, phone FROM num_place_owners WHERE revoked_at IS NULL AND phone IS NOT NULL',
+  ).all().catch(() => ({ results: [] }));
+  const row = (results ?? []).find((r) => samePhone(r.phone, ph));
   if (!row) return { ok: false, error: 'no verified listing on that number' };
   if (row.member_ref && row.member_ref !== me) return { ok: false, error: 'that listing is linked to another account' };
 
@@ -309,7 +360,7 @@ export async function claimBusinessByPhone(env, { memberId, phone }) {
 }
 
 /** Everything a profile needs to draw the hats, their codes and their links. */
-export async function identityPayload(env, memberId, base = 'https://itsnum.com') {
+export async function identityPayload(env, memberId, base = APP_ORIGIN) {
   const hats = await identitiesFor(env, memberId);
   const out = [];
   for (const h of hats) {

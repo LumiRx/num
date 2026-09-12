@@ -37,9 +37,12 @@ const ME = 'mem_dre'; const OTHER = 'mem_guest';
 
 beforeEach(() => {
   db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT)`);
-  db.prepare('INSERT INTO num_members VALUES (?,?)').run(ME, 'Dre');
-  db.prepare('INSERT INTO num_members VALUES (?,?)').run(OTHER, 'Guest');
+  // phone and phone_verified matter now: claimBusinessByPhone reads the
+  // number off the MEMBER rather than taking one from the caller, because a
+  // venue's number is printed on its own door.
+  db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, phone TEXT, phone_verified INTEGER NOT NULL DEFAULT 0)`);
+  db.prepare('INSERT INTO num_members VALUES (?,?,?,?)').run(ME, 'Dre', '+1 (310) 555-0000', 1);
+  db.prepare('INSERT INTO num_members VALUES (?,?,?,?)').run(OTHER, 'Guest', '+13105551111', 1);
   db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, dest TEXT)`);
   db.prepare('INSERT INTO places VALUES (?,?,?)').run('p1', 'Bestia', 'los-angeles');
   db.exec(`CREATE TABLE businesses (id TEXT PRIMARY KEY, name TEXT)`);
@@ -65,14 +68,14 @@ describe('the hats a member wears', () => {
   });
 
   test('linking by the verified number makes it a hat', async () => {
-    const out = await claimBusinessByPhone(env, { memberId: ME, phone: '+13105550000' });
+    const out = await claimBusinessByPhone(env, { memberId: ME });
     assert.equal(out.ok, true);
     const hats = await identitiesFor(env, ME);
     assert.ok(hats.some((h) => h.type === 'business' && h.id === 'biz1' && h.name === 'Bestia'));
   });
 
   test('a revoked ownership is not a hat', async () => {
-    await claimBusinessByPhone(env, { memberId: ME, phone: '+13105550000' });
+    await claimBusinessByPhone(env, { memberId: ME });
     db.prepare("UPDATE num_place_owners SET revoked_at=datetime('now')").run();
     assert.equal((await identitiesFor(env, ME)).some((h) => h.type === 'business'), false);
   });
@@ -106,14 +109,44 @@ describe('proof, not assertion', () => {
   });
 
   test('a business already linked cannot be taken over', async () => {
-    await claimBusinessByPhone(env, { memberId: ME, phone: '+13105550000' });
-    const out = await claimBusinessByPhone(env, { memberId: OTHER, phone: '+13105550000' });
+    await claimBusinessByPhone(env, { memberId: ME });
+    // OTHER's own verified number is a different one, so this is refused twice
+    // over. Point the listing at their number to test the takeover rule itself.
+    db.prepare("UPDATE num_place_owners SET phone='+13105551111'").run();
+    const out = await claimBusinessByPhone(env, { memberId: OTHER });
     assert.equal(out.ok, false);
     assert.equal(db.prepare('SELECT member_ref FROM num_place_owners').get().member_ref, ME);
   });
 
-  test('an unknown number links nothing', async () => {
-    assert.equal((await claimBusinessByPhone(env, { memberId: ME, phone: '+10000000000' })).ok, false);
+  test('a member whose number matches nothing links nothing', async () => {
+    assert.equal((await claimBusinessByPhone(env, { memberId: OTHER })).ok, false);
+  });
+
+  /**
+   * THE HOLE THIS CLOSES.
+   *
+   * The route used to pass `body.phone` straight through. A venue's number is
+   * on its listing, its door and its Google entry, so anyone who could read a
+   * signboard could have typed it in and been handed that business's
+   * dashboard, bookings and guest list. Caught on review before it shipped.
+   */
+  test('knowing the venue\'s number is not proof of anything', async () => {
+    const out = await claimBusinessByPhone(env, { memberId: OTHER, phone: '+13105550000' });
+    assert.equal(out.ok, false, 'the phone in the body must be ignored entirely');
+    assert.equal(db.prepare('SELECT member_ref FROM num_place_owners').get().member_ref, null);
+  });
+
+  test('an unverified number proves nothing either', async () => {
+    db.prepare('UPDATE num_members SET phone_verified=0 WHERE id=?').run(ME);
+    const out = await claimBusinessByPhone(env, { memberId: ME });
+    assert.equal(out.ok, false);
+    assert.match(out.error, /verify your phone/);
+  });
+
+  test('formatting does not decide who owns a restaurant', async () => {
+    // The member is stored as "+1 (310) 555-0000" and the listing as
+    // "+13105550000". A `WHERE phone = ?` would have missed it silently.
+    assert.equal((await claimBusinessByPhone(env, { memberId: ME })).ok, true);
   });
 });
 

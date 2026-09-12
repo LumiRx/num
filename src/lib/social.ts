@@ -218,7 +218,17 @@ export function bootSocial(): void {
     // Someone who already has an account must never be pushed back through
     // sign-up by opening an invite. They are already themselves; the link only
     // adds a friend or a plan to what they have.
-    if (connectTo) void connectByCode(connectTo);
+    // TWO KINDS OF CODE ARRIVE ON THE SAME PATH.
+    //
+    // `/c/mem_…` is a person offering to connect — the original QR, handled by
+    // connectByCode. `/c/ABCD2345` is an IDENTITY code: a business, a host, or
+    // a member's own code from worker/identity.mjs. Both are `?c=` by the time
+    // they reach here, so the shape decides which one it is. A member id is
+    // always prefixed; an identity code never is.
+    if (connectTo) {
+      if (isIdentityCode(connectTo)) void recordIdentityScan(connectTo);
+      else void connectByCode(connectTo);
+    }
     if (token) void acceptInvite(token);
     void refreshFriends();
     void refreshPlans();
@@ -1474,4 +1484,120 @@ export function startPlanSync(): () => void {
     stop();
     document.removeEventListener('visibilitychange', onVis);
   };
+}
+
+
+/**
+ * An identity code minted by worker/identity.mjs.
+ *
+ * The character class MUST mirror ALPHABET there exactly — no 0, O, 1, I or L,
+ * because these get read off a phone screen and typed by hand. The first
+ * version of this regex was `[A-HJ-NP-Z2-9]`, which quietly allows L; a test
+ * in worker/connectlink.test.mjs compares the two and fails on any drift.
+ * Eight characters from that set cannot collide with a `mem_…` id, which is
+ * what lets one path carry both.
+ */
+export const isIdentityCode = (s: string): boolean => /^[A-HJKMNP-Z2-9]{8}$/.test(String(s ?? '').trim().toUpperCase());
+
+/**
+ * Record a scan of a business, host or member identity code.
+ *
+ * Both sides of the connection are written server-side; this only reports it.
+ * A code that is not ours records nothing and says so, rather than inventing
+ * a connection to a place that does not exist.
+ */
+export async function recordIdentityScan(code: string, place?: string | null): Promise<
+  { ok: boolean; connected?: { type: string; id: string }; self?: boolean; error?: string } | null
+> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const out = await fetch(apiUrl('/api/identity/scan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, code, via: 'qr', place: place ?? null }),
+    }).then((r) => r.json());
+    if (out?.ok && !out.self) store.set({ connectTo: null });
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** The hats this member wears, each with its stable code and shareable link. */
+export async function myIdentities(): Promise<Array<{
+  type: string; id: string; name: string | null; code: string | null; link: string | null;
+}>> {
+  const me = store.get().me;
+  if (!me) return [];
+  try {
+    const out = await fetch(apiUrl(`/api/identity/mine?me=${encodeURIComponent(me.id)}`)).then((r) => r.json());
+    return out?.identities ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Who one of my identities has met. The server refuses any hat that is not mine. */
+/**
+ * Attach a business this member already owns to the account they are signed in
+ * with, so the dashboard appears in their own app instead of behind a second
+ * login.
+ *
+ * Sends nothing but "it is me". The proof is the number Num texted THEM,
+ * matched server-side against the number on the ownership record — a venue's
+ * published phone is printed on its own door and proves nothing, so the client
+ * is deliberately given no say in which number is compared. See the note on
+ * claimBusinessByPhone in worker/identity.mjs.
+ */
+export async function linkMyBusiness(): Promise<{ ok: boolean; error?: string }> {
+  const me = store.get().me;
+  if (!me) return { ok: false, error: 'Sign in first.' };
+  try {
+    const out = await fetch(apiUrl('/api/identity/claim-business'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id }),
+    }).then((r) => r.json()) as { ok?: boolean; error?: string };
+    return { ok: !!out.ok, error: out.error };
+  } catch {
+    return { ok: false, error: 'Couldn\u2019t reach Num just now — try again in a moment.' };
+  }
+}
+
+/**
+ * The same, for a VIP host. Proof here is the console key they already hold:
+ * matching on email alone would let anyone who knows a host's address adopt
+ * their dashboard.
+ */
+export async function linkMyHost(consoleKey: string): Promise<{ ok: boolean; error?: string }> {
+  const me = store.get().me;
+  if (!me) return { ok: false, error: 'Sign in first.' };
+  const key = String(consoleKey ?? '').trim();
+  if (!key) return { ok: false, error: 'Paste the key from your host console.' };
+  try {
+    const out = await fetch(apiUrl('/api/identity/claim-host'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, console_key: key }),
+    }).then((r) => r.json()) as { ok?: boolean; error?: string };
+    return { ok: !!out.ok, error: out.error };
+  } catch {
+    return { ok: false, error: 'Couldn\u2019t reach Num just now — try again in a moment.' };
+  }
+}
+
+export async function myConnections(type = 'member', id?: string): Promise<Array<{
+  to_type: string; to_id: string; name: string | null; via: string; place: string | null;
+  times: number; first_met_at: string; last_met_at: string;
+}>> {
+  const me = store.get().me;
+  if (!me) return [];
+  const q = new URLSearchParams({ me: me.id, type, id: id ?? me.id });
+  try {
+    const out = await fetch(apiUrl(`/api/identity/connections?${q.toString()}`)).then((r) => r.json());
+    return out?.connections ?? [];
+  } catch {
+    return [];
+  }
 }

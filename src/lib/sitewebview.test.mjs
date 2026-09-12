@@ -115,15 +115,32 @@ test('the escape offers a route out AND the manual steps', () => {
   assert.match(appPage, /line\.me/, 'no way to use Num without escaping at all');
 });
 
-test('the home page sends people to a page that can explain an in-app browser', () => {
-  // The home page is the site again (restored 3 Sep 2026). Its "Get the app"
-  // buttons go to /get/, which forwards to /app/ — the one page that knows how
-  // to explain Instagram's browser and how to get out of it. A home CTA that
-  // went STRAIGHT to app.itsnum.com would skip that and land an Instagram
-  // visitor on the dark screen this whole file exists to prevent.
+test('the home page sends people straight to Num, and diverts only a webview', () => {
+  // 11 Sep 2026. The CTAs used to go to /get/ -> /app/ for EVERYONE, so every
+  // visitor met an explainer before they met the product. Dre asked for the
+  // direct route; the reason the indirect one existed is real but applies to
+  // one group only — someone inside Instagram's webview, for whom
+  // app.itsnum.com is the dark screen this whole file exists to prevent.
+  //
+  // So the href is the app, and public/assets/site.js rewrites it to /app/
+  // when it detects an in-app browser. If that rewrite is ever removed, this
+  // test fails rather than quietly shipping the dark screen to social traffic.
   const ctas = [...homePage.matchAll(/<a\b[^>]*class="btn[^"]*"[^>]*href="([^"]+)"[^>]*>/gi)].map((m) => m[1]);
   assert.ok(ctas.length >= 2, 'the home page has lost its buttons');
-  assert.ok(ctas.some((h) => h === '/get/' || h === '/app/'), 'no home CTA leads to /get/ or /app/');
-  assert.ok(!ctas.some((h) => /^https?:\/\/app\.itsnum\.com\/?$/.test(h)),
-    'a home CTA goes straight to app.itsnum.com and skips the in-app browser handling');
+  assert.ok(ctas.some((h) => /^https:\/\/app\.itsnum\.com\/?$/.test(h)),
+    'no home CTA opens Num directly');
+
+  const site = readFileSync(new URL('assets/site.js', SITE), 'utf8');
+  assert.match(site, /a\[href\^="https:\/\/app\.itsnum\.com"\]/,
+    'nothing rewrites the CTA for an in-app browser');
+  assert.match(site, /setAttribute\('href', '\/app\/'\)/, 'the webview is not diverted to /app/');
+  for (const app of ['Instagram', 'FBAN', 'BytedanceWebview', 'MicroMessenger']) {
+    assert.ok(site.includes(app), `${app} is missing from the in-app detection`);
+  }
+});
+
+test('the page a webview lands on can still explain itself', () => {
+  // The divert is worthless if its destination stops explaining the escape.
+  assert.match(appPage, /intent:\/\//);
+  assert.match(appPage, /Open in Safari/);
 });

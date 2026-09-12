@@ -95,6 +95,14 @@ export const PAGES = Object.freeze([
     blurb: 'Where your copy of a booking request goes. The listing phone is texted either way.',
   },
   {
+    // The code a venue actually prints. Separate from 'payments' on purpose:
+    // this one exists today and works today, and burying it inside a page
+    // about card payments — which are not switched on for anybody — is how a
+    // working feature reads as an unavailable one.
+    id: 'code', label: 'Your QR code', nav: true, needs: null,
+    blurb: 'Print it for the counter. Anyone who scans it is connected to you, and it is your referral link.',
+  },
+  {
     id: 'payments', label: 'Taking payment', nav: true, needs: null,
     blurb: 'A QR a guest scans to settle the bill.',
   },

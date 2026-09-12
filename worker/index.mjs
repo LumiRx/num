@@ -1517,6 +1517,29 @@ export default {
       return json(200, { connected: airReady(env), tools: AIR_TOOLS });
     }
 
+    // ── WHAT BROKE, IN WRITING ──────────────────────────────────────────
+    //
+    // The error boundary posts here when a render throws. Before this, the
+    // only trace a crash left was a gtag event we cannot query, so the whole
+    // evidence for "num stopped working" was that sentence. Open on purpose:
+    // it is the one route that has to work on a device that is already
+    // broken, and it answers 200 whatever happens — see worker/crashlog.mjs
+    // for what it stores and, more to the point, what it refuses to store.
+    if (url.pathname === '/api/crash' && request.method === 'POST') {
+      const m = await import('./crashlog.mjs');
+      return await m.handleCrash(request, env);
+    }
+
+    // The same crashes, read back. Admin-gated because a stack trace names
+    // our internals; the write above is open and the read is not.
+    if (url.pathname === '/api/crash/recent') {
+      if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) {
+        return json(403, { error: 'admin only' });
+      }
+      const m = await import('./crashlog.mjs');
+      return json(200, { crashes: await m.recent(env, { limit: Number(url.searchParams.get('limit')) || 30 }) });
+    }
+
     // WHAT DID THE PANEL AGREE ON? Admin-gated: what several models
     // independently converge on is a commercial asset, and publishing it
     // would also let anyone reconstruct our ranking. `?run=1` forces a tick
@@ -1534,6 +1557,39 @@ export default {
         ran,
         top: dest ? await m.consensusFor(env, { dest, cat: url.searchParams.get('cat') ?? '' }) : null,
       });
+    }
+
+    // ── /c/<code> — EVERY NUM CODE OPENS HERE ───────────────────────────
+    //
+    // 11 Sep 2026: THIS PATH HAD NO HANDLER AT ALL.
+    //
+    // `connectLink()` in src/lib/links.ts has minted `/c/<memberId>` since
+    // August — it is what QrCard renders and what ShareSheet shares. The app
+    // reads a connect code from the QUERY (`?c=…`, social.ts), and nothing
+    // ever rewrote the path into the query. With
+    // `not_found_handling: single-page-application`, `/c/anything` quietly
+    // served index.html and the code was dropped on the floor. Every "scan to
+    // connect with me" QR in the wild opened the app and did nothing.
+    //
+    // One redirect fixes the old links and carries the new identity codes on
+    // the same path, which is the point of having one path: a member id
+    // (`mem_…`) and an identity code (eight characters from a restricted
+    // alphabet) cannot be confused, so both ride here and the client decides.
+    //
+    // 302, not 301: a permanent redirect would be cached by the browser and
+    // by every scanner in between, and this shape may yet change.
+    if (url.pathname.startsWith('/c/')) {
+      const token = decodeURIComponent(url.pathname.slice(3).split('/')[0] || '').trim();
+      // Anything that is not a plausible code goes to the app's front door
+      // rather than being echoed back into a query parameter.
+      if (!token || token.length > 64 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+        return Response.redirect(`${url.origin}/`, 302);
+      }
+      const q = new URLSearchParams({ c: token });
+      // A referral rides along untouched — the same link is both.
+      const ref = url.searchParams.get('ref');
+      if (ref) q.set('ref', ref);
+      return Response.redirect(`${url.origin}/?${q.toString()}`, 302);
     }
 
     // ── HATS, CODES AND WHO YOU HAVE MET ────────────────────────────────
@@ -1576,8 +1632,13 @@ export default {
       if (rest === '/claim-host' && request.method === 'POST') {
         return json(200, await m.claimHost(env, { memberId: me, consoleKey: body.console_key }));
       }
+      // No `phone` is read from the body on purpose. The number that proves a
+      // listing is yours is the one Num texted YOU, looked up server-side — a
+      // venue's published number proves nothing, since it is printed on the
+      // door. See the note on claimBusinessByPhone.
       if (rest === '/claim-business' && request.method === 'POST') {
-        return json(200, await m.claimBusinessByPhone(env, { memberId: me, phone: body.phone }));
+        if (!me) return json(400, { error: 'who?' });
+        return json(200, await m.claimBusinessByPhone(env, { memberId: me }));
       }
       return json(404, { error: 'no such identity route' });
     }

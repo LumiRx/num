@@ -37,7 +37,35 @@ import type { ErrorInfo, ReactNode } from 'react';
 type Props = { children: ReactNode };
 type State = { err: Error | null; copied: boolean };
 
-/** Fire-and-forget, and never throws — see rule 3. */
+/**
+ * Where the crash report goes.
+ *
+ * A literal, not an import. Rule 2 says no app imports and `apiUrl()` reaches
+ * for the Capacitor bridge, which is one more thing that can throw inside an
+ * error handler. Same value as API_ORIGIN in src/lib/apibase.ts — boundary.
+ * test.mjs holds the two to each other so they cannot drift.
+ *
+ * Sent absolute rather than same-origin because the App Store build runs on
+ * `capacitor://localhost`, where a relative '/api/crash' goes nowhere. On the
+ * web the browser resolves it to the same host it is already on.
+ */
+const CRASH_ENDPOINT = 'https://app.itsnum.com/api/crash';
+
+/**
+ * Fire-and-forget, and never throws — see rule 3.
+ *
+ * ── WHY IT POSTS SOMEWHERE WE CAN READ ───────────────────────────────────
+ * This used to call gtag and stop. gtag is analytics: we cannot query it from
+ * a terminal, which meant the entire evidence for a real crash on Dre's phone
+ * on 12 Sep 2026 was the sentence "it said num stopped working" — the heading
+ * below, read back by a person. Fixing that meant guessing which component
+ * threw, shipping the guess, and asking him to try again.
+ *
+ * So the report also goes to our own Worker, which stores the message, the
+ * component stack and the phone. What it deliberately does NOT send is the
+ * query string: a connect code and a payment amount both live there and
+ * neither helps fix a render bug. See worker/crashlog.mjs.
+ */
 function report(err: Error, info?: ErrorInfo) {
   try {
     const g = (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag;
@@ -50,6 +78,31 @@ function report(err: Error, info?: ErrorInfo) {
       });
     }
   } catch { /* measurement is never worth a second exception */ }
+
+  try {
+    const body = JSON.stringify({
+      message: String(err?.message ?? err).slice(0, 300),
+      stack: String(err?.stack ?? '').slice(0, 1200),
+      component: String(info?.componentStack ?? '').slice(0, 900),
+      // Path only. The query is dropped here as well as on the server, so a
+      // connect code never leaves the device even if the route changes.
+      path: String(location.pathname || '/').slice(0, 120),
+      surface:
+        (window as unknown as { Capacitor?: unknown }).Capacitor ? 'native'
+          : window.matchMedia?.('(display-mode: standalone)').matches ? 'installed'
+            : 'browser',
+    });
+    // keepalive so the report survives the reload the person is about to do;
+    // `.catch` because an offline phone must not throw inside a catch block.
+    void fetch(CRASH_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+      mode: 'cors',
+    }).catch(() => {});
+  } catch { /* a report that cannot be built is not worth a second crash */ }
+
   try {
     console.error('[num] render crashed', err, info?.componentStack);
   } catch { /* no console in some webviews */ }

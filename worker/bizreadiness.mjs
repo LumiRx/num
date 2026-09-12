@@ -257,9 +257,11 @@ export async function readinessFor(env, businessId) {
   const agent = await maybe(env, 'SELECT agent_id, state FROM num_business_agents WHERE business_id = ?1', id);
   const notify = await maybe(env,
     'SELECT email, on_booking FROM num_business_notify WHERE business_id = ?1', id);
-  const paylink = placeId
-    ? await maybe(env, 'SELECT id FROM num_paylinks WHERE place_id = ?1 OR business_id = ?2 LIMIT 1', placeId, id)
-    : undefined;
+  // num_paylinks is keyed by `token` on `business_id`; it has no `id` and no
+  // `place_id`. The old statement named both and threw on every call, so the
+  // checklist reported "no pay code" for a business that had one. See the note
+  // on payQr() in bizdash.mjs.
+  const paylink = await maybe(env, 'SELECT token FROM num_paylinks WHERE business_id = ?1 LIMIT 1', id);
   const verification = placeId
     ? await maybe(env, 'SELECT method FROM num_business_verification WHERE place_id = ?1 LIMIT 1', placeId)
     : undefined;

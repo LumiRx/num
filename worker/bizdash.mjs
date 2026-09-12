@@ -67,17 +67,31 @@ export async function travellerDemand(env, { dest, days = 30, limit = 8 } = {}) 
  * the honest dashboard answer today is "not set up yet, here is how" — and the
  * one thing it must never do is show a merchant a payment surface that cannot
  * take money.
+ *
+ * ── THE QUERY THIS USED TO RUN ──────────────────────────────────────────
+ * `SELECT id, label, created_at FROM num_paylinks WHERE place_id = ?1 OR
+ * business_id = ?2`. `num_paylinks` has neither an `id` column nor a
+ * `place_id` column — its key is `token`, and it is keyed to the business.
+ * So the statement threw `no such column` on every single call, the catch
+ * below swallowed it, and every merchant was told "no pay code yet" whether
+ * they had one or not. It read as a missing feature rather than a broken
+ * query, which is why it sat there.
+ *
+ * Nothing was actually lost, because the table is empty in production. The
+ * lesson is the one worth keeping: a try/catch around a query turns a schema
+ * mistake into a plausible-looking answer.
  */
-export async function payQr(env, { placeId, businessId } = {}) {
-  if (!env?.DB || !placeId) return { ready: false, reason: 'No listing.' };
+export async function payQr(env, { businessId } = {}) {
+  if (!env?.DB) return { ready: false, reason: 'No listing.' };
+  if (!businessId) return { ready: false, reason: 'No listing.' };
   try {
     const row = await env.DB.prepare(
-      `SELECT id, label, created_at FROM num_paylinks
-        WHERE place_id = ?1 OR business_id = ?2
+      `SELECT token, label, created_at FROM num_paylinks
+        WHERE business_id = ?1 AND state = 'active' AND revoked_at IS NULL
         ORDER BY rowid DESC LIMIT 1`,
-    ).bind(String(placeId), businessId ? String(businessId) : '').first();
-    if (row?.id) {
-      return { ready: true, id: row.id, label: row.label ?? null, created_at: row.created_at ?? null };
+    ).bind(String(businessId)).first();
+    if (row?.token) {
+      return { ready: true, token: row.token, label: row.label ?? null, created_at: row.created_at ?? null };
     }
   } catch { /* the table may not exist yet — that is itself "not set up" */ }
   return {
@@ -111,7 +125,7 @@ export async function verification(env, placeId) {
 export async function dashboardData(env, { place, plan, insights, bookings }) {
   const [demand, qr, verified, events] = await Promise.all([
     travellerDemand(env, { dest: place?.dest, days: Math.min(30, plan?.analytics_days ?? 7) }),
-    payQr(env, { placeId: place?.place_id ?? place?.id, businessId: plan?.business_id }),
+    payQr(env, { businessId: plan?.business_id }),
     verification(env, place?.place_id ?? place?.id),
     // Parties members are hosting AT this business — worker/venueevents.mjs.
     import('./venueevents.mjs').then((m) => m.upcomingEvents(env, { businessId: plan?.business_id })).catch(() => []),

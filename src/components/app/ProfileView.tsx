@@ -23,6 +23,7 @@ import PairBridge from './PairBridge';
 import PeopleCard from './PeopleCard';
 import MembershipCard from './MembershipCard';
 import DangerZone from './DangerZone';
+import IdentityCard from './IdentityCard';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
@@ -402,6 +403,7 @@ export default function ProfileView() {
       </Collapsible>
 
       <Group>ACCOUNT</Group>
+      <IdentityCard />
       {/* business tools, only if they have one */}
       <div
         {...pressable(() => store.set({ businessOpen: true }))}

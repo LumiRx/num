@@ -119,3 +119,38 @@
     }
   });
 })();
+
+/* ── STRAIGHT INTO NUM, UNLESS THE BROWSER CANNOT TAKE IT ──────────────────
+ *
+ * Dre, 11 Sep 2026: "when you click get app it take to another landing page it
+ * should just take you to the app."
+ *
+ * He is right for almost everyone, and wrong for one group that matters. A
+ * visitor arriving from Instagram, TikTok or Facebook is inside that app's own
+ * webview, and app.itsnum.com in a webview is the dark broken screen that
+ * /app/ exists to rescue — it explains how to escape the webview (the Android
+ * intent:// route, "Open in Safari" on iOS) and offers LINE as a way to use
+ * Num without escaping at all. src/lib/sitewebview.test.mjs guards that, and
+ * it is the reason a blanket change to the CTAs was wrong.
+ *
+ * So: the buttons point AT THE APP, and only an in-app browser is diverted to
+ * the page that can help it. Same detection list as public/app/index.html.
+ * Progressive: with no JavaScript the href already goes to the app, which is
+ * the right default for the browsers that can handle it.
+ */
+(function () {
+  var ua = navigator.userAgent || '';
+  var INAPP = [
+    /FBAN|FBAV|FB_IAB|FBIOS/i, /Instagram/i,
+    /BytedanceWebview|musical_ly|\bBytedance\b/i, /\bLine\/[\d.]|\bLIFF\b/i,
+    /Twitter for (?:iPhone|iPad|Android)|\bTwitterAndroid\b/i, /\bSnapchat\b/i,
+    /MicroMessenger/i, /\bLinkedInApp\b/i, /\bPinterest(?:Bot)?[\s/]/i
+  ];
+  var inapp = INAPP.some(function (re) { return re.test(ua); });
+  if (!inapp) return;
+  document.documentElement.setAttribute('data-inapp', '1');
+  document.addEventListener('DOMContentLoaded', function () {
+    var links = document.querySelectorAll('a[href^="https://app.itsnum.com"]');
+    for (var i = 0; i < links.length; i++) links[i].setAttribute('href', '/app/');
+  });
+})();
