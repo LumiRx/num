@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.273 — 2026-09-12 18:24 UTC
+
+contact required at signup — mobile, email, or Apple
+
+- commit `f7f6251`
+
 ## 0.8.272 — 2026-09-12 18:21 UTC
 
 (no note given)
