@@ -2734,6 +2734,28 @@ export default {
     // hour and the number it recomputes changes a few times a day, so eleven
     // of those passes would be a write over 2.5M-row table for nothing. See
     // worker/learn.mjs — this is the only closed loop NUM has.
+    // ── THE MORNING DIGEST ──────────────────────────────────────────────
+    //
+    // The other half of the bargain struck in worker/alerttriage.mjs: a judge
+    // is allowed to keep the phone quiet overnight only because everything it
+    // held back arrives here in one message. "Not urgent" must never come to
+    // mean "never told".
+    //
+    // 15:00 UTC — 08:00 in Los Angeles, where Dre is. Once a day, and silent
+    // when there is nothing held back, because a digest that arrives every
+    // morning saying "nothing" is a digest people stop opening.
+    {
+      const t = new Date(event.scheduledTime || Date.now());
+      if (t.getUTCHours() === 15 && t.getUTCMinutes() < 5) {
+        ctx.waitUntil(
+          import('./alerttriage.mjs')
+            .then((m) => m.sendDigest(env))
+            .then((r) => { if (r?.sent) console.log('[digest]', JSON.stringify(r)); })
+            .catch((e) => console.error('[digest]', e?.message ?? e)),
+        );
+      }
+    }
+
     if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 5) {
       ctx.waitUntil(
         import('./learn.mjs')

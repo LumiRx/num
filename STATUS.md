@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 3,995 green, 0 lint errors |
+| Tests | 4,072 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -217,7 +217,52 @@ The invite said "You pay 10% only when a booking actually happens", and a walk-i
 The six signed up as of 12 Sep keep free walk-ins **for good** — `walkin_fee_cs = 0`, held as data,
 not a date check in code. New venues are invited on copy stating the fee before they sign.
 
-## X, Grok, X Pay — what is actually possible (checked 12 Sep)
+## X and Grok — BUILT 12 Sep, two of three need keys
+
+**Grok is a brain slot, not a new adapter.** `openai-compatible` already covered it — the note on the
+`openai` brain said so. Added below `openai` and above `hosted`: structured (keeps cards and places)
+and a FOURTH independent quota, which is what the 6–7 Aug outage was missing. **Ranked for
+independence, not price** — grok-4.6 is $2/$6 per Mtok, dearer than the lanes above it, and the note
+says so rather than implying a saving. Actions OFF until `NUM_XAI_ACTIONS=1`, on its own switch so
+approving OpenAI's actions cannot approve xAI's. Needs `NUM_XAI_BASE_URL` (https://api.x.ai/v1) and
+`NUM_XAI_KEY`.
+
+- Grok prices added to `console.mjs` — an unpriced model falls through to OPUS's rate, which would
+  report a Grok turn at ~4× its real cost and make the redundancy lane look unaffordable.
+- New `fallbackModel` on a brain: the shared adapter used to default ANY openai-compatible brain to
+  `gpt-5-mini`, so a vendor configured without its model variable was sent a rival's model name and
+  failed with something that read like an outage. A test derives the price check FROM `BRAINS`, so
+  adding a vendor cannot quietly add an unpriced one.
+
+**Sharing costs nothing and needs no key.** `src/lib/xshare.ts` + a POST ON X button in `ShareSheet`.
+It is a Web Intent — X's own compose box, pre-filled, sent by the member from their own account.
+
+- **The post carries a REFERRAL link, never the connect link.** `connectLink()` attaches whoever
+  opens it to that member: right for a QR across a table, wrong broadcast publicly, where it invites
+  any stranger scrolling past to attach themselves to a named person. A test pins it.
+- Budgeted as X counts it: a link is **23 characters** whatever its length, so the text is trimmed to
+  280 − 24. Budget by the real URL length and X rejects the whole post instead of trimming it.
+- The module is PURE (no `window`, no imports) so its test loads and RUNS the shipped code rather than
+  asserting against a re-implementation. That is why its annotations are named aliases only.
+- An `<a>`, not `window.open` — an installed PWA blocks programmatic popups, and a share button that
+  silently does nothing is worse than none.
+
+**Posting needs three things true at once.** `growth/xpost.mjs`: a bearer token, `NUM_X_POSTING=1`,
+and a caller. **Nothing is wired to a schedule, deliberately** — an agent that posts publicly on a
+timer is a different product from a tool that posts when asked, and a test asserts the file has not
+acquired a cron.
+
+- **$0.015 a post, $0.20 for a post WITH A LINK** — and every post Num would make has one. The cost
+  is computed from the post's own text, and `hasLink` errs EXPENSIVE on purpose: wrong the generous
+  way over-states by 18.5 cents, wrong the other way under-states thirteenfold and the cap stops
+  being a cap.
+- **An unset budget means NO posting, not unlimited** — forgetting to set a cap must not be the same
+  act as approving everything. Money is integer tenth-cents; `dollars()` keeps a third decimal for
+  sub-cent amounts because two turned $0.015 into "$0.01".
+- A token alone does not enable posting. 401/403 is not marked retryable; 429/5xx is.
+- Needs a paid X developer account, `NUM_X_BEARER`, `NUM_X_POSTING=1`, `NUM_X_BUDGET_TC`.
+
+## X Pay — NOT possible, and the name is ambiguous (checked 12 Sep)
 
 - **X Pay cannot be integrated, and the name is ambiguous.** X Money: US-only limited beta since Mar
   2026 (Cross River Bank), consumer P2P plus a debit card, **no merchant or developer API**. A crypto
@@ -251,7 +296,16 @@ aborts cleanly because nothing has been applied yet. `recipes/deploy.md` now say
 - Host console is eleven stacked cards with no tabs.
 - D1 token at `~/num-worktrees/.secrets/cf-d1.token` is still a placeholder.
 - **A Cowork session cannot deploy, and the reason is not the build.** File-delete permission was granted on 12 Sep, so `npm run build` works now. The wall is further on: wrangler in the Cowork VM has no Cloudflare credentials at all — `$HOME/.wrangler` there holds only `logs/` and `metrics.json`, because that VM's home is not Dre's home, so his `wrangler login` is invisible to it. Every `wrangler` call fails with "necessary to set a CLOUDFLARE_API_TOKEN". **Staging and shipping are Dre's, full stop**, unless a scoped `CLOUDFLARE_API_TOKEN` is put where the session can read it.
-- **`git` in a worktree needs two env vars from a Cowork shell.** `.git` there reads `gitdir: /Users/dre/Documents/…`, an absolute path the VM cannot resolve, which looks exactly like a broken repo. `export GIT_DIR="$HOME/mnt/NUM/.git/worktrees/app-main" GIT_WORK_TREE="$HOME/mnt/num-worktrees/app-main"` and it works. The repo is fine.
+- **`git` in a worktree needs two env vars ONLY INSIDE A COWORK SHELL — NEVER ON DRE'S MAC.**
+  In the Cowork VM the worktree's `.git` file reads `gitdir: /Users/dre/Documents/…`, an absolute path
+  that VM cannot resolve, so git there looks exactly like a broken repo. The fix, **for that shell
+  only**, is `export GIT_DIR="$HOME/mnt/NUM/.git/worktrees/app-main" GIT_WORK_TREE="$HOME/mnt/num-worktrees/app-main"`.
+  On Dre's own Mac the paths are real and **plain `git` works with no variables at all** — pasting
+  those exports into his terminal resolves `$HOME` to `/Users/dre`, produces
+  `/Users/dre/mnt/NUM/...` which does not exist, and then breaks EVERY git command in that window
+  until `unset GIT_DIR GIT_WORK_TREE`. This happened on 12 Sep because a Cowork-only command was
+  handed to Dre in a deploy block. **Never put those exports in a command block for Dre.** The repo is
+  fine.
 
 ## Facts that cost tokens to rediscover
 

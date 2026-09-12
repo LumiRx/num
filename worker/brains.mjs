@@ -108,6 +108,47 @@ export const BRAINS = [
     note: 'A strict-schema brain on a third independent bill — full cards and places, at about 2% of the frontier model. Actions stay off until NUM_OPENAI_ACTIONS=1.',
   },
   {
+    // ── GROK, ON A FOURTH INDEPENDENT BILL (12 Sep 2026) ──────────────────
+    //
+    // Asked for by Dre. It needs no new adapter: the `openai-compatible` kind
+    // already covers it, and the note on the `openai` brain above says so in
+    // as many words — "Any vendor with STRICT schema support fits the same
+    // three variables — Gemini and xAI both do."
+    //
+    // WHY IT SITS HERE, below `openai` and above `hosted`: it is structured, so
+    // it keeps cards and places, and it is a FOURTH independent quota. The
+    // 6–7 Aug outage happened because seven brains drew on two pools and both
+    // emptied in the same window; every genuinely separate bill added above the
+    // prose line is worth more than another prose model below it.
+    //
+    // It is NOT cheaper than what is above it. Checked 12 Sep 2026: grok-4.6 is
+    // $2 per million input and $6 per million output, against GPT-5 mini's
+    // fraction of that. So this is a REDUNDANCY lane, not a cost lane, and it is
+    // ranked for independence rather than price. `logUsage` prices it from the
+    // model name the response reports, so a turn answered here shows its real
+    // cost rather than inheriting the lane above it.
+    //
+    // ACTIONS OFF BY DEFAULT, for the same reason they are off for `openai`:
+    // letting a brand-new vendor request real bookings on its first day is the
+    // kind of change discovered later rather than decided now. Cards and picks
+    // work immediately; `NUM_XAI_ACTIONS=1` is the separate, deliberate switch.
+    //
+    // Set NUM_XAI_BASE_URL (https://api.x.ai/v1), NUM_XAI_KEY and optionally
+    // NUM_XAI_MODEL. Note the base URL is api.x.ai, NOT api.grok.com.
+    id: 'grok',
+    label: 'Grok 4.6 (strict schema)',
+    kind: 'openai-compatible',
+    structured: true,
+    env: { base: ['NUM_XAI_BASE_URL'], key: ['NUM_XAI_KEY'], model: ['NUM_XAI_MODEL'] },
+    // A per-brain default, because the shared adapter used to fall back to
+    // 'gpt-5-mini' for ANY openai-compatible brain with no model var set —
+    // which would have sent OpenAI's model name to xAI and failed with a
+    // vendor error that looked like an outage rather than a missing variable.
+    fallbackModel: 'grok-4.6',
+    ready: (env) => !!env.NUM_XAI_BASE_URL,
+    note: 'Grok on a fourth independent bill — full cards and places. Ranked for independence, not price: it costs more per token than the lanes above it. Actions stay off until NUM_XAI_ACTIONS=1.',
+  },
+  {
     // A hosted model on a SEPARATE bill from Anthropic and from Workers AI.
     //
     // This is the layer the 2026-08-06 and 08-07 outages were actually missing.
@@ -478,7 +519,11 @@ async function callStructuredJson(env, brain, { messages, system, model = null, 
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
     body: JSON.stringify({
-      model: model || pick(brain.env.model) || 'gpt-5-mini',
+      // The brain's OWN default before the generic one. This used to fall
+      // through to 'gpt-5-mini' for every openai-compatible brain, so a vendor
+      // configured without its model variable was sent a competitor's model
+      // name and failed with something that read like an outage.
+      model: model || pick(brain.env.model) || brain.fallbackModel || 'gpt-5-mini',
       messages: [{ role: 'system', content: system }, ...messages.slice(-8)],
       max_completion_tokens: maxTokens,
       response_format: format,
@@ -890,6 +935,9 @@ export const canAct = (brain, env = {}) => {
   if (!brain?.structured) return false;
   if (brain.kind === 'anthropic') return true;
   if (brain.id === 'openai') return env.NUM_OPENAI_ACTIONS === '1';
+  // Same discipline, its own switch. One shared flag would have turned a new
+  // vendor's actions on the moment the other vendor's were approved.
+  if (brain.id === 'grok') return env.NUM_XAI_ACTIONS === '1';
   return false;
 };
 

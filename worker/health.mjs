@@ -540,6 +540,34 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
     kind, subject: subject || text.slice(0, 100),
     detail: text, severity: 'high',
   });
+
+  // ── IS THIS WORTH A TEXT AT 2AM? ────────────────────────────────────────
+  //
+  // Asked AFTER the ledger is written and BEFORE any channel is tried, which
+  // is the only correct place for it. After, because a held-back alert must
+  // still be on the record — the product does not get to decide what its
+  // owner is allowed to know. Before, because the whole point is not to send.
+  //
+  // `triage` answers `send: true` for every failure mode it has: no brain, a
+  // slow brain, a broken brain, a brain that rambles, a dead database, a
+  // throw. There is exactly one way to reach silence and it is a judge that
+  // answered, in time, in the shape asked for. Four classes never reach it at
+  // all — see NEVER_GATED in worker/alerttriage.mjs.
+  //
+  // A held alert is NOT marked told: it stays open in the ledger and the
+  // morning digest carries it. Marking it told would hide it from the very
+  // check that catches an alerting system going quiet.
+  try {
+    const { triage } = await import('./alerttriage.mjs');
+    const call = await triage(env, { text, kind, subject: subject || text.slice(0, 100) });
+    if (!call.send) {
+      console.warn('[health] held for digest —', call.why, `(${call.judge})`, '::', text.slice(0, 120));
+      return { carried: null, held: true, why: call.why, judge: call.judge };
+    }
+  } catch (e) {
+    // Belt and braces on top of a function that already cannot throw.
+    console.warn('[health] triage unavailable, sending —', e?.message ?? e);
+  }
   // Did ANY channel take it. Not "did we try" — the four fire-and-forget
   // catches below made trying and succeeding indistinguishable.
   let carried = null;

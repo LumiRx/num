@@ -21,7 +21,8 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, XIcon } from '../../lib/icons';
 import QrCard from './QrCard';
-import { connectLink, pretty } from '../../lib/links';
+import { connectLink, pretty, referralLink } from '../../lib/links';
+import { shareNumOnX } from '../../lib/xshare';
 
 export default function ShareSheet() {
   const open = useApp((s) => s.shareOpen);
@@ -45,6 +46,16 @@ export default function ShareSheet() {
   // bootSocial reads `c` and connects, and the referral still rides along, so
   // nothing is lost by making the honest link the default one.
   const link = me ? connectLink(me.id, me.ref) : 'https://app.itsnum.com';
+
+  // A PUBLIC post gets a different link from a private invite, and the
+  // difference matters. `link` above is a CONNECT link: opening it attaches the
+  // opener to this member. Handed to a friend or scanned across a table that is
+  // the whole feature. Posted to X it is an open invitation for any stranger
+  // scrolling past to attach themselves to a named person's account.
+  //
+  // So the post carries a referral link — the member is still credited for
+  // anyone who joins, and nobody is auto-connected by a public post.
+  const xUrl = me?.ref ? shareNumOnX(referralLink(me.ref)) : null;
 
   const message = me?.name
     ? `It's ${me.name}. I use NUM as my concierge — one thread that books dinner, cars, tables, whole weekends. Here's my invite: ${link}`
@@ -144,6 +155,29 @@ export default function ShareSheet() {
                 {copied ? 'COPIED' : 'COPY'}
               </div>
             </div>
+
+            {/* Post it, rather than send it.
+                An ordinary link, not an API call: it opens X's own compose box
+                with the text ready and the member sends it from their own
+                account. Nothing is posted by Num and nothing is posted without
+                them reading it first.
+                An <a> rather than window.open because an installed PWA blocks
+                programmatic popups, and a share button that silently does
+                nothing is worse than no share button. */}
+            {xUrl ? (
+              <a
+                href={xUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="press"
+                style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10, borderRadius: 999, border: '1px solid var(--ink-12)', background: 'var(--field-bg)', color: 'var(--ink)', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '12px 16px', textDecoration: 'none' }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                POST ON X
+              </a>
+            ) : null}
 
             {/* The same invite as a code. Somebody sitting opposite you scans
                 it and is connected on the spot — no typing, no waiting for a

@@ -97,6 +97,20 @@ const PRICES = {
   'kimi-k2.6':         { in: 0.95, out: 4.00, cacheWrite: 0.95, cacheRead: 0.16 },
   'kimi-k3':           { in: 3.00, out: 15.0, cacheWrite: 3.00, cacheRead: 0.30 },
   'glm-5.2':           { in: 1.50, out: 4.50, cacheWrite: 1.50, cacheRead: 0.30 },
+  // xAI, added with the Grok brain on 12 Sep 2026. Published rates checked
+  // that day: $2 in / $6 out per million tokens for grok-4.6 and grok-4.5.
+  // Keyed for the versions we might actually be served, because the resolver
+  // matches on exactly what the vendor echoed back and an unknown name falls
+  // through to OPUS's price — which would report a Grok turn at roughly four
+  // times its real cost and make the redundancy lane look unaffordable.
+  //
+  // xAI publishes no separate cached-input rate, so cacheRead sits at the input
+  // price rather than lower: where a vendor does not publish a discount we do
+  // not invent one, because an under-count hides real spend.
+  'grok-4.6':       { in: 2.00, out: 6.00, cacheWrite: 2.00, cacheRead: 2.00 },
+  'grok-4.5':       { in: 2.00, out: 6.00, cacheWrite: 2.00, cacheRead: 2.00 },
+  'grok-4.3':       { in: 1.25, out: 2.50, cacheWrite: 1.25, cacheRead: 1.25 },
+  'grok-build-0.1': { in: 1.00, out: 2.00, cacheWrite: 1.00, cacheRead: 1.00 },
   // Workers AI is billed in neurons against the Cloudflare plan, not per
   // token. Zero here is TRUE, not missing — and it is the only model where
   // that is so.

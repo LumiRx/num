@@ -2,6 +2,30 @@
 
 Every version that has been live, newest first.
 
+## 0.8.281 — 2026-09-12 19:53 UTC
+
+host book: clients, requests and agenda in one call
+
+- commit `nogit`
+
+## 0.8.280 — 2026-09-12 19:47 UTC
+
+alert triage: a brain decides whether it is worth a text
+
+- commit `nogit`
+
+## 0.8.279 — 2026-09-12 19:39 UTC
+
+(no note given)
+
+- commit `nogit`
+
+## 0.8.278 — 2026-09-12 19:36 UTC
+
+false-down fix: a bounced email is not an outage
+
+- commit `nogit`
+
 ## 0.8.277 — 2026-09-12 19:29 UTC
 
 site said 77 destinations, truth is 104 - corrected and guarded

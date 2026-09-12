@@ -18,17 +18,38 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { BRAINS } from './brains.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const src = (f) => readFileSync(join(HERE, f), 'utf8');
 
 test('every model Num can call has a price', () => {
   const c = src('console.mjs');
-  for (const m of ['claude-opus-5', 'claude-sonnet-5', 'deepseek-v4-flash', 'kimi-k2.6', 'glm-5.2']) {
+  for (const m of ['claude-opus-5', 'claude-sonnet-5', 'deepseek-v4-flash', 'kimi-k2.6', 'glm-5.2',
+    'grok-4.6']) {
     assert.ok(c.includes(`'${m}'`), `${m} has no price — turns on it will log as free`);
   }
   assert.match(c, /const priceFor = \(model\)/, 'per-model pricing resolver is gone; one price fits all again');
   assert.match(c, /startsWith\('@cf\/'\)/, 'Workers AI models no longer resolve — they will price at Opus rates');
   assert.match(c, /return PRICE;/, 'no fallback price — an unknown model logs as free, the exact bug this fixes');
+});
+
+test('every brain that names its own default model has a price for it', () => {
+  // Derived from BRAINS rather than typed, so adding a vendor cannot quietly
+  // add an unpriced one. A `fallbackModel` is the name the adapter will send
+  // when its model variable is unset — which is exactly the configuration a
+  // turn is most likely to run under on the vendor's first day, and an unknown
+  // name falls through to OPUS's price. That is how a redundancy lane comes to
+  // look four times more expensive than it is.
+  const c = src('console.mjs');
+  const named = BRAINS.filter((b) => b.fallbackModel);
+  assert.ok(named.length > 0, 'no brain declares a fallbackModel — this guard has gone blind');
+  for (const b of named) {
+    assert.ok(
+      c.includes(`'${b.fallbackModel}'`),
+      `${b.id} defaults to ${b.fallbackModel} and console.mjs has no price for it`,
+    );
+  }
 });
 
 test('an OpenAI-shaped usage block is read, not dropped', () => {

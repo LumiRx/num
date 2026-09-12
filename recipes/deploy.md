@@ -38,6 +38,29 @@ cd ~/num-worktrees/app-main
 npm run release:rollback
 ```
 
+**Checking what is in flight — and whose shell you are in.**
+
+More than one session edits this tree, and `release.mjs` bundles the working tree rather than a
+commit, so check before staging. On Dre's Mac that is just:
+
+```bash
+cd ~/num-worktrees/app-main
+git status --short
+node scripts/claim.mjs status
+```
+
+A COWORK session needs two env vars for the same command, because the worktree's `.git` points at an
+absolute `/Users/dre/...` path its VM cannot resolve:
+
+```bash
+export GIT_DIR="$HOME/mnt/NUM/.git/worktrees/app-main"
+export GIT_WORK_TREE="$HOME/mnt/num-worktrees/app-main"
+```
+
+**Those two lines must never be given to Dre.** In his shell `$HOME` is `/Users/dre`, so they point at
+`/Users/dre/mnt/NUM/...`, which does not exist — and they then break every git command in that window
+until `unset GIT_DIR GIT_WORK_TREE`. It happened on 12 Sep 2026.
+
 **Tier 2 — when it fails.**
 
 - *"Nothing to ship for X"* — a stage failed before uploading. Run stage again;
