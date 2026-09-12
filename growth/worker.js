@@ -277,6 +277,12 @@ function device(req) {
 // letting claimverify.mjs import this file keeps the two out of a cycle.
 CLAIM_DEPS = claimDeps({ J, clean, readJSON, sendBatch, legalLine: LEGAL_LINE });
 
+// The helpers the fleet endpoints need, handed over rather than imported.
+// hostAuth is in this file and is the ONLY thing that decides whether a console
+// key is real, so every asset endpoint gets it from here and none of them
+// reimplements it. One door, one lock.
+const ASSET_DEPS = { J, clean, readJSON, badOrigin, hostAuth };
+
 /* --------------------------------------------------------- abuse guardrail */
 
 // Per-isolate token bucket. Not a distributed rate limiter — it is a cheap
@@ -358,6 +364,9 @@ import {
 } from './venuesettings.mjs';
 import { CURRENCY_BY_COUNTRY, foodAndDrink } from '../worker/commission.mjs';
 import { geocode, geocodeReady } from '../worker/geocode.mjs';
+import {
+  hostAssets, hostAssetPhoto, hostAssetHolds, assetImage, offerableAssets,
+} from './hostassets.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
 // The screen after the table. worker/aftertable.mjs had rate(), tip() and
@@ -1123,6 +1132,21 @@ const WORKER = {
       if (p === "/api/host/integrity" && req.method === "GET") return hostIntegrity(req, env, url);
       if (p === "/api/host/calendar.ics" && req.method === "GET") return hostCalendar(req, env, url);
       if (p === "/api/host/messages") return hostMessages(req, env, url, ctx);
+
+      // The fleet. Yachts, boats, jets, cars — and the photos suppliers text in.
+      if (p === "/api/host/assets") return hostAssets(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/asset-photo" && req.method === "POST")
+        return hostAssetPhoto(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/asset-holds") return hostAssetHolds(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/asset-image" && req.method === "GET")
+        return assetImage(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/offerable" && req.method === "GET")
+        return offerableAssets(req, env, url, ASSET_DEPS);
+      // Public image URL a booker's browser loads. APPROVED PHOTOS ONLY —
+      // publicOnly is what makes a pending or rejected photo a 404 here even
+      // though the same handler serves it to the host who must decide on it.
+      if (p.startsWith("/p/asset/") && req.method === "GET")
+        return assetImage(req, env, url, ASSET_DEPS, { publicOnly: true });
 
       if (p === "/api/admin/earnings" && req.method === "POST") return adminEarnings(req, env);
 

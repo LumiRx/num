@@ -199,15 +199,48 @@ const money = (cs, cur = 'USD') =>
  *
  * Returns '' only when the fee is genuinely zero. Every prompt block below
  * embeds this, and a test fails the build if one stops doing so.
+ *
+ * ── TWO THINGS THIS USED TO SAY THAT WERE NOT TRUE ───────────────────────
+ *
+ * It read: "a $15 **Num** booking fee ... that is how Num gets paid for
+ * doing this, and it is the only thing Num takes."
+ *
+ * 1. **It is not Num's fee.** It is LetsGo2Trip's checkout surcharge,
+ *    switched on for partner slug `num` in THEIR admin (p10). Num cannot
+ *    turn it off, cannot change it, and does not collect it. Calling it a
+ *    "Num booking fee" made Num the author of somebody else's markup — we
+ *    would have taken the blame for a charge we do not control.
+ *
+ * 2. **Num does not receive it.** On their own p4 example the fee is $15 and
+ *    the flight commission is 1.5% of $530 — $7.95. So "that is how Num gets
+ *    paid" describes about half of it, and "the only thing Num takes" is
+ *    stated as if the $15 were the whole of Num's earnings, which it is not.
+ *
+ * A disclosure that misdescribes who charges a fee and who receives it is
+ * not a disclosure; it is a nicer-sounding version of the same problem the
+ * design exists to prevent. Caught 12 Sep 2026 when Dre decided to keep the
+ * fee and disclose it — that decision only works if the sentence is true.
+ *
+ * ── WHAT IT SAYS NOW, AND WHY IT SAYS NO MORE ────────────────────────────
+ *
+ * The traveller needs two facts: they are paying more here than booking
+ * direct, and by how much. They do not need our commission split — that is
+ * our business with a supplier, and reciting it at somebody trying to buy a
+ * flight is noise dressed as candour.
+ *
+ * Deliberately written so it stays true whatever LetsGo2Trip sets the
+ * commission to. A sentence whose accuracy depends on a rate in someone
+ * else's admin panel is a sentence that goes quietly false.
  */
 export function surchargeLine(env) {
   const cs = surchargeCs(env);
   if (!cs) return '';
   return (
-    `THE FEE, SAID OUT LOUD: this booking carries a ${money(cs)} Num booking fee on top of the fare — `
-    + 'that is how Num gets paid for doing this, and it is the only thing Num takes. Say it plainly in your '
-    + 'own words BEFORE they click, never after. Do not bury it, do not call it a service charge, and never '
-    + 'let them find it at checkout. If they would rather book direct and skip it, tell them that is fine.'
+    `THE FEE, SAID OUT LOUD: booking this way costs ${money(cs)} more than going to the airline or to `
+    + 'letsgo2trip.com direct — their checkout adds it on top of the fare for bookings Num sends, and part '
+    + 'of it is how Num gets paid for arranging this. Say it plainly in your own words BEFORE they click, '
+    + 'never after. Do not bury it, do not call it a service charge, and never let them find it at checkout. '
+    + 'If they would rather book direct and skip it, tell them that is fine and help them do it.'
   );
 }
 

@@ -96,6 +96,55 @@ const inRepo = () => {
   }
 };
 
+/**
+ * A LEFTOVER LOCK, NAMED — instead of forty lines of stack trace.
+ *
+ * Git writes `index.lock` while it works and deletes it when it finishes. A
+ * git process that is killed part-way leaves the file behind, and every later
+ * `git add` refuses with "Unable to create ... index.lock: File exists."
+ *
+ * `stage` runs `git add -A` inside `execSync`, so that refusal arrives as an
+ * unhandled Node exception: forty lines of internal frames with the one
+ * sentence that matters buried in the middle, ending in "Node.js v24.14.0".
+ * It read as a crash in the release tool rather than as a file to delete.
+ *
+ * It has now cost two releases three days apart — 9 Sep and 12 Sep 2026 —
+ * and on the second one the tests had already passed, so the whole run was
+ * thrown away at the last step for a stale file.
+ *
+ * DELIBERATELY NOT DELETED AUTOMATICALLY. The lock also exists when a git
+ * process is genuinely running, and removing it under a live writer is how a
+ * repository gets corrupted. So this says what to check and what to type, and
+ * the person decides.
+ */
+function staleLock() {
+  if (!inRepo()) return null;
+  try {
+    // The real git dir, which for a worktree is not `.git` but the path
+    // inside the parent repository that `.git` points at.
+    const dir = cap('git rev-parse --absolute-git-dir');
+    const lock = `${dir}/index.lock`;
+    return existsSync(lock) ? lock : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Called before anything that writes to the index. Exits rather than crashing. */
+function refuseOnStaleLock() {
+  const lock = staleLock();
+  if (!lock) return;
+  console.error('\n✘ Git has a lock file in place, so nothing can be committed.\n');
+  console.error(`    ${lock}\n`);
+  console.error('  If no other git command is running — no open commit editor, no other');
+  console.error('  session mid-write — this is left over from one that was killed, and');
+  console.error('  it is safe to remove:\n');
+  console.error(`    rm -f "${lock}"\n`);
+  console.error('  Then run stage again. Your tests already passed; nothing else is wrong.\n');
+  console.error('  To release without touching git at all: NO_AUTOCOMMIT=1 npm run release:stage\n');
+  process.exit(1);
+}
+
 // True when something is actually staged. `git diff --cached --quiet` exits
 // non-zero when there ARE staged changes, so the throw is the success case.
 const hasStaged = () => {
@@ -109,6 +158,7 @@ const hasStaged = () => {
 
 function gitCommit(paths, message) {
   if (!inRepo()) return false;
+  refuseOnStaleLock();
   if (paths === null) {
     const risky = pendingFiles().filter((f) => RISKY.test(f));
     if (risky.length) {
@@ -178,6 +228,11 @@ switch (cmd) {
     // version number that counts attempts rather than releases makes the
     // stale-stage guard below impossible to write, because there is no longer
     // any version the two files can agree on.
+    // Checked BEFORE the tests as well as inside gitCommit. The suite takes
+    // minutes; discovering a leftover lock file afterwards throws all of that
+    // away for something that was true before we started. Both checks stay —
+    // a lock can also appear while the tests are running.
+    if (!process.env.NO_AUTOCOMMIT) refuseOnStaleLock();
     sh('npm test');
     // Commit here: after the tests, before the bump. What lands in the commit
     // is precisely what passed, and `changelog` below records this sha.

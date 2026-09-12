@@ -7,6 +7,7 @@
 // of the exact URL + sorted params, keyed with the auth token) before
 // believing a word — an unsigned webhook is an open mailbox anyone can stuff.
 import { notify } from './push.mjs';
+import { ingestMedia, askWhichAsset } from './inboundmedia.mjs';
 
 const xmlOk = () =>
   new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
@@ -62,7 +63,19 @@ export async function handleSmsInbound(request, env) {
 
   const from = normalise(params.get('From'));
   const text = (params.get('Body') ?? '').slice(0, 1600).trim();
-  if (!from || !text) return xmlOk();
+
+  // NumMedia is read BEFORE the empty-body guard, and the guard now lets a
+  // photo-only message through.
+  //
+  // This was a real, silent hole. A supplier photographing a boat on the dock
+  // sends a picture and no words, so Body is empty — and the old guard
+  // `if (!from || !text)` returned 200 and an empty TwiML, which Twilio
+  // reports as complete success. The photo was never fetched, never stored,
+  // and nobody on either end was told. The only visible symptom was a
+  // supplier saying "I sent it" and a console showing nothing.
+  const numMedia = Number(params.get('NumMedia') || 0) || 0;
+  if (!from) return xmlOk();
+  if (!text && !numMedia) return xmlOk();
 
   // Opt-out first, before anything else touches this message.
   //
@@ -120,11 +133,23 @@ export async function handleSmsInbound(request, env) {
     'SELECT id, name FROM num_members WHERE phone = ?1 OR phone = ?2 ORDER BY phone_verified DESC, created_at DESC LIMIT 1',
   ).bind(from, from.replace(/^\+1/, '')).first().catch(() => null);
 
+  // Photos texted in. Runs after the member lookup (it needs it to know whose
+  // supplier record this is) and before the inbox write, so the inbox line can
+  // say a photo arrived rather than showing an empty message.
+  let media = null;
+  if (numMedia > 0) {
+    media = await ingestMedia(env, { params, from, bucket: env.PHOTOS })
+      .catch((e) => { console.warn('[sms] media ingest failed', e?.message ?? e); return null; });
+  }
+
   await env.DB.prepare(
     'INSERT INTO num_inbox (id, member_id, kind, frm, subject, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
   ).bind(
     'inb_' + crypto.randomUUID().replace(/-/g, '').slice(0, 20),
-    member?.id ?? null, 'sms', from, null, text,
+    member?.id ?? null, 'sms', from, null,
+    // A photo with no caption is not an empty message. Saying so keeps the
+    // desk from seeing a blank row and assuming a bug.
+    text || (media?.stored ? `[${media.stored} photo${media.stored === 1 ? '' : 's'} received]` : text),
   ).run().catch((e) => console.warn('[sms] inbox write failed', e?.message));
 
   if (member) {
@@ -136,6 +161,14 @@ export async function handleSmsInbound(request, env) {
       url: '/?app',
       tag: `sms:${from}`,
     }).catch(() => {});
+  }
+
+  // Always answer a photo. A supplier who hears nothing assumes it failed and
+  // sends it again — and then a third time. One line back is the difference
+  // between a feature and a black hole.
+  if (media) {
+    const reply = askWhichAsset(media);
+    if (reply) return xmlReply(reply);
   }
   return xmlOk();
 }

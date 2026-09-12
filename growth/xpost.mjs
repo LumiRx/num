@@ -1,6 +1,25 @@
 /**
  * Posting to X from Num's own account.
  *
+ * ── PARKED 12 SEP 2026. DO NOT ENABLE THIS WITHOUT DRE SAYING SO. ────────
+ *
+ * Dre's call, the day it was written: posting goes through a BROWSER for now,
+ * not through this file. The reasoning is sound and worth keeping:
+ *
+ *   · A post with a link costs $0.20 through the API. Through a browser it
+ *     costs nothing, because it is a person pressing Post.
+ *   · X has never sent Num a single measured visitor. Paying per post into a
+ *     channel with no demonstrated conversion is buying a number, not traffic.
+ *   · The browser route uses the SAME Web Intent as `src/lib/xshare.ts` — the
+ *     compose box opens pre-filled and a human reads it before it goes out.
+ *     Which means every post is reviewed, which is the property this file has
+ *     to work hardest to fake.
+ *
+ * So this stays built, tested and OFF. `NUM_X_POSTING` is unset in production
+ * and `NUM_X_BEARER` has never existed. It is here for the day there is
+ * measured traffic from X worth automating into — not before. Turning it on is
+ * Dre's decision, not a tidy-up.
+ *
  * ── WHAT THIS FILE WILL NOT DO ───────────────────────────────────────────
  *
  * It will not post unless THREE separate things are true: a bearer token is

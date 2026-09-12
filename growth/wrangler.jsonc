@@ -14,6 +14,20 @@
   "observability": { "enabled": true },
 
   "send_email": [{ "name": "EMAIL" }],
+  // Photos of the things being let out — yachts, boats, cars, jets.
+  //
+  // Named PHOTOS and not ASSETS because "ASSETS" is already the static-asset
+  // binding in wrangler.app.jsonc, and two bindings with one name is the kind
+  // of collision that fails at runtime and not at deploy.
+  //
+  // Bound on BOTH num-app and num-growth on purpose. num-app writes (a photo
+  // arrives by text on app.itsnum.com/api/sms/inbound) and num-growth reads
+  // (the host console serves and moderates it on itsnum.com). Bind it in one
+  // and the other half of the feature fails with "cannot read property put of
+  // undefined" at the moment a supplier is standing on a dock.
+  "r2_buckets": [
+    { "binding": "PHOTOS", "bucket_name": "num-asset-photos" }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

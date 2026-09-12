@@ -49,15 +49,28 @@ test('the /business claim is NOT a wildcard', () => {
   // them in public/. A wildcard here would 404 the page businesses sign up on.
   assert.ok(!patterns.includes('itsnum.com/business*'),
     'a wildcard claim would take three live pages this repo cannot serve');
-  const owned = ['pricing', 'verification', 'signup']
+  // Updated 12 Sep 2026. The rule was never "claim nothing under /business/";
+  // it is "claim only what this repo can actually serve". /business/pricing/ was
+  // rehomed that day because num-biz-site was serving a rate card we no longer
+  // charge, and nothing we deployed could fix it. The two that remain unclaimed
+  // have no file here, and /business/signup/ is the form businesses join through.
+  const claimed = ['pricing', 'verification', 'signup']
     .filter((p) => patterns.some((x) => x.startsWith(`itsnum.com/business/${p}`)));
-  assert.deepEqual(owned, [], 'claiming a sub-page we do not have a file for would 404 it');
+  assert.deepEqual(claimed, ['pricing'], 'claim exactly the sub-pages this repo has a file for');
+  for (const p of claimed) {
+    assert.doesNotThrow(() => readFileSync(join(HERE, '..', 'public', 'business', p, 'index.html')),
+      `/business/${p}/ is claimed but has no file — that would 404 a live page`);
+  }
 });
 
 test('every claimed page has a file behind it', () => {
   // The other half of the same mistake: claiming a route and having nothing to
   // serve turns a working page on another worker into a 404 on this one.
-  const fileFor = { 'itsnum.com/business': 'business/index.html', 'itsnum.com/business/': 'business/index.html' };
+  const fileFor = {
+    'itsnum.com/business': 'business/index.html',
+    'itsnum.com/business/': 'business/index.html',
+    'itsnum.com/business/pricing*': 'business/pricing/index.html',
+  };
   for (const [pattern, file] of Object.entries(fileFor)) {
     if (!patterns.includes(pattern)) continue;
     assert.doesNotThrow(() => readFileSync(join(HERE, '..', 'public', file)),

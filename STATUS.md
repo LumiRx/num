@@ -247,7 +247,15 @@ It is a Web Intent — X's own compose box, pre-filled, sent by the member from 
 - An `<a>`, not `window.open` — an installed PWA blocks programmatic popups, and a share button that
   silently does nothing is worse than none.
 
-**Posting needs three things true at once.** `growth/xpost.mjs`: a bearer token, `NUM_X_POSTING=1`,
+**Posting is PARKED — Dre's call, 12 Sep.** Posting goes through a browser and a human pressing Post,
+not through the API. A link post costs $0.20 through the API and nothing through a browser, X has
+never sent Num a measured visitor, and the browser route uses the same Web Intent as the member share
+button — so every post is reviewed before it goes out. `growth/xpost.mjs` stays built, tested and OFF;
+`NUM_X_BEARER` has never existed. **Enabling it is Dre's decision, not a tidy-up** — a test asserts
+the file still says so, because a later session finding a finished poster sitting unused will want to
+"finish" it.
+
+**If it is ever unparked, it needs three things true at once:** a bearer token, `NUM_X_POSTING=1`,
 and a caller. **Nothing is wired to a schedule, deliberately** — an agent that posts publicly on a
 timer is a different product from a tool that posts when asked, and a test asserts the file has not
 acquired a cron.

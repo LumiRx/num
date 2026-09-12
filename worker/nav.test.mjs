@@ -54,6 +54,13 @@ const NO_NAV = {
   'console/index.html': 'the partner demo console, not a marketing page',
   'app-preview/index.html': 'team-only prototype, noindex, linked from nowhere public',
   'host/index.html': 'the private host console, key-gated and noindex',
+  // Rehomed from num-biz-site on 12 Sep 2026 because that worker was serving a
+  // pricing page whose <title> read "10% Only on Completed Bookings" — a rate we
+  // stopped charging that day — and its source exists nowhere we can deploy. Kept
+  // byte-for-byte apart from the prices, so the page a merchant is sent to does not
+  // change shape mid-campaign. It is not navless: it carries that worker's own
+  // four-link header. Rebuilding it in this site's design system is a separate job.
+  'business/pricing/index.html': 'rehomed from num-biz-site — carries its own four-link header',
   'flyers/business/index.html': 'print artwork',
   'flyers/hosts/index.html': 'print artwork',
   'flyers/hosts/onepager/index.html': 'print artwork',

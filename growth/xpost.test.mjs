@@ -199,3 +199,15 @@ describe('the file does not schedule itself', () => {
       'this file has acquired a schedule — that is a decision, not a refactor');
   });
 });
+
+test('PARKED: the file says out loud that enabling it is Dre\'s decision', async () => {
+  // Dre paused API posting on 12 Sep 2026 in favour of a browser and a human
+  // pressing Post. A later session finding a fully built, fully tested poster
+  // sitting unused will be tempted to "finish" it. The reason it is unused has
+  // to survive in the file, or the pause lasts exactly as long as this chat.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./xpost.mjs', import.meta.url), 'utf8');
+  assert.match(src, /PARKED 12 SEP 2026/);
+  assert.match(src, /DO NOT ENABLE THIS WITHOUT DRE SAYING SO/);
+  assert.match(src, /browser/i);
+});

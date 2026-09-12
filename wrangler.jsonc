@@ -73,6 +73,22 @@
     // rehomed.
     { "pattern": "itsnum.com/business",  "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/business/", "zone_name": "itsnum.com" },
+    // Rehomed 12 Sep 2026. num-biz-site was serving a pricing page whose own
+    // <title> read "10% Only on Completed Bookings" — a rate card we stopped
+    // charging that day, when a bill settled through our code by a guest we did
+    // not send became a flat $2. itsnum.com/pricing/ 301s here, so this is THE
+    // page a merchant reads, and no deploy of ours could correct it while the
+    // source lived in a worker nobody has. public/business/pricing/index.html
+    // is that page, rehomed byte-for-byte and then corrected.
+    //
+    // Wildcard, not a bare path: a route is matched against the full URL
+    // including the query string, so "/business/pricing" alone would miss
+    // "/business/pricing/" and every "?utm_..." link we hand out.
+    //
+    // /business/verification/ and /business/signup/ are still num-biz-site's and
+    // MUST stay unclaimed — there is no file here for either, and claiming the
+    // signup page would 404 the form businesses join through.
+    { "pattern": "itsnum.com/business/pricing*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/signin*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/console*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/privacy*", "zone_name": "itsnum.com" },

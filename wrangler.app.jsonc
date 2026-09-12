@@ -26,6 +26,20 @@
   },
   // Same brain as the texts: the num-ai LINE concierge's database (67 live
   // destinations, 500k+ ranked places). The app only reads; num-ai owns writes.
+  // Photos of the things being let out — yachts, boats, cars, jets.
+  //
+  // Named PHOTOS and not ASSETS because "ASSETS" is already the static-asset
+  // binding in wrangler.app.jsonc, and two bindings with one name is the kind
+  // of collision that fails at runtime and not at deploy.
+  //
+  // Bound on BOTH num-app and num-growth on purpose. num-app writes (a photo
+  // arrives by text on app.itsnum.com/api/sms/inbound) and num-growth reads
+  // (the host console serves and moderates it on itsnum.com). Bind it in one
+  // and the other half of the feature fails with "cannot read property put of
+  // undefined" at the moment a supplier is standing on a dock.
+  "r2_buckets": [
+    { "binding": "PHOTOS", "bucket_name": "num-asset-photos" }
+  ],
   "d1_databases": [
     { "binding": "DB", "database_name": "num-db", "database_id": "823979c8-b118-4a8a-953a-e07655205cf5" },
     // Read-only in practice: the app reads verification (verified_at, UHA,

@@ -51,6 +51,49 @@ test('the disclosure says it BEFORE the click, not at checkout', () => {
   assert.match(l, /book direct and skip it/i, 'a fee they cannot decline is not a disclosed fee');
 });
 
+/**
+ * WHOSE FEE IT IS, AND WHO GETS IT.
+ *
+ * 12 Sep 2026. Dre decided to keep the surcharge and disclose it on Num's
+ * side. That decision is only defensible if the sentence is accurate, and it
+ * was not: it called the charge "a $15 Num booking fee" that was "how Num
+ * gets paid ... the only thing Num takes".
+ *
+ * The fee is LetsGo2Trip's, toggled in THEIR admin for partner slug `num`.
+ * And on their own worked example Num receives $7.95 of the $15. Both halves
+ * of the old sentence were wrong, in the direction that made Num responsible
+ * for a markup it neither sets nor collects.
+ */
+test('the fee is not described as Num\'s own', () => {
+  const l = surchargeLine(ENV);
+  assert.ok(!/Num booking fee/.test(l),
+    'Num cannot switch this off — calling it ours makes us the author of their markup');
+  assert.match(l, /their checkout adds it/i, 'the traveller should know who is charging');
+});
+
+test('it does not claim the whole fee reaches Num', () => {
+  const l = surchargeLine(ENV);
+  assert.ok(!/only thing Num takes/.test(l));
+  assert.match(l, /part of it is how Num gets paid/i,
+    'on their own example Num receives $7.95 of the $15');
+});
+
+test('the sentence stays true whatever they set the commission to', () => {
+  // A disclosure whose accuracy depends on a number in somebody else's admin
+  // panel is one that goes quietly false the day they change it.
+  for (const rate of [null, '{"flight":{"bp":150}}', '{"flight":{"bp":900}}', '{"flight":{"flat_cs":1500}}']) {
+    const l = surchargeLine({ ...ENV, LGT_RATE: rate });
+    assert.match(l, /\$15 more than going to the airline/);
+    assert.ok(!/\$7\.95|1\.5%|commission/i.test(l),
+      'the split is our business with a supplier, not the traveller\'s problem');
+  }
+});
+
+test('it still tells them they can walk away, and helps them', () => {
+  assert.match(surchargeLine(ENV), /help them do it/i,
+    'telling somebody they may book direct without helping them is a formality, not an offer');
+});
+
 // Every block that hands over a link must carry the sentence. This is the
 // test that actually enforces the rule — surchargeLine() existing is worth
 // nothing if a block forgets to embed it.
@@ -61,7 +104,7 @@ test('every prompt block carries the fee disclosure while the fee is on', () => 
     ['flightBlock', flightBlock(f, ENV, { origin: 'DXB', dest: 'LHR' })],
     ['stayBlock', stayBlock(s, ENV, { name: 'Edinburgh' })],
   ]) {
-    assert.match(block, /\$15 Num booking fee/, `${what} handed over a link without saying the fee`);
+    assert.match(block, /\$15 more than going to the airline/, `${what} handed over a link without saying the fee`);
     assert.match(block, /BEFORE they click/, what);
   }
 });

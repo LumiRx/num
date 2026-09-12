@@ -472,6 +472,98 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     </table></div>
   </section>
 
+  <!-- ── THE FLEET ────────────────────────────────────────────────────── -->
+  <section class="card2" id="fleetCard">
+    <span class="tag">Yachts, boats, jets, cars</span>
+    <h2>Your fleet</h2>
+    <p class="sub">The things you actually let out. A client asks for a boat out of Phuket on Saturday and this is
+      what answers them — with photographs, a real day rate, and a calendar that will not let the same hull go out
+      twice. <b>Your supplier can text a photo straight to NUM</b> and it lands here waiting for your nod.</p>
+
+    <div class="note warn on">
+      <b>Two rules that never bend.</b> A photo texted in is <b>held until you approve it</b> — nothing reaches a
+      booker unseen. And a registration number is <b>never</b> sent to a client: a hull or tail number tells anyone
+      who looks it up who owns the boat and what is owed on it. We keep it for you and show the client the boat.
+    </div>
+
+    <div class="note bad" id="flErr"></div>
+
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;font-weight:600">Add something to the fleet</summary>
+      <form id="flForm" style="margin-top:14px">
+        <input type="hidden" id="fl_id">
+        <div class="row2">
+          <div class="field"><label for="fl_kind">What is it</label><select id="fl_kind">
+            <option value="yacht">Yacht</option><option value="boat">Boat</option>
+            <option value="jet">Private jet</option><option value="helicopter">Helicopter</option>
+            <option value="car">Car</option><option value="villa">Villa</option>
+            <option value="other">Something else</option>
+          </select></div>
+          <div class="field"><label for="fl_name">Name <span class="hint">what a client will read</span></label>
+            <input id="fl_name" type="text" required placeholder="Serenity II"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fl_make">Make</label><input id="fl_make" type="text" placeholder="Sunseeker"></div>
+          <div class="field"><label for="fl_model">Model</label><input id="fl_model" type="text" placeholder="Manhattan 68"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fl_year">Year</label><input id="fl_year" type="number" min="1900" max="2100"></div>
+          <div class="field"><label for="fl_reg">Registration <span class="hint">kept private, never sent to a client</span></label>
+            <input id="fl_reg" type="text"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fl_port">Home port or base</label><input id="fl_port" type="text" placeholder="Royal Phuket Marina"></div>
+          <div class="field"><label for="fl_city">City</label><input id="fl_city" type="text" placeholder="Phuket"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fl_guests">Guests</label><input id="fl_guests" type="number" min="0" max="500"></div>
+          <div class="field"><label for="fl_crew">Crew</label><input id="fl_crew" type="number" min="0" max="200"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fl_rate">Rate</label><input id="fl_rate" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          <div class="field"><label for="fl_unit">Per</label><select id="fl_unit">
+            <option value="quote">Quote only — depends on the trip</option>
+            <option value="day">Day</option><option value="hour">Hour</option>
+            <option value="week">Week</option><option value="trip">Trip</option>
+          </select></div>
+        </div>
+        <div class="field"><label for="fl_extras">What is not in the price
+          <span class="hint">fuel, crew gratuity, port fees, provisioning</span></label>
+          <textarea id="fl_extras" rows="2"></textarea></div>
+        <div class="field"><label for="fl_settle">Who takes the money</label><select id="fl_settle">
+          <option value="host_direct">I do — NUM just tracks it</option>
+          <option value="num_collects">NUM collects and settles to me</option>
+        </select></div>
+        <button class="btn pri" type="submit" id="flBtn">Save</button>
+      </form>
+    </details>
+
+    <div class="scroll"><table>
+      <thead><tr><th>What</th><th>Name</th><th>Base</th><th>Rate</th><th>Photos</th><th>Live</th><th></th></tr></thead>
+      <tbody id="flRows"></tbody>
+    </table></div>
+
+    <h3 style="margin:22px 0 6px;font-size:15px">Photos waiting on you</h3>
+    <p class="hint" style="margin:0 0 10px">Texted in by a supplier. Pick which one it belongs to, or bin it.
+      Nothing here is visible to a client yet.</p>
+    <div id="flQueue"></div>
+
+    <h3 style="margin:22px 0 6px;font-size:15px">The calendar</h3>
+    <p class="hint" style="margin:0 0 10px">A booked or pencilled hold blocks the hull. Blocked and maintenance are
+      your own business and may overlap each other.</p>
+    <form id="flHoldForm" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px">
+      <div><label class="hint">Which</label><select id="hd_asset"></select></div>
+      <div><label class="hint">Kind</label><select id="hd_kind">
+        <option value="booked">Booked</option><option value="provisional">Pencilled in</option>
+        <option value="blocked">Blocked</option><option value="maintenance">Maintenance</option>
+      </select></div>
+      <div><label class="hint">From</label><input id="hd_from" type="date"></div>
+      <div><label class="hint">To</label><input id="hd_to" type="date"></div>
+      <button class="btn" type="submit">Hold</button>
+    </form>
+    <div id="flHolds"></div>
+  </section>
+
   <!-- ── OTHER HOSTS ──────────────────────────────────────────────────── -->
   <section class="card2" id="netCard">
     <span class="tag">The network</span>
@@ -1650,6 +1742,271 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     api('network').then(function (d) { if (d.ok) paintNetwork(d); }).catch(function () {});
   }
 
+  // Array.prototype.forEach.call, named. The console is written without
+  // arrow functions or spread so it runs on whatever a host opens it in.
+  function each(nodes, fn) { Array.prototype.forEach.call(nodes, fn); }
+
+  /* ══════════════════════════════════════════════════════════════════════
+     THE FLEET
+     Every control here calls a real endpoint and repaints from what came
+     BACK, never from what the form said. A console that paints what it hoped
+     happened is how a host ends up believing a boat is live when the server
+     refused it for want of an approved photo.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  var FLEET = [];
+
+  function flRate(a) {
+    if (a.rate_unit === 'quote' || !a.rate_minor) return 'On quote';
+    return money(a.rate_minor, a.currency || 'GBP') + ' / ' + a.rate_unit;
+  }
+
+  function paintFleet(d) {
+    FLEET = d.assets || [];
+
+    $('flRows').innerHTML = FLEET.length ? FLEET.map(function (a) {
+      var pend = a.photos_pending ? ' <span class="hint">(' + a.photos_pending + ' waiting)</span>' : '';
+      return '<tr>' +
+        '<td>' + esc(a.kind) + '</td>' +
+        '<td><b>' + esc(a.name) + '</b>' +
+          (a.make || a.model ? '<br><span class="hint">' + esc([a.make, a.model, a.year].filter(Boolean).join(' ')) + '</span>' : '') +
+        '</td>' +
+        '<td>' + esc(a.home_port || a.home_city || '—') + '</td>' +
+        '<td>' + esc(flRate(a)) + '</td>' +
+        '<td>' + (a.photos_ok || 0) + pend + '</td>' +
+        '<td>' + (a.listable
+          ? '<span class="tag">Live</span>'
+          : '<button class="btn" type="button" data-live="' + esc(a.id) + '">Go live</button>') + '</td>' +
+        '<td><button class="btn" type="button" data-fledit="' + esc(a.id) + '">Edit</button> ' +
+            '<button class="btn" type="button" data-flphotos="' + esc(a.id) + '">Photos</button></td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="7" class="hint">Nothing in the fleet yet. Add a boat, a car or a jet and your ' +
+      'supplier can start texting photos of it straight in.</td></tr>';
+
+    // Go live. Refused server-side without an approved photo, and the refusal
+    // is SHOWN — a button that silently does nothing is the thing this whole
+    // section exists to avoid.
+    each($('flRows').querySelectorAll('[data-live]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('asset-photo', { action: 'listable', asset_id: b.getAttribute('data-live'), listable: 1 })
+          .then(function (r) {
+            b.disabled = false;
+            if (!r.ok) return note($('flErr'), r.says || ('Could not make that live: ' + (r.error || 'unknown')), 'bad');
+            note($('flErr'), '', '');
+            loadFleet();
+          }).catch(function () { b.disabled = false; note($('flErr'), 'Could not reach NUM just then.', 'bad'); });
+      };
+    });
+
+    each($('flRows').querySelectorAll('[data-fledit]'), function (b) {
+      b.onclick = function () { flEdit(b.getAttribute('data-fledit')); };
+    });
+    each($('flRows').querySelectorAll('[data-flphotos]'), function (b) {
+      b.onclick = function () { flPhotos(b.getAttribute('data-flphotos')); };
+    });
+
+    // The hold picker can only ever offer assets that exist.
+    $('hd_asset').innerHTML = FLEET.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>';
+    }).join('') || '<option value="">Nothing in the fleet yet</option>';
+
+    paintQueue(d.queue || []);
+  }
+
+  /* ── the photo queue ────────────────────────────────────────────────── */
+  function paintQueue(q) {
+    if (!q.length) {
+      $('flQueue').innerHTML = '<p class="hint">Nothing waiting. When a supplier texts a photo to your NUM number ' +
+        'it appears here.</p>';
+      return;
+    }
+    var opts = FLEET.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>';
+    }).join('');
+
+    $('flQueue').innerHTML = q.map(function (m) {
+      var who = m.supplier_name ? esc(m.supplier_name)
+        : (m.from_last4 ? 'Unknown number ending ' + esc(m.from_last4) : 'Unknown sender');
+      return '<div class="price" style="display:grid;grid-template-columns:1fr 2fr auto auto;gap:8px;align-items:end;margin-bottom:8px">' +
+        '<div><b>' + who + '</b><br><span class="hint">' + esc(String(m.created_at || '').slice(0, 16)) +
+          (m.body ? ' · “' + esc(String(m.body).slice(0, 60)) + '”' : '') + '</span></div>' +
+        '<div><label class="hint">Belongs to</label><select data-qsel="' + esc(m.id) + '">' +
+          (opts || '<option value="">Add something to the fleet first</option>') + '</select></div>' +
+        '<button class="btn pri" type="button" data-qok="' + esc(m.id) + '"' + (opts ? '' : ' disabled') + '>File it</button>' +
+        '<button class="btn" type="button" data-qno="' + esc(m.id) + '">Bin</button>' +
+        '</div>';
+    }).join('');
+
+    each($('flQueue').querySelectorAll('[data-qok]'), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute('data-qok');
+        var sel = $('flQueue').querySelector('[data-qsel="' + id + '"]');
+        if (!sel || !sel.value) return note($('flErr'), 'Add something to the fleet before filing photos against it.', 'bad');
+        b.disabled = true;
+        api('asset-photo', { action: 'attach', media_id: id, asset_id: sel.value }).then(function (r) {
+          b.disabled = false;
+          if (!r.ok) return note($('flErr'), 'Could not file that photo: ' + (r.error || 'unknown'), 'bad');
+          note($('flErr'), '', '');
+          loadFleet();
+        }).catch(function () { b.disabled = false; note($('flErr'), 'Could not reach NUM just then.', 'bad'); });
+      };
+    });
+    each($('flQueue').querySelectorAll('[data-qno]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('asset-photo', { action: 'discard', media_id: b.getAttribute('data-qno') }).then(function () {
+          loadFleet();
+        }).catch(function () { b.disabled = false; });
+      };
+    });
+  }
+
+  /* ── one asset's photos, and the approve/reject decision ────────────── */
+  function flPhotos(assetId) {
+    api('asset-photo', { action: 'list', asset_id: assetId }).then(function (r) {
+      if (!r.ok) return note($('flErr'), 'Could not load those photos: ' + (r.error || 'unknown'), 'bad');
+      var a = FLEET.filter(function (x) { return x.id === assetId; })[0];
+      if (!r.photos.length) {
+        return note($('flErr'), 'No photos on ' + ((a && a.name) || 'that one') + ' yet. Your supplier can text one in.', 'warn');
+      }
+      $('flQueue').innerHTML = '<p class="hint"><b>' + esc((a && a.name) || 'Photos') +
+        '</b> — a photo is only ever shown to a client once it says <b>ok</b>.</p>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:10px">' + r.photos.map(function (p) {
+          // The host's own key is on this URL, which is what lets a PENDING
+          // photo render for the person who has to decide on it and 404 for
+          // everybody else.
+          return '<div style="width:150px">' +
+            '<img src="/api/host/asset-image?id=' + encodeURIComponent(p.id) + '&k=' + encodeURIComponent(K) +
+              '" alt="" style="width:100%;border-radius:8px;display:block">' +
+            '<div class="hint" style="margin:4px 0">' + esc(p.moderation) + '</div>' +
+            (p.moderation === 'ok' ? '' :
+              '<button class="btn pri" type="button" data-pok="' + esc(p.id) + '">Approve</button> ') +
+            (p.moderation === 'rejected' ? '' :
+              '<button class="btn" type="button" data-pno="' + esc(p.id) + '">Reject</button>') +
+            '</div>';
+        }).join('') + '</div>' +
+        '<button class="btn" type="button" id="flBackQ" style="margin-top:12px">Back to the queue</button>';
+
+      each($('flQueue').querySelectorAll('[data-pok]'), function (b) {
+        b.onclick = function () { flModerate(b.getAttribute('data-pok'), 'ok', assetId); };
+      });
+      each($('flQueue').querySelectorAll('[data-pno]'), function (b) {
+        b.onclick = function () { flModerate(b.getAttribute('data-pno'), 'rejected', assetId); };
+      });
+      $('flBackQ').onclick = function () { loadFleet(); };
+    }).catch(function () { note($('flErr'), 'Could not reach NUM just then.', 'bad'); });
+  }
+
+  function flModerate(photoId, decision, assetId) {
+    api('asset-photo', { action: 'moderate', photo_id: photoId, moderation: decision }).then(function (r) {
+      if (!r.ok) return note($('flErr'), 'That decision did not save: ' + (r.error || 'unknown'), 'bad');
+      // Reload the fleet counts AND stay on this asset, because approving one
+      // of six photos and being thrown back to a list is infuriating.
+      api('assets').then(function (d) { if (d.ok) { FLEET = d.assets || []; } flPhotos(assetId); });
+    }).catch(function () { note($('flErr'), 'Could not reach NUM just then.', 'bad'); });
+  }
+
+  /* ── the calendar ───────────────────────────────────────────────────── */
+  function paintHolds(h) {
+    $('flHolds').innerHTML = h.length ? '<div class="scroll"><table>' +
+      '<thead><tr><th>What</th><th>Kind</th><th>From</th><th>To</th><th></th></tr></thead><tbody>' +
+      h.map(function (x) {
+        return '<tr><td>' + esc(x.asset_name) + '</td><td>' + esc(x.kind) + '</td>' +
+          '<td>' + esc(String(x.starts_at).slice(0, 16)) + '</td><td>' + esc(String(x.ends_at).slice(0, 16)) + '</td>' +
+          '<td><button class="btn" type="button" data-hrel="' + esc(x.id) + '">Release</button></td></tr>';
+      }).join('') + '</tbody></table></div>'
+      : '<p class="hint">Nothing held. The fleet is free.</p>';
+
+    each($('flHolds').querySelectorAll('[data-hrel]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('asset-holds', { action: 'release', id: b.getAttribute('data-hrel') }).then(function (r) {
+          if (r.ok) paintHolds(r.holds || []); else b.disabled = false;
+        }).catch(function () { b.disabled = false; });
+      };
+    });
+  }
+
+  $('flHoldForm').onsubmit = function (e) {
+    e.preventDefault();
+    var asset = $('hd_asset').value;
+    if (!asset) return note($('flErr'), 'Add something to the fleet before putting a hold on it.', 'bad');
+    if (!$('hd_from').value || !$('hd_to').value) return note($('flErr'), 'A hold needs both dates.', 'bad');
+    api('asset-holds', {
+      asset_id: asset, kind: $('hd_kind').value,
+      starts_at: $('hd_from').value, ends_at: $('hd_to').value
+    }).then(function (r) {
+      if (!r.ok) return note($('flErr'), r.says || ('Could not hold that: ' + (r.error || 'unknown')), 'bad');
+      note($('flErr'), '', '');
+      paintHolds(r.holds || []);
+    }).catch(function () { note($('flErr'), 'Could not reach NUM just then.', 'bad'); });
+  };
+
+  /* ── add and edit ───────────────────────────────────────────────────── */
+  function flEdit(id) {
+    var a = FLEET.filter(function (x) { return x.id === id; })[0];
+    if (!a) return;
+    $('fl_id').value = a.id;
+    $('fl_kind').value = a.kind || 'boat';
+    $('fl_name').value = a.name || '';
+    $('fl_make').value = a.make || '';
+    $('fl_model').value = a.model || '';
+    $('fl_year').value = a.year || '';
+    $('fl_reg').value = a.registration || '';
+    $('fl_port').value = a.home_port || '';
+    $('fl_city').value = a.home_city || '';
+    $('fl_guests').value = a.guests == null ? '' : a.guests;
+    $('fl_crew').value = a.crew == null ? '' : a.crew;
+    // Shown back in MAJOR units because that is what was typed in.
+    $('fl_rate').value = a.rate_minor ? (a.rate_minor / 100).toFixed(2) : '';
+    $('fl_unit').value = a.rate_unit || 'quote';
+    $('fl_extras').value = a.extras_note || '';
+    $('fl_settle').value = a.settle_mode || 'host_direct';
+    $('flBtn').textContent = 'Save changes';
+    $('fleetCard').querySelector('details').open = true;
+    $('fl_name').focus();
+  }
+
+  $('flForm').onsubmit = function (e) {
+    e.preventDefault();
+    $('flBtn').disabled = true;
+    api('assets', {
+      action: 'save',
+      id: $('fl_id').value || null,
+      kind: $('fl_kind').value,
+      name: $('fl_name').value,
+      make: $('fl_make').value,
+      model: $('fl_model').value,
+      year: $('fl_year').value,
+      registration: $('fl_reg').value,
+      home_port: $('fl_port').value,
+      home_city: $('fl_city').value,
+      guests: $('fl_guests').value,
+      crew: $('fl_crew').value,
+      rate_minor: $('fl_rate').value,
+      rate_unit: $('fl_unit').value,
+      extras_note: $('fl_extras').value,
+      settle_mode: $('fl_settle').value
+    }).then(function (r) {
+      $('flBtn').disabled = false;
+      if (!r.ok) return note($('flErr'), r.says || ('Could not save that: ' + (r.error || 'unknown')), 'bad');
+      note($('flErr'), '', '');
+      $('flForm').reset();
+      $('fl_id').value = '';
+      $('flBtn').textContent = 'Save';
+      paintFleet(r);
+    }).catch(function () {
+      $('flBtn').disabled = false;
+      note($('flErr'), 'Could not reach NUM just then. Nothing was saved.', 'bad');
+    });
+  };
+
+  function loadFleet() {
+    api('assets').then(function (d) { if (d && d.ok) paintFleet(d); }).catch(function () {});
+    api('asset-holds').then(function (d) { if (d && d.ok) paintHolds(d.holds || []); }).catch(function () {});
+  }
+
   function boot(quiet) {
     if (!K) return showGate();
     Promise.all([
@@ -1665,6 +2022,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       $('app').classList.remove('hide');
       paintSummary(sum);
       loadBook();
+      loadFleet();
       // The profile endpoint is newer than the console key. A host whose
       // account predates it still gets a working page rather than a blank one.
       if (prof.ok) paintProfile(prof);
