@@ -7468,6 +7468,41 @@ function validPayAmount(raw) {
 
 const PAY_CURRENCIES = ["THB", "GBP", "USD", "EUR"];
 
+/**
+ * Which rail to offer a venue first, and in which currency, by where it is.
+ *
+ * This exists because the console used to offer exactly two ways to be paid —
+ * PromptPay and a crypto wallet — and PromptPay only exists in Thailand. A
+ * restaurant in Los Angeles or a hotel in Edinburgh reached "Where should your
+ * money go?", found nothing it could use, and stopped. Nothing downstream can
+ * happen without this row: no sticker, no bill code, no amount, no commission.
+ *
+ * So every venue outside Thailand defaults to `url` — its own payment page,
+ * which is the one rail that works in every country and needs no bank details
+ * from us. The other rails stay offered; only the order and the default change.
+ *
+ * Currency matters as much as the rail. `setIdentity` falls back to THB, so
+ * before this an LA venue was silently set up to bill its guests in baht.
+ */
+const RAIL_BY_COUNTRY = Object.freeze({
+  TH: { kind: "promptpay", currency: "THB" },
+  US: { kind: "url", currency: "USD" },
+  GB: { kind: "url", currency: "GBP" },
+  IE: { kind: "url", currency: "EUR" },
+  FR: { kind: "url", currency: "EUR" },
+  DE: { kind: "url", currency: "EUR" },
+  ES: { kind: "url", currency: "EUR" },
+  IT: { kind: "url", currency: "EUR" },
+  NL: { kind: "url", currency: "EUR" },
+  PT: { kind: "url", currency: "EUR" },
+});
+
+/** Unknown country falls to the rail that works anywhere, never to PromptPay. */
+function railFor(country) {
+  return RAIL_BY_COUNTRY[String(country || "").toUpperCase()]
+      || { kind: "url", currency: "USD" };
+}
+
 /* ── event log — the meter ───────────────────────────────────────────────────
    Every event is written; `billable` marks the ones a future invoice could
    count. One billable per guest per link per 30 minutes: a refresh, a
@@ -8985,9 +9020,12 @@ function drawIdentity(j){
     var d=el('div');d.className='card';
     d.appendChild(el('h2','Where your money goes')).style.margin='0 0 6px';
     var t=el('div',(j.kind==='promptpay'?'PromptPay ':(j.kind==='crypto'?(j.asset_label||'Crypto')+' · ':''))+j.target);
-    if(j.kind==='crypto')t.style.wordBreak='break-all';
+    if(j.kind==='crypto'||j.kind==='url')t.style.wordBreak='break-all';
     t.style.fontWeight='700';d.appendChild(t);
-    d.appendChild(el('div','Paid bank to bank, straight into this account. NUM never holds it.')).className='muted';
+    d.appendChild(el('div', j.kind==='url'
+      ? 'Guests are sent straight to this page to pay you. NUM never holds the money and never sees a card.'
+      : 'Paid bank to bank, straight into this account. NUM never holds it.')).className='muted';
+    if(j.currency)d.appendChild(el('div','Bills are in '+j.currency+'.')).className='muted';
     d.appendChild(el('div','This cannot be edited. To change bank account, retire the codes and set a new one — every sticker must be reprinted.')).className='muted';
     box.appendChild(d);
     return;
@@ -8999,22 +9037,46 @@ function drawIdentity(j){
   c.appendChild(el('p',lead)).className='muted';
   if(!j.can_set){ c.appendChild(el('p','Ask the owner to set this.')).className='muted'; box.appendChild(c); return }
 
+  // How each rail asks for its destination. Wrong keyboard on a wallet address
+  // or a numeric pad on a URL is the kind of friction that stops an owner.
+  var FIELD={
+    promptpay:['Your PromptPay ID','Thai mobile, 13-digit tax ID, or 15-digit e-wallet','numeric'],
+    crypto:['Your wallet address','0x…  — the address USDC should arrive at','text'],
+    url:['Your payment page link','https://…  — your Stripe, Square, SumUp or booking page','url']
+  };
+  var LABEL={
+    url:'My own payment page — card, Apple Pay, anything',
+    promptpay:'PromptPay — Thai bank',
+    crypto:'USDC on Base — crypto wallet'
+  };
+
   var lk=el('label','How do you want to be paid');lk.htmlFor='kind';c.appendChild(lk);
   var sel=el('select');sel.id='kind';
-  [['promptpay','PromptPay — Thai bank'],['crypto','USDC on Base — crypto wallet']].forEach(function(o){
-    var op=el('option',o[1]);op.value=o[0];sel.appendChild(op)});
+  // The rail that fits this venue's country goes first, because the first
+  // option is the one an owner in a hurry picks.
+  var first=j.suggest_kind||'url';
+  var order=[first].concat(['url','promptpay','crypto'].filter(function(k){return k!==first}));
+  order.forEach(function(k){
+    var op=el('option',LABEL[k]);op.value=k;sel.appendChild(op)});
   c.appendChild(sel);
 
-  var l=el('label','Your PromptPay ID');l.htmlFor='pp';c.appendChild(l);
-  var i=el('input');i.id='pp';i.inputMode='numeric';
-  i.placeholder='Thai mobile, 13-digit tax ID, or 15-digit e-wallet';
+  var l=el('label',FIELD[first][0]);l.htmlFor='pp';c.appendChild(l);
+  var i=el('input');i.id='pp';i.inputMode=FIELD[first][2];
+  i.placeholder=FIELD[first][1];
   c.appendChild(i);
+
+  // Without this the server falls back to THB, which quietly set up an LA
+  // venue to bill its guests in Thai baht.
+  var lc=el('label','What currency are your bills in');lc.htmlFor='cur';c.appendChild(lc);
+  var cur=el('select');cur.id='cur';
+  ['THB','USD','GBP','EUR'].forEach(function(k){
+    var op=el('option',k);op.value=k;cur.appendChild(op)});
+  cur.value=j.suggest_currency||'USD';
+  c.appendChild(cur);
+
   sel.onchange=function(){
-    var crypto = sel.value === 'crypto';
-    l.textContent = crypto ? 'Your wallet address' : 'Your PromptPay ID';
-    i.placeholder = crypto ? '0x…  — the address USDC should arrive at' :
-      'Thai mobile, 13-digit tax ID, or 15-digit e-wallet';
-    i.inputMode = crypto ? 'text' : 'numeric';
+    var f=FIELD[sel.value]||FIELD.url;
+    l.textContent=f[0];i.placeholder=f[1];i.inputMode=f[2];
     i.value='';o.textContent='';
   };
   var b=el('button','Check it');c.appendChild(b);
@@ -9023,22 +9085,33 @@ function drawIdentity(j){
 
   b.onclick=function(){
     o.textContent='';
-    post('/api/venue/identity',{kind:sel.value,target:i.value.trim()}).then(function(r){
+    post('/api/venue/identity',{kind:sel.value,target:i.value.trim(),currency:cur.value}).then(function(r){
       if(!r.ok){o.textContent=r.hint||r.error||'That does not look right.';return}
       o.textContent='';
-      var img=el('img');
-      img.src=q('/api/venue/identity/preview.svg')+(K?'&':'?')+'kind='+encodeURIComponent(sel.value)+
-              '&target='+encodeURIComponent(r.target);
-      img.style.width='200px';img.style.height='200px';img.style.display='block';img.style.margin='8px 0';
       var warn=el('p',r.check);warn.style.fontWeight='700';
-      o.appendChild(warn);o.appendChild(img);
+      o.appendChild(warn);
+      if(sel.value==='url'){
+        // There is nothing to scan here. The owner verifies a payment page by
+        // opening it and seeing their own name on it, so give them the link.
+        var a=el('a','Open my payment page and check it is mine');
+        a.href=r.target;a.target='_blank';a.rel='noopener noreferrer';
+        a.style.display='block';a.style.margin='8px 0';a.style.wordBreak='break-all';
+        o.appendChild(a);
+        o.appendChild(el('div',r.target)).className='muted';
+      }else{
+        var img=el('img');
+        img.src=q('/api/venue/identity/preview.svg')+(K?'&':'?')+'kind='+encodeURIComponent(sel.value)+
+                '&target='+encodeURIComponent(r.target);
+        img.style.width='200px';img.style.height='200px';img.style.display='block';img.style.margin='8px 0';
+        o.appendChild(img);
+      }
       var yes=el('button','Yes — that is my account');
       var no=el('button','No, let me retype it');no.className='ghost';no.style.marginLeft='8px';
       o.appendChild(yes);o.appendChild(no);
       no.onclick=function(){o.textContent=''};
       yes.onclick=function(){
         yes.disabled=true;no.disabled=true;yes.textContent='Saving…';
-        post('/api/venue/identity',{kind:sel.value,target:r.target,confirm:true}).then(function(f){
+        post('/api/venue/identity',{kind:sel.value,target:r.target,currency:cur.value,confirm:true}).then(function(f){
           if(!f.ok){o.textContent=f.reason||'Could not save that.';return}
           o.textContent='Saved. '+(f.codes&&f.codes.stickers.length||0)+' table sticker(s) printed.';
           refresh();
@@ -9114,9 +9187,20 @@ async function qrIdentityGet(req, env, url) {
   const who = await qrWho(req, env, url);
   if (!who) return J({ ok: false, error: "unauthorised" }, 401);
   const id = await QR.identityOf(env, who.business.id);
+
+  // The console cannot guess the right rail on its own, and guessing wrong is
+  // what left every non-Thai venue with no usable option at all.
+  const prof = await env.DB.prepare(
+    `SELECT country FROM num_business_profiles WHERE business_id = ?1`,
+  ).bind(who.business.id).first().catch(() => null);
+  const suggest = railFor(prof?.country);
+
   return J({
     ok: true,
     has_identity: !!id,
+    country: prof?.country || null,
+    suggest_kind: suggest.kind,
+    suggest_currency: suggest.currency,
     // The owner set this and has to be able to check it. Masking the very
     // thing they are verifying is how a wrong account number survives.
     kind: id?.kind || null,
@@ -9223,6 +9307,13 @@ async function qrIdentityPreview(req, env, url) {
     return new Response(qrSvg(addr), {
       headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" },
     });
+  }
+
+  // A payment page is verified by opening it, not by scanning it. Falling
+  // through to the PromptPay branch answered "bad id" for a perfectly good
+  // URL, which reads as "your link is wrong" when nothing is wrong at all.
+  if (kind === "url") {
+    return TEXT("a payment page has no QR to preview \u2014 open the link instead", 400);
   }
 
   const vt = validPayTarget("promptpay", target);
