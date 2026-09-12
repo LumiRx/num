@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.265 — 2026-09-12 16:22 UTC
+
+host book: clients, requests and agenda in one call
+
+- commit `2c60649`
+
 ## 0.8.264 — 2026-09-12 15:10 UTC
 
 business QR page, app-host identity links, crash capture, claim-by-phone hole closed
