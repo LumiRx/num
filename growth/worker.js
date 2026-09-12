@@ -1111,6 +1111,7 @@ const WORKER = {
       if (p === "/api/host/profile") return hostProfile(req, env, url, ctx);
       if (p === "/api/host/contacts" && req.method === "POST") return hostContacts(req, env, url, ctx);
       if (p === "/api/host/clients") return hostClients(req, env, url, ctx);
+      if (p === "/api/host/book" && req.method === "GET") return hostBook(req, env, url);
       if (p === "/api/host/products") return hostProducts(req, env, url);
       if (p === "/api/host/requests") return hostRequests(req, env, url, ctx);
       if (p === "/api/host/network") return hostNetwork(req, env, url);
@@ -2569,6 +2570,63 @@ function clientRow(r, site) {
     // can offer, and a host who offers it looks better than one who does not.
     member_link: r.member_token ? site + "/my-host/?t=" + r.member_token : null,
   };
+}
+
+/**
+ * THE BOOK — every client with their work folded in, and the month ahead.
+ *
+ * One call, because the two lists it merges are the two a host was previously
+ * asked to merge in their head. `growth/hostbook.mjs` does the shaping and is
+ * tested on its own; this reads the rows and hands them over.
+ *
+ * Both queries are scoped to `host.id` from `hostAuth`, never from anything in
+ * the URL. A host id in a query string is a wish.
+ */
+async function hostBook(req, env, url) {
+  const host = await hostAuth(env, url);
+  if (!host) return J({ ok: false, error: "unauthorised" }, 401);
+
+  const [clientRows, reqRows, plan, cal] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id,name,email,phone,home_city,home_country,languages,notes,source,status,
+              member_token,ended_at,created_at
+         FROM num_host_clients WHERE host_id = ? AND status <> 'removed'
+        ORDER BY name ASC LIMIT 500`
+    ).bind(host.id).all(),
+    env.DB.prepare(
+      `SELECT r.id,r.client_id,r.service_key,r.title,r.detail,r.city,r.country,
+              r.starts_at,r.ends_at,r.party_size,r.price_minor,r.currency,r.unit,
+              r.quote_only,r.status,r.network_host_id,r.network_status,
+              r.created_at,r.confirmed_at, c.name AS client_name
+         FROM num_host_requests r
+         LEFT JOIN num_host_clients c ON c.id = r.client_id
+        WHERE r.host_id = ? ORDER BY r.created_at DESC LIMIT 800`
+    ).bind(host.id).all(),
+    hostPlan(env, host.id),
+    // hostAuth does not select it, and reaching into a shared helper to add a
+    // column for one caller is how that helper grows a tail.
+    env.DB.prepare("SELECT calendar_token FROM num_hosts WHERE id = ?").bind(host.id).first(),
+  ]);
+
+  const clients = (clientRows && clientRows.results) || [];
+  const requests = (reqRows && reqRows.results) || [];
+  const site = env.SITE || "https://itsnum.com";
+  const { book, agenda } = await import("./hostbook.mjs");
+  const now = Date.now();
+  const shaped = book(clients.map(function (r) { return clientRow(r, site); }), requests, now);
+
+  return J({
+    ok: true,
+    ...shaped,
+    // The same rows the .ics feed publishes, read a different way — so the
+    // page and the host's own calendar can never disagree.
+    agenda: agenda(clients, requests, { now: now, days: 30 }),
+    calendar_url: (cal && cal.calendar_token)
+      ? site + "/api/host/calendar.ics?t=" + cal.calendar_token
+      : null,
+    plan: plan,
+    statuses: HOST_REQ_STATUS,
+  });
 }
 
 async function hostClients(req, env, url, ctx) {

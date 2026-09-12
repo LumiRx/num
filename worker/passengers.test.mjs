@@ -126,14 +126,23 @@ const get = (path) =>
 
 const read = async (res) => ({ status: res.status, body: await res.json() });
 
-/** A real member row, made the way the app makes one. */
+/**
+ * A real member row, made the way the app makes one.
+ *
+ * The email is not decoration: since 12 Sep 2026 a NEW account must carry a
+ * way to reach the person — a mobile, an address, or an Apple/Google identity
+ * — so a fixture that posts a bare name is refused, exactly as a stranger
+ * would be. Unique per member because one address means one account.
+ * See worker/membercontact.mjs.
+ */
+let fixtureEmail = 0;
 async function member(name) {
   const id = `mem_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   const res = await handleSocialSafe(
     new Request('https://app.itsnum.com/api/social/me', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': nextIp() },
-      body: JSON.stringify({ id, name }),
+      body: JSON.stringify({ id, name, email: `fixture${fixtureEmail++}@example.com`, verify: false }),
     }),
     env,
     '/me',

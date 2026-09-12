@@ -135,6 +135,43 @@ const detailTable = (rows) =>
  * like debris, and for some recipients it is the ONLY thing they will see.
  */
 export const TEMPLATES = {
+  /**
+   * The six-digit code, by email.
+   *
+   * Exists because a phone number is now required at sign-up and not everyone
+   * has one we can text — a travelling eSIM, a work handset that blocks short
+   * codes, a country our A2P registration does not cover yet. Email is the
+   * alternative, and an alternative that cannot be verified is not an
+   * alternative at all: it is the same dead end as the 34 unverified numbers
+   * already on file.
+   *
+   * Deliberately plain. A sign-in code that arrives dressed as marketing gets
+   * filed as marketing, and the one thing this message must do is land in the
+   * inbox within a minute.
+   */
+  signin: (d) => ({
+    subject: `${d.code} is your Num code`,
+    preheader: `Your six-digit code. It expires in ${d.minutes ?? 10} minutes and Num will never ask you for it.`,
+    kicker: 'SIGN IN',
+    title: 'Your code',
+    body:
+      `<p style="margin:0 0 14px;">Type this into Num to finish signing in:</p>`
+      + `<p style="margin:0 0 16px;font-family:ui-monospace,Menlo,monospace;font-size:34px;`
+      + `letter-spacing:.22em;font-weight:700;color:${BRAND.ink};">${esc(String(d.code ?? ''))}</p>`
+      + `<p style="margin:0;color:${BRAND.muted};font-size:13.5px;">`
+      + `It expires in ${esc(String(d.minutes ?? 10))} minutes. If you did not ask for it, you can ignore this `
+      + `— nobody can get into your account with the code alone.</p>`,
+    cta: null,
+    footnote: 'Num will never ask you to send this code to anyone, including us.',
+    text: [
+      `Your Num code is ${d.code}`,
+      '',
+      `It expires in ${d.minutes ?? 10} minutes.`,
+      'If you did not ask for it you can ignore this email.',
+      'Num will never ask you to send this code to anyone, including us.',
+    ].join('\n'),
+  }),
+
   booking: (d) => ({
     subject: `Confirmed — ${d.title}`,
     preheader: `${d.title}${d.day ? ' · ' + d.day : ''}${d.time ? ' at ' + d.time : ''}. Everything you need is in here.`,
@@ -286,6 +323,29 @@ export const TEMPLATES = {
     ].filter(Boolean).join('\n'),
   }),
 };
+
+/**
+ * One template, rendered to finished HTML — without choosing a transport.
+ *
+ * `sendEmail` below posts straight at the Cloudflare binding, which is right
+ * for ops mail and wrong for anything going to somebody else's inbox (see
+ * chainFor() in worker/mailer.mjs). Callers that need the mailer's external
+ * chain still want these templates, so the rendering is separated from the
+ * sending rather than copied.
+ */
+export function renderTemplate(template, data) {
+  const t = TEMPLATES[template];
+  if (!t) return null;
+  const r = t(data ?? {});
+  return shell({
+    preheader: r.preheader,
+    title: r.title,
+    kicker: r.kicker,
+    body: r.body,
+    cta: r.cta,
+    footnote: r.footnote,
+  });
+}
 
 // ── sending ───────────────────────────────────────────────────────────────
 

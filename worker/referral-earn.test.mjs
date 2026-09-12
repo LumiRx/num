@@ -66,8 +66,12 @@ test('earning does not depend solely on SMS', () => {
 
 test('both triggers are actually wired to real events', () => {
   // A trigger listed but never called is the same failure in a new costume.
-  assert.match(social, /markReferralEarned\(env, row\.id, 'phone_verified'\)/,
+  // One call, either channel: verifying by SMS and verifying by email are the
+  // same proof of the same thing, and the referrer earns on both.
+  assert.match(social, /markReferralEarned\(env, row\.id, pendingEmail \? 'email_verified' : 'phone_verified'\)/,
     'verification does not mark the referral earned');
+  assert.ok(EARN_TRIGGERS.includes('email_verified'),
+    'an email sign-up is a door we now point people at — it has to earn like the other one');
   assert.match(index, /markReferralEarned\(env, parsed\.state\.me\.id, 'first_ask'\)/,
     'asking the concierge does not mark the referral earned');
 });

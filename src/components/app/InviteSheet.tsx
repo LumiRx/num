@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { normalisePhone, describePhone } from '../../lib/phone';
+import { looksLikeEmail, normaliseEmail } from '../../lib/contact';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
 import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, signUp, textInviteFromNum, verifyCode, whoIsOnNum } from '../../lib/social';
@@ -112,6 +113,10 @@ export default function InviteSheet() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  // The other door. Closed until asked for, because a form with two ways to
+  // do one thing reads as a form with two required fields.
+  const [email, setEmail] = useState('');
+  const [emailOpen, setEmailOpen] = useState(false);
   const [toName, setToName] = useState('');
   const [toPhone, setToPhone] = useState('');
   /** null = unknown / no number yet; true = they're already a member. */
@@ -128,6 +133,8 @@ export default function InviteSheet() {
    * below is not the one in the signed-in branch.
    */
   const [recoverPhone, setRecoverPhone] = useState<string | null>(null);
+  // The same, when the account was found by address instead of number.
+  const [recoverEmail, setRecoverEmail] = useState<string | null>(null);
   // Null until we have heard from the server; false once it has told us there
   // is no SMS provider. Never assumed true — showing a verification step that
   // cannot work is the failure this replaces.
@@ -190,20 +197,33 @@ export default function InviteSheet() {
   // The button says what is missing rather than sitting dim and silent, so
   // nobody has to guess which field is the problem.
   //
-  // THE NUMBER IS NO LONGER A WALL. 48 of our first 77 sign-ups typed a name
-  // and stopped dead at this field — 62% of everyone who opened Num. A phone
-  // number is worth a lot to us and nothing to someone who has not yet seen
-  // the app work, so asking for it before any value is delivered trades most
-  // of our funnel for it. Num now lets them in on a name and asks for the
-  // number at the moment it actually buys them something (inviting a friend,
-  // saving a plan, cashing out) — which is also the moment they will say yes.
+  // ── A WAY TO REACH YOU IS REQUIRED AGAIN, AND WHY THAT IS NOT A REPEAT ──
+  //
+  // It was optional, for a measured reason that still stands: 48 of our first
+  // 77 sign-ups typed a name and stopped dead at this field — 62% of everyone
+  // who opened Num. Asking a stranger for their mobile before the app has done
+  // anything for them trades most of the funnel for it.
+  //
+  // What that policy bought, by 12 Sep 2026: 107 of 147 members with no way to
+  // reach them at all. Num cannot text them that a table moved, cannot email
+  // them a confirmation, and cannot get them back into their account on a new
+  // phone. That is not a member, it is a row.
+  //
+  // So the rule is back, but the door is wider. Not "your mobile or nothing" —
+  // a mobile, an email address, or Sign in with Apple, which is right above
+  // this form and takes one tap. Three ways through, and the honest lever if
+  // it still costs conversion is to move WHEN we ask, never to go back to
+  // accounts nobody can reach.
+  //
   // What Num will actually text, shown BEFORE the tap — including the country
   // it guessed from the device. The one real campaign arrival who ever tried
   // to sign in typed an Indian mobile while in the UK, got +44 put on it, and
   // never received a code. He would have fixed it in a keystroke had he seen it.
   const phoneInfo = describePhone(phone);
   const phoneOk = !phone.trim() || (phoneInfo.ok && normalisePhone(phone) !== null);
-  const ready = !!name.trim() && phoneOk;
+  const emailOk = !email.trim() || looksLikeEmail(email);
+  const hasContact = !!phone.trim() || !!email.trim();
+  const ready = !!name.trim() && hasContact && phoneOk && emailOk;
 
   const doSignUp = async () => {
     // Never return silently. A button that looks tappable and does nothing is
@@ -215,24 +235,41 @@ export default function InviteSheet() {
       return;
     }
     // A number typed WRONG still stops here — a half-number is worse than
-    // none, because it looks like we can reach them and we cannot. A number
-    // left BLANK is fine: they are in, and Num asks again when it matters.
+    // none, because it looks like we can reach them and we cannot.
     const tidy = phone.trim() && phoneInfo.ok ? normalisePhone(phone) : null;
     if (phone.trim() && !tidy) {
-      setAccountNote(phoneInfo.note ?? 'That number doesn’t look complete — or leave it blank and I’ll ask later.');
+      setAccountNote(phoneInfo.note ?? 'That number doesn’t look complete — check the country code.');
+      return;
+    }
+    const tidyEmail = email.trim() ? normaliseEmail(email) : null;
+    if (email.trim() && !tidyEmail) {
+      setAccountNote('That email doesn’t look complete — check for a missing @ or a typo in the domain.');
+      return;
+    }
+    // BOTH BLANK IS NO LONGER ALLOWED. The server refuses it too (that is the
+    // rule, not this sheet) but saying it here saves a round trip and says it
+    // in the words of the person's own screen. The offer is opened for them
+    // rather than described, so "I don't have a number" is one tap away.
+    if (!tidy && !tidyEmail) {
+      setEmailOpen(true);
+      setAccountNote(
+        'I need a mobile or an email — it is how I reach you when a booking moves, and how you get '
+        + 'this account back if you change phones. Either one is fine.',
+      );
       return;
     }
     setAccountNote(null);
     setBusy(true);
     try {
-      const out = await signUp(name.trim(), tidy ?? undefined);
+      const out = await signUp(name.trim(), tidy ?? undefined, tidyEmail ?? undefined);
 
       // OUTCOME 2 — the number is already on Num. Not an error, not a new
       // account: a sign-in that needs the code we just texted. Stay on this
       // sheet and swap it for the code step; closing it here would drop the
       // person into the app with no account and no idea a code was sent.
       if (out.outcome === 'code_sent') {
-        setRecoverPhone(out.phone ?? tidy ?? null);
+        setRecoverPhone(out.phone ?? (out.channel === 'phone' ? tidy : null));
+        setRecoverEmail(out.email ?? (out.channel === 'email' ? tidyEmail : null));
         setCode('');
         setResendIn(RESEND_COOLDOWN_SEC);
         setResendNote(null);
@@ -244,7 +281,9 @@ export default function InviteSheet() {
             // sentence says so better than a second version of it here.
             : out.verification?.sent === false && out.verification?.note
               ? out.verification.note
-              : 'That number already has an account — I have texted it a six-digit code.',
+              : out.channel === 'email'
+                ? 'That address already has an account — I have emailed it a six-digit code.'
+                : 'That number already has an account — I have texted it a six-digit code.',
         );
         return;
       }
@@ -283,9 +322,11 @@ export default function InviteSheet() {
     setBusy(true);
     setResendNote(null);
     try {
-      const out = await resendCode(recoverPhone ?? undefined);
+      const out = await resendCode(recoverPhone ?? undefined, recoverEmail ?? undefined);
       if (out.already) {
-        setResendNote('That number is already verified — you are in.');
+        setResendNote(recoverEmail && !recoverPhone
+          ? 'That address is already verified — you are in.'
+          : 'That number is already verified — you are in.');
         return;
       }
       // Start the wait BEFORE reporting anything: the message was sent either
@@ -309,7 +350,7 @@ export default function InviteSheet() {
 
   const doVerify = async () => {
     if (code.trim().length < 4) {
-      setAccountNote('Type the six digits from the text and I’ll check them.');
+      setAccountNote('Type the six digits I sent you and I’ll check them.');
       return;
     }
     setBusy(true);
@@ -317,16 +358,17 @@ export default function InviteSheet() {
       // The number is passed only on the recovery path, where there is no
       // member id to present — that is what makes the server release the
       // account. `verifyCode` refuses to send both.
-      const ok = await verifyCode(code.trim(), recoverPhone ?? undefined);
-      if (ok && recoverPhone) {
+      const ok = await verifyCode(code.trim(), recoverPhone ?? undefined, recoverEmail ?? undefined);
+      if (ok && (recoverPhone || recoverEmail)) {
         // `signUp` never ran on this device, so this is where the account
         // actually arrives. social.ts has already adopted it and closed the
         // sheet; all that is left is not to contradict it.
         setRecoverPhone(null);
+        setRecoverEmail(null);
         setAccountNote(null);
         return;
       }
-      setAccountNote(ok ? 'Number verified.' : 'That code didn’t match.');
+      setAccountNote(ok ? (me?.phone ? 'Number verified.' : 'Email verified.') : 'That code didn’t match.');
     } catch (err) {
       // The server's own sentence — "that code expired — ask for a new one",
       // "too many attempts" — is better than any guess we could make here.
@@ -460,19 +502,59 @@ export default function InviteSheet() {
                  an EMPTY account — no bookings, no people, no plans — while
                  our notes described a rich demo account they never reached.
 
-              A blank number stays legal on purpose: making it mandatory would
-              put every new user back behind the SMS path that has verified two
-              people in this product's life. The fix is not a locked door, it
-              is a better one — one tap, no code, no waiting for a text. */}
+              This tap is also the reason the contact rule below is not harsh.
+              A NEW account must now carry a way to reach the person, but Sign
+              in with Apple satisfies it outright — Apple hands us a verified
+              identity, so there is no number to type and no code to wait for.
+              Mobile, email, or this button: three doors, and this is the one
+              with the fewest steps. */}
           <AppleSignIn onDone={close} />
 
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
             <input style={field} placeholder={sending ? 'Your name' : 'What should I call you?'} value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={field} placeholder={sending ? 'Their mobile' : 'Mobile (optional — for friends and bookings)'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input style={field} placeholder={sending ? 'Their mobile' : 'Mobile number'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             {phone.trim() && phoneInfo.note && (
               <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : '#c0392b' }}>
                 {phoneInfo.note}
               </div>
+            )}
+
+            {/* THE OTHER DOOR.
+                Collapsed, not absent. Shown as a sentence rather than a second
+                empty field, because two boxes side by side read as two things
+                you have to fill in — which is the opposite of the point. One
+                tap opens it, and doSignUp opens it for them if they try to get
+                past with both blank. */}
+            {!sending && !emailOpen && (
+              <div
+                {...pressable(() => setEmailOpen(true))}
+                style={{ ...helpText, marginTop: 0, cursor: 'pointer', textDecoration: 'underline', minHeight: 44, display: 'flex', alignItems: 'center' }}
+              >
+                No mobile I can be texted on — use my email instead
+              </div>
+            )}
+            {!sending && emailOpen && (
+              <>
+                <input
+                  style={field}
+                  placeholder="Email address"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                {email.trim() && !emailOk && (
+                  <div style={{ fontSize: 12, lineHeight: 1.4, color: '#c0392b' }}>
+                    That address doesn’t look complete — check for a missing @ or a typo in the domain.
+                  </div>
+                )}
+                <div style={{ ...helpText, marginTop: 0 }}>
+                  Num emails you a six-digit code to finish. Nothing else goes to this address unless you
+                  ask for it.
+                </div>
+              </>
             )}
             {/* The consent sentence. Recorded verbatim server-side when the
                 number is verified (worker/smsconsent.mjs SIGNUP_CONSENT_TEXT);
@@ -493,9 +575,13 @@ export default function InviteSheet() {
                   ? 'YOUR NAME FIRST'
                   : !phoneOk
                     ? 'CHECK THAT NUMBER'
-                    : sending
-                      ? 'CREATE MY ACCOUNT'
-                      : 'NICE TO MEET YOU'}
+                    : !emailOk
+                      ? 'CHECK THAT EMAIL'
+                      : !hasContact
+                        ? 'A NUMBER OR AN EMAIL'
+                        : sending
+                          ? 'CREATE MY ACCOUNT'
+                          : 'NICE TO MEET YOU'}
             </div>
           </div>
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
@@ -516,9 +602,13 @@ export default function InviteSheet() {
               for a text that will not arrive, then assume the app is broken
               rather than that the feature is not built. `smsOn` is set from
               the sign-up response, which says plainly whether a code went. */}
-          {smsOn && !me.phone_verified && me.phone && (
+          {/* The email door needs a code box too, and the `smsOn` guard would
+              have hidden it — that flag reports whether a TEXT went out. An
+              account that verified by email would have been shown nothing and
+              left holding a code with nowhere to type it. */}
+          {((smsOn && !me.phone_verified && me.phone) || (!me.email_verified && me.email && !me.phone)) && (
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
-              <div style={label}>VERIFY YOUR NUMBER</div>
+              <div style={label}>{me.phone ? 'VERIFY YOUR NUMBER' : 'VERIFY YOUR EMAIL'}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <input style={{ ...field, flex: 1 }} placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
                 <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px' }}>CHECK</div>

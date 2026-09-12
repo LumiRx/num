@@ -24,6 +24,7 @@ import PeopleCard from './PeopleCard';
 import MembershipCard from './MembershipCard';
 import DangerZone from './DangerZone';
 import IdentityCard from './IdentityCard';
+import ContactCard from './ContactCard';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
@@ -138,6 +139,10 @@ export default function ProfileView() {
   const profile = useApp((s) => s.profile);
   const style = useApp((s) => s.style);
   const friends = useApp((s) => s.friends.filter((f) => f.state === 'active').length);
+  // A member is verified if EITHER channel is proved. Since 12 Sep 2026 an
+  // email address is a first-class way to sign up, so it has to be a
+  // first-class way to be verified.
+  const contactVerified = !!(me?.phone_verified || me?.email_verified);
   // MUST stay above the `!me` early return below: a hook called conditionally
   // changes the hook count the moment an account appears mid-session, which is
   // React error #310 and a blank screen.
@@ -255,17 +260,20 @@ export default function ProfileView() {
           <div style={kicker}>YOU</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 2 }}>{me.name ?? 'Traveller'}</div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            {me.phone ?? 'no number'}
+            {me.phone ?? me.email ?? 'no number'}
             <span
               style={{
                 fontSize: 9, fontWeight: 800, letterSpacing: '.08em', padding: '3px 7px', borderRadius: 999,
-                background: me.phone_verified ? 'rgba(22,140,90,.14)' : 'rgba(32,30,29,.07)',
-                color: me.phone_verified ? '#0e6b45' : 'var(--ink-60)',
+                // Either channel counts. Reading only phone_verified meant a
+                // member who proved an email address was labelled UNVERIFIED
+                // for ever, on a channel they never claimed to have.
+                background: contactVerified ? 'rgba(22,140,90,.14)' : 'rgba(32,30,29,.07)',
+                color: contactVerified ? '#0e6b45' : 'var(--ink-60)',
                 display: 'inline-flex', gap: 3, alignItems: 'center',
               }}
             >
-              {me.phone_verified && <CheckIcon size={9} />}
-              {me.phone_verified ? 'VERIFIED' : 'UNVERIFIED'}
+              {contactVerified && <CheckIcon size={9} />}
+              {contactVerified ? 'VERIFIED' : 'UNVERIFIED'}
             </span>
             {friends > 0 && (
               <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
@@ -403,6 +411,7 @@ export default function ProfileView() {
       </Collapsible>
 
       <Group>ACCOUNT</Group>
+      <ContactCard />
       <IdentityCard />
       {/* business tools, only if they have one */}
       <div

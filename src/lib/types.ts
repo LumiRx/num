@@ -231,6 +231,13 @@ export interface Member {
   name: string | null;
   phone: string | null;
   phone_verified: boolean;
+  /**
+   * The other way to reach them. A mobile OR an address is required at
+   * sign-up since 12 Sep 2026 — see worker/membercontact.mjs for the 107
+   * unreachable members that forced it.
+   */
+  email?: string | null;
+  email_verified?: boolean;
   /** True once the number is proved — the name is then part of the identity. */
   name_locked?: boolean;
   /** Small square data URL, resized on-device before it ever leaves. */
@@ -375,6 +382,12 @@ export interface AppState {
    * arrived at the bottom of the page and nothing had happened.
    */
   deleteOpen: boolean;
+  /**
+   * The same one-shot flag for "add a way to reach me". Set by the thread
+   * nudge shown to the 107 members who signed up before a contact was
+   * required, so the chip opens the card rather than merely scrolling past it.
+   */
+  contactOpen: boolean;
   /** YOU lives in the header now, not the tab bar — it opens as an overlay. */
   profileOpen: boolean;
 

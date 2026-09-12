@@ -112,15 +112,54 @@ test('4.8 — Apple sign-in is offered where an account actually begins', () => 
     'Apple sign-in renders below the name/number form — 4.8 asks for at least equal prominence');
 });
 
-test('a blank phone number is still allowed — this was not the bug', () => {
-  // Guarding the DECISION, not just the code. Making the number mandatory
-  // would look like a fix for the reviewer's empty account and would actually
-  // put every new user back behind an SMS path that has verified 2 people.
+/**
+ * THE DECISION THIS TEST GUARDS WAS REVERSED ON 12 SEP 2026, DELIBERATELY.
+ *
+ * It used to read "a blank phone number is still allowed — this was not the
+ * bug", and it was right at the time: making the number mandatory would have
+ * looked like a fix for the reviewer's empty account while actually putting
+ * every new user back behind an SMS path that had verified two people.
+ *
+ * What that policy bought, measured: 107 of 147 members with no way to reach
+ * them at all. So a contact is required again — but a MOBILE is not, which is
+ * the part that keeps the original reasoning intact. There are three doors,
+ * and Sign in with Apple is one of them, so nobody is stuck behind SMS.
+ *
+ * What must stay true either way is the reviewer's actual complaint: they
+ * typed a name, skipped everything else, and landed in an empty account.
+ * Under this rule they cannot skip everything else.
+ */
+test('a contact is required, but a MOBILE is not — the SMS path is still not a wall', () => {
   const sheet = root('src/components/app/InviteSheet.tsx');
-  assert.match(sheet, /Mobile \(optional/, 'the number stopped being optional at signup');
+  // The number is no longer labelled optional...
+  assert.ok(!/Mobile \(optional/.test(sheet),
+    'the sheet still calls the number optional — a new account must carry a contact');
+  // ...and the alternative is offered on the same screen, in plain words.
+  assert.match(sheet, /use my email instead/,
+    'a mandatory number with no alternative IS the wall this file argued against');
+  assert.match(sheet, /A NUMBER OR AN EMAIL/,
+    'the button must say which of the two is missing rather than sitting dim');
+
   const social = root('worker/social.mjs');
-  assert.match(social, /if \(!existing && !name\)/,
-    'the server-side signup guard changed — a name is required, a number is not');
+  assert.match(social, /if \(!existing && !phone && !email\)/,
+    'the server does not enforce the rule — a sheet-only rule is a suggestion');
+  // EXISTING members are never locked out by a rule they signed up before.
+  assert.match(social, /!existing && !phone && !email/,
+    'the guard must be scoped to NEW accounts');
+});
+
+test('Sign in with Apple satisfies the contact rule on its own', () => {
+  // Apple hands us a verified identity, and guideline 4.8 obliges us to offer
+  // the button anyway. Demanding a number on top of it would be asking the
+  // same person to prove the same thing twice, on the one path that has no
+  // code to wait for.
+  const contact = root('worker/membercontact.mjs');
+  assert.match(contact, /apple_sub/, 'an Apple identity must count as reachable');
+  const sheet = root('src/components/app/InviteSheet.tsx');
+  const apple = sheet.indexOf('<AppleSignIn');
+  const emailOffer = sheet.indexOf('use my email instead');
+  assert.ok(apple > 0 && apple < emailOffer,
+    'the one-tap door should be reached before the two typed ones');
 });
 
 test('4.0 — the phone frame does not follow the app onto an iPad', () => {

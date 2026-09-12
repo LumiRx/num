@@ -244,6 +244,14 @@ export function sendChip(id: string, label: string) {
     store.set({ inviteOpen: {} });
     return;
   }
+  // "Add my number", from the nudge shown to members who signed up before a
+  // contact was required. Opens the profile AND the card inside it — a chip
+  // that merely opened the profile would leave them hunting, which is how the
+  // delete row ended up looking dead.
+  if (id === 'addcontact') {
+    store.set({ profileOpen: true, contactOpen: true });
+    return;
+  }
   if (id === 'invite') {
     startInvite({});
     return;

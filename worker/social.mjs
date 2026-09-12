@@ -16,6 +16,13 @@
 //      same row becomes the booking when it firms up, so nobody has to wait
 //      for a confirmation to start planning together.
 import { generateCode, hashCode, safeEqual, normalisePhone, normaliseMobile, uid, sendCode, verifyConfigured, verifySend, verifyCheck } from '../claim/verify.mjs';
+// A way to reach the person is required at sign-up now — a mobile, an email,
+// or an Apple/Google identity. See the long note in worker/membercontact.mjs
+// for the number that forced it (107 of 147 members unreachable) and for why
+// this is not simply the old wall put back.
+import {
+  normaliseEmail, ensureContact, issueEmailCode, NEED_CONTACT, BAD_EMAIL,
+} from './membercontact.mjs';
 import { notify } from './push.mjs';
 import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
@@ -408,6 +415,16 @@ async function me(env, req) {
       : ' Start it with + and your country code (like +1, +44 or +66).';
     return json({ error: `That doesn’t look like a mobile number I can text.${guessed}`, bad_phone: true }, 400);
   }
+  // ── THE OTHER DOOR ──────────────────────────────────────────────────────
+  // Not everyone has a mobile we can text: a travelling eSIM, a work handset
+  // that blocks short codes, a country our A2P registration does not reach.
+  // An address is refused for being MALFORMED, never for being unwelcome —
+  // "gmail.c" is a typo the person can fix in a keystroke if we say so, and a
+  // silent save is an alternative that quietly is not one.
+  await ensureContact(env);
+  const email = b.email ? normaliseEmail(b.email) : null;
+  if (b.email && !email) return json({ error: BAD_EMAIL, bad_email: true }, 400);
+
   const dest = clip(b.dest, 80);
   const avatar = clip(b.avatar, 60000);
   const bio = b.bio ? JSON.stringify(b.bio).slice(0, 4000) : null;
@@ -417,16 +434,38 @@ async function me(env, req) {
   // concurrent signups every extra sequential query added ~400ms to p50, so
   // the shape of this function matters more than anything inside it.
   const { results: rows } = await env.DB.prepare(
-    'SELECT * FROM num_members WHERE id = ?1 OR (?2 IS NOT NULL AND phone = ?2)',
-  ).bind(id, phone).all();
+    `SELECT * FROM num_members
+      WHERE id = ?1 OR (?2 IS NOT NULL AND phone = ?2) OR (?3 IS NOT NULL AND email = ?3)`,
+  ).bind(id, phone, email).all();
   const existing = (rows ?? []).find((r) => r.id === id) ?? null;
-  const holder = phone ? (rows ?? []).find((r) => r.phone === phone && r.id !== id) ?? null : null;
+  // An address already on another account is the same situation as a number
+  // already on another account, and gets the same answer: recovery, not a
+  // second account and not a takeover. Phone wins when both are offered —
+  // it is the stronger channel and the one the rest of this file is built on.
+  const holder = (rows ?? []).find((r) => r.id !== id && phone && r.phone === phone)
+    ?? (rows ?? []).find((r) => r.id !== id && email && r.email === email)
+    ?? null;
+  const holderBy = holder ? (phone && holder.phone === phone ? 'phone' : 'email') : null;
 
   // A NEW account needs a name. Without this, `POST /me {}` minted an account
   // AND a referral code on every call — a Sybil farm in one curl loop, and
   // referral codes are worth Stars. Existing accounts may still patch freely.
   if (!existing && !name) {
     return json({ error: 'Tell me your name first — I can’t open an account without one.' }, 400);
+  }
+
+  // ── A NEW ACCOUNT MUST BE REACHABLE ────────────────────────────────────
+  //
+  // Enforced here rather than in the sheet, because the sheet is one caller.
+  // The rule has to hold for the API, for a partner integration and for a
+  // curl loop, or it is a suggestion.
+  //
+  // EXISTING accounts pass untouched. The 107 members who signed up under the
+  // old rule are asked on their next open (see contactNudge) and never
+  // blocked: locking somebody out for a change we made is not how you get a
+  // phone number out of them.
+  if (!existing && !phone && !email) {
+    return json({ error: NEED_CONTACT, need_contact: true }, 400);
   }
 
   if (holder) {
@@ -437,7 +476,10 @@ async function me(env, req) {
     // number, and it handed a stranger somebody else's account for the price of
     // typing their number. Until SMS is on, an unverified number is a CLAIM, so
     // the right answer to a collision is to refuse it and write it down.
-    await flagCollision(env, { kind: 'phone', value: phone, existing: holder.id, attempted: id, req });
+    await flagCollision(env, {
+      kind: holderBy, value: holderBy === 'email' ? email : phone,
+      existing: holder.id, attempted: id, req,
+    });
 
     // APP REVIEW ACCESS. The reviewer is in exactly the position this branch
     // refuses to serve — a fresh install, holding a number that is already on
@@ -453,7 +495,8 @@ async function me(env, req) {
     //
     // Note what it does NOT contain: no me, no id, no ref, no link. Identical
     // in that respect to the branch below it.
-    const reviewGrant = reviewerFor(env, phone, holder.id);
+    // Phone-only by construction: the App Review grant names one NUMBER.
+    const reviewGrant = holderBy === 'phone' ? reviewerFor(env, phone, holder.id) : null;
     if (reviewGrant) {
       await auditReview(env, { stage: 'me', outcome: 'code_pending', memberId: holder.id, req });
       return json({
@@ -527,16 +570,26 @@ async function me(env, req) {
       // carrying `recovery: 'code_sent'`, never an id) while telling the truth
       // about what just happened.
       const refuse = await sendGate(env, holder.id);
+      // The code goes to the channel ALREADY ON FILE — `holder.email`, never
+      // the address the caller typed. That is what makes this recovery rather
+      // than a takeover, and it is the same rule the phone side has always
+      // followed. The two happen to be equal here, but writing it from the
+      // holder row is the property, not a coincidence to be relied on.
       const verification = refuse
         ? { sent: false, throttled: true, note: refuse.error, retry_after_sec: refuse.retry_after_sec }
-        : await issueCode(env, holder.id, holder.phone);
+        : holderBy === 'email'
+          ? await issueEmailCode(env, holder.id, holder.email)
+          : await issueCode(env, holder.id, holder.phone);
       if (!verification.sent && !refuse) {
         // Fail closed. We could not reach the owner, so we cannot tell them
         // this is happening, so we do not act on it. `flagCollision` above
         // already recorded the attempt either way.
         return json({
-          error: 'That number is already on Num, and I can’t text a code to it right now. Message us and we’ll get you back in.',
-          number_taken: true,
+          error: holderBy === 'email'
+            ? 'That address is already on Num, and I can’t email a code to it right now. Message us and we’ll get you back in.'
+            : 'That number is already on Num, and I can’t text a code to it right now. Message us and we’ll get you back in.',
+          number_taken: holderBy === 'phone',
+          email_taken: holderBy === 'email',
           recovery: 'unavailable',
           verification,
         }, 503);
@@ -544,9 +597,13 @@ async function me(env, req) {
       return json({
         recovery: 'code_sent',
         recovered: false,
-        phone: holder.phone,
+        channel: holderBy,
+        phone: holderBy === 'phone' ? holder.phone : null,
+        email: holderBy === 'email' ? holder.email : null,
         verification,
-        next: 'POST /api/social/verify with { phone, code } to finish signing in.',
+        next: holderBy === 'email'
+          ? 'POST /api/social/verify with { email, code } to finish signing in.'
+          : 'POST /api/social/verify with { phone, code } to finish signing in.',
       }, 202);
     }
 
@@ -572,17 +629,25 @@ async function me(env, req) {
   const writes = [];
   // An unverified holder never proved anything, so it must not squat the
   // number against its real owner. Release it in the same batch.
-  if (holder) writes.push(env.DB.prepare('UPDATE num_members SET phone=NULL WHERE id=?1').bind(holder.id));
+  if (holder) {
+    writes.push(env.DB.prepare(
+      holderBy === 'email'
+        ? 'UPDATE num_members SET email=NULL WHERE id=?1'
+        : 'UPDATE num_members SET phone=NULL WHERE id=?1',
+    ).bind(holder.id));
+  }
   writes.push(
     existing
       ? env.DB.prepare(
           `UPDATE num_members SET name=COALESCE(?2,name), phone=COALESCE(?3,phone), dest=COALESCE(?4,dest),
-                  avatar=COALESCE(?5,avatar), bio=COALESCE(?6,bio), ref_code=COALESCE(ref_code,?7), seen_at=datetime('now')
+                  avatar=COALESCE(?5,avatar), bio=COALESCE(?6,bio), ref_code=COALESCE(ref_code,?7),
+                  email=COALESCE(?8,email), seen_at=datetime('now')
             WHERE id=?1`,
-        ).bind(id, name, phone, dest, avatar, bio, ref)
+        ).bind(id, name, phone, dest, avatar, bio, ref, email)
       : env.DB.prepare(
-          "INSERT INTO num_members (id, name, phone, dest, avatar, bio, ref_code, seen_at) VALUES (?1,?2,?3,?4,?5,?6,?7,datetime('now'))",
-        ).bind(id, name, phone, dest, avatar, bio, ref),
+          `INSERT INTO num_members (id, name, phone, dest, avatar, bio, ref_code, email, seen_at)
+           VALUES (?1,?2,?3,?4,?5,?6,?7,?8,datetime('now'))`,
+        ).bind(id, name, phone, dest, avatar, bio, ref, email),
   );
   // First-touch attribution, first write wins. COALESCE keeps the original:
   // a member who signs up from the Instagram ad and later opens a YouTube
@@ -610,9 +675,22 @@ async function me(env, req) {
   // whether two accounts share one, never what it was.
   ctxSignals(env, id, req, b).catch((err) => console.warn('[identity]', err?.message ?? err));
 
+  // ── WHICH DOOR THE CODE GOES OUT OF ─────────────────────────────────────
+  //
+  // The phone when there is one, because SMS is the channel the rest of this
+  // file, the invite flow and friend-matching are all built on. Email only
+  // when there is no number to text — an alternative, not a second message.
+  //
+  // One code at a time, always: two pending codes on one account means one of
+  // them is wrong and the person cannot tell which, and `code_hash` holds
+  // exactly one.
   let verification = null;
-  if (phone && !existing?.phone_verified && b.verify !== false) {
-    verification = await issueCode(env, id, phone);
+  if (b.verify !== false) {
+    if (phone && !existing?.phone_verified) {
+      verification = await issueCode(env, id, phone);
+    } else if (email && !existing?.email_verified) {
+      verification = await issueEmailCode(env, id, email);
+    }
   }
 
   // No re-read: we know exactly what was written, and a third round trip to
@@ -623,6 +701,8 @@ async function me(env, req) {
       name: name ?? existing?.name ?? null,
       phone: phone ?? existing?.phone ?? null,
       phone_verified: !!existing?.phone_verified,
+      email: email ?? existing?.email ?? null,
+      email_verified: !!existing?.email_verified,
       name_locked: !!(existing?.phone_verified || existing?.name_locked),
       avatar: avatar ?? existing?.avatar ?? null,
       bio: safeParse(bio ?? existing?.bio),
@@ -813,13 +893,22 @@ async function resendCode(env, req) {
   // Resending by number is not a new exposure: it is precisely what `/me`
   // already does, to the number ALREADY ON FILE, releasing nothing. Nobody
   // learns anything from this endpoint they could not learn from that one.
+  //
+  // And by address, for the same people through the other door. An email
+  // sign-up that never received its code was in exactly the position this
+  // endpoint exists to rescue, and would have been told "no number on file".
+  await ensureContact(env);
+  const COLS = 'id, phone, phone_verified, email, email_verified, code_sid, code_channel';
   const id = clip(b.id, 40);
   const phone = id ? null : normalisePhone(b.phone, regionOf(req));
+  const email = id || phone ? null : normaliseEmail(b.email);
   const row = id
-    ? await env.DB.prepare('SELECT id, phone, phone_verified, code_sid FROM num_members WHERE id=?1').bind(id).first()
+    ? await env.DB.prepare(`SELECT ${COLS} FROM num_members WHERE id=?1`).bind(id).first()
     : phone
-      ? await env.DB.prepare('SELECT id, phone, phone_verified, code_sid FROM num_members WHERE phone=?1').bind(phone).first()
-      : null;
+      ? await env.DB.prepare(`SELECT ${COLS} FROM num_members WHERE phone=?1`).bind(phone).first()
+      : email
+        ? await env.DB.prepare(`SELECT ${COLS} FROM num_members WHERE email=?1`).bind(email).first()
+        : null;
 
   // NO ENUMERATION ORACLE. A number that is not on file gets the same sentence
   // as one that is cooling down — "not right now" — because a distinguishable
@@ -827,12 +916,26 @@ async function resendCode(env, req) {
   // anybody with a phone book.
   if (!row) {
     return json({
-      error: 'I can’t send another code to that number right now. Check the digits, or start again from the top.',
+      error: email
+        ? 'I can’t send another code to that address right now. Check the spelling, or start again from the top.'
+        : 'I can’t send another code to that number right now. Check the digits, or start again from the top.',
       retry_after_sec: RESEND_COOLDOWN_SEC,
     }, 429);
   }
-  if (row.phone_verified) return json({ ok: true, already: true });
-  if (!row.phone) return json({ error: 'no number on file' }, 400);
+  // Which channel this account actually uses. A member with no number is an
+  // email member, and asking whether their PHONE is verified would answer no
+  // forever and resend down a pipe that does not exist.
+  const useEmail = !row.phone && !!row.email;
+  if (useEmail ? row.email_verified : row.phone_verified) return json({ ok: true, already: true });
+  if (!row.phone && !row.email) return json({ error: 'no number or address on file' }, 400);
+
+  if (useEmail) {
+    const refuseEmail = await sendGate(env, row.id);
+    if (refuseEmail) return json(refuseEmail, 429);
+    // No carrier diagnostic to fetch: there is no Twilio in this path. An
+    // email that bounces tells us through the provider, not through here.
+    return json({ ...(await issueEmailCode(env, row.id, row.email)), previous: null });
+  }
 
   const refuse = await sendGate(env, row.id);
   if (refuse) return json(refuse, 429);
@@ -873,10 +976,19 @@ async function verifyMe(env, req) {
   //              two things: the number, and the code we just texted to it.
   //              Presenting both IS the proof of possession, so this is the
   //              one place the ID may be released.
-  const byPhone = !clip(b.id, 40) && !!normalisePhone(b.phone, regionOf(req));
+  //   by email — the same recovery, for somebody who signed up with an address
+  //              because they had no number we could text. Identical rule:
+  //              the code went to the channel on file, so presenting the
+  //              channel and the code is the proof of possession.
+  await ensureContact(env);
+  const noId = !clip(b.id, 40);
+  const byPhone = noId && !!normalisePhone(b.phone, regionOf(req));
+  const byEmail = noId && !byPhone && !!normaliseEmail(b.email);
   const row = byPhone
     ? await env.DB.prepare('SELECT * FROM num_members WHERE phone=?1').bind(normalisePhone(b.phone, regionOf(req))).first()
-    : await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(clip(b.id, 40) ?? '').first();
+    : byEmail
+      ? await env.DB.prepare('SELECT * FROM num_members WHERE email=?1').bind(normaliseEmail(b.email)).first()
+      : await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(clip(b.id, 40) ?? '').first();
   if (!row) return json({ error: 'unknown member' }, 404);
 
   // APP REVIEW ACCESS, the other half. Only the phone path, only the number
@@ -936,7 +1048,7 @@ async function verifyMe(env, req) {
   // On the phone path a verified number now falls through to the code check
   // like any other. The identity is still released only against a correct
   // code — that has not changed and must not.
-  if (row.phone_verified && !byPhone) return json({ ok: true, already: true });
+  if (row.phone_verified && !byPhone && !byEmail) return json({ ok: true, already: true });
 
   // TWILIO VERIFY holds the code when it is configured, so the check goes back
   // to Twilio rather than to a hash of ours. Only reached below the review
@@ -950,7 +1062,12 @@ async function verifyMe(env, req) {
   // Our own attempt counter still runs. Verify enforces five checks per
   // verification, but that is per-verification, and the counter here is what
   // makes a stream of fresh verifications against one member expensive too.
-  const viaVerify = verifyConfigured(env);
+  // An EMAILED code is ours, always. Twilio Verify has never heard of it, and
+  // asking Verify to check it would answer "not_found" and refuse a code that
+  // is perfectly correct — so the channel the code went out on decides who
+  // checks it, not which SMS provider happens to be configured.
+  const pendingEmail = row.code_channel === 'email' || (byEmail && !row.phone);
+  const viaVerify = verifyConfigured(env) && !pendingEmail;
   const note = (outcome, reason) =>
     logSignin(env, { memberId: row.id, stage: 'check', outcome, reason, via: viaVerify ? 'verify' : 'sms' });
   if (viaVerify) {
@@ -982,14 +1099,28 @@ async function verifyMe(env, req) {
   await note('ok');
   // Whoever referred this person has now earned it. Fire-and-forget: a
   // referral bookkeeping problem must never fail somebody's verification.
-  markReferralEarned(env, row.id, 'phone_verified').catch(() => {});
-  await env.DB.prepare('UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL WHERE id=?1')
-    .bind(row.id).run();
+  markReferralEarned(env, row.id, pendingEmail ? 'email_verified' : 'phone_verified').catch(() => {});
+  // MARK THE CHANNEL THAT WAS ACTUALLY PROVED.
+  //
+  // The pending code lives in `code_hash` whichever door it went out of, so
+  // without `code_channel` an emailed code would have set `phone_verified` —
+  // claiming we had verified a number nobody ever texted, and locking the
+  // member's name on the strength of it.
+  await env.DB.prepare(
+    pendingEmail
+      ? `UPDATE num_members SET email_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL,
+                code_channel=NULL WHERE id=?1`
+      : `UPDATE num_members SET phone_verified=1, code_hash=NULL, code_salt=NULL, code_expires=NULL,
+                code_channel=NULL WHERE id=?1`,
+  ).bind(row.id).run();
   // THE CONSENT ROW. A verified number with no consent row was a member Num
   // could never text — not a confirmation, not a reminder, not a friend's
   // plan. The sentence they were shown is recorded, not a boolean. Fire and
   // forget: bookkeeping must never fail a verification.
-  import('./smsconsent.mjs')
+  // Only when a NUMBER was proved. An SMS consent row for somebody who
+  // verified an email address is a record of a permission nobody gave.
+  if (!pendingEmail && row.phone) {
+    import('./smsconsent.mjs')
     .then((c) => c.record(env, {
       phone: row.phone,
       source: c.SOURCE.WEB_FORM,
@@ -1000,6 +1131,7 @@ async function verifyMe(env, req) {
       country: req.cf?.country ?? null,
     }))
     .catch((e) => console.warn('[verify] consent record failed', e?.message ?? e));
+  }
   // SIGNING UP MUST NOT COST THEM WHAT NUM ALREADY LEARNED.
   //
   // Everything noticed before this moment is filed against the device, because
@@ -1016,17 +1148,22 @@ async function verifyMe(env, req) {
   // The ID rides back ONLY on the recovery path, and only now that the code
   // has been presented. On the ordinary path the caller already had it, and
   // repeating it would make this response look like a way to obtain one.
-  if (!byPhone) return json({ ok: true, phone_verified: true });
+  if (!byPhone && !byEmail) {
+    return json({ ok: true, phone_verified: !pendingEmail, email_verified: pendingEmail });
+  }
   const back = await env.DB.prepare('SELECT * FROM num_members WHERE id=?1').bind(row.id).first();
   return json({
     ok: true,
-    phone_verified: true,
+    phone_verified: !!back.phone_verified,
+    email_verified: !!back.email_verified,
     recovered: true,
     me: {
       id: back.id,
       name: back.name,
       phone: back.phone,
-      phone_verified: true,
+      email: back.email ?? null,
+      phone_verified: !!back.phone_verified,
+      email_verified: !!back.email_verified,
       name_locked: !!back.name_locked,
       avatar: back.avatar ?? null,
       bio: safeParse(back.bio),

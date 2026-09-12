@@ -102,6 +102,53 @@ function deviceId(): string {
  * Read the referral/invite off the launch URL and hydrate anything we already
  * belong to. Runs once, on app start.
  */
+/** How long to leave somebody alone between asks. */
+const CONTACT_NUDGE_DAYS = 7;
+
+/**
+ * Ask the members who never gave us a way to reach them — and only ask.
+ *
+ * On 12 Sep 2026 that was 107 of 147 people. A new account has to carry a
+ * mobile or an address now, but these accounts were opened when the field was
+ * optional, and shutting the door on somebody for a rule we changed after they
+ * walked in is not a way to get their phone number. It is also
+ * self-defeating: the entire object of the exercise is to be able to reach
+ * these people.
+ *
+ * So: one line in the thread and a chip, once a week at most, and everything
+ * in the app keeps working either way. If they never answer, they never
+ * answer.
+ */
+function nudgeForContact(me: { phone?: string | null; email?: string | null } | null): void {
+  if (!me || me.phone || me.email) return;
+  const KEY = 'num-contact-asked';
+  try {
+    const last = Number(localStorage.getItem(KEY) ?? 0);
+    if (Date.now() - last < CONTACT_NUDGE_DAYS * 86_400_000) return;
+    localStorage.setItem(KEY, String(Date.now()));
+  } catch {
+    // Private mode: ask this once rather than not at all. Worst case they see
+    // it again next launch, which is a smaller failure than never asking.
+  }
+  // Deferred so it lands after the thread has drawn and reads as Num speaking,
+  // not as a modal firing at boot.
+  setTimeout(() => {
+    store.set((s) => ({
+      msgs: [
+        ...s.msgs,
+        {
+          who: 'c' as const,
+          text:
+            'One thing I never got from you: a mobile number, or an email if you would rather. '
+            + 'It is how I reach you when a booking moves, and how you get this account back if you '
+            + 'change phones — right now I can do neither. Nothing stops working if you skip it.',
+        },
+      ],
+      chips: [{ id: 'addcontact', label: 'Add my number' }, ...s.chips],
+    }));
+  }, 1200);
+}
+
 export function bootSocial(): void {
   const q = new URLSearchParams(window.location.search);
 
@@ -230,6 +277,7 @@ export function bootSocial(): void {
       else void connectByCode(connectTo);
     }
     if (token) void acceptInvite(token);
+    nudgeForContact(me);
     void refreshFriends();
     void refreshPlans();
     void syncPlan();
@@ -332,7 +380,10 @@ interface MeResponse {
 interface RecoveryResponse {
   recovery: 'code_sent';
   recovered?: boolean;
-  phone?: string;
+  /** Which door the code went out of. 'phone' unless they signed up by email. */
+  channel?: 'phone' | 'email';
+  phone?: string | null;
+  email?: string | null;
   verification: Verification | null;
   next?: string;
 }
@@ -346,7 +397,13 @@ interface RecoveryResponse {
  */
 export type SignUpResult =
   | { outcome: 'account'; me: Member; ref: string; link: string; verification: Verification | null }
-  | { outcome: 'code_sent'; phone: string | null; verification: Verification | null };
+  | {
+      outcome: 'code_sent';
+      channel: 'phone' | 'email';
+      phone: string | null;
+      email: string | null;
+      verification: Verification | null;
+    };
 
 /**
  * The number we are in the middle of recovering.
@@ -360,9 +417,17 @@ export type SignUpResult =
  */
 let recoveringPhone: string | null = null;
 
+/** The same, for somebody who signed up with an address instead of a number. */
+let recoveringEmail: string | null = null;
+
 /** The number a code was sent to, if a code screen should be up. */
 export function pendingRecovery(): string | null {
   return recoveringPhone;
+}
+
+/** The address a code was sent to, if that was the door. */
+export function pendingRecoveryEmail(): string | null {
+  return recoveringEmail;
 }
 
 /**
@@ -402,14 +467,14 @@ function adoptMember(m: Member): void {
  * provider is configured; where none is, the number is saved but explicitly
  * NOT treated as verified — see the note we surface to the user.
  */
-export async function signUp(name: string, phone?: string): Promise<SignUpResult> {
+export async function signUp(name: string, phone?: string, email?: string): Promise<SignUpResult> {
   // The ad that brought them travels with the signup — this is the moment
   // attribution becomes a conversion instead of a pageview.
   let utm: unknown = null;
   try { utm = JSON.parse(localStorage.getItem('num-utm') ?? 'null'); } catch { /* fine */ }
   const out = await api<Partial<MeResponse> & Partial<RecoveryResponse>>('/me', {
     method: 'POST',
-    body: JSON.stringify({ id: deviceId(), name, phone, dest: store.get().place, utm }),
+    body: JSON.stringify({ id: deviceId(), name, phone, email, dest: store.get().place, utm }),
   });
   // OUTCOME 2 — this number is already on Num, so this is a sign-IN.
   //
@@ -422,17 +487,27 @@ export async function signUp(name: string, phone?: string): Promise<SignUpResult
   // Checked before `out.me` is touched, because on this path there is no
   // `out.me` to touch.
   if (out?.recovery === 'code_sent') {
-    recoveringPhone = out.phone ?? phone ?? null;
+    const byEmail = out.channel === 'email';
+    recoveringPhone = byEmail ? null : (out.phone ?? phone ?? null);
+    recoveringEmail = byEmail ? (out.email ?? email ?? null) : null;
     narrate(
       out.verification?.channel === 'review'
         ? 'That number already has an account here. Enter the sign-in code and I will bring it back.'
-        : 'That number is already on Num — which means you have an account, not that you are locked out.\n\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.',
+        : byEmail
+          ? 'That address is already on Num — which means you have an account, not that you are locked out.\n\nI have just emailed it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.'
+          : 'That number is already on Num — which means you have an account, not that you are locked out.\n\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.',
     );
     // Not `sign_up`: nobody signed up, somebody came back. Counting a
     // recovery as a fresh signup would inflate the exact number the ad
     // budget is judged against.
-    track('signup_recovery', { method: 'phone' });
-    return { outcome: 'code_sent', phone: recoveringPhone, verification: out.verification ?? null };
+    track('signup_recovery', { method: byEmail ? 'email' : 'phone' });
+    return {
+      outcome: 'code_sent',
+      channel: byEmail ? 'email' : 'phone',
+      phone: recoveringPhone,
+      email: recoveringEmail,
+      verification: out.verification ?? null,
+    };
   }
 
   // OUTCOME 1 — a new number, and an account to go with it.
@@ -530,17 +605,23 @@ export type ResendOutcome = {
   previous?: { delivered: boolean; error_code: string | null; hint: string | null } | null;
 };
 
-export async function resendCode(phone?: string): Promise<ResendOutcome> {
+export async function resendCode(phone?: string, email?: string): Promise<ResendOutcome> {
   const me = store.get().me;
   const recovering = me ? null : (phone ?? recoveringPhone);
-  if (!me && !recovering) throw new Error('There is no number to send a code to.');
+  const recoveringAddr = me || recovering ? null : (email ?? recoveringEmail);
+  if (!me && !recovering && !recoveringAddr) {
+    throw new Error('There is no number or address to send a code to.');
+  }
   const out = await api<{ sent?: boolean; already?: boolean; note?: string; previous?: ResendOutcome['previous'] }>(
     '/resend',
     {
       method: 'POST',
-      // Never both: the server takes the id path whenever an id is present,
-      // so sending a stale one would 404 the person it is meant to rescue.
-      body: JSON.stringify(me ? { id: me.id } : { phone: recovering }),
+      // Never more than one: the server takes the id path whenever an id is
+      // present, so sending a stale one would 404 the person it is meant to
+      // rescue, and the same is true of a phone against an email account.
+      body: JSON.stringify(
+        me ? { id: me.id } : recovering ? { phone: recovering } : { email: recoveringAddr },
+      ),
     },
   );
   return { sent: !!out.sent, already: out.already, previous: out.previous ?? null };
@@ -561,16 +642,21 @@ export async function resendCode(phone?: string): Promise<ResendOutcome> {
  * `byPhone = !clip(b.id, 40) && !!normalisePhone(b.phone)` — so including a
  * stale id silently puts us back on the id path and 404s.
  */
-export async function verifyCode(code: string, phone?: string): Promise<boolean> {
+export async function verifyCode(code: string, phone?: string, email?: string): Promise<boolean> {
   const me = store.get().me;
   const recovering = me ? null : (phone ?? recoveringPhone);
-  if (!me && !recovering) return false;
+  // The address is the fallback proof, used only when there is no number in
+  // play. Sending both would let the server take the phone path against an
+  // account that has no phone on it.
+  const recoveringAddr = me || recovering ? null : (email ?? recoveringEmail);
+  if (!me && !recovering && !recoveringAddr) return false;
   const out = await api<{
     ok?: boolean;
     already?: boolean;
     recovered?: boolean;
     review_access?: boolean;
     phone_verified?: boolean;
+    email_verified?: boolean;
     me?: Member;
     ref?: string;
   }>('/verify', {
@@ -578,7 +664,11 @@ export async function verifyCode(code: string, phone?: string): Promise<boolean>
     // `anon` rides along so the server can fold everything Num noticed about
     // this device into the account it just became. Without it, verifying a
     // phone would make Num forget you — see mergeAnon in soulprofile.mjs.
-    body: JSON.stringify(me ? { id: me.id, code, anon: anonId() } : { phone: recovering, code, anon: anonId() }),
+    body: JSON.stringify(
+      me ? { id: me.id, code, anon: anonId() }
+        : recovering ? { phone: recovering, code, anon: anonId() }
+          : { email: recoveringAddr, code, anon: anonId() },
+    ),
   });
   if (!out.ok) return false;
   if (out.me?.id) {
@@ -587,8 +677,11 @@ export async function verifyCode(code: string, phone?: string): Promise<boolean>
     // anywhere else — or not at all — means a code screen that succeeds into
     // an app with no account, which looks exactly like a failure.
     recoveringPhone = null;
+    recoveringEmail = null;
     adoptMember(out.me);
-    track('sign_up', { method: 'phone', recovered: true });
+    track('sign_up', { method: recoveringAddr ? 'email' : 'phone', recovered: true });
+  } else if (out.email_verified) {
+    store.set((s) => ({ me: s.me ? { ...s.me, email_verified: true } : s.me }));
   } else {
     store.set((s) => ({ me: s.me ? { ...s.me, phone_verified: true } : s.me }));
   }
@@ -603,7 +696,43 @@ export async function verifyCode(code: string, phone?: string): Promise<boolean>
   // Review grant deliberately does not set `phone_verified` at all (no claim
   // about a number we never texted).
   if (out.phone_verified) track('verified_signup', { method: 'sms' });
+  if (out.email_verified) track('verified_signup', { method: 'email' });
   return true;
+}
+
+/**
+ * Add a number or an address to an account that has neither, and start a code.
+ *
+ * A separate function from `signUp` because it is a separate situation: this
+ * person already IS somebody here. They have plans, friends and Stars, and the
+ * only thing missing is a way for Num to reach them — which is true of 107 of
+ * the 147 members who existed on 12 Sep 2026, all of whom signed up when the
+ * field was optional.
+ *
+ * It posts to the same `/me` the sheet does, because that endpoint already
+ * knows how to attach a channel and issue the right code for it. Passing our
+ * own id is what makes the server treat this as a patch rather than a new
+ * account, so none of the new-account rules fire.
+ */
+export async function addContact(
+  phone?: string,
+  email?: string,
+): Promise<{ sent: boolean; note: string | null }> {
+  const me = store.get().me;
+  if (!me) return { sent: false, note: 'Sign in first.' };
+  const out = await api<Partial<MeResponse>>('/me', {
+    method: 'POST',
+    body: JSON.stringify({ id: me.id, phone, email }),
+  });
+  if (out?.me) {
+    // Keep the local identity in step immediately: the card decides what to
+    // show from `me`, and a saved channel that the app cannot see reads as a
+    // form that did nothing.
+    store.set((s) => ({
+      me: s.me ? { ...s.me, phone: out.me?.phone ?? s.me.phone, email: out.me?.email ?? s.me.email } : s.me,
+    }));
+  }
+  return { sent: !!out?.verification?.sent, note: out?.verification?.note ?? null };
 }
 
 /** Consent, second half: accepting is what turns a link active both ways. */

@@ -26,7 +26,13 @@
 // person actually used the product, which is the thing the reward is really
 // for; a bare signup is just a filled-in form. Accepting either means the loop
 // turns today and still tightens automatically once SMS works.
-export const EARN_TRIGGERS = ['phone_verified', 'first_ask'];
+// 'email_verified' joined the list on 12 Sep 2026, when an email address
+// became a first-class alternative to a mobile at sign-up. Somebody who read a
+// six-digit code out of their inbox has proved exactly what somebody who read
+// one off a text has: they are a real person we can reach. Leaving it out
+// would have meant a referrer earning nothing for a friend who joined through
+// the door we had just told them to use.
+export const EARN_TRIGGERS = ['phone_verified', 'email_verified', 'first_ask'];
 
 let ready = false;
 async function ensure(env) {
