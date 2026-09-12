@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.267 — 2026-09-12 16:39 UTC
+
+host book view: who is waiting, and the month ahead
+
+- commit `3d3a270`
+
 ## 0.8.266 — 2026-09-12 16:24 UTC
 
 contact required at signup — mobile, email, or Apple
