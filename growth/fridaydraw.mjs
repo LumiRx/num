@@ -97,10 +97,6 @@ CREATE TABLE IF NOT EXISTS num_giveaway_draws (
   period_start TEXT NOT NULL,
   period_end TEXT NOT NULL,
   seed TEXT NOT NULL,
-  -- The window as TIMESTAMPS as well as text. A redraw has to re-query the
-  -- same pool weeks later, and it cannot do that from a date string.
-  period_start_ts INTEGER NOT NULL DEFAULT 0,
-  period_end_ts INTEGER NOT NULL DEFAULT 0,
   eligible_count INTEGER NOT NULL,
   winners TEXT NOT NULL,
   note TEXT
@@ -117,21 +113,25 @@ CREATE TABLE IF NOT EXISTS num_giveaway_claims (
 `;
 
 /**
- * Everyone who used Num in the window.
+ * Everyone who ENTERED this week.
  *
- * `synthetic = 0` matters: 88 of the 633 asks on record are our own probes, and
- * a test account winning a prize is the fastest way to make the draw look rigged.
+ * Changed 12 Sep 2026 from "everyone who used Num in the window". Passive
+ * qualification entered people who did not know they had entered — poor for
+ * them, weak as a sweepstakes, and impossible to point at afterwards. An entry
+ * is now a member sending the code, which is deliberate, timestamped and
+ * countable. See worker/packdraw.mjs.
+ *
+ * It also removes the synthetic-ask problem at the source: our own probes never
+ * send PACKS, so there is nothing to filter out.
  */
-export async function eligibleMembers(env, { startTs, endTs }) {
+export async function eligibleMembers(env, { weekKey } = {}) {
   const { results } = await env.DB.prepare(
-    `SELECT DISTINCT a.member_id AS id
-       FROM num_asks a
-       JOIN num_members m ON m.id = a.member_id
-      WHERE a.member_id IS NOT NULL
-        AND COALESCE(a.synthetic, 0) = 0
-        AND a.ts >= ?1 AND a.ts <= ?2
-      ORDER BY a.member_id`,
-  ).bind(startTs, endTs).all().catch(() => ({ results: [] }));
+    `SELECT e.member_id AS id
+       FROM num_giveaway_entries e
+       JOIN num_members m ON m.id = e.member_id
+      WHERE e.week_key = ?1
+      ORDER BY e.member_id`,
+  ).bind(weekKey).all().catch(() => ({ results: [] }));
   return (results ?? []).map((r) => r.id);
 }
 
@@ -143,7 +143,7 @@ export async function eligibleMembers(env, { startTs, endTs }) {
  * read-back, rather than a check-then-write, because two clicks a second apart
  * would both pass a check.
  */
-export async function runDraw(env, { periodStart, periodEnd, startTs, endTs, seed = null } = {}) {
+export async function runDraw(env, { periodStart, periodEnd, seed = null } = {}) {
   if (!env?.DB) return { ok: false, why: 'no database' };
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean)
     .map((s) => env.DB.prepare(s)));
@@ -160,7 +160,7 @@ export async function runDraw(env, { periodStart, periodEnd, startTs, endTs, see
     };
   }
 
-  const eligible = await eligibleMembers(env, { startTs, endTs });
+  const eligible = await eligibleMembers(env, { weekKey: periodEnd });
   const useSeed = seed || newSeed();
   const winners = pickWinners(eligible, WINNERS_PER_DRAW, useSeed);
   if (!winners.length) return { ok: false, why: 'nobody used Num in that period', eligible_count: 0 };
@@ -168,15 +168,13 @@ export async function runDraw(env, { periodStart, periodEnd, startTs, endTs, see
   const now = new Date().toISOString();
   await env.DB.prepare(
     `INSERT OR IGNORE INTO num_giveaway_draws
-       (id, drawn_at, period_start, period_end, seed, period_start_ts, period_end_ts,
-        eligible_count, winners, note)
-     VALUES (?1,?2,?3,?4,?5,?9,?10,?6,?7,?8)`,
+       (id, drawn_at, period_start, period_end, seed, eligible_count, winners, note)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8)`,
   ).bind(
     id, now, periodStart, periodEnd, useSeed, eligible.length, JSON.stringify(winners),
     // Written into the row so a future reader knows the gate is downstream and
     // does not conclude the draw ignored its own rules.
     'eligibility (18+, US/UK) is verified at claim, not at draw — see growth/fridaydraw.mjs',
-    startTs, endTs,
   ).run();
 
   for (const m of winners) {
@@ -222,10 +220,8 @@ export async function forfeitAndRedraw(env, { drawId, memberId, reason = 'not el
 
   // The same window the original draw used, so the replacement comes from the
   // same pool of people rather than from whoever happens to be active today.
-  const pool = (await eligibleMembers(env, {
-    startTs: Number(draw.period_start_ts) || 0,
-    endTs: Number(draw.period_end_ts) || 9e18,
-  })).filter((id) => !alreadyDrawn.has(id));
+  const pool = (await eligibleMembers(env, { weekKey: draw.period_end }))
+    .filter((id) => !alreadyDrawn.has(id));
 
   // A different seed, derived from the original plus who forfeited, so the
   // redraw is still reproducible but is not the same shuffle continuing.

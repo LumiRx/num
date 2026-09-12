@@ -1,0 +1,12 @@
+{
+  "_why": "Hashes of migrations already applied to production num-db. A sealed file must never change again: re-running an edited migration whose CREATE TABLE IF NOT EXISTS already matched is a silent no-op, so the edit reaches fresh databases and no existing one. That is how booking_fee_minor went missing for weeks while every test passed. To change a sealed schema, add a new migration with an ALTER. scripts/apply-host-migrations.mjs seals a file after a successful remote apply.",
+  "sealed": {
+    "0013_host_profile.sql": "19504e96018c9d2efb64f673000eda0fe9c601b06b41bfda292682fd51dd0865",
+    "0014_host_clients.sql": "db8769e25b2faf72d8ca1bb8e11f6b20a43ccb35ed46a1afa9b27c7d42417941",
+    "0015_host_separation.sql": "7f23e89e0dfbe34eb0acdc2ddba7a5444e40ed03b543d5ce3ed07a3c911a9eef",
+    "0018_host_client_intake.sql": "7d5f287a2c71417d67bc1f7acebf025d0644210fc2bd8af88411e8d39bd9c3a3",
+    "0019_suppliers.sql": "7b5806ef4519eb45fc3900faddbe43f6b0054cc9616d7bd3abd74c77f8db4934",
+    "0020_requests_booking_fee.sql": "4eca03b4044d8f2e1530e9ca5beb7a34bcd6c39acd5b966814333a1b4e5eb47d",
+    "0021_luxury_assets.sql": "9b41c85f4af3db06512a3c72939be02dad9206fefca9ebd2e632d158fd60ccf3"
+  }
+}

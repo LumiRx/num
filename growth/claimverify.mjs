@@ -279,6 +279,11 @@ export async function claimStart(req, env, deps) {
 
 /* ── POST /api/claims/send ──────────────────────────────────────────────── */
 
+/** Codes one claim may send in a day. The destination is the LISTING's own
+ *  published contact, so an uncapped resend is a mail bomb at a third party
+ *  paid for by us. See the reasoning inside claimSend. */
+export const MAX_SENDS_PER_CLAIM_PER_DAY = 3;
+
 export async function claimSend(req, env, deps) {
   const b = await deps.readJSON(req, 8192).catch(() => ({}));
   const ip = req.headers.get('cf-connecting-ip') || '0';
@@ -296,6 +301,31 @@ export async function claimSend(req, env, deps) {
   const pick = channelsForClaim(place).find((c) => c.channel === wanted);
   if (!pick || pick.channel === 'manual') {
     return deps.J({ ok: false, error: 'choose a verifiable channel' }, 400);
+  }
+
+  // HOW MANY TIMES ONE CLAIM MAY SEND.
+  //
+  // claimStart is rate limited; this was not. And the code does not go to the
+  // person calling this endpoint — it goes to the phone or mailbox PUBLISHED ON
+  // THE LISTING. So one legitimately-started claim, replayed in a loop, was a
+  // mail and SMS bomb aimed at a third-party business, billed to NUM's Resend
+  // and Twilio accounts. Two victims per request and we paid for both.
+  //
+  // Three is the honest number: a mistyped mobile, a code that went to spam,
+  // and one more. Past that the claimant has a real problem a resend will not
+  // fix, and the manual route already exists for it.
+  const sent = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM num_claim_events
+      WHERE claim_id = ?1 AND event = 'code_sent'
+        AND created_at > datetime('now','-1 day')`,
+  ).bind(claim.id).first().catch(() => null);
+  if ((sent?.n ?? 0) >= MAX_SENDS_PER_CLAIM_PER_DAY) {
+    await logEvent(env, claim.id, 'code_send_blocked', 'send cap reached', ip);
+    return deps.J({
+      ok: false, fallback: 'manual',
+      error: 'We have sent that code as many times as we can today.',
+      message: 'Check your spam folder, or let our team verify this by hand instead.',
+    }, 429);
   }
 
   // The destination comes from the directory row. The one exception is

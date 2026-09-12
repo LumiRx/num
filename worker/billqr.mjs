@@ -95,6 +95,28 @@ export async function mintBillCode(env, {
     if (!own) return { ok: false, reason: 'that table does not belong to this venue' };
   }
 
+  // A BOOKING REFERENCE MUST BE PROVABLE, OR IT IS NOT A BOOKING.
+  //
+  // `bookingId` arrives from the console as free text and decides the whole
+  // charge: a bill with one skips the flat-fee branch below and goes down the
+  // percentage path, and a percentage line is keyed `cm_<bookingId>` with
+  // INSERT OR IGNORE. So a venue that sends the SAME made-up reference on every
+  // bill accrued once and then, for ever after, nothing at all — while the
+  // console still answered `billed: true`. Free bills, reported as billed.
+  //
+  // The reference is now checked against this venue's own bookings. Anything we
+  // cannot find becomes NULL, which means the bill is treated as a walk-in and
+  // pays the flat floor. Unverifiable is the SAME as absent, never better than
+  // it: the failure has to cost the venue money, not save it, or the check is
+  // just a suggestion.
+  let verifiedBookingId = null;
+  if (bookingId) {
+    const bk = await env.DB.prepare(
+      'SELECT id FROM num_bookings WHERE id = ?1 AND business_id = ?2',
+    ).bind(String(bookingId), businessId).first().catch(() => null);
+    verifiedBookingId = bk?.id ?? null;
+  }
+
   // Inherit the venue's own payment target from a live code they already have.
   // No source code, no bill code — we will not invent a destination for money.
   //
@@ -131,9 +153,9 @@ export async function mintBillCode(env, {
         resource_id, issued_by, crypto_base_units, crypto_quote)
      VALUES (?1,?2,?3,?4,?5,?6,?7,'fixed',?8,?9,'active',?10,?11,1,?12,?13,?14,?15)`,
   ).bind(
-    t, businessId, label ?? (bookingId ? `Bill · ${bookingId}` : 'Bill'),
+    t, businessId, label ?? (verifiedBookingId ? `Bill · ${verifiedBookingId}` : 'Bill'),
     src.kind, src.target, src.promptpay_kind ?? null, src.crypto_asset ?? null,
-    amt.display, src.currency || currency, now, bookingId,
+    amt.display, src.currency || currency, now, verifiedBookingId,
     resourceId, issuedBy,
     cq ? cq.base_units : null,
     cq ? JSON.stringify({ asset: cq.asset, chain: cq.chain, display: cq.display,
@@ -247,5 +269,34 @@ export async function settleBillCode(env, tokenValue, { settledBy = null } = {})
     }).catch(() => null);
   }
 
-  return { ok: true, settled: true, billed: !!out, booking_id: row.booking_id, commission: out };
+  // A BILL THAT EARNED NOTHING IS A WALK-IN, NOT A FREEBIE.
+  //
+  // `accrue` is keyed on the booking, so a second bill against the SAME booking
+  // writes no row and `recorded` comes back false. That is correct for the
+  // booking — one guest NUM sent, one commission — but it leaves the second
+  // bill settled through our code and charged nothing, and a venue that puts
+  // every table on one real booking reference would pay once a night.
+  //
+  // So when the percentage path recorded nothing, the bill falls to the same
+  // flat floor a walk-in pays. Never zero, never a percentage twice.
+  if (!out || out.recorded === false) {
+    const biz = await env.DB.prepare('SELECT id, name FROM businesses WHERE id = ?1')
+      .bind(row.business_id).first().catch(() => null);
+    const flat = await accrueBillPayment(env, {
+      token: row.token,
+      businessId: row.business_id,
+      venueName: biz?.name ?? null,
+      valueCents: amt.minor,
+      currency: (row.currency || 'THB').toLowerCase(),
+    }).catch(() => null);
+    return {
+      ok: true, settled: true, billed: !!flat, booking_id: row.booking_id,
+      commission: flat,
+      reason: flat
+        ? 'this booking is already billed — the bill pays the flat fee'
+        : 'no fee recorded',
+    };
+  }
+
+  return { ok: true, settled: true, billed: true, booking_id: row.booking_id, commission: out };
 }

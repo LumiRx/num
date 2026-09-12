@@ -576,7 +576,7 @@ export async function accrue(env, {
     }
 
     const id = `cm_${bookingId}`;
-    await env.DB.prepare(
+    const res = await env.DB.prepare(
       `INSERT OR IGNORE INTO num_commissions
          (id, booking_id, business_id, place_id, venue_name, member_id, dest,
           category, kind, rate_bp, flat_cs, basis_cs, amount_cs, currency, state, source, note)
@@ -590,7 +590,15 @@ export async function accrue(env, {
     // `rate_bp` and `category` are part of the RETURN, not just the row,
     // because the settle email picks its sentence from them. It used to say
     // "NUM's 10%" to everyone, including the two venues on 15%.
-    return { id, category, kind, rate_bp: rate_bp ?? null, amount_cs, state, note };
+    //
+    // `recorded` says whether that INSERT OR IGNORE ACTUALLY WROTE A ROW.
+    // It normally did. It does not when a line already exists for this booking,
+    // which is the right behaviour — one booking earns one commission — but the
+    // return used to look identical either way, so a caller could not tell a
+    // charge from a no-op and reported `billed: true` on a bill that earned
+    // nothing. Anything that decides money off this call must read it.
+    const recorded = (res?.meta?.changes ?? 0) > 0;
+    return { id, category, kind, rate_bp: rate_bp ?? null, amount_cs, state, note, recorded };
   } catch (e) {
     console.warn('[commission]', e?.message ?? e);
     return null;

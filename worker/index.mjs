@@ -18,6 +18,10 @@ import { readCache, writeCache, cacheable } from './answercache.mjs';
 // Gate zero: the lookups that need no model at all. See knownanswer.mjs.
 import { knownAnswer } from './knownanswer.mjs';
 import { recordAsk, scrubAsk } from './asks.mjs';
+import {
+  NEEDS_ACCOUNT_REPLY, entryCount, entryReply, isEntry, recordEntry,
+} from './packdraw.mjs';
+import { asksForCardShop, cardShopAnswer, findCardShops } from './cardshops.mjs';
 import { keepRouting, fallbackRouting, laneLabel } from './routinglabel.mjs';
 import { publicNumber as whatsAppNumber } from './whatsapp.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
@@ -778,6 +782,58 @@ export async function handleNum(request, env, ctx) {
     //
     // Runs before the cache read because it is cheaper still: the cache costs
     // a D1 round trip, this costs nothing at all.
+    /* ── THE PACK DRAW ENTRY CODE ─────────────────────────────────────────
+     *
+     * Checked BEFORE the brain, and before the known-answer row, for two
+     * reasons. A model asked "PACKS" would answer something plausible about
+     * card packs and the entry would silently never be recorded — the worst
+     * outcome, because the member believes they entered. And an entry is a
+     * database write, not a conversation: paying for a model turn to perform
+     * one would be paying to make it slower.
+     *
+     * `isEntry` requires the message to BE the code, so "where can I buy packs
+     * in Bangkok" still reaches the concierge and the new card-shop search
+     * rather than entering somebody in a prize draw. */
+    if (isEntry(lastUser)) {
+      const entry = await recordEntry(env, { memberId, source: 'app' });
+      const reply = entry.needsAccount
+        ? NEEDS_ACCOUNT_REPLY
+        : entry.ok
+          ? entryReply({ already: entry.already, count: await entryCount(env), weekKey: entry.weekKey })
+          // A failed write must never say "you're in". Somebody told they
+          // entered and then absent from the draw is the one outcome that
+          // costs more than saying nothing.
+          : 'Something went wrong recording that entry — try again in a minute, or tell us at info@itsnum.com.';
+      ctx.waitUntil(recordAsk(env, {
+        text: lastUser, dest: grounding.place?.slug ?? null, lane: 'packdraw', cached: true, memberId,
+      }));
+      if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, reply));
+      return json(200, { reply, card: null, chips: null, actions: [], picks: [], place: grounding.place?.name ?? null });
+    }
+
+    /* ── WHERE TO BUY CARDS ───────────────────────────────────────────────
+     *
+     * Answered from our own directory rather than by a model, because a model
+     * asked for a card shop in Phuket will produce a plausible name and address
+     * and there is no shop there. A wrong address costs somebody a journey.
+     *
+     * `asksForCardShop` needs a BUY intent as well as a card word, so "I opened
+     * a great pack" stays a conversation. Anything it declines falls through to
+     * the concierge, which is the safe direction to be wrong in. */
+    if (asksForCardShop(lastUser) && grounding?.place?.slug) {
+      const shops = await findCardShops(env, { dest: grounding.place.slug }).catch(() => []);
+      if (shops.length) {
+        const reply = cardShopAnswer(shops, grounding.place?.name ?? '');
+        ctx.waitUntil(recordAsk(env, {
+          text: lastUser, dest: grounding.place.slug, lane: 'cardshops', cached: true, memberId,
+        }));
+        if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, reply));
+        return json(200, { reply, card: null, chips: null, actions: [], picks: [], place: grounding.place?.name ?? null });
+      }
+      // Nothing in the directory: say nothing here and let the concierge answer.
+      // A canned "I don't know" is worse than a good general reply.
+    }
+
     {
       const prevAssistant = [...history].reverse().find((m) => m?.role === 'assistant')?.content ?? '';
       const known = knownAnswer({

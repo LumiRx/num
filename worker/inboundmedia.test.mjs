@@ -14,6 +14,10 @@ import {
 
 const SQL = readFileSync(new URL('./migrations/0021_luxury_assets.sql', import.meta.url), 'utf8');
 const SUP = readFileSync(new URL('./migrations/0019_suppliers.sql', import.meta.url), 'utf8');
+// 0022 is loaded too. It puts phone on num_suppliers, and resolveSupplier
+// selects that column — a harness without it is a different database from
+// production, which is the whole failure this file exists to catch.
+const SUP2 = readFileSync(new URL('./migrations/0022_supplier_contact.sql', import.meta.url), 'utf8');
 
 /* A database that is the real schema, minus the ALTERs that need base tables
    this test does not care about. Statements that fail for a missing base table
@@ -27,7 +31,7 @@ function freshDb() {
   // ALTERs are applied, not skipped. A test schema missing the ALTERs is a
   // DIFFERENT database from production, and the whole reason this file exists is
   // that a column which reached one database and not another cost us weeks.
-  for (const raw of (SUP + '\n' + SQL).split(';')) {
+  for (const raw of (SUP + '\n' + SQL + '\n' + SUP2).split(';')) {
     const stmt = raw.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim();
     if (!stmt) continue;
     try { db.exec(stmt + ';'); if (/^CREATE TABLE/i.test(stmt)) created++; } catch { /* statement for a table this test does not build */ }

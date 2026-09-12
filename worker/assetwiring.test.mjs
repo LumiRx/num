@@ -33,7 +33,13 @@ test('every fleet control in the console calls a function that exists', () => {
 });
 
 test('loadFleet is actually called at boot — a painter nobody calls is a blank card', () => {
-  assert.match(CONSOLE, /paintSummary\(sum\);\s*\n\s*loadBook\(\);\s*\n\s*loadFleet\(\);/);
+  // Asserts the CALL inside the boot block, not the exact neighbouring lines. An
+  // assertion pinned to "loadBook then loadFleet" breaks the moment a third
+  // loader is added between them, which is a test failing for a change that is
+  // entirely correct.
+  const boot = CONSOLE.slice(CONSOLE.indexOf('function boot(quiet)'));
+  assert.match(boot, /paintSummary\(sum\);/);
+  assert.match(boot, /\n\s*loadFleet\(\);/);
 });
 
 test('the fleet card the JS paints into exists in the HTML', () => {
@@ -326,4 +332,91 @@ test('a failing fleet does not take the rest of the console with it', () => {
   const body = load.slice(0, load.indexOf('\n  }') + 4);
   assert.ok(!/location\.reload|showGate/.test(body),
     'one broken panel must never blank the page a host works in');
+});
+
+/* ── link 10: suppliers, the half 0019 shipped without ─────────────────── */
+
+const SUPPLIERS = read('../growth/hostsuppliers.mjs');
+
+test('the supplier endpoints are imported, routed and authenticated', () => {
+  assert.match(WORKER, /import \{ hostSuppliers, supplierAssets \} from '\.\/hostsuppliers\.mjs'/);
+  assert.ok(WORKER.includes('p === "/api/host/suppliers"'));
+  assert.ok(WORKER.includes('p === "/api/host/supplier-assets"'));
+  for (const fn of ['hostSuppliers', 'supplierAssets']) {
+    assert.match(SUPPLIERS, new RegExp('export async function ' + fn + '\\b'));
+    const body = SUPPLIERS.slice(SUPPLIERS.indexOf(`export async function ${fn}`));
+    assert.match(body.slice(0, 400), /await hostAuth\(env, url\)/, `${fn} does not authenticate`);
+  }
+});
+
+test('the supplier endpoints can send mail, because telling them IS the consent step', () => {
+  assert.match(WORKER, /const SUPPLIER_DEPS = \{ J, clean, readJSON, badOrigin, hostAuth, sendBatch \}/);
+  assert.match(SUPPLIERS, /D\.sendBatch/);
+});
+
+test('the console calls the supplier endpoint and hides the card when it is absent', () => {
+  const calls = new Set([...CONSOLE.matchAll(/\bapi\('([a-z0-9-]+)'/g)].map((m) => m[1]));
+  assert.ok(calls.has('suppliers'));
+  assert.match(CONSOLE, /function supUnavailable\(/);
+  const load = CONSOLE.slice(CONSOLE.indexOf('function loadSuppliers()'));
+  const body = load.slice(0, load.indexOf('\n  }') + 4);
+  assert.match(body, /r\.status === 404/);
+  assert.ok((body.match(/supUnavailable\(/g) || []).length >= 3);
+});
+
+test('loadSuppliers runs at boot, before the fleet that depends on it', () => {
+  // The fleet's owner picker is filled from SUPPLIERS, so suppliers must load
+  // first or the picker is empty on the first paint.
+  const boot = CONSOLE.slice(CONSOLE.indexOf('paintSummary(sum);'));
+  const sup = boot.indexOf('loadSuppliers();');
+  const fleet = boot.indexOf('loadFleet();');
+  assert.ok(sup > -1 && fleet > -1, 'both loaders must run at boot');
+  assert.ok(sup < fleet, 'suppliers must load before the fleet, or the owner picker starts empty');
+});
+
+test('every supplier kind the form offers is one the server keeps', () => {
+  const start = CONSOLE.indexOf('id="sp_kind"');
+  const form = CONSOLE.slice(start, CONSOLE.indexOf('</select>', start));
+  const offered = [...form.matchAll(/value="([a-z]+)"/g)].map((m) => m[1]);
+  assert.ok(offered.length >= 5);
+  for (const k of offered) {
+    assert.ok(SUPPLIERS.includes(`'${k}'`),
+      `the form offers "${k}" but SUPPLIER_KINDS does not list it, so the server turns it into "other"`);
+  }
+});
+
+test('the owner picker exists and is sent, so an asset can belong to a supplier', () => {
+  assert.ok(CONSOLE.includes('id="fl_owner"'), 'without the picker every asset belongs to the host forever');
+  assert.match(CONSOLE, /function fillOwnerPicker\(/);
+  const save = CONSOLE.slice(CONSOLE.indexOf("$('flForm').onsubmit"));
+  assert.match(save.slice(0, 1800), /owner_id: \$\('fl_owner'\)\.value \|\| null/);
+});
+
+test('a named owner is VERIFIED against a live link, not taken on trust', () => {
+  // owner_id arrives in the request body. Without this check a host could name a
+  // competitor's supplier, who would then see a boat they have never heard of
+  // with that host's rate on it — and a photo they texted in could auto-file
+  // against it.
+  const body = ASSETS.slice(ASSETS.indexOf('if (row.owner_id !== host.id)'));
+  assert.ok(body.length > 0, 'owner_id is being stored without an ownership check');
+  assert.match(body.slice(0, 900), /num_supplier_links/);
+  assert.match(body.slice(0, 900), /status = 'accepted'/);
+  assert.match(body.slice(0, 900), /ended_at IS NULL/);
+  assert.match(body.slice(0, 900), /not_your_supplier/);
+});
+
+test('a supplier is found by their own phone, not only by being a NUM member', () => {
+  // 0022 exists because a marina manager in Phuket is not a NUM member and never
+  // will be. Before it, every photo he sent queued as an unknown sender forever.
+  assert.match(MEDIA, /s\.phone = \?1/);
+  const MIG22 = read('./migrations/0022_supplier_contact.sql');
+  assert.match(MIG22, /ALTER TABLE num_suppliers ADD COLUMN phone TEXT;/);
+  // And it must be registered, or it reaches nothing.
+  assert.match(read('../scripts/apply-host-migrations.mjs'), /0022_supplier_contact\.sql/);
+});
+
+test('ended_by carries a role, not an id — the CHECK only allows three values', () => {
+  assert.match(SUPPLIERS, /ended_by='host'/);
+  assert.ok(!/ended_by=\?\d*.*host:\$\{/.test(SUPPLIERS), 'an identifier in ended_by fails the CHECK outright');
+  assert.match(read('./migrations/0019_suppliers.sql'), /CHECK \(ended_by IN \('host','supplier','num'\)\)/);
 });

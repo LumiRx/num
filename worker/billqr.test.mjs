@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { parseAmount, mintBillCode, settleBillCode } from './billqr.mjs';
 
 /** D1 stand-in holding num_paylinks rows and recording commission settles. */
-function db({ paylinks = [] } = {}) {
+function db({ paylinks = [], bookings = [] } = {}) {
   const settles = [];
   const DB = {
     prepare(q) {
@@ -18,6 +18,9 @@ function db({ paylinks = [] } = {}) {
           }
           if (/FROM num_paylinks WHERE token/.test(q)) {
             return paylinks.find((p) => p.token === a[0]) ?? null;
+          }
+          if (/FROM num_bookings WHERE id/.test(q)) {
+            return bookings.find((b) => b.id === a[0] && b.business_id === a[1]) ?? null;
           }
           if (/FROM num_commissions/.test(q)) {
             return { id: 'cm_x', rate_bp: 1000, booking_id: a[0] };
@@ -78,7 +81,7 @@ test('an amount is parsed strictly or refused', () => {
 });
 
 test('a bill code inherits the venue own payment target, never a supplied one', async () => {
-  const d = db({ paylinks: [{ ...TABLE_CODE }] });
+  const d = db({ paylinks: [{ ...TABLE_CODE }], bookings: [{ id: 'bk1', business_id: 'biz1' }] });
   const out = await mintBillCode({ DB: d.DB, SITE: 'https://itsnum.com' }, {
     businessId: 'biz1', bookingId: 'bk1', amount: '2400',
   });
@@ -100,14 +103,14 @@ test('no existing code means no bill code — we never invent a destination', as
 });
 
 test('a bad amount mints nothing', async () => {
-  const d = db({ paylinks: [{ ...TABLE_CODE }] });
+  const d = db({ paylinks: [{ ...TABLE_CODE }], bookings: [{ id: 'bk1', business_id: 'biz1' }] });
   const out = await mintBillCode({ DB: d.DB }, { businessId: 'biz1', amount: 'lots' });
   assert.equal(out.ok, false);
   assert.equal(d.paylinks.length, 1, 'only the original table code should exist');
 });
 
 test('settling a bill bills the booking exactly once', async () => {
-  const d = db({ paylinks: [{ ...TABLE_CODE }] });
+  const d = db({ paylinks: [{ ...TABLE_CODE }], bookings: [{ id: 'bk9', business_id: 'biz1' }] });
   const env = { DB: d.DB };
   const mint = await mintBillCode(env, { businessId: 'biz1', bookingId: 'bk9', amount: '2400' });
 
@@ -124,7 +127,7 @@ test('settling a bill bills the booking exactly once', async () => {
 });
 
 test('an open table code can never be settled', async () => {
-  const d = db({ paylinks: [{ ...TABLE_CODE }] });
+  const d = db({ paylinks: [{ ...TABLE_CODE }], bookings: [{ id: 'bk1', business_id: 'biz1' }] });
   const out = await settleBillCode({ DB: d.DB }, 'TBL1');
   assert.equal(out.ok, false);
   assert.match(out.reason, /no amount to report/);
@@ -149,13 +152,15 @@ function realDb() {
     CREATE TABLE businesses (id TEXT PRIMARY KEY, name TEXT, status TEXT);
     CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, country TEXT);
     CREATE TABLE num_business_settings (business_id TEXT PRIMARY KEY, commission_bp INTEGER,
-      booking_fee_cs INTEGER, delivery_fee_cs INTEGER);
+      booking_fee_cs INTEGER, delivery_fee_cs INTEGER, walkin_fee_cs INTEGER);
     CREATE TABLE num_resources (id TEXT PRIMARY KEY, business_id TEXT, name TEXT);
     CREATE TABLE num_paylinks (token TEXT PRIMARY KEY, business_id TEXT, label TEXT, kind TEXT,
       target TEXT, promptpay_kind TEXT, amount_mode TEXT, amount TEXT, currency TEXT,
       state TEXT, created_at TEXT, booking_id TEXT, settled_at TEXT, one_time INTEGER DEFAULT 0,
       resource_id TEXT, issued_by TEXT, settled_by TEXT, zone_type TEXT, revoked_at TEXT, revoked_by TEXT,
       crypto_asset TEXT, crypto_base_units TEXT, crypto_quote TEXT);
+    CREATE TABLE num_bookings (id TEXT PRIMARY KEY, business_id TEXT, short_code TEXT,
+      status TEXT, value_cs INTEGER DEFAULT 0);
   `);
   const DB = {
     prepare(sql) {
@@ -190,6 +195,7 @@ test('a paid bill still earns when the booking never accrued upstream', async ()
     (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
     VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
 
+  d.prepare("INSERT INTO num_bookings (id,business_id,status) VALUES ('bk_never_accrued','b1','confirmed')").run();
   const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_never_accrued', amount: '2400' });
   assert.equal(bill.ok, true);
 
@@ -214,6 +220,7 @@ test('settling twice still only ever creates one ledger line', async () => {
     (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
     VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
 
+  d.prepare("INSERT INTO num_bookings (id,business_id,status) VALUES ('bk_twice','b1','confirmed')").run();
   const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_twice', amount: '1000' });
   await settleBillCode(env, bill.token);
   await settleBillCode(env, bill.token);
@@ -276,6 +283,7 @@ test('the 10% is still taken on the baht bill, not on the token amount', async (
     VALUES ('WALLET','b1','House','crypto','0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
             'usdc-base','open','THB','active','2026-08-01',0)`).run();
 
+  d.prepare("INSERT INTO num_bookings (id,business_id,status) VALUES ('bk_crypto','b1','confirmed')").run();
   const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_crypto', amount: '2400' });
   await settleBillCode(env, bill.token);
   const line = d.prepare('SELECT basis_cs, amount_cs FROM num_commissions WHERE booking_id=?').get('bk_crypto');
@@ -398,10 +406,95 @@ test('a referred booking is UNAFFECTED — it still earns the full percentage', 
     (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
     VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
 
+  d.prepare("INSERT INTO num_bookings (id,business_id,status) VALUES ('bk_referred','b1','confirmed')").run();
   const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_referred', amount: '2400' });
   await settleBillCode(env, bill.token);
 
   const line = d.prepare('SELECT amount_cs, kind FROM num_commissions WHERE booking_id=?').get('bk_referred');
   assert.equal(line.amount_cs, 24000, '10% of 2,400 — unchanged');
   assert.equal(line.kind, 'percent');
+});
+
+/* ── a booking reference is a claim about money, so it has to be provable ──
+ *
+ * `booking_id` arrives from the console as free text and it decides the entire
+ * charge: with one, the bill goes down the percentage path and skips the flat
+ * floor; the percentage line is keyed `cm_<booking_id>` with INSERT OR IGNORE.
+ * So the same made-up reference on every bill accrued once and then nothing,
+ * for ever, while the console still answered `billed: true`.
+ *
+ * These three tests are the guard. Each one was checked by reverting the fix
+ * and watching it fail. */
+
+test('an invented booking reference is treated as a walk-in and pays the flat fee', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Bang Tao','active')").run();
+  d.prepare("INSERT INTO num_business_profiles (business_id,country) VALUES ('b1','TH')").run();
+  d.prepare("INSERT INTO num_business_settings (business_id,commission_bp) VALUES ('b1',1000)").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  // No such booking anywhere. A venue typing anything into the field.
+  const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'TOTALLY-MADE-UP', amount: '2400' });
+  assert.equal(bill.ok, true, 'the bill still mints — we do not block a venue over a bad reference');
+
+  const stored = d.prepare('SELECT booking_id FROM num_paylinks WHERE token = ?').get(bill.token);
+  assert.equal(stored.booking_id, null,
+    'an unprovable reference must be stored as NULL, or it buys the venue the percentage path for free');
+
+  const out = await settleBillCode(env, bill.token);
+  assert.equal(out.billed, true, 'the bill must still be billed — unverifiable is never free');
+  const line = d.prepare("SELECT kind, amount_cs, rate_bp FROM num_commissions").get();
+  assert.equal(line.kind, 'flat', 'it pays the walk-in floor, not a percentage');
+  assert.equal(line.amount_cs, 7000, 'the THB floor is 70 baht');
+  assert.equal(line.rate_bp, null, 'a flat line must not report a rate');
+});
+
+test('a booking reference belonging to another venue does not buy the percentage path', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  for (const b of ['b1', 'b2']) {
+    d.prepare('INSERT INTO businesses (id,name,status) VALUES (?,?,\'active\')').run(b, 'Venue ' + b);
+    d.prepare('INSERT INTO num_business_settings (business_id,commission_bp) VALUES (?,1000)').run(b);
+  }
+  // A real booking — but it is b2's, not b1's.
+  d.prepare("INSERT INTO num_bookings (id,business_id,status) VALUES ('bk_b2','b2','confirmed')").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE1','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  const bill = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_b2', amount: '2400' });
+  const stored = d.prepare('SELECT booking_id FROM num_paylinks WHERE token = ?').get(bill.token);
+  assert.equal(stored.booking_id, null,
+    'a neighbour\'s booking id must not attach to this venue\'s bill');
+});
+
+test('a second bill on the same booking pays the flat fee rather than nothing', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  d.prepare("INSERT INTO businesses (id,name,status) VALUES ('b1','Bang Tao','active')").run();
+  d.prepare("INSERT INTO num_business_profiles (business_id,country) VALUES ('b1','TH')").run();
+  d.prepare("INSERT INTO num_business_settings (business_id,commission_bp) VALUES ('b1',1000)").run();
+  d.prepare("INSERT INTO num_bookings (id,business_id,status) VALUES ('bk_real','b1','confirmed')").run();
+  d.prepare(`INSERT INTO num_paylinks
+    (token,business_id,label,kind,target,promptpay_kind,amount_mode,currency,state,created_at,one_time)
+    VALUES ('HOUSE','b1','House','promptpay','0812345678','msisdn','open','THB','active','2026-08-01',0)`).run();
+
+  const one = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_real', amount: '2400' });
+  const first = await settleBillCode(env, one.token);
+  assert.equal(first.commission.kind, 'percent', 'the first bill on a real booking earns the percentage');
+  assert.equal(first.commission.amount_cs, 24000, '10% of 2400 baht');
+
+  // Same real booking, a second table's worth. Before the fix this earned zero
+  // and still reported billed: true — the whole exploit in one call.
+  const two = await mintBillCode(env, { businessId: 'b1', bookingId: 'bk_real', amount: '5000' });
+  const second = await settleBillCode(env, two.token);
+  assert.equal(second.billed, true, 'a bill settled through our code is never free');
+  assert.equal(second.commission.kind, 'flat', 'the booking is already billed, so this one pays the floor');
+  assert.equal(second.commission.amount_cs, 7000, 'the THB floor');
+
+  const lines = d.prepare('SELECT COUNT(*) AS n FROM num_commissions').get();
+  assert.equal(lines.n, 2, 'one percentage line and one flat line — never one, never three');
 });

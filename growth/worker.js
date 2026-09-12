@@ -283,6 +283,10 @@ CLAIM_DEPS = claimDeps({ J, clean, readJSON, sendBatch, legalLine: LEGAL_LINE })
 // reimplements it. One door, one lock.
 const ASSET_DEPS = { J, clean, readJSON, badOrigin, hostAuth };
 
+// The supplier endpoints additionally need to send mail — adding somebody as a
+// supplier TELLS them, and that notification is the consent step, not a nicety.
+const SUPPLIER_DEPS = { J, clean, readJSON, badOrigin, hostAuth, sendBatch };
+
 /* --------------------------------------------------------- abuse guardrail */
 
 // Per-isolate token bucket. Not a distributed rate limiter — it is a cheap
@@ -368,6 +372,7 @@ import { geocode, geocodeReady } from '../worker/geocode.mjs';
 import {
   hostAssets, hostAssetPhoto, hostAssetHolds, assetImage, offerableAssets,
 } from './hostassets.mjs';
+import { hostSuppliers, supplierAssets } from './hostsuppliers.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
 // The screen after the table. worker/aftertable.mjs had rate(), tip() and
@@ -1147,6 +1152,12 @@ const WORKER = {
         return assetImage(req, env, url, ASSET_DEPS);
       if (p === "/api/host/offerable" && req.method === "GET")
         return offerableAssets(req, env, url, ASSET_DEPS);
+
+      // The people who prep and deliver the thing. 0019 shipped eight tables for
+      // this and no endpoints; these are them.
+      if (p === "/api/host/suppliers") return hostSuppliers(req, env, url, SUPPLIER_DEPS);
+      if (p === "/api/host/supplier-assets" && req.method === "GET")
+        return supplierAssets(req, env, url, SUPPLIER_DEPS);
       // Public image URL a booker's browser loads. APPROVED PHOTOS ONLY —
       // publicOnly is what makes a pending or rejected photo a 404 here even
       // though the same handler serves it to the host who must decide on it.
@@ -1298,6 +1309,31 @@ const WORKER = {
 
 /* ---------------------------------------------------------------- health */
 
+/* A DEPLOY CHECK THAT CANNOT TELL YOU WHICH BUILD IS LIVE IS HALF A CHECK.
+ *
+ * `/api/growth/health` reported bindings and a row count — both true of every
+ * build ever shipped. So after a deploy there was no way to answer "did my
+ * change actually land" except by finding a behaviour difference and probing
+ * for it, and the honest ones are all either credentialled or write to the
+ * database. That cost a round trip on the one deploy where it mattered most.
+ *
+ * So the build names its own guards. Each entry is a security control that
+ * either exists in this file or does not, and `guards.test.mjs` fails if this
+ * list and the code ever disagree — the list cannot drift into a comforting
+ * lie, which is the only failure mode that would matter.
+ *
+ * Add a name here when you add a control. Then `curl .../api/growth/health`
+ * answers "is it live yet" in one line, for ever.
+ */
+const GUARDS = Object.freeze([
+  "arrive-guess-lock",      // D1-backed brute-force lock on /api/venue/arrive
+  "booking-ref-verified",   // a bill's booking reference is checked against num_bookings
+  "identity-owner-only",    // the payment destination needs `settings`, not `stickers`
+  "offers-noreferrer",      // the console key cannot leave the offers page as a Referer
+  "claim-send-cap",         // one claim cannot mail a third party without limit
+  "consent-throttle",       // /api/consent is no longer uncapped
+]);
+
 async function health(env) {
   let db = "missing";
   try {
@@ -1308,6 +1344,7 @@ async function health(env) {
     ok: true,
     worker: "num-growth",
     db,
+    guards: GUARDS,
     bindings: {
       DB: !!env.DB,
       RESEND_KEY: !!env.RESEND_KEY,
@@ -1498,6 +1535,13 @@ async function evPixel(req, env, url) {
 
 async function consent(req, env) {
   if (badOrigin(req)) return J({ ok: false }, 403);
+  // Unauthenticated, and it writes THREE D1 rows per call — the only endpoint
+  // on the site with write amplification and no ceiling. A banner is answered
+  // once or twice per visit; 20 a minute is already absurd for a real browser.
+  // The isolate-local bucket is a weak guard (see overLimit) but the traffic
+  // this stops is a loop from one place, which is exactly what it catches.
+  const cip = req.headers.get("cf-connecting-ip") || "0";
+  if (overLimit("consent:" + cip, 20)) return J({ ok: true, throttled: true });
   let b;
   try { b = await readJSON(req, 4096); } catch (e) { return J({ ok: false }, 400); }
 
@@ -5058,6 +5102,64 @@ async function ipHash(req) {
   return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/* ── the guessing lock ────────────────────────────────────────────────────
+   A guest's short_code is FOUR characters. One letter and three digits out of
+   the readable alphabet is about 20,000 possibilities — a few minutes of
+   scripted guessing, and a hit stamps `completed` and a 10% commission on a
+   booking whose guest never arrived. The venue is then invoiced for a dinner
+   it did not serve, which is the one failure that loses a merchant for ever.
+
+   `overLimit` cannot stop this and it never could. It is a Map inside one
+   Worker isolate (see its own comment), Cloudflare spreads requests across
+   isolates and colos, and growth has no rate-limiter binding to give it
+   durable state. Verified in production on the app worker: 14 rapid requests
+   never tripped a 12/minute bucket.
+
+   So the counter lives in D1, where every attempt is already written. Two
+   scopes, because they fail differently:
+
+     per network  — one source guessing. Hard stop: they learn nothing more.
+     per venue    — a distributed attempt. NOT a hard stop, on purpose. A
+                    lockout would let anyone shut a venue's check-in desk by
+                    guessing at it. Instead the desk stays open and stops
+                    being PROFITABLE: the walk-in welcome still renders, and
+                    nothing is completed or billed until the hour is quiet.
+
+   Under-billing a real guest during an attack is the correct direction of
+   failure, and it is the same rule money.mjs already holds: never charge a
+   merchant for something we cannot prove.
+
+   Both numbers are per hour and deliberately generous. A busy venue whose
+   guests mistype is nowhere near them; a script passes them in seconds. */
+const ARRIVE_MISSES_PER_NETWORK = 10;
+const ARRIVE_MISSES_PER_VENUE = 40;
+
+async function arriveGuessing(env, vtok, iph) {
+  try {
+    const r = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(DISTINCT detail) FROM num_venue_scans
+           WHERE token = ?1 AND ip_hash = ?2 AND outcome = 'no_booking'
+             AND detail IS NOT NULL
+             AND created_at > datetime('now','-60 minutes')) AS mine,
+         (SELECT COUNT(DISTINCT detail) FROM num_venue_scans
+           WHERE token = ?1 AND outcome = 'no_booking'
+             AND detail IS NOT NULL
+             AND created_at > datetime('now','-60 minutes')) AS venue`
+    ).bind(vtok, iph || "").first();
+    return {
+      network: (r?.mine ?? 0) >= ARRIVE_MISSES_PER_NETWORK,
+      venue: (r?.venue ?? 0) >= ARRIVE_MISSES_PER_VENUE,
+      mine: r?.mine ?? 0,
+      seen: r?.venue ?? 0,
+    };
+  } catch (e) {
+    // A counter we cannot read must not take the desk down with it.
+    console.warn("arriveGuessing", String(e).slice(0, 200));
+    return { network: false, venue: false, mine: 0, seen: 0 };
+  }
+}
+
 async function logScan(env, req, row) {
   try {
     await env.DB.prepare(
@@ -5134,6 +5236,19 @@ async function venueArrive(req, env) {
     return J({ ok: false, error: "revoked" }, 410);
   }
 
+  // Durable guessing check. Read AFTER the venue resolves so an unknown token
+  // costs nothing, and BEFORE the booking lookup so a locked-out network never
+  // learns whether its guess was right.
+  const iph = await ipHash(req);
+  const guess = await arriveGuessing(env, vtok, iph);
+  if (guess.network) {
+    await logScan(env, req, {
+      token: vtok, business_id: venue.business_id, outcome: "guess_locked",
+      detail: "mine=" + guess.mine,
+    });
+    return J({ ok: false, error: "slow_down" }, 429);
+  }
+
   const bk = await env.DB.prepare(
     `SELECT id, status, starts_at, ends_at, value_cs, commission_cs, member_ref, business_id
        FROM num_bookings
@@ -5187,6 +5302,22 @@ async function venueArrive(req, env) {
       ok: false, error: "out_of_window",
       starts_at: bk.starts_at, ends_at: bk.ends_at,
     }, 409);
+  }
+
+  // The venue is being guessed at from many networks right now. This code is
+  // correct, so the guest is welcomed — but nothing is completed and nothing is
+  // billed, because in this hour we cannot tell this hit from a lucky one. The
+  // venue completes it from the console, where a human vouches for it.
+  if (guess.venue) {
+    await logScan(env, req, {
+      token: vtok, business_id: venue.business_id, booking_id: bk.id,
+      outcome: "guess_brake", member_ref: bk.member_ref,
+      detail: "seen=" + guess.seen,
+    });
+    return J({
+      ok: true, matched: false, venue: venue.business_name,
+      business_id: venue.business_id, perk: venue.perk_text || null,
+    });
   }
 
   // 10% of realised value, unless a commission was already agreed on this
@@ -7064,7 +7195,7 @@ disappears when it ends.</p>
   <button class="btn" type="submit" id="go">Post it — live immediately</button>
 </form>
 <p class="hint">${liveNow.length}/3 live now. It appears on
-<a href="/tonight/" target="_blank" rel="noopener">itsnum.com/tonight</a> and in what Num can
+<a href="/tonight/" target="_blank" rel="noopener noreferrer">itsnum.com/tonight</a> and in what Num can
 offer travellers. It is your promise, in your words — honour it like one.</p>
 
 <div id="msg"></div>
@@ -9472,7 +9603,7 @@ async function qrIdentityGet(req, env, url) {
     currency: id?.currency || null,
     token: id?.token || null,
     tables_waiting: await QR.tablesWaiting(env, who.business.id),
-    can_set: QR.can(who.role, "stickers"),
+    can_set: QR.can(who.role, "settings"),
   });
 }
 
@@ -9491,7 +9622,15 @@ async function qrIdentityGet(req, env, url) {
 async function qrIdentitySet(req, env, url) {
   const who = await qrWho(req, env, url);
   if (!who) return J({ ok: false, error: "unauthorised" }, 401);
-  if (!QR.can(who.role, "stickers")) return qrDeny("stickers");
+  // `settings`, NOT `stickers`. This was a manager's power and should never
+  // have been: managers have `stickers` so they can print table cards, and the
+  // same capability was deciding WHERE EVERY GUEST'S MONEY GOES. The comment
+  // above already says what a wrong target costs — the venue's takings land in
+  // a stranger's account until somebody notices — and qrsystem.mjs already
+  // reserves `settings` for the owner on the grounds that changing what the
+  // venue is CHARGED needs the owner's signature. Changing who gets PAID is
+  // strictly the larger of the two.
+  if (!QR.can(who.role, "settings")) return qrDeny("settings");
 
   let b;
   try { b = await readJSON(req, 4096); } catch (e) { return J({ ok: false }, 400); }

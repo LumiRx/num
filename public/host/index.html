@@ -472,6 +472,60 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     </table></div>
   </section>
 
+  <!-- ── SUPPLIERS ────────────────────────────────────────────────────── -->
+  <section class="card2" id="supCard">
+    <span class="tag">Who does the work</span>
+    <h2>Your suppliers</h2>
+    <p class="sub">The marina that preps the boat. The driver who delivers the car. The crew who meet your guests.
+      <b>They need no app and no account</b> — a phone number is the whole setup, and from that moment they can text
+      photographs of anything they look after straight to NUM.</p>
+
+    <div class="note warn on">
+      <b>You pay them. We do not.</b> NUM records the job, the instructions and the receipt so nothing is argued about
+      later, and never sits between you and the person doing the work. Adding someone <b>tells them</b> — by email
+      where you give one — and they can stop it in one word.
+    </div>
+
+    <div class="note bad" id="supErr"></div>
+
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;font-weight:600">Add a supplier</summary>
+      <form id="supForm" style="margin-top:14px">
+        <div class="row2">
+          <div class="field"><label for="sp_name">Name <span class="hint">what you will recognise in a list</span></label>
+            <input id="sp_name" type="text" required placeholder="Marco at Royal Phuket"></div>
+          <div class="field"><label for="sp_kind">What they do</label><select id="sp_kind">
+            <option value="marina">Marina or boatyard</option>
+            <option value="driver">Driver</option>
+            <option value="crew">Crew</option>
+            <option value="concierge">Concierge</option>
+            <option value="caterer">Caterer or provisioning</option>
+            <option value="agency">Agency</option>
+            <option value="other">Something else</option>
+          </select></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="sp_phone">Mobile <span class="hint">with the country code, like +66…</span></label>
+            <input id="sp_phone" type="tel" placeholder="+66812345678"></div>
+          <div class="field"><label for="sp_email">Email</label><input id="sp_email" type="email"></div>
+        </div>
+        <div class="field"><label for="sp_business">Business name <span class="hint">optional</span></label>
+          <input id="sp_business" type="text"></div>
+        <div class="field"><label for="sp_about">What they look after <span class="hint">for your own notes</span></label>
+          <textarea id="sp_about" rows="2"></textarea></div>
+        <p class="hint">The mobile is what lets them text photos in, so it is worth getting. The country code is not
+          optional — without it we cannot tell a Thai number from a British one, and a photo could land on the wrong
+          person's listing.</p>
+        <button class="btn pri" type="submit" id="supBtn">Add supplier</button>
+      </form>
+    </details>
+
+    <div class="scroll"><table>
+      <thead><tr><th>Name</th><th>What they do</th><th>Reachable on</th><th>Holds</th><th>Photos</th><th></th></tr></thead>
+      <tbody id="supRows"></tbody>
+    </table></div>
+  </section>
+
   <!-- ── THE FLEET ────────────────────────────────────────────────────── -->
   <section class="card2" id="fleetCard">
     <span class="tag">Yachts, boats, jets, cars</span>
@@ -530,6 +584,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         <div class="field"><label for="fl_extras">What is not in the price
           <span class="hint">fuel, crew gratuity, port fees, provisioning</span></label>
           <textarea id="fl_extras" rows="2"></textarea></div>
+        <div class="field"><label for="fl_owner">Whose is it</label><select id="fl_owner">
+          <option value="">Mine — I own or control it</option>
+        </select>
+          <p class="hint">Pick a supplier and it becomes theirs to photograph. Their texted-in pictures will file
+            against it automatically when it is the only thing they look after.</p></div>
         <div class="field"><label for="fl_settle">Who takes the money</label><select id="fl_settle">
           <option value="host_direct">I do — NUM just tracks it</option>
           <option value="num_collects">NUM collects and settles to me</option>
@@ -1747,6 +1806,135 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   function each(nodes, fn) { Array.prototype.forEach.call(nodes, fn); }
 
   /* ══════════════════════════════════════════════════════════════════════
+     SUPPLIERS
+     Same discipline as the fleet: repaint from what came BACK, show every
+     refusal, and take the card off the page if the endpoint is not there.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  var SUPPLIERS = [];
+
+  var SUP_LABEL = {
+    marina: 'Marina or boatyard', driver: 'Driver', crew: 'Crew',
+    concierge: 'Concierge', caterer: 'Caterer or provisioning',
+    agency: 'Agency', other: 'Other'
+  };
+
+  /* The owner picker on the fleet form.
+   *
+   * Without this there is no way to say a boat is Marco's, so every asset would
+   * belong to the host, every supplier would show zero holdings forever, and the
+   * automatic "you only look after one thing, so this photo must be of it" path
+   * could never fire. The picker is the link between the two cards.
+   *
+   * Rebuilt rather than appended to, and it keeps the current selection, so
+   * loading suppliers while the host is half way through the form does not
+   * silently change whose boat they are saving. */
+  function fillOwnerPicker() {
+    var sel = $('fl_owner');
+    if (!sel) return;
+    var keep = sel.value;
+    sel.innerHTML = '<option value="">Mine — I own or control it</option>' +
+      SUPPLIERS.map(function (s) {
+        return '<option value="' + esc(s.id) + '">' +
+          esc(s.host_label || s.display_name) + '</option>';
+      }).join('');
+    if (keep) sel.value = keep;
+  }
+
+  function supUnavailable(why) {
+    console.warn('[suppliers] hiding the card:', why);
+    var card = $('supCard');
+    if (card) card.classList.add('hide');
+  }
+
+  function paintSuppliers(d) {
+    SUPPLIERS = d.suppliers || [];
+    fillOwnerPicker();
+    $('supRows').innerHTML = SUPPLIERS.length ? SUPPLIERS.map(function (s) {
+      // Reachable on: the thing that decides whether any of this works. A
+      // supplier with no number cannot text a photo in, and saying so in the
+      // table is how a host finds out before they wonder why nothing arrives.
+      var reach = s.phone
+        ? esc(s.phone) + (s.email ? '<br><span class="hint">' + esc(s.email) + '</span>' : '')
+        : (s.email ? esc(s.email) + '<br><span class="hint">no mobile — cannot text photos in</span>'
+                   : '<span class="hint">no contact</span>');
+      var waiting = s.photos_waiting
+        ? '<b>' + s.photos_waiting + ' waiting</b>'
+        : '<span class="hint">—</span>';
+      return '<tr>' +
+        '<td><b>' + esc(s.host_label || s.display_name) + '</b>' +
+          (s.business_name ? '<br><span class="hint">' + esc(s.business_name) + '</span>' : '') +
+          (s.notified_at ? '' : '<br><span class="hint">not told yet</span>') +
+        '</td>' +
+        '<td>' + esc(SUP_LABEL[s.kind] || s.kind) + '</td>' +
+        '<td>' + reach + '</td>' +
+        '<td>' + (s.assets || 0) + '</td>' +
+        '<td>' + waiting + '</td>' +
+        '<td><button class="btn" type="button" data-supend="' + esc(s.link_id) + '">Remove</button></td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="6" class="hint">Nobody yet. Add the marina, the driver or the crew you already ' +
+      'work with and they can start texting photos of what they look after.</td></tr>';
+
+    each($('supRows').querySelectorAll('[data-supend]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('suppliers', { action: 'end', id: b.getAttribute('data-supend') }).then(function (r) {
+          b.disabled = false;
+          if (!r.ok) return note($('supErr'), r.says || ('Could not remove that: ' + (r.error || 'unknown')), 'bad');
+          note($('supErr'), '', '');
+          paintSuppliers(r);
+        }).catch(function () { b.disabled = false; note($('supErr'), 'Could not reach NUM just then.', 'bad'); });
+      };
+    });
+  }
+
+  $('supForm').onsubmit = function (e) {
+    e.preventDefault();
+    $('supBtn').disabled = true;
+    api('suppliers', {
+      action: 'add',
+      display_name: $('sp_name').value,
+      kind: $('sp_kind').value,
+      phone: $('sp_phone').value,
+      email: $('sp_email').value,
+      business_name: $('sp_business').value,
+      about: $('sp_about').value
+    }).then(function (r) {
+      $('supBtn').disabled = false;
+      // r.says carries the sentence the server wrote — the country-code
+      // explanation, the already-added name. Showing r.error instead would turn
+      // a helpful refusal into "bad_phone".
+      if (!r.ok) return note($('supErr'), r.says || ('Could not add them: ' + (r.error || 'unknown')), 'bad');
+      note($('supErr'), '', '');
+      $('supForm').reset();
+      paintSuppliers(r);
+      // A new supplier can own assets, so the fleet's owner list is now stale.
+      loadFleet();
+    }).catch(function () {
+      $('supBtn').disabled = false;
+      note($('supErr'), 'Could not reach NUM just then. Nobody was added.', 'bad');
+    });
+  };
+
+  function loadSuppliers() {
+    fetch('/api/host/suppliers?k=' + encodeURIComponent(K), {
+      headers: { 'content-type': 'application/json' },
+    }).then(function (r) {
+      if (r.status === 404 || r.status === 503) {
+        supUnavailable('endpoint returned ' + r.status + ' — num-growth is probably not deployed');
+        return null;
+      }
+      return r.json();
+    }).then(function (d) {
+      if (!d) return;
+      if (!d.ok) return supUnavailable(d.error || 'endpoint refused');
+      paintSuppliers(d);
+    }).catch(function (e) {
+      supUnavailable('could not parse the response: ' + (e && e.message));
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════
      THE FLEET
      Every control here calls a real endpoint and repaints from what came
      BACK, never from what the form said. A console that paints what it hoped
@@ -1771,7 +1959,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         '<td><b>' + esc(a.name) + '</b>' +
           (a.make || a.model ? '<br><span class="hint">' + esc([a.make, a.model, a.year].filter(Boolean).join(' ')) + '</span>' : '') +
         '</td>' +
-        '<td>' + esc(a.home_port || a.home_city || '—') + '</td>' +
+        '<td>' + esc(a.home_port || a.home_city || '—') +
+          (function () {
+            var o = SUPPLIERS.filter(function (s) { return s.id === a.owner_id; })[0];
+            return o ? '<br><span class="hint">' + esc(o.host_label || o.display_name) + '</span>' : '';
+          }()) + '</td>' +
         '<td>' + esc(flRate(a)) + '</td>' +
         '<td>' + (a.photos_ok || 0) + pend + '</td>' +
         '<td>' + (a.listable
@@ -1963,6 +2155,10 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     $('fl_unit').value = a.rate_unit || 'quote';
     $('fl_extras').value = a.extras_note || '';
     $('fl_settle').value = a.settle_mode || 'host_direct';
+    // The host's own assets carry the host id as owner, which is not an option
+    // in the picker — so that case shows as "Mine", which is what it means.
+    var ownerOpt = $('fl_owner').querySelector('[value="' + a.owner_id + '"]');
+    $('fl_owner').value = ownerOpt ? a.owner_id : '';
     $('flBtn').textContent = 'Save changes';
     $('fleetCard').querySelector('details').open = true;
     $('fl_name').focus();
@@ -1987,7 +2183,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       rate_minor: $('fl_rate').value,
       rate_unit: $('fl_unit').value,
       extras_note: $('fl_extras').value,
-      settle_mode: $('fl_settle').value
+      settle_mode: $('fl_settle').value,
+      // Empty means the host's own, which the server reads as "owner is the
+      // host". It is not sent as the host id from here — the server decides
+      // that, so the console cannot put somebody else's id in the field.
+      owner_id: $('fl_owner').value || null
     }).then(function (r) {
       $('flBtn').disabled = false;
       if (!r.ok) return note($('flErr'), r.says || ('Could not save that: ' + (r.error || 'unknown')), 'bad');
@@ -2058,6 +2258,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       $('app').classList.remove('hide');
       paintSummary(sum);
       loadBook();
+      loadSuppliers();
       loadFleet();
       // The profile endpoint is newer than the console key. A host whose
       // account predates it still gets a working page rather than a blank one.

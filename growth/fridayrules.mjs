@@ -42,6 +42,9 @@ export const RULES = Object.freeze({
   // document.
   arvEachUsd: '4-8',
   opensDay: 'Friday',
+  // The word a member sends. Kept HERE and imported by the entry code, so the
+  // page and the thing that accepts entries can never name different words.
+  entryCode: 'PACKS',
   contact: 'info@itsnum.com',
 });
 
@@ -100,13 +103,16 @@ not eligible. Void where prohibited or restricted by law.</p>
 
 <h2>3. How to enter</h2>
 <p><strong>No purchase or payment is required, and none will improve your chance of winning.</strong>
-You are entered automatically for a given week if, during that week's entry period, you both:</p>
+To enter a given week's draw, during that week's entry period:</p>
 <ol>
   <li>hold a registered ${esc(r.product)} account, and</li>
-  <li>send ${esc(r.product)} at least one message.</li>
+  <li>send ${esc(r.product)} the message <strong>${esc(r.entryCode)}</strong>.</li>
 </ol>
-<p>One entry per person per entry period, however many messages you send. Creating more than one
-account does not create more than one entry and may disqualify you.</p>
+<p>${esc(r.product)} will confirm your entry immediately. <strong>One entry per person per entry
+period</strong>, however many times you send it — sending it again tells you that you are already
+entered and does not add a second chance. Creating more than one account does not create more than
+one entry and may disqualify you. Simply using ${esc(r.product)} for other things does not enter you:
+the draw is opt-in, so nobody receives a prize they did not ask to be in the running for.</p>
 
 <h2>4. Entry period</h2>
 <p>Each weekly entry period runs from ${esc(r.opensDay)} 00:00 UTC to the following Thursday 23:59

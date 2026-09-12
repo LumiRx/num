@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,227 green, 0 lint errors, tsc clean |
+| Tests | 4,336 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -31,7 +31,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
   by text) and `num-growth` (reads: the console serves and moderates it). `worker/inboundmedia.mjs`
   is the ingest; `growth/hostassets.mjs` is the five endpoints (`/api/host/assets`,
   `asset-photo`, `asset-holds`, `asset-image`, `offerable`) plus the public `/p/asset/:id`;
-  the Fleet card in `public/host/index.html` is the console. 4,227 tests green.
+  the Fleet card in `public/host/index.html` is the console. 4,336 tests green.
 
   **Two live bugs fixed on the way through.** `worker/sms.mjs` and `worker/whatsapp.mjs` both had
   `if (!text) return xmlOk()` — a photo sent with no caption was dropped before anything saw it,
@@ -44,11 +44,54 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
   America**, which is why it is wired too. Turning it on for suppliers is a config job
   (`WHATSAPP_ENABLED` + the Twilio sandbox or a WhatsApp sender), not a code one.
 
-  **Still to build:** supplier create/invite endpoints (0019's tables have no endpoints yet, so a
-  host's own assets are owned by the host as their own supplier for now); the member-facing
-  charter browse that consumes `/api/host/offerable`; Duffel for flights.
+- **Supplier layer** (12 Sep) — BUILT, awaiting the same deploy. 0019 shipped eight tables and zero
+  endpoints; `growth/hostsuppliers.mjs` is the missing half. `GET/POST /api/host/suppliers` (add,
+  label, end, revive) and `GET /api/host/supplier-assets`, plus the Your suppliers card and an owner
+  picker on the fleet form so a boat can actually be Marco's rather than the host's.
+
+  **Migration 0022 puts a phone number on a supplier, and it is load-bearing.** Before it, inbound
+  photo resolution depended on the supplier already being a NUM member with a matching verified
+  number — which a marina manager in Phuket is not and never will be, so every photo he sent queued
+  as `unknown_sender` forever. `resolveSupplier` now matches `num_suppliers.phone` first and falls
+  back to the member join. A phone number is the entire onboarding: no app, no account.
+
+  **An ownership hole closed on the way.** `owner_id` arrives in the request body, so a host could
+  have named any supplier id at all — including a competitor's, who would then see a boat they had
+  never heard of with that host's rate on it, and whose texted-in photo could auto-file against it.
+  It is now checked against a live accepted link.
+
+  **A CHECK caught a real bug**: `ended_by` is constrained to a role — `host`, `supplier`, `num` —
+  and the first version wrote `host:h1`. It failed outright in test and would have failed in
+  production identically.
+
+  **Still to build:** the member-facing charter browse that consumes `/api/host/offerable`; Duffel
+  for flights; a supplier-side page (today a supplier interacts entirely by text, which is the
+  point, but there is nothing they can open).
 
 - **Host job board** — `growth/hostjobs.mjs` shaping layer built and tested (30 tests). Routes, `num_host_jobs` table, member-facing section and console card still to build. Three product questions open, below.
+
+## Migrations are sealed — the guard for the booking_fee_minor class
+
+How `booking_fee_minor` actually went missing, stated exactly, because the obvious explanation is
+the wrong one: 0014 created `num_host_requests` and was applied. Later somebody **edited 0014** to
+add the column. Re-running it then did nothing, because the table existed and the statement is
+`IF NOT EXISTS` — so the column reached every fresh database and no live one. `/api/host/requests`
+answered 500 for weeks while every test passed and every POST to the same endpoint succeeded.
+
+No amount of reading the SQL finds that. The file is correct. The problem is that it changed after
+it had been applied.
+
+So applied migrations are now **sealed by content hash** in `worker/migrations/APPLIED.json`, and
+`worker/migrationhygiene.test.mjs` fails if a sealed file changes. The failure message says what to
+do: add a new migration with an ALTER. `scripts/apply-host-migrations.mjs` seals a file after a
+successful **remote** apply (never `--local` — a local database is not production), and `--seal`
+re-seals an already-applied file for the one legitimate edit, a comment or a typo in prose. It
+deliberately refuses to seal a migration that has never been applied: that would protect a hash
+production has never seen, and lock the file before anyone could fix it.
+
+The same file also checks, across every **registered** migration rather than four named ones, that
+no semicolon hides in a comment, that every ALTER is its own statement, and that no `.sql` file sits
+in the folder with nothing applying it.
 
 ## The console/API split — a live break on 12 Sep, and the guard for it
 

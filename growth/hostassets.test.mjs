@@ -11,13 +11,17 @@ import {
 
 const SQL = readFileSync(new URL('../worker/migrations/0021_luxury_assets.sql', import.meta.url), 'utf8');
 const SUP = readFileSync(new URL('../worker/migrations/0019_suppliers.sql', import.meta.url), 'utf8');
+// 0022 is loaded too. It puts phone on num_suppliers, and resolveSupplier
+// selects that column — a harness without it is a different database from
+// production, which is the whole failure this file exists to catch.
+const SUP2 = readFileSync(new URL('../worker/migrations/0022_supplier_contact.sql', import.meta.url), 'utf8');
 const ts = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 function freshDb() {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, phone TEXT, phone_verified INTEGER DEFAULT 0);`);
   db.exec(`CREATE TABLE num_hosts (id TEXT PRIMARY KEY, name TEXT, status TEXT DEFAULT 'active', console_key TEXT, currency TEXT DEFAULT 'GBP');`);
-  for (const raw of (SUP + '\n' + SQL).split(';')) {
+  for (const raw of (SUP + '\n' + SQL + '\n' + SUP2).split(';')) {
     const stmt = raw.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim();
     if (!stmt) continue;
     try { db.exec(stmt + ';'); } catch { /* not for this test's tables */ }
@@ -51,7 +55,11 @@ const d1 = (db) => ({
       bind(...a) { binds.push(...a); return api; },
       async first() { return go('all')[0] ?? null; },
       async all() { return { results: go('all') }; },
-      async run() { return go('run'); },
+      // D1 reports changes as result.meta.changes; node:sqlite reports
+      // result.changes. The retire handler checks meta.changes to tell "nothing
+      // of yours has that id" from "done", so a stub that does not reshape this
+      // leaves that branch permanently untested.
+      async run() { const r = go('run'); return { ...r, meta: { changes: Number(r.changes ?? 0) } }; },
     };
     return api;
   },
@@ -603,4 +611,25 @@ test('the fleet response counts approved and pending photos separately', async (
   const out = await jsonOf(await hostAssets(GET(), { DB: d1(db) }, U(), deps(db)));
   assert.equal(out.assets[0].photos_ok, 1);
   assert.equal(out.assets[0].photos_pending, 1);
+});
+
+test('retiring an id that is not yours says so rather than reporting success', async () => {
+  const db = freshDb();
+  db.prepare(`INSERT INTO num_assets (id,owner_kind,owner_id,host_id,kind,name,rate_unit,created_at)
+              VALUES ('a2','supplier','h2','h2','boat','Theirs','quote',?)`).run(ts());
+  const res = await hostAssets(POST({ action: 'retire', id: 'a2' }), { DB: d1(db) }, U(), deps(db));
+  const out = await jsonOf(res);
+  assert.equal(res.status, 404);
+  assert.equal(out.error, 'not_found');
+  assert.equal(db.prepare(`SELECT status FROM num_assets WHERE id='a2'`).get().status, 'active',
+    'another hosts boat must not be retired out from under them');
+});
+
+test('retiring nothing at all says so', async () => {
+  const db = freshDb();
+  const out = await jsonOf(await hostAssets(
+    POST({ action: 'retire', id: 'ast_doesnotexist' }), { DB: d1(db) }, U(), deps(db),
+  ));
+  assert.equal(out.error, 'not_found');
+  assert.match(out.says, /Nothing of yours/);
 });

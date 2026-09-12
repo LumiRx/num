@@ -5,7 +5,9 @@
 // are the test suite because they are what actually happens.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardConfidence, cardLine, dropInfo, sellsCards } from './cardshops.mjs';
+import {
+  asksForCardShop, cardConfidence, cardLine, cardShopAnswer, dropInfo, sellsCards,
+} from './cardshops.mjs';
 
 describe('the real false positives', () => {
   test('a bridal shop called Cards4ever is not a card shop', () => {
@@ -111,5 +113,47 @@ describe('what we refuse to invent', () => {
     const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
     assert.doesNotMatch(code, /drop_night|dropDay|release_night/,
       'per-shop drop data has appeared without a source for it');
+  });
+});
+
+describe('when Num answers with shops instead of talking', () => {
+  test('a BUY intent plus a card word', () => {
+    for (const t of [
+      'where can I buy pokemon cards', 'any card shops near me',
+      'where to find TCG in Bangkok', 'shops that sell booster packs',
+      'who stocks magic the gathering here',
+    ]) assert.equal(asksForCardShop(t), true, `${t} should find shops`);
+  });
+
+  test('talking ABOUT cards is not asking where to buy them', () => {
+    // Answering these with a list of addresses is the assistant talking over
+    // somebody. A miss falls through to the concierge, which is a good answer.
+    for (const t of [
+      'I opened a great pack last night', 'what is in the new set',
+      'my son collects pokemon', 'PACKS', 'is pokemon still popular',
+    ]) assert.equal(asksForCardShop(t), false, `${t} should NOT trigger a shop list`);
+  });
+
+  test('the answer says what it does not know', () => {
+    const a = cardShopAnswer([{ name: 'Bath TCG', category: 'Hobby Shop', confidence: 'certain' }], 'Bath');
+    assert.match(a, /Bath TCG/);
+    assert.match(a, /release nights or drop days/, 'it must not imply we know drop days');
+  });
+
+  test('an empty directory offers a next step, not a dead end', () => {
+    const a = cardShopAnswer([], 'Phuket');
+    assert.match(a, /Phuket/);
+    assert.match(a, /nearby city/);
+  });
+
+  test('certain shops sort above maybes', () => {
+    const a = cardShopAnswer([
+      { name: 'Certain One', category: 'Hobby Shop', confidence: 'certain' },
+    ], 'Bath');
+    assert.match(a, /Card shops in Bath/);
+    const b = cardShopAnswer([
+      { name: 'Maybe One', category: 'Shopping', confidence: 'maybe' },
+    ], 'Bath');
+    assert.match(b, /No dedicated card shop/, 'a maybe-only list must not be announced as card shops');
   });
 });

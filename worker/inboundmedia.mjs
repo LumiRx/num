@@ -92,8 +92,7 @@ export function mediaKey(supplierId, id, contentType) {
  * queue item for a human, not an error.
  */
 export async function resolveSupplier(env, phone) {
-  // Selects only columns created by 0019's CREATE TABLE — deliberately NOT
-  // accepts_mms, which 0021 adds by ALTER.
+  // Selects s.phone (0022) and deliberately NOT accepts_mms (0021).
   //
   // The column is not used here, and naming it would make this query fail on
   // any database where that ALTER had not run. The failure would not look like
@@ -102,12 +101,26 @@ export async function resolveSupplier(env, phone) {
   // number whose photos pile up in a queue nobody can file. That is the same
   // silent-empty shape that hid the broken requests endpoint for weeks. Do not
   // add a column to this SELECT for the sake of completeness.
+  // TWO WAYS TO BE RECOGNISED, and the first one is the one that matters.
+  //
+  // num_suppliers.phone (0022) is checked first, because a supplier is usually
+  // NOT a NUM member. A marina manager who preps three boats has no reason to
+  // sign up, and for as long as resolution depended only on membership every
+  // photo he sent queued as "unknown sender" forever — the feature not working.
+  //
+  // The member join is the fallback, for a supplier who IS a member and whose
+  // record predates 0022 or was created without a number.
+  //
+  // Ordered so a direct phone match beats a member match: the direct row is the
+  // one the host typed in, for the person they actually work with.
   const row = await env.DB.prepare(
-    `SELECT s.id AS supplier_id, s.display_name, m.id AS member_id
-       FROM num_members m
-       JOIN num_suppliers s ON s.member_id = m.id
-      WHERE (m.phone = ?1 OR m.phone = ?2) AND s.status <> 'closed'
-      ORDER BY m.phone_verified DESC, s.created_at DESC
+    `SELECT s.id AS supplier_id, s.display_name, s.member_id,
+            CASE WHEN s.phone IS NOT NULL AND s.phone = ?1 THEN 0 ELSE 1 END AS rank
+       FROM num_suppliers s
+       LEFT JOIN num_members m ON m.id = s.member_id
+      WHERE s.status <> 'closed'
+        AND (s.phone = ?1 OR m.phone = ?1 OR m.phone = ?2)
+      ORDER BY rank ASC, s.created_at DESC
       LIMIT 1`,
   ).bind(phone, String(phone).replace(/^\+1/, '')).first().catch((e) => {
     // Loud, because the only way this throws is a schema problem, and a schema

@@ -226,6 +226,32 @@ export async function hostAssets(req, env, url, D) {
   // accidentally bypassed by calling a host a member.
   if (!row.owner_id) row.owner_id = host.id;
 
+  // THE OWNER ID IS CHECKED, not taken on trust.
+  //
+  // owner_id arrives in the request body, so without this a host could name any
+  // supplier id at all — including one belonging to a competitor — and the
+  // supplier's own fleet view would then show a boat they have never seen, with
+  // that host's rate and notes on it. Worse, a photo that supplier texted in
+  // could auto-file against it, because the sole-asset path in inboundmedia.mjs
+  // trusts ownership rather than re-deriving it.
+  //
+  // The host's own id always passes. Anything else must be a supplier this host
+  // has a live, accepted link to.
+  if (row.owner_id !== host.id) {
+    const linked = await env.DB.prepare(
+      `SELECT 1 FROM num_supplier_links
+        WHERE host_id = ?1 AND supplier_id = ?2 AND status = 'accepted' AND ended_at IS NULL
+        LIMIT 1`
+    ).bind(host.id, row.owner_id).first().catch(() => null);
+    if (!linked) {
+      return J({
+        ok: false,
+        error: 'not_your_supplier',
+        says: 'That supplier is not on your list. Add them under Your suppliers first, then you can put something in their hands.',
+      }, 403);
+    }
+  }
+
   const id = clean(b.id, 40);
   try {
     if (id) {

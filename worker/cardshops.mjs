@@ -147,3 +147,74 @@ export const CARD_SQL_CATEGORIES = Object.freeze([...CARD_CATEGORIES, ...MAYBE_C
 export function dropInfo() {
   return { known: false, why: 'Num does not have per-shop release-night data. Ask the shop.' };
 }
+
+/**
+ * Does this message ask where to buy cards?
+ *
+ * Requires a BUY intent as well as a card word. "I opened a great pack" and
+ * "what's in the new set" are conversation, not a request for a shop, and
+ * answering them with a list of addresses is the assistant talking over
+ * somebody. Deliberately narrower than it could be: a missed question falls
+ * through to the concierge, which is a good answer, while a false positive
+ * replaces a good answer with a directory listing.
+ */
+// Plurals matter more than they look: `\bcard shop\b` does not match "card
+// shops", because there is no word boundary between "shop" and its "s". Two of
+// the five most natural phrasings missed on exactly that.
+const BUY = /\b(buy|buys|buying|shops?|stores?|find|where|near|get|purchase|sells?|selling|stocks?|stockists?)\b/i;
+const CARD = /\b(pok[eé]mon|tcg|trading cards?|card shops?|boosters?|card packs?|magic the gathering|mtg|yu-?gi-?oh)\b/i;
+export const asksForCardShop = (text) => {
+  const t = String(text ?? '');
+  return BUY.test(t) && CARD.test(t);
+};
+
+/**
+ * Card shops in one destination, best evidence first.
+ *
+ * The category filter runs in SQL because `places` holds 2.69M rows and a full
+ * scan is a second and a half. The CONFIDENCE decision runs in JavaScript,
+ * against `cardConfidence`, so there is exactly one definition of what a card
+ * shop is — a second copy of that logic written in SQL is how the query and the
+ * classifier come to disagree, and only one of them has the bridal shop in it.
+ */
+export async function findCardShops(env, { dest, limit = 6 } = {}) {
+  if (!env?.DB || !dest) return [];
+  const holes = CARD_SQL_CATEGORIES.map((_, i) => `?${i + 2}`).join(',');
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, category, address, phone, website, hours, lat, lng, rating, reviews
+       FROM places
+      WHERE dest = ?1
+        AND COALESCE(alive, 1) = 1
+        AND (category IN (${holes}) OR LOWER(name) LIKE '%tcg%'
+             OR LOWER(name) LIKE '%pokemon%' OR LOWER(name) LIKE '%collectib%')
+      LIMIT 400`,
+  ).bind(dest, ...CARD_SQL_CATEGORIES).all().catch(() => ({ results: [] }));
+
+  const rank = { certain: 0, likely: 1, maybe: 2 };
+  return (results ?? [])
+    .map((p) => ({ ...p, confidence: cardConfidence(p) }))
+    .filter((p) => p.confidence)
+    .sort((a, b) => (rank[a.confidence] - rank[b.confidence])
+      || (Number(b.reviews ?? 0) - Number(a.reviews ?? 0)))
+    .slice(0, Math.max(1, limit));
+}
+
+/**
+ * The answer, written the way Num talks.
+ *
+ * Says what it does not know as plainly as what it does — a member told a shop
+ * "might" carry cards can ring ahead; one told it does, and finds it does not,
+ * stops believing the next answer too.
+ */
+export function cardShopAnswer(shops, placeName = '') {
+  if (!shops?.length) {
+    return `I can't find a card shop in ${placeName || 'that area'} in my directory yet. `
+      + 'Comic shops and hobby shops are usually the best bet, and I can look in a nearby city if you tell me which.';
+  }
+  const lines = shops.map((s) => `· ${cardLine(s)}${s.address ? ` ${s.address}` : ''}`);
+  const certain = shops.filter((s) => s.confidence === 'certain').length;
+  const head = certain
+    ? `Card shops in ${placeName || 'the area'}:`
+    : `No dedicated card shop in my directory for ${placeName || 'the area'}, but these are where I'd look:`;
+  return `${head}\n${lines.join('\n')}\n\nI don't hold release nights or drop days — ring ahead for those.`;
+}

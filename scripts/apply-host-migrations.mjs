@@ -19,7 +19,8 @@
  *   node scripts/apply-host-migrations.mjs --local   against the local D1
  *   node scripts/apply-host-migrations.mjs           against --remote (production)
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 const FILES = [
@@ -44,11 +45,65 @@ const FILES = [
   // the holds that stop one hull being sold twice. Four new tables plus two
   // ALTERs, so a second pass reports 'duplicate column name' and is tolerated.
   'worker/migrations/0021_luxury_assets.sql',
+  // 0022 puts a phone number on a supplier. Without it, inbound photo resolution
+  // depends on the supplier already being a NUM member with a matching verified
+  // number — which a marina manager in Phuket is not, so every photo he sends
+  // queues as an unknown sender forever. Five ALTERs, so a second pass reports
+  // 'duplicate column name' and is tolerated below.
+  'worker/migrations/0022_supplier_contact.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
 const LOCAL = process.argv.includes('--local');
+const SEAL_ONLY = process.argv.includes('--seal');
 const DB = 'num-db';
+
+/* ── THE SEAL ───────────────────────────────────────────────────────────────
+ *
+ * A migration that has been applied must never be edited again. Re-running an
+ * edited CREATE TABLE IF NOT EXISTS is a silent no-op, so the edit reaches fresh
+ * databases and no live one — which is exactly how booking_fee_minor went
+ * missing for weeks while every test passed.
+ *
+ * So every successful REMOTE apply records the file's content hash in
+ * APPLIED.json, and worker/migrationhygiene.test.mjs fails if a sealed file ever
+ * changes. --local never seals: a local database is not production.
+ */
+const MANIFEST = 'worker/migrations/APPLIED.json';
+
+function sealFiles(files) {
+  const m = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+  let added = 0;
+  for (const f of files) {
+    const name = f.replace('worker/migrations/', '');
+    const hash = createHash('sha256').update(readFileSync(f)).digest('hex');
+    if (m.sealed[name] !== hash) { m.sealed[name] = hash; added++; }
+  }
+  writeFileSync(MANIFEST, JSON.stringify(m, null, 2) + '\n');
+  return added;
+}
+
+if (SEAL_ONLY) {
+  // --seal RE-SEALS A FILE THAT IS ALREADY SEALED. It is for the one legitimate
+  // edit to an applied migration: a comment or a typo in prose, which changes the
+  // hash without changing a single statement.
+  //
+  // It deliberately refuses to seal a file that is not already in the manifest.
+  // A new migration is sealed by APPLYING it, because the seal's whole meaning is
+  // "production has this exact content" — and sealing one production has never
+  // seen both protects a lie and locks the file before anyone can fix it.
+  const m = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+  const known = FILES.filter((f) => f.replace('worker/migrations/', '') in m.sealed);
+  const unknown = FILES.filter((f) => !known.includes(f));
+  const n = sealFiles(known);
+  console.log(n
+    ? `Re-sealed ${n} migration${n === 1 ? '' : 's'} — commit worker/migrations/APPLIED.json.`
+    : 'Nothing to re-seal — every applied migration already matches its hash.');
+  for (const f of unknown) {
+    console.log(`Not sealing ${f} — it has never been applied. Apply it and it seals itself.`);
+  }
+  process.exit(0);
+}
 
 /** Split on semicolons after stripping line comments.
  *  All three files are checked by growth/hostseparation.test.mjs to contain no
@@ -103,6 +158,12 @@ if (DRY) {
   console.log('\nDry run. Nothing was sent.');
 } else {
   console.log(`\nDone. ${applied} applied, ${skipped} already there.`);
+  // Only a remote apply seals. A local database is not production, and sealing
+  // from one would protect a hash that production has never seen.
+  if (!LOCAL) {
+    const n = sealFiles(FILES);
+    if (n) console.log(`Sealed ${n} migration${n === 1 ? '' : 's'} — commit worker/migrations/APPLIED.json.`);
+  }
   console.log('Now check it agrees with itself:');
   console.log('  curl -s "https://itsnum.com/api/host/integrity?key=$ADMIN_KEY" | head -40');
 }

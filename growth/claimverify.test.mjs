@@ -320,3 +320,32 @@ test('the ownership funnel is measurable', () => {
     assert.match(PAGE, new RegExp(`logEvent\\("${e}"`), `${e} never fired`);
   }
 });
+
+/* ── the resend cap ──────────────────────────────────────────────────────
+ * claimStart is rate limited. claimSend was not — and the code it sends does
+ * not go to the caller, it goes to the phone or mailbox PUBLISHED ON THE
+ * LISTING. So one legitimately-started claim, replayed in a loop, was a mail
+ * and SMS bomb aimed at a third-party business with NUM paying the Resend and
+ * Twilio bill. Two victims per request.
+ *
+ * Verified by removing the cap and watching both of these fail. */
+test('one claim cannot send codes without limit', () => {
+  assert.match(SRC, /export const MAX_SENDS_PER_CLAIM_PER_DAY = (\d+);/,
+    'the cap has to be a named number somebody can argue with');
+  const n = Number(SRC.match(/MAX_SENDS_PER_CLAIM_PER_DAY = (\d+)/)[1]);
+  assert.ok(n >= 2 && n <= 5,
+    'a mistyped mobile and a code in the spam folder are real — 20 resends are not');
+});
+
+test('the cap is counted in D1 and checked before anything is sent', () => {
+  const i = SRC.indexOf('MAX_SENDS_PER_CLAIM_PER_DAY) {');
+  assert.ok(i > 0, 'the cap must actually be compared, not merely declared');
+  const send = SRC.indexOf('const out = await sendCode(env, deps, {');
+  assert.ok(send > i, 'the check has to come before the send, or we have already paid for it');
+  const before = SRC.slice(0, i);
+  assert.match(before, /FROM num_claim_events\s*\n\s*WHERE claim_id = \?1 AND event = 'code_sent'/,
+    'counted from the event log, which is durable, not from an isolate');
+  assert.match(SRC.slice(i, i + 600), /429/, 'and it must refuse with a 429');
+  assert.match(SRC.slice(i, i + 600), /fallback: 'manual'/,
+    'a capped claimant still needs a route — the manual review path already exists');
+});

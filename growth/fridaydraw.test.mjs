@@ -92,7 +92,8 @@ function db() {
   const d = new DatabaseSync(':memory:');
   d.exec(`
     CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT);
-    CREATE TABLE num_asks (id TEXT, member_id TEXT, ts INTEGER, synthetic INTEGER DEFAULT 0);
+    CREATE TABLE num_giveaway_entries (week_key TEXT, member_id TEXT, entered_at TEXT, source TEXT,
+      PRIMARY KEY (week_key, member_id));
   `);
   const DB = {
     prepare(sql) {
@@ -110,16 +111,19 @@ function db() {
   return { d, env: { DB } };
 }
 
-const seedMembers = (d, n, { synthetic = 0, ts = 100 } = {}, prefix = 'mem_') => {
+// Entrants, not merely people who used Num — the draw reads
+// num_giveaway_entries, because entering is now an opt-in act. See
+// worker/packdraw.mjs.
+const seedMembers = (d, n, { week = '2026-09-11' } = {}, prefix = 'mem_') => {
   for (let i = 0; i < n; i++) {
     const id = `${prefix}${String(i).padStart(3, '0')}`;
     d.prepare('INSERT OR IGNORE INTO num_members (id,name) VALUES (?,?)').run(id, 'M');
-    d.prepare('INSERT INTO num_asks (id,member_id,ts,synthetic) VALUES (?,?,?,?)')
-      .run(`a_${prefix}${i}`, id, ts, synthetic);
+    d.prepare('INSERT OR IGNORE INTO num_giveaway_entries (week_key,member_id,entered_at,source) VALUES (?,?,?,?)')
+      .run(week, id, '2026-09-09T00:00:00Z', 'app');
   }
 };
 
-const WINDOW = { periodStart: '2026-09-05', periodEnd: '2026-09-11', startTs: 0, endTs: 1000 };
+const WINDOW = { periodStart: '2026-09-05', periodEnd: '2026-09-11' };
 
 describe('running a real draw', () => {
   test('it records the seed and the count, so the draw can be reproduced', async () => {
@@ -132,7 +136,7 @@ describe('running a real draw', () => {
     const row = d.prepare('SELECT * FROM num_giveaway_draws').get();
     assert.ok(row.seed, 'no seed recorded — the draw is unverifiable');
     assert.deepEqual(pickWinners(
-      d.prepare('SELECT DISTINCT member_id AS id FROM num_asks ORDER BY member_id').all().map((r) => r.id),
+      d.prepare('SELECT member_id AS id FROM num_giveaway_entries ORDER BY member_id').all().map((r) => r.id),
       10, row.seed,
     ), out.winners, 'the recorded seed does not reproduce the recorded winners');
   });
@@ -147,23 +151,27 @@ describe('running a real draw', () => {
     assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_draws').get().n, 1);
   });
 
-  test('our own probe traffic is not an entry', async () => {
+  test('using Num without sending the code does NOT enter you', async () => {
+    // The change on 12 Sep 2026. Passive qualification entered people who did
+    // not know they had entered; only an explicit entry counts now.
     const { d, env } = db();
     seedMembers(d, 5);
-    seedMembers(d, 30, { synthetic: 1 }, 'probe_');
+    for (let i = 0; i < 30; i++) {
+      d.prepare('INSERT OR IGNORE INTO num_members (id,name) VALUES (?,?)').run(`busy_${i}`, 'M');
+    }
     const out = await runDraw(env, WINDOW);
-    assert.equal(out.eligible_count, 5, 'synthetic asks were counted as entries');
+    assert.equal(out.eligible_count, 5, 'members who never sent the code were entered');
   });
 
-  test('only asks inside the window count', async () => {
+  test('only entries for THIS week count', async () => {
     const { d, env } = db();
-    seedMembers(d, 6, { ts: 100 });
-    seedMembers(d, 9, { ts: 99999 }, 'later_');
+    seedMembers(d, 6);
+    seedMembers(d, 9, { week: '2026-09-18' }, 'later_');
     const out = await runDraw(env, WINDOW);
     assert.equal(out.eligible_count, 6);
   });
 
-  test('a week nobody used Num is a refusal, not ten empty prizes', async () => {
+  test('a week nobody entered is a refusal, not ten empty prizes', async () => {
     const { env } = db();
     const out = await runDraw(env, WINDOW);
     assert.equal(out.ok, false);
