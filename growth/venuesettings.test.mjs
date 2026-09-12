@@ -35,7 +35,7 @@ const WORKER = readFileSync(join(HERE, 'worker.js'), 'utf8');
  * these constraints. Testing against a table without them would test the
  * clamp against nothing.
  */
-function env({ row = null } = {}) {
+function env({ row = null, country = null } = {}) {
   _resetSchemaCache();
   const d = new DatabaseSync(':memory:');
   d.exec(`CREATE TABLE num_business_settings (
@@ -52,8 +52,18 @@ function env({ row = null } = {}) {
     commission_bp      INTEGER NOT NULL DEFAULT 1000
                        CHECK (commission_bp BETWEEN 0 AND 10000),
     booking_fee_cs     INTEGER NOT NULL DEFAULT 200 CHECK (booking_fee_cs >= 0),
+    max_booking_fee_cs INTEGER NOT NULL DEFAULT 5000,
     updated_at         INTEGER NOT NULL,
-    updated_by         TEXT)`);
+    updated_by         TEXT,
+    CHECK (booking_fee_cs <= max_booking_fee_cs))`);
+  // The venue's country decides its currency, and therefore its floor. Present
+  // here because writeSettings reads it when it creates a settings row — a
+  // missing profile must fall to USD, not to the schema's currency-blind 200.
+  d.exec('CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, country TEXT)');
+  if (country) {
+    d.prepare('INSERT INTO num_business_profiles (business_id,country) VALUES (?,?)')
+      .run(BIZ, country);
+  }
   if (row) {
     const cols = Object.keys(row);
     d.prepare(`INSERT INTO num_business_settings (${cols.join(',')},updated_at)
@@ -329,6 +339,29 @@ test('a venue with no settings row gets one rather than an error', async () => {
   const out = await writeSettings(e, { businessId: BIZ, patch: { f_bill_value: 1 } });
   assert.equal(out.ok, true);
   assert.equal(e.raw.prepare('SELECT f_bill_value AS v FROM num_business_settings').get().v, 1);
+});
+
+test('a new row is floored in the VENUE\'S currency, not a bare 200', async () => {
+  // The bug: `booking_fee_cs` is NOT NULL DEFAULT 200 and every ledger amount is
+  // minor units of the venue's own currency, so one number meant $2.00 in Los
+  // Angeles and ฿2.00 — about six cents — in Phuket. The column default wins
+  // over any fallback in the commission code, because it is never null, so the
+  // correction has to happen where the row is created.
+  for (const [country, floor] of [['TH', 7000], ['GB', 150], ['US', 200], [null, 200]]) {
+    const e = env({ country });
+    await writeSettings(e, { businessId: BIZ, patch: { f_bill_value: 1 } });
+    const got = e.raw.prepare(
+      'SELECT booking_fee_cs AS f, max_booking_fee_cs AS m FROM num_business_settings',
+    ).get();
+    assert.equal(got.f, floor, `${country ?? 'unknown country'} was floored wrong`);
+    assert.ok(got.m >= got.f, 'the CHECK on the table would refuse this row');
+  }
+});
+
+test('an unknown country falls to USD, never to the schema default by accident', async () => {
+  const e = env({ country: 'ZZ' });
+  await writeSettings(e, { businessId: BIZ, patch: { f_bill_value: 1 } });
+  assert.equal(e.raw.prepare('SELECT booking_fee_cs AS f FROM num_business_settings').get().f, 200);
 });
 
 /* ══ who may do this ════════════════════════════════════════════════════ */

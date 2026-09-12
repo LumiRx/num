@@ -315,7 +315,9 @@ test('a walk-in bill now earns the flat fee instead of nothing', async () => {
   assert.equal(out.booking_id, null);
 
   const line = d.prepare('SELECT * FROM num_commissions WHERE booking_id=?').get(`bill:${bill.token}`);
-  assert.equal(line.amount_cs, 200, '$2 flat');
+  // ฿70, not 200. The bill is in baht, and `amount_cs` is minor units of the
+  // BILL'S currency — so a bare 200 here was ฿2, about six cents.
+  assert.equal(line.amount_cs, 7000, 'the floor in baht, worth about $2');
   assert.equal(line.kind, 'flat');
   assert.equal(line.category, 'payment');
   assert.equal(line.state, 'accrued');
@@ -342,7 +344,7 @@ test('THE TRAP: a venue on 10% is still billed $2, not 10%, on a walk-in', async
 
   const line = d.prepare('SELECT amount_cs, rate_bp FROM num_commissions WHERE booking_id=?')
     .get(`bill:${bill.token}`);
-  assert.equal(line.amount_cs, 200);
+  assert.equal(line.amount_cs, 7000, 'the flat floor in baht');
   assert.notEqual(line.amount_cs, 24000, 'the merchant commission_bp override got through');
   assert.equal(line.rate_bp, null, 'a flat line must carry no rate at all');
 });

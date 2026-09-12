@@ -69,6 +69,30 @@ async function ensure(env) {
   try {
     await db.prepare(SCHEMA).run();
     for (const i of IDX) await db.prepare(i).run().catch(() => {});
+    // ── CORRECTING WHAT THE OLD SEVERITIES LEFT BEHIND ────────────────────
+    //
+    // Two one-time repairs, both matching a rule that changed on 12 Sep 2026.
+    // They run here rather than as a script because `record()` ratchets
+    // severity UP and never down: without them the rows that caused the
+    // incident stay exactly as they were, and the fix only applies to rows
+    // that do not exist yet.
+    //
+    // 1. A BOUNCE IS NOT AN OUTAGE. One bounced outreach address, recorded at
+    //    high and told to nobody, blinded the ledger and put "🔴 NUM IS DOWN"
+    //    on Dre's phone while every real check was green. Bounces are `low`
+    //    now; the rows already open are the same fact and get the same grade.
+    await db.prepare(
+      "UPDATE num_failures SET severity = 'low' WHERE kind = 'mail_bounced' AND severity = 'high' AND resolved_at IS NULL",
+    ).run().catch(() => {});
+    // 2. A DELIVERED ALERT IS A RECEIPT, NOT AN OPEN FAULT. Ten of the eleven
+    //    open rows that day were Num's own alert texts — including "✅ Num is
+    //    healthy again." thirteen times over, and the DOWN alert from that
+    //    very incident. health.mjs closes them on delivery now; these are the
+    //    backlog. Only ones that WERE carried: an alert nothing delivered
+    //    stays open and blind, which is the whole point of the ledger.
+    await db.prepare(
+      "UPDATE num_failures SET resolved_at = unixepoch() WHERE kind = 'alert' AND told = 1 AND resolved_at IS NULL",
+    ).run().catch(() => {});
     built.add(db);
   } catch (e) {
     console.warn('[failures] schema', e?.message ?? e);

@@ -535,7 +535,7 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
   // because the way you would find out was the broken thing. So the ledger
   // comes first and is not conditional on any channel working. See
   // worker/failures.mjs.
-  const { record, told: markTold } = await import('./failures.mjs');
+  const { record, told: markTold, resolve: resolveFailure } = await import('./failures.mjs');
   await record(env, {
     kind, subject: subject || text.slice(0, 100),
     detail: text, severity: 'high',
@@ -626,6 +626,22 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
   // one reporting path with a month of proven delivery — reads that.
   if (carried) {
     await markTold(env, kind, subject || text.slice(0, 100), carried);
+    // ── AND THEN CLOSE IT ───────────────────────────────────────────────
+    //
+    // An alert row is a DELIVERY RECEIPT, not an open fault. Its job is done
+    // the moment a channel took it. Left open, every alert Num has ever sent
+    // sits in the ledger for ever: on 12 Sep 2026 ten of the eleven "open
+    // failures" were Num's own alert texts, including "✅ Num is healthy
+    // again." (seen 13 times) and the "🔴 NUM IS DOWN" alert from that very
+    // incident. The count only grows, and it is quoted back in the remedy
+    // line of every future alert, so the message reads worse over time for
+    // no reason at all.
+    //
+    // The 3 Sep protection this ledger exists for is untouched, because it
+    // keys on the opposite case: an alert that NOTHING carried is never
+    // marked told, is never resolved here, and stays open and blind — which
+    // is precisely the month of failures reported into a dead LINE channel.
+    await resolveFailure(env, kind, subject || text.slice(0, 100));
   } else {
     const { record: rec } = await import('./failures.mjs');
     await rec(env, {

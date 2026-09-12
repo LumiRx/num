@@ -56,7 +56,78 @@ const pct = (bp) => `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%`;
  *   appointments  10–20%          (Booksy, Mindbody, Fresha)
  */
 /** Cents → the way a merchant writes it: `$2`, not `$2.00`; `$2.50` when it is. */
-const money = (cs) => `$${cs % 100 ? (cs / 100).toFixed(2) : cs / 100}`;
+/**
+ * Where a venue's money is denominated, by country.
+ *
+ * Lives HERE, in the money layer, and `growth/worker.js` reads it for the
+ * currency half of `RAIL_BY_COUNTRY`. It was only there before, which made the
+ * currency a fact known to the rail picker and unknown to the thing that sets
+ * prices — and two copies of a country-to-currency map is exactly the drift
+ * this file keeps being rewritten to stop.
+ */
+export const CURRENCY_BY_COUNTRY = Object.freeze({
+  TH: 'THB', US: 'USD', GB: 'GBP',
+  IE: 'EUR', FR: 'EUR', DE: 'EUR', ES: 'EUR', IT: 'EUR', NL: 'EUR', PT: 'EUR',
+});
+export const DEFAULT_CURRENCY = 'USD';
+export const currencyForCountry = (c) =>
+  CURRENCY_BY_COUNTRY[String(c ?? '').toUpperCase()] ?? DEFAULT_CURRENCY;
+
+/**
+ * The flat floor, PER CURRENCY — because "$2" was never $2.
+ *
+ * ── THE BUG THIS FIXES ───────────────────────────────────────────────────
+ *
+ * Every flat fee in this file was the bare integer 200, and every `amount_cs`
+ * is recorded in the MINOR UNITS OF THE BILL'S OWN CURRENCY. So one number
+ * meant three different prices:
+ *
+ *   US venue   200 →  $2.00
+ *   UK venue   200 →  £2.00   ≈ $2.70
+ *   Thai venue 200 →  ฿2.00   ≈ $0.06
+ *
+ * Bang Tao Seafood's "$2 per confirmed table" floor had been SIX CENTS since
+ * 26 Aug 2026, and `money()` printed it with a dollar sign regardless, so every
+ * piece of copy called 2 baht "$2". The comment promising the floor "sits inside
+ * the $1–3/cover band OpenTable and TheFork charge" was true of the intent and
+ * false of the number.
+ *
+ * Found 12 Sep 2026 while updating the Thai invite, which would otherwise have
+ * promised ฿2 in Thai beside $2 in English. Dre's call: a real floor per
+ * currency, worth about $2 in each.
+ *
+ * Rounded to numbers a merchant would recognise as a price rather than a
+ * conversion — ฿70, not ฿65.36 — and deliberately NOT computed from a live FX
+ * rate. A floor that moves with the baht is a floor a venue cannot predict, and
+ * it would re-price every unreported table retroactively.
+ */
+export const FLOOR_BY_CURRENCY = Object.freeze({
+  USD: 200,    // $2.00
+  GBP: 150,    // £1.50  ≈ $2
+  EUR: 200,    // €2.00
+  THB: 7000,   // ฿70.00 ≈ $2.14
+});
+
+/** The floor in one currency. An unknown currency falls to USD, never to 200. */
+export const floorFor = (currency) =>
+  FLOOR_BY_CURRENCY[String(currency ?? '').toUpperCase()] ?? FLOOR_BY_CURRENCY[DEFAULT_CURRENCY];
+
+const SYMBOL = Object.freeze({ USD: '$', GBP: '£', EUR: '€', THB: '฿' });
+
+/**
+ * A flat fee, written the way the venue will see it.
+ *
+ * The currency argument is NOT optional in spirit: this used to hardcode `$`,
+ * which is how 2 baht came to be described as $2 in merchant-facing copy. It
+ * still defaults to USD so no call site crashes, but a caller that knows the
+ * currency must pass it.
+ */
+const money = (cs, currency = DEFAULT_CURRENCY) => {
+  const code = String(currency ?? '').toUpperCase() || DEFAULT_CURRENCY;
+  const sym = SYMBOL[code] ?? '';
+  const n = cs % 100 ? (cs / 100).toFixed(2) : String(cs / 100);
+  return sym ? `${sym}${n}` : `${n} ${code}`;
+};
 
 /**
  * Build one rate, deriving its human `note` from its machine numbers.
@@ -102,8 +173,13 @@ const money = (cs) => `$${cs % 100 ? (cs / 100).toFixed(2) : cs / 100}`;
  * Before 12 Sep 2026 this case was free. Free was defensible and generous; it
  * was also the only path on the bill QR that earned nothing, while carrying the
  * same support and invoicing cost as one that earns.
+ *
+ * It is the SAME floor as a confirmed table with no reported bill — see
+ * FLOOR_BY_CURRENCY — because both answer the same question: what does a line
+ * cost us to carry when there is no percentage to take. One number per currency
+ * is one number to defend.
  */
-export const PAYMENT_ONLY_FLAT_CS = 200;
+export const walkinFloorFor = floorFor;
 
 const rate = ({ basis, flatBasis, ...r }) =>
   Object.freeze({
@@ -163,9 +239,11 @@ export const RATES = Object.freeze({
  * typed into merchant copy by hand drifts the day the number changes, silently,
  * in an artefact nobody re-reads.
  */
-export const PAYMENT_ONLY_SENTENCE =
-  `${money(PAYMENT_ONLY_FLAT_CS)} per bill settled through Num by a guest we did not refer `
-  + '— flat, never a percentage.';
+export function paymentOnlySentence(place = {}) {
+  const cur = currencyForCountry(place.country);
+  return `${money(floorFor(cur), cur)} per bill settled through Num by a guest we did not refer `
+    + '— flat, never a percentage.';
+}
 
 /**
  * Per-country overrides on the table above.
@@ -267,6 +345,14 @@ export function rateFor(place = {}, categoryIn = null) {
  */
 export function feeSentence(place = {}) {
   const { rate } = rateFor(place);
+  // The rate card's `note` is written in the USD baseline, so a venue outside
+  // the US was quoted dollars for a fee it would be invoiced in its own
+  // currency. Re-rendered here against the floor that will actually be billed.
+  const cur = currencyForCountry(place.country);
+  const localFlat = money(floorFor(cur), cur);
+  const note = (rate.flat_cs ?? 0) > 0 && rate.note
+    ? rate.note.replace(money(rate.flat_cs, DEFAULT_CURRENCY), localFlat)
+    : rate.note;
   // Both numbers, always, for a rate that carries both. A venue quoted only
   // "10% of the bill" and then invoiced $2 has been told one price and charged
   // another, which is the exact failure this function exists to prevent — and
@@ -274,12 +360,12 @@ export function feeSentence(place = {}) {
   // pay. `note` is the rate's OWN words, so it stays right when the numbers
   // move.
   if (rate.bp && rate.flat_cs) {
-    return `${rate.note}. Only on bookings NUM completes.`;
+    return `${note}. Only on bookings NUM completes.`;
   }
-  if (rate.bp) return `${rate.note}, charged only when the booking completes.`;
+  if (rate.bp) return `${note}, charged only when the booking completes.`;
   // Flat fees bill on confirmation, not completion — see `accrue`. Saying
   // "completes" here would promise a later trigger than the ledger uses.
-  if (rate.flat_cs > 0) return `${rate.note} — nothing at all if nothing books.`;
+  if (rate.flat_cs > 0) return `${note} — nothing at all if nothing books.`;
   return 'No fee.';
 }
 
@@ -427,7 +513,10 @@ export async function accrue(env, {
     // Merchant terms win where they exist — and an explicitly passed rate wins
     // over both, because it came from the agreement this booking was made
     // under and is already recorded on the referral row.
-    const flat_cs = terms?.booking_fee_cs ?? rate.flat_cs ?? null;
+    // The floor in the BOOKING'S currency. `rate.flat_cs` is the USD baseline on
+    // the rate card; billing it directly is what made a Thai table floor ฿2.
+    const flat_cs = terms?.booking_fee_cs
+      ?? ((rate.flat_cs ?? 0) > 0 ? floorFor(currency) : null);
     const rate_bp = rateBp ?? terms?.commission_bp ?? rate.bp ?? null;
 
     // Can anything this venue uses tell us what the guest spent?
@@ -481,7 +570,7 @@ export async function accrue(env, {
       kind = 'flat';
       amount_cs = flat_cs;
       state = 'accrued';
-      note = `flat ${(flat_cs / 100).toFixed(2)} per confirmed booking`;
+      note = `flat ${money(flat_cs, currency)} per confirmed booking`;
     } else {
       return null; // this merchant owes nothing — an agreed zero is valid
     }
@@ -550,7 +639,7 @@ export async function accrueBillPayment(env, {
       : null;
     const amount_cs = Number.isFinite(own?.walkin_fee_cs)
       ? own.walkin_fee_cs
-      : PAYMENT_ONLY_FLAT_CS;
+      : floorFor(currency);
     // An agreed zero is valid and must leave NO row. A $0 line on a statement
     // reads as a charge a venue has to query before believing it is nothing.
     if (!(amount_cs > 0)) return null;
@@ -567,7 +656,7 @@ export async function accrueBillPayment(env, {
       // Says WHY it is flat, because this is the line a venue queries. A
       // merchant on a 10% rate seeing $2 deserves the reason in the row, not
       // in a support reply.
-      `flat ${(amount_cs / 100).toFixed(2)} — bill paid through Num, guest not referred by Num`,
+      `flat ${money(amount_cs, currency)} — bill paid through Num, guest not referred by Num`,
     ).run();
     // rate_bp is null and stated so. A flat line that reported a rate would
     // let outbound copy quote a percentage on a bill that has none.
@@ -604,6 +693,9 @@ export async function lapseAwaitingValue(env, { days = 30, flatCs = null } = {})
   if (!env?.DB) return null;
   try {
     await ensure(env);
+    // Lapsing is a cross-currency sweep, so there is no single floor to write.
+    // An explicit flatCs still wins; otherwise the USD baseline stands and the
+    // per-currency correction happens where the currency is known.
     const floor = Number.isFinite(flatCs) && flatCs > 0
       ? flatCs
       : (RATES.reservation.flat_cs ?? 0);

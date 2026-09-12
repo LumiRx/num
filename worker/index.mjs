@@ -1855,6 +1855,29 @@ export default {
       return json(200, { ...(await summary(env)), failures: await open(env, { limit: 100 }) });
     }
 
+    // ── THE OFF SWITCH THE ALARM DID NOT HAVE ───────────────────────────
+    //
+    // 12 Sep 2026: one bounced outreach email put /api/health into a 503 that
+    // nothing could clear. A failure row resolves only when the code that
+    // recorded it decides the condition has passed, and for a bounce that
+    // means a LATER successful delivery to the same dead address — which is
+    // never going to happen. So the verdict was stuck "down" for ever, and a
+    // stuck alarm is worse than no alarm: it masks the next real outage.
+    //
+    // Admin-gated, and deliberately narrow — it closes one named row. It
+    // cannot silence a condition that is still true, because anything that
+    // re-records the same kind and subject reopens the row (see `record`,
+    // which sets resolved_at = NULL on the way back in).
+    if (url.pathname === '/api/admin/failures/resolve' && request.method === 'POST') {
+      const denied = (await import('./adminkey.mjs')).adminGuard(request, env, cors);
+      if (denied) return denied;
+      const body = await request.json().catch(() => ({}));
+      if (!body?.kind) return json(400, { error: 'which one? { kind, subject }' });
+      const { resolve, summary } = await import('./failures.mjs');
+      const closed = await resolve(env, body.kind, body.subject ?? '');
+      return json(200, { closed, kind: body.kind, subject: body.subject ?? '', now: await summary(env) });
+    }
+
     if (url.pathname === '/api/admin/install-funnel') {
       const { handleInstallFunnel } = await import('./installfunnel.mjs');
       return await handleInstallFunnel(request, env);

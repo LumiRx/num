@@ -22,7 +22,7 @@
 // promise a number the ledger disagrees with. It did until 25 Aug 2026: this
 // file hardcoded "10% only when a booking actually happens" while stays bill
 // 15%, which meant every hotel invited was quoted a third under its real rate.
-import { PAYMENT_ONLY_SENTENCE, feeSentence } from '../worker/commission.mjs';
+import { feeSentence, paymentOnlySentence } from '../worker/commission.mjs';
 
 /* ── deterministic pick ─────────────────────────────────────────────────── */
 
@@ -586,7 +586,7 @@ export function generateInvite(lead, opts = {}) {
     // actually happens" and keep free walk-ins for good, because that is what
     // they agreed to. Anybody invited from now on is told about the flat fee up
     // front, so the first time they see it is not on an invoice.
-    walkin_line:         PAYMENT_ONLY_SENTENCE,
+    walkin_line:         paymentOnlySentence({ country: lead.country }),
     direct_line:         directLine(lead),
     website_url:         websiteUrl(lead, base, token),
     // Routed through the accounts Worker so the click is recorded, then 302'd

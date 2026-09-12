@@ -57,9 +57,15 @@ test('a reservation carries both numbers', () => {
 });
 
 test('the quote states both, so neither can be a surprise on an invoice', () => {
+  // RESTAURANT is in Thailand, so the flat half is quoted in baht. It used to
+  // render "$2" from the USD rate card — and the fee actually invoiced was 200
+  // satang, about six cents, so the sentence was wrong about the currency AND
+  // the number was wrong about the price.
   const s = feeSentence(RESTAURANT);
   assert.match(s, /10% of the bill/);
-  assert.match(s, /\$2 per confirmed table/);
+  assert.match(s, /฿70 per confirmed table/);
+  assert.doesNotMatch(s, /\$/, 'a Thai venue must not be quoted in dollars');
+  assert.match(feeSentence({ ...RESTAURANT, country: 'US' }), /\$2 per confirmed table/);
 });
 
 /* ── which one applies ──────────────────────────────────────────────────── */

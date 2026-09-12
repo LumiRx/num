@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 3,929 green, 0 lint errors |
+| Tests | 3,995 green, 0 lint errors |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -25,9 +25,23 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 
 ## In flight
 
+- **Luxury asset layer** (12 Sep) — migration `0021_luxury_assets.sql` + `worker/assetintegrity.mjs`
+  built and tested (47 tests). Four tables: `num_assets` (yachts, jets, cars, villas with spec,
+  home port, rate and settle mode), `num_asset_photos` (moderated), `num_asset_holds` (the table
+  that stops one hull being sold twice), `num_inbound_media` (a photo texted in before we know
+  which boat it is of). Service keys `yacht` / `jet` / `provisioning` added, and the three copies
+  of that list are now bound by `worker/hostservices.test.mjs`. **Not yet built:** R2 binding, the
+  Twilio MMS inbound route, endpoints, console cards.
+
 - **Host job board** — `growth/hostjobs.mjs` shaping layer built and tested (30 tests). Routes, `num_host_jobs` table, member-facing section and console card still to build. Three product questions open, below.
 
 ## Open decisions (Dre's, not mine)
+
+0. **Legal review before the first real charter settles.** Dre chose "NUM collects and settles,
+   no commission" for luxury assets on 12 Sep. Zero commission keeps NUM a conduit rather than a
+   broker taking a spread, which helps — but collecting £200k for a yacht week is not collecting
+   £80 for dinner. Needs somebody qualified on money transmission / safeguarding and on whether
+   arranging air charter triggers broker rules, **before** the first settlement, not after.
 
 1. **Does offering on a job cost a host anything?** Free fills the board with speculative offers; priced suppresses the hosts with the emptiest weeks, who are who it should help.
 2. **How many hosts may offer on one job?** Unlimited is a bad read for the member. Three is my recommendation.
@@ -155,6 +169,73 @@ Airbnb ~15.5%, OpenTable $1–1.50/cover **plus** $149–499/month. **10% is the
 - **The volume being priced for does not exist.** 0 paylinks, 0 bills, 0 commissions, 0 invoices;
   15 scans, all unknown tokens, all from August test venues. Raising a price on a live merchant base
   is far harder than lowering one — stay at the category floor with room to discount.
+
+## The flat fee was never $2 — fixed 12 Sep
+
+Every flat fee was the bare integer `200`, and every `amount_cs` is minor units of the BILL'S OWN
+currency. One number meant three prices: **US $2.00 · UK £2.00 (~$2.70) · Thailand ฿2.00 (~$0.06)**.
+Bang Tao's "$2 per confirmed table" floor had been six cents since 26 Aug, and `money()` printed a
+`$` regardless, so copy called 2 baht "$2". Found while updating the Thai invite, which would
+otherwise have promised ฿2 in Thai beside $2 in English.
+
+- `FLOOR_BY_CURRENCY`: **USD 200 · GBP 150 · EUR 200 · THB 7000**. Round numbers a merchant reads as
+  a price, deliberately NOT from live FX — a floor that moves with the baht is one a venue cannot
+  predict, and it would re-price unreported tables retroactively.
+- `CURRENCY_BY_COUNTRY` now lives in the money layer and `growth/worker.js`'s `RAIL_BY_COUNTRY` is
+  computed from it. The rail knew the currency and the thing that sets prices did not.
+- **`booking_fee_cs` is `NOT NULL DEFAULT 200`, so the column always wins** and a fallback in the
+  commission code can never fire. The fix had to go where the row is CREATED
+  (`growth/venuesettings.mjs`), and `max_booking_fee_cs` with it — a CHECK refuses
+  `booking_fee_cs > max_booking_fee_cs` and ฿70 (7000) exceeds its default 5000.
+- Live D1, all six: TH → 7000 (max 175000), GB → 150, US → 200. **This raises a Thai venue's
+  unreported-table floor from ฿2 to ฿70.** No retroactive effect — `num_commissions` is empty.
+
+## Rate copy — one source, 12 Sep
+
+- **The settle email was live and wrong.** It branched on `out.billed`, which went true for walk-ins,
+  so a venue whose own regular paid by QR would have been emailed "NUM brought this table, so NUM's
+  10% applies." It now branches on what was RECORDED and quotes `rate_bp` off the row.
+- Statement page, console, invite generator and templates all read the rate from the ledger. Two
+  venues bill 15% and every surface said 10%.
+- Removed "About half of what OTAs take" — OTAs are 10–20%, so at 10% we are level, not half. A test
+  already banned that claim elsewhere; it had survived in `invite_email.html`.
+- `campaign/previews/*.html` left UNTOUCHED on purpose: they record what venues were actually sent.
+
+## Job board fee — the poster pays, 12 Sep
+
+The host welcome email promises "no commission on your work, no cut of anything you arrange".
+`split(total)` took 5% OUT of the host — 200 quoted, 190 received. The board was not live, so nothing
+was broken, but it would have been the day it shipped and the email had already gone out. Now
+`quote(price)`: host paid in full, poster pays price + fee. **Renamed, not edited** — both take the
+same shape of argument and mean different things by it, so a call site inheriting the old meaning
+would have underpaid hosts in silence. `canConfirm` checks the GROSS, or the fee falls back onto the
+host through the confirm path instead of the split.
+
+## Walk-ins: the six are grandfathered
+
+The invite said "You pay 10% only when a booking actually happens", and a walk-in is not a booking.
+The six signed up as of 12 Sep keep free walk-ins **for good** — `walkin_fee_cs = 0`, held as data,
+not a date check in code. New venues are invited on copy stating the fee before they sign.
+
+## X, Grok, X Pay — what is actually possible (checked 12 Sep)
+
+- **X Pay cannot be integrated, and the name is ambiguous.** X Money: US-only limited beta since Mar
+  2026 (Cross River Bank), consumer P2P plus a debit card, **no merchant or developer API**. A crypto
+  product literally called "X Pay" went live on mainnet 11 Sep — unrelated.
+- **Sharing needs no API.** A pre-filled compose link (Web Intent) is free, keyless, approval-free.
+- **Posting does.** Free tier closed to new devs Feb 2026. $0.015/post — but **$0.20 for a post
+  containing a link**, and every NUM post has one. 1,000 posts = $200, not $15.
+- **Grok API is live** — grok-4.6 $2 in / $6 out per Mtok. The multi-brain plumbing already logs
+  per-model cost, so a Grok slot is contained. Needs `XAI_API_KEY`.
+- **No X or xAI MCP connector** exists; both are direct integrations.
+
+## TWO SESSIONS ARE EDITING THIS TREE
+
+On 12 Sep `cowork-num` (rates and copy) and `cowork-connections` (false-outage handling:
+`worker/failures.mjs`, `health.mjs`, `maildelivery.mjs`, `falsedown.test.mjs`) both had uncommitted
+work here at once. `release.mjs` bundles the WORKING TREE, not a commit, so **a ship by either
+session carries the other's in-progress work to production.** Check `git status --short` and the claim
+file before staging, and do not assume your changes are the only ones.
 
 ## Do not roll back a healthy deploy
 

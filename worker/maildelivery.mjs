@@ -200,12 +200,47 @@ export async function handleResendWebhook(request, env) {
         'INSERT OR IGNORE INTO num_suppressions (email, reason, note) VALUES (?1, ?2, ?3)',
       ).bind(to, 'complaint', why).run().catch(() => {});
     }
+    // ── SEVERITY, AND WHY IT PAGED AS AN OUTAGE ─────────────────────────
+    //
+    // 12 Sep 2026, 18:45. One outreach address bounced —
+    // ckrcbuilt@thecounternorcal.com — and at 19:00 Dre's phone said
+    // "🔴 NUM IS DOWN". Nothing was down. Every real check was green.
+    //
+    // The chain: this line recorded the bounce at severity HIGH and nothing
+    // ever told anybody about it (recording is not telling). Ten minutes
+    // later `summary()` in failures.mjs marked the ledger `blind` — "settled,
+    // not low, and nobody was told" — `checkFailures` failed, and `failures`
+    // is on health.mjs's DOWN list. So a dead mailbox in somebody else's
+    // company declared our product down, and would have done so on EVERY
+    // bounce, for ever.
+    //
+    // The old line read `severity: type === 'email.complained' ? 'high' :
+    // 'high'` — both branches the same. The distinction was intended and
+    // never made. It is made here:
+    //
+    //   BOUNCE     — low. An address on our outreach list is dead. That is a
+    //                fact about their inbox, not a fault in Num, and `blind`
+    //                deliberately ignores low. It stays in the ledger and on
+    //                /api/admin/failures where the list gets cleaned up.
+    //   COMPLAINT  — high, AND somebody is actually told. Someone marked us
+    //                as spam; that threatens the sending domain every booking
+    //                confirmation depends on. High severity with no telling
+    //                path is the exact bug above, so the alert is not
+    //                optional here.
+    const complaint = type === 'email.complained';
     await record(env, {
-      kind: type === 'email.complained' ? 'mail_complaint' : 'mail_bounced',
+      kind: complaint ? 'mail_complaint' : 'mail_bounced',
       subject: to || ref,
       detail: why,
-      severity: type === 'email.complained' ? 'high' : 'high',
+      severity: complaint ? 'high' : 'low',
     });
+    if (complaint) {
+      const { alert } = await import('./health.mjs');
+      await alert(env, `🚩 Spam complaint from ${to || ref} — ${String(why).slice(0, 160)}\n\n`
+        + 'Suppressed. Repeated complaints put the sending domain at risk, which takes booking '
+        + 'confirmations down with it.', { kind: 'mail_complaint', subject: to || ref })
+        .catch(() => {});
+    }
   }
   return json({ ok: true });
 }

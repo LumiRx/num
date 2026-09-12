@@ -36,6 +36,8 @@
  * So the surface is three things, and it grows when a consumer does.
  */
 
+import { currencyForCountry, floorFor } from '../worker/commission.mjs';
+
 /** A tip is the server's money; a fee is not. Kept for the error text. */
 const TIPS_UNDERTAKING =
   'Tips are your staff\'s money. By switching this on you confirm that every ' +
@@ -325,10 +327,38 @@ export async function writeSettings(env, {
     }
   }
 
+  /* ── THE FLOOR HAS TO BE SET IN THE VENUE'S OWN CURRENCY ─────────────────
+   *
+   * `num_business_settings.booking_fee_cs` is `NOT NULL DEFAULT 200`, and every
+   * amount in the ledger is minor units of the venue's OWN currency. So this
+   * insert used to hand a Thai venue a floor of 200 satang — about six cents —
+   * and a UK venue £2.00, from one number meant to be "$2". The default wins
+   * over any fallback in the commission code, because the column is never null.
+   *
+   * `max_booking_fee_cs` moves with it: its own default of 5000 is below ฿70's
+   * 7000, and a CHECK on the table refuses `booking_fee_cs > max_booking_fee_cs`
+   * — so a Thai row would have been rejected outright rather than priced wrong,
+   * which is the better failure but still a failure.
+   *
+   * Country is read from the venue's profile, the same source the rail picker
+   * uses. An unknown country falls to USD, never to the bare 200.
+   */
+  const prof = await env.DB
+    .prepare('SELECT country FROM num_business_profiles WHERE business_id = ?1')
+    .bind(businessId).first().catch(() => null);
+  const cur = currencyForCountry(prof?.country);
+  const floor = floorFor(cur);
+
   await env.DB.prepare(
-    `INSERT INTO num_business_settings (business_id, updated_at, updated_by)
-     VALUES (?1, ?2, ?3) ON CONFLICT(business_id) DO NOTHING`,
-  ).bind(businessId, nowSec, String(by).slice(0, 120)).run().catch(() => {});
+    `INSERT INTO num_business_settings
+       (business_id, updated_at, updated_by, booking_fee_cs, max_booking_fee_cs)
+     VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(business_id) DO NOTHING`,
+  ).bind(
+    businessId, nowSec, String(by).slice(0, 120), floor,
+    // The ceiling in the same money: $50 worth, so it is a real cap in every
+    // market rather than $50 in one and $1.53 in another.
+    Math.max(floor, floorFor(cur) * 25),
+  ).run().catch(() => {});
 
   const assigns = cols.map((c, i) => `${c} = ?${i + 1}`).join(', ');
   const binds = cols.map((c) => sets[c]);

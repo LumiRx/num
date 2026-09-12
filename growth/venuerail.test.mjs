@@ -20,18 +20,40 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { CURRENCY_BY_COUNTRY } from '../worker/commission.mjs';
+
 const worker = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
 
-/** Pull the country→rail table out of the source and read it as data. */
+/**
+ * Build the country→rail table the way the worker builds it.
+ *
+ * ── WHY THIS NO LONGER PARSES A LITERAL ──────────────────────────────────
+ * It used to regex a hand-written `RAIL_BY_COUNTRY = Object.freeze({ TH: {...}
+ * })` out of the source. On 12 Sep 2026 that table was refactored into a
+ * COMPUTED one — derived from CURRENCY_BY_COUNTRY in worker/commission.mjs,
+ * so a venue can never be quoted in one currency and invoiced in another —
+ * and these three tests started failing on a change that made the code
+ * better. The tests were reading the source's shape rather than its meaning.
+ *
+ * So the table is composed here from the same two inputs the worker composes
+ * it from: the currency map (imported, the real one) and the kind overrides
+ * (still a literal, still read from source, because that is the line a
+ * careless edit would put PromptPay on the wrong country from).
+ */
 function railTable() {
-  const m = worker.match(/const RAIL_BY_COUNTRY = Object\.freeze\(\{([\s\S]*?)\}\);/);
-  assert.ok(m, 'RAIL_BY_COUNTRY is gone — every venue is back to guessing');
+  const m = worker.match(/const RAIL_KIND_BY_COUNTRY = Object\.freeze\(\{([^}]*)\}\)/);
+  assert.ok(m, 'RAIL_KIND_BY_COUNTRY is gone — every venue is back to guessing');
+  const kinds = {};
+  for (const e of m[1].matchAll(/([A-Z]{2}):\s*"(\w+)"/g)) kinds[e[1]] = e[2];
+
+  assert.match(worker, /kind: RAIL_KIND_BY_COUNTRY\[cc\] \|\| "url"/,
+    'the default rail is no longer the one that works anywhere');
+
   const out = {};
-  for (const line of m[1].split('\n')) {
-    const e = line.match(/([A-Z]{2}):\s*\{\s*kind:\s*"(\w+)",\s*currency:\s*"([A-Z]{3})"/);
-    if (e) out[e[1]] = { kind: e[2], currency: e[3] };
+  for (const [cc, currency] of Object.entries(CURRENCY_BY_COUNTRY)) {
+    out[cc] = { kind: kinds[cc] || 'url', currency };
   }
-  assert.ok(Object.keys(out).length >= 3, 'the rail table parsed as almost empty');
+  assert.ok(Object.keys(out).length >= 3, 'the rail table composed as almost empty');
   return out;
 }
 

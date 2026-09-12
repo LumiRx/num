@@ -35,19 +35,37 @@ test('a restaurant is quoted BOTH numbers, never just one', () => {
   // and charged another; a venue quoted only "$2" and later invoiced 10% of a
   // $300 dinner has been told a price a fifteenth of the real one. Both
   // numbers, in the same sentence, or the invite is lying either way.
+  // And quoted in the venue's OWN currency. The flat half used to render from
+  // the USD rate card whatever the country, so this Bath restaurant was promised
+  // "$2 per confirmed table" for a fee it would be invoiced in pounds.
   const d = generateInvite(lead({ id: 'ld_2', name: 'Sally Lunn\'s', category: 'Restaurant' }), { template: TEMPLATE, token: 't' });
   assert.match(d.fee_line, /10% of the bill/);
-  assert.match(d.fee_line, /\$2 per confirmed table/);
+  assert.match(d.fee_line, /£1\.50 per confirmed table/);
+  assert.doesNotMatch(d.fee_line, /\$/, 'a GB venue must not be quoted dollars');
+
+  const us = generateInvite(lead({ id: 'ld_2us', country: 'US', category: 'Restaurant' }), { template: TEMPLATE, token: 't' });
+  assert.match(us.fee_line, /\$2 per confirmed table/);
 });
 
 test('a Thai restaurant is quoted the same thing as everyone else', () => {
   // It used to be a country override — TH alone got 10%, because Thai venues
   // were the only ones on the bill QR. The rule is now about whether the bill
   // can be seen at all, which is not a fact about Thailand.
+  //
+  // The RATE is the same everywhere. The FLOOR is not, and must not be: it is a
+  // fixed sum, so one integer meant $2 in Los Angeles and ฿2 — about six cents —
+  // in Phuket. Same price, stated in the money the venue is actually billed in.
   const th = generateInvite(lead({ id: 'ld_3', name: 'Suay', city: 'Phuket', country: 'TH', category: 'Restaurant' }), { template: TEMPLATE, token: 't' });
   const gb = generateInvite(lead({ id: 'ld_3b', name: 'The Longtail', city: 'London', country: 'GB', category: 'Restaurant' }), { template: TEMPLATE, token: 't' });
   assert.match(th.fee_line, /10% of the bill/);
-  assert.equal(th.fee_line, gb.fee_line, 'the country override outlived its removal');
+  assert.match(gb.fee_line, /10% of the bill/);
+  assert.match(th.fee_line, /฿70 per confirmed table/, 'a Thai venue quoted ฿2 was quoted six cents');
+  assert.doesNotMatch(th.fee_line, /\$/, 'a Thai venue must not be quoted dollars');
+
+  // The rate half must still be identical — that is what the removed country
+  // override would show up in.
+  const rateOf = (x) => x.fee_line.split(',')[0].split(' or ')[0];
+  assert.equal(rateOf(th), rateOf(gb), 'the country override outlived its removal');
 });
 
 test('guesthouses, hostels and apartments are all stays', () => {

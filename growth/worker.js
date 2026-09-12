@@ -356,7 +356,7 @@ import {
   FIELDS as SET_FIELDS, LOCKED as SET_LOCKED, TIPS_UNDERTAKING,
   readSettings, writeSettings, settingHistory,
 } from './venuesettings.mjs';
-import { foodAndDrink } from '../worker/commission.mjs';
+import { CURRENCY_BY_COUNTRY, foodAndDrink } from '../worker/commission.mjs';
 import { geocode, geocodeReady } from '../worker/geocode.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
@@ -7493,18 +7493,18 @@ const PAY_CURRENCIES = ["THB", "GBP", "USD", "EUR"];
  * Currency matters as much as the rail. `setIdentity` falls back to THB, so
  * before this an LA venue was silently set up to bill its guests in baht.
  */
-const RAIL_BY_COUNTRY = Object.freeze({
-  TH: { kind: "promptpay", currency: "THB" },
-  US: { kind: "url", currency: "USD" },
-  GB: { kind: "url", currency: "GBP" },
-  IE: { kind: "url", currency: "EUR" },
-  FR: { kind: "url", currency: "EUR" },
-  DE: { kind: "url", currency: "EUR" },
-  ES: { kind: "url", currency: "EUR" },
-  IT: { kind: "url", currency: "EUR" },
-  NL: { kind: "url", currency: "EUR" },
-  PT: { kind: "url", currency: "EUR" },
-});
+// The RAIL is a fact about a country's banking; the CURRENCY is a fact about its
+// money, and the money layer already holds it — see CURRENCY_BY_COUNTRY in
+// worker/commission.mjs. Keeping a second copy here is how a venue came to be
+// quoted a fee in one currency and invoiced in another, so this now holds only
+// the half it owns and reads the other.
+const RAIL_KIND_BY_COUNTRY = Object.freeze({ TH: "promptpay" });
+const RAIL_BY_COUNTRY = Object.freeze(Object.fromEntries(
+  Object.keys(CURRENCY_BY_COUNTRY).map((cc) => [cc, Object.freeze({
+    kind: RAIL_KIND_BY_COUNTRY[cc] || "url",
+    currency: CURRENCY_BY_COUNTRY[cc],
+  })]),
+));
 
 /** Unknown country falls to the rail that works anywhere, never to PromptPay. */
 function railFor(country) {
@@ -9720,9 +9720,16 @@ async function venueStatementPage(req, env, url) {
   ).bind(String(who.business.id)).first().catch(() => null);
   const ratePct = ((terms && terms.commission_bp ? terms.commission_bp : 1000) / 100) + "%";
   const walkinCs = terms && terms.walkin_fee_cs != null ? Number(terms.walkin_fee_cs) : 200;
+  // With the currency, because the figure is minor units of the venue's own
+  // money: the same stored 7000 is ฿70 in Phuket and would read as "70.00" with
+  // no symbol, which a venue could reasonably take for dollars.
+  const curCode = String(terms && terms.currency ? terms.currency : "").toUpperCase()
+    || CURRENCY_BY_COUNTRY[String(who.business.country || "").toUpperCase()] || "USD";
+  const sym = { USD: "$", GBP: "£", EUR: "€", THB: "฿" }[curCode] || "";
   const walkinLine = walkinCs > 0
     ? "A guest who was already yours and simply paid through NUM is charged a flat "
-      + (walkinCs / 100).toFixed(2) + " — never a percentage, whatever the bill comes to."
+      + sym + (walkinCs % 100 ? (walkinCs / 100).toFixed(2) : String(walkinCs / 100))
+      + " — never a percentage, whatever the bill comes to."
     : "Your own customers and walk-ins are never on this page.";
 
   return new Response(qrShell(`

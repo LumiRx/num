@@ -194,7 +194,8 @@ export async function settleBillCode(env, tokenValue, { settledBy = null } = {})
   // this was free — `return { billed: false, reason: 'walk-ins are free' }`.
   // Dre's call that day: a flat $2, never a percentage.
   //
-  // The reasoning lives on PAYMENT_ONLY_FLAT_CS. The short version: the money
+  // The reasoning lives on walkinFloorFor / FLOOR_BY_CURRENCY. The short
+  // version: the money
   // goes straight to the venue, so a percentage from us would stack on their
   // processor's ~2.9% and charge an acquisition rate for no acquisition. A flat
   // fee cannot scale into a tax on their own regulars, which is the objection
