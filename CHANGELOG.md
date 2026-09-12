@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.287 — 2026-09-12 23:42 UTC
+
+(no note given)
+
+- commit `2797d4d`
+
 ## 0.8.286 — 2026-09-12 23:15 UTC
 
 order alerts: SMS, phone and webhook to the kitchen
