@@ -141,6 +141,25 @@ function redact(v) {
 }
 
 /**
+ * The 5arz member id Num recorded for this member, or null.
+ *
+ * Read out of our own row, written only by the consented /verify/5arz flow.
+ * Never parsed out of a request. A malformed or absent link is null, and null
+ * means the ledger is not consulted at all — "we have no link" must never
+ * degrade into "look it up and see".
+ */
+export function linked5arzId(row) {
+  if (!row?.bio) return null;
+  try {
+    const bio = typeof row.bio === 'string' ? JSON.parse(row.bio) : row.bio;
+    const id = bio?.['5arz_id'];
+    return typeof id === 'string' && id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The trust envelope — what Num knows about this person that AiR does not.
  *
  * Assembled from BOTH databases, and deliberately honest about which parts are
@@ -177,28 +196,58 @@ export async function trustEnvelope(env, { memberId, phone }) {
   // database being down must degrade the envelope, never fail it — a checkout
   // that gets "unverified" still works, a checkout that gets a 500 does not.
   const ledger = env.LEDGER;
-  const id = memberId ?? '';
-  const [m, row, uha, sessions] = await Promise.all([
-    env.DB && memberId
-      ? env.DB.prepare('SELECT id, name, phone_verified, created_at FROM num_members WHERE id=?1')
-          .bind(memberId).first().catch(() => null)
-      : null,
-    // `phone` short-circuits the ledger identity read exactly as before: a
-    // lookup by phone number is not a lookup by member id and must not be
-    // silently answered with one.
-    ledger && !phone
-      ? ledger.prepare('SELECT id, verified_at, verification_ref, country FROM members WHERE id=?1')
-          .bind(id).first().catch(() => null)
-      : null,
-    ledger
-      ? ledger.prepare("SELECT level, status, valid_until FROM uniqueness_attestations WHERE member_id=?1 AND status='active' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1")
-          .bind(id).first().catch(() => null)
-      : null,
-    ledger
-      ? ledger.prepare("SELECT COUNT(*) n, SUM(status='active') passed, SUM(status='rejected') rejected, ROUND(AVG(score_v),3) avg_score FROM verified_sessions WHERE member_id=?1")
-          .bind(id).first().catch(() => null)
-      : null,
-  ]);
+
+  /* ── THE 5ARZ ID IS OURS TO SUPPLY, NEVER THE CALLER'S ──────────────────
+   *
+   * This used to bind `memberId` — taken straight off the wire by
+   * `GET /api/trust?member=` — into `5arz-ledger.members WHERE id=?1`. Two
+   * things were wrong with that, and they pulled in opposite directions.
+   *
+   * It never worked. A Num member id and a 5arz member id are DIFFERENT
+   * NAMESPACES that both happen to start `mem_`: ours is `mem_` + 20 hex (or a
+   * legacy `v5_…`), theirs is `mem_` + 12. Checked against production on
+   * 12 Sep 2026 — of 147 Num members, the 2 who are genuinely 5arz-verified
+   * both have a 5arz id that is NOT equal to their Num id. So this lookup
+   * missed for every member we have ever had, and the envelope reported
+   * "no id_check" to AiR for the two people who had actually completed one.
+   *
+   * And it was a lookup oracle. A partner holding AIR_SHARED_KEY could put a
+   * 5arz member id in the query string and read that member's verification
+   * state, country and session scores straight out of our parent company's
+   * database — a member who may have no relationship with Num at all. That is
+   * the rule the 5arz team stated outright: Num never accepts a 5arz memberId
+   * typed by somebody else.
+   *
+   * Both are fixed by the same move. `memberId` is now used ONLY against our
+   * own `num_members`. The 5arz id is read out of the link WE recorded when
+   * that member consented in /verify/5arz, so the ledger can only ever be
+   * asked about a member who chose to connect the two accounts.
+   *
+   * It costs one extra hop, and only for linked members. For the other 145 it
+   * REMOVES three cross-company reads that could never have returned anything,
+   * so the common path gets faster, not slower — which matters, because
+   * LetsGo2Trip term 9 is a 100 ms budget per envelope. */
+  const m = env.DB && memberId
+    ? await env.DB
+      .prepare('SELECT id, name, phone_verified, created_at, bio FROM num_members WHERE id=?1')
+      .bind(memberId).first().catch(() => null)
+    : null;
+
+  // `phone` short-circuits the ledger identity read exactly as before: a
+  // lookup by phone number is not a lookup by member id and must not be
+  // silently answered with one.
+  const arzId = phone ? null : linked5arzId(m);
+
+  const [row, uha, sessions] = arzId && ledger
+    ? await Promise.all([
+      ledger.prepare('SELECT id, verified_at, verification_ref, country FROM members WHERE id=?1')
+        .bind(arzId).first().catch(() => null),
+      ledger.prepare("SELECT level, status, valid_until FROM uniqueness_attestations WHERE member_id=?1 AND status='active' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1")
+        .bind(arzId).first().catch(() => null),
+      ledger.prepare("SELECT COUNT(*) n, SUM(status='active') passed, SUM(status='rejected') rejected, ROUND(AVG(score_v),3) avg_score FROM verified_sessions WHERE member_id=?1")
+        .bind(arzId).first().catch(() => null),
+    ])
+    : [null, null, null];
 
   // Applied in the SAME ORDER the sequential version applied them, because
   // the order is a precedence rule and not an accident: an SMS-verified phone

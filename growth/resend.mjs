@@ -59,13 +59,21 @@ async function viaCloudflareOneByOne(env, messages) {
     }
     ids.push(out.id);
   }
-  return { ok: true, sent: messages.length, ids };
+  // `via` exists because of a real half-hour of confusion on 12 Sep 2026: a
+  // bill-settled email reported ok, wrote no row to num_mail_events, and the
+  // only clue that it had gone out over Cloudflare rather than Resend was the
+  // SHAPE of the returned id (an RFC Message-ID, not a Resend UUID). A caller
+  // should never have to decode an id format to learn which rail it used.
+  return { ok: true, sent: messages.length, ids, via: 'cloudflare' };
 }
 
 export async function sendBatch(env, messages) {
   if (!messages.length) return { ok: true, sent: 0, ids: [] };
   if (!env.RESEND_KEY) {
-    if (env.EMAIL?.send) return viaCloudflareOneByOne(env, messages);
+    if (env.EMAIL?.send) {
+      const out = await viaCloudflareOneByOne(env, messages);
+      return { ...out, fell_back_from: 'no RESEND_KEY' };
+    }
     return { ok: false, sent: 0, ids: [], error: 'no RESEND_KEY and no EMAIL binding' };
   }
   const res = await fetch('https://api.resend.com/emails/batch', {
@@ -83,11 +91,12 @@ export async function sendBatch(env, messages) {
     // changes nothing, so fall through to Cloudflare rather than reporting a
     // failure that stops the drain for as long as the key stays broken.
     if ((res.status === 401 || res.status === 403) && env.EMAIL?.send) {
-      return viaCloudflareOneByOne(env, messages);
+      const out = await viaCloudflareOneByOne(env, messages);
+      return { ...out, fell_back_from: ('resend ' + res.status + ' ' + detail).slice(0, 200) };
     }
     return { ok: false, sent: 0, ids: [], error: 'resend ' + res.status + ' ' + detail };
   }
   const body = await res.json().catch(() => ({}));
   const ids = (body.data || []).map((d) => d.id);
-  return { ok: true, sent: messages.length, ids };
+  return { ok: true, sent: messages.length, ids, via: 'resend' };
 }

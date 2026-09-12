@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.272 — 2026-09-12 18:21 UTC
+
+(no note given)
+
+- commit `nogit`
+
 ## 0.8.270 — 2026-09-12 17:51 UTC
 
 log why a bill-settled email did or did not send

@@ -1905,7 +1905,12 @@ export default {
           email: !!env.EMAIL,
           payments: payMode(env),
           voice_in: voiceReady(env),
-          verify_5arz: !!env.GOOGLE_CLIENT_ID,
+          // Was `verify_5arz: !!env.GOOGLE_CLIENT_ID` — a field named after 5arz
+          // that reported whether GOOGLE auth was configured, in a public
+          // endpoint, with no 5arz call anywhere in the codebase. A partner
+          // would have read it and believed it.
+          google_auth: !!env.GOOGLE_CLIENT_ID,
+          verify_5arz: !!env.FIVEARZ_API_KEY,
           // Off by configuration until WHATSAPP_ENABLED + TWILIO_WHATSAPP_FROM are set.
           whatsapp: !!whatsAppNumber(env),
         },

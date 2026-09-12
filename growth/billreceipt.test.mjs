@@ -89,12 +89,63 @@ test('the venue is told plainly whether NUM will invoice on this bill', () => {
 
 test('no address on file means no send, not a crash', () => {
   const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
-  assert.match(fn, /if \(!bill\.venue_email\) return/,
+  assert.match(fn, /if \(!bill\.venue_email\) \{/,
     'four of six live businesses have no email on file');
+  assert.match(fn, /no address on file for " \+ bill\.venue_name/,
+    'it has to say WHICH venue, or the log is useless at scale');
 });
 
 test('the email carries the figure the statement is calculated from', () => {
   const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
   assert.match(fn, /it is the figure your/,
     'the venue needs to know this is its one chance to correct the number');
+});
+
+/* ── the attempt log ──────────────────────────────────────────────────────
+ * Added after the first real settle in production sent nothing and left no
+ * trace anywhere. `num_mail_events` is Resend's webhook, so it can only ever
+ * record a message that REACHED Resend — a refused send, a fall-through to the
+ * Cloudflare transport, or a send that never ran is invisible in it. These
+ * guard the record of the attempt itself.
+ */
+
+test('every exit from the settle mail leaves a row behind', () => {
+  const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  const calls = fn.match(/logMailAttempt\(env, \{/g) || [];
+  assert.equal(calls.length, 3,
+    'three ways out — no bill, no address, and the send itself — all must be recorded');
+});
+
+test('the attempt log records the reason a send failed, not just that it did', () => {
+  const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  assert.match(fn, /"via=" \+ \(sent\?\.via \|\| "\?"\)/,
+    'the record must name the rail — a Cloudflare fallback and a Resend send are not the same event');
+  assert.match(fn, /fell_back_from=/,
+    'a silent fallback on a rejected key must not look like a healthy send');
+  assert.match(fn, /"ids=" \+ \(sent\.ids \|\| \[\]\)\.join\(","\)/,
+    'a success needs the provider ids');
+  assert.match(fn, /"error=" \+ \(sent\?\.error \|\| "no error given"\)/,
+    'a failure needs the error text');
+  assert.match(fn, /ok: !!sent\?\.ok/);
+});
+
+test('the send result is awaited, or there is nothing to record', () => {
+  const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  assert.match(fn, /const sent = await sendBatch\(env, \[\{/,
+    'returning sendBatch directly throws the outcome away — that was the original bug');
+});
+
+test('the attempt log creates its own table and can never break a settle', () => {
+  const fn = worker.match(/async function logMailAttempt\([\s\S]*?\n\}\n/)[0];
+  assert.match(fn, /CREATE TABLE IF NOT EXISTS num_mail_attempts/,
+    'created on first use, like num_commissions');
+  assert.match(fn, /catch \(e\) \{\s*\n\s*console\.error\("logMailAttempt failed"/,
+    'a logging failure must not turn a sent email into a failed settle');
+});
+
+test('the attempt log is queryable by bill, which is how it gets read', () => {
+  const fn = worker.match(/async function logMailAttempt\([\s\S]*?\n\}\n/)[0];
+  assert.match(fn, /INSERT INTO num_mail_attempts \(kind, ref, recipient, ok, detail, created_at\)/);
+  // `ref` is the bill token. Without it the log says a send failed but not for what.
+  assert.match(fn, /ref \? String\(ref\)\.slice\(0, 64\) : null/);
 });

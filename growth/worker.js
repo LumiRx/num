@@ -8787,6 +8787,47 @@ async function qrBillSettle(req, env, url, ctx) {
 }
 
 /**
+ * Record that a transactional send was attempted, and what came back.
+ *
+ * `num_mail_events` is fed by Resend's webhook, so by definition it can only
+ * record a message that reached Resend. A send that was refused, fell through
+ * to the Cloudflare transport, or never ran leaves no trace there at all —
+ * which is exactly the hole that made the first real bill-settled email
+ * un-diagnosable on 12 Sep 2026. This records the ATTEMPT, not the delivery.
+ *
+ * Created on first use, like num_commissions. Never throws: a logging failure
+ * must not turn a sent email into a failed settle.
+ */
+async function logMailAttempt(env, { kind, ref, to, ok, detail }) {
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS num_mail_attempts (
+         id         INTEGER PRIMARY KEY AUTOINCREMENT,
+         kind       TEXT NOT NULL,
+         ref        TEXT,
+         recipient  TEXT,
+         ok         INTEGER NOT NULL,
+         detail     TEXT,
+         created_at TEXT NOT NULL
+       )`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO num_mail_attempts (kind, ref, recipient, ok, detail, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+    ).bind(
+      String(kind).slice(0, 40),
+      ref ? String(ref).slice(0, 64) : null,
+      to ? String(to).slice(0, 160) : null,
+      ok ? 1 : 0,
+      detail ? String(detail).slice(0, 300) : null,
+      now(),
+    ).run();
+  } catch (e) {
+    console.error("logMailAttempt failed", String(e).slice(0, 200));
+  }
+}
+
+/**
  * Tell the venue a bill settled, and say plainly whether NUM will invoice on
  * it. Before this, settling sent nothing at all: the ledger moved, the venue
  * heard nothing, and the first they learned of a commission was a weekly
@@ -8810,8 +8851,16 @@ async function mailBillSettled(env, who, token, out) {
       WHERE l.token = ?1`,
   ).bind(String(token || "").toUpperCase()).first().catch(() => null);
 
-  if (!bill) return { ok: false, reason: "bill not found: " + String(token).slice(0, 40) };
-  if (!bill.venue_email) return { ok: false, reason: "no address on file for " + bill.venue_name };
+  if (!bill) {
+    const miss = { ok: false, reason: "bill not found: " + String(token).slice(0, 40) };
+    await logMailAttempt(env, { kind: "bill_settled", ref: token, to: null, ok: false, detail: miss.reason });
+    return miss;
+  }
+  if (!bill.venue_email) {
+    const miss = { ok: false, reason: "no address on file for " + bill.venue_name };
+    await logMailAttempt(env, { kind: "bill_settled", ref: bill.token, to: null, ok: false, detail: miss.reason });
+    return miss;
+  }
 
   const money = bill.amount ? bill.currency + " " + bill.amount : "the bill";
   const fee = out.billed
@@ -8821,7 +8870,7 @@ async function mailBillSettled(env, who, token, out) {
     : ["This was not a NUM booking, so NUM charges nothing on it. It is on your",
        "statement as a settled bill with no fee, so the record is complete."];
 
-  return sendBatch(env, [{
+  const sent = await sendBatch(env, [{
     // One receipt per bill, whatever happens upstream of this call.
     __idem: "billsettled-" + bill.token,
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
@@ -8847,6 +8896,23 @@ async function mailBillSettled(env, who, token, out) {
       LEGAL_LINE,
     ].join("\n"),
   }]);
+
+  // The whole point: whatever sendBatch decided is now on the record — whether
+  // it reached Resend, fell through to Cloudflare, or was refused outright.
+  await logMailAttempt(env, {
+    kind: "bill_settled",
+    ref: bill.token,
+    to: bill.venue_email,
+    ok: !!sent?.ok,
+    // `via` and `fell_back_from` are the difference between "the email went"
+    // and "the email went, but Resend refused us and nobody noticed".
+    detail: [
+      "via=" + (sent?.via || "?"),
+      sent?.fell_back_from ? "fell_back_from=" + sent.fell_back_from : null,
+      sent?.ok ? "ids=" + (sent.ids || []).join(",") : "error=" + (sent?.error || "no error given"),
+    ].filter(Boolean).join(" | "),
+  });
+  return sent;
 }
 
 async function qrBillsOpen(req, env, url) {

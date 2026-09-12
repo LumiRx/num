@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-12 · production 0.8.259 (app) · growth deployed same day_
+_Last updated: 2026-09-12 · production 0.8.270 (app, live) · tree 0.8.271 BUILT NOT SHIPPED_
 
 ---
 
@@ -12,9 +12,9 @@ _Last updated: 2026-09-12 · production 0.8.259 (app) · growth deployed same da
 
 | Area | State |
 |---|---|
-| App (num-app) | 0.8.259 live. Crash on `inbox.connects` fixed and shipped 9 Sep. |
+| App (num-app) | **0.8.270 live; 0.8.271 in the tree, not shipped** — needs Dre, see below. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 3,847 green, 0 lint errors |
+| Tests | 3,922 green, 0 lint errors |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -56,15 +56,82 @@ top-of-funnel: it collects users and signal for 5arz. Relevant to the host job b
    buyer-propagation window. Their words: the only failure mode that is *instantly fatal and
    non-recoverable*. Posting a member's task into 5arz is such a transfer.
 
-**`/api/version` reports `verify_5arz: true` and it is a lie** — the field is `!!env.GOOGLE_CLIENT_ID`.
-There is no 5arz call anywhere in this codebase yet.
+**Fixed 12 Sep:** `/api/version` used to report `verify_5arz` from `!!env.GOOGLE_CLIENT_ID`. It now
+reports `google_auth` separately and `verify_5arz` from `!!env.FIVEARZ_API_KEY`.
+
+**`growth/fivearz.mjs`** verifies a Proof-of-Personhood credential. The rule that shapes it:
+**sandbox credentials are signed by the production key and verify** — and a sandbox key comes from
+an unauthenticated endpoint. So `test:true` / `sample:true` are checked LAST, after everything else
+has passed, and are what decide whether the badge means anything. ES256 only; `alg:none` and HMAC
+refused before a key is fetched. `unique_human` never read; `liveness` surfaced only as
+`liveness_claimed`. **39 tests.** Secret required: `FIVEARZ_API_KEY` on the growth worker.
+
+### Proven against live production, 12 Sep — S3 is CLOSED
+
+`POST /api/agents/verify-personhood` **returns 200 with `ok:true` and a valid signature.** The 4 Sep
+fix is live; the 10 Aug–4 Sep 500s are over. Run with a throwaway sandbox key minted for the probe
+(`agt_lc6bpc7wfir2`) because the real key lives only in a Worker secret and cannot be read back.
+
+Three things the run corrected, each of which had been silently wrong:
+
+1. **The response field is `pop_jwt`.** Not `credential`/`jwt`/`token` (our guess) and not
+   `jwt`/`pohf_jwt` (the 5arz handoff's own documentation). Reading the wrong field returned
+   `ok:true` with `credential:null` — a pass with nothing to verify. Also present:
+   `attestationId`, and a top-level `testMode`.
+2. **There is no `sub` claim at all.** The verifier read `p.sub`, so every verification reported
+   `subject:null`. The real field is `sub_hash` (SHA-256 of the member id) — which is also the
+   right thing to store, since it is pseudonymous.
+3. **`env` is a third sandbox marker.** A sandbox credential carries `env:"test"`; the public
+   sample carries `env:"sample"`. Rejected when present and not `production` — not required
+   outright, because we have never seen a live credential and do not know whether it sets the
+   field. `test`/`sample` remain the gates that decide.
+
+Live payload, for the record: `id_verified:true`, `liveness:true`, `sybil_checked:false`,
+`method:"stripe_identity+bio_bridge"`, `assurance:"direct_document_liveness"`, 90-day `exp`,
+no `unique_human`, no `verified`.
+
+Also closed from the handoff's verifier list: explicit `User-Agent` on the JWKS fetch (their edge
+403'd a default one), one rate-limited refetch on an unknown `kid` so a key rotation is picked up
+without a deploy, `jti` returned so a consent receipt can be revoked, and `verified` handled as a
+bare literal alongside `liveness`.
+
+### S7 — the `LEDGER` binding: what it actually is
+
+`wrangler.app.jsonc` binds **`LEDGER` → `5arz-ledger`** (`479dfff2-…`) on num-app. Read in full
+on 12 Sep, so the picture is now exact rather than inherited:
+
+- **Nothing writes to it.** Every statement across `worker/` and `growth/` is a `SELECT`; scanned
+  for INSERT/UPDATE/DELETE/ALTER/DROP and there are none. The *capability* is still full write,
+  because a D1 binding has no read-only mode — that is the standing risk, not a current act.
+- **Two consumers, not one.** `worker/air.mjs` (the trust envelope) and `worker/social.mjs`
+  (`POST /verify/5arz`, the member-facing identity link). Removing the binding today would
+  **503 a live feature** — 2 of our 147 members are linked through it. That is why this has sat
+  as decision #1 for eight days: it needs replace-then-remove, not remove.
+- **The handoff's "no auth" is not quite right.** `/verify/5arz` validates a Google ID token with
+  Google and checks the audience, so the *person* is authenticated. What is missing is
+  authorisation from 5arz (we read their database directly, bypassing their API, rate limits and
+  audit) and a consent receipt. Those are the real gaps.
+
+**Fixed 12 Sep, and it was both a security hole and a bug that had never worked:** `trustEnvelope`
+bound the caller-supplied `memberId` straight into `5arz-ledger.members WHERE id=?1`.
+A Num member id and a 5arz member id are **different namespaces that both start `mem_`** — ours is
+`mem_`+20 hex (or legacy `v5_…`), theirs is `mem_`+12. Verified in production: of 147 members the 2
+who are genuinely 5arz-verified both have a 5arz id **not equal** to their Num id, so that lookup
+had never matched for anybody, and the envelope told AiR "no id_check" for the two people who had
+completed one. Meanwhile `GET /api/trust?member=` is reachable by any holder of `AIR_SHARED_KEY`,
+so a partner could put a **5arz** member id in the query string and read that member's verification
+state, country and session scores out of our parent's database. The 5arz id is now read from the
+link *we* stored during the consented `/verify/5arz` flow and never from input, which enforces
+their hard rule and closes the oracle. Side effect: the 145 unlinked members no longer issue three
+cross-company reads that could never have returned anything, so the common path got faster.
 
 ## Known gaps
 
 - `/api/social/requests` drops the connection (status 000) when a member id contains a quote character. The app survives it now; the endpoint still falls over.
 - Host console is eleven stacked cards with no tabs.
 - D1 token at `~/num-worktrees/.secrets/cf-d1.token` is still a placeholder.
-- A Cowork session cannot delete files in the connected folder, so it cannot run `npm run build`. Deploys are Dre's until that permission is granted.
+- **A Cowork session cannot deploy, and the reason is not the build.** File-delete permission was granted on 12 Sep, so `npm run build` works now. The wall is further on: wrangler in the Cowork VM has no Cloudflare credentials at all — `$HOME/.wrangler` there holds only `logs/` and `metrics.json`, because that VM's home is not Dre's home, so his `wrangler login` is invisible to it. Every `wrangler` call fails with "necessary to set a CLOUDFLARE_API_TOKEN". **Staging and shipping are Dre's, full stop**, unless a scoped `CLOUDFLARE_API_TOKEN` is put where the session can read it.
+- **`git` in a worktree needs two env vars from a Cowork shell.** `.git` there reads `gitdir: /Users/dre/Documents/…`, an absolute path the VM cannot resolve, which looks exactly like a broken repo. `export GIT_DIR="$HOME/mnt/NUM/.git/worktrees/app-main" GIT_WORK_TREE="$HOME/mnt/num-worktrees/app-main"` and it works. The repo is fine.
 
 ## Facts that cost tokens to rediscover
 

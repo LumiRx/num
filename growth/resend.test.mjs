@@ -59,3 +59,44 @@ test('an invite is never blind-copied', async () => {
   await sendBatch(env, [{ to: 'a@b.com', from: 'NUM <hello@mail.itsnum.com>', subject: 's', text: 't' }]);
   assert.ok(!('bcc' in seen[0]), 'bulk sends opt out of the standing blind copy');
 });
+
+/* ── which rail did it actually use? ─────────────────────────────────────────
+ * 12 Sep 2026. A bill-settled email reported ok and wrote no row to
+ * num_mail_events. The only evidence that it had gone out over Cloudflare
+ * instead of Resend was the SHAPE of the returned id — an RFC Message-ID
+ * rather than a Resend UUID. A silent fallback on a rejected key looks
+ * identical to a healthy send, which is how a dead RESEND_KEY survives while
+ * every message quietly loses its delivery receipt.
+ */
+test('a send says which rail carried it', async () => {
+  const env = {
+    RESEND_KEY: 'k',
+    _fetch: null,
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ id: 'uuid-1' }] }), { status: 200 });
+  const out = await sendBatch(env, [{ to: ['a@b.com'], subject: 's', text: 't' }]);
+  assert.equal(out.ok, true);
+  assert.equal(out.via, 'resend', 'a Resend send must name Resend');
+  assert.equal(out.fell_back_from, undefined, 'a clean send has nothing to fall back from');
+});
+
+test('a rejected key falls back AND says so', async () => {
+  const env = {
+    RESEND_KEY: 'dead-key',
+    EMAIL: { send: async () => {} },
+    DB: null,
+  };
+  globalThis.fetch = async () => new Response('API key is invalid', { status: 401 });
+  // The cloudflare transport is reached through worker/mailer.mjs; stub it by
+  // giving the binding a send() and letting mailer resolve the id as null.
+  const out = await sendBatch(env, [{ to: ['a@b.com'], subject: 's', text: 't' }]);
+  assert.equal(out.via, 'cloudflare', 'the fallback must name the rail that carried it');
+  assert.match(out.fell_back_from, /resend 401/,
+    'a 401 from Resend must survive into the caller, not vanish behind ok:true');
+});
+
+test('no key at all is reported as a fallback reason, not silence', async () => {
+  const env = { EMAIL: { send: async () => {} } };
+  const out = await sendBatch(env, [{ to: ['a@b.com'], subject: 's', text: 't' }]);
+  assert.equal(out.fell_back_from, 'no RESEND_KEY');
+});
