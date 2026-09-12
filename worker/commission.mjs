@@ -327,6 +327,32 @@ const MIGRATIONS = [
   // merchant is right to distrust the rest of the invoice.
   'ALTER TABLE num_commissions ADD COLUMN lapsed_at TEXT',
 ];
+
+/**
+ * Per-venue walk-in fee, so a promise already made can be kept.
+ *
+ * The invite email every existing venue received says, in these words:
+ *
+ *   "You pay 10% only when a booking actually happens."
+ *
+ * A guest who was already in the building and paid by QR is not a booking. So
+ * the walk-in fee introduced on 12 Sep 2026 cannot be charged to a venue that
+ * was invited on that sentence without Num having quoted one price and billed
+ * another — which is the failure this whole file is written against.
+ *
+ * Dre's call the same day: honour it. The six businesses signed up as of
+ * 12 Sep 2026 keep free walk-ins for good; new venues are invited on copy that
+ * states the fee before they sign.
+ *
+ * Held as DATA rather than a date check in code, because a cutoff computed at
+ * runtime silently re-prices a grandfathered venue the moment somebody edits
+ * the constant, and because a venue asking "why me and not them" deserves an
+ * answer that can be read out of a row. NULL means the default applies; 0 means
+ * this venue was promised free walk-ins.
+ */
+const WALKIN_MIGRATIONS = [
+  'ALTER TABLE num_business_settings ADD COLUMN walkin_fee_cs INTEGER',
+];
 let ready = false;
 async function ensure(env) {
   if (ready || !env?.DB) return;
@@ -334,6 +360,7 @@ async function ensure(env) {
   // One at a time, each failure swallowed: "duplicate column name" is the
   // expected result on every run after the first.
   for (const m of MIGRATIONS) await env.DB.prepare(m).run().catch(() => {});
+  for (const m of WALKIN_MIGRATIONS) await env.DB.prepare(m).run().catch(() => {});
   ready = true;
 }
 /** Test hook — a fresh in-memory database per suite needs the schema again. */
@@ -471,7 +498,10 @@ export async function accrue(env, {
       rate_bp ?? null, flat_cs ?? null, valueCents ?? null, amount_cs,
       currency, state, source, note,
     ).run();
-    return { id, category, kind, amount_cs, state, note };
+    // `rate_bp` and `category` are part of the RETURN, not just the row,
+    // because the settle email picks its sentence from them. It used to say
+    // "NUM's 10%" to everyone, including the two venues on 15%.
+    return { id, category, kind, rate_bp: rate_bp ?? null, amount_cs, state, note };
   } catch (e) {
     console.warn('[commission]', e?.message ?? e);
     return null;
@@ -508,10 +538,22 @@ export async function accrueBillPayment(env, {
   valueCents = null, currency = 'usd', source = 'billqr',
 } = {}) {
   if (!env?.DB || !token) return null;
-  const amount_cs = PAYMENT_ONLY_FLAT_CS;
-  if (amount_cs <= 0) return null; // an agreed zero is valid — bill nothing
   try {
     await ensure(env);
+
+    // A venue promised free walk-ins keeps them. See WALKIN_MIGRATIONS: NULL is
+    // "charge the default", 0 is "we told this venue it would be free".
+    const own = businessId
+      ? await env.DB
+        .prepare('SELECT walkin_fee_cs FROM num_business_settings WHERE business_id = ?1')
+        .bind(String(businessId)).first().catch(() => null)
+      : null;
+    const amount_cs = Number.isFinite(own?.walkin_fee_cs)
+      ? own.walkin_fee_cs
+      : PAYMENT_ONLY_FLAT_CS;
+    // An agreed zero is valid and must leave NO row. A $0 line on a statement
+    // reads as a charge a venue has to query before believing it is nothing.
+    if (!(amount_cs > 0)) return null;
     const id = `cm_bill_${token}`;
     const basis = Number.isFinite(valueCents) && valueCents > 0 ? valueCents : null;
     await env.DB.prepare(
@@ -527,7 +569,9 @@ export async function accrueBillPayment(env, {
       // in a support reply.
       `flat ${(amount_cs / 100).toFixed(2)} — bill paid through Num, guest not referred by Num`,
     ).run();
-    return { id, category: 'payment', kind: 'flat', amount_cs, state: 'accrued' };
+    // rate_bp is null and stated so. A flat line that reported a rate would
+    // let outbound copy quote a percentage on a bill that has none.
+    return { id, category: 'payment', kind: 'flat', rate_bp: null, amount_cs, state: 'accrued' };
   } catch (e) {
     console.warn('[commission]', e?.message ?? e);
     return null;
@@ -613,7 +657,13 @@ export async function settleValue(env, bookingId, valueCents) {
     await env.DB.prepare(
       "UPDATE num_commissions SET basis_cs=?2, amount_cs=?3, state='accrued', note=?4 WHERE id=?1",
     ).bind(row.id, valueCents, amount, `${pct(row.rate_bp)} of ${(valueCents / 100).toFixed(2)}`).run();
-    return { id: row.id, amount_cs: amount };
+    return {
+      id: row.id,
+      amount_cs: amount,
+      category: row.category ?? null,
+      kind: 'percent',
+      rate_bp: row.rate_bp ?? null,
+    };
   } catch (e) {
     console.warn('[commission settle]', e?.message ?? e);
     return null;

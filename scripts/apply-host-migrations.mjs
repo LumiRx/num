@@ -40,6 +40,10 @@ const FILES = [
   // to fresh databases — see the header of that file. A second pass reports
   // 'duplicate column name' and is tolerated below.
   'worker/migrations/0020_requests_booking_fee.sql',
+  // 0021 is the luxury asset layer — yachts, jets, cars, their photographs and
+  // the holds that stop one hull being sold twice. Four new tables plus two
+  // ALTERs, so a second pass reports 'duplicate column name' and is tolerated.
+  'worker/migrations/0021_luxury_assets.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

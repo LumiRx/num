@@ -48,7 +48,10 @@ import { send, AUDIENCE } from './mailer.mjs';
 import { record } from './failures.mjs';
 
 /** The service keys the host console understands (growth/worker.js HOST_SERVICES). */
-export const HOST_SERVICES = ['car', 'reservation', 'stay', 'activity', 'appointment', 'delivery'];
+// Kept identical to growth/worker.js and the console's LABEL map, enforced by
+// worker/hostservices.test.mjs.
+export const HOST_SERVICES = ['car', 'reservation', 'stay', 'activity', 'appointment',
+  'delivery', 'yacht', 'jet', 'provisioning'];
 export const SERVICE_LABELS = Object.freeze({
   car: 'a car or transfer',
   reservation: 'a restaurant reservation',

@@ -655,9 +655,15 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     history.replaceState(null, '', '/host/');
   }
 
+  /* One label per service key. Kept in step with HOST_SERVICES in
+     growth/worker.js and worker/hostaware.mjs by worker/hostservices.test.mjs —
+     a key with no label renders as a raw string to a host, and a label with no
+     key is an option the API will refuse. */
   var LABEL = {
     car: 'Cars and drivers', reservation: 'Restaurants and reservations', stay: 'Stays',
-    activity: 'Activities and tours', appointment: 'Appointments', delivery: 'Deliveries'
+    activity: 'Activities and tours', appointment: 'Appointments', delivery: 'Deliveries',
+    yacht: 'Yachts and boats', jet: 'Jets and helicopters',
+    provisioning: 'Provisioning to port, villa or hangar'
   };
   var VOCAB = { services: [], units: [], fulfilment: [] };
   var pricing = {};

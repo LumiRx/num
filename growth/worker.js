@@ -2122,7 +2122,16 @@ async function hostAuth(env, url) {
 /** The service vocabulary. Shared with num_commissions.category so a host's
  *  services and our commission categories cannot drift into two lists that
  *  mean the same thing and match on nothing. */
-const HOST_SERVICES = ["car", "reservation", "stay", "activity", "appointment", "delivery"];
+/* What a host can say they do. THREE copies of this list exist — here,
+ * worker/hostaware.mjs, and the LABEL map in public/host/index.html. They are
+ * bound together by worker/hostservices.test.mjs, because a key that exists in
+ * one and not another is a service a host can tick and nothing can render, or
+ * an option the console offers and the API rejects.
+ *
+ * yacht / jet / provisioning added 12 Sep for the luxury side: a charter, an
+ * aircraft, and the fridge stocked before anybody boards. */
+const HOST_SERVICES = ["car", "reservation", "stay", "activity", "appointment",
+  "delivery", "yacht", "jet", "provisioning"];
 const HOST_UNITS = ["hour", "day", "trip", "person", "item", "quote"];
 const HOST_FULFILMENT = ["delivered", "on_site", "either"];
 const HOST_TIERS = ["free", "small", "pro", "full"];
@@ -8863,12 +8872,50 @@ async function mailBillSettled(env, who, token, out) {
   }
 
   const money = bill.amount ? bill.currency + " " + bill.amount : "the bill";
-  const fee = out.billed
-    ? ["NUM brought this table, so NUM's 10% applies to this bill. It appears on",
-       "your next weekly statement — nothing is charged to you today and nothing",
-       "is taken out of what the guest paid you."]
-    : ["This was not a NUM booking, so NUM charges nothing on it. It is on your",
-       "statement as a settled bill with no fee, so the record is complete."];
+
+  /* ── WHICH FEE SENTENCE, AND WHY IT IS NOT `out.billed` ──────────────────
+   *
+   * This branched on `out.billed` alone, which was correct while a walk-in
+   * earned nothing: billed meant referred, and referred meant a percentage.
+   * The walk-in flat fee broke that on 12 Sep 2026 — `billed` went true for
+   * walk-ins too, so a venue that had simply let a regular pay by QR would have
+   * been emailed "NUM brought this table, so NUM's 10% applies to this bill."
+   * Wrong about the guest and wrong about the money, in writing, to a merchant.
+   *
+   * So it branches on WHAT was recorded, not on whether anything was. Three
+   * real cases, and the ledger already distinguishes them:
+   *
+   *   category 'payment' → a guest Num did not send. Flat fee.
+   *   kind 'percent'     → Num referred them and the bill was visible.
+   *   kind 'flat'        → Num referred them, the bill was not visible; floor.
+   *
+   * The rate is read off the row rather than typed, for the same reason
+   * feeSentence() exists: two venues are on 15% and this file said 10% to
+   * everyone. */
+  const c = out.commission || null;
+  const rateText = c && c.rate_bp ? (c.rate_bp / 100) + "%" : null;
+  const amountText = c && c.amount_cs != null
+    ? (bill.currency || "") + " " + (c.amount_cs / 100).toFixed(2)
+    : null;
+
+  let fee;
+  if (!out.billed || !c) {
+    fee = ["NUM charges nothing on this bill. It is on your statement as settled",
+           "with no fee, so the record is complete."];
+  } else if (c.category === "payment") {
+    fee = ["This guest was not sent by NUM, so there is no commission on it —",
+           "just the flat " + (amountText || "fee") + " we charge to carry a bill through",
+           "NUM. Nothing is taken out of what the guest paid you, and a guest NUM",
+           "does send you is charged at your normal rate instead."];
+  } else if (c.kind === "percent" && rateText) {
+    fee = ["NUM brought this table, so your " + rateText + " applies to this bill. It appears",
+           "on your next weekly statement — nothing is charged to you today and",
+           "nothing is taken out of what the guest paid you."];
+  } else {
+    fee = ["NUM brought this table. We could not see the bill value, so this is the",
+           "flat " + (amountText || "floor") + " rather than a percentage. It appears on your next",
+           "weekly statement."];
+  }
 
   const sent = await sendBatch(env, [{
     // One receipt per bill, whatever happens upstream of this call.
@@ -9325,7 +9372,7 @@ document.getElementById('bill').onclick=function(){
     var img=el('img');img.src='/api/pay/qr/'+encodeURIComponent(j.token)+'.svg';
     img.style.width='190px';img.style.height='190px';img.style.display='block';
     o.appendChild(el('div',j.amount+' '+j.currency)).className='big';
-    o.appendChild(el('div', j.booking ? ('Booking '+j.booking.short_code+' · '+j.booking.party_size+' guests — NUM earns its 10% on this one') : 'No booking on this table — walk-in, nothing charged')).className='muted';
+    o.appendChild(el('div', j.booking ? ('Booking '+j.booking.short_code+' · '+j.booking.party_size+' guests — NUM earns its commission on this one') : 'No booking on this table — NUM takes no commission on it')).className='muted';
     o.appendChild(img);
     o.appendChild(el('div',j.url));
     document.getElementById('ba').value='';
@@ -9646,14 +9693,46 @@ async function venueStatementPage(req, env, url) {
       { status: 401, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
   const k = url.searchParams.get("k") || "";
+
+  /* ── THIS PARAGRAPH IS READ OFF THE LEDGER, NOT TYPED ────────────────────
+   *
+   * It used to be the literal sentence "10% of bills from guests NUM sent you.
+   * Your own customers, walk-ins and no-shows are never on this page." Two
+   * things went wrong with it.
+   *
+   * It said 10% to everybody, and two venues bill 15%. A venue whose own
+   * statement page quotes a rate lower than the one on its invoice has been
+   * told one price and charged another — this is the merchant-facing half of the
+   * drift that feeSentence() was written to stop in outbound email.
+   *
+   * And from 12 Sep 2026 walk-ins ARE on this page, for venues that joined after
+   * that date. A venue reading "walk-ins are never on this page" and then seeing
+   * a walk-in line concludes we are billing them in error, which is a support
+   * ticket at best and a cancellation at worst.
+   *
+   * Venues signed up on or before 12 Sep were invited on copy promising "10%
+   * only when a booking actually happens", so they keep free walk-ins and this
+   * page still tells them so — truthfully. `walkin_fee_cs = 0` is that promise,
+   * held as data. */
+  const terms = await env.DB.prepare(
+    `SELECT COALESCE(commission_bp, 1000) AS commission_bp, walkin_fee_cs
+       FROM num_business_settings WHERE business_id = ?1`,
+  ).bind(String(who.business.id)).first().catch(() => null);
+  const ratePct = ((terms && terms.commission_bp ? terms.commission_bp : 1000) / 100) + "%";
+  const walkinCs = terms && terms.walkin_fee_cs != null ? Number(terms.walkin_fee_cs) : 200;
+  const walkinLine = walkinCs > 0
+    ? "A guest who was already yours and simply paid through NUM is charged a flat "
+      + (walkinCs / 100).toFixed(2) + " — never a percentage, whatever the bill comes to."
+    : "Your own customers and walk-ins are never on this page.";
+
   return new Response(qrShell(`
 <header>
   <div class="brand">NUM<span>by 5arz</span></div>
   <div class="who">${esc(who.business.name)}<br>${esc(who.name)} · ${esc(who.role)}</div>
 </header>
 <h1>What you owe NUM</h1>
-<p class="muted">10% of bills from guests NUM sent you. Your own customers, walk-ins and
-no-shows are never on this page. The food money already went straight to your account.</p>
+<p class="muted">${esc(ratePct)} of bills from guests NUM sent you. ${esc(walkinLine)}
+No-shows are never charged. The food money already went straight to your account.</p>
 
 <div class="card" id="running"><span class="muted">Loading…</span></div>
 

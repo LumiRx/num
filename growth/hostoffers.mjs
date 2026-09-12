@@ -120,25 +120,55 @@ export function offerCard(offer) {
   };
 }
 
-/** NUM's cut, taken out of the payment. Small, flat where it can be. */
+/** NUM's fee on a board job. Paid by whoever posts it, never by the host. */
 export const FEE_BPS = 500;           // 5%
 export const FEE_MIN_MINOR = 100;     // and never less than a unit of currency
 export const FEE_MAX_MINOR = 5000;    // and never more than 50, on any job
 
 /**
- * What NUM keeps and what the host is owed.
+ * What the poster pays, and what the host is owed.
  *
- * Capped at both ends on purpose. A percentage with no ceiling gives NUM an
+ * ── THE FEE IS ADDED, NOT DEDUCTED ───────────────────────────────────────
+ *
+ * This replaces `split(totalMinor)`, which took the fee OUT of the host's
+ * money: a host quoting 200 received 190. That quietly contradicted a promise
+ * Num had already made them in writing. The host welcome email says, in these
+ * words:
+ *
+ *   "What you pay: one monthly plan, free to start. That is the whole of it —
+ *    no fee per booking, no commission on your work, no cut of anything you
+ *    arrange."
+ *
+ * A 5% deduction is a commission on their work. The board was not live yet, so
+ * nothing was broken — but it would have been on the day it shipped, and the
+ * email had already gone out.
+ *
+ * Dre's call, 12 Sep 2026: the POSTER pays the fee on top. A host quoting 200
+ * receives 200 and the poster is charged 210. That is the standard shape of
+ * this fee everywhere else — Airbnb's guest service fee, ticketing, OpenTable's
+ * diner-side charge — and it keeps the one thing that separates Num's host
+ * pitch from a commission marketplace: we do not take a cut of their work.
+ *
+ * RENAMED, not edited in place. `split(total)` and `quote(price)` take the same
+ * shape of argument and mean different things by it, so a call site inheriting
+ * the old meaning would compile, run, and underpay a host by 5% in silence.
+ * There is no `split` left to call.
+ *
+ * Capped at both ends on purpose. A percentage with no ceiling gives Num an
  * interest in the size of a job it is not doing — the same reason
  * `NETWORK_FEE_MINOR` is flat — and a percentage with no floor costs more to
- * process than it collects.
+ * process than it collects. The floor is additionally clamped to the host's own
+ * price, so the fee can never more than double a very small job.
+ *
+ * @param {number} hostPriceMinor what the HOST asked for, in minor units
+ * @returns {{host:number, fee:number, total:number}} host is paid in full
  */
-export function split(totalMinor) {
-  const total = Math.max(0, Math.floor(Number(totalMinor) || 0));
-  if (!total) return { total: 0, fee: 0, host: 0 };
-  const raw = Math.round((total * FEE_BPS) / 10000);
-  const fee = Math.min(Math.max(raw, FEE_MIN_MINOR), FEE_MAX_MINOR, total);
-  return { total, fee, host: total - fee };
+export function quote(hostPriceMinor) {
+  const host = Math.max(0, Math.floor(Number(hostPriceMinor) || 0));
+  if (!host) return { host: 0, fee: 0, total: 0 };
+  const raw = Math.round((host * FEE_BPS) / 10000);
+  const fee = Math.min(Math.max(raw, FEE_MIN_MINOR), FEE_MAX_MINOR, host);
+  return { host, fee, total: host + fee };
 }
 
 /** Payment states we will act on. Anything else is unknown, and unknown is no. */
@@ -164,7 +194,11 @@ export function canConfirm(job, payment) {
     // it reads like success in a dashboard.
     return { ok: false, why: `Payment is ${payment.status || 'in an unknown state'}, not settled.` };
   }
-  const owed = Math.floor(Number(job.price_minor) || 0);
+  // Against the GROSS, not the host's price. The poster owes price + fee, so
+  // checking the price alone would accept a payment that covers the host and
+  // not Num — and the fee would then have to come out of the host after all,
+  // which is the exact thing `quote()` exists to prevent.
+  const owed = quote(job.price_minor).total;
   const got = Math.floor(Number(payment.amount_minor) || 0);
   if (owed && got < owed) {
     return { ok: false, why: 'Less was paid than the job was quoted at.' };
@@ -173,5 +207,9 @@ export function canConfirm(job, payment) {
       && String(job.currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
     return { ok: false, why: 'The payment is in a different currency from the quote.' };
   }
-  return { ok: true, ...split(got || owed) };
+  // Quoted from the HOST'S PRICE, never from what arrived. Deriving it from
+  // `got` would hand an overpaying poster's extra straight to Num and, worse,
+  // would recompute a 5% fee on a gross that already contains one. The host is
+  // owed exactly what they asked for.
+  return { ok: true, ...quote(job.price_minor), paid: got };
 }

@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-12 · production 0.8.270 (app, live) · tree 0.8.271 BUILT NOT SHIPPED_
+_Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health verdict ok, 0 failing)_
 
 ---
 
@@ -12,7 +12,7 @@ _Last updated: 2026-09-12 · production 0.8.270 (app, live) · tree 0.8.271 BUIL
 
 | Area | State |
 |---|---|
-| App (num-app) | **0.8.270 live; 0.8.271 in the tree, not shipped** — needs Dre, see below. |
+| App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
 | Tests | 3,929 green, 0 lint errors |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
@@ -155,6 +155,14 @@ Airbnb ~15.5%, OpenTable $1–1.50/cover **plus** $149–499/month. **10% is the
 - **The volume being priced for does not exist.** 0 paylinks, 0 bills, 0 commissions, 0 invoices;
   15 scans, all unknown tokens, all from August test venues. Raising a price on a live merchant base
   is far harder than lowering one — stay at the category floor with room to discount.
+
+## Do not roll back a healthy deploy
+
+`release:rollback` was written as the third code block after stage and ship on 12 Sep, Dre ran all
+three in order, and wrangler sat one Enter away from reverting a good deploy — the trust-envelope
+security fix included. Only the interactive prompt saved it. **Rollback is the emergency undo, never
+a step.** Check `/api/health` for `verdict: ok` and `failing: 0` first; at the message prompt, Ctrl+C
+aborts cleanly because nothing has been applied yet. `recipes/deploy.md` now says so.
 
 ## Known gaps
 

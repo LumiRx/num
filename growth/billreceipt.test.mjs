@@ -81,10 +81,44 @@ test('mailBillSettled names which precondition stopped it', () => {
 test('the venue is told plainly whether NUM will invoice on this bill', () => {
   const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
   assert.match(fn, /out\.billed/, 'the email cannot be honest about the fee without checking');
-  assert.match(fn, /NUM's 10% applies/);
-  assert.match(fn, /NUM charges nothing on it/);
-  assert.match(fn, /nothing is charged to you today/,
+  assert.match(fn, /NUM charges nothing on this bill/);
+  assert.match(fn, /nothing is taken out of what the guest paid you/,
     'a venue must not read this as money being taken out of the guest\'s payment');
+});
+
+test('the rate is read off the ledger row, never typed into the email', () => {
+  // It used to say "NUM's 10% applies" to every venue, and two venues bill 15%.
+  // A merchant quoted one rate and invoiced another stops believing the rest of
+  // the invoice, which is the whole reason feeSentence() exists one layer up.
+  //
+  // Matched against the CODE with comments stripped, following the same rule as
+  // scripts/invite_fee.test.mjs: the comment above this function quotes the old
+  // wrong sentence on purpose, and a guard that forces that record to be deleted
+  // deletes the reason the mistake is not repeated.
+  const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  const code = fn
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ');
+  assert.doesNotMatch(code, /\b10%\b/, 'a hardcoded rate is back in the settle email');
+  assert.doesNotMatch(code, /\b15%\b/, 'a hardcoded rate is back in the settle email');
+  assert.match(code, /c\.rate_bp/, 'the rate must come from the commission row');
+  assert.match(code, /rateText/);
+});
+
+test('a walk-in is NOT told that NUM brought the table', () => {
+  // The bug this closes. The branch was `out.billed ? referred : nothing`, and
+  // when walk-ins started earning a flat fee on 12 Sep 2026 `billed` went true
+  // for them too — so a venue whose own regular had paid by QR would have been
+  // emailed "NUM brought this table, so NUM's 10% applies to this bill." Wrong
+  // about the guest and wrong about the money, in writing, to a merchant.
+  const fn = worker.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  assert.match(fn, /c\.category === "payment"/,
+    'the sentence must branch on WHAT was recorded, not merely that something was');
+  assert.match(fn, /This guest was not sent by NUM/);
+  assert.match(fn, /never a percentage|flat/i);
+  // And the referred sentence must sit behind a check that a percentage was
+  // actually taken, so it can never be reached by a flat line.
+  assert.match(fn, /c\.kind === "percent"/);
 });
 
 test('no address on file means no send, not a crash', () => {

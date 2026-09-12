@@ -14,6 +14,30 @@ node scripts/claim.mjs release deploy --who dre
 **Tier 1 — host or admin work only.** Those routes live on the growth worker,
 so `release:stage`/`ship` do not touch them. Only the wrangler line matters.
 
+**ROLLBACK IS NOT A STEP. It is the emergency undo.**
+
+Never list `release:rollback` in the same run of commands as stage and ship.
+It happened on 12 Sep 2026: rollback was written as the third code block after
+stage and ship, Dre ran all three in sequence, and wrangler sat at its "provide
+a message" prompt one Enter away from reverting a healthy deploy — including a
+security fix. Nothing was lost only because the prompt is interactive.
+
+Before rolling back, prove there is something wrong:
+
+```bash
+curl -s https://app.itsnum.com/api/health
+curl -s https://app.itsnum.com/api/version
+```
+
+`"verdict":"ok"` with `"failing":0` means the deploy is fine and a rollback
+would only remove working code. At wrangler's message prompt, Ctrl+C aborts
+cleanly — nothing has been applied yet.
+
+```bash
+cd ~/num-worktrees/app-main
+npm run release:rollback
+```
+
 **Tier 2 — when it fails.**
 
 - *"Nothing to ship for X"* — a stage failed before uploading. Run stage again;
@@ -21,7 +45,13 @@ so `release:stage`/`ship` do not touch them. Only the wrangler line matters.
 - *`index.lock`: File exists* — a crashed earlier run. Check no git process is
   live, then remove it. An empty lock older than an hour is stale.
 - *`EPERM: unlink dist/...`* — a Cowork session, which cannot delete files in a
-  connected folder. Dre runs it, or grants delete permission.
+  connected folder. Fixed by granting delete permission on `~/num-worktrees`
+  (done 12 Sep), or work around it with `mv dist .dist-stale-$(date +%s)`.
+- *`necessary to set a CLOUDFLARE_API_TOKEN`* — a Cowork session has NO
+  Cloudflare credentials: that VM's home is not Dre's home, so `wrangler login`
+  is invisible to it and `$HOME/.wrangler` holds only `logs/`. **Staging and
+  shipping are Dre's.** This is not the `dist/` problem and granting file
+  permissions does not help it.
 - Node is pinned to 22 in `.nvmrc`; `engines` only says >=20, so a newer Node
   will not be blocked and may still misbehave.
 

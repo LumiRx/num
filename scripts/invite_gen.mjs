@@ -22,7 +22,7 @@
 // promise a number the ledger disagrees with. It did until 25 Aug 2026: this
 // file hardcoded "10% only when a booking actually happens" while stays bill
 // 15%, which meant every hotel invited was quoted a third under its real rate.
-import { feeSentence } from '../worker/commission.mjs';
+import { PAYMENT_ONLY_SENTENCE, feeSentence } from '../worker/commission.mjs';
 
 /* ── deterministic pick ─────────────────────────────────────────────────── */
 
@@ -581,6 +581,12 @@ export function generateInvite(lead, opts = {}) {
     // copy is written for: a "Hotel & Spa" is billed as a stay whichever noun
     // the invite happens to use.
     fee_line:            feeSentence({ category: lead.category, country: lead.country }),
+    // Stated BEFORE they sign, which is the whole reason it is here. The six
+    // venues invited before 12 Sep 2026 were told "10% only when a booking
+    // actually happens" and keep free walk-ins for good, because that is what
+    // they agreed to. Anybody invited from now on is told about the flat fee up
+    // front, so the first time they see it is not on an invoice.
+    walkin_line:         PAYMENT_ONLY_SENTENCE,
     direct_line:         directLine(lead),
     website_url:         websiteUrl(lead, base, token),
     // Routed through the accounts Worker so the click is recorded, then 302'd
@@ -617,6 +623,7 @@ export function generateInvite(lead, opts = {}) {
     `- Travellers find you in their own language.`,
     `- Bookings arrive on your phone. Guests pay you directly.`,
     `- ${fields.fee_line}`,
+    `- ${fields.walkin_line}`,
     `- Real reviews only, from verified completed bookings.`,
     ``,
     `Claim ${short} — free: ${fields.claim_url}`,
@@ -639,6 +646,7 @@ export function generateInvite(lead, opts = {}) {
     personal_open: fields.personal_open,
     traveller_ask: fields.traveller_ask,
     fee_line:      fields.fee_line,
+    walkin_line:   fields.walkin_line,
     direct_line:   fields.direct_line,
     website_url:   fields.website_url,
     num_reply:     fields.num_reply,

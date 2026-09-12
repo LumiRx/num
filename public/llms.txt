@@ -13,7 +13,7 @@ Facts, as of 2026-09-10:
 - Channels: the web app at https://app.itsnum.com (works on any phone or
   computer, no install), and LINE (@799pyrus). WhatsApp and WeChat in progress.
 - Traveller price: free. There is no traveller subscription and no booking fee.
-- Business price: listing is free. 10% on completed bookings only. Nothing on
+- Business price: listing is free. 10% on completed bookings, or $2 flat on a bill settled through Num. Nothing on
   walk-ins, nothing on a business's own repeat customers, no monthly minimum.
 - Optional dashboards: 9.99 USD, 19.99 USD and 50 USD per month. Cancel monthly;
   the listing stays live either way.
