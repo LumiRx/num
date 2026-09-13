@@ -23,6 +23,8 @@
  * Nothing here is model-written. Names, links, phones, addresses and opening
  * state all come from the verified directory row.
  */
+import { pressable } from '../../lib/a11y';
+import { openShareCard } from '../../lib/sharecard';
 import type { Pick } from '../../lib/types';
 import { webEvent } from '../../lib/track';
 
@@ -104,6 +106,26 @@ export default function PickCards({ picks }: { picks: Pick[] }) {
                   Website
                 </a>
               ) : null}
+              {/* SHARE — the missing half of an idea.
+                  Num suggests three places and the person reading them is
+                  usually deciding on behalf of four people. Until now the
+                  only way to get one of these in front of the group was to
+                  screenshot it. This puts it on the plan as an idea, or in a
+                  friend's chat, without leaving the thread. */}
+              <span
+                {...pressable(() => openShareCard({
+                  kind: 'idea',
+                  title: p.name,
+                  summary: [p.name, p.why, p.address].filter(Boolean).join(' — '),
+                  place: p.address ?? p.area ?? null,
+                  link: p.link,
+                }))}
+                role="button"
+                tabIndex={0}
+                style={{ ...pill, cursor: 'pointer' }}
+              >
+                Share
+              </span>
             </div>
 
             {/* The address is shown, not hidden behind the map link: it is what
@@ -126,8 +148,9 @@ const pill: React.CSSProperties = {
   textDecoration: 'none',
   color: 'var(--ink)',
   background: 'var(--chip-bg, rgba(0,0,0,.05))',
-  // A tap target on a phone, held by someone walking.
-  minHeight: 32,
+  // A tap target on a phone, held by someone walking. 44 is Apple's floor and
+  // this row is used one-handed, in the street, by someone already moving.
+  minHeight: 44,
   display: 'inline-flex',
   alignItems: 'center',
 };

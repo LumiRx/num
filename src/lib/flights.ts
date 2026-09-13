@@ -37,13 +37,6 @@ export interface FlightQuery {
   adults?: number; cabin?: string | null; from?: string | null; to?: string | null;
 }
 
-/** "2h 45m" — minutes are how the API talks and not how anybody thinks. */
-export const duration = (mins?: number | null): string => {
-  if (!mins || mins <= 0) return '';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h ? `${h}h${m ? ' ' + m + 'm' : ''}` : `${m}m`;
-};
 
 /** An offer has a shelf life; past it, the price is a memory of a price. */
 export const stillValid = (o: FlightOffer): boolean =>
@@ -150,5 +143,73 @@ export async function checkOffer(o: FlightOffer, q: FlightQuery): Promise<{ ok: 
     };
   } catch {
     return { ok: false, same: false, message: 'Couldn’t re-check that one.' };
+  }
+}
+
+/* ── READING A FARE ──────────────────────────────────────────────────────
+   The presentation arithmetic lives in faredisplay.mjs — plain JavaScript so
+   its tests can EXECUTE it rather than pattern-match the source, which is
+   what the day-shift bug needed and did not have. Re-exported here so the
+   rest of the app has one place to import fare things from. */
+export { dayShift, duration, heldFor, legWindow, stopsLabel } from './faredisplay.mjs';
+import { duration, legWindow, stopsLabel } from './faredisplay.mjs';
+
+/**
+ * One line a person can paste into a message and still understand tomorrow.
+ * Used by share-to-chat and share-to-plan, so both say the same thing.
+ */
+export function offerSummary(o: FlightOffer, q: FlightQuery): string {
+  const leg = o.legs[0];
+  const seg = leg?.segments ?? [];
+  const date = seg[0]?.departs.slice(0, 10) ?? q.depart;
+  return [
+    `${q.fromCode} → ${q.toCode} ${date}`,
+    legWindow(leg),
+    `${o.validatingCarrier ?? ''} ${stopsLabel(leg?.stops)} ${duration(o.totalDurationInMinutes)}`.trim(),
+    `${o.currency ?? ''} ${o.price ?? ''}`.trim(),
+  ].filter(Boolean).join(' · ');
+}
+
+export interface BookHandoff {
+  available: boolean;
+  url?: string;
+  ref?: string;
+  partner?: string;
+  fee_cs?: number;
+  disclosure?: string;
+  why?: string;
+}
+
+/**
+ * Ask the server whether this fare can be handed to a partner who can issue
+ * it, and for the sentence that must be read before it is.
+ *
+ * Called on tap, not on render. Every call mints a referral row, so calling
+ * it for five offers the moment a search returns would write five referrals
+ * for a person who has not decided anything — the ledger would stop meaning
+ * "Num sent somebody" and start meaning "Num showed somebody a list".
+ */
+export async function bookHandoff(o: FlightOffer, q: FlightQuery): Promise<BookHandoff> {
+  const seg = o.legs[0]?.segments ?? [];
+  try {
+    const res = await fetch(apiUrl('/api/flights/handoff'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        me: store.get().me?.id ?? null,
+        fromCode: q.fromCode,
+        toCode: q.toCode,
+        depart: seg[0]?.departs.slice(0, 10) ?? q.depart,
+        ret: q.ret ?? null,
+        adults: q.adults ?? 1,
+        price: o.price,
+        currency: o.currency,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as BookHandoff & { error?: string };
+    if (!res.ok) return { available: false, why: body.error ?? 'Couldn’t open the booking link.' };
+    return body;
+  } catch {
+    return { available: false, why: 'Couldn’t open the booking link.' };
   }
 }

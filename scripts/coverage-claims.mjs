@@ -25,6 +25,26 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESTINATIONS } from './destinations.mjs';
 
+/**
+ * WHAT THIS LINTER CANNOT SEE: public/assets/og.jpg
+ *
+ * The card every shared link renders — iMessage, Slack, LinkedIn, X, and the
+ * LLM preview fetchers — has the coverage claim BAKED INTO THE PIXELS. This
+ * file scans HTML and text. It cannot read a JPEG, so on 10 Sep it corrected
+ * 149 written claims from 77 to 104 and left the most-seen surface NUM has
+ * still saying 77. Found 13 Sep, a month later, in a screenshot of a text
+ * message.
+ *
+ * scripts/make_og.py now imports TRUTH from this file rather than carrying its
+ * own numbers, so the card cannot drift again. But it only re-renders when
+ * somebody runs it. If the destination list changes, the card is stale until:
+ *
+ *     python3 scripts/make_og.py
+ *
+ * The general lesson, third time in this project: a number that is retyped
+ * drifts, a number that is derived cannot. Anything that states a rate or a
+ * count should read it from the one place that owns it.
+ */
 export const TRUTH = {
   destinations: DESTINATIONS.length,
   countries: new Set(DESTINATIONS.map((d) => d.country)).size,

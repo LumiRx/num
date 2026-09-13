@@ -76,6 +76,7 @@ function baseState() {
     calM: 0 as const,
     selDay: null,
     shareOpen: false,
+    shareCard: null,
     shLive: true,
     shHide: true,
     copied: false,

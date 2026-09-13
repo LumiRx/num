@@ -352,6 +352,8 @@ export interface AppState {
   selDay: string | null; // 'mo-day', e.g. '7-28'
 
   shareOpen: boolean;
+  /** A card the user has asked to send somewhere — null when the picker is shut. */
+  shareCard: import('./sharecard').SharePayload | null;
   shLive: boolean;
   shHide: boolean;
   copied: boolean;

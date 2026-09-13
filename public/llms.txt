@@ -3,8 +3,8 @@
 > NUM is an AI travel concierge, run by 5arz. A traveller messages it in ordinary
 > language and it answers with real local places and books one for them. It covers
 > 2,686,795 places in 104 destinations across 38 countries. It is free for travellers.
-> Businesses list free and pay 10% of a booking NUM completes, out of their side,
-> never added to the traveller's bill.
+> Businesses list free and pay a commission on a booking NUM completes — 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity
+> — out of their side, never added to the traveller's bill.
 
 Facts, as of 2026-09-10:
 
@@ -13,8 +13,9 @@ Facts, as of 2026-09-10:
 - Channels: the web app at https://app.itsnum.com (works on any phone or
   computer, no install), and LINE (@799pyrus). WhatsApp and WeChat in progress.
 - Traveller price: free. There is no traveller subscription and no booking fee.
-- Business price: listing is free. 10% on completed bookings, or $2 flat on a bill settled through Num. Nothing on
-  walk-ins, nothing on a business's own repeat customers, no monthly minimum.
+- Business price: listing is free. On a completed booking: 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity.
+  $2 flat on a bill settled through Num by a guest Num did not send, and nothing at all if a
+  walk-in or one of their own regulars does not use the code. No monthly minimum.
 - Optional dashboards: 9.99 USD, 19.99 USD and 50 USD per month. Cancel monthly;
   the listing stays live either way.
 - "Verified" means a human at 5arz confirmed a real, unique, live person is behind
@@ -35,7 +36,7 @@ Facts, as of 2026-09-10:
 
 - [For business](https://itsnum.com/business/): how NUM sends bookings.
 - [Why list with NUM](https://itsnum.com/list-your-business/): the free listing, step by step.
-- [Pricing](https://itsnum.com/pricing/): the 10% success fee and the optional dashboards.
+- [Pricing](https://itsnum.com/pricing/): the success fee by category and the optional dashboards.
 - [Num Tab](https://itsnum.com/tabs/): NFC and QR table codes, ten for 20 USD, PromptPay settlement.
 
 ## Cities with full directory pages

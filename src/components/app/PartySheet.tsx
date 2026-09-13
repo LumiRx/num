@@ -394,6 +394,17 @@ export default function PartySheet() {
                         {[i.day, i.time, i.address || i.place].filter(Boolean).join(' · ') || 'no date yet'}
                         {i.by_name ? ` · ${i.by_name}` : ''}
                       </div>
+                      {/* THE PRICE, IN THE MONEY COLOUR.
+                          Shared fares arrive here carrying a cost and the row
+                          never rendered it — the group saw "LAX → JFK" as an
+                          idea with no number, which is the one thing they are
+                          deciding on. See --money in themes.css: it is for
+                          what someone pays, and nothing else. */}
+                      {i.cost ? (
+                        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--money)', marginTop: 3 }}>
+                          {i.cost}
+                        </div>
+                      ) : null}
                     </div>
                     <span style={{ flex: 'none', fontSize: 9, fontWeight: 800, letterSpacing: '.1em', padding: '4px 8px', borderRadius: 999, background: st.bg, color: st.fg }}>
                       {st.text}

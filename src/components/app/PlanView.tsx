@@ -152,7 +152,8 @@ function BookingRow({ b }: { b: Booking }) {
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ink-08)' }}>
           <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>{b.note}</div>
           <Attendees title={b.title} />
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 4 }}>{b.cost}</div>
+          {/* What this cost, in the money colour — see --money in themes.css. */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--money)', marginTop: 4 }}>{b.cost}</div>
           {b.receipt && (
             <div style={{ fontSize: 10, letterSpacing: '.08em', fontWeight: 700, color: 'var(--color-accent-700)', marginTop: 4 }}>
               RECEIPT FILED · {b.receipt}

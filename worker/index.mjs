@@ -237,19 +237,32 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // The day an issuer is switched on, this connects on its own. That is also
   // the day the seller-of-travel registration has to be in hand — /api/pay/status
   // flips its published claim at the same moment, from the same function.
-  if (canIssueFlight(env ?? {}) && state?.flightBooking) {
-    const { bookingBlock } = await import('./flightbooking.mjs');
-    const { payBlock } = await import('./flightpay.mjs');
-    const b = state.flightBooking;
-    const open = bookingBlock(b);
-    if (open) system.push({ type: 'text', text: open });
-    // The money is read back only once everything is collected — quoting a
-    // total while three passport numbers are still missing invites them to
-    // agree to a number that is not yet the number.
-    const { readyToIssue } = await import('./flightbooking.mjs');
-    if (readyToIssue(b).ok) {
-      const pay = payBlock(b, env ?? {});
-      if (pay) system.push({ type: 'text', text: pay });
+  if (canIssueFlight(env ?? {})) {
+    // ── 13 SEP 2026: THE BOOKING IS READ FROM D1, NOT FROM THE REQUEST ────
+    //
+    // This used to be `state.flightBooking` — a field the APP posts. While
+    // the whole feature was inert that was merely untidy. Switched on it is
+    // two separate problems: a passport number and a date of birth would
+    // ride through the client on every turn of the conversation, and
+    // `readyToIssue()` would be judging a record the client wrote. A client
+    // that claims "state: ready" is a client that gets the concierge to read
+    // a total back and invite a confirmation for a booking nobody has.
+    //
+    // The order lives server-side, keyed by member. See flightorder.mjs.
+    const { openBookingFor } = await import('./flightorder.mjs');
+    const b = await openBookingFor(env, state?.memberId ?? state?.member_id ?? null);
+    if (b) {
+      const { bookingBlock, readyToIssue } = await import('./flightbooking.mjs');
+      const { payBlock } = await import('./flightpay.mjs');
+      const open = bookingBlock(b);
+      if (open) system.push({ type: 'text', text: open });
+      // The money is read back only once everything is collected — quoting a
+      // total while three passport numbers are still missing invites them to
+      // agree to a number that is not yet the number.
+      if (readyToIssue(b).ok) {
+        const pay = payBlock(b, env ?? {});
+        if (pay) system.push({ type: 'text', text: pay });
+      }
     }
   }
   if (extraSystem) system.push({ type: 'text', text: extraSystem });
@@ -2347,6 +2360,23 @@ export default {
     // whose path begins with '/api/book' must be matched HERE, above the
     // bookdesk prefix. worker/bookdesk.wiring.test.mjs drives real requests at
     // all four and fails if one of them starts answering bookdesk's 404.
+    // '/api/flights/handoff' — deliberately NOT under '/api/book*'. Both
+    // bookdesk (restaurants) and sabre-booking (air) own a '/api/book' prefix
+    // and swallow anything beneath it; a third tenant under the same prefix is
+    // how the '/api/booking/status' outage happened. Its own path, matched
+    // before either of them, is the cheap way not to repeat that.
+    if (url.pathname.startsWith('/api/flights/order')) {
+      const { handleFlightOrder } = await import('./flightorder.mjs');
+      const res = await handleFlightOrder(request, env, url.pathname.slice('/api/flights/order'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname === '/api/flights/handoff') {
+      const { handleFlightHandoff } = await import('./flighthandoff.mjs');
+      const res = await handleFlightHandoff(request, env);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
     if (url.pathname === '/api/book/link') return await handleBookLink(request, env);
     if (url.pathname === '/api/book/platforms') return handlePlatforms();
     if (url.pathname.startsWith('/api/booking')) {

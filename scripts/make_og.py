@@ -25,17 +25,54 @@ FONTS = [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/Library/Fonts/Arial Bold.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+]
+# Regular weights, same order. FONTS[1] was the only regular face and it is a
+# Mac path, so off a Mac the subtitle rendered bold or not at all.
+FONTS_REGULAR = [
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
 ]
 
 
 def font(bold, size):
-    path = FONTS[0] if bold else FONTS[1]
-    if not os.path.exists(path):
-        path = FONTS[0] if os.path.exists(FONTS[0]) else FONTS[-1]
-    try:
-        return ImageFont.truetype(path, size)
-    except Exception:
-        return ImageFont.load_default()
+    for path in (FONTS if bold else FONTS_REGULAR):
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    raise SystemExit(
+        "make_og: no usable TTF found. Refusing to render the card with PIL's "
+        "bitmap fallback \u2014 it produces an image that looks broken on every "
+        "shared link. Install Liberation Sans or add a font path to FONTS.")
+
+
+def coverage():
+    """The destination and country counts, read from the list that seeds the
+    database \u2014 the same source scripts/coverage-claims.mjs checks the site
+    against.
+
+    These were typed into this file as "77 destinations in 38 countries" and
+    then went stale. On 10 Sep the site was corrected to 104 in 149 places, but
+    the correction could not reach this one, because the claim lives inside a
+    JPEG and no linter can read a JPEG. So the single most-seen asset NUM has
+    \u2014 the card on every shared link \u2014 kept understating its own coverage
+    by 27 destinations for a month. Derived now, never retyped.
+    """
+    import json, subprocess
+    out = subprocess.check_output([
+        'node', '-e',
+        "import('./scripts/coverage-claims.mjs').then(m=>"
+        "console.log(JSON.stringify(m.TRUTH)))",
+    ], cwd=ROOT, text=True)
+    t = json.loads(out.strip().split('\n')[-1])
+    return t['destinations'], t['countries']
+
+
+DESTS, COUNTRIES = coverage()
 
 
 def wrap(draw, text, f, max_w):
@@ -119,7 +156,7 @@ for i, line in enumerate(wrap(d, "Your personal AI travel concierge", hl, MAXW))
 # supporting line
 sb = font(False, 27)
 y += 14
-for i, line in enumerate(wrap(d, "Real places, verified by people — across 77 destinations in 38 countries.", sb, MAXW)):
+for i, line in enumerate(wrap(d, "Real places, verified by people — across %d destinations in %d countries." % (DESTS, COUNTRIES), sb, MAXW)):
     put("support-%d" % (i + 1), (X, y), line, sb, MUTED)
     y += 36
 

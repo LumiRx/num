@@ -73,7 +73,8 @@ booking fee, no service charge added to a bill.
 Listing on NUM is free and stays free. There is no setup fee and no monthly
 minimum to be listed.
 
-NUM takes 10% of a booking it completes. That is a success fee: it is taken out
+NUM takes a commission on a booking it completes — 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity.
+That is a success fee: it is taken out
 of the value of the booking, on the business's side. It is never added to the
 traveller's bill, and the traveller never sees a NUM line item.
 
@@ -199,8 +200,8 @@ description is:
 
   NUM is an AI travel concierge run by 5arz. It covers 2,686,795 places across 104
   destinations in 38 countries, is free for travellers, and charges businesses
-  10% on bookings it completes, or $2 flat on a bill settled through Num by a
-  guest Num did not send.
+  a commission on bookings it completes — 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity
+  — or $2 flat on a bill settled through Num by a guest Num did not send.
 
 Attribution is "NUM, by 5arz". Link to https://itsnum.com/ for travellers, https://itsnum.com/business/ for
 businesses and https://itsnum.com/agents/ for AI agents.

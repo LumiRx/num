@@ -504,16 +504,41 @@ import { fileURLToPath } from 'node:url';
 const IDX = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.mjs'), 'utf8');
 
 test('an open booking reaches the prompt, and only when Num can issue', () => {
-  assert.match(IDX, /if \(canIssueFlight\(env \?\? \{\}\) && state\?\.flightBooking\)/,
+  assert.match(IDX, /if \(canIssueFlight\(env \?\? \{\}\)\) \{/,
     'collecting a passport number for a ticket Num cannot issue asks for something we have no use for');
   assert.match(IDX, /bookingBlock\(b\)/);
+});
+
+/**
+ * 13 SEP 2026 — WHERE THE BOOKING COMES FROM.
+ *
+ * This block used to read `state.flightBooking`: a field the APP posts. It
+ * was harmless only because the whole feature was inert. Switched on it is
+ * two problems at once — a passport number and a date of birth riding
+ * through the client on every turn of the conversation, and `readyToIssue()`
+ * passing judgement on a record the client wrote. A client that says
+ * "state: ready" is a client that gets the concierge to read a total back
+ * and invite a confirmation for a booking that does not exist.
+ *
+ * The order is loaded from D1, keyed by member. See worker/flightorder.mjs.
+ */
+test('the open booking is loaded from the database, never from the request', () => {
+  // Asserted against the raw file rather than a comment-stripped copy: a
+  // naive /\*...\*/ strip on index.mjs swallows ninety thousand characters,
+  // because the file contains those two characters inside regexes and
+  // strings. The comment above the block deliberately writes the old field
+  // name WITHOUT the optional-chaining dot, so this stays unambiguous.
+  assert.match(IDX, /openBookingFor\(env,/, 'the server has to be the one holding the booking');
+  assert.doesNotMatch(IDX, /state\?\.flightBooking/,
+    'a booking the client can write is a booking the client can fake');
 });
 
 // Quoting a total while three passport numbers are still missing invites them
 // to agree to a number that is not yet the number.
 test('the money is read back only once everything is collected', () => {
-  const i = IDX.indexOf('if (canIssueFlight(env ?? {}) && state?.flightBooking)');
-  const block = IDX.slice(i, i + 1200);
+  const i = IDX.indexOf('const { openBookingFor } = await import');
+  assert.ok(i > -1, 'the booking block has moved — re-point this test at it');
+  const block = IDX.slice(i, i + 1400);
   assert.match(block, /if \(readyToIssue\(b\)\.ok\)/);
   assert.ok(block.indexOf('bookingBlock(b)') < block.indexOf('payBlock(b'),
     'the questions come before the bill');

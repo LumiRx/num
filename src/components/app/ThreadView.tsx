@@ -3,7 +3,11 @@ import PickCards from './PickCards';
 import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { apiUrl } from '../../lib/apibase';
-import { checkOffer, duration, stillValid, type FlightOffer } from '../../lib/flights';
+import {
+  bookHandoff, checkOffer, duration, heldFor, legWindow, offerSummary, stillValid, stopsLabel,
+  type BookHandoff, type FlightOffer,
+} from '../../lib/flights';
+import { openShareCard } from '../../lib/sharecard';
 import { pressable } from '../../lib/a11y';
 import { useStickyBottom } from '../../lib/stickyscroll';
 import { tagOf } from '../../lib/derive';
@@ -71,6 +75,8 @@ function FlightTray() {
   const error = useApp((s) => s.flightError);
   const [checking, setChecking] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<Record<string, string>>({});
+  const [handoff, setHandoff] = useState<Record<string, BookHandoff>>({});
+  const [opening, setOpening] = useState<string | null>(null);
 
   if (busy) {
     return (
@@ -93,6 +99,35 @@ function FlightTray() {
     const out = await checkOffer(o, state.query);
     setVerdict((v) => ({ ...v, [o.id]: out.message }));
     setChecking(null);
+  };
+
+  /**
+   * BOOK IT is two taps on purpose.
+   *
+   * The first tap asks the server for the link and shows the fee sentence.
+   * The second one opens it. A single tap that both minted a referral and
+   * threw the traveller onto another company's checkout would mean the fee
+   * disclosure arrives after they have already left — which is the one
+   * failure the whole disclosure design exists to prevent. Nobody reads a
+   * sentence on a page they are navigating away from.
+   */
+  const startBooking = async (o: FlightOffer) => {
+    if (handoff[o.id]) return;
+    setOpening(o.id);
+    const out = await bookHandoff(o, state.query);
+    setHandoff((h) => ({ ...h, [o.id]: out }));
+    setOpening(null);
+  };
+
+  const shareOffer = (o: FlightOffer) => {
+    const seg = o.legs[0]?.segments ?? [];
+    openShareCard({
+      kind: 'flight',
+      title: `${state.query.fromCode} → ${state.query.toCode} · ${o.currency ?? ''} ${o.price ?? ''}`.trim(),
+      summary: offerSummary(o, state.query),
+      day: seg[0]?.departs.slice(0, 10) ?? state.query.depart,
+      cost: o.price ? `${o.currency ?? ''} ${o.price}`.trim() : null,
+    });
   };
 
   return (
@@ -141,16 +176,38 @@ function FlightTray() {
           const hops = leg ? [leg.segments[0]?.from, ...leg.segments.map((sg) => sg.to)].filter(Boolean).join(' → ') : '';
           const hidden = o.legs.flatMap((l) => l.segments).flatMap((sg) => sg.hiddenStops ?? []);
           const dead = !stillValid(o);
+          const held = heldFor(o.validUntil);
+          const window = legWindow(leg);
+          const hop = handoff[o.id];
           return (
             <div key={o.id} style={{ borderRadius: 12, border: '1px solid var(--ink-08)', padding: '9px 11px', opacity: dead ? 0.5 : 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>
+                {/* THE NUMBER THEY PAY, in the money colour. On a fare list
+                    this is the only thing anyone is comparing, and until now
+                    it was the same ink as the aircraft type. */}
+                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--money)', letterSpacing: '-.01em' }}>
                   {o.currency} {o.price}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--ink-40)' }}>
-                  {o.validatingCarrier} · {leg?.stops === 0 ? 'non-stop' : `${leg?.stops} stop${leg?.stops === 1 ? '' : 's'}`} · {duration(o.totalDurationInMinutes)}
+                  {o.validatingCarrier} · {stopsLabel(leg?.stops)} · {duration(o.totalDurationInMinutes)}
                 </div>
               </div>
+              {/* DEPARTURE AND ARRIVAL, with the day it lands.
+                  13 Sep 2026: this card used to print "B63677 17:59" for a
+                  LAX→JFK that lands at 05:40 the NEXT MORNING, and nothing
+                  else. A traveller had no way to know the evening they
+                  thought they were keeping was already gone. The +1 is the
+                  single most important thing on the row after the price. */}
+              {window && (
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', marginTop: 4 }}>
+                  {window.replace(/ \+(\d)$/, '')}
+                  {/\+\d$/.test(window) && (
+                    <span style={{ color: 'var(--color-accent-700)', fontWeight: 800, marginLeft: 5 }}>
+                      {window.slice(window.lastIndexOf('+'))} day{window.endsWith('+1') ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              )}
               <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 3 }}>{hops}</div>
               <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 2 }}>
                 {leg?.segments.map((sg) => `${sg.marketing} ${sg.departs.slice(11, 16)}`).join(' · ')}
@@ -163,24 +220,97 @@ function FlightTray() {
                   Unadvertised stop at {hidden.map((h) => h.airportCode).join(', ')}
                 </div>
               )}
+              {/* Why a dead card is grey. Without this the traveller sees a
+                  faded row and assumes the app is broken. */}
+              {held && (
+                <div style={{ fontSize: 10.5, color: dead ? 'var(--color-accent-700)' : 'var(--ink-40)', marginTop: 3 }}>
+                  {dead ? 'This price has expired — ask me to search again.' : `Held at this price for ${held}`}
+                </div>
+              )}
               {verdict[o.id] && <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.45 }}>{verdict[o.id]}</div>}
-              <div
-                {...pressable(() => void recheck(o))}
-                style={{
-                  cursor: 'pointer', marginTop: 7, borderRadius: 999, padding: '7px 12px', textAlign: 'center',
-                  fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em',
-                  background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
-                  opacity: checking === o.id ? 0.55 : 1,
-                }}
-              >
-                {checking === o.id ? 'RE-CHECKING…' : 'IS THIS STILL LIVE?'}
+
+              {/* The fee sentence, before the link and never after it. */}
+              {hop?.available && hop.disclosure && (
+                <div
+                  style={{
+                    fontSize: 10.5, color: 'var(--ink-60)', lineHeight: 1.5, marginTop: 7,
+                    borderRadius: 10, background: 'var(--money-soft)', padding: '7px 9px',
+                  }}
+                >
+                  {hop.disclosure}
+                </div>
+              )}
+              {hop && !hop.available && hop.why && (
+                <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.5 }}>{hop.why}</div>
+              )}
+
+              <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
+                <div
+                  {...pressable(() => void recheck(o))}
+                  className="press tap"
+                  style={{
+                    cursor: 'pointer', flex: 1, borderRadius: 999, padding: '0 10px', textAlign: 'center',
+                    fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
+                    background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
+                    opacity: checking === o.id ? 0.55 : 1,
+                  }}
+                >
+                  {checking === o.id ? 'CHECKING…' : 'STILL LIVE?'}
+                </div>
+                <div
+                  {...pressable(() => shareOffer(o))}
+                  className="press tap"
+                  aria-label="Send this fare to someone"
+                  style={{
+                    cursor: 'pointer', borderRadius: 999, padding: '0 14px', textAlign: 'center',
+                    fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
+                    background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
+                  }}
+                >
+                  SHARE
+                </div>
               </div>
+
+              {/* BOOK IT. Absent entirely when the fare has expired — a
+                  checkout opened from a dead price is a complaint waiting to
+                  happen. Two taps: the first fetches the link and shows the
+                  fee, the second leaves the app. */}
+              {!dead && (
+                hop?.available && hop.url ? (
+                  <a
+                    href={hop.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="press tap"
+                    style={{
+                      display: 'flex', marginTop: 6, borderRadius: 999, padding: '0 12px', textDecoration: 'none',
+                      fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
+                      background: 'var(--grad-accent)', color: '#fff',
+                    }}
+                  >
+                    CONTINUE TO {String(hop.partner ?? 'the partner').toUpperCase()} →
+                  </a>
+                ) : hop ? null : (
+                  <div
+                    {...pressable(() => void startBooking(o))}
+                    className="press tap"
+                    style={{
+                      cursor: 'pointer', marginTop: 6, borderRadius: 999, padding: '0 12px', textAlign: 'center',
+                      fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
+                      background: 'var(--money)', color: '#fff',
+                      opacity: opening === o.id ? 0.55 : 1,
+                    }}
+                  >
+                    {opening === o.id ? 'ONE MOMENT…' : 'SEE THE FULL PRICE'}
+                  </div>
+                )
+              )}
             </div>
           );
         })}
       </div>
       <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-        Real fares from Sabre. Num can price and re-check these — it can’t buy the ticket, so the purchase is still yours to make.
+        Real fares from Sabre. Num prices and re-checks them; the ticket is issued by whoever you continue to.
       </div>
     </div>
   );

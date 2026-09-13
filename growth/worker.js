@@ -1352,6 +1352,16 @@ const GUARDS = Object.freeze([
   "offers-noreferrer",      // the console key cannot leave the offers page as a Referer
   "claim-send-cap",         // one claim cannot mail a third party without limit
   "consent-throttle",       // /api/consent is no longer uncapped
+  // ── added 13 Sep ────────────────────────────────────────────────────────
+  "token-len-10",           // public tokens are 10 chars, drawn without modulo bias
+  "qr-oracle-logged",       // the two QR artwork routes record an unknown token
+  "visitor-id-unforgeable", // no caller-chosen header decides who a visitor is
+  "arrive-reply-minimal",   // check-in replies carry no reservation times
+  "venue-currency-default", // a paylink falls back to the venue's currency, not THB
+  "mail-reply-to-rest",     // reply_to, the spelling Resend's REST API reads
+  "mail-no-blind-fallback", // outside mail never rides the accept-and-discard rail
+  "host-relink-emailed",    // an email address does not fetch a console key
+  "tables-failure-visible", // the console says when it is signed out or offline
 ]);
 
 async function health(env) {
@@ -5046,6 +5056,21 @@ function scanPage(o) {
         e.preventDefault();
         var code=(inp.value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
         if(code.length<3){ say('bad','That code looks too short. It is four characters, like <b>T882</b>.'); inp.focus(); return; }
+        // THE SAME ALPHABET THE SERVER USES. CODE_OK excludes I, L, O, U, 0 and
+        // 1 precisely because those are the characters people confuse — and
+        // this check tested LENGTH ONLY, so "TO82" sailed through, the server
+        // answered bad_code, and the client had no branch for it. A guest who
+        // typed an O for a zero — the single most likely mistake at the
+        // counter — got the message reserved for OUR outage, telling them to go
+        // and interrupt staff, and apologising for "our trouble" when nothing
+        // on our side had gone wrong.
+        if(/[ILOU01]/.test(code)){
+          say('bad','<b>That code has a character we never use.</b><br>Booking codes '
+            + 'leave out the letters I, L, O and U and the digits 0 and 1, because '
+            + 'they are too easy to mix up. Check it against your confirmation \u2014 '
+            + 'an <b>O</b> is almost always a zero, and the other way round.');
+          inp.focus(); return;
+        }
         go.disabled=true; go.textContent='Checking…';
         fetch('https://itsnum.com/api/venue/arrive',{
           method:'POST', headers:{'content-type':'application/json'},
@@ -5073,6 +5098,12 @@ function scanPage(o) {
               'If you think this is wrong, show this screen to the staff — they can confirm you from their end.');
           } else if(j.error==='slow_down'){
             say('bad','Too many tries. Wait a moment, then try once more.');
+          } else if(j.error==='bad_code'){
+            // The server's own view of the same rule. Reachable if anything gets
+            // past the client check above.
+            say('bad','<b>That code is not one of ours.</b><br>It is four characters '
+              + 'and never contains I, L, O, U, 0 or 1. Check your confirmation and '
+              + 'try once more.');
           } else if(j.error==='not_active'){
             say('bad','<b>That booking is not active.</b><br>It may have been cancelled. Staff can sort it from their end.');
           } else {
@@ -9403,6 +9434,10 @@ a{color:var(--accent-ink)}
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#eef3f1;color:var(--accent-ink)}
 .pill.off{background:#f4f0ee;color:#8c5a2f}
 .out{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;word-break:break-word}
+.banner{margin:14px 0;padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.5;
+  background:#fff4e5;border:1px solid #e0a642;color:#4a3306}
+.banner a{color:#4a3306;font-weight:600}
+.banner.gone{background:#fdecea;border-color:#d98b84;color:#5a1b14}
 .big{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink)}
 </style></head><body><div class="wrap">${inner}</div></body></html>`;
 }
@@ -9460,6 +9495,12 @@ b.onclick=function(){
 
 <h1>Tables &amp; codes</h1>
 <p class="muted">Each table carries one sticker to pay and one code to check in. Both are printed once and never change.</p>
+
+<!-- The page-level banner. Until 13 Sep this screen had NO failure path at all:
+     every loader checked only for success, with no else and no catch, so an
+     expired session left three panels reading "Loading..." for ever and a
+     waiter could not tell "no open bills" from "signed out". -->
+<div id="banner" class="banner" hidden role="alert" aria-live="assertive"></div>
 
 <div id="idcard"></div>
 
@@ -9565,7 +9606,34 @@ function drawBills(rows){
     tr.appendChild(td(r.token));
     var c=el('td');c.className='r';
     var b=el('button','Paid');b.className='ghost';b.style.margin='0';
-    b.onclick=function(){b.disabled=true;post('/api/venue/bill/settle',{token:r.token}).then(refresh)};
+    // THE BILL IS PAID AND THE GUEST IS STANDING THERE.
+    //
+    // This used to be a bare disable-then-post with no else and no
+    // catch. A refusal or a dropped connection greyed the button out for ever,
+    // the row stayed in Open bills, and the only recovery was guessing that a
+    // reload was needed. So: say what happened, and give the button back.
+    b.onclick=function(){
+      b.disabled=true;b.textContent='Closing\u2026';
+      post('/api/venue/bill/settle',{token:r.token}).then(function(j){
+        if(j&&j.ok){banner(null);return refresh()}
+        b.disabled=false;b.textContent='Paid';
+        if(j&&j.error==='forbidden'){
+          banner('<b>You cannot close bills.</b> Ask a manager \u2014 they can '
+            + 'mark this paid from their own sign-in. The bill is untouched.','gone');
+        } else if(j&&(j.error==='unauthorised'||j.error==='revoked')){
+          banner('<b>You have been signed out.</b> The bill is still open and '
+            + 'nothing was charged. <a href="/biz/tables">Sign in again</a> and '
+            + 'close it.','gone');
+        } else {
+          banner('<b>That did not go through.</b> The bill is still open and the '
+            + 'guest has not been charged twice \u2014 closing it again is safe.','gone');
+        }
+      }).catch(function(){
+        b.disabled=false;b.textContent='Paid';
+        banner('<b>No connection.</b> The bill is still open. Try again in a '
+          + 'moment \u2014 pressing it twice cannot charge anyone twice.','gone');
+      });
+    };
     c.appendChild(b);tr.appendChild(c);
     tb.appendChild(tr);
   });
@@ -9705,12 +9773,49 @@ function drawIdentity(j){
   };
 }
 
+function banner(msg,cls){
+  var b=document.getElementById('banner');
+  if(!msg){b.hidden=true;b.textContent='';return}
+  b.className='banner'+(cls?' '+cls:'');
+  b.innerHTML=msg;b.hidden=false;
+}
+// Every panel used to fail in silence. Now one loader reports for all of them:
+// the FIRST real problem wins the banner, because a waiter needs one sentence,
+// not five.
+var trouble=null;
+function loader(path,draw,what){
+  return get(path).then(function(j){
+    if(j&&j.ok){draw(j);return}
+    if(j&&(j.error==='unauthorised'||j.error==='revoked')) trouble=trouble||'signedout';
+    else trouble=trouble||what;
+  }).catch(function(){ trouble=trouble||'offline'; });
+}
 function refresh(){
-  get('/api/venue/identity').then(function(j){if(j.ok)drawIdentity(j)});
-  get('/api/venue/tables').then(function(j){if(j.ok)drawTables(j.tables||[])});
-  get('/api/venue/bills').then(function(j){if(j.ok)drawBills(j.bills||[])});
-  get('/api/venue/agent').then(function(j){if(j.ok)drawAgent(j.runs||[])});
-  ${isOwner ? "get('/api/venue/staff').then(function(j){if(j.ok)drawStaff(j.staff||[])});" : ""}
+  trouble=null;
+  var jobs=[
+    loader('/api/venue/identity',function(j){drawIdentity(j)},'identity'),
+    loader('/api/venue/tables',function(j){drawTables(j.tables||[])},'tables'),
+    loader('/api/venue/bills',function(j){drawBills(j.bills||[])},'bills'),
+    loader('/api/venue/agent',function(j){drawAgent(j.runs||[])},'agent')
+  ];
+  ${isOwner ? "jobs.push(loader('/api/venue/staff',function(j){drawStaff(j.staff||[])},'staff'));" : ""}
+  return Promise.all(jobs).then(function(){
+    if(!trouble){banner(null);return}
+    if(trouble==='signedout'){
+      // The common one, and the one the old page hid best. A magic link is 20
+      // minutes; a tab left open overnight is signed out by morning.
+      banner('<b>You have been signed out.</b> Nothing here is lost \u2014 the '
+        + 'link we email you lasts 20 minutes, so an overnight tab always needs a '
+        + 'fresh one. <a href="/biz/tables">Sign in again</a>.','gone');
+    } else if(trouble==='offline'){
+      banner('<b>No connection.</b> This is what we last saw, and nothing on it '
+        + 'has been changed. It will fill in on its own when you are back.');
+    } else {
+      banner('<b>Some of this did not load.</b> What you can see is accurate; the '
+        + 'rest is missing rather than empty. Reload, or carry on and tell us if '
+        + 'it keeps happening.');
+    }
+  });
 }
 refresh();
 if(K)document.getElementById('stmt').href='/biz/statement?k='+encodeURIComponent(K);

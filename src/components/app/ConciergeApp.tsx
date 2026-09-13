@@ -19,6 +19,7 @@ import PlanView from './PlanView';
 import MemoryView from './MemoryView';
 import CalendarSheet from './CalendarSheet';
 import ShareSheet from './ShareSheet';
+import ShareToSheet from './ShareToSheet';
 import WalletSheet from './WalletSheet';
 import BusinessSheet from './BusinessSheet';
 import EventSheet from './EventSheet';
@@ -419,6 +420,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <TravelSheet />
       <InviteSheet />
       <ShareSheet />
+      {/* Mounted after ShareSheet on purpose: the two can both be open in a
+          confused moment, and this one is the more specific answer. */}
+      <ShareToSheet />
       <WalletSheet />
       <PermissionDialog />
     </div>
