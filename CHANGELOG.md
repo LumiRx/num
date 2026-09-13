@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.294 — 2026-09-13 22:43 UTC
+
+(no note given)
+
+- commit `fd75b0e`
+
 ## 0.8.293 — 2026-09-13 21:05 UTC
 
 ios 2.1.0: the app store bundle no longer auto-updates, service-workers or ad-pixels itself
