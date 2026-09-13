@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.295 — 2026-09-13 23:43 UTC
+
+voice layer: register mirroring
+
+- commit `938ced6`
+
 ## 0.8.294 — 2026-09-13 22:43 UTC
 
 (no note given)
