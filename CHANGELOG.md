@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.289 — 2026-09-13 04:58 UTC
+
+(no note given)
+
+- commit `633f233`
+
 ## 0.8.288 — 2026-09-13 04:50 UTC
 
 flights ui: stop dragging the reader, cap the tray, contain scroll chaining, 44px floor
