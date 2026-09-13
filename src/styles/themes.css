@@ -25,10 +25,34 @@
   --aurora-b: radial-gradient(circle at 60% 45%, #cfe4ff 0%, #e4d4ff 55%, transparent 72%);
   --aurora-opacity: 0.55;
   --shell-bg: #14100e;
+
+  /* ── MONEY ────────────────────────────────────────────────────────────
+     One colour for the number a person is about to pay, or has just saved.
+
+     Why it is its own token and not the accent: the accent is Num's voice —
+     it marks what Num is saying and where to tap. A price is not Num
+     talking, it is the fact the whole screen is about, and on a fare list
+     it is the ONLY thing a traveller is comparing. Green is the one colour
+     people read as "this is fine" before they have read the digits, which
+     is exactly the feeling a price should carry when it is a good one.
+
+     Used ONLY for the amount they pay or save, never for a balance, a
+     receipt total or a past charge — a colour that appears everywhere stops
+     being a signal and becomes a texture. --money-soft is the tint behind a
+     price pill; --money-ink is for the rare case of text ON that tint.
+
+     Every theme overrides this, because a green that sings on paper white
+     disappears on midnight navy. */
+  --money: #0b6b45;
+  --money-soft: rgba(11, 107, 69, 0.11);
+  --money-ink: #084d31;
 }
 
 /* ── Bloom — soft rose and lilac. The other half of "popular". ───────────── */
 [data-theme='bloom'] {
+  --money: #0b6b45;
+  --money-soft: rgba(11, 107, 69, 0.11);
+  --money-ink: #084d31;
   --color-accent: #d6337a;
   --color-accent-700: #a2185a;
   --color-accent-2: #e07aa8;
@@ -41,6 +65,9 @@
 
 /* ── Midnight — dark mode, the most-asked-for layout everywhere. ─────────── */
 [data-theme='midnight'] {
+  --money: #5fdda0;
+  --money-soft: rgba(95, 221, 160, 0.14);
+  --money-ink: #c9f7e2;
   --field-bg: rgba(255, 255, 255, 0.07);
   --color-bg: #14161c;
   --color-surface: #1b1e26;
@@ -70,6 +97,9 @@
 
 /* ── Neon — futuristic. Cyan and violet on near-black. ───────────────────── */
 [data-theme='neon'] {
+  --money: #38ffc2;
+  --money-soft: rgba(56, 255, 194, 0.14);
+  --money-ink: #c4fff0;
   --field-bg: rgba(0, 229, 255, 0.07);
   --color-bg: #07080f;
   --color-surface: #0d1020;
@@ -99,6 +129,9 @@
 
 /* ── Heritage — old school. Oxblood, brass and cream, like a members' club. ─ */
 [data-theme='heritage'] {
+  --money: #3f6b34;
+  --money-soft: rgba(63, 107, 52, 0.13);
+  --money-ink: #2b4a23;
   --color-bg: #f6f1e6;
   --color-surface: #efe7d8;
   --color-text: #2a2016;
@@ -126,6 +159,9 @@
 
 /* ── Plain — no colour opinion at all. Greyscale with one blue. ──────────── */
 [data-theme='plain'] {
+  --money: #0a7a4a;
+  --money-soft: rgba(10, 122, 74, 0.11);
+  --money-ink: #075736;
   --color-bg: #f5f5f6;
   --color-surface: #ececee;
   --color-text: #1c1c1e;
@@ -154,6 +190,9 @@
 
 /* ── Forest — deep green and brass. Calm, classic, reads well outdoors. ──── */
 [data-theme='forest'] {
+  --money: #0a5f7a;
+  --money-soft: rgba(10, 95, 122, 0.12);
+  --money-ink: #07445a;
   --color-bg: #f2f5f1;
   --color-surface: #e7ece5;
   --color-text: #1b2a20;
@@ -180,6 +219,9 @@
 
 /* ── Mono — the futuristic-minimal one. Near-white, one hairline, no blur. ── */
 [data-theme='mono'] {
+  --money: #0a6b42;
+  --money-soft: rgba(10, 107, 66, 0.10);
+  --money-ink: #07472c;
   --color-bg: #ffffff;
   --color-surface: #fafafa;
   --color-text: #0a0a0a;
