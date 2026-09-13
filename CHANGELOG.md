@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.296 — 2026-09-13 23:56 UTC
+
+voice: house rules, six dials, good news, lint
+
+- commit `7fbcb49`
+
 ## 0.8.295 — 2026-09-13 23:43 UTC
 
 voice layer: register mirroring
