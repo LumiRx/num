@@ -4,26 +4,37 @@
 // with the word in it, and telling somebody they are in when the write failed.
 // The second is the expensive one — a member who believes they entered and is
 // absent from the draw is worse off than one who was told nothing.
-import { test, describe, beforeEach } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import {
-  ENTRY_CODE, NEEDS_ACCOUNT_REPLY, __resetSchema, entryCount, entryReply, isEntry,
+  ENTRY_CODE, NEEDS_ACCOUNT_REPLY, entryCount, entryReply, isEntry,
   recordEntry, weekKeyFor,
 } from './packdraw.mjs';
 
-beforeEach(() => __resetSchema());
+const M23 = readFileSync(new URL('./migrations/0023_giveaway.sql', import.meta.url), 'utf8');
+const M26 = readFileSync(new URL('./migrations/0026_giveaway_entrant_key.sql', import.meta.url), 'utf8');
 
+/* The REAL migration schema, and a harness that lets a bad statement throw.
+   The version this replaces caught every error and returned null or an empty
+   list — which is how `no such column: week_key` passed its tests and failed
+   in production on every single in-app entry. A test harness that hides a
+   schema error is testing a database nobody has. */
 function db() {
   const d = new DatabaseSync(':memory:');
+  d.exec('CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, phone TEXT, phone_verified INTEGER DEFAULT 0);');
+  for (const raw of (M23 + '\n' + M26).split(';')) {
+    const stmt = raw.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim();
+    if (stmt) d.exec(stmt + ';');
+  }
   const DB = {
     prepare(sql) {
       const b = [];
       const api = {
         bind(...a) { b.push(...a); return api; },
-        async first() { try { return d.prepare(sql).get(...b) ?? null; } catch { return null; } },
-        async all() { try { return { results: d.prepare(sql).all(...b) }; } catch { return { results: [] }; } },
+        async first() { return d.prepare(sql).get(...b) ?? null; },
+        async all() { return { results: d.prepare(sql).all(...b) }; },
         async run() { const r = d.prepare(sql).run(...b); return { meta: { changes: Number(r.changes ?? 0) } }; },
       };
       return api;
@@ -92,14 +103,14 @@ describe('recording it', () => {
     assert.equal(a.already, false);
     assert.equal(b.already, true, 'a repeat must say so, not imply a second chance');
     assert.equal(c.already, true, 'still the same week');
-    assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_entries').get().n, 1);
+    assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_entrants').get().n, 1);
   });
 
   test('the next week is a fresh entry', async () => {
     const { d, env } = db();
     await recordEntry(env, { memberId: 'mem_1', now: new Date('2026-09-16T10:00:00Z') });
     await recordEntry(env, { memberId: 'mem_1', now: new Date('2026-09-23T10:00:00Z') });
-    assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_entries').get().n, 2);
+    assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_entrants').get().n, 2);
   });
 
   test('no account is a clear refusal, not a silent miss', async () => {

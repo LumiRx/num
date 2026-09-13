@@ -14,6 +14,7 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
 import {
   disclosure, dollars, grossCs, handleFlightHandoff, handoffAvailable, parseRequest,
 } from './flighthandoff.mjs';
@@ -50,36 +51,83 @@ beforeEach(() => {
   env = { DB: d1(db), LGT_PARTNER_ID: 'num' };
 });
 
-describe('it stops existing the day Num can issue a ticket', () => {
-  test('a configured Sabre issuer switches the handoff off', () => {
-    const issuing = { ...env, SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{"create":"/x"}' };
-    assert.equal(handoffAvailable(issuing).available, false);
-    assert.match(handoffAvailable(issuing).why, /issue this itself/i);
+describe('it is the primary rail, not a fallback', () => {
+  // Reversed 13 Sep 2026. These four tests used to assert the opposite: that
+  // a configured Sabre issuer switched this route OFF, because sending a
+  // traveller to a partner checkout that charges a surcharge is indefensible
+  // when you could have issued the ticket yourself.
+  //
+  // Dre's call is that the partner is how Num books flights. The reasoning
+  // is not the commission — it is that the partner issuing keeps Num out of
+  // being merchant of record for air transport, which is a licence, a
+  // chargeback desk and a refund desk, not a line of code. What survives the
+  // reversal untouched is the fee disclosure in the suite below; it gets
+  // harder to justify dropping, not easier, now that every flight goes here.
+
+  test('a capable Sabre issuer does NOT switch the handoff off', () => {
+    const both = { ...env, SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{"create":"/x"}' };
+    const gate = handoffAvailable(both);
+    assert.equal(gate.available, true, 'the partner is the primary rail even when Num is capable');
+    assert.equal(gate.backup, 'sabre', 'and the capability is reported as the backup');
   });
 
-  test('and the route agrees, without anyone editing the route', async () => {
-    const issuing = { ...env, SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{"create":"/x"}' };
-    const res = await handleFlightHandoff(post(GOOD), issuing);
-    const body = await res.json();
-    assert.equal(body.available, false);
-    assert.equal(body.url, undefined, 'no link may escape once we could have booked it ourselves');
+  test('the route agrees, and still returns a link', async () => {
+    const both = { ...env, SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{"create":"/x"}' };
+    const body = await (await handleFlightHandoff(post(GOOD), both)).json();
+    assert.equal(body.available, true);
+    assert.ok(body.url);
+  });
+
+  test('no partner configured says so, and names the rail that can take it', async () => {
+    const sabreOnly = { DB: env.DB, SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{"create":"/x"}' };
+    const gate = handoffAvailable(sabreOnly);
+    assert.equal(gate.available, false);
+    assert.equal(gate.fallback, 'sabre', 'the app must know this is "buy it another way", not "cannot be bought"');
+    const res = await handleFlightHandoff(post(GOOD), sabreOnly);
+    assert.equal(res.status, 200, 'a correct refusal is not a broken route');
+    assert.equal((await res.json()).url, undefined);
+  });
+
+  test('nothing configured at all is an honest nothing', () => {
+    const gate = handoffAvailable({});
+    assert.equal(gate.available, false);
+    assert.equal(gate.fallback, null);
   });
 
   test('refusing is a 200, because "no" is an answer and not a fault', async () => {
-    // A 404 here would show up in the logs as a broken route every time the
-    // client correctly asked whether the button should exist.
     const res = await handleFlightHandoff(post(GOOD), { DB: env.DB });
     assert.equal(res.status, 200);
     assert.equal((await res.json()).available, false);
   });
 
-  test('no partner configured is also a clean no', () => {
-    assert.equal(handoffAvailable({}).available, false);
-    assert.match(handoffAvailable({}).why, /partner/i);
+  test('available whenever a partner is configured', () => {
+    assert.equal(handoffAvailable(env).available, true);
   });
 
-  test('available only when a partner exists and we cannot issue', () => {
-    assert.equal(handoffAvailable(env).available, true);
+  test('a refusal carries the backup all the way out to the app', async () => {
+    const sabreOnly = { DB: env.DB, SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{"create":"/x"}' };
+    const body = await (await handleFlightHandoff(post(GOOD), sabreOnly)).json();
+    assert.equal(body.available, false);
+    assert.equal(body.fallback, 'sabre', 'the gate knew; the response has to say it too');
+  });
+
+  test('the per-booking backup branch exists for the day a route is refused', () => {
+    // "Sabre as a backup" is meant to work per booking, not only per
+    // deployment: if the partner cannot build a link for a particular route,
+    // the answer names the rail that can take it.
+    //
+    // Honest note: that branch is not reachable today, because parseRequest
+    // rejects every input flightLink would refuse. It is here so the day the
+    // partner starts declining routes — a sanctioned country, a carrier they
+    // do not hold — the app already knows what to do instead of showing a
+    // 502. Asserted in the source rather than faked with a stub that proves
+    // nothing about the real path.
+    const src = readFileSync(new URL('./flighthandoff.mjs', import.meta.url), 'utf8');
+    const at = src.indexOf('if (!link?.url)');
+    assert.ok(at > -1, 'the link-failure branch is gone');
+    const branch = src.slice(at, at + 600);
+    assert.match(branch, /fallback: f\.backup/);
+    assert.doesNotMatch(branch, /status: 502/, 'a refusal the app can act on is not a server error');
   });
 });
 

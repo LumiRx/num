@@ -35,7 +35,7 @@ const STRIPE = 'https://api.stripe.com/v1';
 // Whether Num can issue a ticket decides how travel settles, and therefore
 // which compliance claim this endpoint is allowed to publish. One definition,
 // in services.mjs, rather than a second opinion here.
-import { canIssueFlight } from './services.mjs';
+import { fulfilment } from './services.mjs';
 
 /**
  * NUM Stars have TWO POOLS, and the split is the whole design:
@@ -111,22 +111,52 @@ export const STAR_POLICY = Object.freeze({
  * whichever way this resolves.
  */
 export function travelSettlement(env) {
-  return canIssueFlight(env ?? {})
-    ? {
+  const f = fulfilment(env ?? {});
+
+  // ── 13 SEP 2026: THE POSTURE IS PER-RAIL, NOT PER-COMPANY ──────────────
+  //
+  // This used to be one of two answers, chosen by whether Num was CAPABLE of
+  // issuing. With LetsGo2Trip as the primary rail and Num issuing as the
+  // backup, that question no longer has one answer: a deployment can route
+  // almost every booking to the partner and still, on the rare one the
+  // partner cannot take, charge the traveller itself and become merchant of
+  // record for that sale.
+  //
+  // Publishing only the comfortable half of that would be exactly the
+  // `invent_fact` aimed at ourselves this endpoint exists to prevent. So the
+  // acting mode is stated first, and any backup that could change it is
+  // stated alongside — because a registration you need for one booking a
+  // month is a registration you need.
+  if (f.primary === 'sabre') {
+    return {
       mode: 'num_is_merchant_of_record',
       summary: 'Num charges the traveller and is the merchant of record on the ticket.',
-      // Said plainly, because the point of computing this is that somebody
-      // reading the endpoint learns the true posture.
       seller_of_travel: 'Num takes payment for air transport, so the §17550.20(g)(5) exemption does not apply. '
         + 'Registration with the California Attorney General (and the Florida and Washington equivalents) is required.',
       chargebacks: 'land on Num',
-    }
-    : {
+    };
+  }
+  // Anything that is not Num taking the money is the same published posture,
+  // partner configured or not: the §17550.20(g)(5) exemption is about not
+  // handling the funds, and that holds whether a partner is standing by or
+  // the traveller simply books elsewhere. A third mode was drafted here and
+  // removed — inventing a new legal claim is not a side effect a routing
+  // change gets to have.
+  {
+    return {
       mode: 'direct_to_partner',
       summary: 'The traveller pays the travel partner directly. Num never holds the money.',
-      seller_of_travel: 'Exempt under B&P §17550.20(g)(5) — Num does not handle the funds.',
-      chargebacks: 'land on the partner',
+      seller_of_travel: f.backup === 'sabre'
+        ? 'Exempt under B&P §17550.20(g)(5) for partner-issued bookings — Num does not handle those funds. '
+          + 'BUT Num can issue and charge directly when the partner cannot take a booking, and the exemption '
+          + 'does not apply to those. Registration is required before that backup carries a real sale.'
+        : 'Exempt under B&P §17550.20(g)(5) — Num does not handle the funds.',
+      chargebacks: f.backup === 'sabre'
+        ? 'land on the partner, except on a Num-issued backup booking'
+        : 'land on the partner',
+      ...(f.backup ? { backup_issuer: f.backup } : {}),
     };
+  }
 }
 
 /** Everything about Stars, plus how travel settles today. */

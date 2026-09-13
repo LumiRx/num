@@ -31,6 +31,8 @@
  * class of error the card-shop classifier exists to avoid, one layer up.
  */
 
+import { eligibleCount, enter, phoneForMember } from './giveaway.mjs';
+
 /**
  * What a member sends. Short, unambiguous, hard to type by accident.
  *
@@ -41,12 +43,16 @@
 export const ENTRY_CODE = 'PACKS';
 
 /**
- * The entry period, identified by the Thursday it ends on.
+ * The entry period, named by the Thursday it closes on.
  *
  * The rules define a week as Friday 00:00 UTC to the following Thursday 23:59
  * UTC, so the closing Thursday names the period — and a member who enters on
  * Friday and one who enters the following Wednesday land in the same draw,
  * which is the whole point.
+ *
+ * This is a LABEL, shown to a member and printed on the rules page. It is not
+ * the key. The key is `week_start`, the opening Friday as an epoch integer,
+ * computed by `giveaway.weekStart()` — see the note on `recordEntry`.
  */
 export function weekKeyFor(now = new Date()) {
   const d = new Date(now);
@@ -65,71 +71,69 @@ export function weekKeyFor(now = new Date()) {
 export function isEntry(text) {
   const t = String(text ?? '')
     .trim()
-    .replace(/^[\s"'.,!¡¿?()\[\]-]+|[\s"'.,!¡¿?()\[\]-]+$/g, '')
+    .replace(/^[\s"\'.,!¡¿?()\[\]-]+|[\s"\'.,!¡¿?()\[\]-]+$/g, '')
     .toUpperCase();
   return t === ENTRY_CODE;
 }
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS num_giveaway_entries (
-  week_key TEXT NOT NULL,
-  member_id TEXT NOT NULL,
-  entered_at TEXT NOT NULL,
-  source TEXT,
-  PRIMARY KEY (week_key, member_id)
-);
-CREATE INDEX IF NOT EXISTS idx_entries_week ON num_giveaway_entries(week_key);
-`;
-let ready = false;
-async function ensure(env) {
-  if (ready || !env?.DB) return;
-  await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
-  ready = true;
-}
-/** Tests only — the module-level flag would otherwise leak between them. */
-export const __resetSchema = () => { ready = false; };
-
 /**
- * Record one entry.
+ * Record an in-app entry.
  *
- * The primary key is (week, member), so sending PACKS five times on Tuesday is
- * one entry — which is what clause 3 of the rules promises, enforced by the
- * table rather than by remembering to check.
+ * ── THIS FILE NO LONGER OWNS A TABLE, AND THAT IS THE FIX ────────────────
  *
- * Returns `already: true` on a repeat so the reply can say "you're already in"
- * instead of implying a second chance nobody has.
+ * It used to carry its own `CREATE TABLE IF NOT EXISTS num_giveaway_entries`
+ * keyed (week_key, member_id), and its own INSERT against those columns. The
+ * table already existed, created by migration 0023 with a different shape, so
+ * the CREATE was a silent no-op and **every in-app entry failed on
+ * `no such column: week_key`** in production 0.8.290. Meanwhile the SMS door
+ * wrote the real shape and worked, so entries accumulated in a table the app
+ * could not write to and the draw could not read.
+ *
+ * Two modules owning one table is the whole bug. There is now exactly one
+ * writer — `worker/giveaway.mjs` — and this file calls it.
+ *
+ * ── WHY THE PHONE LOOKUP COMES FIRST ─────────────────────────────────────
+ *
+ * A person who has texted PACKS and then sends it in the app must end up with
+ * one ticket, not two. Resolving their number before building the key means
+ * both doors produce `phone:+44…` and the unique index collapses the second.
+ * A member with no number on file keys as `member:mem_…` — still one ticket,
+ * and still able to enter, which matters because 73% of members have no phone.
  */
 export async function recordEntry(env, { memberId, now = new Date(), source = 'app' } = {}) {
   if (!env?.DB) return { ok: false, why: 'no database' };
   if (!memberId) return { ok: false, why: 'sign in first', needsAccount: true };
-  try {
-    await ensure(env);
-    const weekKey = weekKeyFor(now);
-    const before = await env.DB
-      .prepare('SELECT entered_at FROM num_giveaway_entries WHERE week_key=?1 AND member_id=?2')
-      .bind(weekKey, String(memberId)).first().catch(() => null);
-    if (before) return { ok: true, already: true, weekKey };
 
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO num_giveaway_entries (week_key, member_id, entered_at, source)
-       VALUES (?1,?2,?3,?4)`,
-    ).bind(weekKey, String(memberId), new Date(now).toISOString(), String(source).slice(0, 24)).run();
-    return { ok: true, already: false, weekKey };
+  // If we cannot READ the member's number we must not fall back to keying on
+  // the member id: they may already hold a phone-keyed entry from a text, and
+  // two different keys are two tickets. Refuse, and let them try again.
+  let phone = null;
+  try {
+    phone = await phoneForMember(env, memberId);
   } catch (e) {
-    console.warn('[packdraw]', e?.message ?? e);
+    console.warn('[packdraw] phone lookup failed', e?.message ?? e);
     return { ok: false, why: 'could not record that entry' };
   }
+
+  const res = await enter(env, {
+    phone,
+    memberId,
+    source,
+    now: Math.floor(new Date(now).getTime() / 1000),
+  });
+
+  if (!res.ok) return { ok: false, why: 'could not record that entry' };
+  return { ok: true, already: res.created === false, weekKey: weekKeyFor(now) };
 }
 
-/** How many are in this week's draw. Shown to the member, so it must be real. */
+/**
+ * How many are in this week's draw. Shown to the member, so it must be real.
+ *
+ * Reads through the same counter the draw uses, so the number a member is told
+ * and the number the draw runs on cannot disagree.
+ */
 export async function entryCount(env, now = new Date()) {
-  if (!env?.DB) return 0;
-  try {
-    await ensure(env);
-    const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM num_giveaway_entries WHERE week_key=?1')
-      .bind(weekKeyFor(now)).first().catch(() => null);
-    return Number(r?.n ?? 0);
-  } catch { return 0; }
+  return eligibleCount(env, Math.floor(new Date(now).getTime() / 1000));
 }
 
 /**

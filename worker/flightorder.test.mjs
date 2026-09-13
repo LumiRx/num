@@ -122,6 +122,69 @@ describe('it is switched off, and that is load-bearing', () => {
   });
 });
 
+describe('with a partner configured, this whole rail goes dark', () => {
+  // 13 Sep 2026. LetsGo2Trip is the primary way a traveller buys a flight and
+  // Num issuing is the backup, so these routes answer only when no partner is
+  // standing by. The reason is not tidiness: the partner's own checkout
+  // collects passenger details on their page, so running the in-chat
+  // collection as well would ask a traveller for a passport number Num has
+  // no use for — and then store it.
+  const withPartner = () => ({ ...bookingOn(), LGT_PARTNER_ID: 'num' });
+
+  test('the route refuses and points at the rail that is acting', async () => {
+    const res = await handleFlightOrder(
+      new Request('https://app.itsnum.com/api/flights/order/start', {
+        method: 'POST', body: JSON.stringify({ me: 'mem_1', offer: OFFER }),
+      }),
+      withPartner(), '/start',
+    );
+    const body = await res.json();
+    assert.equal(body.available, false);
+    assert.equal(body.via, 'lgt', 'a dark backup must never read as a dead end');
+    assert.equal(body.order, undefined);
+  });
+
+  test('no passport number is collected on the partner rail', async () => {
+    const e = withPartner();
+    await ensure(e);
+    const res = await handleFlightOrder(
+      new Request('https://app.itsnum.com/api/flights/order/answer', {
+        method: 'POST', body: JSON.stringify({ me: 'mem_1', key: 'passport_number', value: 'X1234567' }),
+      }),
+      e, '/answer',
+    );
+    assert.equal((await res.json()).available, false);
+    const rows = db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='num_flight_orders'").get().n
+      ? db.prepare('SELECT COUNT(*) n FROM num_flight_orders').get().n : 0;
+    assert.equal(rows, 0, 'nothing is written at all');
+  });
+
+  test('issuing refuses before it reaches the payment processor', async () => {
+    const out = await issueOrder(withPartner(), { memberId: 'mem_1' });
+    assert.equal(out.ok, false);
+    assert.equal(out.error, 'booking_off');
+  });
+
+  test('and the concierge is told about no in-chat booking', async () => {
+    const e = withPartner();
+    await ensure(env);
+    await startOrder(env, { memberId: 'mem_1', offer: OFFER });
+    assert.equal(await openBookingFor(e, 'mem_1'), null,
+      'the prompt must not start asking for details the partner will ask for');
+  });
+
+  test('being CAPABLE is not being the acting rail', async () => {
+    // Sabre booking is switched ON in this env. Capability is a credential;
+    // acting is a liability. The partner is the one doing it.
+    const e = withPartner();
+    assert.equal(e.SABRE_BOOKING_ENABLED, 'true');
+    const res = await handleFlightOrder(
+      new Request('https://app.itsnum.com/api/flights/order?me=mem_1'), e, '/',
+    );
+    assert.equal((await res.json()).available, false);
+  });
+});
+
 describe('the booking is the server\'s, not the client\'s', () => {
   test('a passport number never comes back to the app', async () => {
     await ensure(env);

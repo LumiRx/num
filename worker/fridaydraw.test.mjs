@@ -86,112 +86,176 @@ describe('who can win', () => {
   });
 });
 
-/* ── against a real database ─────────────────────────────────────────────── */
+/* ── against the REAL database ───────────────────────────────────────────
+ *
+ * The version this replaces built its own two-table schema by hand and wrapped
+ * every read in `catch { return { results: [] } }`. Both halves of that hid the
+ * live bug: the hand-built table had the columns the code wanted rather than the
+ * columns production has, and the catch turned a failed query into a calm empty
+ * week. The draw would have reported "nobody entered" on a Friday when people
+ * had.
+ *
+ * So: the migrations are loaded from disk, and a broken statement throws.
+ */
+
+import { readFileSync } from 'node:fs';
+import { eligibleEntrants, winnerContacts } from './fridaydraw.mjs';
+
+const M23 = readFileSync(new URL('./migrations/0023_giveaway.sql', import.meta.url), 'utf8');
+const M26 = readFileSync(new URL('./migrations/0026_giveaway_entrant_key.sql', import.meta.url), 'utf8');
 
 function db() {
   const d = new DatabaseSync(':memory:');
-  d.exec(`
-    CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT);
-    CREATE TABLE num_giveaway_entries (week_key TEXT, member_id TEXT, entered_at TEXT, source TEXT,
-      PRIMARY KEY (week_key, member_id));
-  `);
+  d.exec('CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, phone TEXT);');
+  for (const raw of (M23 + '\n' + M26).split(';')) {
+    const stmt = raw.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim();
+    if (stmt) d.exec(stmt + ';');
+  }
   const DB = {
     prepare(sql) {
       const b = [];
       const api = {
         bind(...a) { b.push(...a); return api; },
-        async first() { try { return d.prepare(sql).get(...b) ?? null; } catch { return null; } },
-        async all() { try { return { results: d.prepare(sql).all(...b) }; } catch { return { results: [] }; } },
+        async first() { return d.prepare(sql).get(...b) ?? null; },
+        async all() { return { results: d.prepare(sql).all(...b) }; },
         async run() { const r = d.prepare(sql).run(...b); return { meta: { changes: Number(r.changes ?? 0) } }; },
       };
       return api;
     },
-    async batch(st) { const o = []; for (const s of st) o.push(await s.run()); return o; },
   };
   return { d, env: { DB } };
 }
 
-// Entrants, not merely people who used Num — the draw reads
-// num_giveaway_entries, because entering is now an opt-in act. See
-// worker/packdraw.mjs.
-const seedMembers = (d, n, { week = '2026-09-11' } = {}, prefix = 'mem_') => {
+/** The Friday 00:00 UTC that opens the period — the key the draw runs on. */
+const WEEK = Math.floor(Date.parse('2026-09-11T00:00:00Z') / 1000);
+const NEXT = Math.floor(Date.parse('2026-09-18T00:00:00Z') / 1000);
+
+/* Entrants, not merely people who used Num. Entering is an opt-in act. */
+const seedEntrants = (d, n, { week = WEEK, prefix = 'mem_', withPhone = false } = {}) => {
   for (let i = 0; i < n; i++) {
     const id = `${prefix}${String(i).padStart(3, '0')}`;
-    d.prepare('INSERT OR IGNORE INTO num_members (id,name) VALUES (?,?)').run(id, 'M');
-    d.prepare('INSERT OR IGNORE INTO num_giveaway_entries (week_key,member_id,entered_at,source) VALUES (?,?,?,?)')
-      .run(week, id, '2026-09-09T00:00:00Z', 'app');
+    const phone = withPhone ? `+1415555${String(1000 + i)}` : null;
+    d.prepare('INSERT OR IGNORE INTO num_members (id,name,phone) VALUES (?,?,?)').run(id, 'M', phone);
+    d.prepare(`INSERT OR IGNORE INTO num_giveaway_entrants
+      (id, entrant_key, phone, member_id, week_start, source, created_at)
+      VALUES (?,?,?,?,?,?,?)`)
+      .run(`ge_${prefix}${i}_${week}`, phone ? `phone:${phone}` : `member:${id}`,
+           phone, id, week, 'app', 1);
   }
 };
-
-const WINDOW = { periodStart: '2026-09-05', periodEnd: '2026-09-11' };
 
 describe('running a real draw', () => {
   test('it records the seed and the count, so the draw can be reproduced', async () => {
     const { d, env } = db();
-    seedMembers(d, 21);
-    const out = await runDraw(env, WINDOW);
+    seedEntrants(d, 21);
+    const out = await runDraw(env, { weekStart: WEEK });
     assert.equal(out.ok, true);
     assert.equal(out.winners.length, 10);
     assert.equal(out.eligible_count, 21);
-    const row = d.prepare('SELECT * FROM num_giveaway_draws').get();
+    const row = d.prepare('SELECT * FROM num_giveaway_results').get();
     assert.ok(row.seed, 'no seed recorded — the draw is unverifiable');
+    assert.equal(row.week_start, WEEK);
     assert.deepEqual(pickWinners(
-      d.prepare('SELECT member_id AS id FROM num_giveaway_entries ORDER BY member_id').all().map((r) => r.id),
+      d.prepare('SELECT DISTINCT entrant_key AS id FROM num_giveaway_entrants ORDER BY entrant_key').all().map((r) => r.id),
       10, row.seed,
     ), out.winners, 'the recorded seed does not reproduce the recorded winners');
   });
 
   test('running it twice on the same Friday does not draw twice', async () => {
     const { d, env } = db();
-    seedMembers(d, 21);
-    const first = await runDraw(env, WINDOW);
-    const second = await runDraw(env, WINDOW);
+    seedEntrants(d, 21);
+    const first = await runDraw(env, { weekStart: WEEK });
+    const second = await runDraw(env, { weekStart: WEEK });
     assert.equal(second.already, true);
     assert.deepEqual(second.winners, first.winners, 'a second run produced different winners');
-    assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_draws').get().n, 1);
+    assert.equal(d.prepare('SELECT COUNT(*) n FROM num_giveaway_results').get().n, 1);
   });
 
   test('using Num without sending the code does NOT enter you', async () => {
-    // The change on 12 Sep 2026. Passive qualification entered people who did
-    // not know they had entered; only an explicit entry counts now.
     const { d, env } = db();
-    seedMembers(d, 5);
+    seedEntrants(d, 5);
     for (let i = 0; i < 30; i++) {
       d.prepare('INSERT OR IGNORE INTO num_members (id,name) VALUES (?,?)').run(`busy_${i}`, 'M');
     }
-    const out = await runDraw(env, WINDOW);
+    const out = await runDraw(env, { weekStart: WEEK });
     assert.equal(out.eligible_count, 5, 'members who never sent the code were entered');
   });
 
   test('only entries for THIS week count', async () => {
     const { d, env } = db();
-    seedMembers(d, 6);
-    seedMembers(d, 9, { week: '2026-09-18' }, 'later_');
-    const out = await runDraw(env, WINDOW);
+    seedEntrants(d, 6);
+    seedEntrants(d, 9, { week: NEXT, prefix: 'later_' });
+    const out = await runDraw(env, { weekStart: WEEK });
     assert.equal(out.eligible_count, 6);
   });
 
   test('a week nobody entered is a refusal, not ten empty prizes', async () => {
     const { env } = db();
-    const out = await runDraw(env, WINDOW);
+    const out = await runDraw(env, { weekStart: WEEK });
     assert.equal(out.ok, false);
     assert.equal(out.eligible_count, 0);
+  });
+
+  test('a BROKEN read stops the draw — it must never read as a quiet week', async () => {
+    // The failure this whole rewrite exists for. A draw that answers "nobody
+    // entered" when the query failed is indistinguishable from an honest empty
+    // week, so nobody investigates and the real entrants are never drawn.
+    const env = { DB: { prepare() { throw new Error('no such column: week_key'); } } };
+    await assert.rejects(() => runDraw(env, { weekStart: WEEK }), /no such column/);
+  });
+
+  test('the winners carry a way to reach them', async () => {
+    const { d, env } = db();
+    seedEntrants(d, 12, { withPhone: true });
+    const out = await runDraw(env, { weekStart: WEEK });
+    assert.equal(out.contacts.length, 10);
+    for (const c of out.contacts) {
+      assert.match(c.entrant_key, /^phone:/);
+      assert.ok(c.phone, 'a winner with no way to be told is a prize nobody collects');
+    }
+    const claims = d.prepare('SELECT COUNT(*) n FROM num_giveaway_claims WHERE draw_id=?').get(out.id).n;
+    assert.equal(claims, 10);
+  });
+
+  test('a member with no phone can win, and is reachable in the app', async () => {
+    const { d, env } = db();
+    seedEntrants(d, 11, { withPhone: false });
+    const out = await runDraw(env, { weekStart: WEEK });
+    for (const c of out.contacts) {
+      assert.match(c.entrant_key, /^member:/);
+      assert.ok(c.member_id, 'a member-keyed winner must carry the member id');
+    }
+  });
+
+  test('entrant keys are what is drawn, so one human cannot hold two tickets', async () => {
+    const { d, env } = db();
+    // The same human twice: once by text, once in the app, both resolved to the
+    // same number. The unique index is what stops it, and the draw sees one.
+    d.prepare('INSERT INTO num_members (id,name,phone) VALUES (?,?,?)').run('mem_dre', 'Dre', '+14155550001');
+    d.prepare(`INSERT INTO num_giveaway_entrants (id,entrant_key,phone,member_id,week_start,source,created_at)
+               VALUES ('a','phone:+14155550001','+14155550001',NULL,?,'sms',1)`).run(WEEK);
+    d.prepare(`INSERT OR IGNORE INTO num_giveaway_entrants (id,entrant_key,phone,member_id,week_start,source,created_at)
+               VALUES ('b','phone:+14155550001','+14155550001','mem_dre',?,'app',2)`).run(WEEK);
+    assert.deepEqual(await eligibleEntrants(env, { weekStart: WEEK }), ['phone:+14155550001']);
+  });
+
+  test('winnerContacts is empty for an empty draw rather than throwing', async () => {
+    const { env } = db();
+    assert.deepEqual(await winnerContacts(env, { weekStart: WEEK, keys: [] }), []);
   });
 });
 
 describe('a winner who cannot prove eligibility', () => {
   test('forfeits, and the replacement is somebody new', async () => {
-    // We cannot check 18+ or US/UK at draw time — num_members records neither —
-    // so the gate is at claim and a failure has to redraw cleanly.
     const { d, env } = db();
-    seedMembers(d, 21);
-    const out = await runDraw(env, WINDOW);
+    seedEntrants(d, 21);
+    const out = await runDraw(env, { weekStart: WEEK });
     const loser = out.winners[0];
-    const r = await forfeitAndRedraw(env, { drawId: out.id, memberId: loser, reason: 'under 18' });
+    const r = await forfeitAndRedraw(env, { drawId: out.id, entrantKey: loser, reason: 'under 18' });
     assert.equal(r.ok, true);
     assert.ok(r.replaced, 'nobody replaced the forfeited winner');
     assert.ok(!out.winners.includes(r.replaced), 'the replacement had already won');
-    const row = d.prepare('SELECT state, reason FROM num_giveaway_claims WHERE draw_id=? AND member_id=?')
+    const row = d.prepare('SELECT state, reason FROM num_giveaway_claims WHERE draw_id=? AND entrant_key=?')
       .get(out.id, loser);
     assert.equal(row.state, 'forfeited');
     assert.match(row.reason, /under 18/);
@@ -199,11 +263,11 @@ describe('a winner who cannot prove eligibility', () => {
 
   test('a forfeit can never hand the same person a second prize', async () => {
     const { d, env } = db();
-    seedMembers(d, 12);
-    const out = await runDraw(env, WINDOW);
-    const r = await forfeitAndRedraw(env, { drawId: out.id, memberId: out.winners[0] });
+    seedEntrants(d, 12);
+    const out = await runDraw(env, { weekStart: WEEK });
+    const r = await forfeitAndRedraw(env, { drawId: out.id, entrantKey: out.winners[0] });
     if (r.replaced) {
-      const n = d.prepare('SELECT COUNT(*) n FROM num_giveaway_claims WHERE draw_id=? AND member_id=?')
+      const n = d.prepare('SELECT COUNT(*) n FROM num_giveaway_claims WHERE draw_id=? AND entrant_key=?')
         .get(out.id, r.replaced).n;
       assert.equal(n, 1);
     }
@@ -211,7 +275,7 @@ describe('a winner who cannot prove eligibility', () => {
 
   test('an unknown draw is refused rather than invented', async () => {
     const { env } = db();
-    const r = await forfeitAndRedraw(env, { drawId: 'draw_nope', memberId: 'mem_1' });
+    const r = await forfeitAndRedraw(env, { drawId: 'draw_nope', entrantKey: 'phone:+1' });
     assert.equal(r.ok, false);
   });
 });

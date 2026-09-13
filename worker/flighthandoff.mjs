@@ -18,16 +18,18 @@
  * partner link, records the referral, and hands back the one sentence that
  * must be read before anybody taps it.
  *
- * ── IT TURNS ITSELF OFF ──────────────────────────────────────────────────
+ * ── THIS IS THE PRIMARY ROUTE, NOT A FALLBACK ────────────────────────────
  *
- * `canIssueFlight(env)` is the single definition of "Num can issue a ticket
- * itself", shared with the concierge prompt and /api/pay/status. The day it
- * flips true, this route stops answering — because sending a traveller out
- * to another company's checkout, and charging them a surcharge for the
- * privilege, is indefensible once we could have finished the job ourselves.
+ * It was written as a fallback and switched itself off the moment Sabre
+ * booking came on. On 13 Sep 2026 that was reversed: the partner is how Num
+ * books flights, and Num issuing is the backup. See `fulfilment()` in
+ * services.mjs for why — the short version is that the partner issuing keeps
+ * Num out of being merchant of record for air transport, which is a licence,
+ * a chargeback desk and a support desk, not a line of code.
  *
- * Nobody has to remember to turn it off. That is the point of putting the
- * condition here rather than in a deploy note.
+ * So this route answers whenever a partner is configured, whether or not
+ * Sabre booking is switched on. What it must NEVER do is answer without the
+ * fee sentence attached — see below.
  *
  * ── WHY THE FEE IS IN THE RESPONSE AND NOT IN THE CLIENT ─────────────────
  *
@@ -38,8 +40,8 @@
  * is the traveller at checkout. So the server, which owns the value, is the
  * only thing allowed to say it.
  */
-import { canIssueFlight } from './services.mjs';
-import { flightLink, lgtReady, newRef, openReferral, surchargeCs } from './letsgo2trip.mjs';
+import { fulfilment } from './services.mjs';
+import { flightLink, newRef, openReferral, surchargeCs } from './letsgo2trip.mjs';
 
 const IATA = /^[A-Za-z]{3}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -52,13 +54,19 @@ export const dollars = (cs) =>
  * Exported so the capability endpoint and the tests read the same answer.
  */
 export function handoffAvailable(env) {
-  if (canIssueFlight(env ?? {})) {
-    return { available: false, why: 'Num can issue this itself — no handoff.' };
+  const f = fulfilment(env ?? {});
+  if (f.primary !== 'lgt') {
+    // Deliberately reports whether the BACKUP could take it, so the app knows
+    // the difference between "buy it another way" and "cannot be bought".
+    return {
+      available: false,
+      why: f.primary === 'sabre'
+        ? 'No booking partner is configured — Num issues this one itself.'
+        : 'No booking partner is configured.',
+      fallback: f.primary === 'sabre' ? 'sabre' : null,
+    };
   }
-  if (!lgtReady(env ?? {})) {
-    return { available: false, why: 'No booking partner is configured.' };
-  }
-  return { available: true };
+  return { available: true, backup: f.backup };
 }
 
 /**
@@ -130,9 +138,9 @@ export async function handleFlightHandoff(request, env) {
     // 200, not 404. The client asks this question to decide whether to draw a
     // button; "no" is a valid answer to a valid question, and an error status
     // would make a correct refusal look like a broken route in the logs.
-    return new Response(JSON.stringify({ available: false, why: gate.why }), {
-      status: 200, headers: { 'content-type': 'application/json' },
-    });
+    return new Response(JSON.stringify({
+      available: false, why: gate.why, fallback: gate.fallback ?? null,
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -148,9 +156,15 @@ export async function handleFlightHandoff(request, env) {
     ref, origin: q.from, dest: q.to, depart: q.depart, return: q.ret, adults: q.adults,
   });
   if (!link?.url) {
-    return new Response(JSON.stringify({ error: 'Could not build the booking link.' }), {
-      status: 502, headers: { 'content-type': 'application/json' },
-    });
+    // The partner could not take this one. That is precisely the case the
+    // Sabre backup exists for, so the answer says so rather than leaving the
+    // app to guess that a 502 means "try the other rail".
+    const f = fulfilment(env ?? {});
+    return new Response(JSON.stringify({
+      available: false,
+      why: 'The partner could not take this route.',
+      fallback: f.backup,
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
 
   // Awaited, not fired and forgotten. This row is the only independent record

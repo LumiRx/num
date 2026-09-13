@@ -379,9 +379,10 @@ export function flightBlock(link, env, route = {}) {
   if (!link?.url) return '';
   const where = route.origin && route.dest ? `${route.origin} → ${route.dest}` : 'the route they asked for';
   return (
-    '\n\nFLIGHTS — THE LAST STEP ONLY. Num cannot issue a ticket today, so do the whole job first: work out the '
-    + 'route, the timing and what it is worth paying for, and give them that properly. Only when they actually want '
-    + 'to buy it, offer the handoff — as a step, not as the answer.\n'
+    '\n\nFLIGHTS — THE LAST STEP ONLY. Num does not issue the ticket; the partner does. That does not make the '
+    + 'handoff the answer to "find me a flight". Do the whole job first: work out the route, the timing and what is '
+    + 'worth paying for, and give them that properly. Offer the handoff only when they actually want to buy — as a '
+    + 'step, not as the reply.\n'
     + `LetsGo2Trip can issue this one: they take the payment, send the e-ticket, hold the PNR, and they accept UAE `
     + `and GCC cards. The link is ${link.url} and it opens `
     + `${link.prefilled ? `a search set to ${where}` : 'their flight search'}.\n`

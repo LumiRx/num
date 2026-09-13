@@ -67,6 +67,18 @@ const EVIDENCE = {
     const reply = branch.slice(branch.indexOf('return J({'));
     return /console_emailed: true/.test(reply) && !/console_url/.test(reply);
   },
+  'durable-ceiling': () => /async function overCeiling\(req, env, p\)/.test(SRC)
+    && /if \(await overCeiling\(req, env, p\)\)/.test(strip(SRC))
+    && /"ACTION_LIMITER"/.test(
+      readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8')),
+  'pay-page-copyable': () => {
+    const i = SRC.indexOf('function payPage(');
+    const body = strip(SRC.slice(i, SRC.indexOf('return payShell(inner,', i)));
+    return body.includes('data-copy="ppid"')
+      && body.includes('data-copy="cryptoaddr"')
+      && /\/api\/pay\/emv\//.test(body)
+      && /o\.payHost \? `<div class="ppbox">You will be taken to/.test(body);
+  },
   'tables-failure-visible': () => /function banner\(msg,cls\)/.test(SRC)
     && /function loader\(path,draw,what\)/.test(SRC)
     && /trouble==='signedout'/.test(SRC),
@@ -90,7 +102,7 @@ test('health actually publishes the guard list', () => {
 
 test('every guard the build claims is really in the build', () => {
   const claimed = claimedGuards();
-  assert.ok(claimed.length >= 15, 'expected every control shipped 12-13 Sep');
+  assert.ok(claimed.length >= 17, 'expected every control shipped 12-13 Sep');
   for (const name of claimed) {
     const check = EVIDENCE[name];
     assert.ok(check, `"${name}" is advertised on health with nothing tying it to code — add it to EVIDENCE`);

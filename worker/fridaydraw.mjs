@@ -1,6 +1,15 @@
 /**
  * The Friday pack draw.
  *
+ * MOVED FROM growth/ ON 13 SEP. The entries are written by num-app
+ * (worker/giveaway.mjs, from both the SMS webhook and the app's reply path) and
+ * the person who runs the draw is signed into the ops console, which is also
+ * num-app. The draw living in the other worker meant the one button that could
+ * run it would have had to reach across a deploy boundary — and a handler in a
+ * worker whose route pattern does not carry the path is exactly how
+ * /friday-rules, /api/pay/* and /p/* each shipped broken. num-growth keeps the
+ * public rules page and nothing else.
+ *
  * ── THE PROPERTY THAT MATTERS: ANYONE CAN CHECK IT ───────────────────────
  *
  * A draw run by a person picking names is indistinguishable, from the outside,
@@ -90,49 +99,62 @@ export function pickWinners(memberIds, count = WINNERS_PER_DRAW, seed = '') {
 /** A fresh seed. Random, recorded, and never derived from the entrant list. */
 export const newSeed = () => `${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID()}`;
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS num_giveaway_draws (
-  id TEXT PRIMARY KEY,
-  drawn_at TEXT NOT NULL,
-  period_start TEXT NOT NULL,
-  period_end TEXT NOT NULL,
-  seed TEXT NOT NULL,
-  eligible_count INTEGER NOT NULL,
-  winners TEXT NOT NULL,
-  note TEXT
-);
-CREATE TABLE IF NOT EXISTS num_giveaway_claims (
-  draw_id TEXT NOT NULL,
-  member_id TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'won',
-  claimed_at TEXT,
-  forfeited_at TEXT,
-  reason TEXT,
-  PRIMARY KEY (draw_id, member_id)
-);
-`;
+/*
+ * ── THE SCHEMA LIVES IN A MIGRATION, NOT HERE — 13 SEP ───────────────────
+ *
+ * This file used to carry its own `CREATE TABLE IF NOT EXISTS
+ * num_giveaway_draws (id, drawn_at, period_start, period_end, …)` and run it on
+ * every draw. Migration 0023 had already created a table of that name with a
+ * different shape, so the statement was a **silent no-op** and the INSERT that
+ * followed would have failed on `no such column: drawn_at`. The draw could not
+ * have run even if it had had a route — which it did not.
+ *
+ * Worse, `eligibleMembers` ended in `.catch(() => ({ results: [] }))`. A failed
+ * read came back as "nobody entered", and `runDraw` then returned the perfectly
+ * calm `why: 'nobody used Num in that period'`. **A broken query would have
+ * looked like a quiet week.** For a promotion, that is the worst available
+ * failure: it is indistinguishable from an honest empty draw, so nobody
+ * investigates, and the entrants who did enter are simply never drawn.
+ *
+ * Both are fixed. 0026 owns the tables; a failed read throws.
+ */
 
 /**
- * Everyone who ENTERED this week.
+ * Everyone in this week's draw, by `entrant_key`.
  *
- * Changed 12 Sep 2026 from "everyone who used Num in the window". Passive
- * qualification entered people who did not know they had entered — poor for
- * them, weak as a sweepstakes, and impossible to point at afterwards. An entry
- * is now a member sending the code, which is deliberate, timestamped and
- * countable. See worker/packdraw.mjs.
+ * Keyed on the entrant rather than the member because entries arrive through
+ * two doors and 73% of members have no phone — see worker/giveaway.mjs. The key
+ * is `phone:+44…` for anyone we hold a number for and `member:mem_…` otherwise,
+ * so one human is one row however they entered.
  *
- * It also removes the synthetic-ask problem at the source: our own probes never
- * send PACKS, so there is nothing to filter out.
+ * NO SILENT CATCH. If this query fails the draw must stop, not report an empty
+ * week. `growth/readfail.mjs` exists for exactly this class of bug.
  */
-export async function eligibleMembers(env, { weekKey } = {}) {
+export async function eligibleEntrants(env, { weekStart } = {}) {
   const { results } = await env.DB.prepare(
-    `SELECT e.member_id AS id
-       FROM num_giveaway_entries e
-       JOIN num_members m ON m.id = e.member_id
-      WHERE e.week_key = ?1
-      ORDER BY e.member_id`,
-  ).bind(weekKey).all().catch(() => ({ results: [] }));
-  return (results ?? []).map((r) => r.id);
+    `SELECT DISTINCT entrant_key
+       FROM num_giveaway_entrants
+      WHERE week_start = ?1
+      ORDER BY entrant_key`,
+  ).bind(weekStart).all();
+  return (results ?? []).map((r) => r.entrant_key).filter(Boolean);
+}
+
+/** Who to tell, and how, once the keys are drawn. */
+export async function winnerContacts(env, { weekStart, keys }) {
+  if (!keys?.length) return [];
+  const { results } = await env.DB.prepare(
+    `SELECT entrant_key, MAX(phone) AS phone, MAX(member_id) AS member_id
+       FROM num_giveaway_entrants
+      WHERE week_start = ?1
+      GROUP BY entrant_key`,
+  ).bind(weekStart).all();
+  const by = new Map((results ?? []).map((r) => [r.entrant_key, r]));
+  return keys.map((k) => ({
+    entrant_key: k,
+    phone: by.get(k)?.phone ?? null,
+    member_id: by.get(k)?.member_id ?? null,
+  }));
 }
 
 /**
@@ -143,14 +165,14 @@ export async function eligibleMembers(env, { weekKey } = {}) {
  * read-back, rather than a check-then-write, because two clicks a second apart
  * would both pass a check.
  */
-export async function runDraw(env, { periodStart, periodEnd, seed = null } = {}) {
+export async function runDraw(env, { weekStart: ws, seed = null } = {}) {
   if (!env?.DB) return { ok: false, why: 'no database' };
-  await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean)
-    .map((s) => env.DB.prepare(s)));
+  if (!Number.isFinite(Number(ws))) return { ok: false, why: 'a period is required' };
+  const week = Math.floor(Number(ws));
+  const id = `draw_${week}`;
 
-  const id = `draw_${periodEnd}`;
-  const existing = await env.DB.prepare('SELECT * FROM num_giveaway_draws WHERE id = ?1')
-    .bind(id).first().catch(() => null);
+  const existing = await env.DB.prepare('SELECT * FROM num_giveaway_results WHERE id = ?1')
+    .bind(id).first();
   if (existing) {
     return {
       ok: true, already: true, id,
@@ -160,38 +182,41 @@ export async function runDraw(env, { periodStart, periodEnd, seed = null } = {})
     };
   }
 
-  const eligible = await eligibleMembers(env, { weekKey: periodEnd });
+  const eligible = await eligibleEntrants(env, { weekStart: week });
   const useSeed = seed || newSeed();
   const winners = pickWinners(eligible, WINNERS_PER_DRAW, useSeed);
-  if (!winners.length) return { ok: false, why: 'nobody used Num in that period', eligible_count: 0 };
+  if (!winners.length) return { ok: false, why: 'nobody entered that period', eligible_count: 0 };
 
   const now = new Date().toISOString();
   await env.DB.prepare(
-    `INSERT OR IGNORE INTO num_giveaway_draws
-       (id, drawn_at, period_start, period_end, seed, eligible_count, winners, note)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8)`,
+    `INSERT OR IGNORE INTO num_giveaway_results
+       (id, week_start, drawn_at, seed, eligible_count, winners, note)
+     VALUES (?1,?2,?3,?4,?5,?6,?7)`,
   ).bind(
-    id, now, periodStart, periodEnd, useSeed, eligible.length, JSON.stringify(winners),
+    id, week, now, useSeed, eligible.length, JSON.stringify(winners),
     // Written into the row so a future reader knows the gate is downstream and
     // does not conclude the draw ignored its own rules.
     'eligibility (18+, US/UK) is verified at claim, not at draw — see growth/fridaydraw.mjs',
   ).run();
 
-  for (const m of winners) {
+  const contacts = await winnerContacts(env, { weekStart: week, keys: winners });
+  for (const c of contacts) {
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO num_giveaway_claims (draw_id, member_id, state) VALUES (?1,?2,'won')",
-    ).bind(id, m).run().catch(() => {});
+      `INSERT OR IGNORE INTO num_giveaway_claims (draw_id, entrant_key, phone, member_id, state)
+       VALUES (?1,?2,?3,?4,'won')`,
+    ).bind(id, c.entrant_key, c.phone, c.member_id).run();
   }
 
   // Read back rather than returning what we meant to write: if another request
   // won the race, these are the winners that actually stand.
-  const row = await env.DB.prepare('SELECT * FROM num_giveaway_draws WHERE id = ?1')
-    .bind(id).first().catch(() => null);
+  const row = await env.DB.prepare('SELECT * FROM num_giveaway_results WHERE id = ?1')
+    .bind(id).first();
   return {
-    ok: true, id,
+    ok: true, id, week_start: week,
     seed: row?.seed ?? useSeed,
     eligible_count: row?.eligible_count ?? eligible.length,
     winners: row ? JSON.parse(row.winners) : winners,
+    contacts,
   };
 }
 
@@ -202,34 +227,36 @@ export async function runDraw(env, { periodStart, periodEnd, seed = null } = {})
  * never hand the same person a second prize and can never re-offer a prize to
  * someone who already forfeited it.
  */
-export async function forfeitAndRedraw(env, { drawId, memberId, reason = 'not eligible' } = {}) {
-  if (!env?.DB || !drawId || !memberId) return { ok: false, why: 'draw and member are required' };
-  const draw = await env.DB.prepare('SELECT * FROM num_giveaway_draws WHERE id = ?1')
-    .bind(drawId).first().catch(() => null);
+export async function forfeitAndRedraw(env, { drawId, entrantKey, reason = 'not eligible' } = {}) {
+  if (!env?.DB || !drawId || !entrantKey) return { ok: false, why: 'draw and entrant are required' };
+  const draw = await env.DB.prepare('SELECT * FROM num_giveaway_results WHERE id = ?1')
+    .bind(drawId).first();
   if (!draw) return { ok: false, why: 'unknown draw' };
 
   await env.DB.prepare(
     `UPDATE num_giveaway_claims SET state='forfeited', forfeited_at=?3, reason=?4
-      WHERE draw_id=?1 AND member_id=?2 AND state='won'`,
-  ).bind(drawId, memberId, new Date().toISOString(), String(reason).slice(0, 200)).run();
+      WHERE draw_id=?1 AND entrant_key=?2 AND state='won'`,
+  ).bind(drawId, entrantKey, new Date().toISOString(), String(reason).slice(0, 200)).run();
 
   const { results } = await env.DB.prepare(
-    'SELECT member_id FROM num_giveaway_claims WHERE draw_id = ?1',
-  ).bind(drawId).all().catch(() => ({ results: [] }));
-  const alreadyDrawn = new Set((results ?? []).map((r) => r.member_id));
+    'SELECT entrant_key FROM num_giveaway_claims WHERE draw_id = ?1',
+  ).bind(drawId).all();
+  const alreadyDrawn = new Set((results ?? []).map((r) => r.entrant_key));
 
   // The same window the original draw used, so the replacement comes from the
   // same pool of people rather than from whoever happens to be active today.
-  const pool = (await eligibleMembers(env, { weekKey: draw.period_end }))
-    .filter((id) => !alreadyDrawn.has(id));
+  const pool = (await eligibleEntrants(env, { weekStart: draw.week_start }))
+    .filter((k) => !alreadyDrawn.has(k));
 
   // A different seed, derived from the original plus who forfeited, so the
   // redraw is still reproducible but is not the same shuffle continuing.
-  const replacement = pickWinners(pool, 1, `${draw.seed}:redraw:${memberId}`)[0] ?? null;
+  const replacement = pickWinners(pool, 1, `${draw.seed}:redraw:${entrantKey}`)[0] ?? null;
   if (!replacement) return { ok: true, replaced: null, why: 'no one left to redraw' };
 
+  const [c] = await winnerContacts(env, { weekStart: draw.week_start, keys: [replacement] });
   await env.DB.prepare(
-    "INSERT OR IGNORE INTO num_giveaway_claims (draw_id, member_id, state) VALUES (?1,?2,'won')",
-  ).bind(drawId, replacement).run();
+    `INSERT OR IGNORE INTO num_giveaway_claims (draw_id, entrant_key, phone, member_id, state)
+     VALUES (?1,?2,?3,?4,'won')`,
+  ).bind(drawId, replacement, c?.phone ?? null, c?.member_id ?? null).run();
   return { ok: true, replaced: replacement };
 }

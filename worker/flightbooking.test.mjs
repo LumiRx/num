@@ -503,9 +503,14 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const IDX = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.mjs'), 'utf8');
 
-test('an open booking reaches the prompt, and only when Num can issue', () => {
-  assert.match(IDX, /if \(canIssueFlight\(env \?\? \{\}\)\) \{/,
-    'collecting a passport number for a ticket Num cannot issue asks for something we have no use for');
+test('an open booking reaches the prompt, and only on the rail that is acting', () => {
+  // 13 Sep 2026: this used to be gated on `canIssueFlight` — CAPABILITY. It
+  // is now gated on which rail is actually issuing, because with a partner
+  // configured the partner's own checkout collects the passport details on
+  // their page. Asking for them here as well would be collecting sensitive
+  // data Num has no use for, twice.
+  assert.match(IDX, /if \(fulfilment\(env \?\? \{\}\)\.primary === 'sabre'\) \{/,
+    'the in-chat collection must run only when Num is the rail taking the money');
   assert.match(IDX, /bookingBlock\(b\)/);
 });
 
@@ -544,7 +549,12 @@ test('the money is read back only once everything is collected', () => {
     'the questions come before the bill');
 });
 
-test('the same gate governs the booking flow and the LetsGo2Trip fallback', () => {
-  assert.equal((IDX.match(/canIssueFlight\(env \?\? \{\}\)/g) || []).length, 2,
-    'two gates with their own opinion is how one of them ends up wrong');
+test('one function decides who issues, read by both rails', () => {
+  // Two gates with their own opinion is how one of them ends up wrong. There
+  // were three before today, all written as `!canIssueFlight`, and reversing
+  // the policy meant finding every one of them.
+  assert.equal((IDX.match(/fulfilment\(env \?\? \{\}\)/g) || []).length, 2,
+    'the partner rail and the backup rail must ask the same function');
+  assert.doesNotMatch(IDX, /canIssueFlight\(env/,
+    'a second opinion about who issues does not belong in the request path');
 });

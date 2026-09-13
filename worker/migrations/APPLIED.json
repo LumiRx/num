@@ -8,12 +8,13 @@
     "0019_suppliers.sql": "7b5806ef4519eb45fc3900faddbe43f6b0054cc9616d7bd3abd74c77f8db4934",
     "0020_requests_booking_fee.sql": "4eca03b4044d8f2e1530e9ca5beb7a34bcd6c39acd5b966814333a1b4e5eb47d",
     "0021_luxury_assets.sql": "9b41c85f4af3db06512a3c72939be02dad9206fefca9ebd2e632d158fd60ccf3",
-    "0022_supplier_contact.sql": "d25cb253365a68967a73241ee2aa83140ffc1e64b3a1f1b21d8837d16bc568db"
+    "0022_supplier_contact.sql": "d25cb253365a68967a73241ee2aa83140ffc1e64b3a1f1b21d8837d16bc568db",
+    "0023_giveaway.sql": "2fa9f869dfeb99dbc727ee30ada1ab94de3fc60dc5cc84937055b3da4a59ed32",
+    "0024_notifications.sql": "db3b465774f07b0e40a0b6288d12cdad16bc1b1290b3234600fec32ae62d3b3f",
+    "0025_partner_signup_ip.sql": "8ec1f60bf68c7d2410957be6dae0ba0fdcefca9de0dc05a29660d2dd22f4baae"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
   "pending": [
-    "0023_giveaway.sql",
-    "0024_notifications.sql",
-    "0025_partner_signup_ip.sql"
+    "0026_giveaway_entrant_key.sql"
   ]
 }

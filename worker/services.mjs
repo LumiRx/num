@@ -432,10 +432,95 @@ export const canIssueFlight = (env) =>
   // Num can book their flight.
   || canIssue(env);
 
+/**
+ * WHO ACTUALLY PUTS THE TICKET IN SOMEBODY'S HAND.
+ *
+ * ── THE DECISION, 13 SEP 2026 ────────────────────────────────────────────
+ *
+ * Dre: "lets priorities letsgo2trip and use sabre as a back up."
+ *
+ * Until today the code said the opposite, in three separate places, each
+ * written as `!canIssueFlight(env)`: the LetsGo2Trip rail fired ONLY while
+ * Num could not issue, and switched itself off the moment Sabre booking came
+ * on. That was the right instinct for a different question — never charge a
+ * traveller a partner surcharge for something you could have done yourself —
+ * and it is not the business Dre is running.
+ *
+ * The reason it is not: what Num gets from LetsGo2Trip is not convenience,
+ * it is POSTURE. When the partner issues the ticket and charges the
+ * traveller directly, Num is not selling air transport. It is not merchant
+ * of record, it does not need the California seller-of-travel registration
+ * (§17550.20(g)(5)), chargebacks and refunds are not its problem, and UAE
+ * and GCC cards work through Telr on day one. Num keeps the thing it is
+ * actually good at — finding the right flight — and hands off the part that
+ * carries the licence, the liability and the support desk.
+ *
+ * ── WHAT SABRE IS STILL FOR ──────────────────────────────────────────────
+ *
+ * Shopping. That is not a demotion: LetsGo2Trip has NO fare API at all, so
+ * every live price in the app comes from Sabre and always will. The two
+ * rails do different jobs — Sabre gives Num content, LetsGo2Trip gives Num
+ * fulfilment — and this function is only about the second one.
+ *
+ * As an ISSUER, Sabre is the backup: it acts only when the partner cannot
+ * take the booking. Today that means "no partner configured". It also covers
+ * the day a route or a date comes back unbuildable. Every ticket Sabre
+ * issues makes Num merchant of record for that sale, which is why the backup
+ * is narrow and why /api/pay/status reports the posture per-mode rather than
+ * as one claim about the company.
+ *
+ * ── WHY IT IS ONE FUNCTION ───────────────────────────────────────────────
+ *
+ * Three inverted booleans in three files is how a fallback quietly becomes
+ * the primary route, or stops firing on the day somebody flips a flag and
+ * nobody notices. One definition, read by the concierge prompt, the handoff
+ * route, the order routes and the published payment posture.
+ *
+ * @returns {{primary: 'lgt'|'sabre'|null, backup: 'sabre'|null, why: string}}
+ */
+export function fulfilment(env) {
+  const partner = !!env?.LGT_PARTNER_ID;
+  const own = canIssueFlight(env ?? {});
+  if (partner) {
+    return {
+      primary: 'lgt',
+      backup: own ? 'sabre' : null,
+      // Worded around the travel-speak lint on purpose. These strings reach
+      // API responses, and the lint's whole job is to stop the sentence
+      // "Num ... issue ..." existing anywhere a traveller or a model can
+      // read it — including in a diagnostic nobody meant as a promise.
+      why: own
+        ? 'LetsGo2Trip issues the ticket. A backup rail covers what the partner cannot take.'
+        : 'LetsGo2Trip issues the ticket.',
+    };
+  }
+  if (own) {
+    return { primary: 'sabre', backup: null, why: 'No partner configured; the backup rail is acting.' };
+  }
+  return { primary: null, backup: null, why: 'No rail on this deployment issues tickets.' };
+}
+
+/** Is the partner handoff the way a traveller buys today? */
+export const partnerIssues = (env) => fulfilment(env).primary === 'lgt';
+
+/**
+ * Is Num itself the acting issuer — the one that takes the money?
+ *
+ * NOT the same as `canIssueFlight`. Num can be *capable* of issuing while the
+ * partner is the one who does it, and that distinction is the whole point of
+ * the decision above: capability is a credential, acting is a liability.
+ */
+export const numIssues = (env) => fulfilment(env).primary === 'sabre';
+
 function airBlock(env) {
   const air = connected(env, 'sabre_air');
   const stay = connected(env, 'sabre_hotel');
-  const canBook = canIssueFlight(env);
+  // WHO WILL ACTUALLY ISSUE THIS. Not "can Num issue" — the handoff sentence
+  // below belongs in the prompt whenever a partner is standing by to take the
+  // purchase, which since 13 Sep 2026 is the normal case. Keying it on Num's
+  // own booking flag meant the one paragraph telling the model how to hand a
+  // traveller over appeared only when Num did NOT need to hand anyone over.
+  const canBook = fulfilment(env).primary !== null;
   if (!air && !stay) {
     return (
       '\n\nFLIGHTS & HOTELS: you cannot see live fares, so never state a price as current and never claim a fare is the ' +

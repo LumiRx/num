@@ -1111,6 +1111,16 @@ const WORKER = {
         return new Response(null, { status: 204, headers: cors(req) });
 
       if (p === "/api/growth/health") return health(env);
+
+      // The durable ceiling, applied ONCE here rather than at each handler, so
+      // an endpoint added next month cannot forget it. Everything below this
+      // line is covered; the exempt set above is the deliberate list of what is
+      // not, with its reasons.
+      if (req.method !== "GET" || p.startsWith("/api/")) {
+        if (await overCeiling(req, env, p)) {
+          return J({ ok: false, error: "slow_down" }, 429);
+        }
+      }
       if (p === "/num-capture.js") return captureAsset();
       // The Friday draw's Official Rules. Every post about the draw links here,
       // and a free prize draw is only lawful if the terms are stated in public —
@@ -1362,7 +1372,50 @@ const GUARDS = Object.freeze([
   "mail-no-blind-fallback", // outside mail never rides the accept-and-discard rail
   "host-relink-emailed",    // an email address does not fetch a console key
   "tables-failure-visible", // the console says when it is signed out or offline
+  "pay-page-copyable",      // nothing on the pay page has to be retyped by hand
+  "durable-ceiling",        // a real rate limiter, not a Map inside one isolate
 ]);
+
+/* ── the durable ceiling ──────────────────────────────────────────────────
+   `overLimit` above is a Map inside one isolate. Its own comment says it is not
+   a distributed limiter, and worker/guard.mjs records 14 rapid requests sailing
+   past a 12/minute bucket in production. It stays — it is a free burst brake on
+   whichever isolate you land on — but it was never the guarantee.
+
+   ACTION_LIMITER is. Counters live in Cloudflare's infrastructure, so they
+   survive isolate churn, and one binding covers every action endpoint at once
+   rather than a dozen hand-rolled COUNT(*)s against D1.
+
+   ONE ceiling, not one per route, because a binding carries one fixed limit and
+   these routes run from 5/min to 240/min. 60 a minute from a single address,
+   across all of them combined, is generous for a person and brutal for a loop.
+
+   FAILS OPEN, and says so. A limiter outage must not take the product down —
+   but a silent fail-open is how you believe you are protected when you are not,
+   which is the exact failure this whole review has been about. The per-route
+   brakes and the D1 counters are all still in force underneath. */
+const RATE_LIMIT_EXEMPT = new Set([
+  // Beacons. One page view legitimately fires several, and the real fix for
+  // these is signing the payload, not throttling it.
+  "/api/ev", "/api/ev.gif", "/num-capture.js",
+  // The deploy check has to answer while everything else is being refused.
+  "/api/growth/health",
+]);
+
+async function overCeiling(req, env, p) {
+  if (RATE_LIMIT_EXEMPT.has(p)) return false;
+  const limiter = env?.ACTION_LIMITER;
+  if (!limiter?.limit) return false;
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  try {
+    const out = await limiter.limit({ key: ip });
+    return !out?.success;
+  } catch (e) {
+    console.warn("[growth] ACTION_LIMITER threw — the durable ceiling is degraded:",
+                 String(e?.message ?? e).slice(0, 160));
+    return false;
+  }
+}
 
 async function health(env) {
   let db = "missing";
@@ -7871,6 +7924,11 @@ async function logPayEvent(env, req, o) {
   } catch (e) { console.warn("[pay] log failed:", String(e).slice(0, 120)); return 0; }
 }
 
+/** The bare host of a payment URL, for showing the guest where they are going. */
+function hostOf(u) {
+  try { return new URL(String(u)).hostname.replace(/^www\./, ""); } catch { return null; }
+}
+
 /* ── GET /p/<token> — what the guest's camera opens ─────────────────────── */
 async function payLanding(req, env, tok) {
   const ptok = clean(tok, 40).toUpperCase();
@@ -7922,6 +7980,11 @@ async function payLanding(req, env, tok) {
     state: "pay", token: ptok, venue: link.business_name, label: link.label,
     kind: link.kind, amount: link.amount, currency: link.currency,
     promptpayId: link.kind === "promptpay" ? link.target : null,
+    // The host we are about to hand the guest to. A stranger scanned a sticker
+    // on a table and is one tap from a third-party domain, which is the exact
+    // shape of a quishing attack — and this rail was the only one giving them
+    // nothing to check. The other two name the bank and the chain.
+    payHost: link.kind === "url" ? hostOf(link.target) : null,
     target: link.target, crypto: cryptoInfo, walletUri,
   }));
 }
@@ -8263,11 +8326,52 @@ h1{font-size:20px;margin:14px 0 6px}
 .btn.ghost{background:transparent;color:#1f3a34;border:1.5px solid #1f3a34;margin-top:10px}
 .ppbox{background:#fff;border:1px solid #e0ddd4;border-radius:14px;padding:18px;margin:14px 0}
 .ppid{font-size:22px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.emvqr{display:block;width:220px;max-width:70%;height:auto;margin:4px auto 10px;border-radius:8px;background:#fff}
+.cp{display:inline-block;margin-top:10px;padding:11px 16px;min-height:44px;border:1px solid #1f3a34;
+  background:#fff;color:#1f3a34;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+.cp:active{background:#eef2f0}
+.dest{font-weight:700;word-break:break-all}
 .note{font-size:14px;color:#4a5450;margin-top:18px}
 .warn{font-size:14px;background:#fff;border:1px solid #e0ddd4;border-left:4px solid #b4552d;
   border-radius:8px;padding:10px 12px;margin-top:16px;color:#4a5450}
 .foot{font-size:13px;color:#7a827e;margin-top:26px}
-</style></head><body><main>${inner}</main></body></html>`;
+</style></head><body><main>${inner}</main>
+<script>
+// Copy buttons on the ID, the amount and the crypto address.
+//
+// Every one of these was a number a guest had to transcribe by hand into
+// another app: a 10-to-13 digit PromptPay ID, a decimal amount, or a
+// 42-character wallet address sitting one line above the words "cannot be
+// reversed". One-handed, often in bad light, often not in their first language.
+//
+// Progressive: the numbers are already on the page and readable, so if
+// clipboard access is refused or missing the guest is exactly where they were.
+// The button says so rather than pretending it worked.
+(function(){
+  var btns = document.querySelectorAll('[data-copy]');
+  for (var i = 0; i < btns.length; i++) {
+    (function(b){
+      b.addEventListener('click', function(){
+        var el = document.getElementById(b.getAttribute('data-copy'));
+        if (!el) return;
+        var txt = (el.textContent || '').trim();
+        var was = b.textContent;
+        function done(ok){
+          b.textContent = ok ? 'Copied' : 'Select it and copy';
+          setTimeout(function(){ b.textContent = was; }, 2200);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(function(){ done(true); },
+                                                  function(){ done(false); });
+        } else {
+          done(false);
+        }
+      });
+    })(btns[i]);
+  }
+})();
+</script>
+</body></html>`;
 }
 
 function payPage(o) {
@@ -8323,7 +8427,8 @@ function payPage(o) {
     <p class="lede">Scan with your wallet and send
     <b>${esc(a.asset || "USDC")} on ${esc(a.chain || "Base")}</b>. The money goes
     straight to ${esc(o.venue)}. NUM never holds it.</p>
-    <div class="ppbox">Send to<br><span class="ppid" style="font-size:13px;word-break:break-all">${esc(o.target)}</span><br>
+    <div class="ppbox">Send to<br><span class="ppid" id="cryptoaddr" style="font-size:13px;word-break:break-all">${esc(o.target)}</span><br>
+    <button class="cp" type="button" data-copy="cryptoaddr">Copy address</button><br>
     <span class="note">${a.display ? `Exactly ${esc(a.display)} ${esc(a.asset)}.` : "Send the amount on your bill."}
     Only ${esc(a.asset || "USDC")} on ${esc(a.chain || "Base")} — another network or another
     coin may not arrive.</span></div>
@@ -8342,7 +8447,11 @@ function payPage(o) {
     <h1>Pay ${esc(o.venue)}</h1>
     ${amt ? `<div class="amount">${amt}</div>`
           : `<p class="lede">The amount is on your bill — you'll confirm it on the venue's payment page.</p>`}
-    <a class="btn" href="/p/${esc(o.token)}/go" rel="noopener">Continue to payment</a>
+    ${o.payHost ? `<div class="ppbox">You will be taken to<br>
+      <span class="ppid dest">${esc(o.payHost)}</span><br>
+      <span class="note">If that is not an address you would expect from
+      ${esc(o.venue)} &mdash; don't pay, and tell staff.</span></div>` : ""}
+    <a class="btn" href="/p/${esc(o.token)}/go">Continue${o.payHost ? ` to ${esc(o.payHost)}` : " to payment"}</a>
     <p class="note">You'll pay on ${esc(o.venue)}'s own payment page. NUM never
     holds your money and never sees your card.</p>
     <div class="warn">Not at ${esc(o.venue)} right now? Then this code isn't for
@@ -8352,7 +8461,14 @@ function payPage(o) {
     <h1>Pay by PromptPay</h1>
     ${amt ? `<div class="amount">${amt}</div>` : ""}
     <p class="lede">Open your Thai banking app and scan the <b>printed PromptPay
-    QR</b> on this card — the bank pays ${esc(o.venue)} directly.</p>
+    QR</b> on this card &mdash; the bank pays ${esc(o.venue)} directly.</p>
+    <div class="ppbox">
+      <span class="note">Card scuffed, or the light is bad? <b>Press and hold this
+      code to save it</b>, then use <b>Scan from gallery</b> in your banking app.
+      It is the same code, with the amount already in it.</span>
+      <img class="emvqr" src="/api/pay/emv/${esc(o.token)}.svg"
+           alt="PromptPay QR for ${esc(o.venue)}${amt ? ", " + esc(amt) : ""}">
+    </div>
     <!-- THE PROMPTPAY ID IS SHOWN IN FULL, DELIBERATELY.
          The 12 Sep security review flagged this: for a small Thai operator the
          target is their personal mobile or 13-digit tax ID, rendered whole to
@@ -8376,9 +8492,12 @@ function payPage(o) {
          What would change this: giving the guest another way to pay that does
          not need the number. Until that exists, masking trades a real guest's
          ability to pay for no security we do not already have. -->
-    <div class="ppbox">PromptPay ID<br><span class="ppid">${esc(o.promptpayId)}</span><br>
-    <span class="note">You can also enter this ID in your banking app's PromptPay
-    transfer screen${amt ? ` — the amount is ${amt}` : ""}.</span></div>
+    <div class="ppbox">PromptPay ID<br><span class="ppid" id="ppid">${esc(o.promptpayId)}</span><br>
+    <span class="note">Or type it into your banking app's PromptPay transfer
+    screen${amt ? ` &mdash; the amount is ${amt}` : ""}.</span><br>
+    <button class="cp" type="button" data-copy="ppid">Copy ID</button>
+    ${amt ? `<button class="cp" type="button" data-copy="ppamt" style="margin-left:8px">Copy amount</button>
+    <span id="ppamt" hidden>${esc(String(o.amount ?? "").replace(/[^0-9.]/g, ""))}</span>` : ""}</div>
     <p class="note">Payment goes straight from your bank to ${esc(o.venue)}.
     NUM never holds your money.</p>
     <div class="warn">The name your banking app shows before you confirm should

@@ -143,6 +143,40 @@
 
   // Drains queued VIP-host contact invites. A host who uploads 400 contacts
   // sends the first SEND_BUDGET immediately and queues the rest.
+  // ── THE LIMITER THIS WORKER NEVER HAD ────────────────────────────────────
+  //
+  // num-app has had one since launch. This worker — which serves every money
+  // route, /p/*, /api/venue/*, /api/ev and the whole /biz/ console — had only
+  // the isolate-local Map in overLimit(), and that Map is not a limit:
+  // Cloudflare hands out fresh isolates freely, and worker/guard.mjs records
+  // 14 rapid requests sailing past a 12/minute bucket IN PRODUCTION.
+  //
+  // Every durable limit added on 12-13 Sep — the check-in guessing lock, the
+  // claim resend cap, host signups, partner keys — had to be hand-rolled as a
+  // COUNT(*) against D1 because this was missing. Each costs a read on the hot
+  // path and had to be written and reasoned about on its own.
+  //
+  // Counters live in Cloudflare's infrastructure, so they survive isolate
+  // churn. namespace_id is a per-Worker identifier, not a secret.
+  "ratelimits": [
+    {
+      // ONE ceiling across every action endpoint, per IP. Deliberately not
+      // per-endpoint: a binding carries one fixed limit, and these routes run
+      // from 5/min to 240/min, so per-route would mean a dozen bindings. A
+      // combined ceiling is the honest shape — no single address may do 60
+      // things a minute here, whatever mix it picks — and every route keeps
+      // its own tighter isolate brake on top of it.
+      //
+      // 60 is generous for a person (the tightest route allows 5) and brutal
+      // for a script. The analytics beacons are deliberately NOT behind it: one
+      // page view can legitimately fire several, and the fix there is signing
+      // the beacon rather than throttling it.
+      "name": "ACTION_LIMITER",
+      "namespace_id": "2001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+
   "triggers": { "crons": ["*/15 * * * *"] },
 
   // Every pattern is checked against the FULL URL including the query string,

@@ -14,6 +14,8 @@
 import { maskPhone } from '../claim/verify.mjs';
 import { DESTINATIONS } from '../scripts/destinations.mjs';
 import { NOT_PROBE } from './asks.mjs';
+import { forfeitAndRedraw, runDraw, eligibleEntrants, WINNERS_PER_DRAW } from './fridaydraw.mjs';
+import { weekStart, weekEnd } from './giveaway.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -1376,6 +1378,82 @@ async function dayseries(env, table, col, days, where = null) {
  * column: that table is already the claim's audit trail, a phone call is an
  * event, and the queue therefore drains without a migration.
  */
+/**
+ * The Friday pack draw, run from the ops console.
+ *
+ * ── WHY THIS EXISTS AT ALL ───────────────────────────────────────────────
+ *
+ * Until 13 Sep the draw was a tested function with **no caller anywhere**.
+ * `grep runDraw worker/ growth/` returned the module and its test and nothing
+ * else. Ten packs were bought, a rules page was live promising a draw every
+ * Friday, entries were being taken — and there was no way to run it. A handler
+ * is not a route, and a function is not a button.
+ *
+ * ── PREVIEW IS NOT THE SAME REQUEST AS RUN ───────────────────────────────
+ *
+ * A draw is irreversible: the seed and the winners are written once and a second
+ * call returns the first result rather than redrawing. So `preview` is a
+ * separate action that writes nothing, and the console makes you look at the
+ * entrant count before the button that commits appears. Nobody should discover
+ * how many people entered by drawing.
+ */
+async function adminDraw(env, req, url) {
+  const post = req.method === 'POST';
+  const body = post ? await req.json().catch(() => ({})) : {};
+  const action = String(body.action ?? url.searchParams.get('action') ?? 'preview');
+
+  // Default to the period that is closing now. Passing `week` explicitly is for
+  // re-running a past Friday, which is a real need the week after a mistake.
+  const asked = Number(body.week ?? url.searchParams.get('week') ?? 0);
+  const week = Number.isFinite(asked) && asked > 0
+    ? weekStart(asked)
+    : weekStart(Math.floor(Date.now() / 1000));
+  const period = {
+    week_start: week,
+    opens: new Date(week * 1000).toISOString(),
+    closes: new Date(weekEnd(week) * 1000).toISOString(),
+  };
+
+  try {
+    if (action === 'preview') {
+      const keys = await eligibleEntrants(env, { weekStart: week });
+      const drawn = await env.DB.prepare('SELECT * FROM num_giveaway_results WHERE id = ?1')
+        .bind(`draw_${week}`).first();
+      return json({
+        ok: true, period, prizes: WINNERS_PER_DRAW,
+        entrants: keys.length,
+        // How many can be told by text vs only in the app — the difference
+        // decides how a winner actually hears about it.
+        already_drawn: drawn
+          ? { id: drawn.id, drawn_at: drawn.drawn_at, winners: JSON.parse(drawn.winners) }
+          : null,
+      });
+    }
+
+    if (action === 'run' && post) {
+      const out = await runDraw(env, { weekStart: week, seed: body.seed || null });
+      return json({ ...out, period }, out.ok ? 200 : 409);
+    }
+
+    if (action === 'forfeit' && post) {
+      const out = await forfeitAndRedraw(env, {
+        drawId: String(body.drawId ?? ''),
+        entrantKey: String(body.entrantKey ?? ''),
+        reason: String(body.reason ?? 'not eligible'),
+      });
+      return json(out, out.ok ? 200 : 400);
+    }
+
+    return json({ ok: false, error: 'unknown action' }, 400);
+  } catch (e) {
+    // A failed READ must never reach the console as an empty week. The draw
+    // module deliberately does not swallow query errors; this is where that
+    // decision becomes a visible 503 rather than "nobody entered".
+    console.warn('[admin/draw]', e?.message ?? e);
+    return json({ ok: false, error: 'draw_read_failed', detail: String(e?.message ?? e) }, 503);
+  }
+}
+
 async function adminClaims(env, url) {
   const limit = Math.min(Number(url.searchParams.get('limit')) || 200, 500);
 
@@ -1932,6 +2010,7 @@ export async function handleConsole(request, env, path) {
       }
       if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
       if (path === '/admin/overview') return await adminOverview(env, url, request);
+      if (path === '/admin/draw') return await adminDraw(env, request, url);
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);
       if (path === '/admin/claims/grant' && post) return await adminClaimGrant(env, request);
       if (path === '/admin/neighbours' && !post) {

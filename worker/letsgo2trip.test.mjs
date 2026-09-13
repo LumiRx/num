@@ -412,7 +412,7 @@ const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.mj
 
 test('the rail is imported and gated on being configured', () => {
   assert.match(SRC, /from '\.\/letsgo2trip\.mjs'/, 'the rail is not imported');
-  assert.match(SRC, /if \(lgtReady\(env \?\? \{\}\) &&/,
+  assert.match(SRC, /if \(fulfilment\(env \?\? \{\}\)\.primary === 'lgt'\)/,
     'an unconfigured partner id must produce silence, not a link to nowhere');
 });
 
@@ -425,7 +425,7 @@ test('both blocks reach the prompt', () => {
 // is the only other account of what is owed and cannot be audited from
 // outside.
 test('every handoff opens a referral row, and it is awaited', () => {
-  const i = SRC.indexOf('if (lgtReady(env ?? {})');
+  const i = SRC.indexOf("if (fulfilment(env ?? {}).primary === 'lgt')");
   assert.ok(i > 0);
   const block = SRC.slice(i, i + 1400);
   assert.equal((block.match(/await openReferral\(env, \{/g) || []).length, 2,
@@ -435,32 +435,67 @@ test('every handoff opens a referral row, and it is awaited', () => {
 });
 
 test('one reply offers one booking link, not two', () => {
-  const i = SRC.indexOf('if (lgtReady(env ?? {})');
+  const i = SRC.indexOf("if (fulfilment(env ?? {}).primary === 'lgt')");
   const block = SRC.slice(i, i + 1400);
   assert.match(block, /\} else if \(wantsStay\(/,
     'two booking links and two fee disclosures in one reply is a banner, not a concierge');
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
-   THE FALLBACK RULE
+   THE ROUTING RULE — REVERSED 13 SEP 2026
 
-   This is the only rail that sends a traveller OUT OF THE APP to a checkout
-   that charges them a fee. It exists because Num cannot issue a ticket. The
-   moment Num can, it must go quiet on its own — a fallback that has to be
-   remembered is a fallback that becomes permanent.
+   This block used to be called THE FALLBACK RULE, and it asserted that the
+   rail "stands down the moment Num can issue a ticket itself". The reasoning
+   was sound for the question it was answering: this is the only rail that
+   sends a traveller out of the app to a checkout that charges them a fee, so
+   never use it for something you could have done yourself.
+
+   Dre reversed it. The partner is the primary rail and Num issuing is the
+   backup, because what the partner buys is not convenience — it is posture.
+   The partner issuing and charging the traveller directly is what keeps Num
+   out of being merchant of record for air transport: no seller-of-travel
+   registration, no chargeback desk, no refunds to administer, and UAE/GCC
+   cards on day one. Sabre keeps the job only it can do, which is showing a
+   real fare; the partner has no fare API at all.
+
+   What did NOT change, and must never change: the fee is disclosed before
+   the traveller taps, and one reply offers one link. Making a rail primary
+   is a commercial decision. Making it quiet about its surcharge is not one
+   Num gets to make, and it gets HARDER to justify, not easier, now that
+   every flight goes this way.
    ───────────────────────────────────────────────────────────────────────── */
-import { canIssueFlight } from './services.mjs';
+import { canIssueFlight, fulfilment } from './services.mjs';
 
-test('the rail stands down the moment Num can issue a ticket itself', () => {
-  const i = SRC.indexOf('if (lgtReady(env ?? {})');
+test('the rail fires whenever a partner is configured, backup or no backup', () => {
+  const i = SRC.indexOf("if (fulfilment(env ?? {}).primary === 'lgt')");
   assert.ok(i > 0, 'the rail is not wired');
-  assert.match(
-    SRC.slice(i, i + 120),
-    /if \(lgtReady\(env \?\? \{\}\) && !canIssueFlight\(env \?\? \{\}\)\)/,
-    'a fallback that fires while Num can book itself is not a fallback',
-  );
-  assert.match(SRC, /import \{ servicesBlock, optionsFor, canIssueFlight \} from '\.\/services\.mjs'/,
+  assert.match(SRC, /import \{ servicesBlock, optionsFor, fulfilment \} from '\.\/services\.mjs'/,
     'the answer must come from services.mjs, not from a second opinion here');
+  // The regression this replaces: `&& !canIssueFlight(...)` next to the rail.
+  assert.doesNotMatch(SRC.slice(i, i + 160), /!canIssueFlight/,
+    'the partner rail must not switch itself off when the backup becomes available');
+});
+
+test('the routing decision lives in one function, and it prefers the partner', () => {
+  assert.equal(fulfilment({}).primary, null, 'nothing configured issues nothing');
+  assert.equal(fulfilment({ LGT_PARTNER_ID: 'num' }).primary, 'lgt');
+  const both = fulfilment({ LGT_PARTNER_ID: 'num', SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{}' });
+  assert.equal(both.primary, 'lgt', 'the partner wins even when Num is capable');
+  assert.equal(both.backup, 'sabre', 'and the capability is recorded as the backup, not discarded');
+});
+
+test('with no partner, the backup becomes the acting rail', () => {
+  const f = fulfilment({ SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{}' });
+  assert.equal(f.primary, 'sabre');
+  assert.equal(f.backup, null, 'the acting rail is not also its own backup');
+});
+
+test('being CAPABLE of issuing is not the same as being the one who does', () => {
+  // The distinction the whole reversal turns on. Conflating them is how a
+  // backup quietly becomes the primary route.
+  const env = { LGT_PARTNER_ID: 'num', SABRE_BOOKING_ENABLED: 'true', SABRE_BOOKING_PATHS: '{}' };
+  assert.equal(canIssueFlight(env), true, 'capable');
+  assert.notEqual(fulfilment(env).primary, 'sabre', 'but not the one doing it');
 });
 
 // Two places with their own view of whether Num can book is how a fallback

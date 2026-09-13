@@ -40,16 +40,27 @@
  * The order is server-side, keyed by member. The client sends answers; it
  * never sends the booking.
  *
- * ── IT IS STILL OFF ──────────────────────────────────────────────────────
+ * ── THIS IS THE BACKUP RAIL ──────────────────────────────────────────────
  *
- * Every route here refuses while `canIssueFlight(env)` is false, which it is
- * on every deployment today: SABRE_BOOKING_ENABLED is unset and the Sabre
- * environment is `certification`. The day that flips — and the day the
- * seller-of-travel registration is in hand, which is the same day — this
- * connects with no code change. Until then the tests are the only caller,
- * and they pass an env that says booking is on.
+ * 13 Sep 2026: LetsGo2Trip is the primary way a traveller buys a flight, and
+ * Num issuing is the backup. See `fulfilment()` in services.mjs.
+ *
+ * So every route here refuses unless `fulfilment(env).primary === 'sabre'` —
+ * which means BOTH that Sabre booking is switched on AND that no partner is
+ * configured to take it instead. With a partner in place this whole file
+ * stays dark, deliberately: asking a traveller for a passport number in the
+ * chat, when the partner's own checkout is going to ask for it again on
+ * their page, is collecting sensitive data Num has no use for.
+ *
+ * The one exception is an order that is ALREADY open. If a partner is
+ * switched on halfway through somebody's booking, that person is mid-way
+ * through answering eight questions; stranding them to honour a routing
+ * preference is the wrong trade. They finish on the rail they started on.
+ *
+ * Today all of it is off: SABRE_BOOKING_ENABLED is unset and the Sabre
+ * environment is `certification`. The tests are the only caller.
  */
-import { canIssueFlight } from './services.mjs';
+import { fulfilment } from './services.mjs';
 import {
   STATE, apply, complete, nextPrompt, preflight, readyToIssue, remaining, startBooking,
 } from './flightbooking.mjs';
@@ -89,6 +100,16 @@ export async function ensure(env) {
 
 /** States a traveller can still act on. ISSUED and FAILED are history. */
 export const OPEN_STATES = Object.freeze([STATE.QUOTED, STATE.COLLECTING, STATE.READY, STATE.ISSUING]);
+
+/**
+ * Is Num the rail that issues here?
+ *
+ * True only when no partner is configured to take the booking instead. This
+ * is the routing decision, NOT the capability question — Num can be perfectly
+ * capable of issuing while the partner is the one who does it, and conflating
+ * the two is how a backup quietly becomes the primary route.
+ */
+const acting = (env) => fulfilment(env ?? {}).primary === 'sabre';
 
 export const newRef = (rand = crypto.randomUUID.bind(crypto)) =>
   `fo_${String(rand()).replace(/-/g, '').slice(0, 20)}`;
@@ -147,7 +168,7 @@ async function save(env, ref, booking, extra = {}) {
  * appearing empty.
  */
 export async function openBookingFor(env, memberId) {
-  if (!canIssueFlight(env ?? {}) || !env?.DB || !memberId) return null;
+  if (!acting(env) || !env?.DB || !memberId) return null;
   const row = await load(env, memberId).catch(() => null);
   return row ? JSON.parse(row.booking) : null;
 }
@@ -215,8 +236,8 @@ export async function issueOrder(env, { memberId, sendSms = null, deps = null } 
     deliver: (...a) => import('./flightconfirm.mjs').then((m) => m.deliver(...a)),
     alert: (...a) => import('./health.mjs').then((m) => m.alert(...a)),
   };
-  if (!canIssueFlight(env ?? {})) {
-    return { ok: false, error: 'booking_off', message: 'Num cannot issue tickets on this deployment.' };
+  if (!acting(env)) {
+    return { ok: false, error: 'booking_off', message: 'Num does not issue tickets on this deployment.' };
   }
   const row = await load(env, memberId);
   if (!row) return { ok: false, error: 'no_open_booking' };
@@ -298,11 +319,19 @@ const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 export async function handleFlightOrder(request, env, path) {
-  if (!canIssueFlight(env ?? {})) {
-    // 200 for the same reason as the partner handoff: "we cannot book" is a
+  if (!acting(env)) {
+    // 200 for the same reason as the partner handoff: "not this way" is a
     // true answer to a fair question, and a 404 would make every correct
-    // refusal look like a broken route.
-    return json({ available: false, why: 'Num cannot issue tickets on this deployment yet.' });
+    // refusal look like a broken route. `via` tells the app where to go
+    // instead, so a dark backup never reads as a dead end.
+    const f = fulfilment(env ?? {});
+    return json({
+      available: false,
+      why: f.primary === 'lgt'
+        ? 'Flights are issued by the booking partner — use the handoff.'
+        : 'Num does not issue tickets on this deployment.',
+      via: f.primary,
+    });
   }
   if (!env?.DB) return json({ error: 'no database' }, 503);
 

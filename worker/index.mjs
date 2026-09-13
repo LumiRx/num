@@ -76,13 +76,13 @@ import { handleAccount } from './account.mjs';
 import { handleMembership } from './membership.mjs';
 import { handleDm } from './dm.mjs';
 import { handleAvailability } from './availability.mjs';
-import { servicesBlock, optionsFor, canIssueFlight } from './services.mjs';
+import { servicesBlock, optionsFor, fulfilment } from './services.mjs';
 import { blockFor as viatorBlock } from './viator.mjs';
 import { carLink, carBlock } from './localrent.mjs';
 import { blockFor as eventsBlockFor } from './events.tm.mjs';
 import { luggageLink, luggageBlock, wantsLuggage } from './luggage.mjs';
 import {
-  flightLink, stayLink, flightBlock, stayBlock, wantsFlight, wantsStay, openReferral, lgtReady,
+  flightLink, stayLink, flightBlock, stayBlock, wantsFlight, wantsStay, openReferral,
 } from './letsgo2trip.mjs';
 import { policyFor, policyBrief, screen as screenReply, substituteFor } from './geopolicy.mjs';
 import { tagged } from './affiliate.mjs';
@@ -190,15 +190,22 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
     const bags = luggageBlock(luggageLink(env ?? {}, grounding.place), grounding.place);
     if (bags) system.push({ type: 'text', text: bags });
   }
-  // LetsGo2Trip — THE FALLBACK, and only ever the fallback.
+  // LetsGo2Trip — THE PRIMARY FULFILMENT RAIL.
   //
-  // It is the only rail that can actually ISSUE a ticket, which sabre_air and
-  // duffel cannot. It is also the only rail that sends a traveller out of the
-  // app to a checkout that charges them a fee, so it must never fire while Num
-  // could have finished the job itself. `canIssueFlight` is services.mjs's
-  // single definition of that, shared rather than re-derived: the day Sabre
-  // booking is switched on, this rail goes quiet on its own and nobody has to
-  // remember to turn it off.
+  // Reversed on 13 Sep 2026. This block used to read "THE FALLBACK, and only
+  // ever the fallback", gated on `!canIssueFlight` so it went quiet the day
+  // Sabre booking came on. Dre's call: the partner is how Num books flights,
+  // and Num issuing is the backup.
+  //
+  // The reason is not the commission. It is that when the partner issues and
+  // charges the traveller directly, Num is not selling air transport — no
+  // seller-of-travel registration, no chargeback desk, no refunds to
+  // administer, and UAE/GCC cards work on day one through Telr. Sabre keeps
+  // the job it is uniquely good at, which is showing a real fare; LetsGo2Trip
+  // has no fare API at all.
+  //
+  // `fulfilment()` in services.mjs is the single definition of who issues,
+  // shared with the handoff route, the order routes and /api/pay/status.
   //
   // The referral row is AWAITED rather than fired off. askNum has no
   // execution context, and an un-awaited promise after the response returns
@@ -206,7 +213,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // this row is the only independent record that Num sent anybody. It is one
   // INSERT and it never throws; a bookkeeping failure costs a row, never a
   // reply and never the link.
-  if (lgtReady(env ?? {}) && !canIssueFlight(env ?? {})) {
+  if (fulfilment(env ?? {}).primary === 'lgt') {
     const memberId = state?.memberId ?? state?.member_id ?? null;
     if (wantsFlight(userText ?? '')) {
       const f = flightLink(env, {});
@@ -227,17 +234,18 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
       }
     }
   }
-  // An open flight booking, if there is one.
+  // An open flight booking Num is issuing ITSELF — the backup rail.
   //
-  // Gated on `canIssueFlight` — the same single definition the LetsGo2Trip
-  // fallback uses. Today that is false everywhere, so this is inert: no
-  // issuer is configured, and collecting a passport number for a ticket Num
-  // cannot issue would be asking for something we have no use for.
+  // Gated on `fulfilment().primary === 'sabre'`, which is true only when no
+  // partner is configured. With a partner in place this stays dark, and it
+  // should: collecting a passport number in the chat for a ticket the partner
+  // is going to issue on their own checkout asks a traveller for something
+  // Num has no use for.
   //
-  // The day an issuer is switched on, this connects on its own. That is also
-  // the day the seller-of-travel registration has to be in hand — /api/pay/status
-  // flips its published claim at the same moment, from the same function.
-  if (canIssueFlight(env ?? {})) {
+  // Whenever this IS the acting rail, the seller-of-travel registration has
+  // to be in hand — /api/pay/status reports that posture from the same
+  // function, so the claim and the behaviour cannot drift apart.
+  if (fulfilment(env ?? {}).primary === 'sabre') {
     // ── 13 SEP 2026: THE BOOKING IS READ FROM D1, NOT FROM THE REQUEST ────
     //
     // This used to be `state.flightBooking` — a field the APP posts. While

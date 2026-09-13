@@ -79,6 +79,15 @@ const FILES = [
   // Already applied by hand to production on 13 Sep while closing the finding;
   // re-running is a clean no-op and seals it.
   'worker/migrations/0025_partner_signup_ip.sql',
+  // 0026 gives a draw entry ONE identity. 0023 keyed entries (phone, week_start)
+  // with phone NOT NULL, and 107 of 147 members have no phone at all — so the
+  // app's own entry path, wired live, could not write a row and failed on every
+  // attempt while the SMS path worked. `entrant_key` is 'phone:+44…' when we
+  // hold a number and 'member:mem_…' otherwise, and the app resolves the phone
+  // first so one human cannot hold two tickets. Three CREATE TABLEs, three
+  // indexes and one INSERT OR IGNORE that carries 0023's rows forward by id —
+  // nothing is dropped or renamed, so a second pass is a clean no-op.
+  'worker/migrations/0026_giveaway_entrant_key.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
