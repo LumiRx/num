@@ -105,6 +105,97 @@ export async function notify(env, { memberId, kind, title, body, url, tag, ctx }
   return { sent: (subs ?? []).length, queued: id };
 }
 
+/**
+ * Queue a notification and reach every device — web AND native.
+ *
+ * Use this rather than notify() for anything new. notify() keeps its exact
+ * behaviour so nothing that already calls it changes, and this wraps it.
+ *
+ * The two channels are independent on purpose. Web push needs VAPID keys; APNs
+ * needs an Apple key. Either can be configured without the other, and a member
+ * with both a browser and the app should hear once on each rather than have one
+ * silently win. What must never happen is the thing that was happening: a
+ * notification written to the table, nothing configured to carry it, and a
+ * cheerful success returned.
+ */
+export async function notifyAll(env, opts) {
+  const web = await notify(env, opts);
+  const native = await pushNative(env, opts).catch((e) => {
+    console.warn('[push] native fan-out failed', e?.message ?? e);
+    return { sent: 0, error: String(e?.message ?? e) };
+  });
+
+  // Said out loud in the return value, because "queued" on its own is what let
+  // 116 of 117 notifications look fine.
+  const reached = (web.sent || 0) + (native.sent || 0);
+  if (!reached) {
+    console.warn(
+      `[push] NOBODY REACHED for member ${String(opts?.memberId).slice(0, 8)}… ` +
+      `(web subs: ${web.sent || 0}, native tokens: ${native.sent || 0}) — ` +
+      `it will only show when they next open Num`,
+    );
+  }
+  return { ...web, native, reached };
+}
+
+/**
+ * Send to this member's Apple devices.
+ *
+ * Records the outcome per token: a success refreshes last_ok, a dead token is
+ * disabled with Apple's own reason on it, and anything else increments fails.
+ * A token Apple has told us is gone must stop being used — retrying it forever
+ * is what gets a provider throttled and buries the real failures in noise.
+ */
+export async function pushNative(env, { memberId, title, body, url, kind, tag, notifId, badge }) {
+  if (!env.DB || !memberId) return { sent: 0 };
+  const { apnsReady, sendApns, apnsMissing } = await import('./apns.mjs');
+  if (!apnsReady(env)) {
+    return { sent: 0, note: `APNs not configured — missing ${apnsMissing(env).join(', ')}` };
+  }
+
+  const { results: tokens } = await env.DB.prepare(
+    `SELECT id, token, platform, environment, bundle_id FROM num_push_tokens
+      WHERE member_id = ?1 AND disabled_at IS NULL AND fails < 5`
+  ).bind(memberId).all().catch((e) => {
+    console.warn('[push] token read failed (is 0023 applied?)', e?.message ?? e);
+    return { results: [] };
+  });
+
+  let sent = 0;
+  const dead = [];
+  for (const t of tokens ?? []) {
+    if (t.platform !== 'ios') continue; // Android goes through FCM, a later build.
+    const r = await sendApns(env, {
+      token: t.token,
+      environment: t.environment,
+      bundleId: t.bundle_id,
+      title, body, url, kind, notifId,
+      collapseId: tag || kind,
+      badge,
+    });
+
+    if (r.ok) {
+      sent++;
+      await env.DB.prepare("UPDATE num_push_tokens SET last_ok = datetime('now'), fails = 0 WHERE id = ?1")
+        .bind(t.id).run().catch(() => {});
+      continue;
+    }
+
+    if (r.dead) {
+      dead.push(r.reason);
+      await env.DB.prepare(
+        "UPDATE num_push_tokens SET disabled_at = datetime('now'), disabled_reason = ?1 WHERE id = ?2"
+      ).bind(`apns:${r.reason}`, t.id).run().catch(() => {});
+      continue;
+    }
+
+    console.warn(`[push] APNs ${r.status} ${r.reason} for token ${String(t.token).slice(0, 8)}…`);
+    await env.DB.prepare('UPDATE num_push_tokens SET fails = fails + 1 WHERE id = ?1')
+      .bind(t.id).run().catch(() => {});
+  }
+  return { sent, tokens: (tokens ?? []).length, dead };
+}
+
 /** A bare push: no body, just "there is something for you". */
 async function wake(env, endpoint) {
   try {
@@ -180,6 +271,116 @@ export async function handlePush(request, env, path, ctx) {
         ).bind(...results.map((r) => r.id)).run();
       }
       return json({ notifications: results ?? [] });
+    }
+
+    /* ── THE ROUTE THAT DID NOT EXIST ─────────────────────────────────────
+     *
+     * src/lib/native.ts has POSTed here since the native shell shipped. There
+     * was no handler, so every iPhone user who granted notification permission
+     * had that permission thrown away — and the client's catch swallowed the
+     * 404, so nothing anywhere said so.
+     *
+     * Upsert on the token, never insert blindly: a device that re-registers
+     * (app update, reinstall, token rotation) must update its row. A second row
+     * for the same device means every notification arrives twice, which is worse
+     * than not arriving.
+     */
+    if (path === '/native' && post) {
+      const b = await readBody(request);
+      const token = clip(b.token, 200);
+      const me = clip(b.me, 64);
+      const platform = b.platform === 'android' ? 'android' : b.platform === 'ios' ? 'ios' : null;
+
+      if (!token || !me) return json({ ok: false, error: 'token and me required' }, 400);
+      if (!platform) return json({ ok: false, error: "platform must be 'ios' or 'android'" }, 400);
+
+      // A device token is hex from Apple. Refusing anything else keeps junk out
+      // of a table whose whole job is to be dialled.
+      if (platform === 'ios' && !/^[0-9a-fA-F]{32,200}$/.test(token)) {
+        return json({ ok: false, error: 'that does not look like an APNs token' }, 400);
+      }
+
+      // Which APNs door this token belongs to. A sandbox token sent to the
+      // production host fails with BadDeviceToken, and that single mismatch is
+      // the commonest reason someone concludes push is broken. The client says
+      // so when it knows; production is the safe default for a shipped app.
+      const environment = b.environment === 'sandbox' ? 'sandbox' : 'production';
+
+      try {
+        await env.DB.prepare(
+          `INSERT INTO num_push_tokens
+             (id, member_id, token, platform, environment, bundle_id, app_version, device_model, created_at, updated_at)
+           VALUES (?1,?2,?3,?4,?5,?6,?7,?8,datetime('now'),datetime('now'))
+           ON CONFLICT(token) DO UPDATE SET
+             member_id       = excluded.member_id,
+             platform        = excluded.platform,
+             environment     = excluded.environment,
+             bundle_id       = COALESCE(excluded.bundle_id, num_push_tokens.bundle_id),
+             app_version     = COALESCE(excluded.app_version, num_push_tokens.app_version),
+             device_model    = COALESCE(excluded.device_model, num_push_tokens.device_model),
+             updated_at      = datetime('now'),
+             fails           = 0,
+             disabled_at     = NULL,
+             disabled_reason = NULL`
+        ).bind(
+          crypto.randomUUID(), me, token, platform, environment,
+          clip(b.bundle_id, 120) || env.APNS_BUNDLE_ID || null,
+          clip(b.app_version, 40), clip(b.device_model, 80),
+        ).run();
+      } catch (e) {
+        // Loud. A token we cannot store is a person we can never reach, and the
+        // old behaviour — a silent 404 — is exactly what this route exists to end.
+        console.warn('[push] could not store native token:', e?.message ?? e);
+        return json({ ok: false, error: 'could not store that token', detail: String(e?.message ?? e).slice(0, 200) }, 503);
+      }
+
+      const { apnsReady, apnsMissing } = await import('./apns.mjs');
+      return json({
+        ok: true,
+        // Honest about whether this token can actually be used yet, rather than
+        // a bare ok that means "stored and unusable".
+        sendable: apnsReady(env),
+        ...(apnsReady(env) ? {} : { note: `stored, but sending needs ${apnsMissing(env).join(', ')}` }),
+      });
+    }
+
+    /* Marking one read.
+     *
+     * read_at has existed on num_notifications since the table was created and
+     * NOTHING has ever written it — so "0 of 117 read" was unknowable rather
+     * than true. Without this, there is no way to tell a suggestion somebody was
+     * glad to get from one that annoyed them, and no honest basis for sending
+     * more of either.
+     *
+     * `acted` is the stronger signal: they did not just see it, they tapped
+     * through. That is the number worth optimising, and the only one that says a
+     * notification earned its interruption.
+     */
+    if (path === '/read' && post) {
+      const b = await readBody(request);
+      const me = clip(b.me, 64);
+      const ids = Array.isArray(b.ids) ? b.ids.slice(0, 50).map((x) => clip(x, 64)).filter(Boolean)
+        : (clip(b.id, 64) ? [clip(b.id, 64)] : []);
+      if (!me) return json({ ok: false, error: 'me required' }, 400);
+      if (!ids.length) return json({ ok: false, error: 'id or ids required' }, 400);
+
+      // member_id is in the WHERE clause, so one person cannot mark another's
+      // notifications read even knowing the id.
+      const col = b.acted ? 'acted_at' : 'read_at';
+      try {
+        // Always set read_at: an acted notification was necessarily read. Setting
+        // only acted_at would leave a tapped notification looking unseen.
+        const setCol = col === 'read_at' ? '' : `, ${col} = COALESCE(${col}, datetime('now'))`;
+        const r = await env.DB.prepare(
+          `UPDATE num_notifications
+              SET read_at = COALESCE(read_at, datetime('now'))${setCol}
+            WHERE member_id = ?1 AND id IN (${ids.map((_, i) => '?' + (i + 2)).join(',')})`
+        ).bind(me, ...ids).run();
+        return json({ ok: true, marked: r?.meta?.changes ?? 0, acted: !!b.acted });
+      } catch (e) {
+        console.warn('[push] read mark failed (is 0023 applied?)', e?.message ?? e);
+        return json({ ok: false, error: 'could not record that', detail: String(e?.message ?? e).slice(0, 200) }, 503);
+      }
     }
 
     // Everything recent, for an in-app list.

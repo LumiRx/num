@@ -3,9 +3,10 @@
 // Deliberately not a chat app. There is no search, no directory and no way in
 // except through someone you are already connected to, because the graph IS
 // the spam filter. The list only ever shows friends.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
+import { useStickyBottom } from '../../lib/stickyscroll';
 import { closeDmThread, loadDmThread, openDm, retryDm, sendDm } from '../../lib/dm';
 import { replyToInvite } from '../../lib/events';
 import { refreshRequests } from '../../lib/requests';
@@ -189,15 +190,11 @@ function Conversation() {
   const withWho = useApp((s) => s.dmWith);
   const msgs = useApp((s) => s.dmThread);
   const error = useApp((s) => s.dmError);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Shared with the concierge thread — see src/lib/stickyscroll.ts. Both had
+  // the same bug and the comment below used to say "same rule as the Num
+  // thread", which is exactly how two copies drift into it twice.
+  const { ref: scrollRef, onScroll, behind, toLatest } = useStickyBottom<HTMLDivElement>();
   const [draft, setDraft] = useState('');
-
-  // Same rule as the Num thread: snap to the newest on every change, because
-  // a message that arrives above the fold has not arrived.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  });
 
   const send = () => {
     const text = draft.trim();
@@ -208,7 +205,16 @@ function Conversation() {
 
   return (
     <>
-      <div ref={scrollRef} className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px 0 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="no-scrollbar"
+        style={{
+          flex: 1, overflowY: 'auto', padding: '12px 0 8px',
+          display: 'flex', flexDirection: 'column', gap: 8,
+          overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
+        }}
+      >
         {!msgs.length && (
           <div style={{ padding: '28px 22px', textAlign: 'center', color: 'var(--ink-40)', fontSize: 12, lineHeight: 1.6 }}>
             Nothing here yet. Whatever you send lands on {withWho?.name ? `${withWho.name}’s` : 'their'} lock screen — they can answer without opening anything.
@@ -253,6 +259,25 @@ function Conversation() {
       </div>
       {error && (
         <div style={{ padding: '0 18px 6px', fontSize: 11, color: 'var(--color-accent-700)' }}>{error}</div>
+      )}
+      {/* Shown only when they scrolled up AND something new arrived below.
+          Without it, "we will not move you" becomes "you are stranded". */}
+      {behind && (
+        <div style={{ position: 'relative', height: 0 }}>
+          <div
+            {...pressable(toLatest)}
+            style={{
+              position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 3, cursor: 'pointer', borderRadius: 999, minHeight: 36,
+              display: 'flex', alignItems: 'center', padding: '8px 14px',
+              background: 'var(--grad-accent)', color: '#fff',
+              fontSize: 11, fontWeight: 800, letterSpacing: '.06em',
+              boxShadow: '0 6px 18px rgba(0,0,0,.18)', whiteSpace: 'nowrap',
+            }}
+          >
+            NEW BELOW ↓
+          </div>
+        </div>
       )}
       <div className="glass-bar" style={{ padding: '10px 14px max(env(safe-area-inset-bottom), 14px)', flex: 'none' }}>
         <div style={{ display: 'flex', gap: 8, height: 44, alignItems: 'center' }}>

@@ -199,12 +199,32 @@ async function sha256(str) {
  * IP. Nothing is stored on the visitor's device, so PECR reg 6 is not engaged
  * and this needs no consent. It also survives ad blockers, which cookies do not.
  */
+/**
+ * A stable, anonymous handle for one person on one day.
+ *
+ * NO USER-AGENT. It used to be in here, on the reasoning that two people
+ * behind one office NAT are more distinguishable with it than without — true,
+ * and it was the wrong trade. The User-Agent is a header the caller chooses,
+ * so anyone who wanted more visitors simply sent a different one: a fresh id
+ * per request, unlimited forged visitors on /api/ev, and — the part that
+ * reaches money — unlimited BILLABLE scans on /p/, where this id is the only
+ * thing stopping one sticker being counted a thousand times.
+ *
+ * What is left is IP plus the day plus a secret salt, none of which the caller
+ * controls. The cost is real and worth naming: several people on one office or
+ * café network now share one id, so unique-visitor counts on those networks
+ * read low. Under-counting strangers is the right direction to be wrong —
+ * over-counting them is what a venue gets invoiced for.
+ *
+ * The platform hint headers stay out for the same reason: `sec-ch-ua` and
+ * friends are just as caller-chosen as the User-Agent, and adding them back
+ * would reopen this with extra steps.
+ */
 async function visitorId(req, env) {
   const ip = req.headers.get("cf-connecting-ip") || "0";
-  const ua = req.headers.get("user-agent") || "0";
   const day = new Date().toISOString().slice(0, 10);
   const salt = env.VISITOR_SALT || "num-dev-salt";
-  return (await sha256(salt + "|" + day + "|" + ip + "|" + ua)).slice(0, 22);
+  return (await sha256(salt + "|" + day + "|" + ip)).slice(0, 22);
 }
 
 function token(bytes = 16) {
@@ -2019,7 +2039,7 @@ async function sendClaimWelcome(env, c) {
     __idem: "claimwelcome-" + lc(c.email) + "-" + (c.dest || "x"),
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [c.email],
-    reply_to: "info@itsnum.com",
+    reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject,
     text,
   }]);
@@ -2046,6 +2066,10 @@ async function mintCode(env, name) {
   return "H" + codeChunk(9);
 }
 
+/** Host accounts one network may create in a day. Generous for a real person
+ *  (a co-founder signing up beside you is two), absurd for a script. */
+const HOST_JOINS_PER_NETWORK_PER_DAY = 5;
+
 async function hostJoin(req, env, ctx) {
   if (badOrigin(req)) return J({ ok: false }, 403);
   const ip = req.headers.get("cf-connecting-ip") || "0";
@@ -2053,6 +2077,19 @@ async function hostJoin(req, env, ctx) {
 
   let b;
   try { b = await readJSON(req, 16384); } catch (e) { return J({ ok: false }, 400); }
+
+  // The bucket above is per-isolate, which Cloudflare spreads, so it stops a
+  // fast loop and nothing else. This one is in D1 and actually holds: a host
+  // account is a real thing with a referral code and a console, and one
+  // network minting twenty in a day is not a person signing up.
+  const iph = await ipHash(req);
+  const madeToday = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM num_hosts
+      WHERE agreed_ip = ?1 AND created_at > datetime('now','-1 day')`,
+  ).bind(iph).first().catch(() => null);
+  if ((madeToday?.n ?? 0) >= HOST_JOINS_PER_NETWORK_PER_DAY) {
+    return J({ ok: false, error: "slow_down" }, 429);
+  }
 
   const name = clean(b.name, 80);
   const email = String(b.email || "").trim();
@@ -2069,12 +2106,51 @@ async function hostJoin(req, env, ctx) {
   ).bind(lc(email)).first();
 
   if (existing) {
+    // ── THIS BRANCH USED TO HAND OVER A LIVE CONSOLE KEY FOR AN EMAIL ADDRESS.
+    //
+    // POST a known host's email and the reply contained their `console_url` —
+    // the password-less link to their account, their clients and their prices.
+    // No proof of anything. A host's email is often the least private thing
+    // about them: they are referrers, it goes on their materials. That is not
+    // fake-signup at scale, it is account takeover by typing in an address,
+    // and it was the quietest thing in this file.
+    //
+    // Now the key goes ONLY where it already lives — their inbox. The referral
+    // code and /r/ link stay in the reply because they are public by design
+    // (printed on cards, read aloud), and because a real host signing up twice
+    // still needs to be told their existing code rather than shown an error.
+    ctx.waitUntil(sendBatch(env, [{
+      __idem: "hostrelink-" + existing.id + "-" + new Date().toISOString().slice(0, 10),
+      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      to: [email],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
+      subject: "Your NUM host console — " + existing.code,
+      text:
+`Hi ${existing.name || "there"},
+
+Somebody just asked for your host console link on itsnum.com, so here it
+is. If that was you, welcome back:
+
+${site}/host/?k=${existing.console_key}
+
+Keep that link private — it opens your account without a password.
+
+If it was not you, nothing has happened to your account and there is
+nothing you need to do. The link has not changed and nobody else was
+shown it. Reply to this email if you would like it changed anyway.
+
+— Viv
+NUM, by 5arz · ${LEGAL_LINE}
+Reply to this email and a person answers.`,
+      tags: [{ name: "kind", value: "host_relink" }],
+    }]));
+
     return J({
       ok: true,
       existing: true,
       code: existing.code,
       link: site + "/r/" + existing.code,
-      console_url: site + "/host/?k=" + existing.console_key,
+      console_emailed: true,
     });
   }
 
@@ -2114,12 +2190,17 @@ async function hostJoin(req, env, ctx) {
     env.DB.prepare(
       `INSERT INTO num_hosts
          (id,name,company,email,phone,country,code,host_bps,term_months,status,
-          terms_version,agreed_at,agreed_ip,console_key,created_at,notes)
-       VALUES (?,?,?,?,?,?,?,?,12,'active',?,?,?,?,?,?)`
+          terms_version,agreed_at,agreed_ip,terms_text,console_key,created_at,notes)
+       VALUES (?,?,?,?,?,?,?,?,12,'active',?,?,?,?,?,?,?)`
     ).bind(
       hostId, name, clean(b.company, 120), email, e164(b.phone), country(req),
       code, bps, TERMS_VERSION, now(),
-      String(b.terms_text || "").slice(0, 1200), consoleKey, now(),
+      // `agreed_ip` held the TERMS TEXT until 13 Sep 2026 — the bind list had
+      // slid one column, because there was no terms_text to put it in. So the
+      // legal record said nothing about who agreed, and anything keyed on this
+      // column matched nothing. Hashed, not raw: enough to tie two agreements
+      // to one network without keeping a log of addresses.
+      iph, String(b.terms_text || "").slice(0, 1200), consoleKey, now(),
       clean(b.notes || b.about, 4000)
     ),
   ]);
@@ -2133,7 +2214,7 @@ async function hostJoin(req, env, ctx) {
     __idem: "hostwelcome-" + hostId,
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [email],
-    replyTo: ["info@itsnum.com"],
+    reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: "Your NUM host account — " + code,
     text:
 `Hi ${name},
@@ -3331,7 +3412,7 @@ async function notifyHostOfRequest(env, ctx, host, req, clientName) {
     __idem: "reqnew-" + req.id,
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [host.email],
-    replyTo: ["info@itsnum.com"],
+    reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: (clientName ? clientName + ": " : "New request: ") + req.title,
     text:
 `${host.name},
@@ -3365,7 +3446,7 @@ async function notifyClientOfConfirm(env, ctx, host, req, client) {
     __idem: "reqconf-" + req.id,
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [client.email],
-    replyTo: [host.email || "info@itsnum.com"],
+    reply_to: [host.email || env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: "Confirmed — " + req.title,
     text:
 `${String(client.name || "").split(/\s+/)[0]},
@@ -3403,7 +3484,7 @@ async function postMessage(env, ctx, opts) {
         __idem: "msg-" + id,
         from: env.MAIL_FROM || "NUM <info@itsnum.com>",
         to: [client.email],
-        replyTo: [host.email || "info@itsnum.com"],
+        reply_to: [host.email || env.MAIL_REPLY_TO || "info@itsnum.com"],
         subject: "Re: " + request.title,
         text: String(client.name || "").split(/\s+/)[0] + ",\n\n" + body + onBehalf(host, env),
         tags: [{ name: "kind", value: "client_message" }],
@@ -3412,7 +3493,7 @@ async function postMessage(env, ctx, opts) {
         __idem: "msg-" + id,
         from: env.MAIL_FROM || "NUM <info@itsnum.com>",
         to: [host.email],
-        replyTo: ["info@itsnum.com"],
+        reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
         subject: (client ? client.name + " replied" : "Reply") + " — " + request.title,
         text:
 `${host.name},
@@ -3699,7 +3780,7 @@ async function endClient(env, ctx, opts) {
       __idem: "sep-host-" + sepId,
       from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: [host.email],
-      replyTo: ["info@itsnum.com"],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: firstName + " has left your book",
       text:
 `${host.name},
@@ -3727,7 +3808,7 @@ NUM, by 5arz · ${LEGAL_LINE}`,
       __idem: "sep-member-" + sepId,
       from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: [row.email],
-      replyTo: ["info@itsnum.com"],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "Your VIP host has changed",
       text:
 `Hello ${firstName},
@@ -4093,7 +4174,7 @@ async function hostClose(req, env, url, ctx) {
       __idem: "hostclosed-" + host.id,
       from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: [host.email],
-      replyTo: ["info@itsnum.com"],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "Your NUM host account is closed",
       text:
 `${host.name},
@@ -4411,7 +4492,7 @@ async function hostIntro(req, env, ctx) {
       __idem: "hostintro-" + clientId,
       from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: [host.email],
-      replyTo: ["info@itsnum.com"],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "A NUM member near you is asking for a host",
       text:
 `${host.name},
@@ -4624,7 +4705,7 @@ async function drainQueue(env, budget, hostId) {
       __idem: "hostinv-" + c.id,
       from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: [c.email],
-      replyTo: ["info@itsnum.com"],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: first + " sent you their little black book",
       text:
 `${c.name ? "Hi " + c.name + "," : "Hi,"}
@@ -5174,7 +5255,15 @@ async function logScan(env, req, row) {
   } catch (e) {
     // A logging failure must never cost the guest their perk or the business
     // its booking. Record and carry on.
-    console.warn("[venue] scan log failed:", String(e).slice(0, 160));
+    //
+    // NAME THE OUTCOME. `outcome` carries a CHECK constraint, so adding a new
+    // one to the code without adding it to the table means every write of that
+    // kind is rejected here — and the console line said only "scan log failed",
+    // which reads like a transient blip. It happened: the guessing lock shipped
+    // working and unobservable, because the security sweep reads this TABLE and
+    // the rejection only ever reached the console. Worse for a security event
+    // than for any other, since the row IS the alert.
+    console.warn("[venue] scan log failed:", row.outcome, String(e).slice(0, 160));
   }
 }
 
@@ -5265,8 +5354,12 @@ async function venueArrive(req, env) {
       token: vtok, business_id: venue.business_id, outcome: "no_booking", detail: code,
     });
     return J({
+      // `business_id` used to ride along here. Nothing reads it — not this
+      // page's own script, not the copy in .landing-parts — and it is an
+      // internal identifier handed to anyone holding a printed table token.
+      // A reply should carry what the caller needs and stop there.
       ok: true, matched: false, venue: venue.business_name,
-      business_id: venue.business_id, perk: venue.perk_text || null,
+      perk: venue.perk_text || null,
     });
   }
 
@@ -5288,7 +5381,12 @@ async function venueArrive(req, env) {
       token: vtok, business_id: venue.business_id, booking_id: bk.id,
       outcome: "wrong_venue", member_ref: bk.member_ref, detail: "status=" + bk.status,
     });
-    return J({ ok: false, error: "not_active", status: bk.status }, 409);
+    // The error NAME stays — the page turns it into "that booking may have been
+    // cancelled, staff can sort it", which is genuinely different and genuinely
+    // useful advice. What goes is the exact `status`: the guest is told nothing
+    // by 'cancelled_business' vs 'no_show' that the sentence does not already
+    // say, and a competitor holding a table token is told plenty.
+    return J({ ok: false, error: "not_active" }, 409);
   }
 
   const t = EPOCH();
@@ -5298,10 +5396,13 @@ async function venueArrive(req, env) {
       outcome: "out_of_window", member_ref: bk.member_ref,
       detail: "t=" + t + " slot=" + bk.starts_at + "-" + bk.ends_at,
     });
-    return J({
-      ok: false, error: "out_of_window",
-      starts_at: bk.starts_at, ends_at: bk.ends_at,
-    }, 409);
+    // Same reasoning, and this one mattered more: `starts_at`/`ends_at` are the
+    // exact epoch seconds of somebody's reservation. Repeated across a venue's
+    // codes that is its covers-per-night and its table turn — the numbers a
+    // competitor would pay for — handed over for free. The page never read
+    // them; it says "check-in opens 90 minutes before your time", which is the
+    // useful half and gives away nothing.
+    return J({ ok: false, error: "out_of_window" }, 409);
   }
 
   // The venue is being guessed at from many networks right now. This code is
@@ -5316,7 +5417,7 @@ async function venueArrive(req, env) {
     });
     return J({
       ok: true, matched: false, venue: venue.business_name,
-      business_id: venue.business_id, perk: venue.perk_text || null,
+      perk: venue.perk_text || null,
     });
   }
 
@@ -5746,11 +5847,39 @@ const qrSvg = (function () {
 const TOKEN_ALPHABET = "BCDFGHJKMNPQRSTVWXYZ23456789";  // no vowels, no 0/1/I/O
 const MAX_ACTIVE_CODES = 300;   // a very large restaurant; a runaway loop is not
 
-function newToken(len = 6) {
-  const b = new Uint8Array(len);
-  crypto.getRandomValues(b);
+/**
+ * A public token — the thing printed on a table card or a pay sticker.
+ *
+ * TEN CHARACTERS, RAISED FROM SIX ON 12 SEP 2026. Six of this 28-character
+ * alphabet is about 28 bits: roughly 480 million, which sounds enormous and is
+ * not. `/api/venue/qr/` and `/api/pay/qr/` answer 200 or 404 for any token, so
+ * the space is walkable from outside at speed, and every hit hands over a live
+ * venue's pay page. Ten characters is about 48 bits — four million times the
+ * work — and costs a guest nothing, because nobody types these: they are
+ * scanned, and the only human-typed code in the system is the guest's own
+ * check-in code, which is a different thing and deliberately short.
+ *
+ * Every caller passes no argument, the columns are TEXT, and the readers accept
+ * 4-40, so existing six-character tokens keep working untouched. This changes
+ * what we MINT, not what we honour.
+ *
+ * REJECTION SAMPLING, not `% 28`. 256 is not a multiple of 28, so the first
+ * four letters of the alphabet used to come up about 11% more often than the
+ * rest. On its own that is worth a fraction of a bit and would not be worth
+ * writing down — but it is four lines to remove and it means the entropy above
+ * is the real number rather than an optimistic one.
+ */
+function newToken(len = 10) {
+  const n = TOKEN_ALPHABET.length;
+  const limit = 256 - (256 % n);            // 252 for a 28-character alphabet
   let s = "";
-  for (let i = 0; i < len; i++) s += TOKEN_ALPHABET[b[i] % TOKEN_ALPHABET.length];
+  while (s.length < len) {
+    const b = new Uint8Array(len);
+    crypto.getRandomValues(b);
+    for (let i = 0; i < b.length && s.length < len; i++) {
+      if (b[i] < limit) s += TOKEN_ALPHABET[b[i] % n];
+    }
+  }
   return s;
 }
 
@@ -5873,7 +6002,17 @@ async function venueQr(req, env, rest) {
   // Refuse to draw a QR for a code that does not exist. A beautiful QR
   // pointing at nothing is how a venue ends up with fifty printed cards that
   // all say "this code isn't one of ours".
-  if (!row) return TEXT("unknown token", 404);
+  //
+  // AND RECORD THE MISS. 200-or-404 on an unauthenticated route is a perfect
+  // test for "does this token exist", and this one used to leave no trace at
+  // all — while /v/ and /p/ both write `unknown_token` into the tables the
+  // security sweep reads. So the one surface that could be walked from outside
+  // was the one surface nobody was watching. It is still open, because the
+  // artwork has to be, but it is no longer quiet.
+  if (!row) {
+    await logScan(env, req, { token, business_id: "", outcome: "unknown_token" });
+    return TEXT("unknown token", 404);
+  }
 
   const body = qrSvg((env.SITE || "https://itsnum.com") + "/v/" + token);
   return new Response(body, {
@@ -6156,7 +6295,7 @@ async function venueIssueKey(req, env, ctx) {
     __idem: "venuekey-" + bizId + "-" + (minted ? "mint" : "resend"),
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [to],
-    replyTo: ["info@itsnum.com"],
+    reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: `Your table codes for ${biz.name}`,
     headers: { "List-Unsubscribe": "<mailto:info@itsnum.com?subject=unsubscribe>" },
     text: `Hi,
@@ -6405,7 +6544,8 @@ async function securitySweep(env) {
   for (const r of await q(
     `SELECT business_id, COALESCE(ip_hash,'?') AS net, COUNT(DISTINCT detail) AS codes
        FROM num_venue_scans
-      WHERE outcome='no_booking' AND created_at > datetime('now','-1 day')
+      WHERE outcome IN ('no_booking','wrong_venue','out_of_window','guess_locked')
+        AND created_at > datetime('now','-1 day')
       GROUP BY business_id, ip_hash HAVING codes > 8`)) {
     findings.push({ kind: "code_bruteforce", subject: r.business_id + "/" + r.net,
       severity: "high",
@@ -6453,7 +6593,7 @@ async function securitySweep(env) {
       __idem: "secsweep-" + day + "-" + fresh.length,
       from: env.MAIL_FROM || "NUM <info@itsnum.com>",
       to: ["info@5arz.com"],
-      replyTo: ["info@itsnum.com"],
+      reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: `[NUM security] ${fresh.length} new finding(s) — ${fresh.map(f => f.kind).join(", ")}`,
       headers: { "List-Unsubscribe": "<mailto:info@itsnum.com?subject=unsubscribe>" },
       text: "New findings from the venue security sweep:\n\n" +
@@ -7780,7 +7920,13 @@ async function payQrRoute(req, env, rest) {
   const row = await env.DB.prepare(
     "SELECT token, kind, target, crypto_asset, crypto_base_units FROM num_paylinks WHERE token=?"
   ).bind(t).first();
-  if (!row) return TEXT("unknown token", 404);
+  // Same reasoning as venueQr: an unauthenticated existence oracle that writes
+  // nothing is the one place a token-space walk is invisible. `logPayEvent`
+  // already records `unknown_token` for /p/, and the sweep already reads it.
+  if (!row) {
+    await logPayEvent(env, req, { token: t, business_id: "", kind: "unknown_token" });
+    return TEXT("unknown token", 404);
+  }
   // Crypto codes point at the /p/ page too, not at an EIP-681 URI.
   //
   // Two reasons, and the second is the important one. The encoders in this
@@ -7835,6 +7981,15 @@ async function venuePayList(req, env, url) {
   return J({ ok: true, business: biz.name, month_scans: month?.n || 0, paylinks: results || [] });
 }
 
+/** What this venue's guests should be asked to pay in. Falls to USD, not THB —
+ *  an unknown country is far likelier to be anywhere than to be Thailand. */
+async function currencyForVenue(env, businessId) {
+  const row = await env.DB.prepare(
+    "SELECT country FROM num_business_profiles WHERE business_id = ?1",
+  ).bind(businessId).first().catch(() => null);
+  return railFor(row?.country).currency;
+}
+
 async function venuePayCreate(req, env, url) {
   const biz = await bizAuth(env, url, req);
   if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
@@ -7848,8 +8003,20 @@ async function venuePayCreate(req, env, url) {
   if (!vt.ok) return J(vt, 400);
   const va = validPayAmount(b.amount);
   if (!va.ok) return J(va, 400);
+  // THE FALLBACK IS THE VENUE'S OWN CURRENCY, NOT BAHT.
+  //
+  // It was the literal "THB". The /biz/pay form has no currency field at all
+  // and createLink() posts none, so every fixed-amount code an LA or Edinburgh
+  // venue made there was stored in Thai baht and shown to their guest as a 34px
+  // "THB 45.00". The /biz/tables picker already carries a comment apologising
+  // for this exact thing — the fix landed on one creation surface and not the
+  // others, and its own server-side fallback was still THB too.
+  //
+  // Defaulting from the venue's country fixes it for old clients as well, which
+  // a new form field would not.
   const currency = PAY_CURRENCIES.includes(clean(b.currency, 3).toUpperCase())
-    ? clean(b.currency, 3).toUpperCase() : "THB";
+    ? clean(b.currency, 3).toUpperCase()
+    : await currencyForVenue(env, biz.id);
 
   const live = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM num_paylinks WHERE business_id=? AND state='active'"
@@ -7918,8 +8085,10 @@ async function venuePayBulk(req, env, url) {
   if (!vt.ok) return J(vt, 400);
   const va = validPayAmount(b.amount);
   if (!va.ok) return J(va, 400);
+  // Same fallback, same reason — see venuePayCreate.
   const currency = PAY_CURRENCIES.includes(clean(b.currency, 3).toUpperCase())
-    ? clean(b.currency, 3).toUpperCase() : "THB";
+    ? clean(b.currency, 3).toUpperCase()
+    : await currencyForVenue(env, biz.id);
 
   let plan = [];
   if (b.template) {
@@ -8153,6 +8322,29 @@ function payPage(o) {
     ${amt ? `<div class="amount">${amt}</div>` : ""}
     <p class="lede">Open your Thai banking app and scan the <b>printed PromptPay
     QR</b> on this card — the bank pays ${esc(o.venue)} directly.</p>
+    <!-- THE PROMPTPAY ID IS SHOWN IN FULL, DELIBERATELY.
+         The 12 Sep security review flagged this: for a small Thai operator the
+         target is their personal mobile or 13-digit tax ID, rendered whole to
+         anyone holding the token. The recommendation was to mask it to last-4.
+         We are NOT doing that, and the reason should survive the next reviewer.
+
+         This page renders no QR of its own — it cannot, because the guest is
+         reading it ON the phone they would have to scan with. The printed card
+         is the primary route, and this ID is the ONLY fallback when that card
+         is scuffed, badly lit, or the camera will not focus. Masking it leaves
+         a guest standing at a till with no way to pay.
+
+         And masking would not actually close anything. The token IS the
+         credential here: anyone who can read this line already holds a live
+         token for this venue. The real exposure was never the rendering, it
+         was that tokens were six characters and the two QR routes answered
+         200-or-404 for free, so the space could be walked and IDs harvested at
+         scale. Both of those were fixed the same day — ten characters, about
+         48 bits, and every miss now recorded where the sweep reads it.
+
+         What would change this: giving the guest another way to pay that does
+         not need the number. Until that exists, masking trades a real guest's
+         ability to pay for no security we do not already have. -->
     <div class="ppbox">PromptPay ID<br><span class="ppid">${esc(o.promptpayId)}</span><br>
     <span class="note">You can also enter this ID in your banking app's PromptPay
     transfer screen${amt ? ` — the amount is ${amt}` : ""}.</span></div>
@@ -9082,7 +9274,7 @@ async function mailBillSettled(env, who, token, out) {
     __idem: "billsettled-" + bill.token,
     from: env.MAIL_FROM || "NUM <info@itsnum.com>",
     to: [bill.venue_email],
-    reply_to: "info@itsnum.com",
+    reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: "Bill settled — " + money + (bill.label ? " · " + bill.label : ""),
     text: [
       "Bill " + bill.token + " is settled.",
@@ -9642,8 +9834,10 @@ async function qrIdentitySet(req, env, url) {
   const vt = validPayTarget(kind, raw);
   if (!vt.ok) return J(vt, 400);
 
+  // Same fallback, same reason — see venuePayCreate.
   const currency = PAY_CURRENCIES.includes(clean(b.currency, 3).toUpperCase())
-    ? clean(b.currency, 3).toUpperCase() : "THB";
+    ? clean(b.currency, 3).toUpperCase()
+    : await currencyForVenue(env, who.business.id);
 
   if (!b.confirm) {
     const checks = {

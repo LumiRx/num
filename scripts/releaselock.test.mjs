@@ -37,7 +37,7 @@ describe('the lock is named, not crashed on', () => {
 
   test('it prints the exact path and the exact command', () => {
     const i = SRC.indexOf('function refuseOnStaleLock');
-    const body = SRC.slice(i, i + 1200);
+    const body = SRC.slice(i, i + 3000);
     assert.match(body, /\$\{lock\}/, 'the operator should not have to work out which file');
     assert.match(body, /rm -f/, 'and should not have to work out the command');
     assert.match(body, /NO_AUTOCOMMIT=1/, 'the escape hatch belongs in the message');
@@ -46,11 +46,58 @@ describe('the lock is named, not crashed on', () => {
 });
 
 describe('what it deliberately does NOT do', () => {
-  test('it never deletes the lock itself', () => {
+  // CHANGED 12 Sep 2026. This used to assert the lock was NEVER deleted. That
+  // rule was protecting something real — the lock also exists when git IS
+  // running, and removing it under a live writer corrupts the repository — but
+  // applied to every lock it cost three releases, two of them after the tests
+  // had already passed.
+  //
+  // The rule is now narrower, not gone: a lock is cleared only when the FILE
+  // ITSELF proves nothing holds it. Both conditions are required, and these
+  // tests exist to stop either being relaxed.
+
+  test('a lock with ANY content is never touched, however old', () => {
+    // Git writes the new index into index.lock as it works, so bytes mean a
+    // writer. This is the case the original rule was protecting.
+    const i = SRC.indexOf('function deadLock');
+    const body = SRC.slice(i, i + 900);
+    assert.match(body, /st\.size !== 0/, 'the emptiness check is gone — any lock could now be deleted');
+    assert.match(body, /return false/);
+  });
+
+  test('an empty lock must ALSO be old before it is cleared', () => {
+    const i = SRC.indexOf('function deadLock');
+    const body = SRC.slice(i, i + 900);
+    assert.match(body, /DEAD_LOCK_AFTER_MS/, 'the age check is gone — a lock a second old could be deleted');
+    assert.match(SRC, /const DEAD_LOCK_AFTER_MS = 10 \* 60 \* 1000/,
+      'ten minutes is far longer than any git add here and far shorter than the locks we have found');
+  });
+
+  test('an unreadable lock is left alone rather than guessed at', () => {
+    const i = SRC.indexOf('function deadLock');
+    const body = SRC.slice(i, i + 900);
+    assert.match(body, /catch \{\s*\n?\s*return false;/,
+      'cannot read it, cannot judge it, must not delete it');
+  });
+
+  test('the sweep can be switched off entirely', () => {
+    assert.match(SRC, /NO_LOCK_SWEEP/, 'there must be a way to opt out of any automatic deletion');
+  });
+
+  test('clearing a lock is announced, never silent', () => {
+    // A release tool that quietly deletes files inside .git is not one to trust.
     const i = SRC.indexOf('function refuseOnStaleLock');
-    const body = SRC.slice(i, i + 1200);
-    assert.ok(!/unlinkSync|rmSync|rm -f "\$\{lock\}"\s*\)/.test(body.replace(/console\.error[^\n]*/g, '')),
-      'the lock also exists when git IS running — removing it under a live writer corrupts the repo');
+    const body = SRC.slice(i, i + 3000);
+    assert.match(body, /Cleared an abandoned git lock/);
+    assert.match(body, /0 bytes/, 'it must say WHY it judged the lock dead');
+  });
+
+  test('a lock it will not clear still stops the run', () => {
+    const i = SRC.indexOf('function refuseOnStaleLock');
+    const body = SRC.slice(i, i + 3000);
+    assert.match(body, /process\.exit\(1\)/);
+    assert.match(body, /it has bytes in it, or it is less/,
+      'the refusal must say why THIS lock was not cleared automatically');
   });
 
   test('it reads the real git dir, which for a worktree is not .git', () => {

@@ -362,3 +362,112 @@ test('a run that was never sent does not block the money forever', async () => {
   assert.equal(again.ok, true);
   assert.equal(again.total_minor, 3000);
 });
+
+/* ── part payments, and the host money they used to release ───────────────
+ *
+ * `payInvoice` took an `amountCs` from the admin pay route and never compared
+ * it to what was owed. Record half an invoice and it flipped to 'paid', stamped
+ * every commission line `paid_cs = amount_cs` (the FULL line, not the half that
+ * arrived — so the shortfall dropped out of owed() and invoiceVenue() for
+ * ever), and then released the host's WHOLE share.
+ *
+ * That is the exact thing this module's header exists to prevent: "Paying a
+ * host out of money that has not arrived turns a referral programme into a
+ * loan book."
+ *
+ * There was no test for a partial payment at all, which is why it shipped.
+ * Every existing test passes `{ ref }` with no amount, so none of them ever
+ * took this branch. */
+
+test('half an invoice does not pay an invoice, and releases nothing', async () => {
+  const { d, env } = db();
+  host(d);
+  const c = line(d, { amount: 24000 });
+  earning(d, { booking: c.booking });
+
+  const inv = await invoiceVenue(env, 'biz1');
+  const out = await payInvoice(env, inv.id, { ref: 'PP-SHORT', amountCs: 12000 });
+
+  assert.equal(out.part, true, 'a short payment must say so');
+  assert.equal(out.outstanding_cs, 12000, 'and say what is still owed');
+
+  const row = d.prepare('SELECT state, paid_cs, paid_at FROM num_invoices WHERE id=?').get(inv.id);
+  assert.equal(row.state, 'open', 'the invoice stays collectable');
+  assert.equal(row.paid_cs, 12000, 'but what did arrive is banked, not thrown away');
+  assert.equal(row.paid_at, null, 'it is not paid, so it has no paid date');
+
+  const cl = d.prepare('SELECT paid_cs FROM num_commissions WHERE id=?').get(c.id);
+  assert.ok(!cl.paid_cs, 'no commission line may be marked paid off a part payment');
+
+  const led = await hostLedger(env, 'h1');
+  assert.equal(led.due_to_you, 0, 'the host is owed nothing yet — the money is not here');
+  assert.equal(led.waiting_on_the_venue, 3000, 'and it is still shown as waiting');
+});
+
+test('the rest of the money finishes the job', async () => {
+  // The reason a part payment is RECORDED rather than refused: an operator
+  // holding a transfer that came up short needs somewhere to put it, and the
+  // balance has to complete normally when it arrives.
+  const { d, env } = db();
+  host(d);
+  const c = line(d, { amount: 24000 });
+  earning(d, { booking: c.booking });
+
+  const inv = await invoiceVenue(env, 'biz1');
+  await payInvoice(env, inv.id, { ref: 'PP-1of2', amountCs: 12000 });
+  const done = await payInvoice(env, inv.id, { ref: 'PP-2of2', amountCs: 12000 });
+
+  assert.ok(!done.part, 'the topping-up payment completes it');
+  assert.equal(done.paid_cs, 24000, 'and reports the full amount received, not just the last instalment');
+
+  const row = d.prepare('SELECT state, paid_cs FROM num_invoices WHERE id=?').get(inv.id);
+  assert.equal(row.state, 'paid');
+  assert.equal(row.paid_cs, 24000);
+
+  const led = await hostLedger(env, 'h1');
+  assert.equal(led.due_to_you, 3000, 'only now is the host actually owed');
+});
+
+test('a full payment still works exactly as it did', async () => {
+  // The guard must not change the ordinary path.
+  const { d, env } = db();
+  host(d);
+  const c = line(d, { amount: 24000 });
+  earning(d, { booking: c.booking });
+  const inv = await invoiceVenue(env, 'biz1');
+
+  const out = await payInvoice(env, inv.id, { ref: 'PP-FULL', amountCs: 24000 });
+  assert.ok(!out.part);
+  assert.equal(out.host_released, 1);
+  const row = d.prepare('SELECT state, paid_cs FROM num_invoices WHERE id=?').get(inv.id);
+  assert.equal(row.state, 'paid');
+  assert.equal(row.paid_cs, 24000);
+});
+
+/* ── one total, one currency ──────────────────────────────────────────────
+ * `total_cs` summed every line regardless of currency and then labelled the
+ * result with whichever line was created first. A ฿70 walk-in floor line
+ * behind one USD line rendered as "$70.00" — 33x the real charge — on the
+ * venue's own running statement, which is the number they check us against. */
+
+test('a statement never adds baht to dollars', async () => {
+  const { d, env } = db();
+  line(d, { amount: 24000, currency: 'THB' });
+  line(d, { amount: 5000, currency: 'USD' });
+
+  const o = await owed(env, 'biz1');
+  assert.equal(o.currency, 'THB', 'the majority/first currency is what is reported');
+  assert.equal(o.total_cs, 24000, 'and the total is only the lines actually in it');
+  assert.equal(o.other_currencies, 1, 'the rest are counted, not silently dropped');
+  assert.equal(o.billable.length, 2, 'both lines are still listed — nothing is hidden');
+});
+
+test('a lone foreign line cannot be relabelled as the house currency', async () => {
+  // The 33x case, in the direction that overstates: one THB floor line, read
+  // as though it were dollars.
+  const { d, env } = db();
+  line(d, { amount: 7000, currency: 'THB' });
+  const o = await owed(env, 'biz1');
+  assert.equal(o.currency, 'THB');
+  assert.equal(o.total_cs, 7000, '฿70.00, not $70.00');
+});

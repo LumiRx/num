@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,336 green, 0 lint errors, tsc clean |
+| Tests | 4,485 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -70,6 +70,112 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 
 - **Host job board** — `growth/hostjobs.mjs` shaping layer built and tested (30 tests). Routes, `num_host_jobs` table, member-facing section and console card still to build. Three product questions open, below.
 
+## Notifications could not reach an iPhone at all — 13 Sep
+
+What production said before any of this was built:
+
+| | |
+|---|---|
+| Members | 148 |
+| Web-push subscriptions | **2** |
+| Notifications written (6 weeks, 42 people) | 117 |
+| Ever **delivered** | **1** |
+| Ever marked **read** | 0 — and `read_at` had no writer anywhere, so this was unknowable rather than true |
+| Stored preferences | 2 rows |
+
+And the worst of it, on the app that just cleared review: `src/lib/native.ts` asked for
+notification permission, received an APNs token, and POSTed it to `/api/push/native` — **a route
+with no handler**. The client's `catch` swallowed the 404. So every iPhone user who said yes had
+that yes thrown away, and on iOS permission is close to one-shot: once declined it is very hard to
+win back. There was no APNs or FCM sending code anywhere in the repo.
+
+So the engine Dre asked for — auto suggestions catering to preferences — would have been a roof on
+no walls: correct logic, reaching 2 people out of 148, with no way to tell whether anyone read it.
+
+### What now exists
+
+- **`worker/apns.mjs`** — sending to Apple, written against Apple's published specification rather
+  than memory, because every mistake here fails silently. ES256 JWT signed with the `.p8`, **cached
+  for 45 minutes** because Apple refuses more than one token update per 20 minutes and answers 429
+  `TooManyProviderTokenUpdates` — minting per send would fail the whole batch. Correct `apns-topic`,
+  `apns-push-type`, `apns-expiration`; **priority 5, not 10**, for anything proactive, because 10
+  means "interrupt them now" and using it for everything is how an app earns a reputation for being
+  rude. Payload trimmed to Apple's 4 KB by **bytes**, so Thai or emoji cannot smuggle it over.
+- **Apple's retry rules followed exactly.** `Unregistered`, `ExpiredToken`, `BadDeviceToken` and
+  `DeviceTokenNotForTopic` disable the token with Apple's own reason on it; 429 and 5xx back off
+  (15 minutes for 5xx, as Apple asks); a stale provider token clears the cache so the *next* send in
+  the batch succeeds instead of the whole run failing behind one expired JWT.
+- **`/api/push/native`** — the handler that did not exist. Upserts on the token, so a reinstall
+  updates its row rather than adding a second (two rows means every notification arrives twice,
+  which is worse than not arriving), and revives a token we had disabled.
+- **`/api/push/read`** — `read_at` finally has a writer, plus `acted_at` for a tap. **Acted is the
+  only number that says a notification earned its interruption**, and it is the one worth sending
+  more on.
+- **Both clients close the loop.** The service worker reports what it showed and what was tapped;
+  the native app now has `pushNotificationActionPerformed` (it had none, so a tap opened the home
+  screen and the suggestion was lost) and refuses any push url that is not same-origin.
+- **`notifyAll()`** replaces `notify()` for new work and logs **NOBODY REACHED** when a send
+  reaches zero devices. That line is the whole lesson of the 117.
+
+### The limits, in the schema rather than in code
+
+`num_notify_prefs` carries `enabled`, `quiet_from`/`quiet_to` in the member's own `tz`, a
+`paused_until` date that expires by itself, and a **`weekly_cap` defaulting to 3** for everything
+proactive combined. That number is the difference between a concierge and a marketing list, and it
+lives in one place so no future feature can add "just one more kind" of message without either
+fitting the budget or visibly raising it.
+
+`num_notify_log` records **suppressions as well as sends, with a reason required by CHECK** — "why
+did NUM not tell me about that" is a question a real member asks. `num_taste` separates `stated`
+from `observed` and requires a confidence on a guess, so a suggestion built on inference can be
+phrased less confidently than one built on their own words.
+
+`worker/nudge.mjs` already said the principle out loud in August: *"No 'haven't seen you in a
+while', no engagement bait, ever. The moment a nudge exists to serve us instead of them, this file
+is a growth-hacking tool wearing a concierge's clothes."* The schema above is that sentence given
+teeth.
+
+### Needed from Apple before any of it sends
+
+Four secrets. Until they are set, tokens are stored and `sendable: false` is returned honestly
+rather than a bare ok: `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`.
+
+### Still to build
+
+The preference-capture screen, and the suggestion engine itself. Both are better built once a
+notification can be watched arriving — the engine's whole quality bar is `acted_at`, and that number
+does not exist yet.
+
+## Empty is not broken — the habit that cost 12 Sep
+
+`.catch(() => ({ results: [] }))` on a list query is the single most expensive habit in this
+codebase. It turns a schema problem into a blank page and a 200 OK. Three separate failures on
+12 Sep were all this shape, and a fourth was waiting:
+
+- `/api/host/requests` answered 500 for **weeks** because `booking_fee_minor` was missing. The POSTs
+  kept working, so "Log it" looked merely unloved.
+- `resolveSupplier` selected a column added by an ALTER. Had that ALTER ever been missing, **every
+  supplier would have become an unknown sender** and every texted photo would have queued forever.
+- `/api/host/suppliers` shipped ahead of 0022 and the supplier list swallowed `no such column: phone`
+  into an empty array — a live card, reporting success, that could never show a supplier or accept
+  one.
+- **The worst one, never hit:** the double-booking clash check read the existing holds through the
+  same silent catch. A failed query gave an empty list, the overlap loop found nothing to clash
+  with, and **the second booking on the same hull went through.** A guest on a quay watching
+  somebody else board their boat was one dropped query away.
+
+`growth/readfail.mjs` is the fix. `rows(query, what)` lets an empty result be empty and makes a
+failed query throw, named. Handlers answer **503** with `error: read_failed`, the real SQLite
+message, and a sentence that tells a host it is not their fault and tells whoever investigates to
+check migrations first. The console already hides a card on 503.
+
+The clash check **fails closed**: if we cannot read the calendar we do not know whether the hull is
+free, and "I do not know" is never answered as "yes". `growth/readfail.test.mjs` proves it by
+dropping the holds table and asserting the booking is refused.
+
+`growth/readfail.test.mjs` also greps both handler files for the bare pattern, so the habit cannot
+come back one line at a time.
+
 ## Migrations are sealed — the guard for the booking_fee_minor class
 
 How `booking_fee_minor` actually went missing, stated exactly, because the obvious explanation is
@@ -115,6 +221,48 @@ Two guards now exist:
 
 If you deploy by hand, deploy **both** or run the script. `npx wrangler deploy` alone ships the
 console without its API.
+
+## The Friday pack draw — LIVE as of 13 Sep 2026
+
+Ten sealed Pokémon packs a week, **ten winners, one each**. Dre bought the packs 12 Sep.
+
+| Piece | Where | State |
+|---|---|---|
+| Entry code `PACKS` | `worker/packdraw.mjs` → num-app | **live** (0.8.287) |
+| Card-shop search | `worker/cardshops.mjs` → num-app | **live** |
+| Official Rules | `growth/fridayrules.mjs` → num-growth | **live**, itsnum.com/friday-rules returns 200 |
+| The draw itself | `growth/fridaydraw.mjs` | built, tested — **NO ROUTE OR BUTTON. Cannot be run.** |
+
+- **Entry is opt-in.** A member sends Num the single word `PACKS`. The message must BE the code, so
+  "where can I buy packs" still reaches the card-shop search. One entry per member per week, enforced
+  by the primary key. Checked BEFORE the brain — a model asked "PACKS" answers plausibly and the entry
+  is silently never recorded, which is the worst outcome because the member believes they entered.
+- **The draw is reproducible.** Seeded, recorded, sorted before shuffling; same seed and same entrants
+  give the same ten winners forever. No `Math.random` — a test pins that.
+- **Eligibility cannot be checked at draw time.** `num_members` has no country and no age; `dest` is
+  where somebody is TRAVELLING, not where they live. Filtering on it would look like enforcement and
+  be wrong about most people. So 18+/US-UK is verified AT CLAIM, with a clean forfeit-and-redraw.
+- **Thailand is excluded and the page says why.** Thai law requires a Gambling Act s.8 licence for
+  prize draws INCLUDING free-entry ones — 15+ working days, up to a year's imprisonment. A one-year
+  licence is ~฿9,000 (~$275) if Thailand is wanted in.
+- **Trademark:** genuine sealed product bought at retail (keep the receipts — that is the first-sale
+  position), no logos or artwork anywhere, disclaimer on the page and on both social graphics.
+
+**Not done:** the draw has no way to be run. It is a function with no route and no button.
+
+## A HANDLER IS NOT A ROUTE — the third time, 12 Sep
+
+`/friday-rules` was written, wired into the growth worker, tested and **successfully deployed** — and
+still returned 404, because no pattern in `growth/wrangler.jsonc` sends that path to num-growth.
+`itsnum.com` is served by several workers and the growth one only receives the paths listed there.
+
+The same omission had already shipped **`/api/pay/*`** broken for weeks (every merchant pay QR
+resolving to the site's 404 page instead of an image) and **`/p/*`** broken until 22 Aug (guests
+getting a 404 instead of a payment screen). Both are recorded in comments in that file. There is now
+a test asserting the rules page has a route, not just a handler.
+
+**Rule: code and secrets take effect on deploy; ROUTE PATTERNS are configuration and only change when
+the deploy carries the config.** That is why the entry code went live and the page did not.
 
 ## Open decisions (Dre's, not mine)
 

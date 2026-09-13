@@ -180,6 +180,51 @@ export async function registerNativePush(memberId: string | null): Promise<void>
         body: JSON.stringify({ token: token.value, platform: nativePlatform(), me: memberId }),
       }).catch(() => {});
     });
+
+    // A registration that FAILS has to be visible. Until 13 Sep 2026 the server
+    // had no handler for the token at all, so every granted permission was
+    // thrown away into a 404 and nothing anywhere said so. On iOS permission is
+    // close to one-shot, so a silently wasted yes is close to unrecoverable.
+    PushNotifications.addListener('registrationError', (err) => {
+      console.warn('[push] native registration failed', err);
+    });
+
+    /* The tap. This did not exist, and without it the whole chain ends one step
+     * short: a notification arrives, the person taps it, the app opens on the
+     * home screen, and whatever they were being told about is nowhere to be
+     * seen. The payload has carried a `u` for exactly this. */
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const data = (action?.notification?.data ?? {}) as { u?: string; n?: string };
+
+      // Record that it earned the interruption BEFORE navigating, because the
+      // navigation may reload the web view and lose the chance.
+      if (data.n && memberId) {
+        void fetch(apiUrl('/api/push/read'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ me: memberId, id: data.n, acted: true }),
+        }).catch(() => {});
+      }
+
+      // Same-origin only. A url arriving in a push is data from outside the app,
+      // and following an absolute one would let anything that can reach the send
+      // path choose where a tap lands.
+      const to = typeof data.u === 'string' && data.u.startsWith('/') ? data.u : '/?app';
+      try { window.location.assign(to); } catch { /* a failed hop must not crash the app */ }
+    });
+
+    // Arrived while they were already looking at the app. Not a tap, so not
+    // `acted` — but it was on screen, so it was read.
+    PushNotifications.addListener('pushNotificationReceived', (n) => {
+      const id = (n?.data ?? {} as { n?: string }).n;
+      if (!id || !memberId) return;
+      void fetch(apiUrl('/api/push/read'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ me: memberId, id }),
+      }).catch(() => {});
+    });
+
     await PushNotifications.register();
   } catch {
     /* push is an enhancement — its failure is never a launch blocker */

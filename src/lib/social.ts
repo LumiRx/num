@@ -167,7 +167,22 @@ export function bootSocial(): void {
       }));
     } catch { /* private mode — attribution is not worth breaking boot */ }
   }
+  // ── REFERRAL ATTRIBUTION, FIRST TOUCH ───────────────────────────────────
+  //
+  // This used to read the code into a variable and stop. `signUp` sent
+  // { id, name, phone, email, dest, utm } and never included it, so of 148
+  // members on 13 Sep 2026 exactly ZERO had a referrer recorded — a referral
+  // programme that could not pay anybody, running for months.
+  //
+  // Persisted the same way the UTM is, and for the same reason: somebody taps
+  // a friend's link today and signs up on Thursday, and the code has to
+  // survive that gap. First touch wins — the friend who actually persuaded
+  // them keeps the credit even if a different link is opened later.
   const ref = q.get('ref');
+  if (ref && !localStorage.getItem('num-ref')) {
+    try { localStorage.setItem('num-ref', ref.slice(0, 40)); }
+    catch { /* private mode — attribution is not worth breaking boot */ }
+  }
   const token = q.get('i');
 
   // A scanned pay code. The phone's own camera opened this URL, so by the time
@@ -472,9 +487,15 @@ export async function signUp(name: string, phone?: string, email?: string): Prom
   // attribution becomes a conversion instead of a pageview.
   let utm: unknown = null;
   try { utm = JSON.parse(localStorage.getItem('num-utm') ?? 'null'); } catch { /* fine */ }
+  // The referral code captured on first open. Sent as its own field rather
+  // than folded into `utm`, because a referral is a person owed money and a
+  // UTM is a marketing note — conflating them is how one gets treated as the
+  // other.
+  let firstTouchRef: string | null = null;
+  try { firstTouchRef = localStorage.getItem('num-ref'); } catch { /* fine */ }
   const out = await api<Partial<MeResponse> & Partial<RecoveryResponse>>('/me', {
     method: 'POST',
-    body: JSON.stringify({ id: deviceId(), name, phone, email, dest: store.get().place, utm }),
+    body: JSON.stringify({ id: deviceId(), name, phone, email, dest: store.get().place, utm, ref: firstTouchRef }),
   });
   // OUTCOME 2 — this number is already on Num, so this is a sign-IN.
   //

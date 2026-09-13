@@ -13,6 +13,7 @@
 // tracks it and never stands between them. Nothing here moves money.
 
 import { e164 } from '../worker/bizowner.mjs';
+import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
 
 export const SUPPLIER_KINDS = ['marina', 'driver', 'crew', 'concierge', 'caterer', 'agency', 'other'];
 
@@ -30,7 +31,7 @@ export async function hostSuppliers(req, env, url, D) {
   if (!host) return J({ ok: false, error: 'unauthorised' }, 401);
 
   const list = async () => {
-    const rows = await env.DB.prepare(
+    const q = env.DB.prepare(
       `SELECT s.id, s.display_name, s.business_name, s.kind, s.about, s.phone, s.email,
               s.status, s.notified_at, s.created_at,
               l.id AS link_id, l.status AS link_status, l.host_label, l.decided_at, l.ended_at,
@@ -43,14 +44,16 @@ export async function hostSuppliers(req, env, url, D) {
         WHERE l.host_id = ?1 AND l.ended_at IS NULL
         ORDER BY s.display_name ASC
         LIMIT 200`
-    ).bind(host.id).all().catch((e) => {
-      console.warn('[suppliers] list failed', e?.message ?? e);
-      return { results: [] };
-    });
+    ).bind(host.id);
+
+    // NOT swallowed into an empty array. This exact read shipped ahead of 0022
+    // and answered "no such column: phone" — which, caught and turned into [],
+    // became a live card reporting success that could never show a supplier.
+    const list_ = await rows(q.all(), 'the supplier list');
 
     return J({
       ok: true,
-      suppliers: rows.results || [],
+      suppliers: list_,
       vocabulary: { kinds: SUPPLIER_KINDS },
       rules: [
         'You pay your supplier directly. NUM records the job and the receipt and never sits between you.',
@@ -60,7 +63,17 @@ export async function hostSuppliers(req, env, url, D) {
     });
   };
 
-  if (req.method === 'GET') return list();
+  // Every exit that calls list() goes through here, so one try covers the GET and
+  // every POST action that repaints.
+  const safely = async (fn) => {
+    try { return await fn(); }
+    catch (e) {
+      if (isReadFailed(e)) return readFailedResponse(J, e);
+      throw e;
+    }
+  };
+
+  if (req.method === 'GET') return safely(list);
   if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
   if (badOrigin(req)) return J({ ok: false }, 403);
   if (host.status !== 'active') return J({ ok: false, error: 'host_not_active' }, 403);
@@ -95,7 +108,7 @@ export async function hostSuppliers(req, env, url, D) {
       console.warn('[suppliers] end failed', e?.message ?? e);
       return J({ ok: false, error: 'write_failed', detail: String(e?.message || '').slice(0, 200) }, 500);
     }
-    return list();
+    return safely(list);
   }
 
   /* ── the host's private name for them ───────────────────────────────── */
@@ -107,7 +120,7 @@ export async function hostSuppliers(req, env, url, D) {
     ).bind(clean(b.host_label, 80) || null, id, host.id).run().catch((e) => {
       console.warn('[suppliers] label failed', e?.message ?? e);
     });
-    return list();
+    return safely(list);
   }
 
   /* ── add somebody ───────────────────────────────────────────────────── */
@@ -161,7 +174,7 @@ export async function hostSuppliers(req, env, url, D) {
               SET status='accepted', ended_at=NULL, ended_by=NULL, ended_note=NULL, decided_at=?1
             WHERE id=?2 AND host_id=?3`
         ).bind(now(), existing.link_id, host.id).run().catch(() => {});
-        return list();
+        return safely(list);
       }
       return J({
         ok: false,
@@ -245,7 +258,7 @@ export async function hostSuppliers(req, env, url, D) {
       .catch((e) => console.warn('[suppliers] notify failed', e?.message ?? e));
   }
 
-  return list();
+  return safely(list);
 }
 
 /**
@@ -272,7 +285,7 @@ export async function supplierAssets(req, env, url, D) {
   ).bind(host.id, supplierId).first().catch(() => null);
   if (!linked) return J({ ok: false, error: 'not_your_supplier' }, 403);
 
-  const rows = await env.DB.prepare(
+  const q = env.DB.prepare(
     `SELECT a.id, a.kind, a.name, a.make, a.model, a.year, a.home_port, a.home_city,
             a.currency, a.rate_minor, a.rate_unit, a.listable, a.status,
             (SELECT COUNT(*) FROM num_asset_photos p
@@ -280,7 +293,12 @@ export async function supplierAssets(req, env, url, D) {
        FROM num_assets a
       WHERE a.owner_kind='supplier' AND a.owner_id=?1 AND a.status <> 'retired'
       ORDER BY a.kind ASC, a.name ASC LIMIT 200`
-  ).bind(supplierId).all().catch(() => ({ results: [] }));
+  ).bind(supplierId);
 
-  return J({ ok: true, assets: rows.results || [] });
+  try {
+    return J({ ok: true, assets: await rows(q.all(), "a supplier's assets") });
+  } catch (e) {
+    if (isReadFailed(e)) return readFailedResponse(J, e);
+    throw e;
+  }
 }

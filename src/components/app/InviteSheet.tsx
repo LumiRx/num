@@ -790,10 +790,10 @@ export default function InviteSheet() {
                   <ShareIcon size={14} /> {sent === 'shared' ? 'SENT' : sent === 'copied' ? 'COPIED — PASTE IT TO THEM' : minted.num_text && numText.state !== 'sent' ? 'OR SEND IT YOURSELF' : 'SEND IT'}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <a href={minted.sms_url} className="glass press" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>
+                  <a href={minted.sms_url} className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>
                     TEXT IT
                   </a>
-                  <a href={minted.whatsapp_url} target="_blank" rel="noreferrer" className="glass press" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>
+                  <a href={minted.whatsapp_url} target="_blank" rel="noreferrer" className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>
                     WHATSAPP
                   </a>
                   <div

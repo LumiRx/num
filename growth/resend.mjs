@@ -67,14 +67,43 @@ async function viaCloudflareOneByOne(env, messages) {
   return { ok: true, sent: messages.length, ids, via: 'cloudflare' };
 }
 
-export async function sendBatch(env, messages) {
+/**
+ * Send a batch, and NEVER claim a delivery we cannot make.
+ *
+ * THE FALLBACK NO LONGER REPORTS SUCCESS BY DEFAULT, and that is the whole
+ * point of this function now.
+ *
+ * It used to drop to Cloudflare on a 401/403 and return `ok: true`. The
+ * reasoning was that a bad key is not this batch's fault, so stopping the drain
+ * helps nobody. Half right, and the wrong half is expensive: the Cloudflare
+ * binding only reaches destinations verified on the account, so for a merchant,
+ * a host or a guest it ACCEPTS the message and discards it. mailer.mjs refuses
+ * to put Cloudflare in the external chain for exactly this reason, in a comment
+ * naming the cost — "six businesses became unreachable-forever rather than
+ * merely un-emailed" — and this function reached past that guard with
+ * `{ order: ['cloudflare'] }`.
+ *
+ * So the drain kept draining into nothing, every ledger wrote `sent`, and
+ * because a lead is only mailed once, those leads were spent. A loud failure is
+ * retried. A false success never is.
+ *
+ * `internal: true` is the opt-in for mail going to an address that IS verified
+ * on the Cloudflare account — ops alerts to ourselves. Everything else fails,
+ * and says why.
+ */
+export async function sendBatch(env, messages, { internal = false } = {}) {
   if (!messages.length) return { ok: true, sent: 0, ids: [] };
   if (!env.RESEND_KEY) {
-    if (env.EMAIL?.send) {
+    if (internal && env.EMAIL?.send) {
       const out = await viaCloudflareOneByOne(env, messages);
       return { ...out, fell_back_from: 'no RESEND_KEY' };
     }
-    return { ok: false, sent: 0, ids: [], error: 'no RESEND_KEY and no EMAIL binding' };
+    return {
+      ok: false, sent: 0, ids: [],
+      error: 'no RESEND_KEY' + (env.EMAIL?.send
+        ? ' — refusing the Cloudflare rail for outside recipients, it would accept and discard'
+        : ' and no EMAIL binding'),
+    };
   }
   const res = await fetch('https://api.resend.com/emails/batch', {
     method: 'POST',
@@ -87,13 +116,16 @@ export async function sendBatch(env, messages) {
   });
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300);
-    // 401/403 is the key itself, not this batch. Retrying it on the next tick
-    // changes nothing, so fall through to Cloudflare rather than reporting a
-    // failure that stops the drain for as long as the key stays broken.
-    if ((res.status === 401 || res.status === 403) && env.EMAIL?.send) {
+    // 401/403 is the key itself, not this batch — retrying on the next tick
+    // changes nothing. That used to justify falling through to Cloudflare for
+    // everyone. It only justifies it for recipients Cloudflare can actually
+    // reach, which means addresses verified on our own account.
+    if ((res.status === 401 || res.status === 403) && internal && env.EMAIL?.send) {
       const out = await viaCloudflareOneByOne(env, messages);
       return { ...out, fell_back_from: ('resend ' + res.status + ' ' + detail).slice(0, 200) };
     }
+    // A rejected key is loud now. It stops the drain, which is the point: the
+    // alternative was spending every lead on a rail that cannot reach them.
     return { ok: false, sent: 0, ids: [], error: 'resend ' + res.status + ' ' + detail };
   }
   const body = await res.json().catch(() => ({}));

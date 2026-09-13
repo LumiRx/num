@@ -106,3 +106,49 @@ test('the console key is never carried off the offers page as a Referer', () => 
       'a same-origin link from a key-bearing page must be noreferrer: ' + a);
   }
 });
+
+/* ── what the check-in reply is allowed to say ────────────────────────────
+ * A venue's table token is printed, so it is public. Everything the arrive
+ * endpoint says back is therefore said to anyone. It used to distinguish five
+ * booking states AND return the exact epoch seconds of the reservation, which
+ * across a venue's codes is its covers-per-night and table turn.
+ *
+ * The error NAMES stay: the page turns them into materially different and
+ * useful advice ("check-in opens 90 minutes before" vs "it may have been
+ * cancelled"), and enumeration is now closed by the lock above rather than by
+ * making the guest's message worse. What goes is the data.
+ *
+ * Verified by putting each field back and watching these fail. */
+
+test('the reply never carries reservation times', () => {
+  const i = SRC.indexOf('async function venueArrive');
+  const fn = SRC.slice(i, SRC.indexOf('\n}\n', i));
+  const returns = [...fn.matchAll(/return J\(\{[\s\S]{0,240}?\}(?:,\s*\d+)?\)/g)].map((m) => m[0]);
+  assert.ok(returns.length >= 5, 'expected every reply shape in this handler');
+  for (const r of returns) {
+    assert.doesNotMatch(r, /starts_at|ends_at/,
+      'a reservation time in the reply is a venue\'s booking book, handed to whoever holds the sticker: ' + r);
+    assert.doesNotMatch(r, /status: bk\.status/,
+      'the exact booking status tells the guest nothing the sentence does not, and a competitor plenty');
+    assert.doesNotMatch(r, /business_id:/,
+      'the internal business id is not the caller\'s business');
+  }
+});
+
+test('the guest still gets the two answers that actually help', () => {
+  // Closing a leak must not cost the person at the counter their explanation.
+  assert.match(SRC, /error: "out_of_window" \}/, 'the early/late case keeps its own name');
+  assert.match(SRC, /error: "not_active" \}/, 'and so does the cancelled case');
+  assert.match(SRC, /check-in opens 90 minutes before your time/i,
+    'the page must still say when check-in opens');
+});
+
+test('the brute-force sweep counts hits, not only misses', () => {
+  // It used to filter `outcome='no_booking'`, so a run that was LANDING on real
+  // codes — the expensive case — was the one case it could not see.
+  const i = SRC.indexOf('code_bruteforce');
+  const q = SRC.slice(Math.max(0, i - 700), i);
+  for (const o of ['no_booking', 'wrong_venue', 'out_of_window', 'guess_locked']) {
+    assert.ok(q.includes(`'${o}'`), `the sweep must count ${o} too, or a successful run is invisible`);
+  }
+});

@@ -194,17 +194,17 @@ function DirectionsWidget() {
           href={directionsUrl(next.place, { arriveBy: next.when })}
           target="_blank"
           rel="noreferrer"
-          className="press"
+          className="press tap"
           style={{ textDecoration: 'none', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em', background: 'var(--grad-accent)', color: '#fff' }}
         >
           {app === 'apple' ? 'APPLE MAPS' : 'GOOGLE MAPS'}
         </a>
-        <a href={trafficUrl(next.place)} target="_blank" rel="noreferrer" className="glass press" style={{ textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}>
+        <a href={trafficUrl(next.place)} target="_blank" rel="noreferrer" className="glass press tap" style={{ textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}>
           TRAFFIC NOW
         </a>
         <span
           {...pressable(() => { store.set({ threadOpen: true }); void askNum(`What time should I leave for ${next.title} at ${next.place}? Account for traffic at that hour.`); })}
-          className="glass press"
+          className="glass press tap"
           style={{ cursor: 'pointer', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}
         >
           WHEN DO I LEAVE?

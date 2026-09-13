@@ -405,7 +405,7 @@ export async function drainInvites(env, event = {}) {
     // business that hit reply on one of the 1,051 invites already sent got a
     // bounce, and so did anyone using the mailto unsubscribe below — which is
     // one of the two opt-out routes CAN-SPAM and PECR require us to honour.
-    replyTo: [env.MAIL_REPLY_TO || 'info@itsnum.com'],
+    reply_to: [env.MAIL_REPLY_TO || 'info@itsnum.com'],
     subject: draft.subject,
     html: draft.html,
     text: draft.text,

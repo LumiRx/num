@@ -352,9 +352,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       <p style="margin:0 0 14px;color:var(--ink2);line-height:1.6">This is your invite link. Someone who joins
         through it arrives already in your book, as your client &mdash; not ours.</p>
       <p class="hostmono" id="hostLink"></p>
-      <p style="margin:16px 0 8px;color:var(--ink2);line-height:1.6">And this is your console &mdash; arrivals,
+      <p id="hostConsoleWrap" style="margin:16px 0 8px;color:var(--ink2);line-height:1.6">And this is your console &mdash; arrivals,
         bookings, your prices and your earnings. <b>Keep it private: it opens your account without a password.</b></p>
-      <p><a class="btn pri" id="hostConsole" href="#">Open my console</a></p>
+      <p id="hostConsoleBtn"><a class="btn pri" id="hostConsole" href="#">Open my console</a></p>
+      <p id="hostConsoleMailed" hidden style="margin:16px 0 8px;color:var(--ink2);line-height:1.6">Your console link
+        is on its way to your inbox. <b>We only ever send it there</b> &mdash; it opens your account without a
+        password, so it is not something we will show on a screen to whoever typed in your address.</p>
       <p class="hosthint" style="margin-top:14px">Both links are in your inbox too, so you cannot lose them by
         closing this tab.</p>
     </div>
@@ -436,7 +439,18 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       }
       f.style.display = 'none';
       document.getElementById('hostLink').textContent = d.link;
-      document.getElementById('hostConsole').href = d.console_url;
+      // A returning host gets no console link in the reply — it is emailed to
+      // the address on the account instead. Replying with it meant anyone who
+      // knew a host's email could ask for their password-less console link and
+      // be handed it. So the button only exists when we actually minted the
+      // account for the person standing here.
+      if (d.console_url) {
+        document.getElementById('hostConsole').href = d.console_url;
+      } else {
+        document.getElementById('hostConsoleWrap').hidden = true;
+        document.getElementById('hostConsoleBtn').hidden = true;
+        document.getElementById('hostConsoleMailed').hidden = false;
+      }
       document.getElementById('hostDone').className = 'hostdone on';
       // An existing host who signs up twice gets the SAME code back rather than
       // a second one that would split their earnings. Say so, or it reads as a

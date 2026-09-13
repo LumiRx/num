@@ -1,10 +1,11 @@
 // THREAD tab — the conversation: messages, cards, typing dots, chips, input bar.
 import PickCards from './PickCards';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { apiUrl } from '../../lib/apibase';
 import { checkOffer, duration, stillValid, type FlightOffer } from '../../lib/flights';
 import { pressable } from '../../lib/a11y';
+import { useStickyBottom } from '../../lib/stickyscroll';
 import { tagOf } from '../../lib/derive';
 import { askNum, cleanText, sendChip, openVoice } from '../../lib/concierge';
 import { openPlan } from '../../lib/social';
@@ -95,7 +96,42 @@ function FlightTray() {
   };
 
   return (
-    <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px' }}>
+    /**
+     * ── WHY THIS BOX IS CAPPED AND SCROLLS ITSELF ────────────────────────
+     *
+     * 13 Sep 2026: "we had someone looking at flights and the screen got
+     * stuck scrolling." This is the thing that stuck it.
+     *
+     * The tray lives inside the composer bar, and that bar is `flex: 'none'`
+     * — deliberately, so its height does not jump while you type. But an
+     * uncapped list of fares inside a box that cannot shrink, inside a shell
+     * that is `height: 100%; overflow: hidden`, has only one outcome: five
+     * offers at roughly a hundred pixels each push the bar past the bottom of
+     * the phone. The thread above it collapses, the lower offers are clipped
+     * off-screen, and on a short device the text input goes with them.
+     *
+     * And nothing could scroll to reach them. The shell is `overflow: hidden`
+     * and clamps its own scrollTop to 0 (holdFrame in ConciergeApp), the bar
+     * is not a scroll container, and neither was this. The screen was, quite
+     * literally, stuck.
+     *
+     * The cap is in `vh` rather than pixels because the failure is a
+     * proportion of the screen, not a number of offers — the same six fares
+     * are fine on a tablet and fatal on an iPhone SE.
+     *
+     * The two caps live together in app.css as --tray-max-flight and
+     * --tray-max-service, and their SUM is the number that matters: both
+     * trays can be open at once, and what must survive that is the text
+     * input. See the budget written beside them.
+     */
+    <div
+      className="glass"
+      style={{
+        margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px',
+        maxHeight: 'var(--tray-max-flight)', overflowY: 'auto',
+        overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
+      }}
+    >
       <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
         LIVE FARES · {state.query.fromCode} → {state.query.toCode}
       </div>
@@ -154,7 +190,17 @@ function ServiceTray() {
   const h = useApp((s) => s.handoff);
   if (!h) return null;
   return (
-    <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '10px 12px' }}>
+    /* Capped for the same reason as the fares tray above: `note` is free text
+       from the server and the options row is however many the handoff has.
+       Smaller cap because this one is a prompt, not a list to compare. */
+    <div
+      className="glass"
+      style={{
+        margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '10px 12px',
+        maxHeight: 'var(--tray-max-service)', overflowY: 'auto',
+        overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
           {KIND_LABEL[h.kind].toUpperCase()}
@@ -325,11 +371,31 @@ function useSuggestions(dest: string | null, meId: string | null) {
 }
 
 export default function ThreadView() {
-  // Whole-state subscription on purpose: the design's componentDidUpdate snaps
-  // the thread to the bottom after EVERY state change while the thread is
-  // visible (sheets opening, notifications, chips), not just on new messages.
+  // Whole-state subscription on purpose: the thread has to redraw for sheets,
+  // notifications and chips, not only for new messages.
+  //
+  // ── WHAT THAT COST, AND THE BUG IT CAUSED ─────────────────────────────
+  // 13 Sep 2026: "we had someone looking at flights and the screen got stuck
+  // scrolling." It was not stuck. It was being dragged.
+  //
+  // This subscription redraws on ANY store change anywhere in the app, and
+  // the effect below used to be `useEffect(() => { el.scrollTop =
+  // el.scrollHeight; })` — no dependency array, so it ran after every one of
+  // those redraws and slammed the thread to the bottom each time.
+  //
+  // Num polls constantly: the booking desk every 15s, errands every 15s, the
+  // party plan every 8s, suggestions every 90s, DMs, autoupdate. So somebody
+  // reading a list of flight fares — a tall block, several offers, exactly the
+  // thing you scroll back through to compare — was thrown to the bottom every
+  // few seconds by a timer that had nothing to do with them.
+  //
+  // The fix is the standard one and it is about intent: follow the bottom
+  // only while the reader is ALREADY there. The moment they scroll up they
+  // have said "I am reading this", and nothing may move them until they ask.
   const { msgs, typing, chips, demo, place, me } = useApp((s) => s);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // One implementation, shared with DmSheet — see src/lib/stickyscroll.ts for
+  // the flight-results bug that produced it.
+  const { ref: scrollRef, onScroll, behind, toLatest } = useStickyBottom<HTMLDivElement>();
   const [draft, setDraft] = useState('');
   // The DISPLAY name is all the app has ever held; the server resolves it to
   // a destination (worker/suggest.mjs resolveDest). Reading a `.slug` off this
@@ -347,14 +413,21 @@ export default function ThreadView() {
     void askNum(text);
   };
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  });
-
   return (
     <>
-      <div ref={scrollRef} className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '16px 0 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="no-scrollbar"
+        style={{
+          flex: 1, overflowY: 'auto', padding: '16px 0 8px',
+          display: 'flex', flexDirection: 'column', gap: 10,
+          // Keeps a flick inside the thread instead of handing it to the page
+          // behind, which on iOS is what makes a scroll feel like it "catches".
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
         {msgs.map((m, i) => (
           <MsgBubble
             key={i}
@@ -375,6 +448,34 @@ export default function ThreadView() {
           </div>
         )}
       </div>
+
+      {/* ── THE WAY BACK ────────────────────────────────────────────────
+          Shown only when the reader has scrolled up AND something new has
+          arrived below them. Without it, "we will not move you" turns into
+          "you are stranded" — they scroll up to compare two fares, Num
+          answers, and nothing on screen says so.
+
+          Positioned over the thread rather than in the composer so it cannot
+          change the composer's fixed height, which the block below depends
+          on. */}
+      {behind && (
+        <div style={{ position: 'relative', height: 0 }}>
+          <div
+            {...pressable(toLatest)}
+            style={{
+              position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 3, cursor: 'pointer', borderRadius: 999, minHeight: 36,
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+              background: 'var(--grad-accent)', color: '#fff',
+              fontSize: 11, fontWeight: 800, letterSpacing: '.06em',
+              boxShadow: '0 6px 18px rgba(0,0,0,.18)', whiteSpace: 'nowrap',
+            }}
+          >
+            NEW BELOW ↓
+          </div>
+        </div>
+      )}
+
       {/* Hard-set composer height: a fixed discover row + fixed chip row +
           fixed input row, so the bar is the same height whether you are typing,
           sending, or dismissing the keyboard. Bottom padding clears the home

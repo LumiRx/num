@@ -65,8 +65,14 @@ until `unset GIT_DIR GIT_WORK_TREE`. It happened on 12 Sep 2026.
 
 - *"Nothing to ship for X"* — a stage failed before uploading. Run stage again;
   do not force wrangler past it.
-- *`index.lock`: File exists* — a crashed earlier run. Check no git process is
-  live, then remove it. An empty lock older than an hour is stale.
+- *`index.lock`: File exists* — a crashed earlier run. **Since 12 Sep the release
+  script clears this itself when the file proves it is dead: ZERO BYTES and older
+  than ten minutes.** Git writes the new index into that file as it works, so an
+  empty one is a killed process, never a live writer. A lock with any content, or
+  younger than ten minutes, still stops the run and is the person's call —
+  removing a live writer's lock corrupts the repository. `NO_LOCK_SWEEP=1` turns
+  the automatic clearing off. It had cost three releases before this: 9 Sep, and
+  twice on 12 Sep.
 - *`EPERM: unlink dist/...`* — a Cowork session, which cannot delete files in a
   connected folder. Fixed by granting delete permission on `~/num-worktrees`
   (done 12 Sep), or work around it with `mv dist .dist-stale-$(date +%s)`.

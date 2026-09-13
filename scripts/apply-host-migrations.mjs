@@ -51,6 +51,34 @@ const FILES = [
   // queues as an unknown sender forever. Five ALTERs, so a second pass reports
   // 'duplicate column name' and is tolerated below.
   'worker/migrations/0022_supplier_contact.sql',
+  // 0023 is the Friday pack draw: an entries table keyed (phone, week_start) so
+  // four texts on a Tuesday are one entry, and a draws table holding the seed,
+  // the eligible count and the winners. The second table is the one that matters —
+  // a draw nobody can reproduce is a stranger on the internet promising prizes.
+  // Two CREATE TABLEs and three indexes, all IF NOT EXISTS, so a second pass is a
+  // clean no-op rather than an error to tolerate.
+  'worker/migrations/0023_giveaway.sql',
+  // 0024 is the notification layer: native device tokens (the iOS app has been
+  // POSTing APNs tokens to a route that did not exist, so every granted
+  // permission was thrown away), what a member has agreed to receive, what they
+  // like, and the columns that make a notification measurable instead of
+  // write-only. Numbered 0024 and not 0023 because another session took that
+  // number for the giveaway while this was being written — two migrations with
+  // one number is an ambiguous apply order nobody should have to reason about.
+  // Four ALTERs on num_notifications, so a second pass reports 'duplicate column
+  // name' and is tolerated below.
+  'worker/migrations/0024_notifications.sql',
+  // 0025 caps partner-key minting per network. POST /api/partner/signup is
+  // unauthenticated and instant, and BOTH its reply and the email it sends
+  // carry a live API key — so one script with ten thousand addresses mailed ten
+  // thousand working credentials from partners@itsnum.com to inboxes of its own
+  // choosing, spending the sending reputation the booking confirmations depend
+  // on. One ALTER plus an index, so a second pass reports 'duplicate column
+  // name' and is tolerated below.
+  //
+  // Already applied by hand to production on 13 Sep while closing the finding;
+  // re-running is a clean no-op and seals it.
+  'worker/migrations/0025_partner_signup_ip.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
@@ -78,6 +106,10 @@ function sealFiles(files) {
     const name = f.replace('worker/migrations/', '');
     const hash = createHash('sha256').update(readFileSync(f)).digest('hex');
     if (m.sealed[name] !== hash) { m.sealed[name] = hash; added++; }
+    // Sealing means production now HAS it, so it is no longer pending. Leaving it
+    // in both lists would make the manifest claim two contradictory things, and
+    // worker/migrationhygiene.test.mjs fails on exactly that.
+    if (Array.isArray(m.pending)) m.pending = m.pending.filter((p) => p !== name);
   }
   writeFileSync(MANIFEST, JSON.stringify(m, null, 2) + '\n');
   return added;

@@ -77,12 +77,31 @@ export async function owed(env, businessId, { currency = null } = {}) {
 
   const lines = results ?? [];
   const billable = lines.filter((l) => l.state === 'accrued' && (l.amount_cs ?? 0) > 0);
+  // ONE TOTAL, ONE CURRENCY.
+  //
+  // `amount_cs` is minor units of the LINE's own currency, so adding a baht
+  // line to a dollar line produces a number that is in no currency at all —
+  // and `currency` below labelled it with whichever line happened to be created
+  // first. A single 7000-satang walk-in floor line sitting behind one USD line
+  // rendered as "$70.00" for a ฿70 (~$2.14) charge. Thirty-three times over.
+  //
+  // Invoices were never wrong — invoiceVenue() already filters to one currency
+  // before billing. It was the venue's own running statement, which is the
+  // number they check us against, so being wrong there is worse than being
+  // wrong somewhere they never look.
+  //
+  // Same rule invoiceVenue already applies: report the majority currency and
+  // say how many lines were left out, rather than converting at a rate nobody
+  // agreed to.
+  const reported = billable[0]?.currency || lines[0]?.currency || 'THB';
+  const inCurrency = billable.filter((l) => (l.currency || 'THB') === reported);
   return {
     lines,
     billable,
     awaiting: lines.filter((l) => l.state === 'awaiting_value').length,
-    total_cs: billable.reduce((n, l) => n + l.amount_cs, 0),
-    currency: billable[0]?.currency || lines[0]?.currency || 'THB',
+    total_cs: inCurrency.reduce((n, l) => n + l.amount_cs, 0),
+    currency: reported,
+    other_currencies: billable.length - inCurrency.length,
   };
 }
 
@@ -191,7 +210,8 @@ export async function invoiceLines(env, invoiceId) {
  */
 export async function payInvoice(env, invoiceId, { ref = null, amountCs = null } = {}) {
   const inv = await env.DB.prepare(
-    'SELECT id, business_id, amount_cs, currency, state FROM num_invoices WHERE id = ?1',
+    `SELECT id, business_id, amount_cs, currency, state, paid_cs, paid_ref
+       FROM num_invoices WHERE id = ?1`,
   ).bind(String(invoiceId)).first().catch(() => null);
   if (!inv) return { ok: false, reason: 'unknown invoice' };
   if (inv.state === 'void') return { ok: false, reason: 'that invoice was voided' };
@@ -199,10 +219,44 @@ export async function payInvoice(env, invoiceId, { ref = null, amountCs = null }
 
   const paid = Number.isFinite(amountCs) && amountCs > 0 ? Math.round(amountCs) : inv.amount_cs;
 
+  // ── A SHORT PAYMENT IS NOT A PAID INVOICE ────────────────────────────────
+  //
+  // `amountCs` arrives from the admin pay route and was never compared to what
+  // was owed. Record half of an invoice and everything below still ran: the
+  // invoice flipped to 'paid', every commission line was stamped
+  // `paid_cs = amount_cs` — the FULL line, not the half that arrived — which
+  // drops the shortfall out of `owed()` and `invoiceVenue()` for ever, and
+  // then `releaseHostShare` made the host's whole share payable.
+  //
+  // That last part is the one that costs real money, and this module's own
+  // header says why: "Paying a host out of money that has not arrived turns a
+  // referral programme into a loan book." It was true, and the code did it.
+  //
+  // We RECORD the part payment rather than refusing it — an operator staring
+  // at a bank transfer that came up short needs somewhere to put it, and a
+  // refusal means the money that did arrive goes unrecorded. So: bank what
+  // came in, leave the invoice open, touch no commission line, release nothing.
+  // A later payment tops it up and settles it in the normal path below.
+  const already = Number(inv.paid_cs ?? 0);
+  const running = already + paid;
+  if (running < inv.amount_cs) {
+    const part = await env.DB.prepare(
+      `UPDATE num_invoices SET paid_cs=?2, paid_ref=?3 WHERE id=?1 AND state='open'`,
+    ).bind(inv.id, running, ref ?? inv.paid_ref ?? null).run();
+    if (!part?.meta?.changes) return { ok: true, already: true, id: inv.id };
+    return {
+      ok: true, part: true, id: inv.id,
+      invoiced_cs: inv.amount_cs, received_cs: running,
+      outstanding_cs: inv.amount_cs - running,
+      currency: inv.currency,
+      note: 'part payment recorded — invoice stays open, nothing released to hosts',
+    };
+  }
+
   const flip = await env.DB.prepare(
     `UPDATE num_invoices SET state='paid', paid_at=?2, paid_cs=?3, paid_ref=?4
       WHERE id=?1 AND state='open'`,
-  ).bind(inv.id, nowIso(), paid, ref).run();
+  ).bind(inv.id, nowIso(), running, ref).run();
   if (!flip?.meta?.changes) return { ok: true, already: true, id: inv.id };
 
   const lines = await invoiceLines(env, inv.id);
@@ -213,7 +267,7 @@ export async function payInvoice(env, invoiceId, { ref = null, amountCs = null }
   }
 
   const released = await releaseHostShare(env, lines.map((l) => l.booking_id).filter(Boolean));
-  return { ok: true, id: inv.id, paid_cs: paid, lines: lines.length, host_released: released.released };
+  return { ok: true, id: inv.id, paid_cs: running, lines: lines.length, host_released: released.released };
 }
 
 /* ── NUM's own payment details ───────────────────────────────────────────── */

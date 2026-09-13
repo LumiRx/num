@@ -75,7 +75,17 @@ test('every message to a client is signed by the host', () => {
 
   // And the reply address on anything a client receives is the host, not us.
   const conf = worker.slice(worker.indexOf('async function notifyClientOfConfirm'), worker.indexOf('async function postMessage'));
-  assert.match(conf, /replyTo: \[host\.email \|\| "info@itsnum\.com"\]/,
+  // `reply_to`, not `replyTo`. This assertion was right about the PROPERTY and
+  // wrong about the spelling for as long as it existed: sendBatch posts the
+  // message object straight at Resend's REST API, which reads `reply_to`, so
+  // every camelCase `replyTo` in this worker was dropped on the floor. The test
+  // passed, and a client hitting reply still reached us instead of their host.
+  // A guard that checks a field the transport ignores guards nothing.
+  // The PROPERTY is that host.email comes FIRST, not the exact expression after
+  // it — the tail gained env.MAIL_REPLY_TO on 13 Sep because the hardcoded
+  // fallback pointed at a mailbox that rejects at SMTP. Pinning the whole
+  // string made a correct improvement look like a regression.
+  assert.match(conf, /reply_to: \[host\.email \|\|/,
     'a client replying to their confirmation reaches NUM instead of their host');
   assert.match(conf, /onBehalf\(host, env\)/, 'the confirmation is not signed by the host');
 });

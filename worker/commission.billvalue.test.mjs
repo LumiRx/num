@@ -14,7 +14,8 @@
 // fifty healthy accruals. The flat fee is a FLOOR, not an alternative.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RATES, accrue, feeSentence, lapseAwaitingValue } from './commission.mjs';
+import { readFileSync } from 'node:fs';
+import { RATES, accrue, feeSentence, lapseAwaitingValue, floorFor } from './commission.mjs';
 
 /** D1 stand-in that keeps the rows accrue() writes and can hold merchant
     settings, so "this venue reports bill values" is testable. */
@@ -208,4 +209,47 @@ test('the lapse is safe to call against a database with no rows', async () => {
 test('lapsing never runs without a database', async () => {
   assert.equal(await lapseAwaitingValue({}, {}), null);
   assert.equal(await lapseAwaitingValue(null, {}), null);
+});
+
+/* ── the floor is a real amount of money in a real currency ───────────────
+ * FLOOR_BY_CURRENCY existed, floorFor() existed, feeSentence() quoted the
+ * right number — and bookdesk called accrue() without a currency, so the
+ * confirm path resolved floorFor('usd') = 200 and wrote 200 MINOR UNITS onto a
+ * Thai venue. ฿2.00, six cents, against the ฿70 that venue had been quoted.
+ * Thirty-five times under, on every confirmed table.
+ *
+ * Nothing anywhere tested floorFor or FLOOR_BY_CURRENCY. That is why. */
+
+test('each currency has its own floor, worth roughly the same money', () => {
+  // ~$2 in each, which is the point of the table — not 200 minor units
+  // everywhere, which would be $2, £2, €2 and two satang.
+  assert.equal(floorFor('THB'), 7000, '฿70');
+  assert.equal(floorFor('USD'), 200, '$2');
+  assert.equal(floorFor('GBP'), 150, '£1.50');
+  assert.equal(floorFor('EUR'), 200, '€2');
+  assert.ok(floorFor('THB') > floorFor('USD') * 30,
+    'baht is a ~32:1 currency — an equal minor-unit floor there is not a floor, it is a rounding error');
+});
+
+test('an unknown currency falls to USD and never to a bare 200', () => {
+  // The distinction matters: falling back to the NUMBER 200 would be right for
+  // dollars by luck and wrong everywhere else.
+  assert.equal(floorFor('ZZZ'), floorFor('USD'));
+  assert.equal(floorFor(null), floorFor('USD'));
+  assert.equal(floorFor(undefined), floorFor('USD'));
+  assert.equal(floorFor('thb'), 7000, 'case must not decide what a venue is charged');
+});
+
+test('bookdesk passes the venue country through as a currency', () => {
+  // A source assertion, because the alternative is standing up the whole
+  // booking-confirm path to observe one argument. The failure was silent and
+  // lived entirely in the shape of this call.
+  const src = readFileSync(new URL('./bookdesk.mjs', import.meta.url), 'utf8');
+  const i = src.indexOf('await accrue(env, {');
+  assert.ok(i > 0, 'the confirm path must still accrue');
+  const call = src.slice(i, src.indexOf('});', i));
+  assert.match(call, /currency: currencyForCountry\(place\?\.country\)/,
+    'without a currency the floor is floorFor(\'usd\') whatever country the venue is in');
+  assert.match(src, /const \{ accrue, currencyForCountry \}/,
+    'and the helper has to actually be imported');
 });

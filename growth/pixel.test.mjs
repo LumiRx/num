@@ -101,3 +101,27 @@ test('the legal line carries a postal address', () => {
   assert.match(line, /\b[A-Z]{2}\b \d{5}\b/, 'no state and ZIP');
   assert.match(line, /5arz Inc/);
 });
+
+/* ── the visitor id must not be forgeable by a header ─────────────────────
+ * It hashed IP + day + User-Agent. The User-Agent is chosen by the caller, so
+ * rotating it minted a fresh visitor per request: forged funnel events on
+ * /api/ev, and — the part that reaches money — unlimited BILLABLE scans on
+ * /p/<token>, where this id is the only thing stopping one printed sticker
+ * being counted a thousand times.
+ *
+ * Checked by putting the User-Agent back and watching this fail. */
+test('a visitor id is built only from things the caller cannot choose', () => {
+  const src = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
+  const i = src.indexOf('async function visitorId(');
+  assert.ok(i > 0, 'visitorId must exist');
+  const body = src.slice(i, src.indexOf('\n}\n', i))
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  assert.doesNotMatch(body, /user-agent/i,
+    'the User-Agent is a header the caller picks — hashing it lets anyone mint visitors');
+  for (const h of ['sec-ch-ua', 'accept-language', 'referer']) {
+    assert.ok(!body.includes(h), `${h} is caller-chosen too — same hole, extra steps`);
+  }
+  assert.match(body, /cf-connecting-ip/, 'the IP is set by the edge, not the caller');
+  assert.match(body, /VISITOR_SALT/, 'and a secret salt so the hash cannot be precomputed');
+});

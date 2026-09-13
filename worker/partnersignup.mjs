@@ -160,7 +160,19 @@ export async function handlePartnerSignup(request, env) {
     });
   }
 
-  // ── POST /api/partner/signup ───────────────────────────────────────────
+  /** Partner keys one network may mint in a day. A real integrator signs up once. */
+const PARTNER_SIGNUPS_PER_NETWORK_PER_DAY = 3;
+
+/** Same per-IP hash shape used across the rest of the product: enough to cap a
+ *  script, not a log of who visited. */
+async function ipHashOf(request) {
+  const ip = request.headers.get('cf-connecting-ip') || '';
+  if (!ip) return '';
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('num-partner:' + ip));
+  return [...new Uint8Array(buf)].slice(0, 8).map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+// ── POST /api/partner/signup ───────────────────────────────────────────
   if (request.method !== 'POST') return json({ error: 'POST { company, email, use? }' }, 405);
   let b;
   try { b = await request.json(); } catch { return json({ error: 'Invalid JSON.' }, 400); }
@@ -170,31 +182,87 @@ export async function handlePartnerSignup(request, env) {
   if (company.length < 2) return json({ error: 'Company or agent name, at least 2 characters.' }, 400);
   if (!EMAIL.test(email)) return json({ error: 'A real contact email — it is how we reach you before we ever throttle you.' }, 400);
 
+  // ── HOW MANY KEYS ONE NETWORK MAY MINT IN A DAY ─────────────────────────
+  //
+  // This endpoint is unauthenticated, instant, and its reply and its EMAIL both
+  // contain a live credential. The per-email guard below stops one address
+  // minting ten thousand identities; it does nothing at all about one script
+  // using ten thousand addresses, each of which sends a working API key from
+  // partners@itsnum.com to an inbox of the attacker's choosing. That spends the
+  // sending reputation the booking confirmations depend on, which
+  // maildelivery.mjs names as the thing to protect.
+  const iph = await ipHashOf(request);
+  const mintedToday = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM num_partner_keys
+      WHERE signup_ip = ?1 AND created_at > datetime('now','-1 day')`,
+  ).bind(iph).first().catch(() => null);
+  if ((mintedToday?.n ?? 0) >= PARTNER_SIGNUPS_PER_NETWORK_PER_DAY) {
+    return json({ error: 'Too many signups from here today. Email partners@itsnum.com and a person will sort it.' }, 429);
+  }
+
   // One live key per email. Signup is instant, so without this one script
   // loop mints ten thousand identities and the per-partner meter means
-  // nothing. Re-signup with the same email rotates the key instead — which
-  // is also the self-serve answer to "I leaked my key".
+  // nothing.
   const existing = await env.DB.prepare(
     "SELECT id FROM num_partner_keys WHERE email = ?1 AND state = 'active'",
   ).bind(email).first();
 
-  const slug = existing?.id?.split('_')[0] ?? slugify(company);
+  // ── RE-SIGNUP NO LONGER ROTATES THE KEY ─────────────────────────────────
+  //
+  // It used to, described as "the self-serve answer to I leaked my key". But
+  // the only thing you need to trigger it is the partner's email address, which
+  // is on their website. So anyone could rotate a live partner's key on demand
+  // and break their integration, repeatedly, from a browser console. That is a
+  // denial of service against a paying integrator, and it is a worse outcome
+  // than the problem the rotation was there to solve.
+  //
+  // We cannot re-send the existing key — only its hash is stored, which is
+  // correct. So the honest answer is to tell the address on file that somebody
+  // asked, and make a real rotation go through a person.
+  if (existing) {
+    if (env.RESEND_API_KEY) {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Num Partners <partners@itsnum.com>',
+          reply_to: ['partners@itsnum.com'],
+          to: [email],
+          subject: 'Somebody asked for a new Num partner key',
+          text: `Someone just submitted the partner signup form with this address.
+
+Your existing key has NOT been changed and your integration is unaffected.
+Nobody was shown it — we only keep a hash, so we could not display it even
+if we wanted to.
+
+If that was you and you need a new key, reply to this email and a person
+will rotate it. We do it by hand on purpose: an address on a website is not
+proof of anything, and a form that rotated keys on request would let anyone
+break your integration whenever they liked.
+
+— Num`,
+        }),
+      }).catch((e) => console.warn('[partner] notice failed', String(e).slice(0, 160)));
+    }
+    return json({
+      ok: true,
+      existing: true,
+      message: 'That address already has a key. We have emailed it — your existing key is unchanged.',
+    }, 200);
+  }
+
+  const slug = slugify(company);
   const rand = [...crypto.getRandomValues(new Uint8Array(16))].map((x) => x.toString(16).padStart(2, '0')).join('');
   // The id must be unique even when two companies slugify identically —
   // "Trip Co" and "TripCo" must not share an attribution bucket, because the
   // bucket is what a rev-share is computed from.
-  const id = existing?.id ?? `${slug}_${rand.slice(0, 6)}`;
+  const id = `${slug}_${rand.slice(0, 6)}`;
   const key = `${id.split('_')[0]}_${rand}`;
   const hash = await sha256(key);
 
-  if (existing) {
-    await env.DB.prepare('UPDATE num_partner_keys SET key_hash = ?2, company = ?3 WHERE id = ?1')
-      .bind(existing.id, hash, company).run();
-  } else {
-    await env.DB.prepare(
-      'INSERT INTO num_partner_keys (id, company, email, use_case, key_hash) VALUES (?1,?2,?3,?4,?5)',
-    ).bind(id, company, email, use, hash).run();
-  }
+  await env.DB.prepare(
+    'INSERT INTO num_partner_keys (id, company, email, use_case, key_hash, signup_ip) VALUES (?1,?2,?3,?4,?5,?6)',
+  ).bind(id, company, email, use, hash, iph).run();
 
   // The key goes to the inbox as well as the response — the response gets
   // lost to a closed tab; the email is the durable copy. Resend, never Gmail.
@@ -209,7 +277,9 @@ export async function handlePartnerSignup(request, env) {
         subject: 'Your Num partner API key',
         text: `Welcome, ${company}.\n\nYour API key (keep it secret):\n${key}\n\nStart here: https://app.itsnum.com/api/partner\nMCP endpoint: POST https://app.itsnum.com/api/partner/mcp\nUsage: GET https://app.itsnum.com/api/partner/usage with header X-Partner-Key\n\nFree tier: 1,000 calls/month. Attribution must be displayed wherever results are shown (ODbL).\n— Num`,
       }),
-    }).catch(() => {});
+      // A swallowed failure here means a partner who signed up, saw a key on
+      // screen, closed the tab, and has no copy — and nobody knows.
+    }).catch((e) => console.warn('[partner] key email failed', email, String(e).slice(0, 160)));
   }
 
   return json({

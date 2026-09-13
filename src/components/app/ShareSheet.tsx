@@ -169,7 +169,7 @@ export default function ShareSheet() {
                 href={xUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="press"
+                className="press tap"
                 style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10, borderRadius: 999, border: '1px solid var(--ink-12)', background: 'var(--field-bg)', color: 'var(--ink)', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', padding: '12px 16px', textDecoration: 'none' }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">

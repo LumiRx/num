@@ -7,6 +7,7 @@
 // of the exact URL + sorted params, keyed with the auth token) before
 // believing a word — an unsigned webhook is an open mailbox anyone can stuff.
 import { notify } from './push.mjs';
+import { ENTRY_KEYWORD, ENTRY_REPLY, enter as enterDraw } from './giveaway.mjs';
 import { ingestMedia, askWhichAsset } from './inboundmedia.mjs';
 
 const xmlOk = () =>
@@ -105,6 +106,40 @@ export async function handleSmsInbound(request, env) {
   if (text.split(/\s+/).length === 1 && HELP_WORDS.has(single)) {
     console.warn(`[sms] HELP from ${from}`);
     return xmlReply(HELP_REPLY);
+  }
+
+  // ── THE FRIDAY PACK DRAW ──────────────────────────────────────────────
+  //
+  // A single bare PACKS enters this week's draw. Same single-word rule as STOP
+  // and HELP, and for the same reason: "packs of four please" is a sentence a
+  // person says to a concierge and must reach the desk, not trip a keyword.
+  //
+  // Consent is recorded HERE rather than left to the ordinary inbound-consent
+  // write further down, because this branch returns early. Somebody texting a
+  // published number to enter a prize draw has initiated contact just as
+  // strongly as somebody asking for a table, and that evidence is the whole
+  // reason the keyword is worth having — losing it would make this a giveaway
+  // that builds no audience.
+  //
+  // The reply is sent whether or not the entry write succeeded. From the
+  // entrant's side a silent failure and a successful entry look identical, and
+  // only one of them is honest; the entry is also recoverable from the consent
+  // row, whereas a person who thinks a prize draw ignored them is not.
+  if (text.split(/\s+/).length === 1 && single === ENTRY_KEYWORD) {
+    await import('./smsconsent.mjs')
+      .then((c) => c.record(env, {
+        phone: from,
+        source: c.SOURCE.INBOUND_SMS,
+        consentText: c.inboundConsentText(text),
+        page: 'itsnum.com/friday-rules',
+      }))
+      .catch((e) => console.warn('[sms] PACKS consent write failed', e?.message ?? e));
+
+    const entered = await enterDraw(env, { phone: from, source: 'sms' })
+      .catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+    if (!entered?.ok) console.warn(`[sms] PACKS entry not recorded for ${from}: ${entered?.error}`);
+
+    return xmlReply(ENTRY_REPLY);
   }
 
   // ── A VENUE ANSWERING AN ORDER ────────────────────────────────────────

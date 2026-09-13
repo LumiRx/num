@@ -138,3 +138,47 @@ describe('what it still catches', () => {
     assert.equal(out.web_new, 1, 'the money moment is untouched by this fix');
   });
 });
+
+describe('the one hour a day the report went blank', () => {
+  // 13 Sep 2026. Every test above was green for months and red at 10:17
+  // Phuket, because claimSweep returned its web_new / api_claims counts on
+  // the "not the hour" path only. Between 10:00 and 11:00 local it would
+  // text Dre about a new business signup and then answer `alerted: false`.
+  //
+  // A time-of-day bug that hides for 23 hours out of 24 is the worst kind:
+  // it looks like flake, gets re-run, goes green, and nobody investigates.
+  // These two run the clock deliberately so the hour is never the variable.
+  const atPhuketHour = (h) => {
+    // Phuket is UTC+7 with no daylight saving, so 10am local is 03:00Z.
+    const utc = new Date(Date.UTC(2026, 8, 13, h - 7, 17, 0));
+    return utc;
+  };
+
+  const runAt = async (t, hour) => {
+    t.mock.timers.enable({ apis: ['Date'], now: atPhuketHour(hour) });
+    try { return await claimSweep(env); } finally { t.mock.timers.reset(); }
+  };
+
+  test('at 10am the counts still come back', async (t) => {
+    claim('c7', 'pending', OLD);
+    const out = await runAt(t, 10);
+    assert.equal(out.api_claims, 1, 'the sweep alerted; it must say so');
+    assert.equal(out.alerted, true);
+  });
+
+  test('at 3am the counts come back the same way', async (t) => {
+    claim('c8', 'pending', OLD);
+    const out = await runAt(t, 3);
+    assert.equal(out.api_claims, 1);
+    assert.equal(out.alerted, true);
+  });
+
+  test('a quiet sweep is quiet at both hours', async (t) => {
+    for (const h of [10, 3]) {
+      const out = await runAt(t, h);
+      assert.equal(out.api_claims ?? 0, 0, `hour ${h}`);
+      assert.equal(out.web_new ?? 0, 0, `hour ${h}`);
+      assert.equal(out.alerted, false, `hour ${h}`);
+    }
+  });
+});

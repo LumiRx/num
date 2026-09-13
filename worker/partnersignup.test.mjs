@@ -64,16 +64,41 @@ test('only the hash is stored — the table cannot leak bearer keys', async () =
   assert.ok(!/INSERT INTO num_partner_keys[^;]*\bkey\b[^_]/.test(src), 'a raw key column crept into the insert');
 });
 
-test('re-signup with the same email rotates, never multiplies', async () => {
-  // Signup is instant; without this, one loop mints ten thousand identities
-  // and the per-partner meter means nothing. Rotation is also the self-serve
-  // answer to a leaked key.
+/* ROTATION ON RE-SIGNUP WAS REMOVED ON 13 SEP 2026, DELIBERATELY.
+ *
+ * This test used to assert that posting the same email twice rotated the key,
+ * described as "the self-serve answer to a leaked key". The trouble is what it
+ * takes to trigger it: a partner's email address, which is on their website.
+ * So anyone could rotate a live integrator's key on demand, from a browser
+ * console, as often as they liked — a denial of service against a paying
+ * partner, and a worse outcome than the problem rotation was solving.
+ *
+ * The half that was right is kept: one email, one identity, never two. */
+test('re-signup with the same email never multiplies identities', async () => {
   const env = { DB: db() };
   const a = await (await handlePartnerSignup(post({ company: 'TripCo', email: 'x@trip.co' }), env)).json();
   const b = await (await handlePartnerSignup(post({ company: 'TripCo', email: 'x@trip.co' }), env)).json();
-  assert.equal(a.partner_id, b.partner_id, 'the same email produced two identities');
-  assert.notEqual(a.key, b.key, 're-signup did not rotate the key');
-  assert.equal(env.DB.byEmail.size, 1);
+  assert.ok(a.key, 'the first signup gets a key');
+  assert.equal(env.DB.byEmail.size, 1, 'the same email produced two identities');
+  assert.equal(b.existing, true, 'the second is told an account already exists');
+  assert.equal(b.key, undefined, 'and is shown no key — knowing an address is not proof of owning it');
+});
+
+test('a stranger cannot rotate a live partner key by posting their address', () => {
+  const src = readFileSync(join(HERE, 'partnersignup.mjs'), 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(code, /UPDATE num_partner_keys SET key_hash/,
+    'an unauthenticated form must not be able to replace a working key');
+  assert.match(code, /existing: true/, 'it should say the account exists');
+  assert.match(src, /reply to this email and a person\s*\n?will rotate it/i,
+    'and offer a real route to a rotation, done by a human');
+});
+
+test('one network cannot mint partner keys all day', () => {
+  const src = readFileSync(join(HERE, 'partnersignup.mjs'), 'utf8');
+  assert.match(src, /const PARTNER_SIGNUPS_PER_NETWORK_PER_DAY = \d+;/);
+  assert.match(src, /FROM num_partner_keys\s*\n\s*WHERE signup_ip = \?1/,
+    'counted in D1 — the reply and the email both carry a live credential');
 });
 
 test('junk is refused with instructions, not stored', async () => {
@@ -104,7 +129,11 @@ test('the pricing quoted is the pricing decided', () => {
 test('usage requires the key and email failure cannot cost a signup', () => {
   const src = readFileSync(join(HERE, 'partnersignup.mjs'), 'utf8');
   assert.match(src, /Send your key in the X-Partner-Key header/, 'usage went unauthenticated');
-  assert.match(src, /\}\)\.catch\(\(\) => \{\}\);/, 'the Resend send is awaited — an email outage now blocks signups');
+  // Still fire-and-forget — an email outage must not cost a signup — but the
+  // reason is no longer discarded. A swallowed failure here means a partner who
+  // saw a key on screen, closed the tab, and has no copy, with nobody the wiser.
+  assert.match(src, /\.catch\(\(e\) => console\.warn\('\[partner\] key email failed'/,
+    'a failed key email must leave a trace');
   assert.match(src, /api\.resend\.com/, 'email moved off Resend — never Gmail');
   // Routed above the /api/partner index, not shadowed by it.
   const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');

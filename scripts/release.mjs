@@ -12,7 +12,7 @@
 // a bad deploy affecting everybody and it affecting one person in ten for a
 // minute.
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from 'node:fs';
 
 const CONFIG = '--config wrangler.app.jsonc';
 // Written by `stage`, read by `ship`. Git-ignored: it describes one machine's
@@ -112,10 +112,11 @@ const inRepo = () => {
  * and on the second one the tests had already passed, so the whole run was
  * thrown away at the last step for a stale file.
  *
- * DELIBERATELY NOT DELETED AUTOMATICALLY. The lock also exists when a git
- * process is genuinely running, and removing it under a live writer is how a
- * repository gets corrupted. So this says what to check and what to type, and
- * the person decides.
+ * NOT DELETED AUTOMATICALLY, except in the one case where the file itself
+ * proves nothing is holding it. The lock also exists when a git process is
+ * genuinely running, and removing it under a live writer is how a repository
+ * gets corrupted — so that reasoning stands, and what follows narrows it rather
+ * than overriding it. See `deadLock()`.
  */
 function staleLock() {
   if (!inRepo()) return null;
@@ -130,10 +131,64 @@ function staleLock() {
   }
 }
 
+/**
+ * How long an EMPTY lock must sit before we treat it as abandoned.
+ *
+ * Ten minutes is far longer than any `git add` in this repository takes, and
+ * far shorter than the two hours and twenty minutes the 12 Sep lock had been
+ * sitting when it was found.
+ */
+const DEAD_LOCK_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Is this lock provably abandoned?
+ *
+ * Two conditions, and BOTH are required, because either alone is a guess:
+ *
+ *   · ZERO BYTES. Git writes the new index INTO index.lock as it works, so a
+ *     live operation's lock has content within milliseconds of being created.
+ *     An empty one is a process that made the file and died before writing —
+ *     which is exactly what both the 9 Sep and 12 Sep locks were.
+ *   · OLDER THAN TEN MINUTES. A lock created a second ago might be a git
+ *     command still starting up.
+ *
+ * Anything else — any content at all, or any recency — falls through to the
+ * refusal below and stays the person's decision. That is the case the original
+ * "deliberately not deleted" reasoning was protecting, and it still is: a lock
+ * with bytes in it is a writer, and we do not touch it however old it looks.
+ */
+function deadLock(lock) {
+  if (process.env.NO_LOCK_SWEEP) return false;
+  try {
+    const st = statSync(lock);
+    if (st.size !== 0) return false;
+    return (Date.now() - st.mtimeMs) > DEAD_LOCK_AFTER_MS;
+  } catch {
+    return false;   // cannot read it, cannot judge it, do not delete it
+  }
+}
+
 /** Called before anything that writes to the index. Exits rather than crashing. */
 function refuseOnStaleLock() {
   const lock = staleLock();
   if (!lock) return;
+
+  // An empty lock older than ten minutes has never once been a live writer, and
+  // has now cost three releases. Clearing it is stated out loud rather than done
+  // quietly: a tool that silently deletes files in .git is not one to trust.
+  if (deadLock(lock)) {
+    try {
+      const ageMin = Math.round((Date.now() - statSync(lock).mtimeMs) / 60000);
+      unlinkSync(lock);
+      console.error(`\n⚠ Cleared an abandoned git lock (0 bytes, ${ageMin} minutes old):`);
+      console.error(`    ${lock}`);
+      console.error('  Git writes into that file as it works, so an empty one is a killed');
+      console.error('  process, never a live writer. Continuing.\n');
+      return;
+    } catch (e) {
+      console.error(`\n✘ Could not remove the stale lock: ${e?.message ?? e}\n`);
+    }
+  }
   console.error('\n✘ Git has a lock file in place, so nothing can be committed.\n');
   console.error(`    ${lock}\n`);
   console.error('  If no other git command is running — no open commit editor, no other');
@@ -141,6 +196,8 @@ function refuseOnStaleLock() {
   console.error('  it is safe to remove:\n');
   console.error(`    rm -f "${lock}"\n`);
   console.error('  Then run stage again. Your tests already passed; nothing else is wrong.\n');
+  console.error('  This one was NOT cleared automatically: it has bytes in it, or it is less');
+  console.error('  than ten minutes old — either way something may still be writing.\n');
   console.error('  To release without touching git at all: NO_AUTOCOMMIT=1 npm run release:stage\n');
   process.exit(1);
 }

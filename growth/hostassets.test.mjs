@@ -633,3 +633,39 @@ test('retiring nothing at all says so', async () => {
   assert.equal(out.error, 'not_found');
   assert.match(out.says, /Nothing of yours/);
 });
+
+test('asking for an image without saying which is a 400, not a 404', async () => {
+  // The distinction is load-bearing for the deploy check: a 404 here made a live,
+  // working endpoint read as MISSING, because "no such photo" and "no route" look
+  // identical from outside.
+  const db = freshDb();
+  const res = await assetImage(GET(), { DB: d1(db) },
+    new URL('https://itsnum.com/api/host/asset-image?k=key-one'), deps(db));
+  assert.equal(res.status, 400);
+  assert.match(await res.text(), /which photo/i);
+});
+
+test('the host route does not fall back to the path, so it cannot invent an id', async () => {
+  // It used to read the last path segment when ?id= was absent, which meant
+  // looking up a photograph called "asset-image".
+  const db = freshDb();
+  await withAsset(db, { photo: 'ok' });
+  const res = await assetImage(GET(), { DB: d1(db), PHOTOS: r2({ k: 'bytes' }) },
+    new URL('https://itsnum.com/api/host/asset-image'), deps(db));
+  assert.equal(res.status, 400, 'no id means no id, whatever the path happens to end with');
+});
+
+test('the public route still reads its id from the path', async () => {
+  const db = freshDb();
+  await withAsset(db, { photo: 'ok' });
+  const res = await assetImage(GET(), { DB: d1(db), PHOTOS: r2({ k: 'bytes' }) },
+    new URL('https://itsnum.com/p/asset/p1'), deps(db), { publicOnly: true });
+  assert.equal(res.status, 200);
+});
+
+test('a public request with no id at all is a 400 too', async () => {
+  const db = freshDb();
+  const res = await assetImage(GET(), { DB: d1(db) },
+    new URL('https://itsnum.com/p/asset/'), deps(db), { publicOnly: true });
+  assert.equal(res.status, 400);
+});

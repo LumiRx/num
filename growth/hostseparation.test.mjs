@@ -315,7 +315,14 @@ test('every host SQL statement the worker holds is valid against the migrations'
   for (const f of ['worker/migrations/0013_host_profile.sql',
                    'worker/migrations/0014_host_clients.sql',
                    'worker/migrations/0015_host_separation.sql',
-                   'worker/migrations/0018_host_client_intake.sql']) {
+                   'worker/migrations/0018_host_client_intake.sql',
+                   // Lives under growth/migrations rather than worker/migrations
+                   // because hostJoin is a growth-worker route. It has to be
+                   // applied here all the same: it adds num_hosts.terms_text,
+                   // and without it this fixture disagrees with production —
+                   // which is the precise condition the comment above says let
+                   // the last hostJoin drift hide.
+                   'growth/migrations/2026-09-13_host_terms_text.sql']) {
     const sql = read(f);
     for (const line of sql.split('\n')) {
       const c = line.indexOf('--');

@@ -180,13 +180,19 @@ self.addEventListener('push', (event) => {
           return;
         }
 
+        const shown = [];
         const res = await fetch(`/api/push/pending?me=${encodeURIComponent(me)}`, { cache: 'no-store' });
         const { notifications = [] } = await res.json();
         if (!notifications.length) return;
 
         await Promise.all(
-          notifications.map((n) =>
-            self.registration.showNotification(n.title, {
+          notifications.map((n) => {
+            // Shown means presented. read_at had no writer anywhere until now,
+            // which is why "0 of 117 read" was unknowable rather than true — and
+            // without it there is no honest way to tell a welcome suggestion from
+            // noise before sending thousands more.
+            shown.push(n.id);
+            return self.registration.showNotification(n.title, {
               body: n.body || '',
               // A message from a friend gets a reply box ON the notification.
               // This is the whole point: answering "on my way" should not
@@ -204,9 +210,20 @@ self.addEventListener('push', (event) => {
               icon: '/icon-192.png',
               badge: '/icon-192.png',
               data: { url: n.url || '/?app', id: n.id },
-            }),
-          ),
+            });
+          }),
         );
+
+        // Record it, after the notifications are on screen rather than before.
+        // If this fails the person still got their message — the measurement is
+        // the thing that can be lost, never the notification.
+        if (shown.length) {
+          await fetch('/api/push/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ me, ids: shown }),
+          }).catch(() => {});
+        }
       } catch (err) {
         await self.registration.showNotification('Num', { body: 'Something needs you — open Num.', tag: 'num-generic', icon: '/icon-192.png' });
       }
@@ -241,6 +258,26 @@ self.addEventListener('notificationclick', (event) => {
 
   event.notification.close();
   const target = event.notification.data?.url || '/?app';
+
+  // A tap is the only signal that says a notification was worth sending. Read
+  // means it appeared; acted means they chose to come. One of those numbers
+  // justifies sending more, and it is not the first one.
+  const actedId = event.notification.data?.id;
+  if (actedId) {
+    event.waitUntil(
+      (async () => {
+        let me = null;
+        const cached = await caches.match('/__num_me');
+        if (cached) me = (await cached.text()) || null;
+        if (!me) return;
+        await fetch('/api/push/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ me, id: actedId, acted: true }),
+        }).catch(() => {});
+      })(),
+    );
+  }
   event.waitUntil(
     (async () => {
       // Focus an open Num rather than opening a second copy of the app.

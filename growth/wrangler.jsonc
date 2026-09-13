@@ -61,6 +61,20 @@
     // since Cloudflare holds the subdomain and not the apex.
     "MAIL_FROM": "NUM <hello@itsnum.com>",
     "MAIL_CF_FROM": "NUM <hello@mail.itsnum.com>",
+    // WHERE REPLIES GO. Set on num-app since 1 Sep and never here, which is
+    // half of why it did not work: invitecron.mjs stopped hardcoding the
+    // reply address precisely because info@itsnum.com's MX rejects at the SMTP
+    // layer — every one of the 1,051 businesses that hit reply on an invite
+    // got a bounce, and so did anyone using the mailto unsubscribe, which is
+    // one of the two opt-out routes CAN-SPAM and PECR require us to honour.
+    // With this unset the code fell straight back to the dead address it was
+    // written to avoid. The other half was `replyTo` vs `reply_to`, fixed
+    // 13 Sep in the same pass.
+    //
+    // MAIL_BCC is deliberately NOT set here. num-app blind-copies its
+    // transactional mail; adding that to growth would start copying venue and
+    // host correspondence into a mailbox nobody asked to receive it in.
+    "MAIL_REPLY_TO": "info@thatislumi.com",
     "SEND_BUDGET": "40",
 
     // ── merchant-invite drain (invitecron.mjs) ─────────────────────────
@@ -202,6 +216,14 @@
     // inside num-growth, but the zone hands "itsnum.com/a/…" to num-console,
     // which serves the site's 404 page — verified on the first deploy, which
     // is why this comment exists rather than a bug report later.
+    // The Friday draw's Official Rules. A HANDLER IS NOT A ROUTE: fridayrules.mjs
+    // was wired into the worker and deployed on 12 Sep and the page still 404'd,
+    // because nothing sends this path here — exactly the failure recorded above
+    // for /api/pay/* and /p/*, which shipped broken for weeks each. Every post
+    // about the draw links to this page, and a free prize draw is only lawful if
+    // the terms are published, so a 404 here is not a broken page, it is a
+    // promotion that cannot legally run.
+    { "pattern": "itsnum.com/friday-rules*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/a/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/after/*", "zone_name": "itsnum.com" }
   ]

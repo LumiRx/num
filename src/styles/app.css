@@ -34,3 +34,79 @@ a:hover { color: var(--color-accent); }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── THE COMPOSER TRAY BUDGET ─────────────────────────────────────────────
+   Both live above the text input inside a bar that is `flex: none`, so
+   whatever they take is taken from the thread — and past a point, from the
+   input itself. On 13 Sep 2026 an uncapped list of flight fares pushed the
+   input off the bottom of the phone and nothing could scroll to reach it:
+   the shell is `overflow: hidden` and clamps its own scrollTop to zero.
+
+   The SUM is the number that matters, because both trays can be open at
+   once. The fixed rows below them — discover 42px, chips 46px, input 44px,
+   padding — come to roughly 160px. On the shortest phone we support (667px)
+   a 54vh budget leaves about 140px of thread and, crucially, the input on
+   screen. Raise either of these and check that arithmetic again. */
+:root {
+  --tray-max-flight: 34vh;
+  --tray-max-service: 20vh;
+}
+
+/* ── SCROLL CHAINING: ONE RULE INSTEAD OF TWENTY-ONE ──────────────────────
+   13 Sep 2026 sweep. Twenty-one scroll containers across the app; two of
+   them (the thread and the DM sheet) had `overscroll-behavior: contain`
+   because they had each been fixed by hand after someone complained. The
+   other nineteen did not.
+
+   Without it, reaching the end of an inner list hands the gesture to the
+   parent. In a full-screen sheet that reads as the sheet lurching, or the
+   page behind it moving while the sheet stays put — the same "stuck
+   scrolling" feeling from a different cause. On iOS it is also what lets a
+   downward flick at the top of a list drag the whole web view.
+
+   Rather than touch nineteen components and rely on the twentieth author
+   remembering, the rule keys on the thing itself: any element carrying an
+   inline overflow-auto, plus the .no-scrollbar rail class. `contain` stops
+   the chain at the container's own edge without disabling the scroll; on a
+   non-scrolling element it does nothing at all, so the class selector is
+   safe where .no-scrollbar is used purely to hide a bar. */
+[style*="overflow-y: auto"],
+[style*="overflow-y:auto"],
+[style*="overflow: auto"],
+[style*="overflow:auto"],
+.no-scrollbar {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── 44px: THE SMALLEST THING A THUMB RELIABLY HITS ───────────────────────
+   Apple's HIG puts the floor at 44pt and App Review cites it under 4.0.
+
+   The 13 Sep sweep found no control with an explicit height below it. That
+   reads as good news and is not: almost nothing in this app sets a height.
+   Controls are divs and spans with `pressable()` and some padding, and their
+   height falls out of padding + font size. Measured that way, eighty-three
+   of them land under 44px — from 22px (the ConciergeApp close affordance)
+   up to 43.
+
+   That is a design pass, not a bug fix, and not something to do blind from a
+   text editor: turning a 26px chip into a 44px chip changes how its row
+   wraps. So this class exists, the five worst rows wear it today, and
+   src/lib/taptargets.test.mjs holds the remaining 78 as a ratchet — the
+   count can go down, never up.
+
+   The tempting shortcut was an invisible ::after that grows the hit area
+   without growing the pill. Rejected: these pills sit in rows with 7-8px
+   gaps, so a 12px invisible expansion would overlap its neighbour and the
+   top of one button would silently belong to the button above it. A control
+   that is the wrong size beats a control that lies about where it is.
+
+   `inline-flex` keeps a pill shrink-to-fit; a full-width control should set
+   `width: '100%'` (or its own `display: 'flex'`) alongside the class. */
+.tap {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}

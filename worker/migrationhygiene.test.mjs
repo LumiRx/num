@@ -81,16 +81,27 @@ test('no sealed migration has been edited since it was applied', () => {
     + 'edit is only a comment, re-seal with: node scripts/apply-host-migrations.mjs --seal');
 });
 
-test('the seal covers every migration that has actually been applied', () => {
-  // A registered migration with no seal is one of two things: not yet applied
-  // (fine, and it gets sealed on the next apply), or applied and unprotected.
-  // Listing them keeps the second case from hiding in the first.
-  const unsealed = registered()
+test('every registered migration is either sealed or explicitly pending', () => {
+  // The first version of this asserted "at most one unsealed", which was true on
+  // the day it was written and wrong a day later — two sessions each adding a
+  // migration is normal, and a test that fails for that is a test people delete.
+  //
+  // The real invariant is that nobody is GUESSING. A migration is either sealed
+  // (production has exactly this content) or listed as pending (production has
+  // not had it yet). Something in neither list means somebody added a migration
+  // and nobody knows whether it shipped — which is the whole question this file
+  // exists to keep answerable.
+  const pending = new Set(manifest.pending || []);
+  const unaccounted = registered()
     .map((f) => f.replace('worker/migrations/', ''))
-    .filter((f) => !(f in manifest.sealed));
-  // 0022 is the current one, not yet applied to production by Dre.
-  assert.ok(unsealed.length <= 1,
-    `more than one registered migration is unsealed, so more than one may have been applied without protection: ${unsealed.join(', ')}`);
+    .filter((f) => !(f in manifest.sealed) && !pending.has(f));
+  assert.deepEqual(unaccounted, [],
+    `these migrations are neither sealed nor listed as pending, so whether production has them is a guess: ${unaccounted.join(', ')}`);
+});
+
+test('nothing is claimed as both applied and pending', () => {
+  const both = (manifest.pending || []).filter((f) => f in manifest.sealed);
+  assert.deepEqual(both, [], `${both.join(', ')} is listed as pending AND sealed — one of the two is a lie`);
 });
 
 test('the seal itself says why it exists, for whoever finds it next', () => {

@@ -11,6 +11,8 @@
 // sessions edit it. A module that takes its dependencies can be added with
 // eight lines of diff there instead of four hundred.
 
+import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
+
 export const KINDS = ['yacht', 'boat', 'jet', 'helicopter', 'car', 'villa', 'other'];
 export const RATE_UNITS = ['hour', 'day', 'week', 'trip', 'quote'];
 export const SETTLE = ['host_direct', 'num_collects'];
@@ -102,7 +104,7 @@ export async function hostAssets(req, env, url, D) {
   if (!host) return J({ ok: false, error: 'unauthorised' }, 401);
 
   const list = async () => {
-    const rows = await env.DB.prepare(
+    const fleetQ = env.DB.prepare(
       `SELECT a.*,
               (SELECT COUNT(*) FROM num_asset_photos p
                 WHERE p.asset_id = a.id AND p.moderation = 'ok') AS photos_ok,
@@ -112,12 +114,12 @@ export async function hostAssets(req, env, url, D) {
         WHERE a.host_id = ?1 AND a.status <> 'retired'
         ORDER BY a.kind ASC, a.name ASC
         LIMIT 300`
-    ).bind(host.id).all().catch(() => ({ results: [] }));
+    ).bind(host.id);
 
     // The photo queue: texted-in pictures with no home yet. Shown with the
     // fleet rather than on its own page, because a photo waiting for a decision
     // is part of the fleet's state, not a separate chore.
-    const queue = await env.DB.prepare(
+    const queueQ = env.DB.prepare(
       `SELECT m.id, m.from_last4, m.content_type, m.bytes, m.body, m.status,
               m.created_at, s.display_name AS supplier_name
          FROM num_inbound_media m
@@ -129,12 +131,18 @@ export async function hostAssets(req, env, url, D) {
                OR m.supplier_id IS NULL)
         ORDER BY m.created_at DESC
         LIMIT 60`
-    ).bind(host.id).all().catch(() => ({ results: [] }));
+    ).bind(host.id);
+
+    // Neither read is swallowed into an empty array. A fleet card that says
+    // "nothing here yet" when the truth is "this query cannot run" is the exact
+    // failure that cost us the requests endpoint for weeks.
+    const fleet = await rows(fleetQ.all(), 'the fleet');
+    const queue = await rows(queueQ.all(), 'the photo queue');
 
     return J({
       ok: true,
-      assets: (rows.results || []).map((a) => ({ ...a, spec: a.spec ? safeJson(a.spec) : null })),
-      queue: queue.results || [],
+      assets: fleet.map((a) => ({ ...a, spec: a.spec ? safeJson(a.spec) : null })),
+      queue,
       vocabulary: { kinds: KINDS, rate_units: RATE_UNITS, settle: SETTLE },
       // Said out loud, because both of these have bitten us as silent empties.
       rules: [
@@ -144,7 +152,16 @@ export async function hostAssets(req, env, url, D) {
     });
   };
 
-  if (req.method === 'GET') return list();
+  // One try covers the GET and every POST action that repaints from list().
+  const safely = async (fn) => {
+    try { return await fn(); }
+    catch (e) {
+      if (isReadFailed(e)) return readFailedResponse(J, e);
+      throw e;
+    }
+  };
+
+  if (req.method === 'GET') return safely(list);
   if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
   if (badOrigin(req)) return J({ ok: false }, 403);
   if (host.status !== 'active') return J({ ok: false, error: 'host_not_active' }, 403);
@@ -173,7 +190,7 @@ export async function hostAssets(req, env, url, D) {
       console.warn('[assets] retire failed', e?.message ?? e);
       return J({ ok: false, error: 'write_failed', detail: String(e?.message || '').slice(0, 200) }, 500);
     }
-    return list();
+    return safely(list);
   }
 
   const kind = pick(b.kind, KINDS, null);
@@ -287,7 +304,7 @@ export async function hostAssets(req, env, url, D) {
     console.warn('[assets] write failed', e?.message ?? e);
     return J({ ok: false, error: 'write_failed', detail: String(e?.message || '').slice(0, 200) }, 500);
   }
-  return list();
+  return safely(list);
 }
 
 /* ------------------------------------------------------------- the photos */
@@ -382,11 +399,18 @@ export async function hostAssetPhoto(req, env, url, D) {
     const assetId = clean(b.asset_id, 40);
     if (!assetId) return J({ ok: false, error: 'no_asset' }, 400);
     if (!(await ownsAsset(assetId))) return J({ ok: false, error: 'not_your_asset' }, 403);
-    const rows = await env.DB.prepare(
-      `SELECT id, content_type, bytes, source, caption, moderation, reject_note, position, created_at
-         FROM num_asset_photos WHERE asset_id=?1 ORDER BY position ASC, created_at ASC LIMIT 100`
-    ).bind(assetId).all().catch(() => ({ results: [] }));
-    return J({ ok: true, photos: rows.results || [] });
+    // Not swallowed: "this asset has no photos" and "we cannot read its photos"
+    // lead a host to do completely different things.
+    try {
+      const photos = await rows(env.DB.prepare(
+        `SELECT id, content_type, bytes, source, caption, moderation, reject_note, position, created_at
+           FROM num_asset_photos WHERE asset_id=?1 ORDER BY position ASC, created_at ASC LIMIT 100`
+      ).bind(assetId).all(), "this asset's photos");
+      return J({ ok: true, photos });
+    } catch (e) {
+      if (isReadFailed(e)) return readFailedResponse(J, e);
+      throw e;
+    }
   }
 
   // Making an asset live is a photo decision as much as a listing decision, so
@@ -434,8 +458,32 @@ export async function hostAssetPhoto(req, env, url, D) {
  */
 export async function assetImage(req, env, url, D, { publicOnly = false } = {}) {
   const { J, clean, hostAuth } = D;
-  const id = clean(url.searchParams.get('id') || url.pathname.split('/').pop(), 40);
-  if (!id) return new Response('no', { status: 404 });
+
+  // WHERE THE ID COMES FROM, said explicitly per route.
+  //
+  // The first version read `searchParams.get('id') || url.pathname.split('/').pop()`
+  // for both routes, and that was wrong twice over. On /api/host/asset-image with
+  // no id, the pathname fallback yields the string "asset-image" — so we ran a
+  // database lookup for a photograph by that name and answered 404. Nothing broke,
+  // but the route became indistinguishable from a route that does not exist, and
+  // that is not academic: scripts/console-api-agree.mjs reported this very
+  // endpoint as MISSING on a deploy where it was live and working.
+  //
+  // /p/asset/<id> carries the id in the path. /api/host/asset-image carries it in
+  // the query. Each route reads its own place and neither borrows the other's.
+  const fromPath = url.pathname.startsWith('/p/asset/');
+  const id = clean(fromPath ? url.pathname.split('/').pop() : url.searchParams.get('id'), 40);
+
+  // 400, NOT 404. "You did not say which photograph" and "there is no such
+  // photograph" are different answers and must not share a status code — a
+  // caller cannot act on the first if it looks like the second, and neither can
+  // a deploy check.
+  if (!id) {
+    return new Response('which photo? pass ?id=', {
+      status: 400,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    });
+  }
 
   const row = await env.DB.prepare(
     `SELECT p.r2_key, p.content_type, p.moderation, a.host_id
@@ -491,17 +539,25 @@ export async function hostAssetHolds(req, env, url, D) {
   if (!host) return J({ ok: false, error: 'unauthorised' }, 401);
 
   const list = async () => {
-    const rows = await env.DB.prepare(
+    const holdsQ = env.DB.prepare(
       `SELECT h.*, a.name AS asset_name, a.kind AS asset_kind
          FROM num_asset_holds h JOIN num_assets a ON a.id = h.asset_id
         WHERE a.host_id = ?1 AND h.released_at IS NULL
           AND h.ends_at >= datetime('now','-1 day')
         ORDER BY h.starts_at ASC LIMIT 400`
-    ).bind(host.id).all().catch(() => ({ results: [] }));
-    return J({ ok: true, holds: rows.results || [], kinds: HOLD_KINDS });
+    ).bind(host.id);
+    return J({ ok: true, holds: await rows(holdsQ.all(), 'the calendar'), kinds: HOLD_KINDS });
   };
 
-  if (req.method === 'GET') return list();
+  const safelyHolds = async (fn) => {
+    try { return await fn(); }
+    catch (e) {
+      if (isReadFailed(e)) return readFailedResponse(J, e);
+      throw e;
+    }
+  };
+
+  if (req.method === 'GET') return safelyHolds(list);
   if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
   if (badOrigin(req)) return J({ ok: false }, 403);
 
@@ -515,7 +571,7 @@ export async function hostAssetHolds(req, env, url, D) {
       `UPDATE num_asset_holds SET released_at=?1, release_reason=?2
          WHERE id=?3 AND asset_id IN (SELECT id FROM num_assets WHERE host_id=?4)`
     ).bind(now(), clean(b.reason, 200) || 'released by host', id, host.id).run().catch(() => {});
-    return list();
+    return safelyHolds(list);
   }
 
   const assetId = clean(b.asset_id, 40);
@@ -537,11 +593,34 @@ export async function hostAssetHolds(req, env, url, D) {
   // with each other, which is why OCCUPYING is a set and not a boolean.
   const { OCCUPYING, overlaps } = await import('../worker/assetintegrity.mjs');
   if (OCCUPYING.has(kind)) {
-    const existing = await env.DB.prepare(
-      `SELECT id, kind, starts_at, ends_at FROM num_asset_holds
-        WHERE asset_id=?1 AND released_at IS NULL`
-    ).bind(assetId).all().catch(() => ({ results: [] }));
-    for (const h of existing.results || []) {
+    // THIS READ FAILS CLOSED, and it is the most important line in the file.
+    //
+    // With `.catch(() => ({ results: [] }))` a failed query produced an empty
+    // list, the overlap loop below found nothing to clash with, and THE DOUBLE
+    // BOOKING WENT THROUGH. A guest standing on a quay watching somebody else
+    // board their boat is the worst thing this system can do, and it was one
+    // dropped query away.
+    //
+    // If we cannot read the calendar we do not know whether the hull is free, and
+    // "I do not know" must never be answered as "yes".
+    let existing;
+    try {
+      existing = await rows(env.DB.prepare(
+        `SELECT id, kind, starts_at, ends_at FROM num_asset_holds
+          WHERE asset_id=?1 AND released_at IS NULL`
+      ).bind(assetId).all(), 'the existing holds on this asset');
+    } catch (e) {
+      if (isReadFailed(e)) {
+        return J({
+          ok: false,
+          error: 'cannot_check_clash',
+          says: 'We cannot read this boat\'s calendar just now, so we will not take a booking we cannot check for a clash. Try again in a moment.',
+          detail: String(e?.cause?.message ?? '').slice(0, 200),
+        }, 503);
+      }
+      throw e;
+    }
+    for (const h of existing) {
       if (!OCCUPYING.has(h.kind)) continue;
       if (overlaps(starts, ends, h.starts_at, h.ends_at)) {
         return J({
@@ -574,7 +653,7 @@ export async function hostAssetHolds(req, env, url, D) {
     console.warn('[assets] hold write failed', e?.message ?? e);
     return J({ ok: false, error: 'write_failed', detail: String(e?.message || '').slice(0, 200) }, 500);
   }
-  return list();
+  return safelyHolds(list);
 }
 
 /**
@@ -617,21 +696,29 @@ export async function offerableAssets(req, env, url, D) {
   if (city) { where.push('(a.home_city LIKE ?' + (binds.length + 1) + ' OR a.home_port LIKE ?' + (binds.length + 1) + ')'); binds.push(`%${city}%`); }
   if (kind) { where.push('a.kind = ?' + (binds.length + 1)); binds.push(kind); }
 
-  const rows = await env.DB.prepare(
-    `SELECT a.* FROM num_assets a WHERE ${where.join(' AND ')}
-      ORDER BY a.kind ASC, a.rate_minor ASC LIMIT 60`
-  ).bind(...binds).all().catch(() => ({ results: [] }));
-
+  // A member browsing charters must not be told "nothing near you" when the truth
+  // is that the query failed. That sentence ends the search; an honest error lets
+  // them try again, and lets us see it in the logs.
   const out = [];
-  for (const a of rows.results || []) {
-    const ph = await env.DB.prepare(
-      `SELECT id, caption FROM num_asset_photos
-        WHERE asset_id=?1 AND moderation='ok' ORDER BY position ASC LIMIT 6`
-    ).bind(a.id).all().catch(() => ({ results: [] }));
-    out.push(clientView({
-      ...a,
-      photos: (ph.results || []).map((p) => ({ url: `/p/asset/${p.id}`, caption: p.caption })),
-    }));
+  try {
+    const found = await rows(env.DB.prepare(
+      `SELECT a.* FROM num_assets a WHERE ${where.join(' AND ')}
+        ORDER BY a.kind ASC, a.rate_minor ASC LIMIT 60`
+    ).bind(...binds).all(), 'what is offerable near there');
+
+    for (const a of found) {
+      const ph = await rows(env.DB.prepare(
+        `SELECT id, caption FROM num_asset_photos
+          WHERE asset_id=?1 AND moderation='ok' ORDER BY position ASC LIMIT 6`
+      ).bind(a.id).all(), "an asset's approved photos");
+      out.push(clientView({
+        ...a,
+        photos: ph.map((p) => ({ url: `/p/asset/${p.id}`, caption: p.caption })),
+      }));
+    }
+  } catch (e) {
+    if (isReadFailed(e)) return readFailedResponse(J, e);
+    throw e;
   }
   return J({
     ok: true,

@@ -32,7 +32,7 @@ const WORKER = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
  * num_hosts as production actually has it (read from D1, 6 Sep 2026).
  * Note what is present and what is NOT: `notes` exists, `about` does not.
  */
-const NUM_HOSTS_COLS = 'id,name,company,email,phone,country,code,host_bps,term_months,status,terms_version,agreed_at,agreed_ip,notes,created_at,updated_at,console_key,services_json,areas_json,verified_at,pricing_json,charge_mode,currency,tier,calendar_token,notify_phone,sms_opt_in,profile_updated_at,accepts_intros,in_network,blurb,plan_sub_id,plan_status,plan_renews_at,stripe_customer';
+const NUM_HOSTS_COLS = 'id,name,company,email,phone,country,code,host_bps,term_months,status,terms_version,agreed_at,agreed_ip,terms_text,notes,created_at,updated_at,console_key,services_json,areas_json,verified_at,pricing_json,charge_mode,currency,tier,calendar_token,notify_phone,sms_opt_in,profile_updated_at,accepts_intros,in_network,blurb,plan_sub_id,plan_status,plan_renews_at,stripe_customer';
 
 let db;
 beforeEach(() => {
@@ -88,8 +88,13 @@ describe('hostJoin writes', () => {
 
   test('the insert actually runs, end to end, with the binds hostJoin supplies', () => {
     const sql = hostJoinSql().find((q) => /INSERT INTO num_hosts/i.test(q)).replace(/\?\d*/g, '?');
+    // 15 values since 13 Sep 2026: `terms_text` became a column of its own, so
+    // the agreed_ip HASH and the terms text are two binds rather than one
+    // sliding into the other. This test is what caught that change, which is
+    // the job — it is the guard against exactly the column-slide that put a
+    // paragraph of prose in the address field for a month.
     const binds = ['h_1', 'Dre Darville', 'Lumiverse', 'okaayandre@gmail.com', '+13105551234', 'US',
-      'DRE7', '300', 'v1', '1757000000', 'I agree…', 'k_abc', '1757000000',
+      'DRE7', '300', 'v1', '1757000000', 'a1b2c3d4e5f60718', 'I agree…', 'k_abc', '1757000000',
       'I look after founders who throw events in LA every weekend'];
     assert.doesNotThrow(() => db.prepare(sql).run(...binds));
     const row = db.prepare('SELECT name, email, notes, status, code FROM num_hosts WHERE id=?').get('h_1');
@@ -108,4 +113,70 @@ describe('what the host is told when it fails', () => {
     assert.match(page, /\.then\(function \(r\) \{ return r\.json\(\); \}\)/);
     assert.match(page, /Could not reach NUM\. Check your connection/);
   });
+});
+
+/* ── an email address is not proof of anything ────────────────────────────
+ *
+ * hostJoin is idempotent by email so a host signing up twice keeps one
+ * referral code instead of splitting their earnings. Correct. But the
+ * already-exists branch REPLIED WITH THAT HOST'S console_url — the
+ * password-less link to their account, their clients and their prices — to
+ * anyone who posted their email address.
+ *
+ * A host's email is the least private thing about them: they are referrers, it
+ * goes on their materials. So this was not fake-signup-at-scale, it was account
+ * takeover by typing in an address, and it was the quietest thing in the file.
+ *
+ * The key now goes only where it already lives — their inbox. The referral code
+ * and /r/ link stay in the reply because they are public by design and a
+ * returning host still has to be told their code rather than shown an error.
+ *
+ * Verified by restoring console_url and watching these fail. */
+
+const SRC = WORKER;
+
+test('the already-a-host reply never carries a console key', () => {
+  const i = SRC.indexOf('if (existing) {');
+  assert.ok(i > 0, 'the idempotent-by-email branch must still exist');
+  const branch = SRC.slice(i, i + 2600);
+  const reply = branch.slice(branch.indexOf('return J({'));
+  assert.doesNotMatch(reply, /console_url/,
+    'replying with console_url hands a live account to whoever knows the email address');
+  assert.doesNotMatch(reply, /console_key/, 'nor the raw key');
+  assert.match(reply, /console_emailed: true/, 'it must say the link was sent instead');
+  assert.match(reply, /code: existing\.code/, 'a returning host still needs their referral code');
+});
+
+test('the console link is emailed to the address on the account', () => {
+  const i = SRC.indexOf('if (existing) {');
+  const branch = SRC.slice(i, i + 2600);
+  assert.match(branch, /sendBatch\(env, \[\{/, 'the branch must actually send');
+  assert.match(branch, /to: \[email\]/, 'to the address, which for an existing host is the one on file');
+  assert.match(branch, /host_relink/, 'tagged so a spike in these is visible');
+  // Somebody probing addresses makes the real host's inbox the alarm, so the
+  // mail has to tell them nothing happened rather than frighten them.
+  assert.match(branch, /nothing has happened to your account/i,
+    'a host who did not ask for this must be told plainly that they are fine');
+});
+
+test('one network cannot mint host accounts all day', () => {
+  assert.match(SRC, /const HOST_JOINS_PER_NETWORK_PER_DAY = \d+;/);
+  const n = Number(SRC.match(/HOST_JOINS_PER_NETWORK_PER_DAY = (\d+)/)[1]);
+  assert.ok(n >= 2 && n <= 10, 'two co-founders signing up side by side is real; twenty is not');
+  assert.match(SRC, /FROM num_hosts\s*\n\s*WHERE agreed_ip = \?1/,
+    'counted in D1 — the isolate-local bucket above it is not a limit');
+});
+
+test('agreed_ip holds an address hash, not the terms text', () => {
+  // It held the terms text: the INSERT bound 14 values against 16 columns and
+  // everything after terms_version slid one place. So the legal record said
+  // nothing about who agreed, and the rate limit above would have compared a
+  // hash to a paragraph of prose and never fired once.
+  const i = SRC.indexOf('INSERT INTO num_hosts');
+  assert.ok(i > 0, 'hostJoin must still insert a host');
+  const stmt = SRC.slice(i, i + 1400);
+  assert.match(stmt, /agreed_ip,terms_text,/, 'the terms need a column of their own');
+  const code = stmt.replace(/\/\/[^\n]*/g, '');
+  assert.match(code, /iph,\s*String\(b\.terms_text \|\| ""\)/,
+    'and the hash must be bound where agreed_ip actually is');
 });

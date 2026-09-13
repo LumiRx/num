@@ -264,15 +264,27 @@ export async function claimSweep(env) {
     ).catch(() => {});
   }
 
+  // ── 13 SEP 2026: THE ONE HOUR A DAY THIS FUNCTION FORGOT WHAT IT DID ────
+  //
+  // Everything above runs on every sweep. Everything below runs only at 10am
+  // Phuket. The counts from above used to be returned ONLY on the "not the
+  // hour" path, so between 10:00 and 11:00 local, claimSweep would text Dre
+  // about a brand new business signup and then answer `{ alerted: false }` —
+  // its own caller, its logs, and its tests all told the same hour-shaped lie.
+  //
+  // worker/claimsweep.test.mjs caught it by being run at 10:17 Phuket. It was
+  // green the other twenty-three hours. Carrying `above` into every exit is
+  // the fix: what the function already did is not conditional on the clock.
+  const above = {
+    web_new: unseen.length,
+    api_claims: freshApi.length,
+  };
+  const alertedAbove = unseen.length > 0 || freshApi.length > 0;
+
   const hour = phuketHour();
   // Once a day, mid-morning Phuket — when a follow-up call can actually happen.
   if (hour !== 10) {
-    return {
-      alerted: unseen.length > 0 || freshApi.length > 0,
-      web_new: unseen.length,
-      api_claims: freshApi.length,
-      skipped: 'not the hour',
-    };
+    return { ...above, alerted: alertedAbove, skipped: 'not the hour' };
   }
 
   const { results } = await env.DB.prepare(
@@ -283,7 +295,7 @@ export async function claimSweep(env) {
       ORDER BY c.created_at DESC LIMIT 12`,
   ).all().catch(() => ({ results: [] }));
   const stalled = results ?? [];
-  if (!stalled.length) return { alerted: false, stalled: 0 };
+  if (!stalled.length) return { ...above, alerted: alertedAbove, stalled: 0 };
 
   // The same once-only gate the plan nudges use — one row per claim per day.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: PHUKET.tz }).format(new Date());
@@ -294,7 +306,7 @@ export async function claimSweep(env) {
     ).bind(crypto.randomUUID(), 'desk', c.id, `claimstall:${today}`).run().catch(() => null);
     if (claimed?.meta?.changes) fresh.push(c);
   }
-  if (!fresh.length) return { alerted: false, stalled: stalled.length };
+  if (!fresh.length) return { ...above, alerted: alertedAbove, stalled: stalled.length };
 
   const { alert } = await import('./health.mjs');
   await alert(
@@ -303,5 +315,5 @@ export async function claimSweep(env) {
       fresh.map((c) => `${c.name} (${c.state})`).join(', ') +
       ' — console → Claims to finish them.',
   ).catch(() => {});
-  return { alerted: true, stalled: fresh.length };
+  return { ...above, alerted: true, stalled: fresh.length };
 }

@@ -670,6 +670,19 @@ async function me(env, req) {
   }
   await env.DB.batch(writes);
 
+  // ── WHO BROUGHT THEM IN ─────────────────────────────────────────────────
+  //
+  // After the batch, because it needs the member row to exist, and outside it
+  // because a referral that cannot be linked must never fail a signup.
+  //
+  // This is the half of the chain that was missing. The link carried the code,
+  // /r/CODE resolved it and logged the arrival, the app read it out of the URL
+  // — and then nothing wrote it down. Zero of 148 members had a referrer.
+  if (b.ref) {
+    const { linkReferral } = await import('./memberreferral.mjs');
+    await linkReferral(env, { memberId: id, code: b.ref }).catch(() => {});
+  }
+
   // Who, and roughly where from — the raw material for spotting a farm. Hashed,
   // because an IP is personal data and the only question we ever ask of it is
   // whether two accounts share one, never what it was.

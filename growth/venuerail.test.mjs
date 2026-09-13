@@ -134,3 +134,40 @@ test('the saved-identity card can describe a payment page', () => {
   // the rail was, which is false for a Stripe link and alarming for a wallet.
   assert.match(worker, /Guests are sent straight to this page to pay you/);
 });
+
+/* ── a venue is never quoted in somebody else's money ─────────────────────
+ * Every paylink creator fell back to the literal "THB" when the caller sent no
+ * currency — and the /biz/pay form has no currency field and posts none, so an
+ * LA or Edinburgh venue's fixed-amount code was stored in baht and rendered to
+ * their guest as a 34px "THB 45.00".
+ *
+ * The identity picker on /biz/tables already had a comment apologising for this
+ * exact failure; the fix had landed on one creation surface and not the other
+ * two, and the picker's own server-side fallback was still THB.
+ *
+ * Verified by putting "THB" back and watching this fail. */
+test('no paylink creator falls back to a hardcoded currency', () => {
+  const code = worker.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const falls = [...code.matchAll(/PAY_CURRENCIES\.includes\([\s\S]{0,120}?:\s*([^;]+);/g)];
+  assert.ok(falls.length >= 3, `expected every creator; found ${falls.length}`);
+  for (const m of falls) {
+    assert.doesNotMatch(m[1], /["']THB["']/,
+      'a hardcoded baht fallback bills a London venue in Thai baht: ' + m[1].trim());
+    assert.match(m[1], /currencyForVenue\(env,/,
+      'the fallback has to come from the venue, not from wherever we launched first');
+  }
+});
+
+test('the venue currency comes from its country and falls to USD', () => {
+  const i = worker.indexOf('async function currencyForVenue');
+  assert.ok(i > 0, 'the helper must exist');
+  const fn = worker.slice(i, worker.indexOf('\n}\n', i));
+  assert.match(fn, /FROM num_business_profiles/, 'read the country we hold for them');
+  assert.match(fn, /railFor\(/, 'and reuse the rail table rather than a second mapping that can drift');
+  // railFor's own default, read from the source rather than imported — this
+  // file cannot import worker.js. Asserted because the entire bug was a default
+  // that assumed everyone was where we happened to launch first.
+  const rf = worker.slice(worker.indexOf('function railFor(country)'));
+  assert.match(rf.slice(0, 220), /currency: "USD"/,
+    'an unknown country is far likelier to be anywhere than Thailand');
+});

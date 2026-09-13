@@ -343,7 +343,7 @@ export async function handleBooking(request, env, path) {
     // does not happen. `accrue` never throws — a booking must complete even
     // if the money line fails.
     if (flip.meta.changes > 0 && verdict === 'confirmed') {
-      const { accrue } = await import('./commission.mjs');
+      const { accrue, currencyForCountry } = await import('./commission.mjs');
       const place = row.place_id
         // `country` is load-bearing: commission.mjs applies per-country rates
         // off it (Thailand bills 10% of the bill rather than a flat fee), and
@@ -357,6 +357,19 @@ export async function handleBooking(request, env, path) {
         venueName: row.venue_name,
         memberId: row.member_id,
         dest: place?.dest ?? null,
+        // THE COMMENT ABOVE SAYS `country` IS LOAD-BEARING, AND THEN THIS CALL
+        // THREW IT AWAY. accrue() defaults to `currency = 'usd'`, so the floor
+        // resolved as floorFor('usd') = 200 and was written to the row as 200
+        // MINOR UNITS AT A THAI VENUE — ฿2.00, about six cents, against the ฿70
+        // that feeSentence() already quotes that same venue. Thirty-five times
+        // under, on every confirmed table, silently, since the per-currency
+        // floor was introduced.
+        //
+        // Fixed HERE and not inside accrue() on purpose: deriving currency from
+        // place.country inside accrue would also change the referred-booking
+        // percentage path, which commission.billvalue.test.mjs deliberately
+        // pins to be the same in every country. This is the floor, not the rate.
+        currency: currencyForCountry(place?.country).toLowerCase(),
       });
     }
 

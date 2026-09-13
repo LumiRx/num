@@ -54,9 +54,22 @@ test('the boundary is declared one-way', () => {
  *                 anything a client sent. It cannot mint and it cannot reach
  *                 outside Num.
  *
+ *   memberreferral.mjs — (added 2026-09-13) a referrer's 20% share of a
+ *                 commission Num ALREADY COLLECTED from someone they brought
+ *                 in. Reviewed against the three things that matter here:
+ *                 it cannot mint (the amount is a percentage of a figure the
+ *                 caller passes from our own commission ledger, never a client
+ *                 value); it is idempotent on the caller's ref, so a retried
+ *                 settle cannot pay twice; and it reaches nothing outside Num —
+ *                 no 5arz table, no fetch. It is the member-side twin of
+ *                 bizreferral.mjs and credits by the same mechanism.
+ *
  * Note what is NOT here and never should be: anything sourced from 5arz.
  */
-const CREDIT_SITES = { 'errands.mjs': 2, 'social.mjs': 4, 'pay.mjs': 1, 'cashout.mjs': 1, 'bizreferral.mjs': 1, 'starmembership.mjs': 1 };
+const CREDIT_SITES = {
+  'errands.mjs': 2, 'social.mjs': 4, 'pay.mjs': 1, 'cashout.mjs': 1,
+  'bizreferral.mjs': 1, 'starmembership.mjs': 1, 'memberreferral.mjs': 1,
+};
 
 test('the set of places a Num balance can grow is exactly the reviewed set', () => {
   const found = {};
