@@ -120,8 +120,16 @@ test('both the app and the ad landing page load analytics', () => {
     'the loader builds its own URL instead of going through apiUrl — native will 404 again');
 
   const main = readFileSync(join(HERE, '..', 'src', 'main.tsx'), 'utf8');
-  assert.match(main, /loadAnalytics\(\)/,
+  assert.match(main, /loadAnalytics\(/,
     'main.tsx never calls loadAnalytics — the loader exists but nothing runs it');
+  // 13 Sep 2026: the call gained an argument. `/api/analytics.js` pulls in
+  // Cloudflare Insights and Google Analytics, and inside the App Store build
+  // third-party collection needs an App Tracking Transparency prompt in
+  // front of it (5.1.2) — one Num does not show for a page-view counter. The
+  // WEB behaviour asserted above is unchanged; only the native build opts
+  // out, and Num's own num-track.js still loads everywhere.
+  assert.match(main, /loadAnalytics\(\{ thirdParty: !isNativeApp\(\) \}\)/,
+    'the third-party pair must be web-only, and by the shared platform answer');
 
   // And the thing that actually broke: no bare absolute /api/ script tag may
   // come back into the app shell, because it cannot work on native.

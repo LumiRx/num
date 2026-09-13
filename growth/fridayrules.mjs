@@ -60,30 +60,97 @@ export function rulesHtml() {
 <title>Friday Pack Draw — Official Rules · Num</title>
 <meta name="description" content="Official Rules for the Num Friday Pack Draw. No purchase necessary. US and UK, 18+. Void where prohibited.">
 <meta name="robots" content="index,follow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap">
 <style>
-:root{color-scheme:light dark;--ink:#14162e;--ink60:#5a5e7d;--bg:#fbfbfe;--line:#e5e7f5;--accent:#ec3013}
-@media(prefers-color-scheme:dark){:root{--ink:#eef0ff;--ink60:#a3a7c9;--bg:#0d0e1c;--line:#262a45}}
+:root{
+  color-scheme:light dark;
+  --ink:#14162e;--ink60:#5a5e7d;--ink40:#8b8fae;
+  --bg:#fbfbfe;--surface:#ffffff;--line:#e5e7f5;
+  --accent:#ec3013;--accent-ink:#c42408;--accent-soft:#fff1ee;
+  --shadow:0 1px 2px rgba(20,22,46,.05),0 10px 30px -20px rgba(20,22,46,.45);
+}
+@media(prefers-color-scheme:dark){:root{
+  --ink:#eef0ff;--ink60:#a3a7c9;--ink40:#7b7fa3;
+  --bg:#0d0e1c;--surface:#151731;--line:#262a45;
+  --accent:#ff6a4d;--accent-ink:#ff927c;--accent-soft:#2a1410;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 30px -20px rgba(0,0,0,.9);
+}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
- font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
- padding-block:32px;padding-left:20px;padding-right:20px}
-main{max-width:720px;margin:0 auto}
-.brand{font-size:11px;letter-spacing:.16em;color:var(--accent);font-weight:800}
-h1{font-size:26px;line-height:1.25;margin:8px 0 4px}
-.lede{color:var(--ink60);margin:0 0 26px}
-.key{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 28px}
-.key b{display:block;font-size:15px}
-h2{font-size:15px;margin:26px 0 6px}
-p,li{color:var(--ink);margin:0 0 10px}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding-block:0 72px;padding-left:20px;padding-right:20px;
+  -webkit-font-smoothing:antialiased;
+}
+main{max-width:680px;margin:0 auto}
+
+/* masthead */
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding-block:22px;border-bottom:1px solid var(--line);margin-bottom:34px}
+.brand{font-size:17px;font-weight:800;letter-spacing:-.02em;color:var(--ink);text-decoration:none}
+.brand i{font-style:normal;color:var(--accent)}
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--ink40)}
+
+h1{font-family:Newsreader,Georgia,"Times New Roman",serif;
+  font-size:clamp(30px,6.5vw,42px);font-weight:600;line-height:1.1;
+  letter-spacing:-.015em;margin:0 0 8px;text-wrap:balance}
+.lede{color:var(--ink60);margin:0 0 30px;font-size:14.5px}
+
+/* eligibility banner */
+.key{border:1px solid var(--line);border-left:3px solid var(--accent);
+  background:var(--surface);border-radius:0 14px 14px 0;padding:18px 20px;margin:0 0 22px;
+  box-shadow:var(--shadow)}
+.key b{display:block;font-size:15.5px;line-height:1.45;margin-bottom:7px}
+
+/* how to enter — lifted out of clause 3, which is where it was buried */
+.enter{background:var(--accent-soft);border:1px solid var(--line);border-radius:16px;
+  padding:24px 22px;margin:0 0 40px}
+.enter-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--accent-ink);margin:0 0 16px}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.steps li{display:grid;grid-template-columns:26px 1fr;gap:14px;align-items:baseline;
+  margin:0;color:var(--ink);font-size:16px}
+.steps li::before{content:counter(step);counter-increment:step;
+  font-variant-numeric:tabular-nums;font-weight:800;font-size:13px;color:var(--accent);
+  border:1.5px solid var(--accent);border-radius:50%;width:26px;height:26px;
+  display:grid;place-items:center;align-self:start}
+.steps{counter-reset:step}
+.code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:19px;font-weight:700;letter-spacing:.1em;color:var(--ink);
+  background:var(--surface);border:2px solid var(--accent);border-radius:9px;
+  padding:2px 12px;margin-left:2px}
+.steps li>span{line-height:1.9}
+.enter-note{margin:18px 0 0;font-size:13.5px;color:var(--ink60);line-height:1.6}
+
+/* the rules */
+.rules{counter-reset:none;margin-top:8px}
+h2{font-family:Newsreader,Georgia,serif;font-size:19px;font-weight:600;letter-spacing:-.01em;
+  margin:34px 0 8px;display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:baseline}
+h2 .n{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;
+  font-variant-numeric:tabular-nums;color:var(--accent);padding-top:4px}
+h2+p,h2~p,h2~ol{margin-left:48px}
+p,li{color:var(--ink);margin:0 0 11px}
 ol{padding-left:20px}
 small,.fine{color:var(--ink60);font-size:13px;line-height:1.6}
-a{color:var(--accent)}
-hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+a{color:var(--accent-ink);font-weight:600}
+hr{border:0;border-top:1px solid var(--line);margin:40px 0 20px}
+strong{font-weight:700}
+@media(max-width:520px){
+  h2{grid-template-columns:28px 1fr;gap:9px}
+  h2+p,h2~p,h2~ol{margin-left:0}
+  ol{padding-left:18px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head><body><main>
 
-<div class="brand">NUM</div>
-<h1>Friday Pack Draw — Official Rules</h1>
+<div class="top">
+  <a class="brand" href="https://itsnum.com/">NUM<i>.</i></a>
+  <span class="eyebrow">Official Rules</span>
+</div>
+<h1>The Friday Pack Draw</h1>
 <p class="lede">Last updated 12 September 2026.</p>
 
 <div class="key">
@@ -92,16 +159,28 @@ hr{border:0;border-top:1px solid var(--line);margin:28px 0}
   Void where prohibited. Not open to residents of Thailand — see clause 10.</span>
 </div>
 
-<h2>1. Sponsor</h2>
+<section class="enter">
+  <p class="enter-eyebrow">How to enter — free, takes ten seconds</p>
+  <ol class="steps">
+    <li><span>Open ${esc(r.product)}, or make an account if you do not have one.</span></li>
+    <li><span>Send ${esc(r.product)} the word <b class="code">${esc(r.entryCode)}</b></span></li>
+  </ol>
+  <p class="enter-note">That is the whole entry, and ${esc(r.product)} confirms it on the spot.
+  One entry per person per week. The entry period runs ${esc(r.opensDay)} 00:00 UTC to Thursday
+  23:59 UTC, and the draw happens each ${esc(r.opensDay)}. Full terms below.</p>
+</section>
+
+<div class="rules">
+<h2><span class="n">1</span><span>Sponsor</span></h2>
 <p>${esc(r.sponsor)}, operator of ${esc(r.product)} (${esc(r.site)}). Questions:
 <a href="mailto:${esc(r.contact)}">${esc(r.contact)}</a>.</p>
 
-<h2>2. Eligibility</h2>
+<h2><span class="n">2</span><span>Eligibility</span></h2>
 <p>Legal residents of the ${esc(r.countries.join(' or '))}, aged ${r.minAge} or over at the time of
 entry. Employees of ${esc(r.sponsor)}, their immediate families and members of their households are
 not eligible. Void where prohibited or restricted by law.</p>
 
-<h2>3. How to enter</h2>
+<h2><span class="n">3</span><span>How to enter</span></h2>
 <p><strong>No purchase or payment is required, and none will improve your chance of winning.</strong>
 To enter a given week's draw, during that week's entry period:</p>
 <ol>
@@ -114,58 +193,60 @@ entered and does not add a second chance. Creating more than one account does no
 one entry and may disqualify you. Simply using ${esc(r.product)} for other things does not enter you:
 the draw is opt-in, so nobody receives a prize they did not ask to be in the running for.</p>
 
-<h2>4. Entry period</h2>
+<h2><span class="n">4</span><span>Entry period</span></h2>
 <p>Each weekly entry period runs from ${esc(r.opensDay)} 00:00 UTC to the following Thursday 23:59
 UTC. A draw takes place each ${esc(r.opensDay)}.</p>
 
-<h2>5. Prize</h2>
+<h2><span class="n">5</span><span>Prize</span></h2>
 <p>${r.winnersPerWeek} winners per entry period. Each winner receives ${r.packsPerWinner} sealed
 Pokémon trading card pack. Approximate retail value US$${esc(r.arvEachUsd)} each; approximate total
 retail value per week US$${r.winnersPerWeek * 4}–${r.winnersPerWeek * 8}. Prizes are not
 transferable. No cash alternative is offered, except at the Sponsor's discretion where a prize cannot
 be delivered.</p>
 
-<h2>6. Odds of winning</h2>
+<h2><span class="n">6</span><span>Odds of winning</span></h2>
 <p>Odds depend on the number of eligible entrants in that entry period. ${r.winnersPerWeek} prizes are
 awarded each week regardless of how many people enter, so odds improve when fewer people enter and
 lengthen when more do.</p>
 
-<h2>7. How winners are chosen</h2>
+<h2><span class="n">7</span><span>How winners are chosen</span></h2>
 <p>Winners are drawn at random from all eligible entries by an automated process. The random seed and
 the resulting list of winners are recorded at the time of the draw and retained by the Sponsor, so
 any draw can be reproduced and checked afterwards. No person selects the winners.</p>
 
-<h2>8. Notification and claim</h2>
+<h2><span class="n">8</span><span>Notification and claim</span></h2>
 <p>Winners are notified in the ${esc(r.product)} app within 48 hours of the draw and must provide a
 delivery address within 14 days. The Sponsor may ask a winner to confirm their age and country of
 residence before shipping. A prize that is not claimed within 14 days is redrawn.</p>
 
-<h2>9. Delivery</h2>
+<h2><span class="n">9</span><span>Delivery</span></h2>
 <p>Free, to addresses in the ${esc(r.countries.join(' and '))} only.</p>
 
-<h2>10. Thailand</h2>
+<h2><span class="n">10</span><span>Thailand</span></h2>
 <p>Residents of Thailand are <strong>not currently eligible</strong> for this draw. Thai law requires a
 licence for prize draws, including free-entry promotions, and the Sponsor does not yet hold one.
 ${esc(r.product)} members in Thailand receive a separate benefit that does not depend on chance, and
 this clause will be updated if a licence is obtained.</p>
 
-<h2>11. Not affiliated with Nintendo or The Pokémon Company</h2>
+<h2><span class="n">11</span><span>Not affiliated with Nintendo or The Pokémon Company</span></h2>
 <p>This promotion is not sponsored, endorsed, administered by or associated with Nintendo, The Pokémon
 Company, Creatures Inc. or GAME FREAK Inc. "Pokémon" is their trademark. Prizes are genuine sealed
 product purchased at retail by the Sponsor.</p>
 
-<h2>12. Your information</h2>
+<h2><span class="n">12</span><span>Your information</span></h2>
 <p>Entry uses only your existing ${esc(r.product)} account and your use of the service — there is no
 separate form. A winner's delivery address is used only to send the prize and is deleted once it has
 arrived.</p>
 
-<h2>13. Publicity</h2>
+<h2><span class="n">13</span><span>Publicity</span></h2>
 <p>Winners may be announced by first name and city only. No full name, account handle, email address
 or delivery address is ever published. A winner may ask not to be named and still receive the prize.</p>
 
-<h2>14. Changes</h2>
+<h2><span class="n">14</span><span>Changes</span></h2>
 <p>The Sponsor may suspend or end the draw, and will say so on this page. Any change applies from the
 next entry period, never retrospectively to a draw that has already taken place.</p>
+
+</div>
 
 <hr>
 <p class="fine">${esc(r.sponsor)} · ${esc(r.site)} · These rules were last updated 12 September 2026.</p>

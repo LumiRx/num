@@ -37,8 +37,14 @@ test('the tracker is loaded on the pages visitors actually land on', () => {
   assert.match(loader, /apiUrl\(\s*['"]\/num-track\.js['"]\s*\)/,
     'the app shell loads no funnel tracking — activation cannot be observed');
   const main = readFileSync(root('src', 'main.tsx'), 'utf8');
-  assert.match(main, /loadAnalytics\(\)/,
+  assert.match(main, /loadAnalytics\(/,
     'nothing calls loadAnalytics — the app shell tracks nothing');
+  // num-track.js is FIRST-PARTY and loads on every surface including iOS.
+  // Only the third-party pair behind /api/analytics.js is web-only, so
+  // activation stays observable in the app store build. If that ever stops
+  // being true, the funnel goes dark on the platform we care most about.
+  assert.doesNotMatch(loader, /if \(thirdParty\) inject\(apiUrl\('\/num-track/,
+    'num-track.js must not be gated — it is ours, and iOS activation is the funnel');
 });
 
 test('the landing origin can actually serve the file it references', () => {

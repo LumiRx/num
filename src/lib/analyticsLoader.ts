@@ -34,9 +34,21 @@ const inject = (src: string): void => {
   document.head.appendChild(s);
 };
 
-export function loadAnalytics(): void {
+/**
+ * @param thirdParty false in the App Store build.
+ *
+ * `/api/analytics.js` pulls in Cloudflare Insights and Google Analytics. Both
+ * are third parties collecting from every user, and inside a native app that
+ * needs an App Tracking Transparency prompt in front of it (guideline 5.1.2)
+ * — a prompt Num does not show and does not want to show for a page-view
+ * counter. `/num-track.js` is Num's own, hits Num's own origin, and stays.
+ *
+ * Measurement is worth having. It is not worth a rejection, and it is
+ * certainly not worth asking a guest for tracking permission on first launch.
+ */
+export function loadAnalytics({ thirdParty = true } = {}): void {
   try {
-    inject(apiUrl('/api/analytics.js'));
+    if (thirdParty) inject(apiUrl('/api/analytics.js'));
     inject(apiUrl('/num-track.js'));
   } catch (err) {
     console.warn('[analytics] loader failed', err);

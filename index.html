@@ -33,9 +33,22 @@
      ad pixel of any kind, on either network, so every one of those clicks was
      invisible to the thing that decides who sees the ad next.
      The conversions themselves are reported from num-track.js. -->
+<!-- NOT IN THE APP STORE BUILD. This same index.html is bundled into the
+     IPA, so an unguarded ad pixel means the iOS app contacts a third-party
+     ad network for every user at launch with no App Tracking Transparency
+     prompt in front of it — guideline 5.1.2, and a rejection that has
+     nothing to do with advertising working correctly on the web.
+
+     The guard is the ORIGIN, not the Capacitor bridge: this runs in <head>
+     before any bundle has loaded, and the bridge may not have injected yet.
+     capacitor:// and localhost are the app; anything else is the web. Kept
+     in step with nativeOrigin() in src/lib/native.ts — src/lib/pixel.test.mjs
+     fails if the two drift apart. -->
 <!-- Reddit Pixel -->
 <script>
+(function(){try{var l=window.location;if(l.protocol==='capacitor:'||l.protocol==='ionic:'||l.hostname==='localhost'||l.hostname==='127.0.0.1')return;}catch(e){return}
 !function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_jgfeykixrdo7",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);rdt('init','a2_jgfeykixrdo7');rdt('track', 'PageVisit');
+})();
 </script>
 <!-- DO NOT MODIFY UNLESS TO REPLACE A USER IDENTIFIER -->
 <!-- End Reddit Pixel -->

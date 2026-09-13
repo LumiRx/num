@@ -11,10 +11,9 @@
     "0022_supplier_contact.sql": "d25cb253365a68967a73241ee2aa83140ffc1e64b3a1f1b21d8837d16bc568db",
     "0023_giveaway.sql": "2fa9f869dfeb99dbc727ee30ada1ab94de3fc60dc5cc84937055b3da4a59ed32",
     "0024_notifications.sql": "db3b465774f07b0e40a0b6288d12cdad16bc1b1290b3234600fec32ae62d3b3f",
-    "0025_partner_signup_ip.sql": "8ec1f60bf68c7d2410957be6dae0ba0fdcefca9de0dc05a29660d2dd22f4baae"
+    "0025_partner_signup_ip.sql": "8ec1f60bf68c7d2410957be6dae0ba0fdcefca9de0dc05a29660d2dd22f4baae",
+    "0026_giveaway_entrant_key.sql": "491163c7c4e18cd9c4ab3a787e0f22f4196bcde3a0383a754d38596bf3763929"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": [
-    "0026_giveaway_entrant_key.sql"
-  ]
+  "pending": []
 }
