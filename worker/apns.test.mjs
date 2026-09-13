@@ -168,12 +168,14 @@ test('a proactive suggestion goes out at priority 5, not 10', async () => {
 });
 
 test('a sandbox token goes to the sandbox host', async () => {
+  // With a sandbox-scoped key, since Apple now restricts a team key to one
+  // environment. The host still has to follow the token.
   _resetTokenCache();
   const { pem } = await p8();
   const calls = fakeApns({ status: 200 });
-  await sendApns(envFor(pem), { token: 'aabb', environment: 'sandbox', title: 'x' });
+  await sendApns(envFor(pem, { APNS_ENVIRONMENT: 'sandbox' }), { token: 'aabb', environment: 'sandbox', title: 'x' });
   assert.ok(calls[0].url.startsWith(APNS_HOST.sandbox),
-    'a sandbox token sent to production fails BadDeviceToken — the commonest reason someone concludes push is broken');
+    'a sandbox token sent to the production host fails BadDeviceToken — the commonest reason someone concludes push is broken');
 });
 
 test('the collapse id is clipped to the 64 bytes Apple allows', async () => {
@@ -282,4 +284,73 @@ test('a missing token is refused before any network call', async () => {
   const r = await sendApns(envFor(pem), { token: '', title: 'x' });
   assert.equal(r.ok, false);
   assert.equal(called, false);
+});
+
+/* ── environment scoping, which Apple now enforces on team keys ─────────── */
+
+test('a token for the other environment is skipped, not hammered forever', async () => {
+  // Apple scopes team keys to Sandbox OR Production. A production key sending to
+  // a sandbox token fails every sweep, forever, until a perfectly good debugging
+  // device is written off as dead.
+  _resetTokenCache();
+  const { pem } = await p8();
+  let called = false;
+  globalThis.fetch = async () => { called = true; return new Response(null, { status: 200 }); };
+
+  const r = await sendApns(envFor(pem), { token: 'aabb', environment: 'sandbox', title: 'x' });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'WrongEnvironmentForKey');
+  assert.equal(r.dead, false, 'the token is fine — it just belongs to the other door');
+  assert.equal(called, false, 'and we must not spend a request finding that out');
+  assert.match(r.detail, /sandbox/);
+});
+
+test('a development key serves sandbox tokens and declines production ones', async () => {
+  _resetTokenCache();
+  const { pem } = await p8();
+  const dev = envFor(pem, { APNS_ENVIRONMENT: 'sandbox' });
+  const calls = fakeApns({ status: 200 });
+
+  const ok = await sendApns(dev, { token: 'aabb', environment: 'sandbox', title: 'x' });
+  assert.equal(ok.ok, true);
+  assert.ok(calls[0].url.startsWith(APNS_HOST.sandbox));
+
+  const no = await sendApns(dev, { token: 'aabb', environment: 'production', title: 'x' });
+  assert.equal(no.reason, 'WrongEnvironmentForKey');
+});
+
+test('production is the default, because App Store AND TestFlight both use it', async () => {
+  const { keyEnvironment } = await import('./apns.mjs');
+  assert.equal(keyEnvironment({}), 'production');
+  assert.equal(keyEnvironment({ APNS_ENVIRONMENT: 'sandbox' }), 'sandbox');
+  assert.equal(keyEnvironment({ APNS_ENVIRONMENT: 'PRODUCTION' }), 'production');
+  assert.equal(keyEnvironment({ APNS_ENVIRONMENT: 'nonsense' }), 'production',
+    'an unrecognised value must fall back to the safe one, not to sandbox');
+});
+
+test('a legacy Sandbox and Production key serves both, because some really do', async () => {
+  // The portal shows older team keys as "Sandbox & Production" and Apple has
+  // said those keep working. Refusing their sandbox tokens would be us enforcing
+  // a restriction the key does not have.
+  const { keyServes } = await import('./apns.mjs');
+  for (const v of ['both', 'Sandbox & Production', 'ALL']) {
+    assert.equal(keyServes({ APNS_ENVIRONMENT: v }, 'sandbox'), true, `${v} should serve sandbox`);
+    assert.equal(keyServes({ APNS_ENVIRONMENT: v }, 'production'), true, `${v} should serve production`);
+  }
+  assert.equal(keyServes({}, 'sandbox'), false, 'the default stays strict');
+  assert.equal(keyServes({}, 'production'), true);
+});
+
+test('a both-scoped key actually sends to each host', async () => {
+  _resetTokenCache();
+  const { pem } = await p8();
+  const env = envFor(pem, { APNS_ENVIRONMENT: 'both' });
+
+  let calls = fakeApns({ status: 200 });
+  assert.equal((await sendApns(env, { token: 'aabb', environment: 'sandbox', title: 'x' })).ok, true);
+  assert.ok(calls[0].url.startsWith(APNS_HOST.sandbox));
+
+  calls = fakeApns({ status: 200 });
+  assert.equal((await sendApns(env, { token: 'aabb', environment: 'production', title: 'x' })).ok, true);
+  assert.ok(calls[0].url.startsWith(APNS_HOST.production));
 });

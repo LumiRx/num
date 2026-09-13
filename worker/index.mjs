@@ -88,6 +88,9 @@ import { policyFor, policyBrief, screen as screenReply, substituteFor } from './
 import { tagged } from './affiliate.mjs';
 import { logHandoffs } from './affiliateclicks.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
+// How this guest writes, read off their own messages. Pure and synchronous:
+// no table, no migration, nothing stored. See worker/register.mjs for why.
+import { registerFor } from './register.mjs';
 import { asksEmergency, emergencyLine } from './emergency.mjs';
 
 // Opus by default — it is the concierge and the concierge is the product.
@@ -139,7 +142,12 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         profile: safeProfile.profile,
         buzz: grounding.buzz,
         services: servicesBlock(grounding.place, env ?? {}),
-        style: styleBlock(state?.style),
+        // Two per-guest style sources, and they do not conflict: styleBlock is
+        // learned from what this guest REACTED well and badly to, registerFor is
+        // read from how they WRITE. Reactions win where both speak, because a
+        // guest who disliked a suggestion has told us something stronger than
+        // their typing habits have.
+        style: [styleBlock(state?.style), registerFor(messages)].filter(Boolean).join('\n\n'),
         party: state?.party,
         trip: state?.tripCheck,
         air: airReady(env),
@@ -1021,7 +1029,7 @@ export async function handleNum(request, env, ctx) {
       // passed it raw. The cheaper the model, the less we know about its
       // operator; the fallback must see less, never more.
       context: groundingBlock,
-      style: styleBlock(parsed.state?.style),
+      style: [styleBlock(parsed.state?.style), registerFor(history)].filter(Boolean).join('\n\n'),
       guard: (t) => guardReply(t),
       // Who should answer THIS question. Money, bookings, groups and trouble
       // go to Claude first; recommendations and lookups go to the hosted

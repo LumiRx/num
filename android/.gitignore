@@ -53,9 +53,12 @@ captures/
 .idea/navEditor.xml
 
 # Keystore files
-# Uncomment the following lines if you do not want to check your keystore files in.
-#*.jks
-#*.keystore
+# UNCOMMENTED 13 Sep 2026. These were commented out by the Capacitor scaffold,
+# which means a keystore dropped into this folder would have been committed —
+# and an upload key in a git history is a key that has to be treated as burned.
+*.jks
+*.keystore
+keystore.properties
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild

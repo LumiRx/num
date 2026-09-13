@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-13 · production **0.8.292 live and healthy** (health verdict ok, 0 failing)_
+_Last updated: 2026-09-13 · production **0.8.294 live and healthy** (health verdict ok, 0 failing) · voice layer built, NOT deployed_
 
 ---
 
@@ -14,7 +14,7 @@ _Last updated: 2026-09-13 · production **0.8.292 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,582 green, 0 lint errors, tsc clean |
+| Tests | 4,765 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -222,6 +222,51 @@ Two guards now exist:
 If you deploy by hand, deploy **both** or run the script. `npx wrangler deploy` alone ships the
 console without its API.
 
+## The business console has a front door — 13 Sep
+
+`itsnum.com/biz` was a **404** and five of the seven console pages linked to nothing. Worse,
+there were **two auth systems that never consulted each other**: `/biz/tables` and
+`/biz/statement` use `qrWho` (email magic-link session); `/biz/codes`, `/visitors`, `/offers`,
+`/pay` and `/settings` use `bizAuth` (a permanent `console_key` in the query string). A venue
+that signed in by email could reach TWO pages out of seven.
+
+- **`/biz` is the hub**: venue name, this week's running total read off *their* ledger (rate from
+  `num_business_settings`, never typed), tiles to the other six filtered by role.
+- **One nav, rendered by `qrShell`**, so a new page cannot be built without it.
+- **`bizAuth` now accepts an OWNER's session.** Owner only — a console key is owner-level
+  authority and staff/readonly must not inherit it. Logged `via=owner_session`.
+- **Route pattern changed `itsnum.com/biz/*` → `itsnum.com/biz*`.** "/biz/*" does not match a bare
+  "/biz". Fourth time that trap has appeared here. `growth/bizhub.test.mjs` asserts the pattern.
+
+**The link to give a business is now `itsnum.com/biz` and nothing else.**
+
+**Still open:** `console_key` is a permanent bearer token in a URL — history, referrers,
+screenshots. Now that an owner session reaches everything it does, it can be retired: stop
+putting it in outbound links, keep accepting it, remove it last.
+
+## Small connections — and the one number Num may not guess — 13 Sep
+
+Four specialists ahead of the commercial ones, so "I need a chemist" cannot route to the spa:
+**urgent** (pharmacy, doctor, lost passport/phone/wallet), **arrival** (SIM, money, plug, water,
+tipping, holidays), **access** (wheelchair, pushchair, baby, dog, allergies), **errand**
+(laundry, barber, repairs, printing, parcels).
+
+**`worker/emergency.mjs` is a CHECKED TABLE, and the model is forbidden from answering from
+memory.** Ambulance in Thailand is 1669, Japan 119, UAE 998 — almost nowhere is it 911. The
+verified sentence is pushed into the prompt **only when asked**, with "reproduce this exactly,
+never substitute one you remember".
+
+**An unknown country returns null** — never 911, never a neighbour's. It gets the honest
+fallback (112, and that it dials from a locked screen with no SIM). **BB and BS are absent on
+purpose**: both run three-digit services alongside 911 routing and neither could be verified to
+the standard. A test asserts every covered country is present or knowingly absent, so adding a
+destination Num cannot answer this for fails the build.
+
+**The limit worth knowing:** the urgent brief is only as good as `hours_mask` on pharmacies and
+clinics, and the places index was built for restaurants. A pharmacy shown as open at midnight
+and shut is the one failure this cluster cannot afford — check hours coverage on those
+categories in the three live cities before leaning on it.
+
 ## The Friday pack draw — LIVE as of 13 Sep 2026
 
 Ten sealed Pokémon packs a week, **ten winners, one each**. Dre bought the packs 12 Sep.
@@ -288,6 +333,75 @@ a test asserting the rules page has a route, not just a handler.
 
 **Rule: code and secrets take effect on deploy; ROUTE PATTERNS are configuration and only change when
 the deploy carries the config.** That is why the entry code went live and the page did not.
+
+## The voice layer — Num now writes the way the guest writes — 13 Sep
+
+`soulprofile.mjs` learns WHAT to recommend. The house `VOICE` in
+`specialists.mjs` is one voice for everybody. Nothing decided how Num sounds to
+**this** guest. `worker/register.mjs` is that missing half, and it is the
+cheapest possible version of it.
+
+**Why it is worth doing at all.** Montoya, Horton & Kirchner's meta-analysis:
+actual similarity predicts liking at r = .55 with no interaction, r = .25 after
+a short conversation, r = .12 in established relationships — and nothing at all
+in field studies once publication bias is corrected. *Perceived* similarity
+never decays. Num cannot be like anybody; it can sound like them, and that is
+the half that was carrying the weight. The mechanism is language style matching
+(Ireland/Pennebaker 2011: OR 3.05 for wanting a second date, OR 1.95 for still
+dating at three months) and it works entirely **below conscious awareness** —
+undetectable by speakers and by trained observers. That is why this reads
+behaviour and never asks. People cannot report how they write.
+
+**NO TABLE, NO MIGRATION, NOTHING STORED.** The first design stored dials per
+subject like soulprofile and it was wrong: register is not a lasting fact, it
+is how somebody is typing right now, and the messages are already in `history`
+on every turn. Pure synchronous function over at most 8 strings. There is no
+row to leak, subpoena or migrate — the strongest form of the rule soulprofile
+already states. It cannot go stale, it works on the first conversation for
+anonymous devices, and applied migrations here are sealed for good reason.
+
+**It reads three things** off the guest's own messages, and returns null — Num
+exactly as today — unless it is sure: length (terse / expansive), emoji
+(yes / no), warmth (warm / brisk). `CONFIDENT_AT = 3`, borrowed whole from
+soulprofile: one mention is a mood, three is a pattern.
+
+**Two things the first cut got wrong, both caught before shipping:**
+
+- **Thai read as maximally terse.** Thai does not put spaces between words, so
+  splitting on whitespace returned 1 for a full sentence — every Thai guest, in
+  a live market, served clipped replies for ever. `wordsIn` is script-aware
+  (Thai/Japanese/Chinese counted by character). Thai and Japanese warmth
+  markers added too: ครับ/ค่ะ/ขอบคุณ/สวัสดี are the clearest register signal
+  Thai has, and an English-only word list made every Thai guest invisible.
+- **Nearly everybody read as brisk.** Short lowercase messages with no full
+  stop are just how people type on a phone. `BRISK_AT = 5` — a higher floor for
+  DROPPING warmth than for matching length, because the cost is not symmetric:
+  Tickle-Degnen & Rosenthal find positivity carries most weight *early*, so
+  being wrongly cold in the first messages costs more than being wrongly warm.
+
+**Where it attaches, and the cache trap it avoids.** NOT into `PERSONA + VOICE`
+at `index.mjs:130` — that prefix sits above the `cache_control` breakpoint
+precisely because it is identical for every guest, and a per-guest line there
+would miss the prompt cache on **every single request**. It goes into the
+per-turn `contextBlock` `style` slot instead, merged with the existing
+`styleBlock`, at both the Claude path and the fallback chain. The two do not
+conflict: `styleBlock` is learned from what a guest reacted well and badly to,
+`registerFor` from how they write; reactions win.
+
+**The guardrail, and it is the load-bearing part.** A voice layer that can
+reach the recommendation is a personalised sales engine, and the difference is
+the whole reason NUM can say it cannot be bought. `register.test.mjs` greps the
+module for venue, ranking, price and ordering vocabulary and fails on any of
+it, and asserts the module touches no database, network or storage. It also
+asserts the block can never raise the 3-sentence/40-word cap and never tells
+the guest it exists — style matching works because it is invisible. The
+guardrail already earned itself: it caught the word "pick" in the block's own
+output text on the first run.
+
+**Not built, deliberately:** the wheel, choice width, framing and reassurance
+dials, and the onboarding quiz. Framing and reassurance touch money and trust
+and should be set from behaviour, not one tap on a signup card. Full framework
+in the project doc `num-VOICE-MATCHING-PSYCHOLOGY-2026-09-13`.
 
 ## Open decisions (Dre's, not mine)
 

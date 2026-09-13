@@ -1,5 +1,36 @@
 apply plugin: 'com.android.application'
 
+/*
+ * RELEASE SIGNING — the key lives on Dre's machine and nowhere else.
+ *
+ * Play identifies an app forever by the certificate it was first signed with.
+ * A key in the repo is a key in the git history, and a key in a git history has
+ * to be treated as compromised — so this reads `android/keystore.properties`,
+ * which .gitignore now refuses (those ignore lines shipped COMMENTED OUT in the
+ * Capacitor scaffold).
+ *
+ * The file is four lines and is never committed:
+ *
+ *     storeFile=/absolute/path/to/num-upload.jks
+ *     storePassword=...
+ *     keyAlias=num-upload
+ *     keyPassword=...
+ *
+ * Absent, the release build stays UNSIGNED rather than failing — so anyone can
+ * still build and run the app, and only the person holding the key can produce
+ * something Play will accept.
+ *
+ * Enrol in Play App Signing at first upload. It means this key is only the
+ * UPLOAD key: lose it and Google can reset it, instead of the app being orphaned
+ * with no way to ever publish an update.
+ */
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
+
 android {
     namespace = "com.itsnum.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,7 +38,7 @@ android {
         applicationId "com.itsnum.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode 1  // Play requires this to INCREASE on every upload. Never reuse.
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,10 +47,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystoreProps['storeFile']) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Only when the untracked keystore.properties is present. Without it
+            // the build still succeeds and produces an UNSIGNED artifact, which
+            // Play will reject — clearer than a build that fails for a missing
+            // file somebody has never heard of.
+            if (keystoreProps['storeFile']) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

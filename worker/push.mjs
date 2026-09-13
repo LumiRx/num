@@ -181,6 +181,13 @@ export async function pushNative(env, { memberId, title, body, url, kind, tag, n
       continue;
     }
 
+    // A token for the other environment is not a failure worth counting. Left
+    // alone so that configuring the matching key later simply starts working.
+    if (r.reason === 'WrongEnvironmentForKey') {
+      console.warn(`[push] skipping ${t.environment} token — the configured APNs key serves the other environment`);
+      continue;
+    }
+
     if (r.dead) {
       dead.push(r.reason);
       await env.DB.prepare(

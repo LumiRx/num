@@ -45,6 +45,38 @@ export const apnsReady = (env) => !!(
   env.APNS_KEY_P8 && env.APNS_KEY_ID && env.APNS_TEAM_ID && env.APNS_BUNDLE_ID
 );
 
+/**
+ * Which environment OUR key can serve.
+ *
+ * Apple now scopes team keys: "These keys restrict usage to either Sandbox or
+ * Production." One key cannot serve both, and using a token from a key of the
+ * wrong environment is an error rather than a silent miss.
+ *
+ * Defaults to production, which is what an App Store build AND a TestFlight
+ * build both use. Only a debug build installed from Xcode talks to sandbox, so
+ * production is the right default for a shipped app and the wrong one only while
+ * somebody is debugging on their own device.
+ *
+ * Set APNS_ENVIRONMENT to 'sandbox' if the key you created was a Development key.
+ */
+export function keyEnvironment(env) {
+  const v = String(env?.APNS_ENVIRONMENT || 'production').toLowerCase().trim();
+  if (v === 'sandbox') return 'sandbox';
+  // 'both' is a REAL case, not a convenience. Apple's newer team keys are scoped
+  // to one environment, but keys created before that change still show
+  // "Sandbox & Production" in the portal and Apple has said they keep working.
+  // An account holding one of those would otherwise have its sandbox tokens
+  // refused by us for a restriction its key does not actually have.
+  if (v === 'both' || v === 'sandbox & production' || v === 'all') return 'both';
+  return 'production';
+}
+
+/** Can the configured key serve a token from this environment? */
+export const keyServes = (env, environment) => {
+  const k = keyEnvironment(env);
+  return k === 'both' || k === environment;
+};
+
 /** Why it is not ready, in words, because "push is off" is not a diagnosis. */
 export function apnsMissing(env) {
   return ['APNS_KEY_P8', 'APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID'].filter((k) => !env?.[k]);
@@ -170,6 +202,21 @@ export async function sendApns(env, {
     return { ok: false, status: 0, reason: 'NotConfigured', dead: false, missing: apnsMissing(env) };
   }
   if (!token) return { ok: false, status: 0, reason: 'MissingDeviceToken', dead: true };
+
+  // A token our key cannot serve is skipped, not attempted.
+  //
+  // Apple's team keys are environment-scoped, so a Production key sending to a
+  // sandbox token fails every time — forever, on every sweep, incrementing the
+  // fail count until the token is written off as broken when it is perfectly
+  // good and simply belongs to the other door. Refusing up front keeps a
+  // debugging device from looking like a dead one.
+  const serves = keyEnvironment(env);
+  if (!keyServes(env, environment)) {
+    return {
+      ok: false, status: 0, reason: 'WrongEnvironmentForKey', dead: false, retriable: false,
+      detail: `this token is ${environment} and the configured key serves ${serves}`,
+    };
+  }
 
   const host = APNS_HOST[environment] || APNS_HOST.production;
   const payload = buildPayload({ title, body, url, kind, notifId, badge });
