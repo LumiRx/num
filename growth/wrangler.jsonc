@@ -238,7 +238,7 @@
     { "pattern": "itsnum.com/p/*", "zone_name": "itsnum.com" },
     // The business-facing code manager. /biz/ does not collide with /business*
     // (num-biz-site) — the slash is what separates them, same rule as /r/.
-    { "pattern": "itsnum.com/biz/*", "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/biz*", "zone_name": "itsnum.com" },
     // The public offers page — the URL marketing points traveller demand at.
     { "pattern": "itsnum.com/tonight*", "zone_name": "itsnum.com" },
     // After the table: how was it, and would you like to leave something.

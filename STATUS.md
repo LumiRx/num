@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health verdict ok, 0 failing)_
+_Last updated: 2026-09-13 · production **0.8.292 live and healthy** (health verdict ok, 0 failing)_
 
 ---
 
@@ -14,7 +14,7 @@ _Last updated: 2026-09-12 · production **0.8.275 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,485 green, 0 lint errors, tsc clean |
+| Tests | 4,582 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -228,10 +228,32 @@ Ten sealed Pokémon packs a week, **ten winners, one each**. Dre bought the pack
 
 | Piece | Where | State |
 |---|---|---|
-| Entry code `PACKS` | `worker/packdraw.mjs` → num-app | **live** (0.8.287) |
+| Entry code `PACKS`, both doors | `worker/giveaway.mjs` (the only writer) → num-app | **live** (0.8.292) |
 | Card-shop search | `worker/cardshops.mjs` → num-app | **live** |
 | Official Rules | `growth/fridayrules.mjs` → num-growth | **live**, itsnum.com/friday-rules returns 200 |
-| The draw itself | `growth/fridaydraw.mjs` | built, tested — **NO ROUTE OR BUTTON. Cannot be run.** |
+| The draw | `worker/fridaydraw.mjs` → num-app | **live**, `POST /api/admin/draw` behind `isAdmin` |
+| The button | app.itsnum.com/ops/ → **Friday draw** tab | **live** — preview the count, then confirm |
+
+### It was broken in production until 13 Sep, and the shape is worth remembering
+
+Two sessions built it in parallel and the halves were half-shipped. 0023 keyed entries
+`(phone, week_start)`; `giveaway.mjs` wrote that and worked, `packdraw.mjs` — wired into the
+app's reply path — wrote `week_key`, **so every in-app entry failed**, and `fridaydraw.mjs`
+read `week_key` too and could not have run even with a route. All three carried their own
+`CREATE TABLE IF NOT EXISTS`, silent no-ops against a table that already existed.
+
+Worst of it: the draw's entrant read ended `.catch(() => ({ results: [] }))`, so **a broken
+query would have reported "nobody entered"** — indistinguishable from a quiet week, so
+nobody would have looked.
+
+Migration **0026** gives an entry one identity, `entrant_key`: `phone:+44…` when we hold a
+number, `member:mem_…` otherwise, because **107 of 147 members have no phone**. The app
+resolves the phone first, so one human cannot hold two tickets. One writer now
+(`giveaway.mjs`); `worker/drawwiring.test.mjs` asserts the draw has a caller, the caller has
+a route, the route sits behind the guard, and no module has grown its own table again.
+
+**Both test files were rewritten against the real migration SQL.** They ran on hand-written
+fakes before, which accept any statement — that is precisely why this shipped.
 
 - **Entry is opt-in.** A member sends Num the single word `PACKS`. The message must BE the code, so
   "where can I buy packs" still reaches the card-shop search. One entry per member per week, enforced
@@ -248,7 +270,10 @@ Ten sealed Pokémon packs a week, **ten winners, one each**. Dre bought the pack
 - **Trademark:** genuine sealed product bought at retail (keep the receipts — that is the first-sale
   position), no logos or artwork anywhere, disclaimer on the page and on both social graphics.
 
-**Not done:** the draw has no way to be run. It is a function with no route and no button.
+**Still not done: telling the winners.** `runDraw` returns a phone or a member id for each
+winner and records both on the claim row, but nothing sends the message. With outbound SMS
+failing 30034 and in-app delivery at 1 of 117, **how a winner actually hears is unsolved** —
+and it is the same four Apple secrets that block the whole notification layer.
 
 ## A HANDLER IS NOT A ROUTE — the third time, 12 Sep
 

@@ -1214,6 +1214,10 @@ const WORKER = {
       if (p === "/api/venue/codes/bulk" && req.method === "POST")
         return venueCodesBulk(req, env, url);
       if (p === "/api/venue/visitors") return venueVisitors(req, env, url);
+      // The front door. Both spellings, because a person trimming a URL back to
+      // its root types one of them and neither should 404 — which is exactly
+      // what /biz did until 13 Sep.
+      if (p === "/biz" || p === "/biz/") return venueHomePage(req, env, url);
       if (p === "/biz/codes") return venueCodesPageV2(req, env, url);
       if (p === "/biz/visitors") return venueVisitorsPage(req, env, url);
       if (p === "/biz/offers") return venueOffersPage(req, env, url);
@@ -5969,18 +5973,64 @@ function newToken(len = 10) {
 
 async function bizAuth(env, url, req) {
   const k = url.searchParams.get("k") || "";
-  if (k.length < 20 || k.length > 80) return null;
+  if (k.length >= 20 && k.length <= 80) {
+    const biz = await env.DB.prepare(
+      "SELECT id,name,category,console_key,status FROM businesses WHERE console_key = ?"
+    ).bind(k).first();
+    const ok = biz && sameSecret(biz.console_key, k) && biz.status === "active";
+    // Every key use is logged, success and failure alike. This log is what the
+    // security sweep reads: a key seen from many networks means the link
+    // leaked; a stream of denials means someone is guessing keys. Without the
+    // log, both are invisible until they are expensive.
+    if (req) await logKeyEvent(env, req, biz ? biz.id : null, ok ? "ok" : "denied",
+                               ok ? null : "keylen=" + k.length);
+    if (ok) return biz;
+  }
+
+  /* ── AN OWNER'S EMAIL SESSION COUNTS TOO — added 13 Sep 2026 ─────────────
+   *
+   * The business console had two disconnected halves and nobody had noticed.
+   * /biz/tables and /biz/statement authenticate with `qrWho` — the email
+   * magic-link session. The other five pages, and most of /api/venue/*,
+   * authenticate here, with a permanent `console_key` in the query string.
+   * They never consulted each other.
+   *
+   * So a venue that signed in by email could reach TWO pages out of seven, and
+   * the other five answered "sign in" to somebody who already had. That is the
+   * real reason the console was a set of islands: linking them would have
+   * produced links that did not work.
+   *
+   * The reverse direction already worked — `qrWho` falls back to this function,
+   * so a `?k=` holder can open the session pages. This closes the other side.
+   *
+   * ── WHY OWNER ONLY, AND WHY THAT IS NOT TIMIDITY ────────────────────────
+   *
+   * A console key IS owner-level access: every caller of this function assumes
+   * whoever holds it may do anything this business can do. A session carries a
+   * ROLE, and `staff` and `readonly` deliberately cannot reach settings, key
+   * rotation or payout details. Accepting any session here would hand a
+   * part-time bartender the owner's authority on every endpoint that guards
+   * itself with this function and nothing else.
+   *
+   * Owner → key is a like-for-like substitution and cannot widen anything.
+   * Anything finer belongs in the endpoints, which know what action is being
+   * asked for; this function does not.
+   */
+  if (!req) return null;
+  const sid = qrCookie(req, QR_COOKIE);
+  if (!sid) return null;
+  const sess = await QR.sessionUser(env, sid).catch(() => null);
+  if (!sess || sess.role !== "owner") return null;
+
   const biz = await env.DB.prepare(
-    "SELECT id,name,category,console_key,status FROM businesses WHERE console_key = ?"
-  ).bind(k).first();
-  const ok = biz && sameSecret(biz.console_key, k) && biz.status === "active";
-  // Every key use is logged, success and failure alike. This log is what the
-  // security sweep reads: a key seen from many networks means the link
-  // leaked; a stream of denials means someone is guessing keys. Without the
-  // log, both are invisible until they are expensive.
-  if (req) await logKeyEvent(env, req, biz ? biz.id : null, ok ? "ok" : "denied",
-                             ok ? null : "keylen=" + k.length);
-  return ok ? biz : null;
+    "SELECT id,name,category,console_key,status FROM businesses WHERE id = ?"
+  ).bind(String(sess.business_id)).first().catch(() => null);
+  if (!biz || biz.status !== "active") return null;
+
+  // Logged like a key use, marked as a session, so the security sweep can still
+  // tell where access came from and one venue's activity is not two stories.
+  await logKeyEvent(env, req, biz.id, "ok", "via=owner_session");
+  return biz;
 }
 
 /* ── GET /api/venue/codes?k= — list, with scan counts ────────────────────── */
@@ -6863,7 +6913,7 @@ ul{list-style:none}
   .meta code{font-size:12px}
 }
 </style></head>
-<body>
+<body>${qrNav('codes', 'owner', url.searchParams.get('k') || '', { standalone: true })}
 
 <h1>${esc(biz.name)}</h1>
 <p class="sub">Codes for every table, seat and booth. Guests scan them when they arrive.</p>
@@ -7042,7 +7092,7 @@ td{padding:10px 14px;border-top:1px solid var(--line);color:#39423b}
   border-radius:10px;padding:14px 18px;font-size:14.5px;color:#39423b;margin:26px 0}
 @media(max-width:600px){table{font-size:13.5px}th,td{padding:8px 8px}}
 </style></head>
-<body>
+<body>${qrNav('visitors', 'owner', k, { standalone: true })}
 <h1>${esc(biz.name)}</h1>
 <p class="sub">Your visitor book — built from check-ins, one row per verified guest.</p>
 
@@ -7381,7 +7431,7 @@ ul{list-style:none}
 .note{background:#fff;border:1px solid var(--line);border-left:4px solid var(--green);
   border-radius:10px;padding:14px 18px;font-size:14.5px;color:#39423b;margin:24px 0}
 </style></head>
-<body>
+<body>${qrNav('offers', 'owner', k, { standalone: true })}
 <h1>${esc(biz.name)}</h1>
 <p class="sub">Post an offer on the nights you want filled. It goes live immediately and
 disappears when it ends.</p>
@@ -8584,7 +8634,7 @@ td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}
   .tile,.nav,h1,.sub,#out,table,.noprint{display:none!important}
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10mm;padding:8mm}}
 @media (max-width:520px){.grid{grid-template-columns:1fr 1fr}}
-</style></head><body>
+</style></head><body>${qrNav('pay', 'owner', k, { standalone: true })}
 <h1>Payment QRs</h1>
 <p class="sub">${esc(biz.name)} · <span class="meter">${month?.n || 0} scans this month</span></p>
 <div class="nav">
@@ -8769,7 +8819,7 @@ input[type=number]{width:140px;box-sizing:border-box;font:inherit;padding:9px;
 table{width:100%;border-collapse:collapse;font-size:13px}
 td{padding:7px 6px;border-top:1px solid var(--line);vertical-align:top}
 .mut{color:#7a827e}
-</style></head><body>
+</style></head><body>${qrNav('settings', 'owner', k, { standalone: true })}
 <h1>Settings</h1>
 <p class="sub">${esc(who.business.name)}${who.via === "key" ? "" : " · signed in as " + esc(who.name || "")}</p>
 <div class="nav">
@@ -9521,7 +9571,64 @@ async function qrRunAgent(env) {
 
 /* ── the console page ────────────────────────────────────────────────────── */
 
-function qrShell(inner, title) {
+/**
+ * Where a venue can go from here.
+ *
+ * ── WHY THIS EXISTS ──────────────────────────────────────────────────────
+ *
+ * On 13 Sep the business console was SEVEN PAGES AND NO FRONT DOOR.
+ * `/biz` itself answered 404, and five of the seven linked to nothing at all —
+ * only tables and statement knew about each other. A venue emailed a link to
+ * /biz/visitors could see the guests we sent them and had no way to reach their
+ * statement, their codes or their settings. Each page was an island, and the
+ * only way between them was another email from us.
+ *
+ * It is one strip, generated once, rendered by `qrShell`, so a page cannot be
+ * built in future WITHOUT it — which is how the islands appeared in the first
+ * place.
+ *
+ * Entries are filtered by what the role may actually do. A staff member seeing
+ * "Settings" and being refused on arrival is worse than not seeing it: the
+ * refusal reads as a bug, and it invites them to ask the owner for a password
+ * they should not have.
+ */
+const BIZ_NAV = Object.freeze([
+  { slug: '', label: 'Home', need: 'view' },
+  { slug: 'tables', label: 'Tables', need: 'view' },
+  { slug: 'pay', label: 'Payment QRs', need: 'view' },
+  { slug: 'statement', label: 'Statement', need: 'view' },
+  { slug: 'visitors', label: 'Visitors', need: 'view' },
+  { slug: 'offers', label: 'Offers', need: 'view' },
+  { slug: 'settings', label: 'Settings', need: 'settings' },
+]);
+
+function qrNav(current, role, k, opts) {
+  const q = k ? `?k=${encodeURIComponent(k)}` : '';
+  const items = BIZ_NAV.filter((it) => !role || QR.can(role, it.need)).map((it) => {
+    const href = `/biz${it.slug ? '/' + it.slug : ''}${q}`;
+    return it.slug === current
+      ? `<span class="bnav-on" aria-current="page">${esc(it.label)}</span>`
+      : `<a href="${href}">${esc(it.label)}</a>`;
+  }).join('');
+  const nav = `<nav class="bnav">${items}</nav>`;
+  // Five of the seven pages predate qrShell and carry their own stylesheet, so
+  // the nav has to bring its own when it is dropped into one of those. A
+  // duplicated style block is harmless; a nav rendering as a bare list of blue
+  // links on five pages out of seven is not.
+  return opts && opts.standalone ? BIZ_NAV_CSS + nav : nav;
+}
+
+const BIZ_NAV_CSS = `<style>
+.bnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 auto 10px;padding:6px 18px;max-width:760px;
+  border-bottom:1px solid #e3e7ec;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.bnav a,.bnav .bnav-on{font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.bnav a{color:#5b6673}
+.bnav a:hover{background:#eef3f1;color:#0b3f33}
+.bnav .bnav-on{background:#0f5c4a;color:#fff}
+@media (max-width:520px){.bnav{gap:2px;padding:6px 12px}.bnav a,.bnav .bnav-on{padding:6px 8px;font-size:12px}}
+</style>`;
+
+function qrShell(inner, title, nav) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
@@ -9558,22 +9665,35 @@ a{color:var(--accent-ink)}
 .banner a{color:#4a3306;font-weight:600}
 .banner.gone{background:#fdecea;border-color:#d98b84;color:#5a1b14}
 .big{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink)}
-</style></head><body><div class="wrap">${inner}</div></body></html>`;
+.bnav{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0 6px;padding:6px 0;border-bottom:1px solid var(--line)}
+.bnav a,.bnav .bnav-on{font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.bnav a{color:var(--muted)}
+.bnav a:hover{background:#eef3f1;color:var(--accent-ink)}
+.bnav .bnav-on{background:var(--accent);color:#fff}
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0 0 14px}
+.tile{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 15px;text-decoration:none;color:var(--ink)}
+.tile:hover{border-color:var(--accent);background:#fbfefd}
+.tile b{display:block;font-size:15px;margin-bottom:3px;color:var(--accent-ink)}
+.tile span{font-size:13px;color:var(--muted);line-height:1.45}
+@media (max-width:520px){.bnav{gap:2px}.bnav a,.bnav .bnav-on{padding:6px 8px;font-size:12px}}
+</style></head><body><div class="wrap">${nav || ''}${inner}</div></body></html>`;
 }
 
 /**
- * One page for the whole floor: define tables, print their stickers, put an
- * amount on a table, close a bill, add staff, and read what the agent did.
+ * The sign-in page, in ONE place.
  *
- * Everything is fetched by the page rather than rendered server-side, because
- * this screen sits open on a phone behind a bar all evening and re-rendering
- * the floor plan on every tap is the wrong shape for that.
+ * It used to live inline inside qrTablesPage, so /biz/tables offered a real
+ * email form and the other six pages answered a bare 401 with a link back to
+ * tables. A venue following a link to their statement was told "Sign in" and
+ * handed a page about tables — which reads like the wrong link was sent, not
+ * like a login.
+ *
+ * Answers 200 rather than 401 deliberately: it is a working page a person can
+ * use, not an error. The pages behind it still refuse to render any venue data
+ * without a session, which is where the actual protection lives.
  */
-async function qrTablesPage(req, env, url) {
-  const who = await qrWho(req, env, url);
-
-  if (!who) {
-    return new Response(qrShell(`
+function qrSignIn() {
+  return new Response(qrShell(`
 <header><div class="brand">NUM<span>by 5arz</span></div></header>
 <h1>Sign in</h1>
 <p class="muted">We email you a link. No password.</p>
@@ -9600,6 +9720,108 @@ b.onclick=function(){
      b.disabled=false;b.textContent='Email me a link';});
 };
 </script>`, "Sign in"), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+/**
+ * /biz — the front door the console never had.
+ *
+ * What a venue needs on landing, in this order: am I in the right place, what
+ * do I owe, and where is everything else. Nothing on this page is typed; the
+ * rate comes off `num_business_settings` for THIS venue, because two venues
+ * bill 15% and a hub quoting a flat 10% would repeat the exact drift the
+ * statement page was rewritten to stop.
+ *
+ * The running total is fetched rather than server-rendered, so a slow ledger
+ * read cannot hold up the page a venue opened to find a link.
+ */
+async function venueHomePage(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return qrSignIn();
+
+  const k = url.searchParams.get("k") || "";
+  const q = k ? `?k=${encodeURIComponent(k)}` : "";
+
+  const terms = await env.DB.prepare(
+    `SELECT COALESCE(commission_bp, 1000) AS commission_bp, walkin_fee_cs, currency
+       FROM num_business_settings WHERE business_id = ?1`,
+  ).bind(String(who.business.id)).first().catch(() => null);
+  const ratePct = ((terms && terms.commission_bp ? terms.commission_bp : 1000) / 100) + "%";
+  const walkinCs = terms && terms.walkin_fee_cs != null ? Number(terms.walkin_fee_cs) : 200;
+  const curCode = String(terms && terms.currency ? terms.currency : "").toUpperCase()
+    || CURRENCY_BY_COUNTRY[String(who.business.country || "").toUpperCase()] || "USD";
+  const sym = { USD: "$", GBP: "£", EUR: "€", THB: "฿" }[curCode] || "";
+  const walkinLine = walkinCs > 0
+    ? `A guest who was already yours and simply pays through NUM is a flat ${sym}${walkinCs % 100 ? (walkinCs / 100).toFixed(2) : String(walkinCs / 100)} — never a percentage.`
+    : "Your own customers and walk-ins are never charged.";
+
+  const tiles = [
+    ["tables", "Tables &amp; codes", "Print a sticker for every table, put an amount on one, close a bill.", "view"],
+    ["pay", "Payment QRs", "The code a guest scans to pay you. The money goes straight to your account.", "view"],
+    ["statement", "Statement", "What you owe NUM this week, and every invoice raised.", "view"],
+    ["visitors", "Visitors", "Guests NUM sent you, and who came back.", "view"],
+    ["offers", "Offers", "What you are running, and how it is doing.", "view"],
+    ["settings", "Settings", "Your details, your staff, and how you get paid.", "settings"],
+  ].filter(([, , , need]) => QR.can(who.role, need))
+    .map(([slug, title, note]) =>
+      `<a class="tile" href="/biz/${slug}${q}"><b>${title}</b><span>${note}</span></a>`).join("");
+
+  return new Response(qrShell(`
+<header>
+  <div class="brand">NUM<span>by 5arz</span></div>
+  <div class="who">${esc(who.business.name)}<br>${esc(who.name)} · ${esc(who.role)}</div>
+</header>
+
+<h1>${esc(who.business.name)}</h1>
+<p class="muted">${esc(ratePct)} of the bill on a guest NUM sent you, and only when they turn up.
+${esc(walkinLine)} No-shows are never charged.</p>
+
+<div class="card" id="running"><span class="muted">Reading your ledger…</span></div>
+
+<h2>Everything else</h2>
+<div class="tiles">${tiles}</div>
+
+<p class="muted">Signed in as ${esc(who.name)}. <a href="/api/venue/logout">Sign out</a></p>
+
+<script>
+var K=${JSON.stringify(k)};
+function q(p){return p+(K?(p.indexOf('?')<0?'?':'&')+'k='+encodeURIComponent(K):'')}
+function el(t,x,c){var e=document.createElement(t);if(x!=null)e.textContent=x;if(c)e.className=c;return e}
+var r=document.getElementById('running');
+fetch(q('/api/venue/statement'),{credentials:'same-origin'})
+ .then(function(res){ if(!res.ok) throw new Error('HTTP '+res.status); return res.json() })
+ .then(function(j){
+   if(!j.ok) throw new Error(j.error||'could not read');
+   r.textContent='';
+   r.appendChild(el('div','This week so far','muted'));
+   r.appendChild(el('div',(j.running.total_cs/100).toFixed(2)+' '+(j.running.currency||''),'big'));
+   if(j.running.awaiting)
+     r.appendChild(el('div',j.running.awaiting+' booking(s) we have no bill amount for — not counted.','muted'));
+   r.appendChild(el('div','Invoiced every Monday for the week just finished.','muted'));
+ })
+ .catch(function(e){
+   // Never a silent zero. "You owe nothing" and "we could not read the ledger"
+   // are opposite facts and a venue must not be shown the wrong one.
+   r.textContent='';
+   r.appendChild(el('div','Could not read your ledger just now — this is not a zero.','muted'));
+   r.appendChild(el('div','Open the statement page, or tell us at info@itsnum.com.','muted'));
+ });
+</script>`, who.business.name, qrNav('', who.role, k)),
+  { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+/**
+ * One page for the whole floor: define tables, print their stickers, put an
+ * amount on a table, close a bill, add staff, and read what the agent did.
+ *
+ * Everything is fetched by the page rather than rendered server-side, because
+ * this screen sits open on a phone behind a bar all evening and re-rendering
+ * the floor plan on every tap is the wrong shape for that.
+ */
+async function qrTablesPage(req, env, url) {
+  const who = await qrWho(req, env, url);
+
+  if (!who) {
+    return qrSignIn();
   }
 
   const k = url.searchParams.get("k") || "";
@@ -9984,7 +10206,7 @@ document.getElementById('sadd').onclick=function(){
 document.getElementById('out-btn').onclick=function(){
   post('/api/venue/logout').then(function(){location.href='/biz/tables'});
 };
-</script>`, "Tables & codes"), {
+</script>`, "Tables & codes", qrNav('tables', who.role, k)), {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
   });
 }
@@ -10275,7 +10497,7 @@ async function venueStatementPage(req, env, url) {
   const who = await qrWho(req, env, url);
   if (!who) {
     return new Response(qrShell(
-      '<h1>Sign in</h1><p><a href="/biz/tables">Open your console</a></p>', "Statement"),
+      '<h1>Sign in</h1><p><a href="/biz">Open your console</a></p>', "Statement"),
       { status: 401, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
   const k = url.searchParams.get("k") || "";
@@ -10405,7 +10627,7 @@ function show(v){
   });
   d.scrollIntoView({behavior:'smooth',block:'start'});
 }
-</script>`, "Statement"), {
+</script>`, "Statement", qrNav('statement', who.role, k)), {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
   });
 }

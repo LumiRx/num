@@ -88,6 +88,7 @@ import { policyFor, policyBrief, screen as screenReply, substituteFor } from './
 import { tagged } from './affiliate.mjs';
 import { logHandoffs } from './affiliateclicks.mjs';
 import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialists.mjs';
+import { asksEmergency, emergencyLine } from './emergency.mjs';
 
 // Opus by default — it is the concierge and the concierge is the product.
 // Overridable without a code change (`wrangler secret put NUM_MODEL`, or a var)
@@ -149,6 +150,31 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   ];
   const brief = specialistBrief(specialist);
   if (brief) system.push({ type: 'text', text: brief });
+
+  /* THE VERIFIED EMERGENCY LINE, HANDED TO THE MODEL SO IT NEED NOT REMEMBER.
+   *
+   * Ambulance in Thailand is 1669. In Japan, 119. In the UAE, 998. A model will
+   * answer this fluently and will sometimes be wrong, and nobody can tell which
+   * from the outside — least of all the person dialling. So the sentence is read
+   * out of worker/emergency.mjs, a checked table, and pushed here as text the
+   * brief is instructed to reproduce EXACTLY.
+   *
+   * Only when they asked for it. A burst of emergency numbers appended to "book
+   * me a table" is alarming, and a warning on everything is a warning on nothing.
+   *
+   * When the country is not in the table this still fires, and what it carries
+   * is the honest fallback — 112, and the fact that it dials from a locked
+   * screen with no SIM in it. A gap has to reach the guest as "I do not have
+   * that verified", never as the model's best recollection. */
+  if (asksEmergency(userText ?? '')) {
+    system.push({
+      type: 'text',
+      text: 'VERIFIED EMERGENCY LINE — reproduce this exactly, word for word, before '
+        + 'anything else in your reply. Do not paraphrase it, do not add a number to it, '
+        + 'and never substitute one you remember:\n\n'
+        + emergencyLine(grounding?.place?.country_code ?? null, grounding?.place?.name ?? null),
+    });
+  }
   // What a venue has published about itself that a guest has to hear before
   // they picture the trip rather than when they arrive.
   //
