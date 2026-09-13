@@ -119,6 +119,54 @@ const WARM_JA = /(ありがとう|よろしく|お願い|こんにちは|おは�
 const WARM = { test: (t) => WARM_EN.test(t) || WARM_TH.test(t) || WARM_JA.test(t) };
 const GREETING = /^\s*(hi|hey|hello|morning|good morning|good evening|yo|hiya)\b/i;
 
+/* ── THREE MORE DIALS, ALL READ FROM BEHAVIOUR ────────────────────────────
+ *
+ * Everything below is inferred from what the guest actually does, never from
+ * a quiz. Same reason as above: people are poor reporters of their own
+ * manner, and a signup card that asks costs conversion and returns a guess.
+ */
+
+/**
+ * THE WHEEL — who decides. This is the one dial the evidence says to INVERT
+ * rather than mirror.
+ *
+ * Real-time coding of two people talking finds warmth is mirrored (r = +.36)
+ * while dominance is complemented (r = −.32): one leads, the other follows.
+ * Honest caveat, because it changes what we claim — in that study only WARMTH
+ * complementarity predicted liking; dominance complementarity predicted none
+ * of liking, accuracy or speed. So inverting the wheel is ergonomics, not
+ * affection. Two parties both reaching for the steering wheel is friction,
+ * and a concierge that keeps deciding for somebody who wanted to decide is
+ * the most irritating thing a concierge can be.
+ *
+ * HANDS_OVER — they are giving Num the wheel, so Num takes it and decides.
+ * TAKES_OVER — they are holding the wheel, so Num lays out the field.
+ */
+const HANDS_OVER = /\b(just (?:choose|decide|sort|do)|you (?:choose|decide)|whatever you (?:think|reckon)|surprise me|your call|up to you|you know best|sort it|handle it|do it)\b/i;
+const TAKES_OVER = /\b(what (?:are|were) (?:my|the) (?:options|alternatives)|what else|anything else|show me|let me see|alternatives|others?\b.*\?|which (?:ones?|would)|compare)\b/i;
+
+/**
+ * FRAMING — promotion or prevention (Higgins). Promotion-minded people move
+ * toward gains; prevention-minded people move away from losses, and a message
+ * that fits a person's focus "feels right" and persuades harder.
+ *
+ * For a concierge this is the same table described in two different
+ * sentences, and the wrong one reads as either boring or reckless.
+ */
+const PREVENTION = /\b(safe|safety|make sure|makes sure|double.?check|confirm|confirmed|reliable|guarantee|guaranteed|what if|worried|worry|concern|risk|risky|refund|cancel|cancellation|insurance|backup|in case|definitely|certain)\b/i;
+const PROMOTION = /\b(amazing|incredible|unforgettable|special|treat|celebrate|celebration|splash|spoil|memorable|once in a|blow(?:n)? away|wow|stunning|spectacular|the best)\b/i;
+
+/**
+ * REASSURANCE — how often they need to hear that something is in hand.
+ *
+ * Read only from CHASING: a message that carries no new information and
+ * exists purely to ask whether anything has happened. Somebody who chases is
+ * somebody the silence is costing, and the gap between "negligent" and
+ * "naggy" is entirely per-person. Stored nowhere; it is a property of this
+ * conversation, like everything else here.
+ */
+const CHASING = /^\s*(any (?:update|news|luck|joy)|anything (?:yet|back)|did (?:you|that)|have you|hows? (?:it|that) going|still (?:waiting|there)|update\?|news\?|\?+)\s*[?.!]*\s*$/i;
+
 /** Length of one message in words, script-aware. */
 export function wordsIn(text = '') {
   const t = String(text ?? '').trim();
@@ -201,8 +249,30 @@ export function readRegister(history = []) {
   // floor for dropping warmth sits above the floor for matching length.
   else if (mine.length >= BRISK_AT && clipped / mine.length >= 0.75) warmth = 'brisk';
 
-  if (!length && !emoji && !warmth) return null;
-  return { length, emoji, warmth, samples: mine.length };
+  // THE WHEEL. Inverted, not mirrored — see the note at HANDS_OVER.
+  const hands = mine.filter((t) => HANDS_OVER.test(t)).length;
+  const takes = mine.filter((t) => TAKES_OVER.test(t)).length;
+  let wheel = null;
+  // One clear signal is enough here, because both phrasings are unambiguous
+  // and deliberate — nobody types "surprise me" by accident. Ties resolve to
+  // null rather than to a guess.
+  if (hands > takes) wheel = 'num-decides';
+  else if (takes > hands) wheel = 'guest-decides';
+
+  const prevention = mine.filter((t) => PREVENTION.test(t)).length;
+  const promotion = mine.filter((t) => PROMOTION.test(t)).length;
+  let framing = null;
+  // Two hits, and a clear margin over the other side. Framing changes how
+  // money and plans are described, so it earns a higher bar than tone does.
+  if (prevention >= 2 && prevention > promotion) framing = 'prevention';
+  else if (promotion >= 2 && promotion > prevention) framing = 'promotion';
+
+  // Chasing twice is a pattern; once is a person having a normal day.
+  const chases = mine.filter((t) => CHASING.test(t)).length;
+  const reassurance = chases >= 2 ? 'high' : null;
+
+  if (!length && !emoji && !warmth && !wheel && !framing && !reassurance) return null;
+  return { length, emoji, warmth, wheel, framing, reassurance, samples: mine.length };
 }
 
 /**
@@ -241,6 +311,22 @@ export function registerBlock(reg) {
   }
   if (reg.warmth === 'brisk') {
     lines.push('- They send instructions, not pleasantries. Skip the greeting and the warm close entirely and go straight to the answer. This is not coldness, it is respect for how they work.');
+  }
+
+  if (reg.wheel === 'num-decides') {
+    lines.push('- They hand over the decision. Take it: give ONE answer and commit to it, with the single reason it is the right one. Do not lay out a field for them to weigh. Committing to a choice is not the same as claiming it is arranged — never say a thing is held or confirmed.');
+  }
+  if (reg.wheel === 'guest-decides') {
+    lines.push('- They want to decide themselves. Lay out the options with the one detail that separates each, say which way you lean in a single line, and leave the choice with them.');
+  }
+  if (reg.framing === 'prevention') {
+    lines.push('- They are checking for what could go wrong. Lead with what you actually know, say plainly which parts you checked, and name the fallback. Never oversell, and never present something as settled to reassure them.');
+  }
+  if (reg.framing === 'promotion') {
+    lines.push('- They are here for something good. Lead with what makes it worth doing, in concrete detail rather than adjectives. Do not bury it in caveats.');
+  }
+  if (reg.reassurance === 'high') {
+    lines.push('- They have chased for progress more than once. Say where things stand before they ask, and if something will take a moment say so rather than going quiet.');
   }
 
   if (!lines.length) return null;

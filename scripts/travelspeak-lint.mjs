@@ -47,6 +47,11 @@ export const LINTED = [
   'worker/router.mjs',
   'worker/lastresort.mjs',
   'worker/grounding.mjs',
+  // The voice-adaptation layer. These emit instructions the model reads on
+  // every turn, so they can teach booking language exactly like the files
+  // above — added 13 Sep after a per-guest line said "say it is done".
+  'worker/register.mjs',
+  'worker/goodnews.mjs',
   'worker/brains.mjs',
   // Membership copy: a paid tier must not advertise travel access (§17550.27).
   'worker/membership.mjs',

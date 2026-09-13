@@ -14,7 +14,7 @@ _Last updated: 2026-09-13 · production **0.8.294 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,765 green, 0 lint errors, tsc clean |
+| Tests | 4,800 green, 0 lint errors, tsc clean |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -402,6 +402,89 @@ output text on the first run.
 dials, and the onboarding quiz. Framing and reassurance touch money and trust
 and should be set from behaviour, not one tap on a signup card. Full framework
 in the project doc `num-VOICE-MATCHING-PSYCHOLOGY-2026-09-13`.
+
+## The voice itself — the house voice now follows the research, and forms per guest — 13 Sep
+
+Second pass on the voice layer. The first built the mechanism; this one wrote
+the actual voice and made the rules enforceable. Framework docs:
+`num-VOICE-MATCHING-PSYCHOLOGY-2026-09-13` and
+`num-VOICE-HOW-TO-BE-BELIEVED-2026-09-13`.
+
+**`VOICE` in `specialists.mjs` gained six rules and lost one contradiction.**
+
+1. Never instruct ("you should/must/need to") — controlling language reliably
+   produces resistance, r ≈ .20 across 33 studies. **With one exception that
+   overrides every softening rule above it:** when a guest is about to lose
+   money, miss a deadline, be turned away at a border or eat something they
+   avoid, it is said flat and said FIRST. This is the fix for a real conflict —
+   the existing line *"never contradict flatly, fold the correction in gently"*
+   is right for an ordinary turn and produces, on a safety turn, exactly the
+   hedged deferential speech the aviation literature identifies as the thing
+   that gets missed (first officers hint; 75% of 37 NTSB accidents reviewed
+   involved monitoring or challenging errors). That line now carries the carve-out.
+2. Confidence on the advice, honesty on the facts — and name what was actually
+   checked. Evidence of real work was the *only* unique predictor of whether
+   advice gets taken across 346 effect sizes.
+3. Never invent a reason. Langer's placebic "because" collapses to baseline on
+   any request that matters (24% vs 24% at twenty pages).
+4. Do the work, do not narrate the rescue. Help the recipient notices as help
+   was **worse than no help at all** (d = 0.63–1.09), ~55% of it through
+   perceived inefficacy.
+5. Never mention the arrangement — no tiers, plans, allowances or costs inside
+   a conversation. Exchange language is punished far harder inside a warm frame
+   (3.33 vs 6.04) than inside a transactional one.
+6. Never claim the friendship. Behave like somebody who cares; never say it.
+
+Plus: name every wait; never ask deeper than the guest has gone; teasing is
+earned and never aimed at them.
+
+**`worker/register.mjs` now reads six things, all from behaviour, none stored.**
+Length, emoji and warmth (shipped this morning) plus **the wheel** (hands it
+over → Num decides; holds it → Num lays out the field — the one dial the
+evidence says to INVERT, and honestly it is ergonomics not affection: only
+warmth complementarity predicted liking), **framing** (prevention vs promotion,
+two hits and a clear margin, because it changes how money and plans are
+described) and **reassurance** (chased twice = speak before being asked).
+
+**`worker/goodnews.mjs` is new — the one turn Num must not answer efficiently.**
+Active-constructive responding predicts satisfaction r = .29–.47 and trust
+.33–.70; the reason it needs its own module is that **passive-constructive
+responding predicts POORER outcomes** — the mild, efficient, entirely
+inoffensive "glad it went well" is a cost, not a neutral, and it is exactly
+what a length-capped concierge says by default. It lands in `extraSystem`
+(pushed LAST into the system array) and **suppresses the soulprofile earned
+question**, because a guest who has just said their anniversary dinner was
+perfect must not be asked whether they prefer buzzing or quiet.
+
+Three corrections made during the build, all before shipping:
+
+- **It does not lift the length cap.** The first draft did. `proseSystem` puts
+  the style slot BEFORE the brief carrying the cap, and the fallback chain has
+  no slot after it — so a cap-lifting instruction would have worked on Claude
+  and silently failed on every other brain. And the evidence never said brevity
+  was the failure: passive-constructive fails because it CLOSES THE SUBJECT.
+  *"That is brilliant, what did you end up ordering?"* is nine words and right.
+- **The wheel line said "say it is done or ready"** — which contradicts the
+  house rule that nothing is ever stated as held, booked or confirmed. Caught in
+  a demo, not a test. `worker/register.mjs` and `worker/goodnews.mjs` are now in
+  **travelspeak-lint's LINTED list** so a per-guest line can never teach booking
+  language again.
+- False-positive discipline on good news: a request that merely contains a warm
+  word ("find somewhere incredible") is a brief, not good news. Answering a
+  booking request with delighted questions is the embarrassing failure, so
+  ASKING shapes win outright and the test suite holds that line.
+
+**`scripts/voice-lint.mjs` — the rules are now enforceable.** Same family as
+travelspeak-lint and head-price-lint, wired into `npm test`, so a hit fails the
+build. Five rules: instructing, accounting language in conversation, claiming
+friendship, taking credit, closing down good news. String literals only (same
+reason travelspeak-lint learned: linting comments in a repo that comments this
+heavily gets the rule switched off within a week), **with a negation escape
+hatch** so the house voice can teach "never say you should" without tripping —
+window is 48 characters so a distant "never" cannot smuggle one through. Its own
+test fires every rule deliberately: a lint proved only by passing is not proved.
+
+4,800 tests green, both lints clean. **NOT DEPLOYED.**
 
 ## Open decisions (Dre's, not mine)
 

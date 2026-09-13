@@ -91,6 +91,8 @@ import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialist
 // How this guest writes, read off their own messages. Pure and synchronous:
 // no table, no migration, nothing stored. See worker/register.mjs for why.
 import { registerFor } from './register.mjs';
+// The one turn Num must not answer like a concierge. See worker/goodnews.mjs.
+import { goodNewsFor } from './goodnews.mjs';
 import { asksEmergency, emergencyLine } from './emergency.mjs';
 
 // Opus by default — it is the concierge and the concierge is the product.
@@ -955,6 +957,22 @@ export async function handleNum(request, env, ctx) {
       }));
     } catch { /* a question is a bonus; the answer is the job */ }
 
+    // GOOD NEWS OUTRANKS THE EARNED QUESTION, and takes its slot.
+    //
+    // Two things happen here and both matter. The good-news brief lands in
+    // `extraSystem`, which askNum pushes LAST into the system array — the
+    // strongest position there is, and the only one that reliably beats the
+    // length-and-brevity brief further up.
+    //
+    // And it SUPPRESSES the profiling question, which is the more important
+    // half. Somebody who has just told us their anniversary dinner was perfect
+    // does not want to be asked whether they prefer buzzing or quiet. That is
+    // the moment a friend reacts and a form collects, and soulprofile's own
+    // file says it out loud: a guest being interviewed is a guest filling in a
+    // form, and people leave forms. There will be another turn to ask.
+    const goodNews = goodNewsFor(lastUser);
+    if (goodNews) earnedBlock = goodNews;
+
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const callNum = async (extraSystem, modelOverride = null) => {
       // The earned question rides along unless a caller has its own system
@@ -1029,7 +1047,7 @@ export async function handleNum(request, env, ctx) {
       // passed it raw. The cheaper the model, the less we know about its
       // operator; the fallback must see less, never more.
       context: groundingBlock,
-      style: [styleBlock(parsed.state?.style), registerFor(history)].filter(Boolean).join('\n\n'),
+      style: [styleBlock(parsed.state?.style), registerFor(history), goodNewsFor(lastUser)].filter(Boolean).join('\n\n'),
       guard: (t) => guardReply(t),
       // Who should answer THIS question. Money, bookings, groups and trouble
       // go to Claude first; recommendations and lookups go to the hosted

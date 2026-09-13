@@ -211,3 +211,110 @@ test('Japanese thanks and greetings read as warmth', () => {
   const r = readRegister(said('こんにちは', 'ありがとうございます', 'よろしくお願いします'));
   assert.equal(r?.warmth, 'warm');
 });
+
+/* ── the wheel — the one dial that is inverted, not mirrored ──────────── */
+
+test('a guest who hands over the wheel gets a decision, not a menu', () => {
+  const r = readRegister(said('somewhere for dinner', 'surprise me', 'your call honestly'));
+  assert.equal(r.wheel, 'num-decides');
+  assert.match(registerBlock(r), /give ONE answer and commit to it/);
+  // Committing to a choice must never become a claim that it is arranged —
+  // the house voice forbids saying anything is held, booked or confirmed.
+  assert.match(registerBlock(r), /never say a thing is held or confirmed/);
+});
+
+test('a guest who holds the wheel gets the field', () => {
+  const r = readRegister(said('dinner tonight', 'what are my options', 'what else have you got'));
+  assert.equal(r.wheel, 'guest-decides');
+  assert.match(registerBlock(r), /leave the choice with them/);
+});
+
+test('a tie on the wheel resolves to nothing, never to a guess', () => {
+  const r = readRegister(said('surprise me', 'what are my options', 'dinner tonight'));
+  assert.equal(r?.wheel ?? null, null);
+});
+
+/* ── framing ──────────────────────────────────────────────────────────── */
+
+test('a guest checking for what could go wrong gets prevention framing', () => {
+  const r = readRegister(said(
+    'is the area safe at night',
+    'can you double check they take the booking',
+    'what if it rains, is there a backup',
+  ));
+  assert.equal(r.framing, 'prevention');
+  assert.match(registerBlock(r), /which parts you checked/);
+});
+
+test('a guest here for something good gets promotion framing', () => {
+  const r = readRegister(said(
+    'we want somewhere really special',
+    'its our anniversary so lets celebrate properly',
+    'somewhere memorable',
+  ));
+  assert.equal(r.framing, 'promotion');
+  assert.match(registerBlock(r), /worth doing/);
+});
+
+test('framing needs two hits and a clear margin — it moves how money is described', () => {
+  const one = readRegister(said('is it safe', 'dinner tonight', 'for two'));
+  assert.equal(one?.framing ?? null, null);
+});
+
+/* ── reassurance ──────────────────────────────────────────────────────── */
+
+test('chasing twice asks Num to speak before it is asked', () => {
+  const r = readRegister(said('any update?', 'can you book the table', 'any news?'));
+  assert.equal(r.reassurance, 'high');
+  assert.match(registerBlock(r), /before they ask/);
+});
+
+test('chasing once is a person having a normal day', () => {
+  const r = readRegister(said('any update?', 'can you book the table', 'thanks'));
+  assert.notEqual(r?.reassurance, 'high');
+});
+
+/* ── THE STRONGER GUARDRAIL — what actually reaches the model ─────────── */
+
+test('no reachable block can carry venue, ranking or money vocabulary', () => {
+  // The source-level grep below is necessary but not sufficient: what matters
+  // is the text that actually reaches the model. So drive the module over
+  // fixtures that light up every branch and check the OUTPUT.
+  const long = 'We are landing about six in the evening with the kids and my parents in tow, and I would love somewhere genuinely relaxed rather than stuffy, ideally near the water if that is at all possible';
+  const fixtures = [
+    said('food?', 'where', 'cheap one', 'tonight', 'book it'),
+    said(long, long, long),
+    said('hey! 👋', 'thanks so much 🙏', 'perfect, appreciate it 😊'),
+    said('somewhere for dinner', 'surprise me', 'your call honestly'),
+    said('dinner tonight', 'what are my options', 'what else have you got'),
+    said('is the area safe at night', 'can you double check the booking', 'what if it rains, is there a backup'),
+    said('we want somewhere really special', 'its our anniversary so lets celebrate', 'somewhere memorable'),
+    said('any update?', 'can you book the table', 'any news?'),
+  ];
+  const forbidden = [
+    'venue', 'restaurant', 'hotel', 'partner',
+    'rank', 'score', 'boost', 'weight', 'order by',
+    'price', 'cost', 'fee', 'commission', 'cheaper', 'expensive',
+    'recommend', 'suggest',
+  ];
+  for (const f of fixtures) {
+    const block = registerFor(f);
+    if (!block) continue;
+    for (const word of forbidden) {
+      assert.doesNotMatch(
+        block.toLowerCase(),
+        new RegExp(`\\b${word}`),
+        `a reachable voice block said "${word}" — the voice layer may change the words around an answer, never the answer:\n${block}`,
+      );
+    }
+  }
+});
+
+test('every fixture produces a block that forbids mentioning itself', () => {
+  const blocks = [
+    registerFor(said('food?', 'where', 'cheap one', 'tonight', 'book it')),
+    registerFor(said('somewhere for dinner', 'surprise me', 'your call honestly')),
+  ].filter(Boolean);
+  assert.ok(blocks.length);
+  for (const b of blocks) assert.match(b, /never mention it/i);
+});
