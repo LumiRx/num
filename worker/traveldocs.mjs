@@ -64,6 +64,14 @@ export const OFFICIAL_HOSTS = Object.freeze([
   'evisa.gov.vn',
   'www.ica.gov.sg',
   'travel.state.gov',
+  // ── CONSULAR DIRECTORIES, added 14 Sep 2026 ──────────────────────────
+  // One allowlist for the whole product rather than a second one in
+  // essentials.mjs. Two lists drift, and the day they drift is the day an
+  // impostor gets in through whichever one nobody is testing.
+  'travel.gc.ca',
+  'www.dfat.gov.au',
+  'www.mea.gov.in',
+  'www.auswaertiges-amt.de',
 ]);
 
 const HOST_OK = new Set(OFFICIAL_HOSTS);

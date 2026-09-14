@@ -65,7 +65,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null, events = null, shown = null, entryDocs = null } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null, events = null, shown = null, entryDocs = null, essentials = null } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -203,6 +203,8 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
   // already-shown list so the model reads WHO this person is before it reads
   // what the border wants from them. See traveldocs.mjs.
   if (entryDocs) lines.push(entryDocs);
+  // Only on the turns that need one — see needsEssentials in index.mjs.
+  if (essentials) lines.push(essentials);
   // Whether AiR is reachable has to be known BEFORE the reply is written.
   // Actions run after generation, so a model told nothing will happily say
   // "I've asked AiR" about a call that never happened.

@@ -120,6 +120,32 @@ const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll ta
  * output. A zero here would read as "you fly today" and shout about a visa
  * at somebody with no trip booked.
  */
+/**
+ * Does this turn need the essentials block?
+ *
+ * Narrow on purpose, and matched on the ASK rather than pushed always. The
+ * emergency line next door learned this the hard way: a burst of hospital
+ * numbers on top of a dinner recommendation reads as alarm, and a block on
+ * every turn is a block nobody reads.
+ */
+const ESSENTIAL_ASK = new RegExp([
+  'pharmac|chemist|drugstore|drug store',
+  'hospital|a&e|emergency room|\\ber\\b|clinic|doctor|dentist|toothache',
+  'medicine|prescription|painkiller|antibiotic',
+  'embassy|consulate|consular',
+  'police|stolen|robbed|pickpocket',
+  'lost my (?:passport|wallet|phone|bag)|passport (?:lost|stolen)',
+  'laundry|laundrette|launderette|dry clean',
+  '\\bvet\\b|veterinar',
+  '\\batm\\b|cash machine|exchange money|bureau de change',
+].join('|'), 'i');
+
+function needsEssentials(text) {
+  const t = String(text ?? '').trim();
+  if (!t || t.length > 400) return false;
+  return ESSENTIAL_ASK.test(t);
+}
+
 function daysToTrip(state) {
   const raw = state?.tripStart ?? state?.trip?.starts_on ?? state?.party?.starts_on ?? null;
   if (!raw) return null;
@@ -1081,11 +1107,32 @@ export async function handleNum(request, env, ctx) {
       daysOut: daysToTrip(parsed.state ?? {}),
     });
 
+    // ── THE ESSENTIALS, AND WHAT NUM DOES NOT KNOW ABOUT THEM ───────────
+    //
+    // Pushed only on the turns where somebody needs one — the urgent and
+    // errand specialists — for the same reason the emergency line is:
+    // a list of hospitals appended to "book me a table" is alarming, and a
+    // warning on every turn is a warning on none.
+    //
+    // Its most important job is the honesty about opening hours. Num holds
+    // hours for 13% of pharmacies; "open now" on the other 87% sends
+    // somebody ill across a city to a shut door. See essentials.mjs.
+    let essentials = null;
+    if (needsEssentials(lastUser)) {
+      const { essentialsBlock } = await import('./essentials.mjs');
+      essentials = essentialsBlock({
+        nationality: profile?.nationality ?? profile?.passport ?? null,
+        place: grounding?.place?.name ?? null,
+        country: grounding?.place?.country ?? null,
+      });
+    }
+
     const groundingBlock = contextBlock({
       place: grounding.place,
       partners: rotation.partners,
       shown: rotation.block,
       entryDocs,
+      essentials,
       guide: grounding.guide,
       profile: redactProfile(profile).profile,
       buzz: grounding.buzz,
@@ -2495,6 +2542,12 @@ export default {
     // and swallow anything beneath it; a third tenant under the same prefix is
     // how the '/api/booking/status' outage happened. Its own path, matched
     // before either of them, is the cheap way not to repeat that.
+    if (url.pathname === '/api/travel/essentials') {
+      const { handleEssentials } = await import('./essentials.mjs');
+      const res = handleEssentials(request);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
     if (url.pathname === '/api/travel/docs') {
       const { handleTravelDocs } = await import('./traveldocs.mjs');
       const res = handleTravelDocs(request);

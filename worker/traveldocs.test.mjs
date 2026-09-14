@@ -37,8 +37,17 @@ describe('every link is the government, and nothing else ever', () => {
     // europa.eu, Korea is .go.kr, New Zealand is .govt.nz. The list is
     // explicit rather than clever, because a regex loose enough to cover
     // them all is loose enough to let an impostor in.
-    const ok = /(\.gov(\.[a-z]{2})?$|\.go\.[a-z]{2}$|\.govt\.nz$|^www\.canada\.ca$|europa\.eu$)/;
+    const ok = /(\.gov(\.[a-z]{2})?$|\.go\.[a-z]{2}$|\.govt\.nz$|europa\.eu$)/;
+    // Ministries that do not sit under a .gov pattern at all. Each one was
+    // opened and read before it was written down here; nothing joins this
+    // list because a regex happened to let it through.
+    const namedGovernments = new Set([
+      'www.canada.ca',
+      'travel.gc.ca',
+      'www.auswaertiges-amt.de',
+    ]);
     for (const h of OFFICIAL_HOSTS) {
+      if (namedGovernments.has(h)) continue;
       assert.match(h, ok, `${h} is not a government host`);
     }
   });
@@ -260,7 +269,7 @@ describe('the turn is actually wired', () => {
     assert.match(IDX, /docsBlock\(grounding\?\.place\?\.country_code \?\? null/);
     assert.match(IDX, /entryDocs,/);
     assert.match(PROMPT, /if \(entryDocs\) lines\.push\(entryDocs\)/);
-    assert.match(PROMPT, /entryDocs = null \} = \{\}\) \{/);
+    assert.match(PROMPT, /contextBlock\(\{[\s\S]{0,400}?\bentryDocs = null\b/);
   });
 
   test('the route is mounted', () => {
