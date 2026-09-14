@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.298 — 2026-09-14 02:29 UTC
+
+deep-tissue fix: sub-intent, topic carry, grooming exclusion
+
+- commit `cd51987`
+
 ## 0.8.297 — 2026-09-14 01:36 UTC
 
 deep-tissue fix: sub-intent, topic carry, grooming exclusion
