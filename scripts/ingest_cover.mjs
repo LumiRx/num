@@ -22,6 +22,13 @@
  *                     themselves; this is only where they start.
  *   --core            the narrow "somewhere to spend money" selector instead of
  *                     every named business.
+ *   --essentials      the narrow "somewhere you NEED" selector: hospitals,
+ *                     clinics, pharmacies, police, banks, ATMs, post offices,
+ *                     embassies, left luggage, stations. Use this to fix the
+ *                     opening-hours gap — those categories were never in the
+ *                     core selector, and the Overture rows standing in for
+ *                     them carry no hours at all. Narrow enough to run over a
+ *                     whole country without a 504.
  *   --from-cache=F    read raw OSM elements from a .ndjson or .ndjson.gz file
  *                     instead of calling Overpass. Walking the island takes
  *                     hours and the write takes minutes; this lets the two
@@ -36,7 +43,7 @@ import { createInterface } from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import { DESTINATIONS } from './destinations.mjs';
 import { localName as pickLocalName } from './localname.ingest.mjs';
-import { CORE_QUERY, FULL_QUERY, assignDest, normalise, tiles } from './osmplace.mjs';
+import { CORE_QUERY, FULL_QUERY, ESSENTIALS_QUERY, assignDest, normalise, tiles } from './osmplace.mjs';
 import { buildSql, gridFor, registerDestinationsSql, COVER } from './coverplan.mjs';
 
 const DB = 'num-db';
@@ -63,8 +70,15 @@ const STEP = Number(flag('step') || 0.25);
 const CACHE = flag('from-cache');
 const DRY = has('dry');
 const CORE = has('core');
+const ESSENTIALS = has('essentials');
 const RESTART = has('restart');
-const STATE_FILE = `.ingest_cover_${COUNTRY || 'none'}.json`;
+// The tile state is keyed by SELECTOR as well as country. It was keyed by
+// country alone, which meant an --essentials run over a country a --core run
+// had already walked would read the old state, find every tile marked done,
+// and finish in seconds having collected no hospitals. A run that silently
+// does nothing and reports success is worse than one that fails.
+const SELECTOR = ESSENTIALS ? 'essentials' : CORE ? 'core' : 'full';
+const STATE_FILE = `.ingest_cover_${COUNTRY || 'none'}_${SELECTOR}.json`;
 
 if (!COUNTRY || !COVER[COUNTRY]) {
   console.error(`--country=XX is required, and must be one of: ${Object.keys(COVER).join(', ')}`);
@@ -82,7 +96,10 @@ const saveState = () => writeFileSync(STATE_FILE, JSON.stringify(state));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function overpass(bbox) {
-  const body = 'data=' + encodeURIComponent((CORE ? CORE_QUERY : FULL_QUERY)(bbox.join(',')));
+  // Essentials wins over core: asking for both makes no sense and silently
+  // running the wrong one is how a country gets marked done with no hospitals.
+  const query = ESSENTIALS ? ESSENTIALS_QUERY : CORE ? CORE_QUERY : FULL_QUERY;
+  const body = 'data=' + encodeURIComponent(query(bbox.join(',')));
   let lastErr = 'unknown';
   for (let attempt = 0; attempt < 8; attempt++) {
     const url = OVERPASS[attempt % OVERPASS.length];
@@ -144,7 +161,7 @@ function absorb(els) {
     if (lat == null || lng == null) { rejected++; continue; }
     const d = assignDest(lat, lng, dests);
     if (!d) { rejected++; continue; }
-    const p = normalise(el, d, pickLocalName);
+    const p = normalise(el, d, pickLocalName, { essentials: ESSENTIALS });
     if (!p) { rejected++; continue; }
     if (seen.has(p.id)) continue;
     seen.add(p.id);
@@ -177,7 +194,7 @@ if (CACHE) {
   const start = gridFor(COUNTRY, STEP).filter((t) => !state.tiles[t.bbox.join(',')]);
   const queue = start.map((t) => ({ ...t, step: STEP }));
   console.log(`${COUNTRY}: ${queue.length} squares at ${STEP}°, ${dests.length} destinations, `
-    + `${CORE ? 'core' : 'full'} selector${DRY ? ', DRY' : ''}\n`);
+    + `${ESSENTIALS ? 'essentials' : CORE ? 'core' : 'full'} selector${DRY ? ', DRY' : ''}\n`);
   let walked = 0;
   while (queue.length) {
     const t = queue.shift();

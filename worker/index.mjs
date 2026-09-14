@@ -1127,12 +1127,72 @@ export async function handleNum(request, env, ctx) {
       });
     }
 
+    // ── THE DAY THE COUNTRY IS SHUT ────────────────────────────────────
+    //
+    // A plan can be perfectly good and still fall apart because the bank, the
+    // visa counter and half the clinics were closed for a national holiday
+    // nobody mentioned. Fetched only when Num knows WHERE they are — a holiday
+    // block with no country is noise — and awaited alongside the turn rather
+    // than before it, because a slow calendar must never hold up an answer.
+    //
+    // holidaysFor returns { covered:false } for a country neither rail carries
+    // and the block then tells the model to say so. An empty list means checked
+    // and clear. Those are different answers; see holidays.mjs.
+    let holidays = null;
+    const holidayCc = grounding?.place?.country_code ?? null;
+    if (holidayCc) {
+      try {
+        const { holidaysFor, holidayBlock, covers } = await import('./holidays.mjs');
+        if (covers(holidayCc)) {
+          const found = await holidaysFor(holidayCc, { days: 45 });
+          holidays = holidayBlock(found, { country_name: grounding?.place?.country ?? null });
+        }
+      } catch {
+        // A calendar that will not load is not worth losing the turn over.
+        holidays = null;
+      }
+    }
+
+    // ── THE PASSPORT, SIX WEEKS OUT INSTEAD OF AT THE DESK ─────────────
+    //
+    // Only when a dated trip is close enough for the answer to be actionable.
+    // The expiry is read here and compared here; only the verdict is put in
+    // front of the model — see passportcheck.mjs.
+    let passport = null;
+    const daysOut = daysToTrip(parsed.state ?? {});
+    if (Number.isFinite(daysOut) && grounding?.place?.country) {
+      try {
+        const { passportBlock, shouldAsk } = await import('./passportcheck.mjs');
+        let expiry = null;
+        // Skip the query entirely outside the window where either branch has
+        // something to say. A trip nine months out does not need a lookup.
+        const inWindow = shouldAsk({ daysOut, destination: grounding.place.country })
+          || daysOut <= 120;
+        if (inWindow && env?.DB && memberId) {
+          const row = await env.DB
+            .prepare('SELECT passport_expires_on FROM num_passengers WHERE member_id=?1 AND is_self=1 AND deleted_at IS NULL')
+            .bind(memberId).first().catch(() => null);
+          expiry = row?.passport_expires_on ?? null;
+        }
+        passport = passportBlock({
+          expiry,
+          tripDate: parsed.state?.tripStart ?? parsed.state?.trip?.starts_on ?? null,
+          daysOut,
+          destination: grounding.place.country,
+        });
+      } catch {
+        passport = null;
+      }
+    }
+
     const groundingBlock = contextBlock({
       place: grounding.place,
       partners: rotation.partners,
       shown: rotation.block,
       entryDocs,
       essentials,
+      holidays,
+      passport,
       guide: grounding.guide,
       profile: redactProfile(profile).profile,
       buzz: grounding.buzz,
@@ -2545,6 +2605,12 @@ export default {
     if (url.pathname === '/api/travel/essentials') {
       const { handleEssentials } = await import('./essentials.mjs');
       const res = handleEssentials(request);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname === '/api/travel/holidays') {
+      const { handleHolidays } = await import('./holidays.mjs');
+      const res = await handleHolidays(request, env);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

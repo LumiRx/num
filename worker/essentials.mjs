@@ -45,6 +45,27 @@
  * the model WHAT IT DOES NOT KNOW, per category, so that "open now" is never
  * said about a row that never carried hours. Somebody ill walking to a shut
  * pharmacy is the exact failure the urgent brief cannot afford.
+ *
+ * ── WHERE THE MISSING HOURS ACTUALLY WENT (14 Sep 2026) ──────────────────
+ *
+ * The percentages above are real but they are an average of two very
+ * different sources, and reading them as one number sent us looking in the
+ * wrong place for months:
+ *
+ *   Pharmacy · OSM       16,702 rows — 4,977 with hours   (29.8%)
+ *   Pharmacy · Overture  20,585 rows —     1 with hours   (0.005%)
+ *
+ * Overture is 1.96m of the directory's 2.69m rows and publishes hours on 213
+ * of them in total. It is a fine gazetteer and it is not an hours source.
+ * OSM carries hours perfectly well — it was simply never asked for these
+ * categories: CORE_QUERY in scripts/osmplace.mjs requests restaurants, cafés
+ * and shops and has never once requested a hospital, a clinic, a police
+ * station, a bank or a post office.
+ *
+ * So the fix is an ingest, not a purchase. ESSENTIALS_QUERY exists for it.
+ * WHEN THAT RUN COMPLETES, RECOUNT AND EDIT THE NUMBERS ABOVE — a hedge that
+ * has stopped being true is its own kind of lie, and this block is the one
+ * place in the product where the model is told what to distrust.
  */
 import { isOfficial } from './traveldocs.mjs';
 

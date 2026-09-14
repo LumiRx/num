@@ -88,8 +88,12 @@ export function isBusiness(tags) {
   if (t.tourism === 'information' && t.information !== 'office') return false;
   if (t.shop && ['vacant', 'disused', 'no'].includes(t.shop)) return false;
   // A row with nothing but a name is a label on a map, not a business.
+  // railway/aeroway are here for the essentials selector only: a station and
+  // an aerodrome are not businesses, but they are the two places a traveller
+  // asks for by name more than any shop in this file.
   return Boolean(t.amenity || t.shop || t.office || t.craft || t.healthcare
-    || t.tourism || t.leisure || t.historic || t.natural || t.waterway || t.boundary || t.club);
+    || t.tourism || t.leisure || t.historic || t.natural || t.waterway || t.boundary || t.club
+    || t.railway === 'station' || t.aeroway === 'aerodrome');
 }
 
 /**
@@ -106,6 +110,98 @@ export const CORE_QUERY = (bbox, timeout = 180) => `[out:json][timeout:${timeout
   nwr["club"="scuba_diving"]["name"](${bbox});
 );
 out center 20000;`;
+
+/**
+ * The things somebody needs rather than wants — and the one query that brings
+ * opening hours with them.
+ *
+ * ── WHY THIS EXISTS AS ITS OWN SELECTOR ──────────────────────────────────
+ *
+ * The directory holds 22,026 hospitals with opening hours on 20 of them, and
+ * 37,301 pharmacies with hours on 4,978. That looked like a coverage problem
+ * for months. It is not. It is two problems and neither is about coverage:
+ *
+ *   1. CORE_QUERY never asks Overpass for a hospital, a clinic, a doctor, a
+ *      police station, a bank, an ATM, a post office or a fuel stop. Those
+ *      rows arrived from Overture instead, and the 452 OSM hospitals we do
+ *      hold came in on the handful of tiles FULL_QUERY has ever run over.
+ *
+ *   2. Overture is 1,963,567 of our rows and publishes opening hours on 213
+ *      of them. It is an excellent gazetteer and it is not an hours source.
+ *      OSM pharmacies carry hours 30% of the time; Overture's carry them
+ *      0.005% of the time. Blending the two is what produced "13%".
+ *
+ * So the fix is not to buy hours. It is to ask OSM for the categories we
+ * never asked it for. This selector is deliberately narrow — narrow means a
+ * public Overpass mirror answers a country-sized tile instead of timing out,
+ * which is the only reason a worldwide run of it is affordable at all.
+ *
+ * ── WHY NOT JUST RUN FULL_QUERY EVERYWHERE ───────────────────────────────
+ *
+ * FULL_QUERY asks for every named amenity, shop, office, craft, healthcare,
+ * tourism, leisure and historic object on earth. It is the right tool for a
+ * city and it 504s on a country. Somebody who needs a chemist tonight should
+ * not be waiting on a re-ingest of every hairdresser in Thailand.
+ *
+ * ── NO `["name"]` FILTER, DELIBERATELY ───────────────────────────────────
+ *
+ * Every other selector here requires a name, because an unnamed restaurant is
+ * noise. An unnamed pharmacy is still a pharmacy, and an unnamed 24-hour
+ * clinic at the end of the street is exactly what somebody ill needs. Named
+ * is better and `normalise` will fall back to the category as the name, but
+ * the absence of a name is not a reason to withhold a hospital.
+ */
+export const ESSENTIALS_QUERY = (bbox, timeout = 300) => `[out:json][timeout:${timeout}];
+(
+  nwr["amenity"~"^(hospital|clinic|doctors|dentist|pharmacy|veterinary|police|fire_station|bank|atm|bureau_de_change|post_office|fuel|charging_station|library|townhall|embassy|car_rental|bicycle_rental|taxi|bus_station|ferry_terminal|childcare|laundry|internet_cafe)$"](${bbox});
+  nwr["healthcare"~"^(hospital|clinic|doctor|pharmacy|dentist|centre|emergency|midwife|physiotherapist|laboratory)$"](${bbox});
+  nwr["shop"~"^(chemist|optician|medical_supply|hearing_aids|mobile_phone|laundry|dry_cleaning|locksmith|hairdresser)$"](${bbox});
+  nwr["office"~"^(diplomatic|government|insurance|lawyer|telecommunication)$"](${bbox});
+  nwr["amenity"="left_luggage"](${bbox});
+  nwr["railway"="station"]["name"](${bbox});
+  nwr["aeroway"="aerodrome"]["name"](${bbox});
+);
+out center 20000;`;
+
+/**
+ * The categories this selector brings back, named the way a traveller would
+ * ask for them.
+ *
+ * `Doctor` was in the directory twice. `Police` and `Bank` arrived only as
+ * `titled(raw)` fallbacks, which is why they are inconsistent today. Mapping
+ * them explicitly is what stops the next ingest inventing a third spelling.
+ */
+export const ESSENTIAL_CATMAP = Object.freeze({
+  hospital: 'Hospital', clinic: 'Clinic', doctors: 'Doctor', doctor: 'Doctor',
+  centre: 'Clinic', emergency: 'Hospital', midwife: 'Clinic',
+  physiotherapist: 'Clinic', laboratory: 'Medical lab',
+  dentist: 'Dentist', pharmacy: 'Pharmacy', chemist: 'Pharmacy',
+  veterinary: 'Veterinary', optician: 'Optician',
+  medical_supply: 'Medical supplies', hearing_aids: 'Medical supplies',
+  police: 'Police', fire_station: 'Fire station',
+  bank: 'Bank', atm: 'ATM', bureau_de_change: 'Currency exchange',
+  post_office: 'Post office', fuel: 'Fuel', charging_station: 'EV charging',
+  library: 'Library', townhall: 'Government office',
+  embassy: 'Embassy or consulate', diplomatic: 'Embassy or consulate',
+  government: 'Government office', insurance: 'Insurance',
+  lawyer: 'Lawyer', telecommunication: 'Mobile & SIM',
+  mobile_phone: 'Mobile & SIM', internet_cafe: 'Internet cafe',
+  laundry: 'Laundry', dry_cleaning: 'Laundry', locksmith: 'Locksmith',
+  left_luggage: 'Left luggage', childcare: 'Childcare',
+  bus_station: 'Transport', ferry_terminal: 'Transport',
+  station: 'Transport', aerodrome: 'Airport',
+});
+
+/**
+ * The categories somebody reaches for when something has gone wrong.
+ *
+ * Named here rather than inferred, because `essentialsBlock` in the Worker
+ * has to know which of these it is allowed to say "open now" about, and that
+ * decision must not drift away from what the ingest actually collects.
+ */
+export const LIFE_CRITICAL = Object.freeze([
+  'Hospital', 'Clinic', 'Doctor', 'Pharmacy', 'Police', 'Fire station',
+]);
 
 /**
  * Every named business, plus the reasons people travel.
@@ -212,14 +308,35 @@ export function tiles(bbox, step = 0.25) {
 
 // ── normalisation ────────────────────────────────────────────────────
 /**
+ * Which tag on this element is the essential thing about it.
+ *
+ * Order matters: `healthcare=pharmacy` on a shop tagged `shop=chemist` should
+ * read as a pharmacy either way, but an element carrying both `amenity` and
+ * `office` is described by its amenity. Same precedence normalise itself uses,
+ * kept in one place so the name fallback and the category can never disagree.
+ */
+export function essentialRaw(tags) {
+  const t = tags || {};
+  for (const v of [t.amenity, t.healthcare, t.shop, t.office, t.railway, t.aeroway]) {
+    if (v && Object.prototype.hasOwnProperty.call(ESSENTIAL_CATMAP, v)) return v;
+  }
+  return null;
+}
+
+/**
  * One OSM element → one place row, or null if it is not one.
  *
  * `pickLocalName` is injected rather than imported so this module stays free
  * of the ingest-time script graph and can be tested on its own.
  */
-export function normalise(el, dest, pickLocalName = () => null) {
+export function normalise(el, dest, pickLocalName = () => null, { essentials = false } = {}) {
   const t = el?.tags || {};
-  const name = t.name || t['name:en'];
+  // An unnamed restaurant is noise and is thrown away everywhere else in this
+  // file. An unnamed 24-hour clinic at the end of the street is the thing
+  // somebody ill is looking for, so on the essentials pass a missing name is
+  // filled in from the category instead of being a reason to drop the row.
+  const name = t.name || t['name:en']
+    || (essentials ? (ESSENTIAL_CATMAP[essentialRaw(t)] || null) : null);
   if (!name) return null;
   const lat = el.lat ?? el.center?.lat;
   const lng = el.lon ?? el.center?.lon;
@@ -229,7 +346,17 @@ export function normalise(el, dest, pickLocalName = () => null) {
 
   let raw = t.amenity || t.tourism || t.shop || t.leisure
     || t.natural || t.waterway || t.boundary || t.craft || t.healthcare || t.historic
-    || (t.office === 'travel_agent' ? 'travel_agency' : t.office ? titled(t.office) : null)
+    // `titled(t.office)` turned office=diplomatic into the string 'Diplomatic',
+    // which then matched nothing in either map and shipped an embassy to the
+    // directory under a category nobody picked. Essentials are passed through
+    // raw so ESSENTIAL_CATMAP can name them.
+    || (t.office === 'travel_agent' ? 'travel_agency'
+      : t.office && Object.prototype.hasOwnProperty.call(ESSENTIAL_CATMAP, t.office) ? t.office
+        : t.office ? titled(t.office) : null)
+    // A station tagged only `railway=station` matched nothing above and fell
+    // through to the literal string 'business'. It is a station.
+    || (t.railway === 'station' ? 'station' : null)
+    || (t.aeroway === 'aerodrome' ? 'aerodrome' : null)
     || (t.club === 'scuba_diving' ? 'scuba_diving' : 'business');
   if (raw === 'place_of_worship') raw = null;
 
@@ -239,9 +366,13 @@ export function normalise(el, dest, pickLocalName = () => null) {
   const address = [t['addr:housenumber'], t['addr:street'], t['addr:postcode'], t['addr:city']]
     .filter(Boolean).join(' ') || null;
 
+  // ESSENTIAL_CATMAP is consulted first and unconditionally. A hospital is a
+  // Hospital on every ingest path, not only the essentials one — the old
+  // `titled(raw)` fallback is exactly how 'Police' and 'Bank' ended up in the
+  // directory as unmapped strings nobody chose.
   const category = raw == null
     ? (WORSHIP[t.religion] || 'Place of worship')
-    : (CATMAP[raw] || titled(raw));
+    : (ESSENTIAL_CATMAP[raw] || CATMAP[raw] || titled(raw));
 
   return {
     id: pid('osm', name, lat, lng),
