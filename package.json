@@ -1,7 +1,7 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.303",
+  "version": "0.8.304",
   "engines": {
     "node": ">=20"
   },
@@ -23,6 +23,11 @@
     "release:stage": "node scripts/release.mjs stage",
     "release:ship": "node scripts/release.mjs ship",
     "release:rollback": "node scripts/release.mjs rollback",
+    "ship": "node scripts/release.mjs stage",
+    "ship:live": "node scripts/release.mjs ship",
+    "ship:back": "node scripts/release.mjs rollback",
+    "db:pending": "node scripts/apply-host-migrations.mjs --dry",
+    "db:apply": "node scripts/apply-host-migrations.mjs",
     "test:availability": "node worker/availability.test.mjs",
     "test:invites": "node scripts/test-invites.mjs",
     "lint": "eslint worker scripts server growth",
