@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.303 — 2026-09-14 16:33 UTC
+
+(no note given)
+
+- commit `00950bc`
+
 ## 0.8.302 — 2026-09-14 16:06 UTC
 
 travel docs: visas, entry authorisations and arrival cards, official links only
