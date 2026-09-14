@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-13 · production **0.8.296 live and healthy** (health verdict ok, 0 failing, 23:55 UTC) · voice layer LIVE_
+_Last updated: 2026-09-14 · production **0.8.298 live and healthy** (health verdict ok, 0 failing, 02:25 UTC) · voice layer and the deep-tissue retrieval fix both LIVE_
 
 ---
 
@@ -546,7 +546,7 @@ Two possible fixes, **Dre's call, neither built**:
 - **Client:** open external links in the system browser rather than the in-app
   webview. Probably the real fix for the guest, and no schema change.
 
-4,801 tests green, both lints clean. **NOT DEPLOYED.**
+4,801 tests green, both lints clean. **SHIPPED 0.8.298, 02:25 UTC 14 Sep — health ok, 0 failing. Not yet re-tested against live data** — the seeded test proves the logic, only a live ask proves the category labels in production match it.
 
 ## Open decisions (Dre's, not mine)
 
