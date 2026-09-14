@@ -163,3 +163,43 @@ describe('why the auto-updater could never win in a frozen bundle', () => {
     assert.match(AUTOUPDATE, /location\.reload\(\)/);
   });
 });
+
+/* ── the version the Worker does not know ──────────────────────────────────
+ *
+ * ── WHAT HAPPENED, 14 SEP 2026 ───────────────────────────────────────────
+ *
+ * `/api/version` answered "unknown" in production. NUM_VERSION is passed as a
+ * --var at upload time by release.mjs and nothing else sets it, so any deploy
+ * that skipped the release script lost it.
+ *
+ * The auto-updater compared "unknown" against the bundle's version, found them
+ * different, and reloaded. Every web visitor reloaded about 2.5 seconds after
+ * landing — the same failure that got iOS 1.0 (6) rejected under guideline
+ * 2.1.0, arriving through the other door while the iOS fix was in review.
+ *
+ * A version we cannot compare is not evidence of a newer one.
+ */
+
+test('an "unknown" server version never triggers a reload', () => {
+  const src = readFileSync(new URL('./autoupdate.ts', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
+  assert.ok(
+    /version === 'unknown'/.test(src),
+    'autoupdate must refuse to act on the sentinel the Worker sends when it does not know its own version',
+  );
+  const guard = src.indexOf("version === 'unknown'");
+  const compare = src.indexOf('version !== VERSION');
+  assert.ok(
+    guard !== -1 && compare !== -1 && guard < compare,
+    'the unknown-guard must come BEFORE the difference check, or the comparison still fires',
+  );
+});
+
+test('a falsy version is refused too, not just the sentinel', () => {
+  const src = readFileSync(new URL('./autoupdate.ts', import.meta.url), 'utf8');
+  assert.ok(
+    /if \(!version \|\| version === 'unknown'\) return null;/.test(src),
+    'a missing version field must be treated the same as an unknown one',
+  );
+});

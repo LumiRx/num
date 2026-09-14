@@ -63,7 +63,20 @@ async function serverVersion(): Promise<string | null> {
     const res = await fetch(apiUrl('/api/version'), { cache: 'no-store' });
     if (!res.ok) return null;
     const { version } = (await res.json()) as { version?: string };
-    return version && version !== VERSION ? version : null;
+    // "unknown" is the Worker saying it does not know what it is running, not
+    // that it is running something new. It appears whenever NUM_VERSION is
+    // missing from the deployment — which happens any time a deploy skips
+    // `release.mjs` and calls `wrangler deploy` directly, because the version
+    // is passed as a --var at upload time and nothing else sets it.
+    //
+    // Treating it as a difference was live on the web on 14 Sep 2026: the
+    // Worker answered "unknown", every bundle differed from it, and every
+    // visitor reloaded ~2.5 seconds after landing. It is the same failure that
+    // got iOS 1.0(6) rejected under 2.1.0, arriving through the other door.
+    //
+    // A version we cannot compare is not evidence of a newer one. Say nothing.
+    if (!version || version === 'unknown') return null;
+    return version !== VERSION ? version : null;
   } catch {
     return null;
   }
