@@ -313,9 +313,9 @@ export const sheetBase: CSSProperties = {
   scrollPaddingTop: 12,
   // A sheet may never grow into the status bar. Every call site sets its own
   // maxHeight as a percentage of the shell, which is fine when the keyboard
-  // is down — but --vvh shrinks the shell to the visible height when the
-  // keyboard is up, and a percentage of a short shell is short too. This is
-  // the ceiling that survives both: never taller than the shell minus the
+  // is down — and still fine when it is up, because --kb pads the shell so a
+  // percentage is taken of the space actually left above the keyboard. This
+  // is the ceiling that survives both: never taller than the shell minus the
   // notch and a hairline of breathing room.
   maxHeight: 'calc(100% - var(--sat, 0px) - 8px)',
   // visibility rides the same clock so a closed sheet leaves the

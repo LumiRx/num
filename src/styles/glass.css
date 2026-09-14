@@ -62,9 +62,35 @@ body {
 .app-shell {
   position: relative;
   width: 100%;
-  /* --vvh tracks visualViewport.height (set in App.tsx) so the on-screen
-     keyboard shrinks the shell instead of hiding the input. */
-  height: var(--vvh, 100dvh);
+  /* ── 14 SEP 2026: THE BLACK GAP UNDER THE KEYBOARD ──────────────────────
+     Dre: "the keypad keeps having a black gap when clicking a text box …
+     when adding in a plan name it does it and also other places."
+
+     This used to read `height: var(--vvh, 100dvh)`, where --vvh was the
+     visualViewport height — so opening the keyboard SHRANK the shell. That
+     put the input above the keyboard, which was the point, and it also left
+     a strip of bare page between the bottom of the shell and the bottom of
+     the screen. `html, body` is painted #14100e — the near-black stage the
+     desktop launch frame floats a phone on — so the strip read as a black
+     band appearing and disappearing under the keyboard on every tap.
+
+     The fix is to stop moving the shell's outer edge at all. The shell stays
+     exactly one viewport tall, always, and the keyboard is absorbed as
+     PADDING. Same visible result — the focused field ends up above the
+     keyboard — with the ground still covering the screen, because the only
+     thing that moved is where the content box ends.
+
+     It works for sheets too, and that matters because the plan-name field is
+     in one: a sheet is `position: absolute; bottom: 0` inside ConciergeApp's
+     relative root, and that root is `height: 100%` of this element's CONTENT
+     box. Pad the box and `bottom: 0` becomes the top of the keyboard.
+
+     box-sizing is stated rather than inherited: if the padding were added
+     OUTSIDE the 100dvh the shell would grow past the screen and the document
+     would gain the scroll height that html.num-standalone exists to remove. */
+  height: 100dvh;
+  padding-bottom: var(--kb, 0px);
+  box-sizing: border-box;
   overflow: hidden;
 }
 /* THE PHONE FRAME IS FOR BROWSERS ONLY — `html:not(.num-native)`.
@@ -85,7 +111,10 @@ body {
 @media (min-width: 520px) {
   html:not(.num-native) .app-shell {
     width: 440px;
-    height: min(100dvh - 48px, 940px);
+    /* The framed launch stage has its own height; subtract the keyboard the
+       same way so a desktop browser with a software keyboard (a tablet in
+       browser mode) behaves like the app rather than like neither. */
+    height: min(100dvh - 48px - var(--kb, 0px), 940px);
     margin: auto;
     border-radius: 32px;
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -132,12 +161,28 @@ body {
    clips the top of whatever is open. The page then has no spare height to
    scroll back with, so it simply stays wrong until the app is reopened.
    Pinning html and body removes the document scroller entirely, so there is
-   nothing for iOS to move. The keyboard is still handled: --vvh (set in
-   App.tsx from visualViewport) shrinks the shell so the focused field ends up
+   nothing for iOS to move. The keyboard is still handled: --kb (set in
+   App.tsx from visualViewport) pads the shell so the focused field ends up
    above the keyboard rather than behind it.
 
    Scoped to the class App.tsx sets, so the marketing pages and the desktop
    launch stage — which genuinely need to scroll — are untouched. */
+/* AND THE GROUND UNDERNEATH IS NEVER THE DARK STAGE.
+
+   #14100e on `html, body` is right for the desktop launch frame, where a
+   phone-shaped column genuinely floats on a dark stage. Inside the installed
+   app nothing floats — the shell IS the screen — so that colour can only
+   ever appear as a mistake, which is exactly how it appeared: a black band
+   under the keyboard.
+
+   Belt and braces next to the padding fix above. Even if something else
+   shrinks the shell one day, what shows through is the app's own ground in
+   whatever theme is on, not a near-black nobody chose. */
+html.num-standalone,
+html.num-standalone body {
+  background: var(--color-bg, #faf7f4);
+}
+
 html.num-standalone,
 html.num-standalone body {
   position: fixed;

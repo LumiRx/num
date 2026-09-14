@@ -45,15 +45,31 @@ export default function App() {
   const showCanvas = new URLSearchParams(window.location.search).has('canvas');
 
   // Installed-app keyboard handling. The naive version — writing
-  // visualViewport.height into --vvh on every resize AND scroll — makes the
-  // shell chase the keyboard's open/close animation frame by frame, which is
-  // the visible glitch when you hit Send and the keyboard drops.
+  // visualViewport.height on every resize AND scroll — makes the shell chase
+  // the keyboard's open/close animation frame by frame, which is the visible
+  // glitch when you hit Send and the keyboard drops.
   //
-  // So: two stable states only. Keyboard up => pin the shell to the measured
-  // visible height (one value, held). Keyboard down => hand it straight back
-  // to 100dvh, a value the browser owns and animates itself. Intermediate
-  // frames are ignored, and 'scroll' is not listened to at all (it fires
-  // constantly while the keyboard animates and carries no size information).
+  // So: two stable states only. Keyboard up => pin ONE measured value and
+  // hold it. Keyboard down => hand sizing straight back to the browser.
+  // Intermediate frames are ignored, and 'scroll' is not listened to at all
+  // (it fires constantly while the keyboard animates and carries no size
+  // information).
+  //
+  // ── 14 SEP 2026: WHAT IS PUBLISHED CHANGED, AND IT MATTERS ─────────────
+  //
+  // This used to publish --vvh, the VISIBLE HEIGHT, and glass.css sized the
+  // shell to it. The input landed above the keyboard, correctly — and the
+  // strip of page below the shrunken shell showed `html, body`, which is
+  // painted #14100e for the desktop launch stage. A black band appeared and
+  // vanished under the keyboard on every tap, on the plan-name field and
+  // everywhere else with an input.
+  //
+  // Now it publishes --kb, the KEYBOARD HEIGHT, and the shell absorbs it as
+  // padding while staying exactly one viewport tall. Nothing about the
+  // measurement changed; what changed is that the number describes the thing
+  // being subtracted rather than the thing left over, which is what let the
+  // CSS keep the ground on screen. A variable named for what it measures is
+  // harder to use wrongly than one named for a result.
   useEffect(() => {
     if (!standalone) return;
     const root = document.documentElement;
@@ -85,30 +101,36 @@ export default function App() {
 
     const apply = () => {
       raf = 0;
-      const visible = Math.round(vv.height);
-      const gap = Math.round(window.innerHeight) - visible;
+      // The gap between the layout viewport and the visible one IS the
+      // keyboard. Below KEYBOARD_MIN it is browser chrome — a toolbar
+      // collapsing, a URL bar — and padding the shell for that would make the
+      // app twitch while somebody scrolls.
+      const gap = Math.round(window.innerHeight) - Math.round(vv.height);
       if (gap > KEYBOARD_MIN) {
         // Only write when the pinned height actually changes, so an animating
         // keyboard doesn't produce a style write (and a relayout) per frame.
-        if (Math.abs(visible - pinned) > 2) {
-          pinned = visible;
-          root.style.setProperty('--vvh', `${visible}px`);
+        if (Math.abs(gap - pinned) > 2) {
+          pinned = gap;
+          root.style.setProperty('--kb', `${gap}px`);
         }
       } else if (pinned !== -1) {
         pinned = -1;
-        root.style.setProperty('--vvh', '100dvh');
+        // 0px, not removeProperty: the CSS fallback is 0px either way, and
+        // setting it keeps the transition from a measured value to zero on a
+        // property that has always existed rather than one that blinks out.
+        root.style.setProperty('--kb', '0px');
       }
     };
     const onResize = () => {
       if (!raf) raf = requestAnimationFrame(apply);
     };
 
-    root.style.setProperty('--vvh', '100dvh');
+    root.style.setProperty('--kb', '0px');
     vv.addEventListener('resize', onResize);
     return () => {
       cancelAnimationFrame(raf);
       vv.removeEventListener('resize', onResize);
-      root.style.removeProperty('--vvh');
+      root.style.removeProperty('--kb');
       root.classList.remove('num-standalone');
       root.classList.remove('num-native');
     };
