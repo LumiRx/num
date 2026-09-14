@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.297 — 2026-09-14 01:36 UTC
+
+deep-tissue fix: sub-intent, topic carry, grooming exclusion
+
+- commit `3789f2b`
+
 ## 0.8.296 — 2026-09-13 23:56 UTC
 
 voice: house rules, six dials, good news, lint
