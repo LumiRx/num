@@ -35,6 +35,28 @@ const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const cmd = process.argv[2];
 const arg = process.argv.slice(3).join(' ');
 
+/** Applies any migration registered in APPLIED.json but not yet sealed. */
+function applyPendingMigrations() {
+  const path = 'worker/migrations/APPLIED.json';
+  if (!existsSync(path)) return;
+  let pending = [];
+  try { pending = JSON.parse(readFileSync(path, 'utf8')).pending ?? []; }
+  catch (e) { console.error(`\n\u2718 ${path} is unreadable: ${e.message}\n`); process.exit(1); }
+  if (!pending.length) { console.log('\n\u2500\u2500 schema: nothing pending'); return; }
+  console.log(`\n\u2500\u2500 schema: applying ${pending.length} pending migration${pending.length === 1 ? '' : 's'}`);
+  for (const p of pending) console.log(`   ${p}`);
+  // Not wrapped in try/catch on purpose. If a migration fails, sh() throws and
+  // the release stops here — before anything is uploaded. Continuing would
+  // stage code against a schema that refused it.
+  sh('node scripts/apply-host-migrations.mjs');
+  const after = JSON.parse(readFileSync(path, 'utf8')).pending ?? [];
+  if (after.length) {
+    console.error(`\n\u2718 still pending after the run: ${after.join(', ')}`);
+    console.error('  The release is stopping. Nothing was uploaded.\n');
+    process.exit(1);
+  }
+}
+
 const gitSha = () => {
   try {
     return cap('git rev-parse --short HEAD');
@@ -291,6 +313,22 @@ switch (cmd) {
     // a lock can also appear while the tests are running.
     if (!process.env.NO_AUTOCOMMIT) refuseOnStaleLock();
     sh('npm test');
+
+    // ── SCHEMA BEFORE CODE ──────────────────────────────────────────────
+    //
+    // A migration written but never applied is the quietest failure this repo
+    // has. The code ships, the column is missing, and every write that needs
+    // it disappears into a `.catch()`. It happened with 0022 on 12 Sep and
+    // again with booking_fee_minor before that.
+    //
+    // Here is the only safe moment for it: the tests have passed, so the
+    // migration belongs to code that works, and NOTHING is live yet — `stage`
+    // only uploads, `ship` moves traffic. So the schema lands first and the
+    // code that needs it goes live second, which is the order that cannot
+    // break. These migrations are additive (ALTER / CREATE IF NOT EXISTS), so
+    // one applied a few minutes before its code is a no-op, not a risk.
+    applyPendingMigrations();
+
     // Commit here: after the tests, before the bump. What lands in the commit
     // is precisely what passed, and `changelog` below records this sha.
     commitWork(arg);
