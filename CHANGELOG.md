@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.299 — 2026-09-14 02:45 UTC
+
+ios 2.1.0: the app store bundle no longer auto-updates, service-workers or ad-pixels itself
+
+- commit `e110316`
+
 ## 0.8.298 — 2026-09-14 02:29 UTC
 
 deep-tissue fix: sub-intent, topic carry, grooming exclusion
