@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.302 — 2026-09-14 16:06 UTC
+
+travel docs: visas, entry authorisations and arrival cards, official links only
+
+- commit `9e2708c`
+
 ## 0.8.301 — 2026-09-14 15:23 UTC
 
 keyboard: pad the shell instead of shrinking it, no black gap under the keypad
