@@ -88,6 +88,7 @@ const FILES = [
   // indexes and one INSERT OR IGNORE that carries 0023's rows forward by id —
   // nothing is dropped or renamed, so a second pass is a clean no-op.
   'worker/migrations/0026_giveaway_entrant_key.sql',
+  'worker/migrations/0027_notification_subtitle.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

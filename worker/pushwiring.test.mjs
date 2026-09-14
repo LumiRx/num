@@ -58,8 +58,12 @@ test('every column the native handler writes exists in the migration', () => {
 /* ── the send path actually reaches Apple ──────────────────────────────── */
 
 test('notifyAll fans out to native, and pushNative calls the APNs sender', () => {
-  assert.match(PUSH, /export async function notifyAll/);
-  assert.match(PUSH, /await pushNative\(env, opts\)/);
+  // notify() is the one door: it writes the row AND fans out to native. Forty-two
+  // call sites say notify(); a native path only notifyAll() could reach was a
+  // path nothing in production took.
+  assert.match(PUSH, /export async function notify\(env, \{[^}]*subtitle/);
+  assert.match(PUSH, /export const notifyAll = \(env, opts\) => notify\(env, opts\)/);
+  assert.match(PUSH, /await pushNative\(env, \{ memberId, title, subtitle/);
   assert.match(PUSH, /const \{ apnsReady, sendApns, apnsMissing \} = await import\('\.\/apns\.mjs'\)/);
   assert.match(APNS, /export async function sendApns/);
 });

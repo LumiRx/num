@@ -24,6 +24,7 @@ import {
   normaliseEmail, ensureContact, issueEmailCode, NEED_CONTACT, BAD_EMAIL,
 } from './membercontact.mjs';
 import { notify } from './push.mjs';
+import { addedToPlan } from './notifycopy.mjs';
 import { isBlocked } from './account.mjs';
 import { answerEventInvite } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
@@ -1213,7 +1214,7 @@ async function invite(env, req) {
   let plan = null;
   if (planId) {
     if (!(await memberOf(env, planId, from))) return json({ error: 'not your plan' }, 403);
-    plan = await env.DB.prepare('SELECT id, title, join_code FROM num_plans WHERE id=?1').bind(planId).first();
+    plan = await env.DB.prepare('SELECT id, title, join_code, starts_on, starts_time FROM num_plans WHERE id=?1').bind(planId).first();
   }
 
   const token = friendly(10).toLowerCase();
@@ -1258,9 +1259,13 @@ async function invite(env, req) {
     // the invitee gets their own targeted buzz below instead.
     await event(env, plan.id, { id: from, name: senderName }, 'joined',
       `${existing.name || toName || 'A friend'} was added by ${senderName} — the plan is in their app.`);
+    // Copy comes from notifycopy so the invite sounds like everything else NUM
+    // sends. The old line here told them to "open Num to see it" — the tap
+    // already does that, and it spent the one line that could have said what
+    // the plan IS.
     await notify(env, {
-      memberId: existing.id, kind: 'plan', title: plan.title,
-      body: `${senderName} added you to “${plan.title}” — open Num to see it and say if you're in.`,
+      memberId: existing.id, kind: 'plan',
+      ...addedToPlan({ by: senderName, plan: plan.title, at: [plan.starts_on, plan.starts_time].filter(Boolean).join(' ') }),
       url: '/?app', tag: `plan:${plan.id}`,
     }).catch(() => {});
   }

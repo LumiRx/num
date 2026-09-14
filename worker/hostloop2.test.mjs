@@ -43,7 +43,7 @@ function fresh() {
   db.exec(`CREATE TABLE num_event_guests (token TEXT PRIMARY KEY, event_id TEXT, rsvp TEXT DEFAULT 'pending', plus_ones INTEGER DEFAULT 0)`);
   // push.mjs creates this itself on first use, but remembers having done so
   // per process — so the second fresh() here would find no table. Pre-made.
-  db.exec(`CREATE TABLE IF NOT EXISTS num_notifications (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, url TEXT, tag TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), delivered_at TEXT, read_at TEXT)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS num_notifications (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, subtitle TEXT, body TEXT, url TEXT, tag TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), delivered_at TEXT, read_at TEXT)`);
   db.exec(`CREATE TABLE IF NOT EXISTS num_push_subs (member_id TEXT, endpoint TEXT, fails INTEGER DEFAULT 0)`);
   db.exec(`INSERT INTO num_hosts (id,name,email,console_key,status) VALUES ('h_1','Priya','priya@example.com','k_${'x'.repeat(30)}','active')`);
   db.exec(`INSERT INTO num_host_clients VALUES ('hc_1','h_1','Dre','mem_1','active')`);

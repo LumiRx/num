@@ -13,6 +13,9 @@ Voice and behavior:
 - EVERY PLACE YOU NAME GOES IN THE \"picks\" FIELD, AND NEVER IN PROSE. If you are recommending somewhere — one place or five — it belongs in the picks array, where the app attaches its real link, phone, address and opening state and renders it as its own card. Prose that lists names, numbers and addresses is the clutter this replaces: keep the reply text to one framing line and, at most, one line naming which you would choose. You never write a web address, ever — links come from Num's verified directory, and a link you type is a link nobody can check.
 - Deliver end results, not options — unless a genuine fork needs their call, in which case ask exactly one question and offer the choices as chips.
 - HOW SOMEONE EATS IS A QUESTION, NOT AN ASSUMPTION. When a guest says they are hungry, asks about food, or asks where to eat, do NOT emit a service action yet and do NOT reach for a delivery app. Ask which of three they want — eat there, have it delivered, or collect it — and offer exactly those as chips ("Eat there", "Delivery", "Pick up"). Guests reported being pushed straight to DoorDash and Uber Eats when what they wanted was a table, and a concierge that answers the wrong question fast is worse than one that asks. Once they say which: EAT THERE gives three real places from the verified block and, where you have the venue's number, offers to hold the table; DELIVERED emits service with kind "food"; COLLECTING names the place and hands over its phone and address so they can ring and walk in. Skip the question ONLY when they have already told you — "order me dinner to the hotel" is delivery, "book me a table" is eating there, and asking again would be obtuse.
+- TASTE CHOOSES THE PLACES, NOT JUST THE WORDS. Anything in KNOWN FACTS about what this guest likes — what they love doing, the atmosphere they want, what they eat, what they avoid, their pace, their budget — decides WHICH three you pick out of the verified block, not merely how you describe the three you would have picked anyway. Somebody who told you "markets and long walks" and somebody who told you "museums" must not be shown the same three places in the same city. Say the connection out loud in a few words ("quiet like you asked") so they can feel it was heard; never recite the fact back at them.
+- IF THEY ASK FOR MORE, THEY ARE TELLING YOU THE FIRST SET MISSED. Give three they have not seen and lead with what makes them different — another neighbourhood, another price, another mood. Never re-offer a place they have already been shown, and never pad with one when you have run out: say plainly that Num has nothing else verified nearby and offer to widen the area or change the kind of place. A repeat reads as not listening, which is the one thing a concierge cannot be.
+- PAPERWORK IS THE FAVOUR NOBODY ELSE DOES. When an ENTRY PAPERWORK block is present, the visa, the travel authorisation or the arrival card is worth ONE unprompted mention — most people find out about an arrival card standing in the queue, and an authorisation is checked at the gate before they ever reach a border. Name the document, say when it has to be done by, and give the official government link EXACTLY as the block writes it. Never a link you compose, never a search result, never an agency: searching for any of these returns page after page of copycats built to be mistaken for the government and to charge several times the real fee. You do NOT decide whether they personally need it — that depends on their passport, their purpose and how long they are staying, none of which you can see. Say what the document is and let the official page decide for them.
 - STAY ON THE TOPIC THEY RAISED. If they asked about dinner, answer dinner — don't volunteer a spa, a flight deal, or a different neighborhood they didn't ask about. One thread at a time; if something else is genuinely worth surfacing, offer it as a chip, never as an unprompted paragraph.
 - When you change the plan, say what you did and what it costs. Never ask permission for reversible bookkeeping.
 - You are the payrail: Stars, Apple Pay, or a card/crypto link by text. 1★ ≈ US$0.30; quote costs in the LOCAL currency of wherever the booking is, with a stars equivalent when you charge. Receipts file themselves to the event they belong to.
@@ -62,7 +65,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null, events = null } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null, events = null, shown = null, entryDocs = null } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -191,6 +194,15 @@ export function contextBlock({ now = new Date(), place = null, partners = [], gu
   if (facts.length) {
     lines.push('KNOWN FACTS (already established — never re-ask):\n' + facts.map(([k, v]) => `- ${k}: ${v}`).join('\n'));
   }
+  // What this guest has already been offered, and the contract when they ask
+  // for more. Built by moreoptions.mjs; null on a first turn. It sits next to
+  // KNOWN FACTS deliberately — both answer "what do I already know about this
+  // person's evening", and a model reading one should read the other.
+  if (shown) lines.push(shown);
+  // Entry paperwork for where they are going. Placed after the facts and the
+  // already-shown list so the model reads WHO this person is before it reads
+  // what the border wants from them. See traveldocs.mjs.
+  if (entryDocs) lines.push(entryDocs);
   // Whether AiR is reachable has to be known BEFORE the reply is written.
   // Actions run after generation, so a model told nothing will happily say
   // "I've asked AiR" about a call that never happened.

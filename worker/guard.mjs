@@ -29,6 +29,10 @@ export const LIMITS = {
   maxMessageChars: 8_000,
   maxTotalChars: 60_000,
   maxStateBytes: 64 * 1024,
+  // Places already shown to this guest. 40 is the same cap moreoptions.mjs
+  // holds: past that the guest has a different problem than a repeated pick.
+  maxShown: 40,
+  maxShownChars: 80,
 };
 
 /** ip → array of request timestamps (ms) inside the current window. */
@@ -158,12 +162,31 @@ export function validatePayload(raw) {
     return { ok: false, status: 400, error: 'place must be a string of at most 120 characters' };
   }
 
+  // Optional: the places already put in front of this guest in this thread,
+  // sent by the app so "give me more" can return ones they have not seen.
+  //
+  // This return statement is a WHITELIST — it drops anything unexpected a
+  // client sends, which is the right default and is also why `shown` has to
+  // be named here explicitly. Adding the field to the app and the reader
+  // without adding it here would have failed silently: the feature would look
+  // wired end to end and the array would arrive empty on every turn.
+  const { shown } = raw;
+  if (shown !== undefined && !Array.isArray(shown)) {
+    return { ok: false, status: 400, error: 'shown must be an array' };
+  }
+  const cleanShown = (Array.isArray(shown) ? shown : [])
+    .filter((v) => typeof v === 'string')
+    .map((v) => v.trim().slice(0, LIMITS.maxShownChars))
+    .filter(Boolean)
+    .slice(0, LIMITS.maxShown);
+
   // Only the fields the model needs — drops anything unexpected a client sends.
   return {
     ok: true,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
     state: state ?? {},
     place: typeof place === 'string' && place.trim() ? place.trim() : null,
+    shown: cleanShown,
   };
 }
 

@@ -417,9 +417,13 @@ export async function createOrder(env, { businessId, memberId, items, address, n
       }, { audience: AUDIENCE.EXTERNAL }).catch(() => {});
     }
   } catch { /* notification is a bonus; the order exists */ }
+  // The partner's name is the title because that is what they recognise on a
+  // lock screen; the order code is reference, not news. Title stayed under the
+  // cut when a long restaurant name pushed the old one to 45+ characters.
   await notify(env, {
-    memberId, kind: 'plan', title: `Order ${short} sent to ${partner.name}`,
-    body: `${lines.map((l) => `${l.qty} × ${l.name}`).join(', ')} — $${(total / 100).toFixed(2)} incl. delivery. You'll hear the moment they accept.`,
+    memberId, kind: 'plan', title: partner.name,
+    subtitle: `Order ${short} · $${(total / 100).toFixed(2)} incl. delivery`,
+    body: `${lines.map((l) => `${l.qty} × ${l.name}`).join(', ')}. You'll hear the moment they accept.`,
     url: '/?go=plan', tag: `order:${id}`,
   }).catch(() => {});
   return { ok: true, id, short_code: short, total_cs: total, subtotal_cs: subtotal, fee_cs: fee, items: lines.map((l) => ({ name: l.name, qty: l.qty })), partner: partner.name };

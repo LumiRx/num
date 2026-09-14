@@ -156,10 +156,25 @@ export async function providerToken(env, now = Date.now()) {
  * Truncates the body rather than letting APNs refuse the whole thing. A slightly
  * short sentence is a notification; a 413 is silence.
  */
-export function buildPayload({ title, body, url, kind, notifId, badge }) {
+export function buildPayload({ title, subtitle, body, url, kind, notifId, badge }) {
   const make = (b) => JSON.stringify({
     aps: {
-      alert: { title: String(title || '').slice(0, 120), body: b },
+      alert: {
+        title: String(title || '').slice(0, 120),
+        // THE LINE NUM WAS NOT USING.
+        //
+        // iOS gives three: title, subtitle, body. NUM only ever set two, so the
+        // when and the where had to be crammed into the sentence a person reads,
+        // and the sentence lost. The subtitle is a natural home for the fact —
+        // "Saturday, 9am" or "Royal Phuket" — which leaves the body free to say
+        // the thing worth saying.
+        //
+        // Omitted entirely when empty rather than sent as "": an empty subtitle
+        // still reserves its line on some layouts, and a blank gap under a title
+        // reads as something failing to load.
+        ...(subtitle ? { subtitle: String(subtitle).slice(0, 80) } : {}),
+        body: b,
+      },
       sound: 'default',
       ...(badge === undefined ? {} : { badge }),
       // Lets the app update its own content when the notification arrives rather
@@ -195,7 +210,7 @@ export function buildPayload({ title, body, url, kind, notifId, badge }) {
  * notifications about one table.
  */
 export async function sendApns(env, {
-  token, environment = 'production', title, body, url, kind, notifId,
+  token, environment = 'production', title, subtitle, body, url, kind, notifId,
   collapseId, priority = 5, badge, bundleId,
 }) {
   if (!apnsReady(env)) {
@@ -219,7 +234,7 @@ export async function sendApns(env, {
   }
 
   const host = APNS_HOST[environment] || APNS_HOST.production;
-  const payload = buildPayload({ title, body, url, kind, notifId, badge });
+  const payload = buildPayload({ title, subtitle, body, url, kind, notifId, badge });
 
   const headers = {
     authorization: `bearer ${await providerToken(env)}`,

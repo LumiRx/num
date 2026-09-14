@@ -112,6 +112,24 @@ const WANTS_CAR = /\b(rent(?:al|ing)?|hire|hiring)\s+(?:a\s+|an\s+)?(?:car|suv|4
 
 const FALLBACK_REPLY = 'Sorry — I garbled that. Say it once more and I’ll take care of it.';
 
+/**
+ * How many days until they travel, or null when nothing in the trip says.
+ *
+ * Null rather than a guess on purpose: traveldocs.urgency() treats a missing
+ * date as "unknown" and says nothing about timing, which is the honest
+ * output. A zero here would read as "you fly today" and shout about a visa
+ * at somebody with no trip booked.
+ */
+function daysToTrip(state) {
+  const raw = state?.tripStart ?? state?.trip?.starts_on ?? state?.party?.starts_on ?? null;
+  if (!raw) return null;
+  const when = Date.parse(String(raw).length <= 10 ? `${raw}T00:00:00Z` : String(raw));
+  if (Number.isNaN(when)) return null;
+  const days = Math.floor((when - Date.now()) / 86_400_000);
+  // A trip in the past is not urgent, it is over.
+  return days < 0 ? null : days;
+}
+
 async function askNum(client, messages, state, grounding, profile, extraSystem, env, userText, acceptLang, modelOverride = null) {
   // PERSONA + VOICE are identical on every request, so they sit above the
   // cache breakpoint. Everything below it changes per turn.
@@ -1028,9 +1046,46 @@ export async function handleNum(request, env, ctx) {
 
     // Hoisted: the quality check needs to see exactly what the model saw.
     // A price is only defensible if it is IN here.
+    // ── "MORE" MUST MEAN MORE ────────────────────────────────────────────
+    //
+    // 14 Sep 2026: asking for more options returned the same three. The
+    // partner block is identically ranked every turn, so a model told to
+    // prefer it and give three does exactly that, twice, from identical
+    // input. The fix is to take the seen ones OUT rather than ask the model
+    // not to repeat them — it cannot repeat what it cannot see.
+    //
+    // `shown` is sent by the app, which is the only thing that knows what
+    // actually reached the screen: picks travel in their own field, not in
+    // the assistant prose the history carries.
+    const { moreOptions } = await import('./moreoptions.mjs');
+    const rotation = moreOptions({
+      text: lastUser,
+      shown: parsed.shown ?? [],
+      partners: grounding.partners ?? [],
+    });
+    if (rotation.more) {
+      console.log(`[num-ai] more-options ask: ${rotation.shown.length} seen, ${rotation.partners.length} left`);
+    }
+
+    // ── ENTRY PAPERWORK, RAISED BEFORE THE AIRPORT ──────────────────────
+    //
+    // Dre, 14 Sep: "this is one of the hardest for people to figure out."
+    //
+    // The block names the document, hands over the GOVERNMENT link, and
+    // forbids stating the rule — what somebody needs depends on their
+    // passport, and the passport is not in this context. See traveldocs.mjs
+    // for why every link is an official host and nothing else ever is.
+    const { docsBlock } = await import('./traveldocs.mjs');
+    const entryDocs = docsBlock(grounding?.place?.country_code ?? null, {
+      place: grounding?.place?.name ?? null,
+      daysOut: daysToTrip(parsed.state ?? {}),
+    });
+
     const groundingBlock = contextBlock({
       place: grounding.place,
-      partners: grounding.partners,
+      partners: rotation.partners,
+      shown: rotation.block,
+      entryDocs,
       guide: grounding.guide,
       profile: redactProfile(profile).profile,
       buzz: grounding.buzz,
@@ -2440,6 +2495,12 @@ export default {
     // and swallow anything beneath it; a third tenant under the same prefix is
     // how the '/api/booking/status' outage happened. Its own path, matched
     // before either of them, is the cheap way not to repeat that.
+    if (url.pathname === '/api/travel/docs') {
+      const { handleTravelDocs } = await import('./traveldocs.mjs');
+      const res = handleTravelDocs(request);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
     if (url.pathname.startsWith('/api/flights/order')) {
       const { handleFlightOrder } = await import('./flightorder.mjs');
       const res = await handleFlightOrder(request, env, url.pathname.slice('/api/flights/order'.length) || '/');

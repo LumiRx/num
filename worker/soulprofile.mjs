@@ -139,6 +139,19 @@ export const DIMENSIONS = [
   { key: 'eats', ask: 'What food makes you happiest when you travel?', when: 'food' },
   { key: 'avoids', ask: 'Anything you would rather I never put in front of you?', when: 'food' },
   { key: 'pace', ask: 'Do you like packing a day full, or one good thing done properly?', when: 'plan' },
+  // 14 Sep 2026. Dre: "asking if they have a preference of things to do so we
+  // can make better options from us."
+  //
+  // Every dimension above this line describes HOW somebody travels — who with,
+  // how fast, how much, how loud. None of them asked what they actually enjoy
+  // DOING, which is the one answer that changes which three places get picked
+  // rather than how they get described. A guest who says "markets and long
+  // walks" and a guest who says "museums" should not be shown the same city.
+  //
+  // `when: 'plan'` and `when: 'venue'` both reach it, because the question is
+  // equally useful whether they are building a day or choosing one place.
+  { key: 'doing', ask: 'What do you actually love doing in a new city — eating your way round it, walking it, markets, museums, nightlife, water?', when: 'plan' },
+  { key: 'doing', ask: 'What do you actually love doing in a new city — eating your way round it, walking it, markets, museums, nightlife, water?', when: 'venue' },
 ];
 
 const DIMENSION_KEYS = new Set(DIMENSIONS.map((d) => d.key));

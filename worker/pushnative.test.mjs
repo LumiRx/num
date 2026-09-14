@@ -2,11 +2,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { notifyAll, pushNative, handlePush } from './push.mjs';
 import { _resetTokenCache } from './apns.mjs';
 
-const MIG = readFileSync(new URL('./migrations/0024_notifications.sql', import.meta.url), 'utf8');
+// Every migration that touches the notification tables, in order, found rather
+// than listed: a hard-coded '0024' went stale the day 0027 added the subtitle
+// column, and the test failed for a reason that had nothing to do with the code
+// under test.
+const MIGDIR = new URL('./migrations/', import.meta.url);
+const MIG = readdirSync(MIGDIR)
+  .filter((n) => n.endsWith('.sql')).sort()
+  .map((n) => readFileSync(new URL(n, MIGDIR), 'utf8'))
+  .filter((sql) => /num_notifications|num_push_|num_notify_/.test(sql))
+  .join(';\n');
 
 function freshDb() {
   const db = new DatabaseSync(':memory:');
@@ -19,7 +28,7 @@ function freshDb() {
   for (const raw of MIG.split(';')) {
     const stmt = raw.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim();
     if (!stmt) continue;
-    try { db.exec(stmt + ';'); } catch (e) { throw new Error('0023 failed: ' + e.message + ' :: ' + stmt.slice(0, 60)); }
+    try { db.exec(stmt + ';'); } catch (e) { throw new Error('notification migration failed: ' + e.message + ' :: ' + stmt.slice(0, 60)); }
   }
   return db;
 }

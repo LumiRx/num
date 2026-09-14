@@ -15,5 +15,7 @@
     "0026_giveaway_entrant_key.sql": "491163c7c4e18cd9c4ab3a787e0f22f4196bcde3a0383a754d38596bf3763929"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0027_notification_subtitle.sql"
+  ]
 }

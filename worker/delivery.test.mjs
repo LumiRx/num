@@ -43,7 +43,7 @@ function fresh() {
   db.exec(`CREATE TABLE num_orders (id TEXT PRIMARY KEY, short_code TEXT UNIQUE, business_id TEXT, member_ref TEXT, subtotal_cs INTEGER, delivery_fee_cs INTEGER, platform_fee_cs INTEGER, total_cs INTEGER, commission_cs INTEGER, fulfilment TEXT, delivery_addr_enc TEXT, delivery_area TEXT, status TEXT, channel TEXT, created_at INTEGER, accepted_at INTEGER, delivered_at INTEGER, CHECK (total_cs = subtotal_cs + delivery_fee_cs + platform_fee_cs))`);
   db.exec(`CREATE TABLE num_order_items (id TEXT PRIMARY KEY, order_id TEXT, item_id TEXT, name TEXT, qty INTEGER, unit TEXT, unit_price_cs INTEGER, line_total_cs INTEGER, created_at INTEGER)`);
   db.exec(`CREATE TABLE num_order_events (id TEXT PRIMARY KEY, order_id TEXT, from_status TEXT, to_status TEXT, actor TEXT, reason TEXT, metadata TEXT, created_at INTEGER)`);
-  db.exec(`CREATE TABLE num_notifications (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, url TEXT, tag TEXT, created_at TEXT DEFAULT (datetime('now')), delivered_at TEXT, read_at TEXT)`);
+  db.exec(`CREATE TABLE num_notifications (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, subtitle TEXT, body TEXT, url TEXT, tag TEXT, created_at TEXT DEFAULT (datetime('now')), delivered_at TEXT, read_at TEXT)`);
   db.exec(`CREATE TABLE num_push_subs (member_id TEXT, endpoint TEXT, fails INTEGER DEFAULT 0)`);
   db.exec(`CREATE TABLE num_business_notify (business_id TEXT PRIMARY KEY, email TEXT, on_booking INTEGER, on_weekly INTEGER, last_weekly TEXT)`);
   db.exec(`CREATE TABLE num_business_users (business_id TEXT, email TEXT, status TEXT, created_at INTEGER)`);
@@ -181,7 +181,9 @@ test('an order snapshots catalogue prices (never the model\'s), adds the fee, an
   assert.equal(env._db.prepare('SELECT COUNT(*) n FROM num_order_items').get().n, 2);
   assert.equal(env._db.prepare("SELECT reason FROM num_order_events").get().reason, 'ring the buzzer');
   const note = env._db.prepare("SELECT * FROM num_notifications WHERE member_id='mem_v'").get();
-  assert.match(note.title, /Order [A-Z]\d{3} sent to LA Cannabis Club/); assert.match(note.body, /You'll hear the moment they accept/);
+  assert.equal(note.title, 'LA Cannabis Club', 'the name they recognise is the title; the order code is reference');
+  assert.match(note.subtitle, /^Order [A-Z]\d{3} · \$119\.00 incl\. delivery$/);
+  assert.match(note.body, /You'll hear the moment they accept/);
 });
 
 test('an unverified member cannot order from a 21+ partner; an address is required; a paused partner refuses', async () => {

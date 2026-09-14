@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.301 — 2026-09-14 15:23 UTC
+
+keyboard: pad the shell instead of shrinking it, no black gap under the keypad
+
+- commit `4a57d37`
+
 ## 0.8.300 — 2026-09-14 06:06 UTC
 
 keyboard: pad the shell instead of shrinking it, no black gap under the keypad

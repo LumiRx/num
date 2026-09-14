@@ -576,6 +576,25 @@ export function cleanText(t: string): string {
 }
 
 /** Send a free-typed message to the real NUM AI backend. */
+/**
+ * Every place Num has put in front of this guest in this thread, newest last.
+ *
+ * Names only — the server matches on name so a pick that came from the
+ * model's own knowledge, with no partner row behind it, still counts as seen.
+ */
+function shownPicks(msgs: Msg[]): string[] {
+  const out: string[] = [];
+  for (const m of msgs ?? []) {
+    for (const p of m.picks ?? []) {
+      const name = String(p?.name ?? '').trim();
+      if (name && !out.includes(name)) out.push(name);
+    }
+  }
+  // The tail is what matters: forty places back is not what they are
+  // reacting to, and the server caps at forty anyway.
+  return out.slice(-40);
+}
+
 export async function askNum(text: string) {
   // A reply is already in flight — a double-tap must not double-send.
   if (store.get().typing) return;
@@ -673,7 +692,20 @@ export async function askNum(text: string) {
       // `here` is a REAL device fix and outranks anything inferred. Sending
       // it separately from `place` keeps the distinction the model needs:
       // what they told us, vs what their phone actually knows.
-      body: JSON.stringify({ messages, state, place: s.place, here: s.here }),
+      // ── WHAT THIS GUEST HAS ALREADY BEEN SHOWN ──────────────────────
+      //
+      // 14 Sep 2026: asking for more options returned the same three. The
+      // server ranks the partner list identically every turn, so the model
+      // picked the same top three twice — correctly, from identical input.
+      //
+      // The app is the ONLY thing that knows what actually reached the
+      // screen: picks travel in their own field on each message, not in the
+      // assistant prose that `messages` carries. So the app tells the server,
+      // and the server takes those places out of the block entirely rather
+      // than asking the model nicely not to repeat them.
+      body: JSON.stringify({
+        messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs),
+      }),
     });
     if (!res.ok) throw new Error('backend ' + res.status);
     const out: NumReply = await res.json();

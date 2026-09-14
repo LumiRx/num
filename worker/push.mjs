@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS num_push_subs (
 CREATE INDEX IF NOT EXISTS idx_push_member ON num_push_subs(member_id);
 CREATE TABLE IF NOT EXISTS num_notifications (
   id TEXT PRIMARY KEY, member_id TEXT NOT NULL, kind TEXT NOT NULL,
-  title TEXT NOT NULL, body TEXT, url TEXT, tag TEXT,
+  title TEXT NOT NULL, subtitle TEXT, body TEXT, url TEXT, tag TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')), delivered_at TEXT, read_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_notif_member ON num_notifications(member_id, id);
@@ -88,21 +88,53 @@ async function vapidHeader(env, endpoint) {
  * `tag` collapses: a second "your table moved" replaces the first on the lock
  * screen rather than stacking. Nobody wants four notifications about one table.
  */
-export async function notify(env, { memberId, kind, title, body, url, tag, ctx }) {
+export async function notify(env, { memberId, kind, title, subtitle, body, url, tag, ctx }) {
   if (!env.DB || !memberId) return { sent: 0 };
   await ensure(env);
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO num_notifications (id, member_id, kind, title, body, url, tag) VALUES (?1,?2,?3,?4,?5,?6,?7)',
-  ).bind(id, memberId, kind, clip(title, 120), clip(body, 300), clip(url, 300), clip(tag, 60) ?? kind).run();
+    'INSERT INTO num_notifications (id, member_id, kind, title, subtitle, body, url, tag) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)',
+  ).bind(id, memberId, kind, clip(title, 120), clip(subtitle, 120), clip(body, 300), clip(url, 300), clip(tag, 60) ?? kind).run();
 
-  if (!pushReady(env)) return { sent: 0, queued: id, note: 'push keys not configured — it will show next time they open Num' };
+  // ── WHY notify() FANS OUT TO NATIVE ITSELF (14 Sep 2026) ────────────────
+  //
+  // notifyAll() was written to do this. It had forty-two sibling call sites and
+  // zero of its own: every real notification in the product called notify(),
+  // which woke web-push subscriptions and nothing else. The whole APNs sender
+  // was reachable only from its tests.
+  //
+  // The fix is not "change forty-two call sites to say notifyAll" — that is a
+  // rule nobody can keep, and the forty-third will be written next week. There
+  // is one door, and the door goes everywhere.
+  const native = await pushNative(env, { memberId, title, subtitle, body, url, kind, notifId: id, tag })
+    .catch((e) => {
+      console.warn('[push] native fan-out failed', e?.message ?? e);
+      return { sent: 0, error: String(e?.message ?? e) };
+    });
+
+  if (!pushReady(env)) {
+    if (!native.sent) {
+      console.warn(`[push] NOBODY REACHED for member ${String(memberId).slice(0, 8)}… (no web keys, no native tokens) — it will only show when they next open Num`);
+    }
+    return { sent: 0, native, reached: native.sent || 0, queued: id, note: 'web push keys not configured' };
+  }
 
   const { results: subs } = await env.DB.prepare('SELECT endpoint FROM num_push_subs WHERE member_id=?1 AND fails < 5').bind(memberId).all();
   const send = Promise.all((subs ?? []).map((s) => wake(env, s.endpoint)));
   if (ctx?.waitUntil) ctx.waitUntil(send);
   else await send;
-  return { sent: (subs ?? []).length, queued: id };
+
+  const web = (subs ?? []).length;
+  const reached = web + (native.sent || 0);
+  // Said out loud, because "queued" on its own is what let 116 of 117
+  // notifications look fine while reaching nobody.
+  if (!reached) {
+    console.warn(
+      `[push] NOBODY REACHED for member ${String(memberId).slice(0, 8)}… ` +
+      `(web subs: 0, native tokens: 0) — it will only show when they next open Num`,
+    );
+  }
+  return { sent: web, native, reached, queued: id };
 }
 
 /**
@@ -118,25 +150,10 @@ export async function notify(env, { memberId, kind, title, body, url, tag, ctx }
  * notification written to the table, nothing configured to carry it, and a
  * cheerful success returned.
  */
-export async function notifyAll(env, opts) {
-  const web = await notify(env, opts);
-  const native = await pushNative(env, opts).catch((e) => {
-    console.warn('[push] native fan-out failed', e?.message ?? e);
-    return { sent: 0, error: String(e?.message ?? e) };
-  });
-
-  // Said out loud in the return value, because "queued" on its own is what let
-  // 116 of 117 notifications look fine.
-  const reached = (web.sent || 0) + (native.sent || 0);
-  if (!reached) {
-    console.warn(
-      `[push] NOBODY REACHED for member ${String(opts?.memberId).slice(0, 8)}… ` +
-      `(web subs: ${web.sent || 0}, native tokens: ${native.sent || 0}) — ` +
-      `it will only show when they next open Num`,
-    );
-  }
-  return { ...web, native, reached };
-}
+/** Kept as the name some callers and tests already use. notify() is now the
+ *  one door and does the whole fan-out, so this is a straight alias — calling
+ *  the old two-step here would send every native push twice. */
+export const notifyAll = (env, opts) => notify(env, opts);
 
 /**
  * Send to this member's Apple devices.
@@ -146,7 +163,7 @@ export async function notifyAll(env, opts) {
  * A token Apple has told us is gone must stop being used — retrying it forever
  * is what gets a provider throttled and buries the real failures in noise.
  */
-export async function pushNative(env, { memberId, title, body, url, kind, tag, notifId, badge }) {
+export async function pushNative(env, { memberId, title, subtitle, body, url, kind, tag, notifId, badge }) {
   if (!env.DB || !memberId) return { sent: 0 };
   const { apnsReady, sendApns, apnsMissing } = await import('./apns.mjs');
   if (!apnsReady(env)) {
@@ -169,7 +186,7 @@ export async function pushNative(env, { memberId, title, body, url, kind, tag, n
       token: t.token,
       environment: t.environment,
       bundleId: t.bundle_id,
-      title, body, url, kind, notifId,
+      title, subtitle, body, url, kind, notifId,
       collapseId: tag || kind,
       badge,
     });
@@ -270,7 +287,7 @@ export async function handlePush(request, env, path, ctx) {
       const me = url.searchParams.get('me');
       if (!me) return json({ notifications: [] });
       const { results } = await env.DB.prepare(
-        'SELECT id, kind, title, body, url, tag FROM num_notifications WHERE member_id=?1 AND delivered_at IS NULL ORDER BY rowid LIMIT 5',
+        'SELECT id, kind, title, subtitle, body, url, tag FROM num_notifications WHERE member_id=?1 AND delivered_at IS NULL ORDER BY rowid LIMIT 5',
       ).bind(me).all();
       if (results?.length) {
         await env.DB.prepare(
@@ -395,7 +412,7 @@ export async function handlePush(request, env, path, ctx) {
       const me = url.searchParams.get('me');
       if (!me) return json({ error: 'me required' }, 400);
       const { results } = await env.DB.prepare(
-        'SELECT id, kind, title, body, url, created_at, read_at FROM num_notifications WHERE member_id=?1 ORDER BY rowid DESC LIMIT 30',
+        'SELECT id, kind, title, subtitle, body, url, created_at, read_at FROM num_notifications WHERE member_id=?1 ORDER BY rowid DESC LIMIT 30',
       ).bind(me).all();
       return json({ notifications: results ?? [] });
     }
