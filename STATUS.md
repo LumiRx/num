@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-13 · production **0.8.294 live and healthy** (health verdict ok, 0 failing) · voice layer built, NOT deployed_
+_Last updated: 2026-09-13 · production **0.8.296 live and healthy** (health verdict ok, 0 failing, 23:55 UTC) · voice layer LIVE_
 
 ---
 
@@ -14,7 +14,7 @@ _Last updated: 2026-09-13 · production **0.8.294 live and healthy** (health ver
 |---|---|
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
-| Tests | 4,800 green, 0 lint errors, tsc clean |
+| Tests | 4,801 green, 0 lint errors, tsc clean (travel-speak + voice lints both wired into `npm test`) |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
 
 ## Live and working
@@ -398,8 +398,10 @@ the guest it exists — style matching works because it is invisible. The
 guardrail already earned itself: it caught the word "pick" in the block's own
 output text on the first run.
 
-**Not built, deliberately:** the wheel, choice width, framing and reassurance
-dials, and the onboarding quiz. Framing and reassurance touch money and trust
+**Superseded the same day** — the wheel, framing and reassurance dials and the
+house-voice rewrite landed in the second pass below. Still not built: the
+onboarding quiz, and choice width as a separate dial (the wheel covers most of
+it in practice). Framing and reassurance touch money and trust
 and should be set from behaviour, not one tap on a signup card. Full framework
 in the project doc `num-VOICE-MATCHING-PSYCHOLOGY-2026-09-13`.
 
@@ -484,7 +486,67 @@ hatch** so the house voice can teach "never say you should" without tripping —
 window is 48 characters so a distant "never" cannot smuggle one through. Its own
 test fires every rule deliberately: a lint proved only by passing is not proved.
 
-4,800 tests green, both lints clean. **NOT DEPLOYED.**
+4,800 tests green, both lints clean. **SHIPPED 0.8.296, 23:55 UTC 13 Sep — health ok, 0 failing.**
+
+## A barbershop was offered for deep-tissue massage — three faults — 14 Sep
+
+A guest in Los Angeles asked for deep tissue and got **one** result: Platinum
+Cuts Barbershop, whose website 403s. Three independent faults, all now fixed and
+all covered by `ai/places.subintent.test.js`, which reproduces the exact query
+against a real SQLite.
+
+**1 · "Deep tissue" matched no category keyword.** `detectCat('Deep tissue')`
+returned null — the phrase contains neither "massage" nor "spa" — so the search
+fell through to `DEFAULT_PATTERNS`, which include `%spa%`. Sub-intent words are
+now in `CATS.spa` (deep tissue, sports massage, shiatsu, reflexology, hot stone,
+facial, manicure, sauna…).
+
+**2 · The topic was in the PREVIOUS turn, and nothing read it.** Num had just
+asked "full-service spa, quick walk-in, or sports/deep-tissue massage?" — the
+answer only makes sense against the question. `nearbyPlaces` now takes a
+`topicHint` (the last four turns, built in `index.mjs`, threaded through
+`grounding.mjs`). It is used for the **category only** — never for location, so a
+city named three turns ago cannot follow a guest around — and it never overrides
+a category the current message states outright. A test pins both.
+
+**3 · Google files a barbershop and a real day spa under the SAME category.**
+Both are "Beauty & spa", so no category pattern can separate them and `%beauty%`
+could not simply be dropped without losing genuine spas. The separation moved to
+the **name**: `GROOMING` excludes barber/nail/braid/lash/brow/waxing/hair-salon
+names. **The exclusion follows the SUB-INTENT, not the category** — the first cut
+keyed it on the category and its own test caught that a manicure ask could no
+longer reach a nail bar.
+
+**Plus: the specific ask now survives the category.** `subIntent()` turns "deep
+tissue" into a `%massage%` ranking bonus (0.6 — about the gap between a 4.2 and a
+4.8, so it reorders a good set without dragging a bad place up). Before this,
+"deep tissue" and "manicure" searched identically.
+
+**And one fault was mine, from yesterday's voice layer.** The register block told
+a terse guest to "answer first… well under the cap", which reads as permission to
+name one place, against the house rule of three. The wheel dial said "give ONE
+answer" outright. Both now say the LIST is never negotiable: terse controls
+length, the wheel controls how hard Num steers *inside* the list. Dre, 14 Sep:
+*"when we are recommending locations, just make sure to get a list of locations
+not just one."*
+
+### The 403 is not a bug, and that is the problem
+
+`scripts/enrich_liveness.mjs` deliberately does **not** mark a 403 dead — only
+404/410 and DNS failure earn `alive = 0`, because a bot wall is not a closed
+business. It records `unknown: http403` instead. So **we already know which sites
+403 our crawler and we do nothing with it.** A site that blocks a crawler very
+often blocks an in-app webview too, which is exactly what the guest hit.
+
+Two possible fixes, **Dre's call, neither built**:
+- **Data:** treat a repeatedly-403 site as "not reliably reachable" and prefer the
+  map link (`placelink.mjs` already has that fallback for dead sites). Needs
+  somewhere to record the repeat — `alive` is ternary and should not be overloaded,
+  so this is a migration.
+- **Client:** open external links in the system browser rather than the in-app
+  webview. Probably the real fix for the guest, and no schema change.
+
+4,801 tests green, both lints clean. **NOT DEPLOYED.**
 
 ## Open decisions (Dre's, not mine)
 

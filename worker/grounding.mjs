@@ -17,7 +17,7 @@ import { cityEventsFor, wantsEvents } from './cityevents.mjs';
  *
  * @returns {Promise<{place: object|null, partners: array, guide: string|null}>}
  */
-export async function groundRequest(env, { userText, statedPlace, cf, fix = null, member = null }) {
+export async function groundRequest(env, { userText, statedPlace, cf, fix = null, member = null, topicHint = null }) {
   const none = { place: null, partners: [], disclosures: '', guide: null, buzz: [], events: [] };
   if (!env?.DB) return none; // local dev without the binding — Claude flies on general knowledge
 
@@ -56,7 +56,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
     const [{ rows }, guide, buzz, showtimes, events] = await Promise.all([
-      nearbyPlaces(env, loc, userText, 6).catch(() => ({ rows: [] })),
+      nearbyPlaces(env, loc, userText, 6, topicHint).catch(() => ({ rows: [] })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
       // Only on a movie ask, and dark without a SERPAPI_KEY secret — the

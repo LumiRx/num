@@ -741,9 +741,24 @@ export async function handleNum(request, env, ctx) {
     // The thread, server-side (worker/turns.mjs). Loaded in the same
     // Promise.all as facts, so continuity across devices costs no latency.
     const turnSubject = subjectFor({ memberId, anonId: parsed.state?.anon ?? null });
+    // What this conversation is ABOUT, for category detection only.
+    //
+    // Num's own last question carries the topic far more often than the
+    // guest's answer does — "Deep tissue" is meaningless alone and obvious
+    // after "full-service spa, quick walk-in, or sports/deep-tissue massage?".
+    // Four turns is enough to catch an answer to a question without dragging
+    // last week's city along; grounding uses it for the category and never for
+    // the location.
+    const topicHint = (parsed.messages ?? [])
+      .slice(-5, -1)
+      .map((m) => (typeof m?.content === 'string' ? m.content : ''))
+      .filter(Boolean)
+      .join(' ')
+      .slice(-600) || null;
     const [groundResult, rememberedFacts, storedTurns, memberHost] = await Promise.all([
       groundRequest(env, {
         userText: lastUser,
+        topicHint,
         statedPlace: parsed.place,
         cf: request.cf,
         fix: parsed.here && Number.isFinite(parsed.here.lat) && Number.isFinite(parsed.here.lng)

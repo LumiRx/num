@@ -25,7 +25,7 @@ export const CATS = {
   transport:  ['tuk tuk','tuktuk','taxi','transfer','airport pickup','airport transfer','driver for','private driver','shuttle','แท็กซี่','ตุ๊กตุ๊ก','รถรับส่ง','такси','трансфер','аэропорт','打车','接送','的士','包车'],
   restaurant: ['restaurant','eat','food','dinner','lunch','hungry','กิน','อาหาร','ร้านอาหาร','หิว','ресторан','еда','поесть','ужин','吃','餐厅','美食','ご飯','レストラン'],
   cafe:       ['cafe','café','coffee','brunch','กาแฟ','คาเฟ่','кофе','咖啡','カフェ'],
-  spa:        ['massage','spa','นวด','สปา','массаж','спа','按摩','マッサージ'],
+  spa:        ['massage','spa','นวด','สปา','массаж','спа','按摩','マッサージ','deep tissue','deep-tissue','swedish','shiatsu','reflexolog','sports massage','thai massage','hot stone','aromatherapy','facial','manicure','pedicure','sauna','hammam','onsen'],
   bar:        ['bar','pub','drink','beer','cocktail','nightlife','club','party','บาร์','เบียร์','บันเทิง','бар','пиво','клуб','酒吧','夜生活'],
   hotel:      ['hotel','stay','room','resort','hostel','โรงแรม','ที่พัก','отель','номер','酒店','住宿','ホテル'],
   // 'sand' is deliberately absent: detectCat matches by substring, and every
@@ -73,6 +73,64 @@ const CATSQL = {
   cinema:     ['%cinema%','%theatre%'],
   golf:       ['%golf%'],
 };
+/**
+ * Names to exclude for a given intent, matched against `name` rather than
+ * `category`.
+ *
+ * This exists because of a real failure: a guest asked for deep-tissue massage
+ * in Los Angeles and was offered "Platinum Cuts Barbershop", whose category is
+ * "Beauty & spa" — the same label a genuine day spa carries. No category
+ * pattern can tell those apart, so `%beauty%` had to stay (dropping it would
+ * lose real spas) and the separation moved to the name.
+ *
+ * Deliberately narrow. Every entry is a place that cuts, paints or removes
+ * something, and none of them do bodywork. "salon" is absent on purpose —
+ * "massage salon" is a real and common name.
+ */
+const GROOMING = ['%barber%', '%barbershop%', '%nail%', '%braid%', '%lash%', '%brow%', '%waxing%', '%tattoo%', '%hair salon%', '%haircut%', '%cuts%'];
+
+/**
+ * Which exclusions apply depends on the SUB-INTENT, not the category.
+ *
+ * The first cut keyed this on the category and was wrong in a way its own test
+ * caught: it excluded nail bars from every `spa` ask, so somebody asking for a
+ * manicure could not be sent to a nail bar. Bodywork and grooming share a
+ * category, so the ask itself is the only thing that says which the guest
+ * wants.
+ *
+ * Null means exclude nothing.
+ */
+function exclusionsFor(cat, prefer) {
+  if (cat !== 'spa') return null;
+  // They asked for beauty work — the grooming places ARE the answer.
+  if (prefer === '%beauty%') return null;
+  // Massage, sauna, or an unspecified spa ask: a barbershop is never it.
+  return GROOMING;
+}
+
+/**
+ * The thing INSIDE the category that the guest actually asked for.
+ *
+ * A category is a bucket; "deep tissue" is a request. Before this, the
+ * specific ask was discarded the moment `detectCat` reduced it to `spa`, so
+ * "deep tissue" and "manicure" searched identically. A hit here adds a ranking
+ * bonus — it never filters, because a thin result set is worse than an
+ * imperfectly ordered one.
+ */
+const SUBINTENT = {
+  spa: [
+    [/\b(deep.?tissue|sports massage|swedish|shiatsu|reflexolog|thai massage|hot stone|aromatherap|massage|นวด|массаж|按摩)\b/i, '%massage%'],
+    [/\b(facial|manicure|pedicure|nails?)\b/i, '%beauty%'],
+    [/\b(sauna|hammam|onsen|steam room)\b/i, '%spa%'],
+  ],
+};
+
+/** The one sub-intent pattern this ask earns, or null. */
+export function subIntent(cat, text) {
+  for (const [re, pattern] of SUBINTENT[cat] ?? []) if (re.test(text || '')) return pattern;
+  return null;
+}
+
 // When nothing specific is asked for, show the things a concierge leads with.
 const DEFAULT_PATTERNS = ['%restaurant%','%attraction%','%spa%','%massage%','%caf%','%bar%','%museum%','%beach%','%viewpoint%','%temple%'];
 
@@ -450,12 +508,23 @@ const SCORE = `(
   - km * ?7
 )`;
 
-async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, limit }) {
+async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, limit, negs = null, prefer = null }) {
   const dLat = radiusKm / 111;
   const dLng = radiusKm / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
   const cat = patterns && patterns.length
     ? ' AND (' + patterns.map((_, i) => `category LIKE ?${8 + i}`).join(' OR ') + ')'
     : '';
+  // Bind slots run: ?1 lat, ?2 lng, ?3-?6 cells, ?7 distWeight, ?8+ patterns,
+  // then exclusions, then the single prefer pattern. Computed rather than
+  // written down, because a hand-counted offset is how this breaks silently.
+  const negAt = 8 + (patterns?.length || 0);
+  const neg = negs && negs.length
+    ? ' AND NOT (' + negs.map((_, i) => `name LIKE ?${negAt + i}`).join(' OR ') + ')'
+    : '';
+  const prefAt = negAt + (negs?.length || 0);
+  // A bonus, never a filter. 0.6 is about the gap between a 4.2 and a 4.8, so
+  // it reorders within a good set without dragging a bad place to the top.
+  const prefBonus = prefer ? ` + CASE WHEN name LIKE ?${prefAt} OR category LIKE ?${prefAt} THEN 0.6 ELSE 0 END` : '';
   const sql = `SELECT ${SELECT_COLS}, km FROM (
       SELECT ${SELECT_COLS}, lat, lng,
         ROUND(6371*acos(MAX(-1.0, MIN(1.0,
@@ -469,13 +538,13 @@ async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, 
       -- recommendation. NULL is unknown and stays eligible — most of the
       -- directory has never been checked, and hiding it would empty the map.
       WHERE (alive IS NULL OR alive = 1)
-        AND cell_lat BETWEEN ?3 AND ?4 AND cell_lng BETWEEN ?5 AND ?6${cat}
-    ) WHERE km <= ${Number(radiusKm)} ORDER BY ${SCORE} DESC LIMIT ${Math.max(1, limit | 0)}`;
+        AND cell_lat BETWEEN ?3 AND ?4 AND cell_lng BETWEEN ?5 AND ?6${cat}${neg}
+    ) WHERE km <= ${Number(radiusKm)} ORDER BY ${SCORE}${prefBonus} DESC LIMIT ${Math.max(1, limit | 0)}`;
   const binds = [
     lat, lng,
     Math.floor((lat - dLat) * 10), Math.floor((lat + dLat) * 10),
     Math.floor((lng - dLng) * 10), Math.floor((lng + dLng) * 10),
-    distWeight, ...(patterns || []),
+    distWeight, ...(patterns || []), ...(negs || []), ...(prefer ? [prefer] : []),
   ];
   const { results } = await env.DB.prepare(sql).bind(...binds).all();
   return results || [];
@@ -486,17 +555,31 @@ async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, 
  * coming back empty: a guest asking for seafood in a quiet town should get the
  * best nearby restaurants, not an apology.
  */
-export async function nearbyPlaces(env, loc, text, limit = 8) {
-  const cat = detectCat(text);
+export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null) {
+  // THE TOPIC CAN LIVE IN THE PREVIOUS TURN, AND USUALLY DOES WHEN NUM ASKED.
+  //
+  // On 14 Sep a guest was asked "full-service spa, quick walk-in, or
+  // sports/deep-tissue massage?" and answered "Deep tissue". That answer
+  // contains neither "massage" nor "spa", so detectCat returned null, the
+  // search fell through to DEFAULT_PATTERNS — which include %spa% — and the
+  // best-scoring match was a barbershop.
+  //
+  // The hint is the recent conversation, and it is used for the CATEGORY ONLY:
+  // never for location (a city named three turns ago must not follow the guest
+  // around) and never to override a category the current message states
+  // outright. It fills a blank; it does not argue.
+  const cat = detectCat(text) ?? (topicHint ? detectCat(topicHint) : null);
   const near = asksNearMe(text);
   const base = near ? 4 : (loc.precise ? 8 : 15);
   const patterns = cat ? CATSQL[cat] : DEFAULT_PATTERNS;
+  const prefer = cat ? (subIntent(cat, text) ?? (topicHint ? subIntent(cat, topicHint) : null)) : null;
+  const negs = exclusionsFor(cat, prefer);
   const rings = [base, base * 3, base * 8];
   let rows = [];
   try {
     for (const radiusKm of rings) {
       const distWeight = (near ? 2.5 : 1.25) / radiusKm;
-      rows = await queryRing(env, { ...loc, patterns, radiusKm, distWeight, limit });
+      rows = await queryRing(env, { ...loc, patterns, radiusKm, distWeight, limit, negs, prefer });
       if (rows.length >= Math.min(4, limit)) break;
     }
     // Still thin — the category may simply not exist here. Offer the best of what does.

@@ -318,3 +318,20 @@ test('every fixture produces a block that forbids mentioning itself', () => {
   assert.ok(blocks.length);
   for (const b of blocks) assert.match(b, /never mention it/i);
 });
+
+/* ── a list of places is a product rule the voice may never override ──── */
+
+test('no register reading may reduce a place answer to one option', () => {
+  // Dre, 14 Sep, after a live deep-tissue ask came back with a single
+  // barbershop: "when we are recommending locations, just make sure to get a
+  // list of locations not just one." The house voice already says three; the
+  // dials must not quietly undo it. Terse controls LENGTH, the wheel controls
+  // how hard Num steers — neither controls the count.
+  const terse = registerFor(said('food?', 'where', 'cheap one', 'tonight', 'book it'));
+  assert.match(terse, /LENGTH ONLY/);
+  assert.match(terse, /you still name three/);
+
+  const handed = registerFor(said('somewhere for dinner', 'surprise me', 'your call honestly'));
+  assert.match(handed, /you still name three/);
+  assert.doesNotMatch(handed, /Do not lay out a field/);
+});

@@ -295,7 +295,7 @@ export function registerBlock(reg) {
   const lines = [];
 
   if (reg.length === 'terse') {
-    lines.push('- This guest writes in a few words. Match it: answer first, no framing sentence, no sign-off. Well under the cap, not at it.');
+    lines.push('- This guest writes in a few words. Match it: answer first, no framing sentence, no sign-off. Well under the cap, not at it. This is about LENGTH ONLY — when they ask where to go you still name three, just in fewer words each.');
   }
   if (reg.length === 'expansive') {
     lines.push('- This guest writes at length and reads the detail. Give the reason behind your choice, and the option you turned down — inside the length cap, which does not move.');
@@ -314,7 +314,7 @@ export function registerBlock(reg) {
   }
 
   if (reg.wheel === 'num-decides') {
-    lines.push('- They hand over the decision. Take it: give ONE answer and commit to it, with the single reason it is the right one. Do not lay out a field for them to weigh. Committing to a choice is not the same as claiming it is arranged — never say a thing is held or confirmed.');
+    lines.push('- They hand over the decision. Take it: for a time, a route or a yes/no, give ONE answer and commit to it. For somewhere to GO you still name three — they always get the list — but lead with the one you would choose and say plainly that it is your call, rather than laying out a field and standing back. Committing to a choice is never the same as claiming it is arranged: never say a thing is held or confirmed.');
   }
   if (reg.wheel === 'guest-decides') {
     lines.push('- They want to decide themselves. Lay out the options with the one detail that separates each, say which way you lean in a single line, and leave the choice with them.');
