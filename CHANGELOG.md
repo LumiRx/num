@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.306 — 2026-09-15 07:17 UTC
+
+repair saved state on restore, and give the crash screen a way out
+
+- commit `4679b38`
+
 ## 0.8.305 — 2026-09-14 19:19 UTC
 
 what changed
