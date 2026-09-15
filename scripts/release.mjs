@@ -462,6 +462,28 @@ switch (cmd) {
     } catch {
       /* tagging is a convenience, never a blocker */
     }
+    // ── WHO ELSE IS NOW BEHIND ────────────────────────────────────────
+    //
+    // num-app has just shipped. Every OTHER worker that compiles a file this
+    // release changed is now running older code, and nothing about that fails.
+    //
+    // 15 Sep 2026 is why this is here: `ai/places.js` was fixed and deployed
+    // to num-ai, num-app bundles the same file and was not redeployed, and the
+    // Hollywood bug stayed live in the phone app for the rest of the session
+    // while every signal said the fix had shipped. See scripts/deploydrift.mjs.
+    //
+    // A warning, not a failure: this release IS live and correct, and exiting
+    // non-zero here would imply otherwise. What is left to do is other deploys,
+    // and the message prints the command for each of them.
+    try {
+      const drift = await import('./deploydrift.mjs');
+      drift.record('num-app');
+      const warn = drift.siblingWarning('num-app');
+      if (warn) console.log(warn);
+    } catch (e) {
+      console.warn('  (could not check sibling workers: ' + (e?.message ?? e) + ')');
+    }
+
     console.log(`\n✓ v${pkg.version} is live.\n`);
     break;
   }

@@ -1,6 +1,35 @@
 # Recipe: deploy
 
-**Tier 0 — the whole thing, when both workers changed.**
+**Tier 0 — START HERE, ALWAYS. Ask what actually needs deploying.**
+
+```bash
+cd ~/num-worktrees/app-main
+npm run deploy:check
+```
+
+It hashes the files each worker really compiles against what that worker last
+shipped, and names the ones that changed. Run it BEFORE you deploy so you know
+the full list, and AFTER, so you can see the list is empty.
+
+**Why this exists.** There are eight code workers and they share source files —
+`ai/places.js` is compiled into both num-ai and num-app. Each worker gets its
+OWN COPY at build time, so fixing a shared file and deploying one worker leaves
+the other running the old code with no error, no failing test, and no alarm.
+On 15 Sep 2026 the Hollywood retrieval bug was fixed, tested, deployed to
+num-ai, and stayed live in the phone app for the rest of the session because
+num-app was never redeployed. Every signal said the fix had shipped.
+
+`release:ship` records itself and prints this warning automatically. The other
+workers record themselves through `npm run deploy:growth` and `npm run deploy:ai`
+— if you deploy one with a bare `npx wrangler deploy` line instead, stamp it by
+hand or the ledger goes stale:
+
+```bash
+cd ~/num-worktrees/app-main
+npm run deploy:mark num-growth
+```
+
+**Tier 1 — the whole thing, when both main workers changed.**
 
 ```bash
 cd ~/num-worktrees/app-main
@@ -11,7 +40,7 @@ npx wrangler deploy --config growth/wrangler.jsonc
 node scripts/claim.mjs release deploy --who dre
 ```
 
-**Tier 1 — host or admin work only.** Those routes live on the growth worker,
+**Tier 2 — host or admin work only.** Those routes live on the growth worker,
 so `release:stage`/`ship` do not touch them. Only the wrangler line matters.
 
 **ROLLBACK IS NOT A STEP. It is the emergency undo.**
@@ -61,7 +90,7 @@ export GIT_WORK_TREE="$HOME/mnt/num-worktrees/app-main"
 `/Users/dre/mnt/NUM/...`, which does not exist — and they then break every git command in that window
 until `unset GIT_DIR GIT_WORK_TREE`. It happened on 12 Sep 2026.
 
-**Tier 2 — when it fails.**
+**Tier 3 — when it fails.**
 
 - *"Nothing to ship for X"* — a stage failed before uploading. Run stage again;
   do not force wrangler past it.

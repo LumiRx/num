@@ -4,7 +4,7 @@ The ledger. **Read this first in a fresh chat; do not re-read the codebase to
 learn what is already known.** One screen of state, updated at the end of every
 run. Detail lives in the project docs, not here.
 
-_Last updated: 2026-09-14 · production **0.8.298 live and healthy** (health verdict ok, 0 failing, 02:25 UTC) · voice layer and the deep-tissue retrieval fix both LIVE_
+_Last updated: 2026-09-15 · **Hollywood fix live on num-ai, NOT YET on num-app** · deploy-drift guard added (`npm run deploy:check`) · Num Expert card page `/s/CODE` built, not deployed_
 
 ---
 
@@ -15,7 +15,7 @@ _Last updated: 2026-09-14 · production **0.8.298 live and healthy** (health ver
 | App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
 | Tests | 4,801 green, 0 lint errors, tsc clean (travel-speak + voice lints both wired into `npm test`) |
-| Release | `stage` then `ship`. Ship alone refuses; that guard is correct. |
+| Release | `stage` then `ship`. Ship alone refuses; that guard is correct. **`ship` now also records the deploy and warns which other workers are behind** — see `scripts/deploydrift.mjs`. |
 
 ## Live and working
 
@@ -919,7 +919,25 @@ aborts cleanly because nothing has been applied yet. `recipes/deploy.md` now say
 
 ## Facts that cost tokens to rediscover
 
-- **Two workers.** `worker/` → num-app (`app.itsnum.com`). `growth/worker.js` → num-growth (`itsnum.com/api/host/*`, `/api/admin/*` on that zone). Anything host-side ships with `npx wrangler deploy --config growth/wrangler.jsonc`.
+- **EIGHT code workers, not two.** This line said "two workers" until 15 Sep and that
+  was the single most expensive wrong fact in this file. `worker/index.mjs` → num-app
+  (`app.itsnum.com`). `growth/worker.js` → num-growth (`itsnum.com/api/host/*`,
+  `/api/admin/*`, and every short apex path: `/r/ /go/ /v/ /p/ /a/ /o/ /s/`).
+  `ai/worker.js` → num-ai (`/api/claim*`, `/api/places*`, the LINE concierge). Plus
+  num-accounts, num-payouts, num-claim, num-agents, num-scout. `wrangler.jsonc` is
+  num-console, assets-only, and serves `itsnum.com/*` as the catch-all — so a
+  dynamic path on the apex needs BOTH a handler in a code worker AND a route in that
+  worker's config, or it falls through to `public/404.html`. That is why
+  `itsnum.com/s/FARMER` 404'd. `node scripts/deploydrift.mjs files <worker>` lists
+  what any of them compiles.
+- **SHARED SOURCE IS NOT A SHARED SERVICE — this is the one that bites.** `ai/places.js`
+  is imported by num-ai AND num-app, and each compiles its **own copy at build time**.
+  Fixing it and deploying one worker leaves the other on the old code with no error,
+  no failing test and no alarm. It happened on 15 Sep with the Hollywood bug: fixed,
+  deployed to num-ai, still broken in the phone app. **`npm run deploy:check` is now
+  the answer** — it hashes what each worker actually bundles against what it last
+  shipped and names the files. `release:ship` runs it automatically and prints the
+  command for every worker left behind.
 - **`/api/admin/claims` is served by `index.mjs`, not `console.mjs`**, and is gated on an `X-Admin-Key` header. It answers 404, not 401, when the header is missing — deliberately, so a probe cannot confirm it exists.
 - **Three claim tables**: `claims` (growth funnel), `num_claims` (canonical), `num_app_claims`. The morning alert reads `num_claims`; the approvals endpoint reads `claims`.
 - **Git is fine.** The repo is at `/Users/dre/Documents/Claude/Projects/NUM/.git` with four worktrees. A Cowork shell cannot see `/Users` at all — that is a sandbox boundary, not a missing repo.

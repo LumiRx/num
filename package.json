@@ -18,7 +18,7 @@
     "design:check": "node scripts/design-check.mjs status",
     "check:site": "node scripts/coverage-claims.mjs && node scripts/head-price-lint.mjs && node scripts/travelspeak-lint.mjs",
     "deploy:site": "npm run check:site && npx wrangler deploy --config wrangler.jsonc",
-    "deploy:growth": "npx wrangler deploy --config growth/wrangler.jsonc",
+    "deploy:growth": "npx wrangler deploy --config growth/wrangler.jsonc && node scripts/deploydrift.mjs record num-growth",
     "release": "node scripts/release.mjs",
     "release:stage": "node scripts/release.mjs stage",
     "release:ship": "node scripts/release.mjs ship",
@@ -40,7 +40,11 @@
     "app:android": "npm run app:sync && npx cap open android",
     "claim": "node scripts/claim.mjs",
     "mcp:integrity": "node scripts/mcp-integrity.mjs",
-    "mcp:integrity:offline": "node scripts/mcp-integrity.mjs --offline"
+    "mcp:integrity:offline": "node scripts/mcp-integrity.mjs --offline",
+    "deploy:ai": "npx wrangler deploy --config ai/wrangler.jsonc && node scripts/deploydrift.mjs record num-ai",
+    "deploy:check": "node scripts/deploydrift.mjs",
+    "deploy:mark": "node scripts/deploydrift.mjs record",
+    "deploy:files": "node scripts/deploydrift.mjs files"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

@@ -60,3 +60,8 @@ affiliates.json
 
 # Local pre-edit backups. Never committed.
 _to_delete/
+
+# Which workers this machine last deployed, and at what contents. Per-machine
+# like .release-staged.json — committing it would make one person's deploy look
+# like everyone's. See scripts/deploydrift.mjs.
+.deploy-shipped.json
