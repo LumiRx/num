@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.311 — 2026-09-15 15:59 UTC
+
+repair saved state on restore, and give the crash screen a way out
+
+- commit `f960692`
+
 ## 0.8.310 — 2026-09-15 15:49 UTC
 
 conversation layer: repair + turn rules
