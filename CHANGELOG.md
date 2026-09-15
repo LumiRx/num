@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.309 — 2026-09-15 08:28 UTC
+
+hollywood retrieval + expert card page + deploy drift guard
+
+- commit `3ba5538`
+
 ## 0.8.308 — 2026-09-15 08:14 UTC
 
 (no note given)
