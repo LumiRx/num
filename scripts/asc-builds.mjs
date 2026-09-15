@@ -41,7 +41,13 @@ import { join } from 'node:path';
 const KEY_ID = process.env.ASC_KEY_ID;
 const ISSUER = process.env.ASC_ISSUER_ID;
 const APP_ID = process.env.ASC_APP_ID;
-const WANT_VERSION = process.argv[2] || null;
+// argv[2] is a marketing version, NOT a flag. Passing `--list` used to be read
+// as "filter to the version named --list", which matches nothing, which printed
+// `highest: none` — indistinguishable from "Apple holds no builds". That is the
+// most dangerous possible wrong answer here: it tells the ship gate every build
+// number is free. Flags are skipped, and an empty filtered set is reported as
+// such rather than as none.
+const WANT_VERSION = process.argv.slice(2).find((a) => !a.startsWith('-')) || null;
 
 if (!KEY_ID || !ISSUER || !APP_ID) {
   console.error('missing credentials. Set ASC_KEY_ID, ASC_ISSUER_ID and ASC_APP_ID.');
@@ -92,6 +98,17 @@ const builds = (body.data ?? []).map((b) => ({
 }));
 const scoped = WANT_VERSION ? builds.filter((b) => b.version === WANT_VERSION) : builds;
 const highest = scoped.reduce((m, b) => (Number.isFinite(b.build) && b.build > m ? b.build : m), 0);
+
+// Apple answered, but nothing came back at all. Callers must not read that as
+// "no builds exist" — it is far more likely a credential or app-id problem.
+if ((body.data ?? []).length === 0) {
+  console.error('App Store Connect returned zero builds for this app id. Check ASC_APP_ID and the key\'s team.');
+  process.exit(3);
+}
+if (WANT_VERSION && scoped.length === 0) {
+  console.error(`no builds found for marketing version ${WANT_VERSION}. Versions Apple holds: ${[...new Set(builds.map((b) => b.version))].join(', ')}`);
+  process.exit(3);
+}
 
 // `--list` prints every build Apple holds, newest first. The version page in
 // App Store Connect shows only the build currently SELECTED for submission,
