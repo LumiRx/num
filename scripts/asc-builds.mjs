@@ -92,4 +92,23 @@ const builds = (body.data ?? []).map((b) => ({
 }));
 const scoped = WANT_VERSION ? builds.filter((b) => b.version === WANT_VERSION) : builds;
 const highest = scoped.reduce((m, b) => (Number.isFinite(b.build) && b.build > m ? b.build : m), 0);
-console.log(highest || 'none');
+
+// `--list` prints every build Apple holds, newest first. The version page in
+// App Store Connect shows only the build currently SELECTED for submission,
+// which is easily read as "this is all Apple has". It is not the same thing.
+if (process.argv.includes('--list')) {
+  const rows = (body.data ?? [])
+    .map((b) => ({
+      build: Number(b.attributes?.version),
+      version: pre.get(b.relationships?.preReleaseVersion?.data?.id) ?? '?',
+      uploaded: b.attributes?.uploadedDate ?? '',
+    }))
+    .filter((b) => !WANT_VERSION || b.version === WANT_VERSION)
+    .sort((a, b) => b.build - a.build);
+  for (const r of rows) {
+    console.log(`  ${r.version} (${r.build})   uploaded ${r.uploaded.slice(0, 16).replace('T', ' ')}`);
+  }
+  console.log(`\n  highest: ${highest || 'none'}`);
+} else {
+  console.log(highest || 'none');
+}
