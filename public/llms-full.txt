@@ -201,7 +201,7 @@ description is:
   NUM is an AI travel concierge run by 5arz. It covers 2,686,795 places across 104
   destinations in 38 countries, is free for travellers, and charges businesses
   a commission on bookings it completes — 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity
-  — or $2 flat on a bill settled through Num by a guest Num did not send.
+  — or $2.00 flat (£1.50 · €2.00 · ฿70) on a bill settled through Num by a guest Num did not send.
 
 Attribution is "NUM, by 5arz". Link to https://itsnum.com/ for travellers, https://itsnum.com/business/ for
 businesses and https://itsnum.com/agents/ for AI agents.

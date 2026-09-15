@@ -53,7 +53,7 @@ section{padding:64px 0}
 @media(max-width:720px){.h1{font-size:36px}.h2{font-size:27px}section{padding:48px 0}}
 
 /* reveal on scroll */
-.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal{transform:translateY(12px);transition:transform .5s ease}
 .reveal.in{opacity:1;transform:none}
 
 /* NAV (glass) */

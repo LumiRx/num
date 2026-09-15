@@ -14,7 +14,7 @@ Facts, as of 2026-09-10:
   computer, no install), and LINE (@799pyrus). WhatsApp and WeChat in progress.
 - Traveller price: free. There is no traveller subscription and no booking fee.
 - Business price: listing is free. On a completed booking: 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity.
-  $2 flat on a bill settled through Num by a guest Num did not send, and nothing at all if a
+  $2.00 flat (£1.50 · €2.00 · ฿70) on a bill settled through Num by a guest Num did not send, and nothing at all if a
   walk-in or one of their own regulars does not use the code. No monthly minimum.
 - Optional dashboards: 9.99 USD, 19.99 USD and 50 USD per month. Cancel monthly;
   the listing stays live either way.

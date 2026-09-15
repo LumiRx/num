@@ -50,9 +50,9 @@
 <script src="/js/reddit.js" defer></script>
 <style>
 /* ── THE ASK ──────────────────────────────────────────────────────────────
-   This page's whole job is to let a stranger use Num before it asks them for
+   This page's whole job is to let a stranger use NUM before it asks them for
    anything. No signup, no app store, no home-screen prompt on arrival — the
-   install invitation appears only after Num has actually answered twice and
+   install invitation appears only after NUM has actually answered twice and
    earned it. 95% of the traffic that lands here is a phone inside Reddit's
    in-app browser, which cannot install a PWA at all, so nothing above the fold
    is allowed to depend on being able to. */
@@ -60,7 +60,7 @@
 /* ── THE ONE WAY OFF THIS PAGE ────────────────────────────────────────────
    This page deliberately has no site navigation: it is what paid traffic
    lands on, and every extra exit is a click that cost money and left without
-   asking Num anything. But "no nav" had become "no way home and no brand at
+   asking NUM anything. But "no nav" had become "no way home and no brand at
    all" — the page opened on a bare headline, which reads like a page someone
    scraped rather than a company you are about to trust with dinner.
    So: the wordmark, which goes home, and one link for the question a
@@ -104,7 +104,7 @@
   border-bottom-left-radius:6px}
 .bub.num.err{background:#FEF2F2;border-color:#FECACA;color:#B4232B}
 /* ── THE PLACES THEMSELVES ─────────────────────────────────────────────────
-   Until 3 Sep 2026 this page showed Num's prose and threw the picks away:
+   Until 3 Sep 2026 this page showed NUM's prose and threw the picks away:
    three verified places with map links, tel: links and a reason, and not one
    of them tappable. A guest read "I'd take Ciccio — the pasta is exceptional"
    and had no way to get there. On the page every paid click lands on. */
@@ -157,11 +157,11 @@
 .send[disabled]{opacity:.5;cursor:default}
 .under{text-align:center;color:var(--slate);font-size:13.5px;margin:12px 0 0}
 
-/* the install invitation — hidden until Num has earned it */
+/* the install invitation — hidden until NUM has earned it */
 .earned{display:none;margin:30px 0 4px;border:1px solid var(--pri-l);background:var(--pri-xl);
   border-radius:20px;padding:26px 26px 24px;text-align:center;
   box-shadow:0 1px 2px rgba(10,26,36,.04),0 18px 44px rgba(14,164,131,.13)}
-/* THE MOMENT THIS PAGE IS BUILT FOR. It appears only after Num has actually
+/* THE MOMENT THIS PAGE IS BUILT FOR. It appears only after NUM has actually
    answered twice, so by the time anyone reads it they already know what they
    would be keeping. It is allowed to be the loudest thing on the page —
    everything above it is deliberately quieter so that this can be. */
@@ -190,7 +190,7 @@
    Four real photographs the site already owned and the old homepage barely
    used. They are here to do a job, not to decorate: the hero shows a person
    mid-use so the box below it reads as the same thing she is holding, and the
-   strip lower down pairs a real face with a real question and Num's real
+   strip lower down pairs a real face with a real question and NUM's real
    answer. Nothing on this page is an illustration of a product that does not
    exist yet. */
 /* ORDER IS THE WHOLE POINT ON A PHONE.
@@ -229,7 +229,7 @@
   .earned{max-width:760px;margin-left:auto;margin-right:auto}
 }
 
-/* the ask strip — a face, a real question, Num's real answer */
+/* the ask strip — a face, a real question, NUM's real answer */
 /* Same 1080 as the hero and the header: one left edge for the whole page. */
 .asks{max-width:1080px;margin:64px auto 0;padding:0 20px}
 .asked{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:20px}
@@ -304,7 +304,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
     <form class="composer" id="composer">
       <input id="q" type="text" autocomplete="off" enterkeyhint="send"
-             placeholder="Or ask me anything…" aria-label="Ask Num anything">
+             placeholder="Or ask me anything…" aria-label="Ask NUM anything">
       <button class="send" type="submit" id="send">Ask</button>
     </form>
   </div>
@@ -312,12 +312,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   <p class="under">Free. No signup, no app store, no card. Ask as much as you like.</p>
 
   <!-- Always visible, by decision (Dre, 3 Sep 2026): the ads page must offer a
-       way to add Num and a way to message it, on arrival — not only after two
+       way to add NUM and a way to message it, on arrival — not only after two
        answers. Placed UNDER the ask box on purpose, so the box stays the first
        thing a paid visitor meets and the thing the campaign bids on (Lead =
        first message). -->
   <div class="ways" id="ways">
-    <span class="lede">Keep Num handy:</span>
+    <span class="lede">Keep NUM handy:</span>
     <a class="btn pri" href="/app/" id="addNum">Add to home screen</a>
     <a class="btn ghost" id="waLine" href="#" hidden rel="noopener">WhatsApp</a>
     <a class="btn ghost" href="https://line.me/R/ti/p/@799pyrus" rel="noopener">LINE</a>
@@ -358,13 +358,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
          phone it is the first thing under the fold. Intrinsic size is set so
          nothing reflows under a thumb that is already reaching for the box. -->
     <figure class="shot" style="margin:0">
-      <img src="/assets/hero.jpg" width="900" height="1117" alt="A traveller asking Num for somewhere to eat"
+      <img src="/assets/hero.jpg" width="900" height="1117" alt="A traveller asking NUM for somewhere to eat"
            fetchpriority="high" decoding="async">
-      <figcaption>She asked for lunch. Num gave her three places and said which one it would pick.</figcaption>
+      <figcaption>She asked for lunch. NUM gave her three places and said which one it would pick.</figcaption>
     </figure>
   </div>
 
-  <!-- Shown only after Num has answered twice. Never on arrival. -->
+  <!-- Shown only after NUM has answered twice. Never on arrival. -->
   <section class="earned" id="earned">
     <span class="tag">You've seen what it does</span>
     <h3>Now put it where you'll need it</h3>
@@ -386,7 +386,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       <img src="/assets/p1.jpg" width="820" height="612" alt="Two travellers checking their phone on a street" loading="lazy" decoding="async">
       <div class="body">
         <q>Somewhere for dinner where we won't be the only tourists</q>
-        <p class="ans">Three neighbourhood places, none of them on the strip — and <b>which one Num would pick</b>, with the reason.</p>
+        <p class="ans">Three neighbourhood places, none of them on the strip — and <b>which one NUM would pick</b>, with the reason.</p>
         <span class="tag">answered in seconds</span>
       </div>
     </figure>
@@ -402,7 +402,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       <img src="/assets/p3.jpg" width="820" height="612" alt="Two travellers laughing over a phone by rice terraces" loading="lazy" decoding="async">
       <div class="body">
         <q>A table for six tonight, one of us is vegetarian</q>
-        <p class="ans">Num checks it can seat six, then <b>books it</b> — or tells you plainly that it can't.</p>
+        <p class="ans">NUM checks it can seat six, then <b>books it</b> — or tells you plainly that it can't.</p>
         <span class="tag">it does the ringing</span>
       </div>
     </figure>
@@ -416,24 +416,24 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <div class="fact"><b>77</b><span>destinations across 38 countries</span></div>
     <div class="fact"><b>24/7</b><span>any language, any hour</span></div>
   </div>
-  <p class="plain">Num is not a search engine and it is not a directory. You say what you actually want —
+  <p class="plain">NUM is not a search engine and it is not a directory. You say what you actually want —
     <b>"somewhere my mother-in-law will like", "open now", "not touristy"</b> — and it answers the way a
     concierge would: three real places, and which one it would pick. Nobody pays to be recommended, and
-    when Num isn't sure it says so instead of inventing something.</p>
+    when NUM isn't sure it says so instead of inventing something.</p>
 </section>
 
 <footer><div class="wrap">
   <div class="frow">
     <div>
       <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
-      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 104 destinations across 38 countries. By 5arz.</p>
+      <p style="margin-top:12px;max-width:32ch">Text it. It&rsquo;s booked. NUM is a travel concierge you text: real places, checked by real people, in 104 destinations across 38 countries. By 5arz.</p>
     </div>
     <div><h4>Product</h4><a href="/what-we-do/">What we do</a><a href="/app/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/perks/">Perks</a><a href="/business/">For business</a><a href="/agents/">For AI agents</a></div>
     <div><h4>Get started</h4><a href="/claim/">List your business</a><a href="/hosts/">For concierges &amp; hosts</a><a href="/business/pricing/">Pricing</a><a href="/business/">Why list with NUM</a></div>
     <div><h4>Company</h4><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></div>
-    <div><h4>Contact</h4><a href="mailto:info@itsnum.com">info@itsnum.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://5arz.com">5arz.com</a></div>
+    <div><h4>Contact</h4><a href="mailto:info@itsnum.com">info@itsnum.com</a><a href="https://line.me/R/ti/p/@799pyrus">LINE @799pyrus</a><a href="https://www.youtube.com/@itsnum" rel="me">YouTube</a><a href="https://5arz.com">5arz.com</a></div>
   </div>
-  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Verified humans, real places.</span></div>
+  <div class="fbot"><span>&copy; 2026 NUM &middot; by 5arz</span><span>Real places, checked by real people.</span></div>
 </div></footer>
 
 <script src="/assets/site.js"></script>
