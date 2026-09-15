@@ -1,8 +1,14 @@
 # NUM — STATUS
 
-The ledger. **Read this first in a fresh chat; do not re-read the codebase to
-learn what is already known.** One screen of state, updated at the end of every
-run. Detail lives in the project docs, not here.
+**Read `LEDGER.md` FIRST — it is the master board and it is generated, so it
+cannot be out of date with what anyone recorded.** Then read this, which is the
+other half: the prose, and the hard-won facts that cost tokens to rediscover.
+
+The two do not compete. LEDGER.md answers *what state is everything in* and is
+built from append-only entries nobody can overwrite. This file answers *what do
+I need to know before I touch anything*, and humans write it.
+
+Do not re-read the codebase to learn what these two already say.
 
 _Last updated: 2026-09-15 · **Hollywood fix live on num-ai, NOT YET on num-app** · deploy-drift guard added (`npm run deploy:check`) · Num Expert card page `/s/CODE` built, not deployed_
 

@@ -44,7 +44,11 @@
     "deploy:ai": "npx wrangler deploy --config ai/wrangler.jsonc && node scripts/deploydrift.mjs record num-ai",
     "deploy:check": "node scripts/deploydrift.mjs",
     "deploy:mark": "node scripts/deploydrift.mjs record",
-    "deploy:files": "node scripts/deploydrift.mjs files"
+    "deploy:files": "node scripts/deploydrift.mjs files",
+    "ledger": "node scripts/ledger.mjs",
+    "ledger:add": "node scripts/ledger.mjs add",
+    "ledger:check": "node scripts/ledger.mjs check",
+    "daily": "node scripts/ledger.mjs check && node scripts/deploydrift.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
