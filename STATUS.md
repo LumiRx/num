@@ -548,6 +548,95 @@ Two possible fixes, **Dre's call, neither built**:
 
 4,801 tests green, both lints clean. **SHIPPED 0.8.298, 02:25 UTC 14 Sep — health ok, 0 failing. Not yet re-tested against live data** — the seeded test proves the logic, only a live ask proves the category labels in production match it.
 
+## The conversation layer — Num learns to be corrected — 15 Sep
+
+**Voice decision, recorded:** Dre picked **Helena** (Higgsfield preset,
+`3c2b83c0-2e0a-5ae8-998a-a5fe71b7eccd`) as Num's voice, 15 Sep. Nothing in the
+codebase uses it yet — the guest-facing speaking half is still unbuilt, and
+`worker/orderalert.mjs` still calls venues as `Polly.Joanna`. See
+`num-VOICE-AUDITION` for the two-voices point: the guest voice and the venue
+voice are different jobs and should not be the same voice.
+
+**`worker/repair.mjs` is new, and it is the gap the barbershop exposed.** The
+retrieval bug was fixed on 14 Sep. What was never built was any designed
+behaviour for being TOLD we were wrong — Num would have silently re-guessed or
+explained itself, and those are measurably the two worst options available.
+
+Repair is not an error path. Across twelve languages it happens about **once
+every 1.4 minutes** of conversation and nobody experiences it as failure
+(Dingemanse et al. 2015, 2,053 sequences), and the whole repair sequence
+averages only **1.2× the length** of the turn that caused the trouble. So it is
+short, normal, and cheap — treating it as an embarrassing exception is the bug.
+
+The brief follows Schegloff's third-position structure: **marker → say back
+what they said → reject the reading, never the person → the corrected answer in
+the SAME message.** Plus what the experiments add:
+
+- **Take the blame internally and seriously.** A serious apology accepting
+  blame beat everything on perceived intelligence (η²ₚ=.156) and likeability
+  (.175); **blame-shifting scored below saying nothing at all** (3.24 vs 3.81,
+  p=.016) and jokey apologies underperformed throughout (Mahmood et al. 2022).
+  Admitting fault RAISED perceived competence.
+- **Never hand the work back.** Asking a user to rephrase, and silently
+  producing a different answer, were the two lowest-ranked strategies of eight
+  (Ashktorab et al. 2019, N=203). Users want the system to do the repair.
+- **Never over-apologise.** After three violations no strategy fully restores
+  trust (Esterwood & Robert 2023), so the apology is a limited resource.
+- **An unclear correction gets a candidate reading, not an open question.** "You
+  mean bodywork, not a barber?" — open-class ("sorry?") is the last-resort
+  format in every language studied.
+
+**Precedence is a contract, pinned by test:** repair > good news > the
+soulprofile question. All three want `extraSystem` (pushed LAST, strongest
+position). A guest who has just said "that's a barbershop" must not be
+congratulated and must not be surveyed.
+
+**`VOICE` gained the conversational grammar** — eight rules, each with evidence:
+
+- **ANSWER THE ANSWER.** If Num asked a question, the first thing in the next
+  message must show what the answer changed. This is the barbershop turn
+  exactly: Num asked "spa, walk-in, or deep-tissue?", got "Deep tissue", and
+  gave no sign it had heard. A question you ask and ignore produces an
+  *officially absent* second pair part (Schegloff 1968) — heard as not
+  listening, and worse than never asking.
+- **"Is there SOMETHING else" — never "anything else".** Heritage et al. (2007),
+  20 physicians / 224 patients: *something* eliminated **78% of unmet concerns**
+  (OR 0.154, p=.001); *anything* did nothing (p=.122). Neither lengthened the
+  visit. And asked EARLY, never at the end.
+- **A NO HAS A SHAPE** — marker, the reasonable part, the real reason, a small
+  no, then the nearest thing we CAN do. A bare refusal reads as hostile because
+  the elaboration IS the face-work (Pomerantz 1984). Never invent the reason.
+- **USE THEIR WORDS FOR THINGS.** Conceptual pacts are partner-specific and
+  breaking one costs the listener **286–540ms** of comprehension (Metzing &
+  Brennan 2003) — and only when *you* made the pact. Shared labels shorten
+  41 words → 8 over six references (Clark & Wilkes-Gibbs 1986); that shortening
+  IS the relationship working.
+- **But only surface a memory when it changes the answer.** Relevant memory
+  cues raised trust; intrusive ones scored **below no memory at all** (Huang et
+  al. 2026, η²=.165). If removing the callback would not change the
+  recommendation, remove it.
+- Plus: follow-ups beat new questions (Huang et al. 2017, d=.35, and follow-up
+  rate is the mediator); change subject through a pivot or mark it out loud;
+  **end on a commitment, not a question** — you cannot simply stop, silence at
+  the end reads as walking off (Schegloff & Sacks 1973).
+
+**Two bugs caught, both by demo rather than test.** The pattern for the
+headline case only had the contracted `that's` and missed **"that is a
+barbershop"** — the one sentence the module was written for; the unit test had
+used the apostrophe and passed. And a `NOT_A_CORRECTION` entry for "wrong side
+of town" was blocking a true positive, since in a concierge conversation that
+phrase *is* a guest saying the area is wrong. Both fixed, both now tested at
+the form that broke.
+
+**Open, and worth a decision:** the 3-sentence / 40-word cap may be over-tuned.
+Under-informing is penalised far harder than over-informing — under-described
+utterances rated **2.80 vs 4.35** while over-described rated about the same as
+concise ones (Engelhardt et al. 2006; Katsos & Bishop 2011 call it "pragmatic
+tolerance"). Length is not the sin; **murk** is. Not changed, because the cap is
+Dre's product decision and it is defensible on a phone.
+
+5,474 tests green, both lints clean. **NOT DEPLOYED.**
+
 ## Open decisions (Dre's, not mine)
 
 0. **Legal review before the first real charter settles.** Dre chose "NUM collects and settles,

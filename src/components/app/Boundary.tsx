@@ -30,12 +30,33 @@
  * bundle that just crashed, forever. The recovery button unregisters the
  * worker and clears its caches first. That is the difference between a reload
  * that helps and one that reproduces the bug at speed.
+ *
+ * ── AND WHY EVEN THAT WAS NOT ENOUGH ─────────────────────────────────────
+ *
+ * 15 Sep 2026, on an iPhone mid-signup:
+ *
+ *   undefined is not an object (evaluating 'e.connects.length')
+ *
+ * A malformed value in localStorage. Reload cleared the worker and the caches,
+ * restored the same bad blob, and crashed again — every single time. The only
+ * escape was deleting the app, which is the one thing you cannot ask of
+ * somebody who is halfway through adding a friend.
+ *
+ * So there is now a SECOND tier. It appears only after a recovery has already
+ * been tried and failed, and it clears the saved trip state — while leaving
+ * the account alone, because identity lives in its own key precisely so this
+ * is possible (see initialState in data.ts: "a corrupt main blob costs you
+ * your chat history and never your account").
+ *
+ * It is deliberately not the first button. Most crashes are not storage
+ * crashes, and throwing away somebody's thread on the first tap would be a
+ * worse default than reloading.
  */
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 
 type Props = { children: ReactNode };
-type State = { err: Error | null; copied: boolean };
+type State = { err: Error | null; copied: boolean; triedBefore: boolean };
 
 /**
  * Where the crash report goes.
@@ -50,6 +71,24 @@ type State = { err: Error | null; copied: boolean };
  * web the browser resolves it to the same host it is already on.
  */
 const CRASH_ENDPOINT = 'https://app.itsnum.com/api/crash';
+
+/**
+ * The saved-state keys, as literals. Rule 2 again: importing them from data.ts
+ * would pull the module whose contents may be what is broken.
+ *
+ * boundary.test.mjs holds these to the real ones in data.ts so they cannot
+ * drift — a reset that clears the wrong key is a reset that does nothing, and
+ * it would fail exactly when somebody is already stuck.
+ */
+const TRIP_KEY = 'num-trip-v1';
+
+/**
+ * How we know a reload already failed.
+ *
+ * sessionStorage, not localStorage: the flag should die with the tab, so a
+ * crash today does not offer a reset to somebody who comes back next week.
+ */
+const TRIED_KEY = 'num-recovery-tried';
 
 /**
  * Fire-and-forget, and never throws — see rule 3.
@@ -108,8 +147,20 @@ function report(err: Error, info?: ErrorInfo) {
   } catch { /* no console in some webviews */ }
 }
 
+/** Did a recovery already run in this tab? Never throws — see rule 3. */
+function tried(): boolean {
+  try {
+    return sessionStorage.getItem(TRIED_KEY) === '1';
+  } catch {
+    // Storage can throw outright in a partitioned webview. If we cannot tell,
+    // assume not: offering a destructive button to somebody on their first
+    // crash is worse than not offering it.
+    return false;
+  }
+}
+
 export default class Boundary extends Component<Props, State> {
-  state: State = { err: null, copied: false };
+  state: State = { err: null, copied: false, triedBefore: tried() };
 
   static getDerivedStateFromError(err: Error): Partial<State> {
     return { err };
@@ -121,6 +172,9 @@ export default class Boundary extends Component<Props, State> {
 
   /** Unregister the worker and drop its caches, THEN reload. */
   private recover = async () => {
+    // Remember that we tried, so a second crash in this tab can offer the
+    // reset instead of the same button that just failed.
+    try { sessionStorage.setItem(TRIED_KEY, '1'); } catch { /* partitioned storage */ }
     try {
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
@@ -140,6 +194,19 @@ export default class Boundary extends Component<Props, State> {
     } catch {
       location.reload();
     }
+  };
+
+  /**
+   * The second tier: throw away the saved trip, keep the account.
+   *
+   * Only reachable after a reload has already failed. It clears the trip blob
+   * and nothing else — the identity key is deliberately untouched, so somebody
+   * comes back signed in with an empty thread rather than signed out.
+   */
+  private reset = async () => {
+    try { localStorage.removeItem(TRIP_KEY); } catch { /* nothing to remove */ }
+    try { sessionStorage.removeItem(TRIED_KEY); } catch { /* fine */ }
+    await this.recover();
   };
 
   private copy = () => {
@@ -191,6 +258,26 @@ export default class Boundary extends Component<Props, State> {
           >
             Reload Num
           </button>
+          {this.state.triedBefore && (
+            <button
+              type="button"
+              onClick={this.reset}
+              style={{
+                width: '100%', marginTop: 10, cursor: 'pointer',
+                background: '#fff', color: '#ec3013', border: '1px solid #ec3013',
+                fontWeight: 700, fontSize: 15, padding: '13px 20px', borderRadius: 999,
+                fontFamily: 'inherit',
+              }}
+            >
+              Still broken — clear saved data
+            </button>
+          )}
+          {this.state.triedBefore && (
+            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#8a827c' }}>
+              Clears this trip&rsquo;s saved chat on this device. You stay signed in, and
+              your plans and bookings are on Num&rsquo;s side, not this phone.
+            </p>
+          )}
           <button
             type="button"
             onClick={this.copy}

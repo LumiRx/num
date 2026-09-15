@@ -147,6 +147,35 @@ async function start(env, req) {
   await env.DB.prepare('INSERT INTO num_app_claims (id, place_id, member_id, state) VALUES (?1,?2,?3,?4)')
     .bind(id, placeId, memberId, contested ? 'review' : 'open').run();
 
+  // ── WHO SENT THEM ──────────────────────────────────────────────────────
+  //
+  // A scout's NFC card puts ?scout=CODE on the link and drops a first-touch
+  // cookie, so by the time the owner reaches this form the attribution is
+  // already in the request. Recorded here, at the START of the claim, because
+  // this is the last moment we can be sure the tap and the sign-up are the
+  // same visit — a lot of owners finish the verification hours later on a
+  // different device.
+  //
+  // Deliberately non-fatal in every direction: a scout who has hit their cap,
+  // a place another scout already introduced, or a business already on Num all
+  // return quietly. None of them is a reason to stop a real business signing
+  // up, and none of them should tell the person at the counter anything about
+  // somebody else's claim.
+  try {
+    const { scoutCodeFrom, scoutByCode, introduce } = await import('./scouts.mjs');
+    const code = scoutCodeFrom(req, b);
+    if (code) {
+      const scout = await scoutByCode(env, code);
+      if (scout) {
+        await introduce(env, {
+          scoutId: scout.id, placeId, bizName: place.name,
+          dest: place.dest ?? null, country: place.country ?? null,
+          lat: place.lat ?? null, lng: place.lng ?? null,
+        });
+      }
+    }
+  } catch { /* attribution is never worth failing a claim over */ }
+
   return json({
     claim_id: id,
     place: { id: place.id, name: place.name, area: place.area, dest: place.dest },
@@ -266,6 +295,15 @@ async function grant(env, claim) {
       .bind(claim.id),
     ...(await onboardStatements(env, businessId, place, 'app-claim:' + claim.channel)),
   ]);
+
+  // The scout's introduction becomes VERIFIED here, and still earns nothing.
+  // The finder fee waits for this business to produce real revenue — see
+  // recordRevenue in scouts.mjs. Verification is a signature, and the whole
+  // programme is built on not paying for signatures.
+  try {
+    const { markVerified } = await import('./scouts.mjs');
+    await markVerified(env, { placeId: claim.place_id, claimId: claim.id });
+  } catch { /* never block an onboarding on attribution bookkeeping */ }
 
   // ── The onboarding actually completes now ──────────────────────────────
   //

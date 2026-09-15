@@ -20,8 +20,29 @@
 // show "that pack is $1,425, continue?" rather than a dead end. Refusing well
 // is a feature; refusing silently is how the $1 bug survived review.
 
-/** Star packs. The single source of price truth for anything Stars-related. */
-export const STAR_PACKS = Object.freeze({ 500: 15000, 1000: 29500, 5000: 142500 });
+/**
+ * Star packs. The single source of price truth for anything Stars-related.
+ *
+ * ONE STAR IS ONE DOLLAR. Dre, 14 Sep 2026: peg it the same way 5arz does so
+ * it can translate in the future. 5arz Stars are USD-pegged, and `cashout.mjs`
+ * already lets an EARNED Num Star be paid out to 5arz — so any rate other than
+ * 1:1 meant Num was selling a dollar of 5arz credit for less than a dollar.
+ * The peg does not create that exposure; it closes it.
+ *
+ * There is deliberately NO volume discount. Under a 1:1 peg a discounted pack
+ * is not a cheaper price, it is a giveaway: ★5,000 for $4,750 hands over $250.
+ * If a volume incentive is ever wanted, add BONUS STARS on top of a full-price
+ * pack (pay $5,000, receive ★5,250) so the cost is visible in the ledger
+ * instead of hidden in the rate.
+ *
+ * Everything else — the membership price in Stars, the wallet, the refusal
+ * corrections — is COMPUTED from this table. Change it here and the rest
+ * follows on its own.
+ */
+export const STAR_PACKS = Object.freeze({ 500: 50000, 1000: 100000, 5000: 500000 });
+
+/** Cents per Star under the peg. Asserted in tests so the peg cannot drift. */
+export const CENTS_PER_STAR = 100;
 
 /**
  * The currencies we accept, each with its own floor and ceiling.

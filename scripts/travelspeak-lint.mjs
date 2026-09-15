@@ -52,6 +52,7 @@ export const LINTED = [
   // above — added 13 Sep after a per-guest line said "say it is done".
   'worker/register.mjs',
   'worker/goodnews.mjs',
+  'worker/repair.mjs',
   'worker/brains.mjs',
   // Membership copy: a paid tier must not advertise travel access (§17550.27).
   'worker/membership.mjs',

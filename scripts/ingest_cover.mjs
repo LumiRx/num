@@ -34,6 +34,9 @@
  *                     hours and the write takes minutes; this lets the two
  *                     happen on different machines, or lets a failed write be
  *                     retried without asking OSM for the same data twice.
+ *   --max-km=200      how far from one of this country's destinations a row
+ *                     may be and still be kept. The walk boxes deliberately
+ *                     overlap neighbouring countries; this is the border.
  *   --dry             build the SQL, write nothing.
  *   --restart         forget the tile state and start over.
  */
@@ -44,7 +47,7 @@ import { execFileSync } from 'node:child_process';
 import { DESTINATIONS } from './destinations.mjs';
 import { localName as pickLocalName } from './localname.ingest.mjs';
 import { CORE_QUERY, FULL_QUERY, ESSENTIALS_QUERY, assignDest, normalise, tiles } from './osmplace.mjs';
-import { buildSql, gridFor, registerDestinationsSql, COVER } from './coverplan.mjs';
+import { buildSql, gridFor, essentialsGridFor, registerDestinationsSql, COVER } from './coverplan.mjs';
 
 const DB = 'num-db';
 const OUT = 'sql/cover';
@@ -85,6 +88,10 @@ if (!COUNTRY || !COVER[COUNTRY]) {
   process.exit(1);
 }
 const dests = DESTINATIONS.filter((d) => String(d.country).toUpperCase() === COUNTRY);
+// How far from one of this country's destinations a row may still be kept.
+// The walk boxes overlap neighbours by design; this is what stops a place on
+// the wrong side of a border being filed under the nearest city on ours.
+const MAX_DEST_KM = Number(flag('max-km')) || 200;
 if (!dests.length) {
   console.error(`No destinations for ${COUNTRY} in destinations.mjs. Add them first — every place needs a home.`);
   process.exit(1);
@@ -159,7 +166,7 @@ function absorb(els) {
     const lat = el.lat ?? el.center?.lat;
     const lng = el.lon ?? el.center?.lon;
     if (lat == null || lng == null) { rejected++; continue; }
-    const d = assignDest(lat, lng, dests);
+    const d = assignDest(lat, lng, dests, { maxKm: MAX_DEST_KM });
     if (!d) { rejected++; continue; }
     const p = normalise(el, d, pickLocalName, { essentials: ESSENTIALS });
     if (!p) { rejected++; continue; }
@@ -191,7 +198,26 @@ if (CACHE) {
   console.log(`\n${lines} elements read${bad ? `, ${bad} unparseable` : ''}; ${written} places written, ${rejected} not places.`);
 } else {
   // ── mode: walk the country ─────────────────────────────────────────
-  const start = gridFor(COUNTRY, STEP).filter((t) => !state.tiles[t.bbox.join(',')]);
+  // Essentials walks the destinations rather than the country — 175 tiles for
+  // Thailand against 2,090 — EXCEPT where that is not actually cheaper.
+  // Taiwan has 28 destinations and padding each one covers most of the island
+  // twice over: 841 tiles against a country walk's 143. Singapore and Hong
+  // Kong are small enough that the whole country is four tiles and six.
+  // So take whichever plan is smaller and say which one was taken, rather
+  // than trusting a rule of thumb that is wrong for a third of the list.
+  let plan = gridFor(COUNTRY, STEP);
+  if (ESSENTIALS) {
+    const byDest = essentialsGridFor(COUNTRY, STEP, DESTINATIONS);
+    if (byDest.length && byDest.length < plan.length) {
+      console.log(`  plan: ${byDest.length} tiles around ${COUNTRY} destinations `
+        + `(a country walk would be ${plan.length})`);
+      plan = byDest;
+    } else {
+      console.log(`  plan: ${plan.length} tiles, whole country `
+        + `(walking the destinations would be ${byDest.length})`);
+    }
+  }
+  const start = plan.filter((t) => !state.tiles[t.bbox.join(',')]);
   const queue = start.map((t) => ({ ...t, step: STEP }));
   console.log(`${COUNTRY}: ${queue.length} squares at ${STEP}°, ${dests.length} destinations, `
     + `${ESSENTIALS ? 'essentials' : CORE ? 'core' : 'full'} selector${DRY ? ', DRY' : ''}\n`);

@@ -787,11 +787,51 @@ export async function markPaid(env, bookingId, paidCents) {
   if (!env?.DB || !bookingId || !Number.isFinite(paidCents) || paidCents < 0) return null;
   try {
     await ensure(env);
+
+    // What was already recorded as received, so the payout programmes below
+    // are told about the INCREASE rather than the whole figure again. This
+    // function replaces rather than adds, so without the delta a second
+    // instalment would credit an Expert for the first one twice.
+    const before = await env.DB.prepare(
+      'SELECT business_id, paid_cs, currency FROM num_commissions WHERE booking_id = ?1',
+    ).bind(String(bookingId)).first().catch(() => null);
+
     const res = await env.DB.prepare(
       `UPDATE num_commissions
           SET paid_cs = ?2, paid_at = CASE WHEN ?2 > 0 THEN datetime('now') ELSE NULL END
         WHERE booking_id = ?1`,
     ).bind(String(bookingId), Math.round(paidCents)).run();
+
+    // ── MONEY NUM ACTUALLY RECEIVED ──────────────────────────────────────
+    //
+    // Deliberately here and not at accrual. An accrued commission is money
+    // OWED; a share of it must only ever be paid out of money that arrived,
+    // which is what num_business_revenue says it holds. Hooking accrual would
+    // pay an Expert for an invoice the venue has not settled.
+    //
+    // Placed inside markPaid rather than at its callers so that every future
+    // caller is covered without anybody remembering to add it — the exact
+    // failure that left recordRevenue with no callers for a week.
+    const delta = Math.round(paidCents) - Number(before?.paid_cs ?? 0);
+    if (delta > 0 && before?.business_id) {
+      try {
+        const { businessEarned } = await import('./bizrevenue.mjs');
+        await businessEarned(env, {
+          businessId: before.business_id,
+          amountMinor: delta,
+          currency: before.currency ?? 'usd',
+          source: 'commission',
+          // The amount is in the ref on purpose: re-running with the same
+          // figure is a duplicate and writes nothing, while a larger figure is
+          // a second instalment and records only the increase.
+          ref: `comm:${bookingId}:${Math.round(paidCents)}`,
+        });
+      } catch (e) {
+        // Never let a payout programme break the recording of a payment.
+        console.warn('[commission paid] revenue hook', e?.message ?? e);
+      }
+    }
+
     return { booking_id: String(bookingId), paid_cs: Math.round(paidCents), changed: (res?.meta?.changes ?? 0) > 0 };
   } catch (e) {
     console.warn('[commission paid]', e?.message ?? e);

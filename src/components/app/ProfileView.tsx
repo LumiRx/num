@@ -430,6 +430,25 @@ export default function ProfileView() {
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
 
+      {/* Scout tools. Shown to everyone, because sign-up is open — the sheet
+          itself explains the programme to somebody who is not one yet rather
+          than hiding a door they are allowed to walk through. */}
+      <div
+        {...pressable(() => store.set({ scoutOpen: true }))}
+        className="glass lift"
+        style={{ ...card, cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
+      >
+        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={kicker}>NUM EXPERT</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>Sign businesses up</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>Your code, your businesses, what you have earned</div>
+        </div>
+        <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
+      </div>
+
       <DangerZone />
 
       <VersionLine />

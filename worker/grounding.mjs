@@ -18,7 +18,7 @@ import { cityEventsFor, wantsEvents } from './cityevents.mjs';
  * @returns {Promise<{place: object|null, partners: array, guide: string|null}>}
  */
 export async function groundRequest(env, { userText, statedPlace, cf, fix = null, member = null, topicHint = null }) {
-  const none = { place: null, partners: [], disclosures: '', guide: null, buzz: [], events: [] };
+  const none = { place: null, partners: [], disclosures: '', guide: null, buzz: [], events: [], widened: false };
   if (!env?.DB) return none; // local dev without the binding — Claude flies on general knowledge
 
   try {
@@ -55,7 +55,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
 
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
-    const [{ rows }, guide, buzz, showtimes, events] = await Promise.all([
+    const [{ rows, widened }, guide, buzz, showtimes, events] = await Promise.all([
       nearbyPlaces(env, loc, userText, 6, topicHint).catch(() => ({ rows: [] })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
@@ -160,6 +160,13 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         inferred: loc.source === 'ip_location',
       },
       partners: annotated,
+      // TRUE when the rows came from the whole destination rather than from
+      // anywhere near the guest — the never-empty floor in nearbyPlaces fired.
+      // The prompt turns this into "these are across town", because presenting
+      // a widened list as a local one is the one way this floor could do harm.
+      // Never true when a named neighbourhood matched: that centre IS the
+      // guest's request.
+      widened: !!widened && !named.length,
       // Facts these venues have published about themselves that a guest has to
       // hear BEFORE they picture the trip. Empty for almost every answer.
       disclosures: disclosureBlock(annotated),

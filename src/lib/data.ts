@@ -111,6 +111,7 @@ function baseState() {
     pushOn: false,
     theme: 'ember' as const,
     businessOpen: false,
+    scoutOpen: false,
     deleteOpen: false,
     contactOpen: false,
     profileOpen: false,
@@ -208,7 +209,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.
@@ -220,7 +221,13 @@ export function persistable(s: AppState) {
     // Conversations are server truth. A thread restored from localStorage
     // would show messages that may since have been read somewhere else, and
     // unread badges that no longer exist.
-    dmOpen, dmWith, dmThread, dmInbox, dmError, dmPending, ...keep } = s;
+    dmOpen, dmWith, dmThread, dmInbox, dmError, dmPending,
+    // The request inbox is server truth too, re-read on open by
+    // refreshRequests — and it was the one required-shape field still being
+    // saved. See the crash note in repairShapes below: a malformed inbox in
+    // localStorage took the whole app down on every launch, and no amount of
+    // fixing the network path could reach a value already on the device.
+    inbox, ...keep } = s;
   // The transcript is the only field that grows without limit, and it is the
   // one that used to push the whole save over quota.
   return { ...keep, msgs: keep.msgs.slice(-MAX_PERSISTED_MSGS) };
@@ -273,6 +280,88 @@ export function saveState(s: AppState): void {
   }
 }
 
+/**
+ * Put back the shapes the app is entitled to assume.
+ *
+ * ── THE CRASH THIS EXISTS FOR ────────────────────────────────────────────
+ *
+ * 15 Sep 2026, on an iPhone, while adding somebody:
+ *
+ *   undefined is not an object (evaluating 'e.connects.length')
+ *
+ * `requests.ts` already normalises the inbox as it arrives from the server,
+ * and has done since 9 Sep. The crash kept happening anyway, because there
+ * were TWO boundaries and only one was guarded: `initialState` spreads the
+ * saved blob straight over the defaults, so a malformed inbox written to
+ * localStorage BEFORE that fix is restored on every launch, untouched, for as
+ * long as the app is installed.
+ *
+ * That is the nasty shape of this bug. The fix shipped, the crash continued,
+ * and the only escape for somebody already holding a bad value was deleting
+ * the app — which is the one thing you cannot ask of a user who is mid-signup.
+ *
+ * So restore repairs rather than trusts. `msgs` was already repaired here for
+ * the same reason; this generalises it to every field whose shape the UI is
+ * allowed to assume, and it runs whether or not the field is still persisted —
+ * old blobs on old devices outlive the code that wrote them.
+ */
+/**
+ * Every array the restore path will straighten out.
+ *
+ * Two groups, and the second is the interesting one.
+ *
+ * SAVED TODAY — everything persistable() lets through. restore.test.mjs
+ * regenerates this set from types.ts and fails if one is missing, so adding an
+ * array to the store cannot quietly reintroduce the crash.
+ *
+ * NO LONGER SAVED — fields persistable() now excludes, kept here on purpose.
+ * They were saved by older builds, and the inbox crash is precisely what
+ * happens when you assume a field you stopped writing has stopped existing:
+ * `inbox` was excluded from persistence AND still sitting in localStorage on
+ * every phone that had ever run the old code. Removing a name from this list
+ * only becomes safe once no installed build could still be carrying it, which
+ * is a date nobody can know. So they stay.
+ */
+export const REPAIRED_ARRAYS = [
+  // saved today
+  'msgs', 'picks', 'loved', 'rejected', 'lengths', 'options', 'widgets', 'events',
+  'friends', 'plans', 'planItems', 'planFeed', 'txns', 'meetings', 'memories',
+  'chips', 'bookings',
+  // written by older builds, still out there on somebody's phone
+  'errands', 'myErrands', 'bookRequests', 'travelReferrals', 'flightOffers',
+] as const;
+
+export function repairShapes(saved: Record<string, unknown>): Record<string, unknown> {
+  const arr = (v: unknown) => (Array.isArray(v) ? v : []);
+  const out = { ...saved };
+
+  // Three arrays, always — the exact guarantee DashView reads without asking.
+  const inbox = (out.inbox ?? {}) as Record<string, unknown>;
+  out.inbox = {
+    connects: arr(inbox.connects),
+    plans: arr(inbox.plans),
+    events: arr(inbox.events),
+  };
+
+  // EVERY persisted array field. Not a hand-picked few.
+  //
+  // The first version of this listed six, chosen by looking at the crash that
+  // prompted it. A sweep of AppState against persistable() then found SIXTEEN
+  // MORE saved arrays with no repair — picks, plans, bookings, friends, txns,
+  // memories and the rest. Each one is the identical bug: a non-array in
+  // localStorage, a .map or .length on it, and an app that crashes on every
+  // launch until it is deleted.
+  //
+  // restore.test.mjs regenerates this list from types.ts and persistable() and
+  // fails if a saved array is missing from it, so adding a new array field to
+  // the store cannot quietly reintroduce the crash.
+  for (const k of REPAIRED_ARRAYS) {
+    if (k in out) out[k] = arr(out[k]);
+  }
+
+  return out;
+}
+
 export function initialState(): AppState {
   // Identity is read on its own and applied LAST, so a corrupt or missing
   // main blob costs you your chat history and never your account.
@@ -304,7 +393,10 @@ export function initialState(): AppState {
           : known
             ? [{ who: 'c' as const, text: `Welcome back${known.name ? ', ' + known.name : ''}. Your trip and your people are all still here — what do you need?` }]
             : freshState().msgs;
-        return { ...freshState(), ...saved, msgs, ...identity, demo: false };
+        // repairShapes runs over the SAVED blob, before it is spread — so a
+        // bad value cannot reach the state at all, rather than being fixed up
+        // afterwards by whoever happens to read it next.
+        return { ...freshState(), ...repairShapes(saved), msgs, ...identity, demo: false };
       }
     }
   } catch {

@@ -1,0 +1,182 @@
+<!doctype html><html><head><meta charset=utf-8><style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+/* ── THE NUM CONSOLE DESIGN SYSTEM ────────────────────────────────────────
+ * One stylesheet for every console page, built on the SITE'S tokens — the
+ * ones in public/assets/site.css — and not on a palette invented here.
+ *
+ * The first version of this file had its own near-black chrome and system
+ * fonts. It was coherent with itself and coherent with nothing else: a
+ * merchant who had just read itsnum.com arrived at a console in a different
+ * typeface and a different green and could reasonably wonder whose product it
+ * was. Borrow the site's vocabulary; the layout can still be its own.
+ *
+ * Variables are referenced by NAME wherever the site defines one, so a brand
+ * change in site.css reaches the console too instead of leaving it behind.
+ */
+:root{
+  /* straight from public/assets/site.css */
+  --pri:#0EA483; --pri-d:#0B7C63; --pri-l:#E7F6F1; --pri-xl:#F1FBF8;
+  --ink:#0A1A24; --ink2:#0E2733; --slate:#586A74; --line:#E7ECEE;
+  --bg:#F6FAF9; --card:#FFFFFF; --amber:#EFA43A; --amber-l:#FDF3E1; --sky:#EAF3FA;
+  --disp:'Space Grotesk','Plus Jakarta Sans',sans-serif;
+  --body:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  --shadow:0 1px 2px rgba(10,26,36,.04),0 14px 40px rgba(10,26,36,.07);
+  --shadow-lg:0 30px 70px rgba(10,26,36,.16);
+  --r:16px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --w:1180px;
+  /* older markup still names these; point them at the real brand */
+  --accent:var(--pri); --accent-ink:var(--pri-d); --muted:var(--slate); --line-2:#F1F5F4;
+  --ember:#EC3013; --teal:var(--pri); --teal-ink:var(--pri-d); --dim:var(--slate);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
+  font-family:var(--body);font-size:15px;line-height:1.6;padding:0 0 72px}
+.num,td.r,.big,.kpi v{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+/* ── chrome ────────────────────────────────────────────────────────────── */
+.topbar{background:var(--ink);color:#E6EDF0;margin:0 0 28px}
+.topbar .in{max-width:var(--w);margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.topbar .mark{width:27px;height:27px;border-radius:50%;background:var(--pri);position:relative;flex:0 0 auto;
+  box-shadow:0 8px 20px rgba(14,164,131,.34)}
+.topbar .mark b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font:700 14px/1 var(--disp)}
+.topbar .mark i{display:none}
+.topbar .name{font-family:var(--disp);font-weight:700;font-size:18px;color:#fff;letter-spacing:-.02em}
+.topbar .name span{display:block;font-family:var(--body);font-weight:600;font-size:10px;
+  letter-spacing:.13em;text-transform:uppercase;color:#7C919B}
+.bnav{display:flex;gap:2px;flex-wrap:wrap;margin-left:auto;padding:0;border:0;max-width:none}
+.bnav a,.bnav .bnav-on{font-size:13.5px;font-weight:600;padding:8px 13px;border-radius:10px;
+  text-decoration:none;white-space:nowrap;line-height:1}
+.bnav a{color:#8FA3AC}
+.bnav a:hover{background:var(--ink2);color:#fff}
+.bnav .bnav-on{background:var(--pri);color:#fff}
+
+/* ── page ──────────────────────────────────────────────────────────────── */
+.wrap{max-width:var(--w);margin:0 auto;padding:0 24px}
+header{display:flex;align-items:flex-start;gap:14px;padding:0 0 4px}
+.brand{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.02em}
+.brand span{font-family:var(--body);font-weight:400;color:var(--slate);font-size:13px;margin-left:6px}
+.who{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--slate);text-align:right}
+h1,h2,h3,h4{font-family:var(--disp);margin:0;letter-spacing:-.02em;font-weight:600;line-height:1.1}
+h1{font-size:30px;margin:2px 0 8px}
+h2{font-family:var(--body);font-weight:700;font-size:12.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--slate);margin:36px 0 14px}
+p{max-width:68ch}
+.muted{color:var(--slate);font-size:14px}
+a{color:var(--pri-d);text-underline-offset:3px}
+
+/* ── surfaces ──────────────────────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:22px 24px;margin:0 0 16px;box-shadow:var(--shadow)}
+.card>h3{margin:0 0 4px;font-size:17px}
+.card>h3+.muted{margin:0 0 18px}
+
+.kpis{display:grid;gap:14px;margin:0 0 16px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:17px 19px 18px;box-shadow:var(--shadow);min-width:0}
+.kpi k{display:block;font-weight:700;font-size:11px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--slate);margin:0 0 10px}
+.kpi v{display:block;font-family:var(--disp);font-size:31px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.kpi s{display:block;text-decoration:none;font-size:13px;color:var(--slate);margin-top:7px}
+.kpi .up{color:var(--pri-d);font-weight:700}
+.kpi.alert{border-color:#F3CFA3;background:var(--amber-l)}
+.kpi svg{display:block;margin-top:12px;width:100%;height:34px;overflow:visible}
+.big{font-family:var(--disp);font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+
+/* ── tiles ─────────────────────────────────────────────────────────────── */
+.tiles{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));margin:0 0 16px}
+.tile{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:19px 20px;text-decoration:none;color:var(--ink);box-shadow:var(--shadow);
+  font-size:13.5px;transition:border-color .14s ease,transform .14s ease,box-shadow .14s ease}
+.tile:hover{border-color:var(--pri);transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.tile b{display:block;font-family:var(--disp);font-size:16px;font-weight:600;margin-bottom:5px}
+.tile{color:var(--slate)}
+.tile b{color:var(--ink)}
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:700;font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--slate);padding:0 10px 11px;border-bottom:1px solid var(--line)}
+td{padding:14px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r{text-align:right;white-space:nowrap}
+
+/* ── forms ─────────────────────────────────────────────────────────────── */
+label{display:block;font-weight:700;font-size:13px;margin:16px 0 7px;color:var(--ink2)}
+input,select,textarea{width:100%;font-family:var(--body);font-size:15px;color:var(--ink);
+  padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:#fff;transition:.15s}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--pri);
+  box-shadow:0 0 0 3px var(--pri-l)}
+input::placeholder{color:#9DAFB7}
+input.bad{border-color:#E2564B;box-shadow:0 0 0 3px #FDECEA}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1;min-width:150px}
+.hint{font-size:12.5px;color:var(--slate);margin:6px 0 0}
+button{margin-top:16px;font-family:var(--body);font-weight:700;font-size:15px;padding:13px 22px;
+  border-radius:12px;background:var(--pri);color:#fff;border:0;cursor:pointer;
+  box-shadow:0 12px 26px rgba(14,164,131,.28);transition:.15s}
+button:hover{background:var(--pri-d)}
+button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+button:disabled{opacity:.45;cursor:default;box-shadow:none}
+
+/* ── bits ──────────────────────────────────────────────────────────────── */
+.pill{display:inline-block;font-weight:700;font-size:11px;letter-spacing:.09em;padding:4px 10px;
+  border-radius:99px;background:var(--line-2);color:var(--slate);text-transform:uppercase}
+.pill.on{background:var(--pri-l);color:var(--pri-d)}
+.pill.off{background:var(--amber-l);color:#8a5a12}
+.qr{width:74px;height:74px;display:block;border-radius:8px}
+.out{font-size:13px;color:var(--slate);margin-top:12px;white-space:pre-wrap;word-break:break-word}
+.banner{margin:0 0 16px;padding:16px 18px;border-radius:var(--r);font-size:14.5px;line-height:1.55;
+  background:var(--amber-l);border:1px solid #F0D5A6;color:#6b4708}
+.banner a{color:#6b4708;font-weight:700}
+.banner.gone{background:#FDECEA;border-color:#F2C2BC;color:#7a1f14}
+
+/* ── plan ──────────────────────────────────────────────────────────────── */
+.plan{background:var(--ink);color:#DCE6EA;border-radius:var(--r);padding:26px 28px;margin:0 0 16px;
+  box-shadow:var(--shadow-lg)}
+.plan h3{margin:0 0 8px;color:#fff;font-size:20px}
+.plan p{color:#93A7B0;font-size:14.5px;margin:0 0 18px;max-width:60ch}
+.plan .lock{display:inline-block;font-weight:700;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--pri);margin:0 0 10px}
+.plan button,.plan .cta{background:var(--pri);color:#fff;margin-top:0;display:inline-block;
+  padding:13px 22px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;
+  box-shadow:0 12px 26px rgba(14,164,131,.34)}
+
+@media (max-width:760px){
+  .wrap{padding:0 16px}
+  .topbar .in{padding:12px 16px;gap:12px}
+  .bnav{margin-left:0;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+  h1{font-size:25px}
+  .card{padding:18px 19px}
+  .kpi v{font-size:27px}
+  .big{font-size:31px}
+}
+</style></head><body>
+<div class='topbar'><div class='in'><div class='mark'><b>N</b></div><div class='name'>NUM<span>Business console</span></div>
+<nav class='bnav'><a href='#'>Home</a><span class='bnav-on'>Products</span><a href='#'>Tables</a><a href='#'>Statement</a><a href='#'>Guests</a><a href='#'>Offers</a><a href='#'>Settings</a></nav></div></div>
+<div class='wrap'>
+<header><div class='brand'>LA Cannabis Club</div><div class='who'>owner</div></header>
+<h1>Products &amp; inventory</h1>
+<p class='muted'>Your menu, your prices, and what is left. Anyone on the floor can update stock; prices are the owner's.</p>
+<div class='kpis'>
+<div class='kpi'><k>On the menu</k><v>18</v><s>2 hidden from guests</s></div>
+<div class='kpi alert'><k>Out of stock</k><v>3</v><s>guests cannot order these</s></div>
+<div class='kpi'><k>Average price</k><v>$34</v><s>across 18 priced items</s></div>
+<div class='kpi'><k>Categories</k><v>5</v><s>how guests browse your menu</s></div>
+</div>
+<div class='card'><h3>Your menu</h3><div class='muted'>18 live · 2 archived. Hidden items stay in your menu but guests do not see them.</div>
+<table><thead><tr><th>Item</th><th>Category</th><th class='r'>Price</th><th class='r'>Stock</th><th class='r'></th></tr></thead><tbody>
+<tr><td><b>Blue Dream — 3.5g</b><div class='muted' style='font-size:13px'>Sativa-dominant, citrus nose</div></td><td><span class='pill'>Flower</span></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end'><input value='45.00' style='width:92px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Set</button></div></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end;align-items:center'><input value='12' placeholder='—' style='width:74px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Save</button></div></td><td class='r'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Hide</button></td></tr>
+<tr><td><b>House pre-roll pack</b><div class='muted' style='font-size:13px'>Five half-grams, mixed strains</div></td><td><span class='pill'>Pre-rolls</span></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end'><input value='28.00' style='width:92px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Set</button></div></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end;align-items:center'><input value='' placeholder='—' style='width:74px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Save</button></div></td><td class='r'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Hide</button></td></tr>
+<tr><td><b>Dark chocolate 10mg</b><div class='muted' style='font-size:13px'>Single square, 10mg THC</div></td><td><span class='pill'>Edibles</span></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end'><input value='12.50' style='width:92px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Set</button></div></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end;align-items:center'><input value='0' placeholder='—' style='width:74px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Save</button></div></td><td class='r'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Hide</button></td></tr>
+</tbody></table></div>
+<div class='card'><h3>Add an item</h3><div class='muted'>Prices are in USD, because that is what LA Cannabis Club bills in.</div>
+<label>Name</label><input placeholder='House margarita'>
+<label>One line a guest reads <span class='muted' style='font-weight:400'>— optional</span></label><input placeholder="Tommy's style, mezcal float">
+<div class='row'><div><label>Category</label><select><option>Flower</option></select></div>
+<div><label>Price (USD)</label><input placeholder='12.50'></div>
+<div><label>Stock <span class='muted' style='font-weight:400'>— leave empty if you do not count it</span></label><input placeholder='—'></div></div>
+<button>Add to menu</button></div>
+</div></body></html>

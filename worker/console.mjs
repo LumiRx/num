@@ -249,7 +249,22 @@ async function businessUpdate(env, req) {
 // leaked. Instead: the key is posted once, exchanged for a short-lived signed
 // session, and every later request carries the session in a header.
 
-const SESSION_HOURS = 12;
+/**
+ * Ninety days, renewed on every visit — see renewAdminSession below.
+ *
+ * It was 12 hours, which meant signing in again most days. On 14 Sep 2026 that
+ * turned into being locked out entirely: the key had drifted, nobody could read
+ * it back, and the email link that replaced it landed in a junk folder. The
+ * operator asked for the console to simply be open on his own machine.
+ *
+ * It cannot hang off "signed in to NUM" — the app identifies a person by
+ * `num-device-id`, a string the browser mints for itself in localStorage. That
+ * is a device label, not proof of anything, and an admin console gated on one
+ * is an admin console anybody can open by typing a value into their own
+ * browser. So the answer is not a weaker check, it is a longer-lived one: this
+ * cookie is signed, HttpOnly, Secure and bound to one browser.
+ */
+const SESSION_HOURS = 24 * 90;
 const b64url = (buf) =>
   btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -762,7 +777,84 @@ async function liteConsole(env, req, url) {
     <p class="tools">External checks: the GitHub uptime probe asks a real question every 5 minutes and fails the workflow on degraded answers.</p>`;
   }
 
-  return liteShell(head + body + `<p class="tools">Session expires in ${SESSION_HOURS}h.</p>`);
+  return liteShell(head + body + `<p class="tools">Session lasts ${Math.round(SESSION_HOURS / 24)} days, renewed each visit.</p>`);
+}
+
+/**
+ * POST /api/admin/maglink — ask for a sign-in link.
+ *
+ * The answer is the same whether or not the address is an operator. Anything
+ * else turns this endpoint into a way to discover which address to attack.
+ */
+async function adminMagicStart(env, req) {
+  const to = (q) => new Response(null, { status: 303, headers: { Location: `/ops/${q}` } });
+  const origin = new URL(req.url).origin;
+  try {
+    const { startAdminMagic } = await import('./adminmagic.mjs');
+    const out = await startAdminMagic(env, req, origin);
+    // A mail provider that REFUSED is not the same as an address that is not
+    // on the list, and the operator is the one person who needs to know the
+    // difference — they are standing at the door waiting for an email that a
+    // transport error means is never coming.
+    if (out.sent && !out.mailed) return to('?err=mailfail');
+    return to('?sent=1');
+  } catch (e) {
+    console.error('[admin] maglink', e?.message ?? e);
+    return to('?err=mailfail');
+  }
+}
+
+/** GET /api/admin/magic?t= — redeem once, mint the ordinary admin session. */
+async function adminMagicRedeem(env, req, url) {
+  const { redeemAdminMagic } = await import('./adminmagic.mjs');
+  const out = await redeemAdminMagic(env, url.searchParams.get('t'));
+  if (!out.ok) {
+    await logAdmin(env, req, { who: null, ok: false });
+    return liteShell(`<h1>That link did not work</h1><p>${H(out.reason)}</p>
+      <p><a href="/ops/">Ask for another one</a></p>`);
+  }
+  await logAdmin(env, req, { who: out.email, ok: true });
+
+  const token = await mintSession(env, out.email);
+  // Same self-check the key path makes: a session that cannot verify itself is
+  // dead on arrival, and saying so beats a login form that silently refuses.
+  if (!(await sessionClaims(env, token))) {
+    return new Response(null, { status: 303, headers: { Location: '/ops/?err=mint' } });
+  }
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: '/ops/?in=1',
+      'Set-Cookie': `num_ops_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`,
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
+}
+
+/**
+ * Push the expiry out on every dashboard load.
+ *
+ * Without this a 90-day session still ends abruptly on day 91, in the middle of
+ * whatever it was being used for — and the recovery path is an email that may
+ * land in junk. Renewing on use means the console stays open for as long as it
+ * is being used, and only goes quiet after three months of nobody looking.
+ *
+ * Only ever extends a session that ALREADY verified: the caller is past
+ * isAdmin, and the claims are re-read here rather than trusted from it.
+ */
+async function renewAdminSession(env, req, res) {
+  try {
+    const claims = await sessionClaims(env, sessionCookie(req.headers.get('Cookie')));
+    if (!claims) return res;                       // header-only callers keep their own scheme
+    const token = await mintSession(env, claims.who ?? null);
+    if (!(await sessionClaims(env, token))) return res;
+    const out = new Response(res.body, res);
+    out.headers.append('Set-Cookie',
+      `num_ops_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`);
+    return out;
+  } catch {
+    return res;                                     // a renewal that fails must never end the session
+  }
 }
 
 async function adminLogin(env, req) {
@@ -2001,6 +2093,12 @@ export async function handleConsole(request, env, path) {
       // The only unauthenticated route: trade the key for a session.
       if (path === '/admin/session' && post) return await adminSession(env, request);
       if (path === '/admin/login' && post) return await adminLogin(env, request);
+
+      // The email door. Both routes sit AHEAD of the isAdmin guard for the
+      // same reason /admin/login does: their whole purpose is to get somebody
+      // who is not yet signed in, signed in.
+      if (path === '/admin/maglink' && post) return await adminMagicStart(env, request);
+      if (path === '/admin/magic' && !post) return await adminMagicRedeem(env, request, url);
       // Deliberately ahead of the isAdmin guard: the whole point is to explain
       // a failed guard, so it cannot sit behind one.
       if (path === '/admin/why') return await adminWhy(env, request);
@@ -2009,8 +2107,24 @@ export async function handleConsole(request, env, path) {
         return await liteConsole(env, request, url);
       }
       if (!(await isAdmin(env, request))) return json({ error: 'unauthorized' }, 401);
-      if (path === '/admin/overview') return await adminOverview(env, url, request);
+      if (path === '/admin/overview') {
+        // The page's own heartbeat, so the session renews simply by being used.
+        return await renewAdminSession(env, request, await adminOverview(env, url, request));
+      }
       if (path === '/admin/draw') return await adminDraw(env, request, url);
+
+      // The two consoles /ops could not open. See worker/adminconsoles.mjs for
+      // why this mints a single-use token instead of handing the browser a
+      // venue's permanent console_key.
+      if (path === '/admin/consoles' && !post) {
+        const { listConsoles } = await import('./adminconsoles.mjs');
+        return json(await listConsoles(env));
+      }
+      if (path === '/admin/consoles/open' && post) {
+        const { mintConsoleOpen } = await import('./adminconsoles.mjs');
+        const out = await mintConsoleOpen(env, request);
+        return json(out, out.ok ? 200 : 400);
+      }
       if (path === '/admin/claims' && !post) return await adminClaims(env, url);
       if (path === '/admin/claims/grant' && post) return await adminClaimGrant(env, request);
       if (path === '/admin/neighbours' && !post) {

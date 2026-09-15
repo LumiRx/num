@@ -48,10 +48,19 @@ beforeEach(() => {
 
 describe('rule 1 — Stars are never the cheap door', () => {
   test('the Star price is derived from the cheapest pack we sell, rounded up', () => {
-    // ★5,000 for $1,425 is 28.5¢ a Star, the best rate on the shelf.
-    assert.equal(bestStarRate(STAR_PACKS), 28.5);
-    assert.equal(starPrice(898), 32);   // 31.5 → 32
-    assert.equal(starPrice(2898), 102); // 101.68 → 102
+    // THE PEG. One Star is one dollar, so 5arz can translate it. Asserted
+    // here rather than assumed: if a pack is ever priced below 1:1 this test
+    // fails, because a discounted pack is a giveaway, not a price.
+    assert.equal(bestStarRate(STAR_PACKS), 100);
+    assert.equal(starPrice(898), 9);   // 8.98 → 9
+    assert.equal(starPrice(2898), 29); // 28.98 → 29
+  });
+
+  test('no pack is ever sold below the 1:1 peg', () => {
+    for (const [stars, cents] of Object.entries(STAR_PACKS)) {
+      assert.ok(Number(cents) >= Number(stars) * 100,
+        `pack ★${stars} at ${cents}c sells a dollar for less than a dollar`);
+    }
   });
 
   test('every tier costs at least as much in Stars as it does in cash', () => {
@@ -89,7 +98,7 @@ describe('rule 2 — the welcome gift cannot buy a membership', () => {
     credit('mem_a', 100, 'welcome');
     const q = await quote(env, { memberId: 'mem_a', tier: 'plus' });
     assert.equal(q.affordable, false);
-    assert.equal(q.short, 32);
+    assert.equal(q.short, 9);
     assert.match(q.note, /welcome gift/);
   });
 
@@ -142,7 +151,7 @@ describe('rule 3 — never charged twice for the same month', () => {
     assert.equal(a.ok, true);
     assert.equal(b.ok, true);
     assert.equal(b.repeat, true);
-    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 468);
+    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 491);
   });
 });
 
@@ -152,11 +161,11 @@ describe('what the member actually gets', () => {
     credit('mem_a', 500, 'purchase');
     const out = await buyWithStars(env, { memberId: 'mem_a', tier: 'plus', months: 3 });
     assert.equal(out.ok, true);
-    assert.equal(out.stars, 96);
+    assert.equal(out.stars, 27);
     assert.equal(out.auto_renews, false);
-    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 404);
+    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 473);
     const move = db.prepare(`SELECT delta, kind FROM num_star_moves WHERE kind='membership'`).get();
-    assert.equal(move.delta, -96);
+    assert.equal(move.delta, -27);
     assert.equal(move.kind, 'membership');
     assert.equal(await tierOf(env, 'mem_a'), 'plus');
   });
@@ -190,13 +199,13 @@ describe('what the member actually gets', () => {
   });
 
   test('a member who cannot pay is told the number, not just "no"', async () => {
-    db.exec(`INSERT INTO num_star_balances VALUES ('mem_a',20)`);
-    credit('mem_a', 20, 'purchase');
+    db.exec(`INSERT INTO num_star_balances VALUES ('mem_a',5)`);
+    credit('mem_a', 5, 'purchase');
     const out = await buyWithStars(env, { memberId: 'mem_a', tier: 'plus' });
     assert.equal(out.ok, false);
-    assert.match(out.error, /★32/);
-    assert.match(out.error, /★20/);
-    assert.equal(out.short, 12);
+    assert.match(out.error, /★9/);
+    assert.match(out.error, /★5/);
+    assert.equal(out.short, 4);
   });
 
   test('months are bounded — nobody buys a century in one tap', async () => {

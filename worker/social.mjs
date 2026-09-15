@@ -1897,14 +1897,48 @@ async function prefsWrite(env, req) {
 
 const WELCOME_STARS = 100;
 
-/** Credit a new member their welcome balance exactly once. */
+/**
+ * Credit a new member their welcome balance exactly once.
+ *
+ * THIS WAS BROKEN AND IT COST OUR FIRST PAYING CUSTOMER 100 STARS.
+ *
+ * It used to be a two-statement batch:
+ *
+ *     INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?, 100)
+ *     INSERT OR IGNORE INTO num_star_moves    (id='welcome_<member>', ...)
+ *
+ * The two OR IGNOREs guard on DIFFERENT KEYS — the balance on the member
+ * having no row at all, the move on its own id. Any member who acquired a
+ * balance row by some OTHER path first (a Star purchase, a transfer, an
+ * errand) hit an existing row, so the balance insert was silently ignored
+ * while the move row was written anyway. Credited on paper, not in fact.
+ *
+ * On 13 Sep 2026 `mem_8f6b04ed879a4c2a86c9` paid $150 for ★500 at 21:56:41.
+ * The purchase created his balance row at 21:56:42. `ensureBalance` ran at
+ * 21:56:46, wrote a +100 welcome move, and changed nothing. Balance 500,
+ * ledger 600. Six accounts were out by 740 Stars in total.
+ *
+ * Same family as `CREATE TABLE IF NOT EXISTS` on a table that already exists:
+ * a silent no-op that looks like success. The fix is to make the MOVE the
+ * single guard, and to INCREMENT the balance rather than insert a value into
+ * it — so it is correct whether or not a row is already there.
+ */
 export async function ensureBalance(env, memberId) {
-  await env.DB.batch([
-    env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, ?2)').bind(memberId, WELCOME_STARS),
-    env.DB.prepare(
-      "INSERT OR IGNORE INTO num_star_moves (id, member_id, delta, kind, note) VALUES (?1,?2,?3,'welcome','Welcome to Num')",
-    ).bind(`welcome_${memberId}`, memberId, WELCOME_STARS),
-  ]);
+  const move = await env.DB.prepare(
+    "INSERT OR IGNORE INTO num_star_moves (id, member_id, delta, kind, note) VALUES (?1,?2,?3,'welcome','Welcome to Num')",
+  ).bind(`welcome_${memberId}`, memberId, WELCOME_STARS).run();
+
+  // Everyone ends up with a row, welcomed or not — readers downstream expect
+  // one to exist. Zero, never the grant: the grant is applied below, once.
+  await env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)')
+    .bind(memberId).run();
+
+  // The move row is the idempotency guard. No insert means already welcomed,
+  // and nothing is owed.
+  if (!Number(move?.meta?.changes ?? 0)) return;
+
+  await env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1')
+    .bind(memberId, WELCOME_STARS).run();
 }
 
 /**

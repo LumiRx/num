@@ -72,9 +72,61 @@ export const OFFICIAL_HOSTS = Object.freeze([
   'www.dfat.gov.au',
   'www.mea.gov.in',
   'www.auswaertiges-amt.de',
+  // ── ENTRY-CONDITION SOURCES, added 14 Sep 2026 ───────────────────────
+  // Governments publishing a rule that is not a document: insurance
+  // minimums, visa-code articles. Each checked live before it was listed.
+  'home-affairs.ec.europa.eu',
+  'eur-lex.europa.eu',
+  'mfa.gov.by',
+  'image.mfa.go.th',
 ]);
 
 const HOST_OK = new Set(OFFICIAL_HOSTS);
+
+/**
+ * Public-health authorities — a SECOND list, on purpose.
+ *
+ * WHO is an intergovernmental body, not a government. NaTHNaC publishes under
+ * Crown Copyright from a .org.uk, not a .gov.uk. Neither would pass the
+ * government test above, and neither should: that test is what keeps an
+ * impostor out of the entry-document path, and widening it to admit these
+ * would be paying for a convenience with the only guard that matters.
+ *
+ * So health sources live here, are labelled as health sources wherever they
+ * are shown, and are never offered as the government's own page.
+ *
+ * NOT ON THIS LIST, DELIBERATELY: fitfortravel.nhs.uk. It was retired, its
+ * certificate expired on 7 June 2026, and it now fails to connect at all —
+ * a link there is a browser security warning followed by a dead end.
+ */
+export const PUBLIC_HEALTH_HOSTS = Object.freeze([
+  'cdn.who.int',
+  'www.who.int',
+  'apps.who.int',
+  'wwwnc.cdc.gov',
+  'www.cdc.gov',
+  'travelhealthpro.org.uk',
+]);
+
+const HEALTH_OK = new Set(PUBLIC_HEALTH_HOSTS);
+
+/** True for an https URL published by a recognised public-health authority. */
+export function isPublicHealth(url) {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === 'https:' && HEALTH_OK.has(u.host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Either list. Used where both kinds legitimately appear side by side — the
+ * traveller's pack — and nowhere that offers a link as "the government's".
+ */
+export function isTrustedSource(url) {
+  return isOfficial(url) || isPublicHealth(url);
+}
 
 /** True only for an https URL on the allowlist. Used by the tests and at write time. */
 export function isOfficial(url) {

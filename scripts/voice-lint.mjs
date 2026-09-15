@@ -43,6 +43,7 @@ export const LINTED = [
   'worker/brains.mjs',
   'worker/register.mjs',
   'worker/goodnews.mjs',
+  'worker/repair.mjs',
   'worker/nudge.mjs',
   'worker/lastresort.mjs',
 ];

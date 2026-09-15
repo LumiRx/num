@@ -89,6 +89,14 @@ const FILES = [
   // nothing is dropped or renamed, so a second pass is a clean no-op.
   'worker/migrations/0026_giveaway_entrant_key.sql',
   'worker/migrations/0027_notification_subtitle.sql',
+  // The admin door's audit trail: one single-use row per "open that
+  // venue's console". One CREATE TABLE and one index, both IF NOT
+  // EXISTS, so a second pass is a clean no-op.
+  'worker/migrations/0028_admin_console_opens.sql',
+  // A venue's own menu: items, prices, stock. One CREATE TABLE and one
+  // index, both IF NOT EXISTS, so a second pass is a clean no-op.
+  'worker/migrations/0029_products.sql',
+  'worker/migrations/0030_expert_docs.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

@@ -135,7 +135,7 @@ const FAQ: Array<[q: string, a: string]> = [
   ['Do I have to download an app?',
     'No. Num runs in your browser and you can start right now. Adding it to your home screen takes about ten seconds and makes it open full screen, keep your thread and notify you when a booking is confirmed. There is no App Store step today.'],
   ['Will it work where I am going?',
-    '77 destinations are live and the directory holds over 2.5 million places, deepest across Thailand. Ask about somewhere we do not cover properly and Num says so plainly instead of inventing a recommendation — that is a deliberate rule, not a gap we are hiding.'],
+    '104 destinations are live and the directory holds over 2.7 million places, deepest across Thailand. Ask about somewhere we do not cover properly and Num says so plainly instead of inventing a recommendation — that is a deliberate rule, not a gap we are hiding.'],
   ['Do I need an account?',
     'No. Open it and start typing. You only give a phone number or email if you want your thread on more than one device, or want us to reach you about a booking.'],
   ['What happens to what I tell it?',
@@ -379,7 +379,7 @@ export default function LaunchStage() {
             color: 'var(--color-accent)', marginBottom: 14,
           }}
         >
-          Early access · live in 77 destinations
+          Early access · live in 104 destinations
         </span>
 
         {/* The one line the whole page rests on.

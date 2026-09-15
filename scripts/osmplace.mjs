@@ -263,7 +263,7 @@ export function distKm(aLat, aLng, bLat, bLng) {
  * floor: full coverage means every point gets a home, not that every point
  * sits inside a rectangle somebody drew.
  */
-export function assignDest(lat, lng, dests) {
+export function assignDest(lat, lng, dests, { maxKm = null } = {}) {
   if (!Array.isArray(dests) || !dests.length) return null;
   let best = null;
   for (const d of dests) {
@@ -280,6 +280,15 @@ export function assignDest(lat, lng, dests) {
     const km = distKm(lat, lng, dLat, dLng);
     if (km < nearD) { nearD = km; near = d; }
   }
+  // A country walk is a BOX, not a border. The Thailand box takes in a corner
+  // of Laos, Cambodia and Myanmar; the Spain box takes in Portugal. Without a
+  // cap, every one of those rows is filed under the nearest Thai or Spanish
+  // destination — a hospital in Laos becomes a hospital "in" Chiang Mai. For
+  // a restaurant that is untidy. For the essentials selector it is somebody
+  // ill being sent towards a border.
+  //
+  // Default stays null so the historical callers behave exactly as before.
+  if (maxKm != null && nearD > maxKm) return null;
   return near;
 }
 

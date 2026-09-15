@@ -97,6 +97,11 @@
   button:hover{background:var(--accent-ink)}
   button[disabled]{opacity:.55;cursor:default}
   .under{font-size:13px;color:var(--muted);text-align:center;margin:12px 0 0}
+  /* Only ever visible when a Num Expert's card sent them here. Attribution the
+     person cannot see is attribution they cannot correct. */
+  .scoutchip{background:#E7F6F1;color:#0B7C63;font-weight:650;font-size:13.5px;line-height:1.5;
+    padding:10px 13px;border-radius:11px;margin:0 0 4px}
+  .scoutchip[hidden]{display:none}
   .err{background:#fff4f4;border:1px solid #f0c8c8;color:#8a1f1f;padding:11px 12px;border-radius:9px;font-size:14px;margin:16px 0 0}
   .okbox{background:#f2f8f5;border:1px solid #cfe3da;color:var(--accent-ink);padding:12px 13px;border-radius:9px;font-size:15px;line-height:1.5;margin:16px 0 0}
   /* Proving ownership, on the screen that used to be the end of the road. */
@@ -234,6 +239,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <form id="claim-form" novalidate>
       <div class="card">
         <h2 id="t-formhead">Two minutes and you&rsquo;re done</h2>
+        <p id="scout-chip" class="scoutchip" hidden>Someone from Num introduced you.
+          Their code is already attached &mdash; nothing for you to type.</p>
 
         <label for="business_name" id="l-biz">Business name</label>
         <div class="pick">
@@ -803,6 +810,21 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   // Was hardcoded to "invite-uk", which labelled every signup anywhere in the
   // world as a UK invite. It now says where the person actually came from.
   var src    = (qp("s") || qp("source")).replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 60);
+  // WHO SENT THEM. A Num Expert's card lands the owner here with ?scout=CODE
+  // already on the URL. Read once, shown on the form so the owner can see what
+  // is being recorded about them, and posted with the claim. The server also
+  // reads the first-touch cookie the card dropped, so an owner who says "I'll
+  // do it tonight" and comes back without the query string is still credited
+  // to the right Expert. Never a field anybody has to fill in — a question
+  // people answer wrong, or skip.
+  var scoutCode = (function () {
+    var v = qp("scout").toUpperCase().replace(/[^0-9A-Z]/g, "");
+    return /^[0-9A-Z]{4,12}$/.test(v) ? v : "";
+  })();
+  if (scoutCode) {
+    var scoutChip = document.getElementById("scout-chip");
+    if (scoutChip) scoutChip.hidden = false;
+  }
 
   var T, M;
   // Set by the listing picker below, called by apply() so the confirmation chip
@@ -1165,11 +1187,18 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   }
   function vClearErr() { $("verify-error").classList.add("hidden"); }
 
+  // `scout` goes on BOTH this call and the lead POST. They write different rows
+  // (num_scout_places here, claims.scout_code there) and either one can be the
+  // only one that happens: an owner may verify without the lead ever mattering,
+  // or abandon before verification entirely. Kept outside the function body on
+  // purpose — growth/claimverify.test.mjs reads the first ~900 characters of it
+  // and a comment in there pushes the assertions it makes out of the window.
   function startVerify(pid, leadId, typedEmail) {
     fetch(ENDPOINT + "/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ place_id: pid, lead_id: leadId, email: typedEmail })
+      body: JSON.stringify({ place_id: pid, lead_id: leadId, email: typedEmail,
+                             scout: scoutCode || undefined })
     })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -1318,6 +1347,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         ? document.querySelector('label[for="marketing_ok"]').textContent.replace(/\s+/g, " ").trim()
         : "",
       ref_code:      refc,
+      scout:         scoutCode || undefined,
       invite_token:  token.slice(0, 64),
       country:       ISO,
       dest:          dest,
@@ -1373,5 +1403,6 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   });
 })();
 </script>
+  <script src="/assets/translate.js" defer></script>
 </body>
 </html>

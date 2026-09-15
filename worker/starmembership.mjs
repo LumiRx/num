@@ -16,13 +16,16 @@
  *
  * 1. PAYING WITH STARS IS NEVER CHEAPER THAN PAYING WITH CASH.
  *
- *    A Star has a real cash price: our own packs sell them from ★5,000 for
- *    $1,425, which is 28.5 cents each. If a $8.98 month cost ★29, that month
- *    would cost $8.27 to anyone who bought the big pack — a quiet 8% discount
- *    for choosing the slower rail, which is exactly backwards.
+ *    A Star has a real cash price. Since 14 Sep 2026 that price is ONE DOLLAR
+ *    — the packs are pegged 1:1 so Num Stars translate to 5arz Stars, which
+ *    are USD-pegged. There is no volume discount, so there is no cheapest
+ *    pack to arbitrage.
  *
- *    So the Star price is derived from the CHEAPEST cents-per-Star we sell,
- *    rounded UP. Plus is ★32 ($9.12 at the best rate). Pro is ★102 ($29.07).
+ *    The Star price is still derived from the CHEAPEST cents-per-Star we sell,
+ *    rounded UP, because that arithmetic is what makes the rule survive a
+ *    future pack change. At 1:1 it gives Plus ★9 ($9.00 for a $8.98 month) and
+ *    Pro ★29 ($29.00 for a $28.98 month). Rounding UP is load-bearing: round
+ *    down and the slower rail becomes a discount, which is exactly backwards.
  *    Change the packs and the membership price moves with them, on its own,
  *    because it is computed rather than typed.
  *

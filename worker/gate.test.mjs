@@ -19,13 +19,16 @@ const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), '
 const api = readFileSync(join(HERE, 'console.mjs'), 'utf8');
 
 test('the submission path contains no JavaScript', () => {
-  assert.match(page, /<form id="gateform" method="post" action="\/api\/admin\/login">/,
+  // The key form was removed on 14 Sep; the email form inherits every one of
+  // these properties, because the five silent failures were properties of
+  // JavaScript in the submission path, not of what was being submitted.
+  assert.match(page, /<form id="magform" method="post" action="\/api\/admin\/maglink">/,
     'the gate is not a native form — the submission depends on script again');
-  assert.ok(!/gateform'\)\.addEventListener\('submit'/.test(page),
+  assert.ok(!/magform'\)\.addEventListener\('submit'/.test(page),
     'a submit listener is back on the form — it can preventDefault the native path into silence');
-  assert.ok(!/signin'\)\.onclick/.test(page),
+  assert.ok(!/sendlink'\)\.onclick/.test(page),
     'the button has a JS onclick again — the fetch-based login and its five silent failures are back');
-  assert.match(page, /name="key"/, 'the input lost its form name — the POST body arrives empty');
+  assert.match(page, /name="email"/, 'the input lost its form name — the POST body arrives empty');
 });
 
 test('the server answers every submission with a visible outcome', () => {
@@ -33,7 +36,8 @@ test('the server answers every submission with a visible outcome', () => {
   assert.match(api, /err=wrong/, 'a wrong key no longer redirects back with a reason');
   assert.match(api, /HttpOnly; Secure; SameSite=Lax/, 'the session cookie lost its protections');
   assert.match(api, /status: 303/, 'the login answers with something other than a redirect — a form POST will render raw JSON');
-  assert.match(page, /'Wrong password\.'/, 'the gate no longer translates err=wrong into words');
+  assert.match(page, /'That admin key was not accepted\.'/,
+    'the gate no longer translates err=wrong into words');
 });
 
 test('the dashboard opens on the cookie alone', () => {

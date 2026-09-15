@@ -18,6 +18,7 @@
  */
 
 import { validAddress, ASSETS, quote } from './crypto.mjs';
+import { CURRENCY_BY_COUNTRY } from '../worker/commission.mjs';
 
 const nowIso = () => new Date().toISOString();
 
@@ -63,6 +64,23 @@ export function lastFullWeek(at = new Date()) {
  * happened but whose bill we never saw is a real gap in collections, and a
  * total that quietly includes a guess is worse than a total with a caveat.
  */
+/**
+ * The currency a venue bills in, from the country on its profile.
+ *
+ * Used only when a venue has no lines yet — a real line always carries its own
+ * currency and is never overridden by this. Falls to USD, not to any one
+ * market: an unknown country is far likelier to be anywhere than to be one
+ * particular somewhere, and that assumption is exactly what produced baht on a
+ * Los Angeles statement.
+ */
+export async function venueCurrency(env, businessId) {
+  const row = await env.DB.prepare(
+    'SELECT country FROM num_business_profiles WHERE business_id = ?1',
+  ).bind(String(businessId)).first().catch(() => null);
+  const cc = String(row?.country || '').toUpperCase();
+  return CURRENCY_BY_COUNTRY[cc] || 'USD';
+}
+
 export async function owed(env, businessId, { currency = null } = {}) {
   const { results } = await env.DB.prepare(
     `SELECT id, booking_id, venue_name, category, rate_bp, basis_cs, amount_cs,
@@ -93,8 +111,22 @@ export async function owed(env, businessId, { currency = null } = {}) {
   // Same rule invoiceVenue already applies: report the majority currency and
   // say how many lines were left out, rather than converting at a rate nobody
   // agreed to.
-  const reported = billable[0]?.currency || lines[0]?.currency || 'THB';
-  const inCurrency = billable.filter((l) => (l.currency || 'THB') === reported);
+  // AND WHEN THERE ARE NO LINES AT ALL, ASK THE VENUE.
+  //
+  // 14 Sep 2026. This fell through to a hard-coded 'THB', so every venue with
+  // nothing billed yet — which is every venue on its first day — was shown
+  // "0.00 THB". LA Cannabis Club, whose profile says US, read its own statement
+  // in baht. The prose on the same page said "$2", because that half resolved
+  // the currency properly; the figure did not.
+  //
+  // A venue that has never been billed still HAS a currency: the one its
+  // country uses. Nothing about an empty week makes that unknowable.
+  const reported = billable[0]?.currency || lines[0]?.currency
+    || await venueCurrency(env, businessId);
+  // An unlabelled line is in the venue's own money, not in one particular
+  // market's. Defaulting it to THB here quietly excluded real lines from a
+  // venue's total whenever `reported` was anything else.
+  const inCurrency = billable.filter((l) => (l.currency || reported) === reported);
   return {
     lines,
     billable,
@@ -130,8 +162,11 @@ export async function invoiceVenue(env, businessId, { period = null, dueDays = 7
   // One invoice cannot be part baht and part dollars. Bill the majority
   // currency now; the rest is picked up by the next run rather than silently
   // added together at an exchange rate nobody agreed.
-  const currency = lines[0].currency || 'THB';
-  const same = lines.filter((l) => (l.currency || 'THB') === currency);
+  // This one ISSUES money, so the stakes are higher than a wrong label on a
+  // screen: a THB fallback here raises a real invoice against a Los Angeles
+  // venue denominated in baht.
+  const currency = lines[0].currency || await venueCurrency(env, businessId);
+  const same = lines.filter((l) => (l.currency || currency) === currency);
   const total = same.reduce((n, l) => n + (l.amount_cs || 0), 0);
   if (total <= 0) return { ok: true, skipped: 'nothing billable' };
 

@@ -14,9 +14,9 @@ test('the client can never set the price of a Star pack', () => {
   const v = checkPayment({ ref: 'stars:5000', amount_cents: 100 });
   assert.equal(v.ok, false);
   assert.equal(v.correction.amount_cents, STAR_PACKS[5000]);
-  assert.match(v.reason, /\$1,425\.00/);
+  assert.match(v.reason, /\$5,000\.00/);
   assert.match(v.reason, /\$1\.00/); // says what they claimed, too
-  assert.match(v.correction.says, /Continue at \$1,425\.00/); // a button label
+  assert.match(v.correction.says, /Continue at \$5,000\.00/); // a button label
 });
 
 test('a pack with no amount is still priced by us', () => {

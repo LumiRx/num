@@ -1217,7 +1217,13 @@ const WORKER = {
       // The front door. Both spellings, because a person trimming a URL back to
       // its root types one of them and neither should 404 — which is exactly
       // what /biz did until 13 Sep.
+      // The admin door. A HANDLER IS NOT A ROUTE — the wildcard pattern
+      // for "itsnum.com/o/" is in
+      // growth/wrangler.jsonc, without which this falls through to the asset
+      // worker and every open link 404s while looking deployed.
+      if (p === "/o" || p.startsWith("/o/")) return adminConsoleOpen(req, env, url);
       if (p === "/biz" || p === "/biz/") return venueHomePage(req, env, url);
+      if (p === "/biz/products") return venueProductsPage(req, env, url);
       if (p === "/biz/codes") return venueCodesPageV2(req, env, url);
       if (p === "/biz/visitors") return venueVisitorsPage(req, env, url);
       if (p === "/biz/offers") return venueOffersPage(req, env, url);
@@ -1233,6 +1239,7 @@ const WORKER = {
       if (p === "/biz/pay") return venuePayPage(req, env, url);
 
       /* ── QR system: tables, bill codes, staff, agent ───────────────────── */
+      if (p === "/api/venue/products" && req.method === "POST") return venueProductSave(req, env, url);
       if (p === "/api/venue/login" && req.method === "POST") return qrLoginStart(req, env);
       if (p === "/biz/login") return qrLoginRedeem(req, env, url);
       if (p === "/api/venue/logout" && req.method === "POST") return qrLogout(req, env);
@@ -1283,6 +1290,18 @@ const WORKER = {
       }
       if (p === "/tonight" || p.startsWith("/tonight/")) return tonightPage(req, env, url);
       if (p.startsWith("/v/")) return venueLanding(req, env, p.slice(3));
+      // /s/CODE — a Num Expert's NFC card. THIS is the hostname the cards are
+      // printed with, and for a week it was the one hostname that did not
+      // answer: the route existed only in worker/index.mjs (num-app,
+      // app.itsnum.com) while itsnum.com is served by num-console, an
+      // assets-only Worker, so every tap got public/404.html. Two workers hold
+      // this route now and both call the same function, because a card cannot
+      // be re-printed. Needs the matching route in growth/wrangler.jsonc — a
+      // handler with no route is the exact failure this line is fixing.
+      if (p.startsWith("/s/")) {
+        const { handleScoutLanding } = await import("../worker/scoutpage.mjs");
+        return handleScoutLanding(req, env, p.slice(3));
+      }
       if (p.startsWith("/r/")) return referral(req, env, url, p.slice(3));
       if (p.startsWith("/go/")) return confirmContact(req, env, p.slice(4));
       if (p.startsWith("/stop/")) return stopContact(req, env, p.slice(6));
@@ -1386,9 +1405,25 @@ const GUARDS = Object.freeze([
    past a 12/minute bucket in production. It stays — it is a free burst brake on
    whichever isolate you land on — but it was never the guarantee.
 
-   ACTION_LIMITER is. Counters live in Cloudflare's infrastructure, so they
-   survive isolate churn, and one binding covers every action endpoint at once
-   rather than a dozen hand-rolled COUNT(*)s against D1.
+   ACTION_LIMITER WAS SUPPOSED TO BE. IT IS NOT, AND THIS IS MEASURED.
+   On 15 Sep 2026: 160 calls to limit() on ONE fixed key, from ONE Cloudflare
+   colo (every cf-ray said DFW), inside 38 seconds, against a configured limit
+   of 60 per 60 seconds. Every single one returned success: true.
+
+   The binding is real by every other test. `wrangler --dry-run` prints
+   "env.ACTION_LIMITER (60 requests/60s)  Rate Limit"; health calls it and gets
+   a correctly-shaped {success:true} back. It simply does not refuse. No window
+   boundary explains 160 against 60, and a fixed key with a single colo removes
+   both the per-IP and the per-location explanations.
+
+   So this call is kept as a fast path in case it ever starts working, and it
+   is NOT a protection. THE REAL LIMITS ON THIS WORKER ARE THE D1 COUNTERS —
+   the check-in guessing lock, the claim resend cap, host signups, partner
+   keys — plus the per-route isolate brakes. Nothing here may be described as
+   protected on the strength of this binding.
+
+   The same doubt now falls on num-app's RATE_LIMITER, which guard.mjs calls
+   "the real control" and which nothing has ever verified.
 
    ONE ceiling, not one per route, because a binding carries one fixed limit and
    these routes run from 5/min to 240/min. 60 a minute from a single address,
@@ -1409,7 +1444,15 @@ const RATE_LIMIT_EXEMPT = new Set([
 async function overCeiling(req, env, p) {
   if (RATE_LIMIT_EXEMPT.has(p)) return false;
   const limiter = env?.ACTION_LIMITER;
-  if (!limiter?.limit) return false;
+  if (!limiter?.limit) {
+    // SAID NOTHING HERE UNTIL 15 SEP, WHICH WAS MY OWN VERSION OF THE BUG THIS
+    // REVIEW KEPT FINDING. A missing binding and a working one were the same
+    // observable from outside: 90 parallel requests sailed through and there
+    // was no way to tell whether the limiter had allowed them or had never
+    // existed. `guard.mjs` warns on exactly this path and has since launch.
+    console.warn("[growth] ACTION_LIMITER is not bound — the durable ceiling is OFF");
+    return false;
+  }
   const ip = req.headers.get("cf-connecting-ip") || "0";
   try {
     const out = await limiter.limit({ key: ip });
@@ -1418,6 +1461,29 @@ async function overCeiling(req, env, p) {
     console.warn("[growth] ACTION_LIMITER threw — the durable ceiling is degraded:",
                  String(e?.message ?? e).slice(0, 160));
     return false;
+  }
+}
+
+/**
+ * What does ACTION_LIMITER actually DO when you call it?
+ *
+ * Uses its own key, so probing never spends a real visitor's budget and a
+ * hammered health check cannot throttle the site.
+ */
+async function limiterProbe(env) {
+  const l = env?.ACTION_LIMITER;
+  if (!l?.limit) return "not bound";
+  try {
+    const out = await l.limit({ key: "healthprobe" });
+    if (out && typeof out.success === "boolean") {
+      return out.success ? "bound, allows" : "bound, refuses";
+    }
+    // The shape is wrong, which is its own answer: `!out?.success` on an
+    // undefined field would have read as "over the limit" and refused
+    // everything, so knowing this is not academic.
+    return "bound, unreadable reply: " + JSON.stringify(out).slice(0, 60);
+  } catch (e) {
+    return "throws: " + String(e?.message ?? e).slice(0, 80);
   }
 }
 
@@ -1434,6 +1500,18 @@ async function health(env) {
     guards: GUARDS,
     bindings: {
       DB: !!env.DB,
+      // Reported because a rate limiter that failed to bind looks exactly like
+      // one that is working, from every angle except this one. It went out on
+      // 13 Sep and nothing could confirm it was real.
+      //
+      // `bound` was not enough. It came back true while 90 requests in three
+      // seconds — one IP, well past a ceiling of 60 — went through untouched.
+      // A binding that EXISTS and a binding that WORKS are two different
+      // claims, and only the second one matters. So health now CALLS it, on a
+      // key of its own, and reports what came back: ok, refused, or the error.
+      // Guessing from the outside cost four probes and produced three wrong
+      // answers; this costs one line and cannot be misread.
+      ACTION_LIMITER: await limiterProbe(env),
       RESEND_KEY: !!env.RESEND_KEY,
       VISITOR_SALT: !!env.VISITOR_SALT,
       ADMIN_KEY: !!env.ADMIN_KEY,
@@ -1952,6 +2030,32 @@ async function claims(req, env, ctx) {
     iso || null, dest || null, placeId || null, now()
   ).run();
 
+  // ── WHO SENT THEM ────────────────────────────────────────────────────
+  //
+  // A Num Expert's card puts ?scout=CODE on the link and drops a first-touch
+  // cookie, so the attribution is already in this request. Recorded HERE, on
+  // the lead, and not only at the verify step: verification is offered only
+  // when the owner picked an existing listing, and the shops an Expert walks
+  // into are exactly the ones Num has no listing for. Attributing only at
+  // verify meant the Experts earned nothing for most of a street.
+  //
+  // waitUntil, not await: a business must never wait on our bookkeeping, and a
+  // failure here must never fail their sign-up.
+  const scoutCode = scoutFromRequest(req, b);
+  if (scoutCode) {
+    ctx.waitUntil((async () => {
+      const { attachScoutToClaim } = await import("../worker/scoutintro.mjs");
+      const place = placeId
+        ? await env.DB.prepare(
+            "SELECT id,name,dest,country,lat,lng FROM places WHERE id = ?1",
+          ).bind(placeId).first().catch(() => null)
+        : null;
+      await attachScoutToClaim(env, {
+        claimId: ins?.meta?.last_row_id ?? null, code: scoutCode, place,
+      });
+    })().catch((e) => console.log("scout claim", String(e).slice(0, 200))));
+  }
+
   const work = [];
 
   // A business we do not already hold, describing itself.
@@ -2110,6 +2214,31 @@ async function sendClaimWelcome(env, c) {
     subject,
     text,
   }]);
+}
+
+/**
+ * The Num Expert code on this request, if any.
+ *
+ * Thin wrapper over scouts.mjs so both forms read attribution the same way and
+ * cannot drift apart: query string first (what /s/CODE puts on the link), then
+ * the body, then the first-touch cookie for the owner who closed the tab and
+ * came back an hour later. Synchronous and allocation-cheap — it runs on every
+ * claim and every host signup.
+ */
+function scoutFromRequest(req, body) {
+  try {
+    const url = new URL(req.url);
+    const raw = url.searchParams.get("scout") || body?.scout || body?.scout_code || null;
+    const fromCookie = raw ? null
+      : (/(?:^|;\s*)num_scout=([^;]+)/.exec(req.headers.get("cookie") || "") || [])[1] || null;
+    const s = String(raw || fromCookie || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+    // Length and character class only. The exact alphabet lives in ONE place —
+    // normaliseCode() in scouts.mjs — and copying it here is how the two drift:
+    // a first draft of this line omitted "U" and would have silently dropped
+    // every code containing one. scoutByCode is the real gate; this is a cheap
+    // sanity check so a junk query string never reaches the database.
+    return /^[0-9A-Z]{4,12}$/.test(s) ? s : null;
+  } catch { return null; }
 }
 
 /* =================================================== VIP HOST REFERRAL */
@@ -2271,6 +2400,19 @@ Reply to this email and a person answers.`,
       clean(b.notes || b.about, 4000)
     ),
   ]);
+
+  // Who introduced this host. A column, not an earnings row — the Expert terms
+  // price a BUSINESS producing revenue and say nothing about a host, so filing
+  // one into num_scout_earnings would invent an obligation nobody agreed to.
+  // See worker/scoutintro.mjs. Credit recorded; what it is worth is a human
+  // decision with the terms in front of them.
+  const hostScout = scoutFromRequest(req, b);
+  if (hostScout) {
+    ctx.waitUntil((async () => {
+      const { attachScoutToHost } = await import("../worker/scoutintro.mjs");
+      await attachScoutToHost(env, { hostId, code: hostScout });
+    })().catch((e) => console.log("scout host", String(e).slice(0, 200))));
+  }
 
   const link = site + "/r/" + code;
   const consoleUrl = site + "/host/?k=" + consoleKey;
@@ -5971,6 +6113,124 @@ function newToken(len = 10) {
   return s;
 }
 
+/* ── THE ADMIN DOOR — GET /o/<token> ──────────────────────────────────────
+ *
+ * /ops runs on app.itsnum.com and could not open either of the consoles that
+ * live here. It holds no ADMIN_KEY — only a session token the app worker can
+ * verify — so it cannot call an admin endpoint on this worker, and handing the
+ * browser the real key to fix that would be worse than the problem.
+ *
+ * Both workers bind the same D1, so num_admin_console_opens is the handoff.
+ * /ops writes a single-use row; this route burns it and grants a SHORT session.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO: hand out a venue's permanent
+ * console_key. That key never expires and is owner-level on every endpoint
+ * guarded by bizAuth. Putting one in an admin page's links would have made a
+ * forever-credential in browser history a routine event.
+ *
+ * The host branch is the honest exception: /host/ is a static page that reads
+ * ?k= to call its own API, so there is nothing else to hand it yet. It is no
+ * worse than the welcome email every host already receives, and the page
+ * strips the key from the address bar on arrival — but it is the reason the
+ * host console is the next one to move off permanent keys.
+ */
+const ADMIN_PREVIEW_COOKIE = "num_biz_admin";
+const ADMIN_PREVIEW_TTL_S = 3600;
+
+async function sha256hex(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function adminPreviewSign(env, bizId, exp) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(env.ADMIN_KEY),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64url(await crypto.subtle.sign(
+    "HMAC", key, new TextEncoder().encode(bizId + "." + exp)));
+}
+
+/** The business id this request may preview, or null. Never throws. */
+async function adminPreviewBiz(env, req) {
+  // Fails closed with no key configured, exactly as worker/adminkey.mjs does:
+  // an unsigned preview cookie would be a business id anyone could type.
+  if (!env || !env.ADMIN_KEY || !req) return null;
+  const raw = qrCookie(req, ADMIN_PREVIEW_COOKIE);
+  if (!raw) return null;
+  const parts = raw.split(".");
+  if (parts.length !== 3) return null;
+  const [bizId, expStr, sig] = parts;
+  const exp = Number(expStr);
+  if (!bizId || !Number.isFinite(exp)) return null;
+  if (exp < Math.floor(Date.now() / 1000)) return null;
+  const want = await adminPreviewSign(env, bizId, expStr).catch(() => null);
+  if (!want || !sameSecret(want, sig)) return null;
+  return bizId;
+}
+
+function adminOpenFailed(reason) {
+  return new Response(
+    qrShell(
+      '<div class="wrap"><h1>That link did not work</h1>' +
+      "<p>" + esc(reason) + "</p>" +
+      '<p class="muted">Open a fresh one from the Consoles tab in /ops. These links are ' +
+      "single-use and last five minutes on purpose.</p></div>",
+      "Console link"),
+    { status: 400, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+async function adminConsoleOpen(req, env, url) {
+  const token = url.pathname.replace(/^\/o\/?/, "");
+  const nowS = Math.floor(Date.now() / 1000);
+  if (!token || token.length > 80) return adminOpenFailed("That is not a console link.");
+
+  const row = await env.DB.prepare(
+    "SELECT token_hash,kind,target_id,expires_at,used_at FROM num_admin_console_opens WHERE token_hash = ?"
+  ).bind(await sha256hex(token)).first().catch(() => null);
+
+  // Three different sentences on purpose: "that didn't work" is the least
+  // useful of the three, and only one of them means go and mint another.
+  if (!row) return adminOpenFailed("That link is not one we issued.");
+  if (row.used_at) return adminOpenFailed("That link has already been used.");
+  if (row.expires_at < nowS) return adminOpenFailed("That link has expired.");
+
+  // Burn first. If two taps race, only the one that changed a row proceeds.
+  const burn = await env.DB.prepare(
+    "UPDATE num_admin_console_opens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL"
+  ).bind(nowS, row.token_hash).run().catch(() => null);
+  if (!burn || !burn.meta || !burn.meta.changes) {
+    return adminOpenFailed("That link has already been used.");
+  }
+
+  if (row.kind === "host") {
+    const host = await env.DB.prepare("SELECT console_key FROM num_hosts WHERE id = ?")
+      .bind(row.target_id).first().catch(() => null);
+    if (!host || !host.console_key) return adminOpenFailed("That host no longer has a console.");
+    return new Response(null, { status: 302, headers: {
+      location: "/host/?k=" + encodeURIComponent(host.console_key),
+      "referrer-policy": "no-referrer",
+      "cache-control": "no-store",
+    }});
+  }
+
+  const biz = await env.DB.prepare("SELECT id,status FROM businesses WHERE id = ?")
+    .bind(row.target_id).first().catch(() => null);
+  if (!biz) return adminOpenFailed("That business no longer exists.");
+  if (biz.status !== "active") {
+    return adminOpenFailed('That business is "' + biz.status + '" — its console does not open for anyone.');
+  }
+
+  const exp = String(nowS + ADMIN_PREVIEW_TTL_S);
+  const value = biz.id + "." + exp + "." + (await adminPreviewSign(env, biz.id, exp));
+  return new Response(null, { status: 302, headers: {
+    location: "/biz",
+    "set-cookie": ADMIN_PREVIEW_COOKIE + "=" + encodeURIComponent(value) +
+      "; Path=/; Max-Age=" + ADMIN_PREVIEW_TTL_S + "; HttpOnly; Secure; SameSite=Lax",
+    "referrer-policy": "no-referrer",
+    "cache-control": "no-store",
+  }});
+}
+
 async function bizAuth(env, url, req) {
   const k = url.searchParams.get("k") || "";
   if (k.length >= 20 && k.length <= 80) {
@@ -5996,41 +6256,60 @@ async function bizAuth(env, url, req) {
    * They never consulted each other.
    *
    * So a venue that signed in by email could reach TWO pages out of seven, and
-   * the other five answered "sign in" to somebody who already had. That is the
-   * real reason the console was a set of islands: linking them would have
-   * produced links that did not work.
-   *
-   * The reverse direction already worked — `qrWho` falls back to this function,
-   * so a `?k=` holder can open the session pages. This closes the other side.
+   * the other five answered "sign in" to somebody who already had.
    *
    * ── WHY OWNER ONLY, AND WHY THAT IS NOT TIMIDITY ────────────────────────
    *
-   * A console key IS owner-level access: every caller of this function assumes
-   * whoever holds it may do anything this business can do. A session carries a
-   * ROLE, and `staff` and `readonly` deliberately cannot reach settings, key
-   * rotation or payout details. Accepting any session here would hand a
-   * part-time bartender the owner's authority on every endpoint that guards
-   * itself with this function and nothing else.
-   *
-   * Owner → key is a like-for-like substitution and cannot widen anything.
-   * Anything finer belongs in the endpoints, which know what action is being
-   * asked for; this function does not.
+   * A console key IS owner-level access. A session carries a ROLE, and `staff`
+   * and `readonly` deliberately cannot reach settings, key rotation or payout
+   * details. Accepting any session here would hand a part-time bartender the
+   * owner's authority on every endpoint that guards itself with this function.
    */
   if (!req) return null;
+
   const sid = qrCookie(req, QR_COOKIE);
-  if (!sid) return null;
-  const sess = await QR.sessionUser(env, sid).catch(() => null);
-  if (!sess || sess.role !== "owner") return null;
+  const sess = sid ? await QR.sessionUser(env, sid).catch(() => null) : null;
+  const ownerSession = !sess || sess.role !== "owner" ? null : sess;
+  if (ownerSession) {
+    const biz = await env.DB.prepare(
+      "SELECT id,name,category,console_key,status FROM businesses WHERE id = ?"
+    ).bind(String(ownerSession.business_id)).first().catch(() => null);
+    if (biz && biz.status === "active") {
+      // Logged like a key use, marked as a session, so the security sweep can
+      // still tell where access came from and one venue's activity is not two
+      // stories.
+      await logKeyEvent(env, req, biz.id, "ok", "via=owner_session");
+      return biz;
+    }
+  }
 
-  const biz = await env.DB.prepare(
-    "SELECT id,name,category,console_key,status FROM businesses WHERE id = ?"
-  ).bind(String(sess.business_id)).first().catch(() => null);
-  if (!biz || biz.status !== "active") return null;
+  /* ── AN ADMIN PREVIEW SESSION COUNTS TOO — added 14 Sep 2026 ─────────────
+   *
+   * Minted by /o/<token> from the Consoles tab in /ops, signed with ADMIN_KEY,
+   * one hour, one business. Consulted LAST, after the venue's own two doors:
+   * an operator's preview must never be what answers a request the venue could
+   * have authenticated itself, or the log stops describing who was really here.
+   *
+   * It cannot widen anything — it names exactly one business id, and every
+   * caller of bizAuth already assumes owner-level.
+   *
+   * Logged as its own reason. An operator looking at a venue and the venue
+   * looking at itself must never be one story in num_key_events: that log is
+   * what "this link leaked" is read from, and an admin visit from an unfamiliar
+   * network is precisely the signal it exists to carry.
+   */
+  const previewId = await adminPreviewBiz(env, req);
+  if (previewId) {
+    const previewBiz = await env.DB.prepare(
+      "SELECT id,name,category,console_key,status FROM businesses WHERE id = ?1"
+    ).bind(previewId).first().catch(() => null);
+    if (previewBiz && previewBiz.status === "active") {
+      await logKeyEvent(env, req, previewBiz.id, "ok", "via=admin_preview");
+      return previewBiz;
+    }
+  }
 
-  // Logged like a key use, marked as a session, so the security sweep can still
-  // tell where access came from and one venue's activity is not two stories.
-  await logKeyEvent(env, req, biz.id, "ok", "via=owner_session");
-  return biz;
+  return null;
 }
 
 /* ── GET /api/venue/codes?k= — list, with scan counts ────────────────────── */
@@ -7940,6 +8219,43 @@ const RAIL_BY_COUNTRY = Object.freeze(Object.fromEntries(
   })]),
 ));
 
+/* ── WHAT MONEY IS THIS VENUE IN? ─────────────────────────────────────────
+ *
+ * 14 Sep 2026. LA Cannabis Club — a venue whose profile says country US — was
+ * shown "0.00 THB" on its own statement. Not a default anyone chose: three
+ * separate faults stacked up.
+ *
+ *  1. Both money pages read `currency` from num_business_settings. That column
+ *     DOES NOT EXIST, so the whole SELECT threw and the .catch turned it into
+ *     null — taking the venue's commission rate and walk-in fee down with it.
+ *     A venue billing 15% was being shown 10%, silently, for the same reason.
+ *  2. The fallback then read `who.business.country`, and bizAuth selects
+ *     id, name, category, console_key and status. There is no country on it.
+ *  3. So the only figure with a currency left was the one the browser drew,
+ *     and its formatter defaulted to THB.
+ *
+ * The country is on num_business_profiles and always was. This reads it, and
+ * the pages take their currency from here instead of guessing three times.
+ */
+async function venueMoney(env, businessId) {
+  const row = await env.DB.prepare(
+    'SELECT country FROM num_business_profiles WHERE business_id = ?1',
+  ).bind(String(businessId)).first().catch(() => null);
+  const code = railFor(row && row.country).currency;
+  return { code, symbol: CURRENCY_SYMBOL[code] || '', country: (row && row.country) || null };
+}
+
+/** Symbols we are sure of. An unknown code shows its letters rather than a
+ *  wrong glyph — "12.00 PLN" is honest, "$12.00" for zloty is not. */
+const CURRENCY_SYMBOL = Object.freeze({ USD: '$', GBP: '\u00a3', EUR: '\u20ac', THB: '\u0e3f' });
+
+/** Money for a venue, in its own currency, symbol in front where we have one. */
+function venueAmount(minorUnits, money) {
+  const n = Number(minorUnits || 0) / 100;
+  const shown = n % 1 ? n.toFixed(2) : String(n);
+  return money.symbol ? money.symbol + shown : shown + ' ' + money.code;
+}
+
 /** Unknown country falls to the rail that works anywhere, never to PromptPay. */
 function railFor(country) {
   return RAIL_BY_COUNTRY[String(country || "").toUpperCase()]
@@ -9594,6 +9910,7 @@ async function qrRunAgent(env) {
  */
 const BIZ_NAV = Object.freeze([
   { slug: '', label: 'Home', need: 'view' },
+  { slug: 'products', label: 'Products', need: 'view' },
   { slug: 'tables', label: 'Tables', need: 'view' },
   { slug: 'pay', label: 'Payment QRs', need: 'view' },
   { slug: 'statement', label: 'Statement', need: 'view' },
@@ -9610,73 +9927,422 @@ function qrNav(current, role, k, opts) {
       ? `<span class="bnav-on" aria-current="page">${esc(it.label)}</span>`
       : `<a href="${href}">${esc(it.label)}</a>`;
   }).join('');
-  const nav = `<nav class="bnav">${items}</nav>`;
-  // Five of the seven pages predate qrShell and carry their own stylesheet, so
-  // the nav has to bring its own when it is dropped into one of those. A
-  // duplicated style block is harmless; a nav rendering as a bare list of blue
-  // links on five pages out of seven is not.
-  return opts && opts.standalone ? BIZ_NAV_CSS + nav : nav;
+  // The nav is not a strip of links above the page any more — it is the page's
+  // chrome, and it carries the product's identity. A merchant console that does
+  // not say whose it is on every screen is a set of forms, not a product.
+  const bar = `<div class="topbar"><div class="in">`
+    + `<div class="mark"><b>N</b><i></i></div>`
+    + `<div class="name">NUM<span>Business console</span></div>`
+    + `<nav class="bnav">${items}</nav></div></div>`;
+  return opts && opts.standalone ? CONSOLE_CSS + bar : bar;
 }
 
-const BIZ_NAV_CSS = `<style>
-.bnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 auto 10px;padding:6px 18px;max-width:760px;
-  border-bottom:1px solid #e3e7ec;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-.bnav a,.bnav .bnav-on{font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;text-decoration:none;white-space:nowrap}
-.bnav a{color:#5b6673}
-.bnav a:hover{background:#eef3f1;color:#0b3f33}
-.bnav .bnav-on{background:#0f5c4a;color:#fff}
-@media (max-width:520px){.bnav{gap:2px;padding:6px 12px}.bnav a,.bnav .bnav-on{padding:6px 8px;font-size:12px}}
+
+const CONSOLE_CSS = `<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+/* ── THE NUM CONSOLE DESIGN SYSTEM ────────────────────────────────────────
+ * One stylesheet for every console page, built on the SITE'S tokens — the
+ * ones in public/assets/site.css — and not on a palette invented here.
+ *
+ * The first version of this file had its own near-black chrome and system
+ * fonts. It was coherent with itself and coherent with nothing else: a
+ * merchant who had just read itsnum.com arrived at a console in a different
+ * typeface and a different green and could reasonably wonder whose product it
+ * was. Borrow the site's vocabulary; the layout can still be its own.
+ *
+ * Variables are referenced by NAME wherever the site defines one, so a brand
+ * change in site.css reaches the console too instead of leaving it behind.
+ */
+:root{
+  /* straight from public/assets/site.css */
+  --pri:#0EA483; --pri-d:#0B7C63; --pri-l:#E7F6F1; --pri-xl:#F1FBF8;
+  --ink:#0A1A24; --ink2:#0E2733; --slate:#586A74; --line:#E7ECEE;
+  --bg:#F6FAF9; --card:#FFFFFF; --amber:#EFA43A; --amber-l:#FDF3E1; --sky:#EAF3FA;
+  --disp:'Space Grotesk','Plus Jakarta Sans',sans-serif;
+  --body:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  --shadow:0 1px 2px rgba(10,26,36,.04),0 14px 40px rgba(10,26,36,.07);
+  --shadow-lg:0 30px 70px rgba(10,26,36,.16);
+  --r:16px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --w:1180px;
+  /* older markup still names these; point them at the real brand */
+  --accent:var(--pri); --accent-ink:var(--pri-d); --muted:var(--slate); --line-2:#F1F5F4;
+  --ember:#EC3013; --teal:var(--pri); --teal-ink:var(--pri-d); --dim:var(--slate);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
+  font-family:var(--body);font-size:15px;line-height:1.6;padding:0 0 72px}
+.num,td.r,.big,.kpi v{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+/* ── chrome ────────────────────────────────────────────────────────────── */
+.topbar{background:var(--ink);color:#E6EDF0;margin:0 0 28px}
+.topbar .in{max-width:var(--w);margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.topbar .mark{width:27px;height:27px;border-radius:50%;background:var(--pri);position:relative;flex:0 0 auto;
+  box-shadow:0 8px 20px rgba(14,164,131,.34)}
+.topbar .mark b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font:700 14px/1 var(--disp)}
+.topbar .mark i{display:none}
+.topbar .name{font-family:var(--disp);font-weight:700;font-size:18px;color:#fff;letter-spacing:-.02em}
+.topbar .name span{display:block;font-family:var(--body);font-weight:600;font-size:10px;
+  letter-spacing:.13em;text-transform:uppercase;color:#7C919B}
+.bnav{display:flex;gap:2px;flex-wrap:wrap;margin-left:auto;padding:0;border:0;max-width:none}
+.bnav a,.bnav .bnav-on{font-size:13.5px;font-weight:600;padding:8px 13px;border-radius:10px;
+  text-decoration:none;white-space:nowrap;line-height:1}
+.bnav a{color:#8FA3AC}
+.bnav a:hover{background:var(--ink2);color:#fff}
+.bnav .bnav-on{background:var(--pri);color:#fff}
+
+/* ── page ──────────────────────────────────────────────────────────────── */
+.wrap{max-width:var(--w);margin:0 auto;padding:0 24px}
+header{display:flex;align-items:flex-start;gap:14px;padding:0 0 4px}
+.brand{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.02em}
+.brand span{font-family:var(--body);font-weight:400;color:var(--slate);font-size:13px;margin-left:6px}
+.who{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--slate);text-align:right}
+h1,h2,h3,h4{font-family:var(--disp);margin:0;letter-spacing:-.02em;font-weight:600;line-height:1.1}
+h1{font-size:30px;margin:2px 0 8px}
+h2{font-family:var(--body);font-weight:700;font-size:12.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--slate);margin:36px 0 14px}
+p{max-width:68ch}
+.muted{color:var(--slate);font-size:14px}
+a{color:var(--pri-d);text-underline-offset:3px}
+
+/* ── surfaces ──────────────────────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:22px 24px;margin:0 0 16px;box-shadow:var(--shadow)}
+.card>h3{margin:0 0 4px;font-size:17px}
+.card>h3+.muted{margin:0 0 18px}
+
+.kpis{display:grid;gap:14px;margin:0 0 16px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:17px 19px 18px;box-shadow:var(--shadow);min-width:0}
+.kpi k{display:block;font-weight:700;font-size:11px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--slate);margin:0 0 10px}
+.kpi v{display:block;font-family:var(--disp);font-size:31px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.kpi s{display:block;text-decoration:none;font-size:13px;color:var(--slate);margin-top:7px}
+.kpi .up{color:var(--pri-d);font-weight:700}
+.kpi.alert{border-color:#F3CFA3;background:var(--amber-l)}
+.kpi svg{display:block;margin-top:12px;width:100%;height:34px;overflow:visible}
+.big{font-family:var(--disp);font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+
+/* ── tiles ─────────────────────────────────────────────────────────────── */
+.tiles{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));margin:0 0 16px}
+.tile{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:19px 20px;text-decoration:none;color:var(--ink);box-shadow:var(--shadow);
+  font-size:13.5px;transition:border-color .14s ease,transform .14s ease,box-shadow .14s ease}
+.tile:hover{border-color:var(--pri);transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.tile b{display:block;font-family:var(--disp);font-size:16px;font-weight:600;margin-bottom:5px}
+.tile{color:var(--slate)}
+.tile b{color:var(--ink)}
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:700;font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--slate);padding:0 10px 11px;border-bottom:1px solid var(--line)}
+td{padding:14px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r{text-align:right;white-space:nowrap}
+
+/* ── forms ─────────────────────────────────────────────────────────────── */
+label{display:block;font-weight:700;font-size:13px;margin:16px 0 7px;color:var(--ink2)}
+input,select,textarea{width:100%;font-family:var(--body);font-size:15px;color:var(--ink);
+  padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:#fff;transition:.15s}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--pri);
+  box-shadow:0 0 0 3px var(--pri-l)}
+input::placeholder{color:#9DAFB7}
+input.bad{border-color:#E2564B;box-shadow:0 0 0 3px #FDECEA}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1;min-width:150px}
+.hint{font-size:12.5px;color:var(--slate);margin:6px 0 0}
+button{margin-top:16px;font-family:var(--body);font-weight:700;font-size:15px;padding:13px 22px;
+  border-radius:12px;background:var(--pri);color:#fff;border:0;cursor:pointer;
+  box-shadow:0 12px 26px rgba(14,164,131,.28);transition:.15s}
+button:hover{background:var(--pri-d)}
+button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+button:disabled{opacity:.45;cursor:default;box-shadow:none}
+
+/* ── bits ──────────────────────────────────────────────────────────────── */
+.pill{display:inline-block;font-weight:700;font-size:11px;letter-spacing:.09em;padding:4px 10px;
+  border-radius:99px;background:var(--line-2);color:var(--slate);text-transform:uppercase}
+.pill.on{background:var(--pri-l);color:var(--pri-d)}
+.pill.off{background:var(--amber-l);color:#8a5a12}
+.qr{width:74px;height:74px;display:block;border-radius:8px}
+.out{font-size:13px;color:var(--slate);margin-top:12px;white-space:pre-wrap;word-break:break-word}
+.banner{margin:0 0 16px;padding:16px 18px;border-radius:var(--r);font-size:14.5px;line-height:1.55;
+  background:var(--amber-l);border:1px solid #F0D5A6;color:#6b4708}
+.banner a{color:#6b4708;font-weight:700}
+.banner.gone{background:#FDECEA;border-color:#F2C2BC;color:#7a1f14}
+
+/* ── plan ──────────────────────────────────────────────────────────────── */
+.plan{background:var(--ink);color:#DCE6EA;border-radius:var(--r);padding:26px 28px;margin:0 0 16px;
+  box-shadow:var(--shadow-lg)}
+.plan h3{margin:0 0 8px;color:#fff;font-size:20px}
+.plan p{color:#93A7B0;font-size:14.5px;margin:0 0 18px;max-width:60ch}
+.plan .lock{display:inline-block;font-weight:700;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--pri);margin:0 0 10px}
+.plan button,.plan .cta{background:var(--pri);color:#fff;margin-top:0;display:inline-block;
+  padding:13px 22px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;
+  box-shadow:0 12px 26px rgba(14,164,131,.34)}
+
+@media (max-width:760px){
+  .wrap{padding:0 16px}
+  .topbar .in{padding:12px 16px;gap:12px}
+  .bnav{margin-left:0;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+  h1{font-size:25px}
+  .card{padding:18px 19px}
+  .kpi v{font-size:27px}
+  .big{font-size:31px}
+}
 </style>`;
+
+/* The old name, kept so nothing that still imports it breaks. */
+const BIZ_NAV_CSS = CONSOLE_CSS;
+
+/* ── PRODUCTS & INVENTORY ─────────────────────────────────────────────────
+ *
+ * A venue's own menu: what it sells, at what price, and how much is left.
+ *
+ * Forms, no JavaScript, post-redirect-get. Same reasoning as the rest of this
+ * console: a stock edit happens on a phone behind a bar with one bar of signal,
+ * and a fetch that dies mid-flight there looks identical to a save that worked.
+ * A form submission is a navigation — the browser retries it, shows its own
+ * progress, and the page that comes back IS the confirmation.
+ *
+ * WHO MAY CHANGE WHAT, and why it is split:
+ *   stock + availability  →  'view'      anyone on the floor
+ *   price + name + adding →  'settings'  the owner
+ * A bartender marking the last steak gone is the single most common edit here
+ * and gating it behind an owner login means it never happens, and the menu
+ * lies. Changing a price is a different kind of act and belongs with the owner.
+ */
+const PRODUCT_CATEGORIES = Object.freeze(
+  ['Food', 'Drinks', 'Cocktails', 'Wine', 'Beer', 'Flower', 'Edibles', 'Concentrates',
+   'Pre-rolls', 'Merch', 'Tickets', 'Services', 'Other']);
+
+/** "12.50" / "12,50" / "1250" -> minor units. Null when it is not a number. */
+function priceToMinor(raw) {
+  const t = String(raw == null ? '' : raw).trim().replace(/[^0-9.,-]/g, '').replace(',', '.');
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+/** Minor units back into something an owner can edit without a currency on it. */
+function minorToInput(cs) {
+  const n = Number(cs || 0) / 100;
+  return n % 1 ? n.toFixed(2) : String(n);
+}
+
+async function venueProductSave(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: 'unauthorised' }, 401);
+
+  const k = url.searchParams.get('k') || '';
+  const back = (q) => new Response(null, {
+    status: 303,
+    headers: { location: '/biz/products' + (k ? '?k=' + encodeURIComponent(k) : '') + q, 'cache-control': 'no-store' },
+  });
+
+  let form;
+  try { form = await req.formData(); } catch (e) { return back('&err=form'); }
+  const sep = k ? '&' : '?';
+  const act = clean(form.get('act'), 12);
+  const id = clean(form.get('id'), 40);
+
+  // Stock and availability are floor edits. Everything else is an owner edit.
+  const floorOnly = act === 'stock' || act === 'toggle';
+  if (!floorOnly && !QR.can(who.role, 'settings')) return back(sep + 'err=role');
+
+  const money = await venueMoney(env, who.business.id);
+  const t = Math.floor(Date.now() / 1000);
+
+  if (act === 'add') {
+    const name = clean(form.get('name'), 80);
+    if (!name) return back(sep + 'err=name');
+    const price = priceToMinor(form.get('price'));
+    if (price === null) return back(sep + 'err=price');
+    // An empty stock box means "I do not count this", which is not zero. Zero
+    // would take every new item off the menu the moment it was added.
+    const stockRaw = String(form.get('stock') || '').trim();
+    const stock = stockRaw === '' ? null : Math.max(0, Math.round(Number(stockRaw) || 0));
+    await env.DB.prepare(
+      `INSERT INTO num_products (id,business_id,name,blurb,category,price_cs,currency,stock,available,sort,created_at,updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1,?9,?10,?10)`,
+    ).bind('prd_' + newToken(), String(who.business.id), name,
+           clean(form.get('blurb'), 160) || null, clean(form.get('category'), 24) || null,
+           price, money.code, stock, t, t).run();
+    return back(sep + 'saved=added');
+  }
+
+  if (!id) return back(sep + 'err=missing');
+
+  if (act === 'stock') {
+    const raw = String(form.get('stock') || '').trim();
+    const stock = raw === '' ? null : Math.max(0, Math.round(Number(raw) || 0));
+    await env.DB.prepare(
+      'UPDATE num_products SET stock = ?3, updated_at = ?4 WHERE id = ?1 AND business_id = ?2',
+    ).bind(id, String(who.business.id), stock, t).run();
+    return back(sep + 'saved=stock');
+  }
+
+  if (act === 'toggle') {
+    await env.DB.prepare(
+      `UPDATE num_products SET available = CASE available WHEN 1 THEN 0 ELSE 1 END,
+              updated_at = ?3 WHERE id = ?1 AND business_id = ?2`,
+    ).bind(id, String(who.business.id), t).run();
+    return back(sep + 'saved=toggle');
+  }
+
+  if (act === 'price') {
+    const price = priceToMinor(form.get('price'));
+    if (price === null) return back(sep + 'err=price');
+    await env.DB.prepare(
+      'UPDATE num_products SET price_cs = ?3, updated_at = ?4 WHERE id = ?1 AND business_id = ?2',
+    ).bind(id, String(who.business.id), price, t).run();
+    return back(sep + 'saved=price');
+  }
+
+  if (act === 'archive') {
+    // Archived, never deleted. A product is on old bills and old statements,
+    // and a row that vanishes takes the explanation for those figures with it.
+    await env.DB.prepare(
+      'UPDATE num_products SET archived_at = ?3, available = 0, updated_at = ?3 WHERE id = ?1 AND business_id = ?2',
+    ).bind(id, String(who.business.id), t).run();
+    return back(sep + 'saved=archived');
+  }
+
+  if (act === 'restore') {
+    await env.DB.prepare(
+      'UPDATE num_products SET archived_at = NULL, updated_at = ?3 WHERE id = ?1 AND business_id = ?2',
+    ).bind(id, String(who.business.id), t).run();
+    return back(sep + 'saved=restored');
+  }
+
+  return back(sep + 'err=what');
+}
+
+async function venueProductsPage(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return qrSignIn();
+
+  const k = url.searchParams.get('k') || '';
+  const kq = k ? '?k=' + encodeURIComponent(k) : '';
+  const money = await venueMoney(env, who.business.id);
+  const owner = QR.can(who.role, 'settings');
+
+  const { results } = await env.DB.prepare(
+    `SELECT id,name,blurb,category,price_cs,currency,stock,available,archived_at
+       FROM num_products WHERE business_id = ?1
+      ORDER BY archived_at IS NOT NULL, sort, name`,
+  ).bind(String(who.business.id)).all().catch(() => ({ results: null }));
+
+  // A read that FAILED and a menu that is EMPTY are opposite facts. Only one of
+  // them means "add your first item", and telling a venue with a full menu that
+  // it has none is the worse of the two mistakes.
+  const broke = results === null;
+  const rows = results || [];
+  const live = rows.filter((r) => !r.archived_at);
+  const out = live.filter((r) => r.stock !== null && Number(r.stock) <= 0);
+  const off = live.filter((r) => !r.available);
+  const prices = live.map((r) => Number(r.price_cs || 0)).filter((n) => n > 0);
+  const avg = prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
+
+  const note = url.searchParams.get('saved') ? '<div class="banner" style="background:var(--pri-l);border-color:#A7DCCB;color:var(--pri-d)">Saved.</div>'
+    : url.searchParams.get('err') === 'role' ? '<div class="banner">Only the owner can change prices or add items. You can still update stock.</div>'
+    : url.searchParams.get('err') === 'price' ? '<div class="banner">That price was not a number, so nothing was changed.</div>'
+    : url.searchParams.get('err') === 'name' ? '<div class="banner">An item needs a name.</div>'
+    : url.searchParams.get('err') ? '<div class="banner">That did not save.</div>' : '';
+
+  const opts = PRODUCT_CATEGORIES.map((c) => `<option>${esc(c)}</option>`).join('');
+
+  const row = (r) => {
+    const gone = !!r.archived_at;
+    const stockCell = r.stock === null
+      ? '<span class="pill">not counted</span>'
+      : Number(r.stock) <= 0 ? '<span class="pill off">out of stock</span>'
+      : `<b>${esc(String(r.stock))}</b> left`;
+    return `<tr${gone ? ' style="opacity:.5"' : ''}>
+      <td><b>${esc(r.name)}</b>${r.blurb ? `<div class="muted" style="font-size:13px">${esc(r.blurb)}</div>` : ''}</td>
+      <td>${r.category ? `<span class="pill">${esc(r.category)}</span>` : '—'}</td>
+      <td class="r">${owner && !gone ? `<form method="post" action="/api/venue/products${kq}" style="display:flex;gap:6px;justify-content:flex-end">
+          <input type="hidden" name="act" value="price"><input type="hidden" name="id" value="${esc(r.id)}">
+          <input name="price" value="${esc(minorToInput(r.price_cs))}" inputmode="decimal" aria-label="Price"
+                 style="width:92px;text-align:right;padding:7px 9px;font-size:14px">
+          <button class="ghost" style="margin:0;padding:7px 11px;font-size:13px">Set</button>
+        </form>` : esc(venueAmount(r.price_cs, { code: r.currency || money.code, symbol: CURRENCY_SYMBOL[r.currency || money.code] || '' }))}</td>
+      <td class="r">${gone ? stockCell : `<form method="post" action="/api/venue/products${kq}" style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+          <input type="hidden" name="act" value="stock"><input type="hidden" name="id" value="${esc(r.id)}">
+          <input name="stock" value="${r.stock === null ? '' : esc(String(r.stock))}" placeholder="—" inputmode="numeric" aria-label="Stock"
+                 style="width:74px;text-align:right;padding:7px 9px;font-size:14px">
+          <button class="ghost" style="margin:0;padding:7px 11px;font-size:13px">Save</button>
+        </form>`}</td>
+      <td class="r">${gone
+        ? `<form method="post" action="/api/venue/products${kq}"><input type="hidden" name="act" value="restore">
+             <input type="hidden" name="id" value="${esc(r.id)}">
+             <button class="ghost" style="margin:0;padding:7px 11px;font-size:13px">Restore</button></form>`
+        : `<form method="post" action="/api/venue/products${kq}" style="display:flex;gap:6px;justify-content:flex-end">
+             <input type="hidden" name="act" value="toggle"><input type="hidden" name="id" value="${esc(r.id)}">
+             <button class="ghost" style="margin:0;padding:7px 11px;font-size:13px">${r.available ? 'Hide' : 'Show'}</button>
+           </form>${owner ? `<form method="post" action="/api/venue/products${kq}" style="margin-top:6px">
+             <input type="hidden" name="act" value="archive"><input type="hidden" name="id" value="${esc(r.id)}">
+             <button class="ghost" style="margin:0;padding:7px 11px;font-size:13px">Archive</button></form>` : ''}`}</td>
+    </tr>`;
+  };
+
+  const table = broke
+    ? `<div class="banner gone">Your menu could not be read just now — this is not an empty menu. Nothing has been lost; try again in a moment.</div>`
+    : rows.length
+      ? `<div class="card"><h3>Your menu</h3>
+           <div class="muted">${live.length} live${rows.length - live.length ? ` · ${rows.length - live.length} archived` : ''}. Hidden items stay in your menu but guests do not see them.</div>
+           <table><thead><tr><th>Item</th><th>Category</th><th class="r">Price</th><th class="r">Stock</th><th class="r"></th></tr></thead>
+           <tbody>${rows.map(row).join('')}</tbody></table></div>`
+      : `<div class="card"><h3>Nothing on your menu yet</h3>
+           <div class="muted">Add your first item below. Guests see the name, the price and anything you write in the one-liner — so write it the way you would say it to someone at the bar.</div></div>`;
+
+  const addForm = owner ? `<div class="card"><h3>Add an item</h3>
+      <div class="muted">Prices are in ${esc(money.code)}, because that is what ${esc(who.business.name)} bills in.</div>
+      <form method="post" action="/api/venue/products${kq}">
+        <input type="hidden" name="act" value="add">
+        <label for="pname">Name</label>
+        <input id="pname" name="name" required maxlength="80" placeholder="House margarita">
+        <label for="pblurb">One line a guest reads <span class="muted" style="font-weight:400">— optional</span></label>
+        <input id="pblurb" name="blurb" maxlength="160" placeholder="Tommy's style, mezcal float">
+        <div class="row">
+          <div><label for="pcat">Category</label><select id="pcat" name="category">${opts}</select></div>
+          <div><label for="pprice">Price (${esc(money.code)})</label>
+            <input id="pprice" name="price" required inputmode="decimal" placeholder="12.50"></div>
+          <div><label for="pstock">Stock <span class="muted" style="font-weight:400">— leave empty if you do not count it</span></label>
+            <input id="pstock" name="stock" inputmode="numeric" placeholder="—"></div>
+        </div>
+        <button>Add to menu</button>
+      </form></div>` : '';
+
+  const inner = `<div class="wrap">
+    <header><div class="brand">${esc(who.business.name)}</div>
+      <div class="who">${esc(who.role)}</div></header>
+    <h1>Products &amp; inventory</h1>
+    <p class="muted">Your menu, your prices, and what is left. Anyone on the floor can update stock; prices are the owner's.</p>
+    ${note}
+    <div class="kpis">
+      <div class="kpi"><k>On the menu</k><v>${live.length}</v><s>${off.length ? esc(String(off.length)) + ' hidden from guests' : 'all visible to guests'}</s></div>
+      <div class="kpi${out.length ? ' alert' : ''}"><k>Out of stock</k><v>${out.length}</v><s>${out.length ? 'guests cannot order these' : 'nothing has run out'}</s></div>
+      <div class="kpi"><k>Average price</k><v>${avg ? esc(venueAmount(avg, money)) : '—'}</v><s>${prices.length ? 'across ' + prices.length + ' priced items' : 'nothing priced yet'}</s></div>
+      <div class="kpi"><k>Categories</k><v>${new Set(live.map((r) => r.category).filter(Boolean)).size}</v><s>how guests browse your menu</s></div>
+    </div>
+    ${table}
+    ${addForm}
+  </div>`;
+
+  return new Response(qrShell(inner, 'Products', qrNav('products', who.role, k)),
+    { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+}
 
 function qrShell(inner, title, nav) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<title>${esc(title)} — NUM</title><style>
-:root{--ink:#12161c;--muted:#5b6673;--line:#e3e7ec;--bg:#fbfcfd;--accent:#0f5c4a;--accent-ink:#0b3f33}
-*{box-sizing:border-box}html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:0 0 60px}
-.wrap{max-width:760px;margin:0 auto;padding:0 18px}
-header{display:flex;align-items:center;gap:10px;padding:22px 0 10px}
-.brand{font-weight:700;font-size:19px;letter-spacing:-.02em}
-.brand span{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
-.who{margin-left:auto;font-size:13px;color:var(--muted);text-align:right}
-h1{font-size:24px;letter-spacing:-.02em;margin:14px 0 4px}
-h2{font-size:12px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin:26px 0 8px}
-.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px;margin:0 0 14px}
-.muted{color:var(--muted);font-size:14px}
-label{display:block;font-weight:600;font-size:13px;margin:12px 0 5px}
-input,select{width:100%;padding:11px 12px;font-size:16px;border:1px solid #c9d0d8;border-radius:9px;font-family:inherit;background:#fff}
-.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
-button{margin-top:14px;padding:12px 16px;font:600 15px inherit;background:var(--accent);color:#fff;border:0;border-radius:9px;cursor:pointer;font-family:inherit}
-button.ghost{background:#fff;color:var(--accent-ink);border:1px solid var(--line)}
-button:disabled{opacity:.5;cursor:default}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:left;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 6px;border-bottom:1px solid var(--line)}
-td{padding:9px 6px;border-bottom:1px solid #f0f2f4;vertical-align:middle}
-td.r{text-align:right;white-space:nowrap}
-a{color:var(--accent-ink)}
-.qr{width:74px;height:74px;display:block}
-.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#eef3f1;color:var(--accent-ink)}
-.pill.off{background:#f4f0ee;color:#8c5a2f}
-.out{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;word-break:break-word}
-.banner{margin:14px 0;padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.5;
-  background:#fff4e5;border:1px solid #e0a642;color:#4a3306}
-.banner a{color:#4a3306;font-weight:600}
-.banner.gone{background:#fdecea;border-color:#d98b84;color:#5a1b14}
-.big{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink)}
-.bnav{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0 6px;padding:6px 0;border-bottom:1px solid var(--line)}
-.bnav a,.bnav .bnav-on{font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;text-decoration:none;white-space:nowrap}
-.bnav a{color:var(--muted)}
-.bnav a:hover{background:#eef3f1;color:var(--accent-ink)}
-.bnav .bnav-on{background:var(--accent);color:#fff}
-.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0 0 14px}
-.tile{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 15px;text-decoration:none;color:var(--ink)}
-.tile:hover{border-color:var(--accent);background:#fbfefd}
-.tile b{display:block;font-size:15px;margin-bottom:3px;color:var(--accent-ink)}
-.tile span{font-size:13px;color:var(--muted);line-height:1.45}
-@media (max-width:520px){.bnav{gap:2px}.bnav a,.bnav .bnav-on{padding:6px 8px;font-size:12px}}
-</style></head><body><div class="wrap">${nav || ''}${inner}</div></body></html>`;
+<title>${esc(title)} — NUM</title>${CONSOLE_CSS}</head><body><div class="wrap">${nav || ''}${inner}</div></body></html>`;
 }
 
 /**
@@ -9742,14 +10408,14 @@ async function venueHomePage(req, env, url) {
   const q = k ? `?k=${encodeURIComponent(k)}` : "";
 
   const terms = await env.DB.prepare(
-    `SELECT COALESCE(commission_bp, 1000) AS commission_bp, walkin_fee_cs, currency
+    `SELECT COALESCE(commission_bp, 1000) AS commission_bp, walkin_fee_cs
        FROM num_business_settings WHERE business_id = ?1`,
   ).bind(String(who.business.id)).first().catch(() => null);
   const ratePct = ((terms && terms.commission_bp ? terms.commission_bp : 1000) / 100) + "%";
   const walkinCs = terms && terms.walkin_fee_cs != null ? Number(terms.walkin_fee_cs) : 200;
-  const curCode = String(terms && terms.currency ? terms.currency : "").toUpperCase()
-    || CURRENCY_BY_COUNTRY[String(who.business.country || "").toUpperCase()] || "USD";
-  const sym = { USD: "$", GBP: "£", EUR: "€", THB: "฿" }[curCode] || "";
+  const money = await venueMoney(env, who.business.id);
+  const curCode = money.code;
+  const sym = money.symbol;
   const walkinLine = walkinCs > 0
     ? `A guest who was already yours and simply pays through NUM is a flat ${sym}${walkinCs % 100 ? (walkinCs / 100).toFixed(2) : String(walkinCs / 100)} — never a percentage.`
     : "Your own customers and walk-ins are never charged.";
@@ -10531,9 +11197,9 @@ async function venueStatementPage(req, env, url) {
   // With the currency, because the figure is minor units of the venue's own
   // money: the same stored 7000 is ฿70 in Phuket and would read as "70.00" with
   // no symbol, which a venue could reasonably take for dollars.
-  const curCode = String(terms && terms.currency ? terms.currency : "").toUpperCase()
-    || CURRENCY_BY_COUNTRY[String(who.business.country || "").toUpperCase()] || "USD";
-  const sym = { USD: "$", GBP: "£", EUR: "€", THB: "฿" }[curCode] || "";
+  const money = await venueMoney(env, who.business.id);
+  const curCode = money.code;
+  const sym = money.symbol;
   const walkinLine = walkinCs > 0
     ? "A guest who was already yours and simply paid through NUM is charged a flat "
       + sym + (walkinCs % 100 ? (walkinCs / 100).toFixed(2) : String(walkinCs / 100))
@@ -10563,7 +11229,7 @@ function q(p){return p+(K?(p.indexOf('?')<0?'?':'&')+'k='+encodeURIComponent(K):
 function get(p){return fetch(q(p),{credentials:'same-origin'}).then(function(r){return r.json()})}
 function el(t,x){var e=document.createElement(t);if(x!=null)e.textContent=x;return e}
 function td(x,c){var e=el('td',x);if(c)e.className=c;return e}
-function m(cs,cur){return (cs/100).toFixed(2)+' '+(cur||'THB')}
+function m(cs,cur){return (cs/100).toFixed(2)+(cur?' '+cur:'')}/* no currency guess: the API always sends the venue's own, and a wrong label is worse than none */
 
 var PAY=null;
 get('/api/venue/statement').then(function(j){

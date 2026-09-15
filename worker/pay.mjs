@@ -539,6 +539,34 @@ export async function handlePay(request, env, path) {
           } else {
             const g = await grantBizTier(env, businessId, bizTierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
             console.log('[pay] biz tier', bizTierMatch[1], g.ok ? 'granted to' : 'FAILED for', businessId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
+
+            // ── MONEY ARRIVED FROM A BUSINESS ────────────────────────────
+            //
+            // The event two payout programmes were waiting on and never got.
+            // Until 15 Sep 2026 neither `recordRevenue` (Num Experts) nor
+            // `creditBizReferral` (member referrals) had a single caller, so
+            // both were complete, tested and unreachable — which looks exactly
+            // like working code until somebody asks where their money is.
+            //
+            // Keyed on the Stripe session id, so a retried webhook records
+            // nothing the second time. See bizrevenue.mjs.
+            try {
+              const { businessEarned } = await import('./bizrevenue.mjs');
+              const earned = await businessEarned(env, {
+                businessId,
+                amountMinor: s.amount_total,
+                currency: s.currency ?? 'usd',
+                source: 'biztier',
+                ref: id,
+              });
+              if (earned.scout?.activated) {
+                console.log('[pay] num expert activated on', businessId, '— finder fee released');
+              }
+            } catch (err) {
+              // A payout programme must never fail a payment webhook: a throw
+              // here makes Stripe retry the charge handling forever.
+              console.error('[pay] business revenue hook failed', err);
+            }
           }
         }
 

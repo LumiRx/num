@@ -15,7 +15,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { statedPlace, resolveLocation } from './places.js';
+import { statedPlace, resolveLocation, __resetDestCache } from './places.js';
 import { SYSTEM } from './worker.js';
 
 const DESTS = [
@@ -41,6 +41,9 @@ function mockEnv({ areas = [] } = {}) {
       return null;
     },
   });
+  // Both stubs reset it, so neither can poison the other whichever order the
+  // runner picks.
+  __resetDestCache();
   return {
     DB: {
       prepare(sql) {
@@ -167,4 +170,136 @@ test('in-area location is stated as a guess, never as fact', () => {
   assert.match(p, /WHERE WE THINK THE GUEST IS: Phuket, TH/);
   assert.match(p, /it is sometimes wrong/i);
   assert.match(p, /If the guest names anywhere else, they are right/);
+});
+
+// ───────────────── the neighbourhood that was thrown away ────────────────────
+//
+// 15 Sep 2026, from the app. A guest asked for a vegetarian, standing-friendly
+// table and named Hollywood. Num answered: "Hollywood is a blank for me — Num
+// has no verified places there yet." At that moment the directory held 3,082
+// places across Hollywood, West Hollywood and North Hollywood, 2,797 of them
+// with a phone number.
+//
+// The cause was one condition. `areaCenter` ran only `if (!out.lat)`, and her
+// phone's IP had already filled out.lat with a Los Angeles position — so the
+// word "Hollywood" was never read, and retrieval searched rings around the
+// handset instead. The fix inverts the precedence to match what the top of
+// resolveLocation has always promised: a place the guest NAMED beats where
+// they happen to be standing.
+
+const LA = { slug: 'los-angeles', name: 'Los Angeles', country: 'US', tz: 'America/Los_Angeles', lat: 34.052, lng: -118.243, place_count: 90264 };
+
+/** D1 stub with destinations AND neighbourhood centroids. */
+function mockCity({ areas = [] } = {}) {
+  const dests = [...DESTS, LA];
+  const handle = (sql, args = []) => ({
+    all: async () => ({
+      results: /FROM destinations/.test(sql) ? dests
+        : /num_dest_areas WHERE dest/.test(sql) || /GROUP BY area/.test(sql) ? areas
+        : [],
+    }),
+    first: async () => {
+      if (/FROM num_dest_areas WHERE area = /.test(sql) || /FROM places WHERE area LIKE/.test(sql)) {
+        const want = String(args[0] || '').toLowerCase();
+        return areas.some(a => String(a.area).toLowerCase() === want) ? { 1: 1 } : null;
+      }
+      return null;
+    },
+  });
+  // The destination list is cached at module scope for five minutes, so
+  // without this every test after the first resolves against whatever the
+  // first one loaded — which is how this stub's Los Angeles kept coming back
+  // as Phuket.
+  __resetDestCache();
+  return { DB: { prepare(sql) { return Object.assign(handle(sql), { bind: (...a) => handle(sql, a) }); } } };
+}
+
+const HOLLYWOOD = { area: 'Hollywood', lat: 34.0983, lng: -118.3267, n: 251 };
+const WEHO = { area: 'West Hollywood', lat: 34.0900, lng: -118.3617, n: 2131 };
+// Downtown LA — roughly where a coarse IP lookup drops a Los Angeles request,
+// and ~12km from the Hollywood centroid. Far enough that a 8km ring misses it.
+const DTLA_IP = { latitude: '34.0407', longitude: '-118.2468' };
+
+test('THE HOLLYWOOD BUG: a named neighbourhood beats the IP guess', async () => {
+  const env = mockCity({ areas: [WEHO, HOLLYWOOD] });
+  const loc = await resolveLocation(env, {
+    text: "No I don't want American and yes search hollywood",
+    guest: null,
+    cf: DTLA_IP,
+  });
+  assert.equal(loc.dest.slug, 'los-angeles', 'lost the city');
+  assert.equal(loc.source, 'named_area', 'the neighbourhood was thrown away again');
+  assert.equal(loc.label, 'Hollywood');
+  assert.ok(Math.abs(loc.lat - HOLLYWOOD.lat) < 0.001, 'centred on the phone, not on Hollywood');
+});
+
+test('the longest matching neighbourhood wins, so West Hollywood is not Hollywood', async () => {
+  const env = mockCity({ areas: [HOLLYWOOD, WEHO] });
+  const loc = await resolveLocation(env, { text: 'dinner in west hollywood', guest: null, cf: DTLA_IP });
+  assert.equal(loc.label, 'West Hollywood');
+});
+
+test('a named neighbourhood is never reported as a precise position', async () => {
+  // A centroid is a district, not a doorstep. Leaving `precise` true makes
+  // retrieval search a 4km ring around an averaged point and call it walking
+  // distance, and makes the prompt claim "near me" means walking distance.
+  const env = mockCity({ areas: [HOLLYWOOD] });
+  const loc = await resolveLocation(env, {
+    text: 'vegetarian in hollywood',
+    guest: { last_lat: 34.0407, last_lng: -118.2468, last_loc_at: new Date().toISOString().slice(0, 19).replace('T', ' ') },
+    cf: null,
+  });
+  assert.equal(loc.precise, false);
+  assert.equal(loc.source, 'named_area');
+});
+
+test('THE LIMIT: "near me" with a real GPS fix still centres on the guest', async () => {
+  // The other half of the rule. When the guest's own body is the subject of
+  // the sentence, a neighbourhood mentioned in passing must not move the
+  // search across town. Without this the fix would break "anywhere close by".
+  const env = mockCity({ areas: [HOLLYWOOD] });
+  const loc = await resolveLocation(env, {
+    text: 'somewhere near me, I used to live in hollywood',
+    guest: { last_lat: 34.0407, last_lng: -118.2468, last_loc_at: new Date().toISOString().slice(0, 19).replace('T', ' ') },
+    cf: null,
+  });
+  assert.equal(loc.source, 'shared_location', 'a passing mention moved the guest across town');
+  assert.equal(loc.precise, true);
+  assert.ok(Math.abs(loc.lat - 34.0407) < 0.001);
+});
+
+test('a coarse IP is NOT a body — "near me" on IP still yields to the named area', async () => {
+  // asksNearMe alone must not win: IP geo is a city-level guess, often a VPN
+  // or a roaming SIM, and it has no business beating a place the guest typed.
+  const env = mockCity({ areas: [HOLLYWOOD] });
+  const loc = await resolveLocation(env, { text: 'anywhere near me in hollywood', guest: null, cf: DTLA_IP });
+  assert.equal(loc.source, 'named_area');
+  assert.equal(loc.label, 'Hollywood');
+});
+
+test('no neighbourhood named: the guest position still wins, unchanged', async () => {
+  const env = mockCity({ areas: [HOLLYWOOD, WEHO] });
+  const loc = await resolveLocation(env, { text: 'somewhere for dinner', guest: null, cf: DTLA_IP });
+  assert.equal(loc.source, 'ip_location');
+  assert.ok(Math.abs(loc.lat - 34.0407) < 0.001);
+});
+
+test('a covered neighbourhood is never classified unsupported', async () => {
+  // The other route to "Hollywood is a blank": statedPlace hears "in
+  // hollywood", isKnownArea must recognise it, and the unsupported branch must
+  // not fire. If this ever regresses the prompt tells the model there is no
+  // partner network in a city holding 90,264 places.
+  const env = mockCity({ areas: [HOLLYWOOD] });
+  const loc = await resolveLocation(env, { text: 'vegetarian dinner in hollywood', guest: null, cf: DTLA_IP });
+  assert.equal(loc.unsupported, undefined, 'a Los Angeles neighbourhood was called an unsupported city');
+  assert.notEqual(loc.source, 'unsupported');
+});
+
+test('a genuinely unsupported city is still heard', async () => {
+  // The guard must not be so eager that it swallows the real case this whole
+  // branch exists for.
+  const env = mockCity({ areas: [HOLLYWOOD] });
+  const loc = await resolveLocation(env, { text: 'horse races in Del Mar this weekend', guest: null, cf: DTLA_IP });
+  assert.equal(loc.source, 'unsupported');
+  assert.match(String(loc.unsupported), /del mar/i);
 });

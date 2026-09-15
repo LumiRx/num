@@ -77,7 +77,7 @@ export default function WalletSheet() {
           bounties — so selling them here is digital content under App Store
           guideline 3.1.1 and must go through IAP. Our own App Review notes
           state "the app sells NO digital content"; with STARS_SALE_OK on and
-          this panel rendering $150–$1,425 packs, that sentence stopped being
+          this panel rendering $500–$5,000 packs, that sentence stopped being
           true and a reviewer would have read it next to the packs. A false
           statement to App Review costs far more than a rejection.
 

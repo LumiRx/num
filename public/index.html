@@ -114,7 +114,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <div>
       <span class="pill">✦ Live in 38 countries</span>
       <h1 class="h1" style="margin-top:18px">A concierge in your pocket, anywhere you&nbsp;land.</h1>
-      <p class="sub">NUM plans your trip in a simple chat and books <b>real, verified</b> local places — more than half a million of them, across 104 destinations. Any language, any hour.</p>
+      <p class="sub">NUM plans your trip in a simple chat and books real local places — <b><span data-stat="places">2.7M+</span></b> of them, across <span data-stat="destinations">104</span> destinations. Claimed places are marked verified; the rest are mapped, and Num tells you which. Any language, any hour.</p>
       <div class="cta">
         <a class="btn pri lg" href="https://app.itsnum.com">Get the app</a>
         <a class="btn ghost lg" href="https://line.me/R/ti/p/@799pyrus" data-alt="line">Message Num on LINE</a>
@@ -169,7 +169,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <div>
       <span class="kicker">The app</span>
       <h3 class="h2" style="margin-top:10px">The whole trip, in one thread.</h3>
-      <p class="lead">Plans, bookings, a calendar that catches clashes and more than half a million verified places - on your home screen in two taps. No app store, no download.</p>
+      <p class="lead">Plans, bookings, a calendar that catches clashes and <span data-stat="places">2.7M+</span> places - on your home screen in two taps. No app store, no download.</p>
       <ul class="ticks">
         <li>One thread for the whole trip</li>
         <li>Real places, verified</li>
@@ -288,17 +288,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
 <!-- Google Translate — any language -->
 <style>
-.gtx{position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(255,255,255,.92);border:1.5px solid #DDE0FB;border-radius:999px;padding:7px 14px;box-shadow:0 10px 30px rgba(76,81,161,.20);backdrop-filter:blur(10px)}
 ".gtx::before{content:'';display:inline-block;width:15px;height:15px;margin-right:7px;vertical-align:-2px;background:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233A3E5C' stroke-width='1.7'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18'/%3E%3Cpath d='M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z'/%3E%3C/svg%3E\") center/15px no-repeat}"
 .goog-te-banner-frame{display:none!important}html body{top:0!important}
 .goog-te-gadget{font-size:0!important;color:transparent!important}
 .goog-te-gadget .goog-te-combo{font-size:13px;font-family:inherit;border:0;background:transparent;color:#3A3E5C;outline:none;margin:0}
 .goog-logo-link,.goog-te-gadget img{display:none!important}
 </style>
-<div id="gtx" class="gtx"></div>
-<script>function gtInit(){try{new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'th,en,ru,zh-CN,zh-TW,ja,ko,de,fr,es,it,ar,hi,he,ms,vi',layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'gtx')}catch(e){}}</script>
-<script src="https://translate.google.com/translate_a/element.js?cb=gtInit" defer></script>
-
 <!-- ── Sign in ─────────────────────────────────────────────────────────────
      Self-contained: own CSS namespace (nsi-), no dependency on assets/site.css.
      Posts to /api/accounts/login (num-accounts Worker, already live).
@@ -445,5 +440,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
      mean something (first message, two answers, added to home screen). It
      wraps numMetaEvent so one call reaches both networks. -->
 <script src="/js/reddit.js" defer></script>
+  <script src="/assets/sitestats.js" defer></script>
+  <script src="/assets/translate.js" defer></script>
 </body>
 </html>

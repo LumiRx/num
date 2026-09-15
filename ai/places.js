@@ -165,6 +165,15 @@ const ALIASES = {
 };
 
 let DEST_CACHE = null, DEST_AT = 0;
+/**
+ * Tests only. The destination list is cached for five minutes at module
+ * scope, which is right in production and invisible in a test file: the first
+ * test to call resolveLocation fixes the destination list for every test after
+ * it, so a later case that needs a different city silently resolves against
+ * the earlier one. That cost an hour on the Hollywood fix — Los Angeles was in
+ * the stub and the resolver kept answering Phuket.
+ */
+export const __resetDestCache = () => { DEST_CACHE = null; DEST_AT = 0; };
 export async function liveDestinations(env) {
   if (DEST_CACHE && Date.now() - DEST_AT < 5 * 60 * 1000) return DEST_CACHE;
   const { results } = await env.DB
@@ -470,11 +479,45 @@ export async function resolveLocation(env, { text, guest, cf }) {
   // rather than asserts.
   if (!out.dest) { out.dest = dests.find(d => d.slug === 'phuket') || dests[0]; out.guessed = true; }
 
-  // A named neighbourhood beats the city centre, but never beats live coordinates.
-  if (!out.lat) {
-    const area = await areaCenter(env, out.dest.slug, text);
-    if (area) { out.lat = area.lat; out.lng = area.lng; out.label = area.area; out.source = 'named_area'; }
-    else { out.lat = out.dest.lat; out.lng = out.dest.lng; out.source = out.source === 'default' ? 'city_centre' : out.source; }
+  // ── A NAMED NEIGHBOURHOOD BEATS A COARSE GUESS ─────────────────────────
+  //
+  // THIS BLOCK USED TO READ `if (!out.lat)`, AND THAT ONE CONDITION IS WHY A
+  // GUEST WAS TOLD "HOLLYWOOD IS A BLANK FOR ME" WHILE 3,082 HOLLYWOOD PLACES
+  // SAT IN THE DIRECTORY, 2,797 OF THEM WITH A PHONE NUMBER.
+  //
+  // Her phone was in Los Angeles, so Cloudflare's IP geo had already filled
+  // out.lat, so this block never ran, so `areaCenter` never read the word
+  // "Hollywood" at all. Retrieval then searched rings around wherever the
+  // handset happened to be, found nothing that fit a vegetarian standing-room
+  // ask, and the model reported an empty directory. The directory was fine.
+  // We simply never looked where she pointed.
+  //
+  // That inverted this function's own promise, stated at the top: "a place the
+  // guest named > where they actually are". It was kept for cities and thrown
+  // away for neighbourhoods, which is the half that guests actually say out
+  // loud — nobody asks for "los-angeles", they ask for Hollywood, Brooklyn,
+  // Shoreditch, Shibuya.
+  //
+  // The new rule, in one line: a neighbourhood the guest NAMED wins, unless
+  // they asked for something near THEM and we have a real GPS fix. "Vegetarian
+  // in Hollywood" centres on Hollywood even from a phone in Culver City.
+  // "Somewhere close by" with a shared location still centres on them, because
+  // there the guest's body is the subject of the sentence.
+  const area = await areaCenter(env, out.dest.slug, text);
+  const bodyWins = out.precise && asksNearMe(text);
+  if (area && !bodyWins) {
+    out.lat = area.lat;
+    out.lng = area.lng;
+    out.label = area.area;
+    // `precise` must drop: a neighbourhood centroid is a district, not a
+    // doorstep, and leaving it true makes retrieval search a 4km ring around
+    // an averaged point and call it "walking distance".
+    out.precise = false;
+    out.source = 'named_area';
+  } else if (!out.lat) {
+    out.lat = out.dest.lat;
+    out.lng = out.dest.lng;
+    out.source = out.source === 'default' ? 'city_centre' : out.source;
   }
   return out;
 }
@@ -576,6 +619,9 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null) 
   const negs = exclusionsFor(cat, prefer);
   const rings = [base, base * 3, base * 8];
   let rows = [];
+  // True when the rows below came from the whole destination rather than from
+  // anywhere near the guest. The prompt MUST say so — see the floor below.
+  let widened = false;
   try {
     for (const radiusKm of rings) {
       const distWeight = (near ? 2.5 : 1.25) / radiusKm;
@@ -591,8 +637,37 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null) 
       const seen = new Set(rows.map(r => r.name));
       rows = rows.concat(wide.filter(r => !seen.has(r.name))).slice(0, limit);
     }
+
+    // ── THE FLOOR: A COVERED CITY NEVER COMES BACK EMPTY ─────────────────
+    //
+    // Dre's rule, 15 Sep 2026: "if we don't have a recommendation for an area
+    // we should search for one. We should never not give any recommendation."
+    //
+    // Every ladder above is a RING — it searches outward from a point, and a
+    // ring can still return nothing: a sparse neighbourhood centroid, a
+    // category that does not exist for 120km, coordinates that landed in the
+    // ocean. When that happened the model received an empty partner block and
+    // did the only honest thing it could with it, which was apologise. An
+    // apology is not a concierge.
+    //
+    // So: if the rings came back empty and we DO cover this destination, fall
+    // back to the best-rated places in the whole destination, ignoring
+    // distance entirely. Flagged `widened` so the prompt tells the truth about
+    // it — "nothing in Hollywood proper fits, here are three in West
+    // Hollywood" — rather than presenting across-town as around-the-corner.
+    // Silently passing these off as local would be worse than the empty block.
+    if (!rows.length && loc?.dest?.slug) {
+      widened = true;
+      const { results } = await env.DB.prepare(
+        `SELECT ${SELECT_COLS} FROM places
+          WHERE dest = ?1 AND alive IS NOT 0
+          ORDER BY (rating IS NULL), rating DESC, reviews DESC
+          LIMIT ?2`,
+      ).bind(loc.dest.slug, limit).all();
+      rows = results || [];
+    }
   } catch (e) { console.log('nearbyPlaces', String(e)); }
-  return { cat, rows: withOpenState(rows, loc?.dest?.tz), near };
+  return { cat, rows: withOpenState(rows, loc?.dest?.tz), near, widened };
 }
 
 /**

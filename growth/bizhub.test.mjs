@@ -122,9 +122,16 @@ describe('the hub tells the truth about money', () => {
       'the rate is hardcoded again');
   });
 
-  test('the walk-in fee carries its currency', () => {
-    // The same stored 7000 is ฿70 in Phuket and reads as dollars without a symbol.
-    assert.match(fn, /THB: "฿"/);
+  test('the walk-in fee carries its currency, resolved from the venue', () => {
+    // The same stored 7000 is ฿70 in Phuket and reads as dollars without a
+    // symbol. The symbol map used to be inline here; it moved to one shared
+    // CURRENCY_SYMBOL on 14 Sep, because three copies of it is how a Los
+    // Angeles venue ended up being shown baht while the prose beside it said $.
+    assert.match(fn, /const money = await venueMoney\(env, who\.business\.id\)/,
+      'the hub guesses a currency again instead of asking the venue');
+    assert.match(src, /const CURRENCY_SYMBOL = Object\.freeze\(\{ USD: '\$'/,
+      'the one shared symbol map is gone');
+    assert.match(fn, /const sym = money\.symbol/, 'the hub stopped using the resolved symbol');
   });
 
   test('a failed ledger read is never shown as a zero', () => {

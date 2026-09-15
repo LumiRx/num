@@ -64,10 +64,27 @@ test('the boundary is declared one-way', () => {
  *                 no 5arz table, no fetch. It is the member-side twin of
  *                 bizreferral.mjs and credits by the same mechanism.
  *
+ *   social.mjs  — (5th site added 2026-09-14) the WELCOME grant itself.
+ *                 `ensureBalance` used to apply the grant with
+ *                 `INSERT OR IGNORE INTO num_star_balances VALUES (?, 100)`,
+ *                 which is silently skipped for anyone who already has a
+ *                 balance row. It wrote the +100 move regardless, so members
+ *                 who bought Stars or received a transfer BEFORE being
+ *                 welcomed were credited on paper and not in fact — Num's
+ *                 first paying customer among them. The grant is now an
+ *                 explicit increment, which is why it appears here.
+ *
+ *                 Reviewed against the three things that matter: it cannot
+ *                 mint twice (the welcome MOVE, keyed `welcome_<member>`, is
+ *                 inserted first and the credit only runs when that insert
+ *                 actually changed a row); the amount is the module's own
+ *                 WELCOME_STARS constant, never a client value; and it reaches
+ *                 nothing outside Num — no 5arz table, no fetch.
+ *
  * Note what is NOT here and never should be: anything sourced from 5arz.
  */
 const CREDIT_SITES = {
-  'errands.mjs': 2, 'social.mjs': 4, 'pay.mjs': 1, 'cashout.mjs': 1,
+  'errands.mjs': 2, 'social.mjs': 5, 'pay.mjs': 1, 'cashout.mjs': 1,
   'bizreferral.mjs': 1, 'starmembership.mjs': 1, 'memberreferral.mjs': 1,
 };
 

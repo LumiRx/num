@@ -151,7 +151,7 @@ strong{font-weight:700}
   <span class="eyebrow">Official Rules</span>
 </div>
 <h1>The Friday Pack Draw</h1>
-<p class="lede">Last updated 12 September 2026.</p>
+<p class="lede">Last updated 15 September 2026.</p>
 
 <div class="key">
   <b>No purchase necessary. No payment of any kind will improve your chance of winning.</b>
@@ -162,12 +162,13 @@ strong{font-weight:700}
 <section class="enter">
   <p class="enter-eyebrow">How to enter — free, takes ten seconds</p>
   <ol class="steps">
-    <li><span>Open ${esc(r.product)}, or make an account if you do not have one.</span></li>
-    <li><span>Send ${esc(r.product)} the word <b class="code">${esc(r.entryCode)}</b></span></li>
+    <li><span>Open ${esc(r.product)}, or find any text ${esc(r.product)} has sent you.</span></li>
+    <li><span>Send back the word <b class="code">${esc(r.entryCode)}</b></span></li>
   </ol>
-  <p class="enter-note">That is the whole entry, and ${esc(r.product)} confirms it on the spot.
-  One entry per person per week. The entry period runs ${esc(r.opensDay)} 00:00 UTC to Thursday
-  23:59 UTC, and the draw happens each ${esc(r.opensDay)}. Full terms below.</p>
+  <p class="enter-note">In the app or by text — both count, and both are free.
+  One entry per person per week whichever way you send it. The entry period runs
+  ${esc(r.opensDay)} 00:00 UTC to Thursday 23:59 UTC, and the draw happens each
+  ${esc(r.opensDay)}. Full terms below.</p>
 </section>
 
 <div class="rules">
@@ -182,16 +183,24 @@ not eligible. Void where prohibited or restricted by law.</p>
 
 <h2><span class="n">3</span><span>How to enter</span></h2>
 <p><strong>No purchase or payment is required, and none will improve your chance of winning.</strong>
-To enter a given week's draw, during that week's entry period:</p>
+To enter a given week's draw, send ${esc(r.product)} the word <strong>${esc(r.entryCode)}</strong>
+during that week's entry period. There are two ways to do it and they count exactly the same:</p>
 <ol>
-  <li>hold a registered ${esc(r.product)} account, and</li>
-  <li>send ${esc(r.product)} the message <strong>${esc(r.entryCode)}</strong>.</li>
+  <li><strong>In the app</strong>, if you hold a registered ${esc(r.product)} account; or</li>
+  <li><strong>By text</strong>, as a reply to a message ${esc(r.product)} has sent you.</li>
 </ol>
-<p>${esc(r.product)} will confirm your entry immediately. <strong>One entry per person per entry
-period</strong>, however many times you send it — sending it again tells you that you are already
-entered and does not add a second chance. Creating more than one account does not create more than
-one entry and may disqualify you. Simply using ${esc(r.product)} for other things does not enter you:
-the draw is opt-in, so nobody receives a prize they did not ask to be in the running for.</p>
+<p>If you enter by text, standard message and data rates may apply and message frequency varies. You
+can reply HELP for help or STOP to opt out at any time. <strong>Agreeing to receive messages is not a
+condition of entering or of winning</strong> — the app route requires no messages at all.</p>
+<p>${esc(r.product)} confirms your entry in the app. If you entered by text and no confirmation
+reaches you, <strong>your entry still stands</strong> — it is recorded when your message arrives, and
+a confirmation that fails to send does not undo it.</p>
+<p><strong>One entry per person per entry period</strong>, however many times you send it and
+whichever way you send it — sending it again tells you that you are already entered and does not add
+a second chance. Entering in the app and by text from your own number is still one entry. Creating
+more than one account does not create more than one entry and may disqualify you. Simply using
+${esc(r.product)} for other things does not enter you: the draw is opt-in, so nobody receives a prize
+they did not ask to be in the running for.</p>
 
 <h2><span class="n">4</span><span>Entry period</span></h2>
 <p>Each weekly entry period runs from ${esc(r.opensDay)} 00:00 UTC to the following Thursday 23:59
@@ -215,8 +224,8 @@ the resulting list of winners are recorded at the time of the draw and retained 
 any draw can be reproduced and checked afterwards. No person selects the winners.</p>
 
 <h2><span class="n">8</span><span>Notification and claim</span></h2>
-<p>Winners are notified in the ${esc(r.product)} app within 48 hours of the draw and must provide a
-delivery address within 14 days. The Sponsor may ask a winner to confirm their age and country of
+<p>Winners are notified within 48 hours of the draw — in the ${esc(r.product)} app, and by text where
+the entry came from a phone number — and must provide a delivery address within 14 days. The Sponsor may ask a winner to confirm their age and country of
 residence before shipping. A prize that is not claimed within 14 days is redrawn.</p>
 
 <h2><span class="n">9</span><span>Delivery</span></h2>
@@ -249,7 +258,7 @@ next entry period, never retrospectively to a draw that has already taken place.
 </div>
 
 <hr>
-<p class="fine">${esc(r.sponsor)} · ${esc(r.site)} · These rules were last updated 12 September 2026.</p>
+<p class="fine">${esc(r.sponsor)} · ${esc(r.site)} · These rules were last updated 15 September 2026.</p>
 
 </main></body></html>`;
 }

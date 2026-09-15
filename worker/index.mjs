@@ -93,6 +93,8 @@ import { VOICE, pickSpecialist, specialistBrief, styleBlock } from './specialist
 import { registerFor } from './register.mjs';
 // The one turn Num must not answer like a concierge. See worker/goodnews.mjs.
 import { goodNewsFor } from './goodnews.mjs';
+// Being told we were wrong. Outranks everything else this turn.
+import { repairFor } from './repair.mjs';
 import { asksEmergency, emergencyLine } from './emergency.mjs';
 
 // Opus by default — it is the concierge and the concierge is the product.
@@ -182,6 +184,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
       text: contextBlock({
         place: grounding.place,
         partners: grounding.partners,
+        widened: grounding.widened,
         guide: grounding.guide,
         showtimes: grounding.showtimes ?? null,
         events: [formatEvents(grounding.events ?? []), formatSearchedEvents(grounding.searchedEvents)].filter(Boolean).join('\n\n'),
@@ -1029,8 +1032,17 @@ export async function handleNum(request, env, ctx) {
     // the moment a friend reacts and a form collects, and soulprofile's own
     // file says it out loud: a guest being interviewed is a guest filling in a
     // form, and people leave forms. There will be another turn to ask.
-    const goodNews = goodNewsFor(lastUser);
-    if (goodNews) earnedBlock = goodNews;
+    // REPAIR OUTRANKS GOOD NEWS, WHICH OUTRANKS THE PROFILING QUESTION.
+    //
+    // All three want the same slot — `extraSystem`, which askNum pushes LAST
+    // into the system array and is therefore the strongest position there is.
+    // The order is not arbitrary: a guest who has just told us we were wrong
+    // does not want a celebration and certainly does not want a survey, and
+    // repair decays fast with distance from the mistake. Being corrected and
+    // then asked whether you prefer buzzing or quiet is the worst turn Num
+    // could take.
+    const turnBlock = repairFor(lastUser) ?? goodNewsFor(lastUser);
+    if (turnBlock) earnedBlock = turnBlock;
 
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const callNum = async (extraSystem, modelOverride = null) => {
@@ -1185,14 +1197,39 @@ export async function handleNum(request, env, ctx) {
       }
     }
 
+    // ── VACCINATIONS AND INSURANCE AS CONDITIONS OF ENTRY ──────────────
+    //
+    // Both ride with the entry-documents block: they answer the same question
+    // — what stops you at the door — and splitting them across turns means a
+    // traveller hears about the visa on Monday and the yellow fever
+    // certificate on Thursday, ten days after the vaccination deadline.
+    let health = null;
+    if (entryDocs && grounding?.place?.country_code) {
+      try {
+        const [{ vaccinesFor, vaccineBlock }, { insuranceFor, insuranceBlock }] = await Promise.all([
+          import('./vaccines.mjs'), import('./insurancereq.mjs'),
+        ]);
+        const cc = grounding.place.country_code;
+        const name = grounding.place.country ?? null;
+        health = [
+          vaccineBlock(vaccinesFor(cc), { country_name: name }),
+          insuranceBlock(insuranceFor(cc), { country_name: name }),
+        ].filter(Boolean).join('\n\n') || null;
+      } catch {
+        health = null;
+      }
+    }
+
     const groundingBlock = contextBlock({
       place: grounding.place,
       partners: rotation.partners,
+      widened: grounding.widened,
       shown: rotation.block,
       entryDocs,
       essentials,
       holidays,
       passport,
+      health,
       guide: grounding.guide,
       profile: redactProfile(profile).profile,
       buzz: grounding.buzz,
@@ -1224,7 +1261,7 @@ export async function handleNum(request, env, ctx) {
       // passed it raw. The cheaper the model, the less we know about its
       // operator; the fallback must see less, never more.
       context: groundingBlock,
-      style: [styleBlock(parsed.state?.style), registerFor(history), goodNewsFor(lastUser)].filter(Boolean).join('\n\n'),
+      style: [styleBlock(parsed.state?.style), registerFor(history), repairFor(lastUser) ?? goodNewsFor(lastUser)].filter(Boolean).join('\n\n'),
       guard: (t) => guardReply(t),
       // Who should answer THIS question. Money, bookings, groups and trouble
       // go to Claude first; recommendations and lookups go to the hosted
@@ -2605,6 +2642,48 @@ export default {
     if (url.pathname === '/api/travel/essentials') {
       const { handleEssentials } = await import('./essentials.mjs');
       const res = handleEssentials(request);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    // A scout's NFC card. Short path on purpose: it gets printed on a card
+    // and read aloud across a counter when the tap does not take.
+    if (url.pathname.startsWith('/s/')) {
+      const { handleScoutLink } = await import('./scouts.mjs');
+      return await handleScoutLink(request, env, url.pathname.slice(3), url.origin);
+    }
+    if (url.pathname.startsWith('/api/expert-docs')) {
+      const { handleExpertDocs } = await import('./expertdocs.mjs');
+      const res = await handleExpertDocs(request, env, url.pathname.slice('/api/expert-docs'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname.startsWith('/api/scouts')) {
+      const { handleScouts } = await import('./scouts.mjs');
+      const res = await handleScouts(request, env, url.pathname.slice('/api/scouts'.length) || '/', url.origin);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname === '/api/site/stats') {
+      const { handleSiteStats } = await import('./sitestats.mjs');
+      const res = await handleSiteStats(request, env);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname === '/api/travel/vaccines') {
+      const { handleVaccines } = await import('./vaccines.mjs');
+      const res = handleVaccines(request);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname === '/api/travel/insurance') {
+      const { handleInsurance } = await import('./insurancereq.mjs');
+      const res = handleInsurance(request);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+    if (url.pathname === '/api/travel/pack') {
+      const { handlePack } = await import('./travelpack.mjs');
+      const res = handlePack(request);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

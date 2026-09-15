@@ -2,7 +2,7 @@
 // iOS app outside IAP.
 //
 // Found 15 Aug while checking publish-readiness: `STARS_SALE_OK=1` is live and
-// the wallet rendered $150–$1,425 Star packs on every platform. Stars are spent
+// the wallet rendered $500–$5,000 Star packs on every platform. Stars are spent
 // INSIDE the app (errands, tabs, bounties), so they are digital content. Our
 // own App Review notes say "The app sells NO digital content and offers NO
 // subscriptions on iOS" — a reviewer would have read that sentence with the

@@ -82,4 +82,45 @@ describe('what the page must say to be lawful', () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /<\/html>$/);
   });
+
+  test('the page publishes BOTH entry routes the service actually accepts', () => {
+    // 15 Sep 2026: people were texting PACKS and being entered, while this page
+    // said entry required the app and that nothing else counted. A promotion whose
+    // advertising and whose Official Rules describe different entry methods is the
+    // exact exposure this page exists to prevent, so the two routes are pinned.
+    assert.match(html, /In the app/i, 'the app route must be named');
+    assert.match(html, /By text/i, 'the text route must be named — the SMS keyword enters people');
+    assert.match(html, /count exactly the same/i);
+  });
+
+  test('soliciting a text carries the disclosures a carrier looks for', () => {
+    assert.match(html, /message and data rates may apply/i);
+    assert.match(html, /message frequency varies/i);
+    assert.match(html, /HELP/);
+    assert.match(html, /STOP/);
+  });
+
+  test('consent to messages is never a condition of entering or winning', () => {
+    // Both a sweepstakes-consideration point and a TCPA one. If entering required
+    // agreeing to messages, the free-entry defence and the consent posture both fail.
+    assert.match(html, /not a\s*\n?\s*condition of entering or of winning/i);
+  });
+
+  test('an entry stands even when the confirmation text cannot be delivered', () => {
+    // US A2P registration has been rejected and outbound has failed 30034 for most
+    // of this product's life. Somebody who texts in and hears nothing must not be
+    // told, or left to assume, that their entry failed.
+    assert.match(html, /your entry still stands/i);
+  });
+
+  test('one entry per person holds across both routes', () => {
+    assert.match(html, /whichever way you send it/i);
+    assert.match(html, /app and by text from your own number is still one entry/i);
+  });
+
+  test('a winner who entered by phone can be told by phone', () => {
+    // Clause 8 said "in the app" only. A texter with no account could never have
+    // been reached, which is a prize that cannot be delivered.
+    assert.match(html, /by text where\s*\n?\s*the entry came from a phone number/i);
+  });
 });

@@ -120,9 +120,14 @@ test('the sign-in gate can never do nothing', () => {
   // HERE is that the two client-side protections survived the rebuild.
   const page = readFileSync(join(HERE, '..', 'app-public', 'ops', 'index.html'), 'utf8');
   assert.match(page, /required/, 'the empty field is submittable again — the browser bubble was the replacement for the silent return');
-  assert.match(page, /'Wrong password\.'/, 'err=wrong is no longer translated into words');
-  assert.match(page, /autocomplete="new-password"/,
-    'the input invites saved-credential autofill again — Chrome will keep stuffing a stale key into it');
+  assert.match(page, /'That admin key was not accepted\.'/, 'err=wrong is no longer translated into words');
+  // The original form of this guard kept Chrome from stuffing a stale saved
+  // KEY into the gate. There is no key field any more, so the guard becomes
+  // the stronger one: no password field may return to this page at all.
+  assert.ok(!/type="password"/.test(page),
+    'a password field is back on the gate — a secret nobody can read back is not a thing to ask a person for');
+  assert.match(page, /autocomplete="email"/,
+    'the email field refuses autofill — the one field here that should be filled for you');
 });
 
 test('the first sign-in after a deploy survives the service-worker swap', () => {
@@ -216,4 +221,93 @@ test('the diagnostic grades a token without echoing it', () => {
   }
   assert.ok(!/return\s+t\b/.test(body), 'gradeSession must never return the token itself');
   assert.ok(!/ADMIN_KEY/.test(body), 'gradeSession must not touch ADMIN_KEY directly');
+});
+
+/* ── THE VERDICT MUST SURVIVE boot() ───────────────────────────────────────
+ *
+ * Found 14 Sep 2026, from the login log rather than from the code: four
+ * attempts that day, every one ok=0, and the operator's report was "I enter
+ * the password and it does nothing". Not the silent-session bug of 31 Aug —
+ * that one recorded ok=1 pairs. This was a WRONG KEY that the page refused
+ * to mention.
+ *
+ * The race: /api/admin/login 303s to /ops/?err=wrong. The block at the foot of
+ * the page writes the refusal in words and strips the query string. boot() then
+ * runs, takes its expected 401, checks for `in=1` — which ?err never carries —
+ * and blanks the message the server had just supplied.
+ *
+ * So the single case the system diagnosed perfectly was the one case the human
+ * was told nothing about.
+ */
+test('a server verdict is never overwritten by the boot 401, in ANY branch', () => {
+  assert.match(script, /S\.verdict\s*=\s*true/,
+    'nothing records that the server already judged this attempt');
+
+  // The guard must be an EARLY RETURN, not a condition on one branch.
+  //
+  // The first attempt at this fix guarded only the first branch, and shipped.
+  // A wrong password then stopped being blanked and started being overwritten
+  // by the branch below it — the one that says "Sign-in was fine". That is a
+  // worse failure than the silence it replaced, because it tells an operator
+  // holding a wrong key that their key was accepted.
+  const catchStart = script.indexOf('} catch (e) {', script.indexOf('async function boot'));
+  assert.ok(catchStart > 0, 'boot() has no catch to guard');
+  const body = script.slice(catchStart, script.indexOf('\n  }', catchStart))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  const guard = body.indexOf('if (S.verdict) return;');
+  assert.ok(guard > 0, 'the verdict guard is not an early return in boot()\'s catch');
+
+  const firstWrite = body.indexOf("$('err').textContent");
+  assert.ok(guard < firstWrite,
+    'a branch can write over the server\'s verdict before the guard runs');
+});
+
+test('no branch of the boot catch claims sign-in succeeded on a refused key', () => {
+  // "Sign-in was fine" is only true where the request did NOT 401. Any branch
+  // reachable with a fresh 401 must not say it.
+  const catchStart = script.indexOf('} catch (e) {', script.indexOf('async function boot'));
+  // Comments stripped: this is about what the code DOES, and the comment on the
+  // guard quotes the very phrase being searched for.
+  const body = script.slice(catchStart, script.indexOf('\n  }', catchStart))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const claim = body.indexOf('Sign-in was fine');
+  if (claim > 0) {
+    const guard = body.indexOf('if (S.verdict) return;');
+    assert.ok(guard > 0 && guard < claim,
+      'a judged attempt can reach the "Sign-in was fine" branch');
+  }
+});
+
+test('every err code the worker can send has words on the page', () => {
+  // A redirect the page cannot translate renders as an empty gate, which is
+  // indistinguishable from "nothing happened" — the report that started this.
+  const codes = [...console_.matchAll(/to\('\?err=(\w+)'\)/g)].map((m) => m[1]);
+  assert.ok(codes.length >= 3, `expected several err codes, found ${codes.length}`);
+  for (const c of new Set(codes)) {
+    assert.ok(script.includes(`'${c}'`), `the worker can redirect ?err=${c} and the page has no words for it`);
+  }
+});
+
+/* ── `hidden` MUST ACTUALLY HIDE ──────────────────────────────────────────
+ *
+ * The bug that cost a whole evening. Both panels on this page are toggled with
+ * the `hidden` attribute, and both carry a class that sets `display`. The
+ * browser's own [hidden]{display:none} is a UA rule, so any author rule beats
+ * it — the attribute flipped, the panel stayed on screen, and every successful
+ * sign-in was reported as a failed one.
+ */
+test('the hidden attribute outranks the layout rules', () => {
+  const css = ops.slice(0, ops.indexOf('</style>'));
+  const rule = /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(css);
+  assert.ok(rule,
+    'nothing forces [hidden] to win — a class that sets display will paint a "hidden" panel over the page');
+
+  // And the rule has to come from the page's own stylesheet, not be assumed.
+  for (const id of ['gate', 'app']) {
+    assert.match(ops, new RegExp(`id="${id}"[^>]*hidden`),
+      `#${id} is no longer toggled by the hidden attribute — this guard would stop protecting it`);
+  }
 });

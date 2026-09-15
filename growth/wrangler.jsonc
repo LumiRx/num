@@ -156,8 +156,13 @@
   // COUNT(*) against D1 because this was missing. Each costs a read on the hot
   // path and had to be written and reasoned about on its own.
   //
-  // Counters live in Cloudflare's infrastructure, so they survive isolate
-  // churn. namespace_id is a per-Worker identifier, not a secret.
+  // MEASURED NOT TO ENFORCE, 15 Sep 2026. 160 calls on one fixed key, one colo,
+  // 38 seconds, against 60/60 — all allowed. wrangler --dry-run reports the
+  // binding correctly and the worker gets a well-shaped reply from it; it just
+  // never refuses. Left in place as a fast path in case it starts working, but
+  // the real limits on this worker are the D1 counters and the per-route
+  // brakes. Do not treat anything as protected because this line exists.
+  // namespace_id is a per-Worker identifier, not a secret.
   "ratelimits": [
     {
       // ONE ceiling across every action endpoint, per IP. Deliberately not
@@ -216,6 +221,13 @@
     // Top-level on purpose. These go in emails and get read down the phone.
     // "/r/*" does not collide with "/referral*"; "/go/*" does not collide
     // with "/get*" — both need the slash.
+    // A Num Expert's NFC card. Short on purpose: it is printed on a card and
+    // read aloud across a counter when the tap does not take. WITHOUT this
+    // line the handler in worker.js is unreachable and itsnum.com/s/FARMER
+    // falls through to num-console's itsnum.com/* catch-all, which has no
+    // code and serves public/404.html. That is exactly what it did.
+    { "pattern": "itsnum.com/s/*", "zone_name": "itsnum.com" },
+    { "pattern": "www.itsnum.com/s/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/r/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/go/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/stop/*", "zone_name": "itsnum.com" },
@@ -239,6 +251,13 @@
     // The business-facing code manager. /biz/ does not collide with /business*
     // (num-biz-site) — the slash is what separates them, same rule as /r/.
     { "pattern": "itsnum.com/biz*", "zone_name": "itsnum.com" },
+    // The admin door into the business and host consoles: /ops mints a
+    // single-use token and sends the operator to /o/<token>. Same slash rule
+    // as /r/, /v/ and /p/ — "/o/" is its own namespace and cannot collide
+    // with /offers or /ops. Without this line every open link resolves to the
+    // asset worker's 404 while the handler sits deployed and unreachable,
+    // which is the exact failure recorded above for /api/pay/* and /p/*.
+    { "pattern": "itsnum.com/o/*", "zone_name": "itsnum.com" },
     // The public offers page — the URL marketing points traveller demand at.
     { "pattern": "itsnum.com/tonight*", "zone_name": "itsnum.com" },
     // After the table: how was it, and would you like to leave something.

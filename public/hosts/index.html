@@ -309,6 +309,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
          working the whole time with nothing pointed at it. -->
     <div id="hostErr" class="hostnote bad"></div>
 
+    <!-- Shown only when a Num Expert's card sent them here. Says out loud what
+         is being recorded, because attribution the person cannot see is
+         attribution they cannot correct. -->
+    <p id="hostScout" class="hostscout" hidden>A Num Expert introduced you &mdash; their code is already attached,
+      so there is nothing for you to type.</p>
     <form id="hostForm" novalidate>
       <div class="hostrow">
         <div class="hostfield">
@@ -369,6 +374,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 </section>
 
 <style>
+.hostscout{display:block;background:var(--pri-l,#E7F6F1);color:var(--pri-d,#0B7C63);font-weight:650;font-size:13.5px;line-height:1.5;padding:10px 14px;border-radius:12px;margin:0 0 16px;text-align:left}
+.hostscout[hidden]{display:none}
 .hostrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:560px){.hostrow{grid-template-columns:1fr}}
 .hostfield{margin-bottom:14px;text-align:left}
@@ -396,6 +403,24 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 (function () {
   var f = document.getElementById('hostForm');
   if (!f) return;
+
+  // WHO SENT THEM. /s/CODE lands a guide here with ?scout=CODE already on the
+  // URL, so nobody is ever asked "who told you about us" — a question people
+  // answer wrong, or skip. Read once here and posted with the form; the server
+  // also reads the first-touch cookie, so a host who wanders off and comes
+  // back without the query string is still credited to the right Expert.
+  var scoutCode = (function () {
+    try {
+      var v = new URLSearchParams(location.search).get('scout') || '';
+      v = v.toUpperCase().replace(/[^0-9A-Z]/g, '');
+      return /^[0-9A-Z]{4,12}$/.test(v) ? v : '';
+    } catch (e) { return ''; }
+  })();
+  if (scoutCode) {
+    var badge = document.getElementById('hostScout');
+    if (badge) { badge.hidden = false; }
+  }
+
   var err = document.getElementById('hostErr');
   var btn = document.getElementById('h_btn');
   var say = function (m) { err.textContent = m || ''; err.className = 'hostnote bad' + (m ? ' on' : ''); };
@@ -420,6 +445,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         phone: document.getElementById('h_phone').value.trim(),
         notes: document.getElementById('h_about').value.trim(),
         terms_ok: true,
+        scout: scoutCode || undefined,
         // Stored verbatim on num_hosts.agreed_ip's sibling column as the exact
         // wording agreed to. The version string alone is not evidence of what
         // a person actually read.
@@ -483,5 +509,6 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 </div></footer>
 
 <script src="/assets/site.js" defer></script>
+  <script src="/assets/translate.js" defer></script>
 </body>
 </html>

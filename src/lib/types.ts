@@ -377,6 +377,7 @@ export interface AppState {
   theme: ThemeId;
   /** The owner console, open only for a claimed business. */
   businessOpen: boolean;
+  scoutOpen: boolean;
   /**
    * The delete-account confirmation, asked for from the row near the top of
    * the profile. A flag rather than a scroll target: scrolling to a closed

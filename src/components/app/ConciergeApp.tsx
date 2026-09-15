@@ -22,6 +22,7 @@ import ShareSheet from './ShareSheet';
 import ShareToSheet from './ShareToSheet';
 import WalletSheet from './WalletSheet';
 import BusinessSheet from './BusinessSheet';
+import ScoutSheet from './ScoutSheet';
 import EventSheet from './EventSheet';
 import PaySheet from './PaySheet';
 import PassengerSheet from './PassengerSheet';
@@ -412,6 +413,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <PartySheet />
       <EventSheet />
       <BusinessSheet />
+      <ScoutSheet />
       <PaySheet />
       <PassengerSheet />
       <TabSheet />

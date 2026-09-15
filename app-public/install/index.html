@@ -346,7 +346,7 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
 
   <div class="herogrid">
     <div>
-      <span class="eyebrow" id="eyebrow">● Live in 77 destinations · free to ask</span>
+      <span class="eyebrow" id="eyebrow">● Live in <span data-stat="destinations">104</span> destinations · free to ask</span>
       <h1>Ask for anything.<br><em>Num sorts it.</em></h1>
       <p class="lede" id="lede">A table tonight. A car at 6am. A whole day you haven't planned yet.
         One thread, no forms — and it remembers what you like.</p>
@@ -470,7 +470,7 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
 <section class="wrap">
   <div class="stats">
     <div class="grid c3">
-      <div class="stat"><b>2.5M+</b><span>places indexed and searchable</span></div>
+      <div class="stat" data-stat-tile><b data-stat="places">2.7M+</b><span>places indexed and searchable</span></div>
       <div class="stat"><b>77</b><span>destinations live today</span></div>
       <div class="stat"><b>24/7</b><span>answers, in your language</span></div>
     </div>
@@ -570,7 +570,7 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
       step today.</p></details>
 
   <details><summary>Do you cover the city I'm going to?</summary>
-    <p>77 destinations are live right now and the directory holds over 2.5 million places, with
+    <p><span data-stat="destinations">104</span> destinations are live right now and the directory holds <span data-stat="places">2.7M+</span> places, with
       the deepest coverage across Thailand. If you ask about somewhere we don't cover properly,
       Num tells you so plainly instead of inventing a recommendation — that's a deliberate rule,
       not a limitation we're hiding.</p></details>
@@ -934,5 +934,6 @@ footer a,.foot a{display:inline-block;padding:11px 4px;min-height:44px;line-heig
 })();
 
 </script>
+  <script src="/assets/sitestats.js" defer></script>
 </body>
 </html>
