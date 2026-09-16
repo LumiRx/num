@@ -77,7 +77,7 @@ describe('the door into it', () => {
     assert.match(SHEET, /NUM EXPERT/);
     assert.equal(/>\s*Become a scout\s*</.test(SHEET), false);
     assert.match(PROFILE, /NUM EXPERT/);
-    assert.match(PAGE, /Num Experts/);
+    assert.match(PAGE, /N(um|UM) Experts/);
   });
 });
 

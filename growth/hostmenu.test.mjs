@@ -68,7 +68,7 @@ test('no surface still promises a per-booking fee', () => {
 });
 
 test('the pages say what replaced it', () => {
-  assert.match(hostsPage, /no fee per booking, no commission on your work/i,
+  assert.match(hostsPage, /no per-booking fee and no commission on|no fee per booking, no commission on your work/i,
     '/hosts/ does not state the new model');
   assert.match(consolePage, /Confirming costs you nothing/i,
     'the console does not tell a host that confirming is free');

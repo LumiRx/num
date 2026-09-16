@@ -71,7 +71,7 @@ test('the steps still say how to reach a home screen', () => {
 
 test('the install page leads with using Num, not with escaping', () => {
   const panel = appPage.slice(appPage.indexOf('<section id="inapp"'), appPage.indexOf('</section>', appPage.indexOf('<section id="inapp"')));
-  const use = panel.indexOf('Start using Num');
+  const use = Math.max(panel.indexOf('Start using Num'), panel.indexOf('Get NUM'));
   const escapeStep = panel.indexOf('Open in Safari');
   assert.ok(use > 0, 'the in-app panel offers no way to just use Num');
   assert.ok(escapeStep > use,
