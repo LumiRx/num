@@ -79,8 +79,44 @@ let taxonomyCache = null;
 /** Test seam — module-level state must not leak between cases. */
 export const _resetForTests = () => { taxonomyCache = null; };
 
+// ── THE TAXONOMY IS CACHED IN D1, NOT ONLY IN MEMORY (16 Sep 2026) ────────
+//
+// The destinations file is thousands of rows and takes several seconds to
+// fetch and parse. An in-memory cache only helps the isolate that paid for
+// it; every other isolate — and there are many, and they recycle — pays again,
+// and on the request path that meant /api/discover saw "timeout" from Viator
+// on every single call. So the parsed rows live in D1 for a week, and the
+// network fetch happens once per week per deployment rather than once per
+// isolate per hour.
+const TAXONOMY_D1_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function taxonomyFromD1(env) {
+  if (!env?.DB) return null;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS num_viator_taxonomy_cache (k TEXT PRIMARY KEY, payload TEXT NOT NULL, fetched_at TEXT NOT NULL)',
+    ).run();
+    const hit = await env.DB.prepare('SELECT payload, fetched_at FROM num_viator_taxonomy_cache WHERE k = ?1').bind('destinations').first();
+    if (!hit) return null;
+    if (Date.now() - Date.parse(hit.fetched_at) > TAXONOMY_D1_TTL_MS) return null;
+    const rows = JSON.parse(hit.payload);
+    return Array.isArray(rows) && rows.length ? rows : null;
+  } catch { return null; }
+}
+
+async function taxonomyToD1(env, rows) {
+  if (!env?.DB) return;
+  try {
+    await env.DB.prepare(
+      'INSERT OR REPLACE INTO num_viator_taxonomy_cache (k, payload, fetched_at) VALUES (?1, ?2, ?3)',
+    ).bind('destinations', JSON.stringify(rows), new Date().toISOString()).run();
+  } catch { /* a cache that fails to write is a cache miss next time, nothing more */ }
+}
+
 async function taxonomy(env, fetchImpl = fetch) {
   if (taxonomyCache && Date.now() - taxonomyCache.at < TAXONOMY_TTL_MS) return taxonomyCache.rows;
+  const stored = await taxonomyFromD1(env);
+  if (stored) { taxonomyCache = { at: Date.now(), rows: stored }; return stored; }
   const res = await fetchImpl(`${BASE}/v1/taxonomy/destinations`, { headers: headers(env) });
   if (!res.ok) throw new Error(`viator taxonomy ${res.status}`);
   const body = await res.json();
@@ -106,6 +142,7 @@ async function taxonomy(env, fetchImpl = fetch) {
   const rows = raw.map((d) => ({ ...d, parent: byId.get(d.parentId)?.name ?? '' }));
 
   taxonomyCache = { at: Date.now(), rows };
+  await taxonomyToD1(env, rows);
   return rows;
 }
 
