@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.314 — 2026-09-16 20:53 UTC
+
+welcome stars to 5, plans in wallet, desktop app, sheet backgrounds
+
+- commit `d707a36`
+
 ## 0.8.313 — 2026-09-16 19:44 UTC
 
 subscription loop, iOS gate, answer quality
