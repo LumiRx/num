@@ -20,6 +20,12 @@ import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 
+/** One starter chip, shared by the fixed pair and the destination's own. */
+const starterChip: React.CSSProperties = {
+  cursor: 'pointer', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, fontWeight: 600, flex: 'none',
+  display: 'flex', gap: 6, alignItems: 'center',
+};
+
 /**
  * Emoji reactions. They rate the *suggestion*, not the message — 😍 means find
  * more like this, 👎 means never offer it again, 🥱 means the answer was too
@@ -642,7 +648,7 @@ export default function ThreadView() {
                 key={label}
                 {...pressable(() => openDiscover(tab as 'search' | 'suggest'))}
                 className="glass lift"
-                style={{ cursor: 'pointer', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, fontWeight: 600, flex: 'none', display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}
+                style={{ ...starterChip, whiteSpace: 'nowrap' }}
               >
                 <span aria-hidden="true">{emoji}</span>
                 {label}
@@ -653,7 +659,7 @@ export default function ThreadView() {
                 key={label}
                 {...pressable(() => { if (!store.get().typing) void askNum(prompt); })}
                 className="glass lift"
-                style={{ cursor: 'pointer', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, fontWeight: 600, flex: 'none', display: 'flex', gap: 6, alignItems: 'center', ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
+                style={{ ...starterChip, ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
               >
                 <span aria-hidden="true">{emoji}</span>
                 {label}
