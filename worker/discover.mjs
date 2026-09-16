@@ -47,13 +47,19 @@ export const MOOD_TAGS = Object.freeze({
   culture: [21765, 21913],      // Shows · Sightseeing
 });
 
-/** Mood chips → place categories in our own directory. */
+/**
+ * Mood chips → our own place categories. Matched as lower-case prefixes with
+ * LIKE, because the directory says "thai restaurant", "attraction · temple"
+ * and "massage & spa", and nobody wants to maintain an exact list of those.
+ * Vocabulary checked against num-db on 16 Sep 2026 (Phuket: restaurant 5,115,
+ * café 2,200, bar 1,222, diving 102, sports activity 103, nightlife 136).
+ */
 export const MOOD_CATEGORIES = Object.freeze({
-  water: ['beach', 'boat', 'diving', 'marina'],
-  food: ['restaurant', 'cafe', 'street_food', 'market', 'bakery'],
-  night: ['bar', 'club', 'music_venue', 'night_market'],
-  sweat: ['gym', 'muay_thai', 'yoga', 'climbing', 'watersports'],
-  culture: ['museum', 'gallery', 'temple', 'theatre'],
+  water: ['diving', 'tours & travel', 'beach', 'boat', 'marina', 'water'],
+  food: ['street food', 'market', 'seafood', 'dessert', 'bakery', 'noodles', 'thai restaurant'],
+  night: ['bar', 'nightlife', 'flea market', 'night market', 'live music'],
+  sweat: ['gym & fitness', 'sports activity', 'muay thai', 'yoga', 'climbing', 'diving'],
+  culture: ['attraction · temple', 'attraction · place of worship', 'museum', 'gallery', 'theatre', 'attraction'],
 });
 
 /** Lowercased, accent-stripped, punctuation-free key used for "have we done this?" */
@@ -93,7 +99,7 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
     let sql = `SELECT id, name, category, area, lat, lng, rating, photo_url
                  FROM places WHERE dest = ?1 AND (alive IS NULL OR alive = 1)`;
     const binds = [String(dest).slice(0, 60)];
-    if (cats.length) { sql += ` AND category IN (${cats.map((_, i) => `?${i + 2}`).join(',')})`; binds.push(...cats); }
+    if (cats.length) { sql += ` AND (${cats.map((_, i) => `lower(category) LIKE ?${i + 2}`).join(' OR ')})`; binds.push(...cats.map((c) => `${c}%`)); }
     else if (like && like !== '%%') { sql += ' AND (lower(name) LIKE ?2 OR lower(category) LIKE ?2)'; binds.push(like); }
     sql += ' ORDER BY rating DESC NULLS LAST LIMIT ?' + (binds.length + 1);
     binds.push(limit);
@@ -109,7 +115,7 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
 
 /** Real ticketed events near the coordinate (Ticketmaster where it actually has inventory). */
 export async function eventsFor(env, { dest, lat, lng, country, fetchImpl }) {
-  const found = await withTimeout(searchEvents(env, { dest, lat, lng, country, days: 7, fetchImpl }), 2500, null);
+  const found = await withTimeout(searchEvents(env, { dest, lat, lng, country, days: 7, fetchImpl }), 4000, null);
   const list = found?.events ?? found?.result?.events ?? [];
   return list.map((e) => ({
     source: 'ticketmaster', id: `tm_${e.id}`, title: e.name, sub: [e.venue, e.date, e.time].filter(Boolean).join(' · '),
@@ -122,7 +128,7 @@ export async function eventsFor(env, { dest, lat, lng, country, fetchImpl }) {
 export async function experiencesFor(env, { dest, country, lat, lng, mood, currency = 'USD', fetchImpl }) {
   if (!viatorReady(env)) return [];
   const tags = mood ? MOOD_TAGS[mood] ?? null : null;
-  const r = await withTimeout(viatorSearch(env, { name: dest, country, lat, lng, currency, count: 12, tags }, fetchImpl), 3000, null);
+  const r = await withTimeout(viatorSearch(env, { name: dest, country, lat, lng, currency, count: 12, tags }, fetchImpl), 8000, null);
   if (!r?.ok) return [];
   return r.products.map((p) => ({
     source: 'viator', id: `vi_${p.code}`, title: p.title, sub: [p.duration, p.reviews ? `${p.reviews} reviews` : null].filter(Boolean).join(' · '),
@@ -233,11 +239,12 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     { items: [], members: history.members, dislikes: history.dislikes }, { me },
   );
   const ranked = rank(annotate(pool, history, { me }));
+  const count = (src) => pool.filter((i) => i.source === src).length;
   const items = mode === 'surprise' ? dealThree(ranked) : [...ranked.slice(0, 12), ...crew.slice(0, 4)];
 
   return json({
     ok: true, mode, q: q || null, mood, dest,
-    sources: { num: places.length, ticketmaster: events.length, viator: exps.length, crew: crew.length },
+    sources: { num: count('num'), ticketmaster: count('ticketmaster'), viator: count('viator'), crew: crew.length },
     items,
     note: items.length ? null : 'Nothing new here yet. Ask me in words and I will look wider.',
   });
