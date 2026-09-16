@@ -115,21 +115,22 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
 
 /** Real ticketed events near the coordinate (Ticketmaster where it actually has inventory). */
 export async function eventsFor(env, { dest, lat, lng, country, fetchImpl }) {
-  const found = await withTimeout(searchEvents(env, { dest, lat, lng, country, days: 7, fetchImpl }), 4000, null);
+  const found = await withTimeout(searchEvents(env, { dest, lat, lng, country, days: 7, fetchImpl }), 4000, { reason: 'timeout' });
   const list = found?.events ?? found?.result?.events ?? [];
-  return list.map((e) => ({
+  const out = list.map((e) => ({
     source: 'ticketmaster', id: `tm_${e.id}`, title: e.name, sub: [e.venue, e.date, e.time].filter(Boolean).join(' · '),
     image: e.image ?? null, rating: null, price: e.from ?? null, currency: e.currency ?? null, url: e.url ?? null,
     lat: null, lng: null, distance_km: null, label: 'Listed on Ticketmaster',
   }));
+  return Object.assign(out, { reason: found?.reason ?? (list.length ? 'ok' : 'empty') });
 }
 
 /** Bookable experiences (Viator Basic Access: search + attributed link, never "booked"). */
 export async function experiencesFor(env, { dest, country, lat, lng, mood, currency = 'USD', fetchImpl }) {
-  if (!viatorReady(env)) return [];
+  if (!viatorReady(env)) return Object.assign([], { reason: 'not_connected' });
   const tags = mood ? MOOD_TAGS[mood] ?? null : null;
-  const r = await withTimeout(viatorSearch(env, { name: dest, country, lat, lng, currency, count: 12, tags }, fetchImpl), 8000, null);
-  if (!r?.ok) return [];
+  const r = await withTimeout(viatorSearch(env, { name: dest, country, lat, lng, currency, count: 12, tags }, fetchImpl), 8000, { ok: false, reason: 'timeout' });
+  if (!r?.ok) return Object.assign([], { reason: r?.reason ?? 'unknown' });
   return r.products.map((p) => ({
     source: 'viator', id: `vi_${p.code}`, title: p.title, sub: [p.duration, p.reviews ? `${p.reviews} reviews` : null].filter(Boolean).join(' · '),
     image: p.image ?? null, rating: p.rating ?? null, price: p.from ?? null, currency: p.currency ?? null, url: p.url,
@@ -247,5 +248,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     sources: { num: count('num'), ticketmaster: count('ticketmaster'), viator: count('viator'), crew: crew.length },
     items,
     note: items.length ? null : 'Nothing new here yet. Ask me in words and I will look wider.',
+    // Why a rail came back empty. Reasons only, never keys or payloads.
+    ...(g('debug') ? { why: { viator: exps.reason ?? 'ok', ticketmaster: events.reason ?? 'ok' } } : {}),
   });
 }
