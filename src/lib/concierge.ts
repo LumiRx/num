@@ -3,6 +3,7 @@
 // surface (sendChip, openVoice, payBill, buyPack…) is the seam where a real
 // agent backend would slot in later.
 import { anonId } from './anon';
+import { canOfferSubscription } from './native';
 import { store } from './store';
 import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
 import { demoState } from './data';
@@ -705,6 +706,22 @@ export async function askNum(text: string) {
       // than asking the model nicely not to repeat them.
       body: JSON.stringify({
         messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs),
+        // ── MAY THE CONCIERGE MENTION A PAID PLAN AT ALL? ──────────────
+        //
+        // iOS sells nothing here. An iOS app that offers a digital
+        // subscription outside Apple's own billing is App Store guideline
+        // 3.1.1, and Num bills through Stripe — so the pricing ladder and the
+        // Star packs are already hidden on iOS (canOfferSubscription, and the
+        // two independent platform witnesses behind it in lib/native.ts).
+        //
+        // The concierge is a THIRD door into the same shop. Without this flag
+        // the server would hand the model a price list and an `upgrade`
+        // action on an iPhone, and a chat message offering a subscription is
+        // the same 3.1.1 problem as a button — arguably worse, because it is
+        // not visible to anyone reviewing the UI. The server defaults to
+        // silence, so an older build that never sends this field simply never
+        // gets an offer.
+        may_offer_subscription: canOfferSubscription(),
       }),
     });
     if (!res.ok) throw new Error('backend ' + res.status);

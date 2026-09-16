@@ -724,6 +724,7 @@ const CAPTURE_JS = `/**
         utm_source: UTM.utm_source,
         utm_medium: UTM.utm_medium,
         utm_campaign: UTM.utm_campaign,
+        utm_content: UTM.utm_content,
         referrer: document.referrer || ""
       },
       { beacon: true }
@@ -801,6 +802,7 @@ const CAPTURE_JS = `/**
         utm_source: UTM.utm_source,
         utm_medium: UTM.utm_medium,
         utm_campaign: UTM.utm_campaign,
+        utm_content: UTM.utm_content,
         marketing_ok: wantsMarketing,
         consent_text: wantsMarketing && mkt ? labelTextFor(mkt, form) : ""
       };
@@ -1128,7 +1130,7 @@ const WORKER = {
       if (p === "/friday-rules" || p === "/friday-rules/") return fridayRules();
 
       if (p === "/api/ev" && req.method === "POST")
-        return withCors(req, await ev(req, env));
+        return withCors(req, await ev(req, env, ctx));
       // Matches the existing `itsnum.com/api/ev*` route, so no wrangler change
       // is needed to ship it.
       if (p === "/api/ev.gif" && req.method === "GET")
@@ -1589,7 +1591,7 @@ const EVENTS = new Set([
   "email_open", "email_click",
 ]);
 
-async function ev(req, env) {
+async function ev(req, env, ctx) {
   if (badOrigin(req)) return J({ ok: false }, 403);
   const ip = req.headers.get("cf-connecting-ip") || "0";
   if (overLimit("ev:" + ip, 60)) return J({ ok: true, throttled: true });
@@ -1606,18 +1608,90 @@ async function ev(req, env) {
   const vid = await visitorId(req, env);
   await env.DB.prepare(
     `INSERT INTO num_web_events
-       (visitor_id,event,page,ref_code,invite_token,utm_source,utm_medium,utm_campaign,referrer,country,device,detail,created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (visitor_id,event,page,ref_code,invite_token,utm_source,utm_medium,utm_campaign,utm_content,referrer,country,device,detail,created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     vid, name, clean(b.page, 40), clean(b.ref_code, 40), clean(b.invite_token, 64),
     clean(b.utm_source, 60), clean(b.utm_medium, 60), clean(b.utm_campaign, 60),
+    // Which CREATIVE, not just which campaign. The whole Reddit spend shared one
+    // utm_campaign, which is why no best-performing ad could ever be named.
+    clean(b.utm_content, 60),
     String(b.referrer || "").slice(0, 200), country(req), device(req),
     // Which control was tapped / which pane was opened. Without a column for
     // it, "install_cta_click" cannot tell the hero button from the sticky dock.
     clean(b.detail, 60), now()
   ).run();
 
+  // The server half of X conversion tracking, fire-and-forget. Only the three
+  // real conversions, only when X is configured (see sendXConversion). ctx is
+  // absent in some tests, so guard before touching it.
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(sendXConversion(env, req, b, name));
+  }
+
   return J({ ok: true });
+}
+
+/* --------------------------------------------- X (Twitter) Conversions API */
+//
+// The server half. The web pixel in num-track.js fires twq('event', ...) in the
+// browser; this fires the SAME conversion from the server carrying the same
+// conversion_id, so X collapses the two into one instead of double-counting.
+// Server-side is the half ad-blockers cannot stop, and the half that still
+// reports when the tab is closed the instant a code is entered.
+//
+// Inert until configured. It needs X_PIXEL_TOKEN (a Worker secret) and the
+// event IDs from X's Events Manager (X_EVENT_LEAD, X_EVENT_SIGNUP). With any of
+// them missing it returns before any network call, so shipping it before the
+// account is onboarded costs nothing.
+//
+// Identifiers: at /api/ev the visitor is anonymous, so we send the pair X
+// accepts for that case, ip_address + user_agent, plus twclid when the click
+// carried one — the strongest match X has. No email or phone is ever sent from
+// here: this endpoint does not have them, by design.
+const X_EVENT_FOR = {
+  first_message_sent: "LEAD",
+  install_accepted: "SIGNUP",
+  app_launched_standalone: "SIGNUP",
+};
+
+async function sendXConversion(env, req, b, name) {
+  const token = env && env.X_PIXEL_TOKEN;
+  if (!token) return;
+  const slot = X_EVENT_FOR[name];
+  if (!slot) return;
+  const eventId = slot === "LEAD" ? env.X_EVENT_LEAD : env.X_EVENT_SIGNUP;
+  if (!eventId) return;
+
+  const pixel = clean(env.X_PIXEL_ID, 40) || "rfbeh";
+  const ua = req.headers.get("user-agent") || "";
+  const ip = req.headers.get("cf-connecting-ip") || "";
+  const twclid = clean(b.twclid, 120);
+  const srcUrl = req.headers.get("referer") || "";
+
+  const identifier = {};
+  if (twclid) identifier.twclid = twclid;
+  if (ip) identifier.ip_address = ip;
+  if (ua) identifier.user_agent = ua;
+  // Nothing X could ever attribute — do not send a blind conversion.
+  if (!identifier.twclid && !(identifier.ip_address && identifier.user_agent)) return;
+
+  const conv = {
+    conversion_time: new Date().toISOString(),
+    event_id: eventId,
+    identifiers: [identifier],
+  };
+  if (srcUrl) conv.event_source_url = srcUrl;
+  const cid = clean(b.conversion_id, 80);
+  if (cid) conv.conversion_id = cid;
+
+  try {
+    await fetch("https://ads-api.x.com/12/measurement/conversions/" + pixel, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-pixel-token": token },
+      body: JSON.stringify({ conversions: [conv] }),
+    });
+  } catch (e) { /* a marketing pixel must never affect the response */ }
 }
 
 /* ------------------------------------------- GET /api/ev.gif  email opens */

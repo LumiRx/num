@@ -75,11 +75,36 @@ function highlights(t: Tier, free: Tier | undefined): string[] {
 export default function MembershipCard() {
   const me = useApp((s) => s.me);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
-  const [mine, setMine] = useState<{ tier: string; used?: Record<string, number> } | null>(null);
+  const [mine, setMine] = useState<{ tier: string; used?: Record<string, number>; renews_at?: string | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [wallet, setWallet] = useState<StarWallet | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  /**
+   * Cancel, and then re-read the account rather than assuming what happened.
+   *
+   * The server's own note is shown verbatim: it knows whether this runs to a
+   * period end, was a legacy one-off that simply expires, or was free all
+   * along, and rewriting that here is how the UI ends up telling somebody
+   * something the billing system does not agree with.
+   */
+  const doCancel = async () => {
+    if (!me?.id) return;
+    setBusy('cancel');
+    setNote(null);
+    const { cancelSubscription } = await import('../../lib/subscription');
+    const out = await cancelSubscription(me.id);
+    setBusy(null);
+    setConfirmCancel(false);
+    setNote(out.ok ? (out.note ?? 'Done.') : (out.error ?? 'Could not cancel just now.'));
+    if (out.ok) {
+      const fresh = await fetch(apiUrl(`/api/membership/me?me=${encodeURIComponent(me.id)}`))
+        .then((r) => r.json()).catch(() => null);
+      if (fresh) setMine(fresh);
+    }
+  };
 
   useEffect(() => {
     void fetch(apiUrl('/api/membership/tiers')).then((r) => r.json()).then((d) => setTiers(d.tiers)).catch(() => {});
@@ -113,7 +138,13 @@ export default function MembershipCard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ me: me.id, tier }),
       }).then((r) => r.json()) as { ok?: boolean; url?: string; error?: string };
-      if (out.url) { window.location.href = out.url; return; }
+      if (out.url) {
+        // See WelcomePlans: the tier they hold NOW is what PaidReturn compares
+        // against, which is what makes a Plus→Pro upgrade confirm correctly.
+        try { localStorage.setItem('num-tier-before-checkout', current); } catch { /* private mode */ }
+        window.location.href = out.url;
+        return;
+      }
       setNote(out.error ?? 'Couldn’t start that just now.');
     } catch {
       setNote('Couldn’t reach the till — try again in a moment.');
@@ -283,6 +314,61 @@ export default function MembershipCard() {
           <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
             Months paid in Stars simply end — nothing renews on its own and no card is stored.
           </div>
+        </div>
+      )}
+
+      {/* ── LEAVING ─────────────────────────────────────────────────────
+          Until 16 Sep 2026 this card said "Cancel any time" and there was no
+          way to cancel. /api/membership/cancel had existed for weeks, with a
+          comment saying cancelling has to be as easy as joining, and nothing
+          in the app ever called it — so the copy above made a promise the UI
+          could not keep.
+
+          Shown only to a PAYING member: a free member has nothing to cancel,
+          and an "unsubscribe" on a free plan reads like a threat.
+
+          Two steps, because it is irreversible-ish and a mis-tap on a phone is
+          easy. The second step is plain, not frightening — no "are you sure
+          you want to lose everything". They keep the app either way; that is
+          the whole design of the free tier. */}
+      {current !== 'free' && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--ink-08)' }}>
+          {mine?.renews_at && (
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', lineHeight: 1.5, marginBottom: 8 }}>
+              Renews {mine.renews_at}.
+            </div>
+          )}
+          {!confirmCancel ? (
+            <div
+              {...pressable(() => setConfirmCancel(true))}
+              style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-55)' }}
+            >
+              CANCEL MY PLAN
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.55 }}>
+                You keep {currentTier?.name ?? 'your plan'} until the end of the month you have paid
+                for, then it stops renewing. The concierge, your plans and your people stay yours.
+              </div>
+              <div
+                {...pressable(() => { if (!busy) void doCancel(); })}
+                style={{
+                  cursor: 'pointer', borderRadius: 999, padding: '10px 14px', textAlign: 'center',
+                  border: '1.5px solid var(--ink-20, rgba(0,0,0,.18))', color: 'var(--ink-60)',
+                  fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
+                }}
+              >
+                {busy === 'cancel' ? 'CANCELLING…' : 'YES, CANCEL IT'}
+              </div>
+              <div
+                {...pressable(() => setConfirmCancel(false))}
+                style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: 'var(--color-accent-700)', textAlign: 'center' }}
+              >
+                KEEP IT
+              </div>
+            </div>
+          )}
         </div>
       )}
 

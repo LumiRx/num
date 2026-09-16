@@ -65,6 +65,33 @@ describe('the real worker map', () => {
     assert.ok(app.has('worker/prompt.mjs'));
   });
 
+  test('THE GUARD\'S OWN BLIND SPOT: num-app watches the CLIENT as well', () => {
+    // 16 Sep 2026: this file tracked ZERO src/ files. `release.mjs stage` runs
+    // `npm run build`, so the compiled app ships with num-app — a change to a
+    // screen IS a change to what is live. It went unnoticed because that day's
+    // work also touched worker files, so the report was right for the wrong
+    // reason. A client-ONLY change would have read "up to date" while sitting
+    // undeployed: the exact silent half-deploy this file exists to stop,
+    // reproduced inside it.
+    const files = digestOf(WORKERS['num-app'].main, WORKERS['num-app'].client).files;
+    const client = files.filter((f) => f.startsWith('src/'));
+    assert.ok(client.length > 20, `only ${client.length} client files tracked`);
+    assert.ok(files.includes('src/lib/concierge.ts'),
+      'the iOS storefront gate is invisible to the deploy guard');
+  });
+
+  test('the client walk follows .tsx, or it stops at the entry file', () => {
+    // Without .tsx in EXTS the walk resolved src/main.tsx and nothing beyond
+    // it — 1 file, reported as success.
+    const files = digestOf(WORKERS['num-app'].main, WORKERS['num-app'].client).files;
+    assert.ok(files.some((f) => f.endsWith('.tsx')), 'no .tsx file was reached');
+  });
+
+  test('a worker with no client entry is unaffected', () => {
+    assert.equal(WORKERS['num-ai'].client, undefined);
+    assert.ok(digestOf(WORKERS['num-ai'].main).files.every((f) => !f.startsWith('src/')));
+  });
+
   test('a test file is never counted as part of a bundle', () => {
     // Otherwise every edited test reports a worker as needing a deploy, the
     // warning cries wolf, and people stop reading it — which is how a drift

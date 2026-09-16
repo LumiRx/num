@@ -1220,10 +1220,38 @@ export async function handleNum(request, env, ctx) {
       }
     }
 
+    // ── THE OFFER, AND THE PERMISSION TO MAKE IT ──────────────────────
+    //
+    // `earned` comes from the app, which is the only thing that knows a limit
+    // was hit or a booking just landed. With no signal the block says DO NOT
+    // OFFER, so silence is the default and a pitch has to be justified — the
+    // opposite of what a price list alone would produce.
+    let membership = null;
+    try {
+      const { upgradeFor } = await import('./upgrade.mjs');
+      // iOS sells nothing here — App Store 3.1.1, and Num bills through
+      // Stripe. The client says whether it may offer at all; DEFAULT IS NO,
+      // so an older build that never sends the field, or a forged one that
+      // sends nonsense, gets silence rather than a price list.
+      const maySell = parsed.may_offer_subscription === true;
+      // `asked` is detected from the guest's own words rather than trusted
+      // from the client: the server sees the text, and a guest asking "how
+      // much is Plus?" and getting nothing back is worse than any missed
+      // upsell. The client may still send `win` or `limit` — it is the only
+      // thing that knows a booking landed or a ceiling bit.
+      const { askedAboutPlans } = await import('./upgrade.mjs');
+      const claimed = ['limit', 'win', 'asked'].includes(parsed.earned) ? parsed.earned : null;
+      const earned = askedAboutPlans(lastUser) ? 'asked' : claimed;
+      membership = maySell ? await upgradeFor(env, memberId, { earned }) : null;
+    } catch (e) {
+      console.warn('[upgrade] block skipped:', e?.message ?? e);
+    }
+
     const groundingBlock = contextBlock({
       place: grounding.place,
       partners: rotation.partners,
       widened: grounding.widened,
+      membership,
       shown: rotation.block,
       entryDocs,
       essentials,

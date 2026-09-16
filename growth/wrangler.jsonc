@@ -138,7 +138,26 @@
     // free public RPC rate limits are shared with everything else running on
     // Cloudflare, so on a busy day they are somebody else's to spend. Adding
     // one is a one-line change: put its URL at the front of this list.
-    "NUM_RPC_BASE": "https://base.gateway.tenderly.co,https://base.drpc.org,https://mainnet.base.org"
+    "NUM_RPC_BASE": "https://base.gateway.tenderly.co,https://base.drpc.org,https://mainnet.base.org",
+    // X (Twitter) Conversions API. The server half of ad tracking lives in
+    // ev() -> sendXConversion in worker.js: it fires the same conversion the X
+    // web pixel sends, but from the server, so an ad-blocker or a tab closed
+    // the instant a code is entered cannot lose it. Inert until BOTH the token
+    // and the two event IDs are set — a missing one means that conversion is
+    // simply not reported yet, never a crash.
+    //
+    //   X_PIXEL_TOKEN  — the pixel token from X's Events Manager. A SECRET; set
+    //                    it with, and keep it out of this file:
+    //                    wrangler secret put X_PIXEL_TOKEN --config growth/wrangler.jsonc
+    //   X_EVENT_LEAD   — event ID for "first message sent" (a Lead).
+    //   X_EVENT_SIGNUP — event ID for install / app launch (a SignUp).
+    //
+    // The two event IDs are NOT secret — they ship in the page anyway. Paste
+    // them here from Events Manager (they look like tw-rfbeh-xxxxx) and
+    // redeploy. X_PIXEL_ID defaults to rfbeh if left as-is.
+    "X_PIXEL_ID": "rfbeh",
+    "X_EVENT_LEAD": "tw-rfbeh-rfbn7",
+    "X_EVENT_SIGNUP": ""
   },
 
   // Drains queued VIP-host contact invites. A host who uploads 400 contacts

@@ -64,7 +64,7 @@ test('no user-agent at all is not a person holding a phone', () => {
 test('the filter runs on the event endpoint, after the allow-list', () => {
   // After, so an unknown event name is still reported as unknown in
   // development rather than being swallowed as "bot".
-  const ev = src.slice(src.indexOf('async function ev(req, env)'), src.indexOf('/* ------------------------------------------- GET /api/ev.gif'));
+  const ev = src.slice(src.indexOf('async function ev(req, env'), src.indexOf('/* ------------------------------------------- GET /api/ev.gif'));
   assert.match(ev, /if \(isBot\(req\)\) return J/, 'the event endpoint still records crawlers');
   assert.ok(ev.indexOf('EVENTS.has(name)') < ev.indexOf('isBot(req)'),
     'the bot check runs before the allow-list, hiding typos as bot traffic');
@@ -73,7 +73,7 @@ test('the filter runs on the event endpoint, after the allow-list', () => {
 
 test('a filtered crawler still gets a 200', () => {
   // A 403 teaches a crawler to retry from somewhere else. Silence is cheaper.
-  const ev = src.slice(src.indexOf('async function ev(req, env)'), src.indexOf('/* ------------------------------------------- GET /api/ev.gif'));
+  const ev = src.slice(src.indexOf('async function ev(req, env'), src.indexOf('/* ------------------------------------------- GET /api/ev.gif'));
   assert.match(ev, /isBot\(req\)\) return J\(\{ ok: true/);
 });
 

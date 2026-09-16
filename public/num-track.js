@@ -81,10 +81,26 @@
       utm_source: qs.get('utm_source') || '',
       utm_medium: qs.get('utm_medium') || '',
       utm_campaign: qs.get('utm_campaign') || '',
-      referrer: document.referrer || ''
+      referrer: document.referrer || '',
+      // X's click id, when this visit came from an X ad. Passed through to
+      // the server, which forwards it to X's Conversions API as the match
+      // identifier. Empty on every other visit, and harmless when empty.
+      twclid: qs.get('twclid') || ''
     };
     if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) body[k] = extra[k];
 
+    // A stable id for this conversion, attached to the body so the /api/ev POST
+    // carries it to the server. growth/worker.js fires the same X conversion
+    // through the Conversions API with this exact id, and X de-duplicates the
+    // pixel event against the server event instead of counting one twice. Only
+    // the three real conversions get one — a shared id on a scroll event would
+    // teach nothing.
+    var CONV = { first_message_sent: 1, install_accepted: 1, app_launched_standalone: 1 };
+    if (CONV[event] && !body.conversion_id) {
+      body.conversion_id = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'c-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    }
     var payload = JSON.stringify(body);
     try {
       // text/plain is CORS-safelisted, so this is a simple request with no
@@ -137,6 +153,28 @@
               ? crypto.randomUUID()
               : 'c-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10),
           });
+        } catch (e) { /* a blocked pixel must never break the page */ }
+      }
+    }
+
+    // Mirror to the X (Twitter) pixel where it is present. The same three
+    // conversions as Reddit, mapped to the event IDs created in X's Events
+    // Manager (Tools -> Events Manager, hidden until a card is on the account).
+    // Each event carries the conversion_id set on the body above, so the web
+    // pixel here and the server-side Conversions API in growth/worker.js resolve
+    // to ONE conversion in X, not two. Until an id below is filled in, the base
+    // twq('config') PageView still runs — the campaign is never blind while
+    // these are pending, it just cannot see the deep conversions yet.
+    if (typeof window.twq === 'function') {
+      var XEV = {
+        first_message_sent: 'tw-rfbeh-rfbn7',           // Lead
+        install_accepted: 'REPLACE_WITH_SIGNUP_EVENT_ID',      // SignUp
+        app_launched_standalone: 'REPLACE_WITH_SIGNUP_EVENT_ID', // SignUp
+      };
+      var xid = XEV[event];
+      if (xid && xid.indexOf('REPLACE_WITH_') === -1) {
+        try {
+          window.twq('event', xid, { conversion_id: body.conversion_id });
         } catch (e) { /* a blocked pixel must never break the page */ }
       }
     }

@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-15 16:33 UTC from 7 entries._
+_Built 2026-09-16 05:02 UTC from 12 entries._
 
 ## Deployed right now
 
@@ -16,8 +16,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-app | 🟢 up to date (2026-09-15 16:27) |
-| num-growth | ⚪ never recorded from this machine |
+| num-app | 🔴 **STALE** — 98 files changed since it shipped |
+| num-growth | 🟢 up to date (2026-09-16 01:50) |
 | num-ai | 🟢 up to date (2026-09-15 08:19) |
 | num-accounts | ⚪ never recorded from this machine |
 | num-payouts | ⚪ never recorded from this machine |
@@ -32,15 +32,21 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 ## Live
 
-- 🟢 **deploy drift guard** — npm run deploy:check. Hashes what each worker bundles against what it last shipped.
-  _claude, 2026-09-15 16:32_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).
   _claude, 2026-09-15 16:32_
 
 ## Built, not deployed
 
+- 🔵 **answer quality** — Pool 6 to 24, partner id now in the block, pick why is a sentence not 12 words. Built, NOT deployed.
+  _claude, 2026-09-15 18:05_
+- 🔵 **deploy drift guard** — Was blind to all 93 client files. npm run build ships them with num-app, so a client-only change read as up to date. Fixed + tested.
+  _claude, 2026-09-16 03:38_
 - 🔵 **Num Expert card page** — Correcting my own earlier entry: dre is right, this is built but num-growth is not deployed, so /s/FARMER still 404s on itsnum.com.
   _claude, 2026-09-15 16:33_
+- 🔵 **subscription checkout loop** — Confirmation after Stripe (nothing read ?paid=) and a cancel button (endpoint existed, nothing called it). Built, NOT deployed.
+  _claude, 2026-09-16 05:02_
+- 🔵 **subscription offer** — Post-signup plans sheet + asked-detection + iOS gate on all three doors. Built, NOT deployed.
+  _claude, 2026-09-16 02:39_
 
 ## Known gaps
 

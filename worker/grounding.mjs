@@ -56,7 +56,28 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
     const [{ rows, widened }, guide, buzz, showtimes, events] = await Promise.all([
-      nearbyPlaces(env, loc, userText, 6, topicHint).catch(() => ({ rows: [] })),
+      // ── 24, NOT 6 ────────────────────────────────────────────────────
+      //
+      // This was 6 until 15 Sep 2026, and that single number caused three of
+      // the four complaints Dre brought back from real users.
+      //
+      // The model is told to offer THREE. With a pool of 6 that leaves 3 in
+      // reserve — so the FIRST "show me others" empties it, the second one
+      // hits moreOptions' exhausted branch, and Num tells a guest standing in
+      // Los Angeles that it has nothing verified left nearby. There are
+      // 90,264 places in Los Angeles. It had 3.
+      //
+      // A small pool also drags recommendations further away: the ring widens
+      // until it finds 6, so a thin category near the guest is padded with
+      // whatever sits kilometres out, and the guest reads that as "these
+      // aren't near where I asked".
+      //
+      // 24 is chosen, not maximal: it is eight rounds of three, it costs
+      // roughly 2KB of prompt, and it sits inside one D1 query with no extra
+      // round trip. The prompt block now says plainly that this is a
+      // SHORTLIST to choose from rather than a list to read out, because a
+      // model handed 24 rows and no instruction will try to use them all.
+      nearbyPlaces(env, loc, userText, 24, topicHint).catch(() => ({ rows: [] })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
       // Only on a movie ask, and dark without a SERPAPI_KEY secret — the
