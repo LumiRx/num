@@ -13,6 +13,7 @@ import { useStickyBottom } from '../../lib/stickyscroll';
 import { tagOf } from '../../lib/derive';
 import { askNum, cleanText, sendChip, openVoice } from '../../lib/concierge';
 import { openPlan } from '../../lib/social';
+import { openDiscover } from '../../lib/discover';
 import { MicIcon, SendIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { Scene } from '../../lib/scenes';
 import { REACTIONS, react } from '../../lib/prefs';
@@ -633,6 +634,20 @@ export default function ThreadView() {
         )}
         {!demo && (
           <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 42, alignItems: 'center', padding: '0 2px' }}>
+            {/* Two fixed starters ahead of the destination's own: the box for
+                people who know what they want, the dice for people who don't.
+                Neither sends a message — they open the Search & Suggest sheet. */}
+            {[['🎲', 'Surprise me', 'suggest'], ['🔍', 'Search', 'search']].map(([emoji, label, tab]) => (
+              <div
+                key={label}
+                {...pressable(() => openDiscover(tab as 'search' | 'suggest'))}
+                className="glass lift"
+                style={{ cursor: 'pointer', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, fontWeight: 600, flex: 'none', display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}
+              >
+                <span aria-hidden="true">{emoji}</span>
+                {label}
+              </div>
+            ))}
             {starters.map(({ emoji, label, prompt }) => (
               <div
                 key={label}

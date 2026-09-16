@@ -28,6 +28,7 @@ import PaySheet from './PaySheet';
 import PassengerSheet from './PassengerSheet';
 import TabSheet from './TabSheet';
 import ErrandSheet from './ErrandSheet';
+import DiscoverSheet from './DiscoverSheet';
 import BookSheet from './BookSheet';
 import TravelSheet from './TravelSheet';
 import InviteSheet from './InviteSheet';
@@ -40,7 +41,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen);
   const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
@@ -64,9 +65,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
@@ -117,7 +118,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -132,7 +133,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.passengerOpen || s.tabOpen || s.errandsOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.passengerOpen || s.tabOpen || s.errandsOpen || s.discoverOpen) closeSheets();
     // Messages are two levels deep: Escape backs out of the conversation
     // first, and only closes the surface once you are on the people list.
     else if (s.dmWith) closeDmThread();
@@ -418,6 +419,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <PassengerSheet />
       <TabSheet />
       <ErrandSheet />
+      <DiscoverSheet />
       <BookSheet />
       <TravelSheet />
       <InviteSheet />

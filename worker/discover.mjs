@@ -27,13 +27,14 @@
  *   · Nothing is ever called "booked" here. Search finds; the booking rails
  *     book.
  *
- * Route: GET /api/discover?mode=search|surprise&q=…&dest=…&country=…
- *        &lat=…&lng=…&me=…&plan_id=…&mood=water|food|night|sweat|culture
+ * Route: GET /api/discover?mode=search|surprise&q=…&place=Kata, Phuket (or dest=slug)
+ *        [&country=…&lat=…&lng=…]&me=…&plan_id=…&mood=water|food|night|sweat|culture
  */
 
 import { search as viatorSearch, viatorReady } from './viator.mjs';
 import { searchEvents } from './eventsearch.mjs';
-import { loadFacts } from './memory.mjs';
+import { loadFacts, saveFacts } from './memory.mjs';
+import { resolveDest } from './suggest.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -224,13 +225,31 @@ export function dealThree(ranked) {
 
 export async function handleDiscover(request, env, fetchImpl = fetch) {
   const url = new URL(request.url);
+  // 👎 from a Suggest card. Stored as a member fact so the same rule that
+  // keeps a disliked place out of the concierge keeps it out of the deck.
+  if (url.pathname.endsWith('/dislike')) {
+    if (request.method !== 'POST') return json({ ok: false, error: 'POST' }, 405);
+    const b = await request.json().catch(() => ({}));
+    const me = String(b?.me ?? '').slice(0, 80), title = String(b?.title ?? '').slice(0, 120);
+    if (!me || !title) return json({ ok: false, error: 'me and title required' }, 400);
+    await saveFacts(env, me, [{ type: 'remember', key: `dislike:${slug(title)}`, value: title }]);
+    return json({ ok: true });
+  }
   const g = (k) => url.searchParams.get(k);
   const mode = g('mode') === 'surprise' ? 'surprise' : 'search';
   const q = String(g('q') ?? '').slice(0, 120);
-  const dest = g('dest'), country = String(g('country') ?? '').toUpperCase().slice(0, 2);
-  const lat = g('lat') == null ? null : Number(g('lat')), lng = g('lng') == null ? null : Number(g('lng'));
+  // The app holds a display name ("Kata, Phuket") and maybe a device fix;
+  // the slug, the country and a fallback coordinate come from the
+  // destinations table here, for the reason suggest.mjs gives: resolving on
+  // the client silently produced `undefined` on every call.
+  const dest = await resolveDest(env, g('dest') || g('place'));
+  if (!dest) return json({ ok: false, error: 'dest or place required (a place NUM covers)' }, 400);
+  let row = null;
+  try { row = await env.DB.prepare('SELECT country, lat, lng FROM destinations WHERE slug = ?1').bind(dest).first(); } catch { /* fall back to the query */ }
+  const country = String(g('country') || row?.country || '').toUpperCase().slice(0, 2);
+  const lat = g('lat') != null ? Number(g('lat')) : (row?.lat ?? null);
+  const lng = g('lng') != null ? Number(g('lng')) : (row?.lng ?? null);
   const me = g('me'), planId = g('plan_id'), mood = MOOD_TAGS[g('mood')] ? g('mood') : null;
-  if (!dest) return json({ ok: false, error: 'dest required' }, 400);
   if (mode === 'search' && !q) return json({ ok: false, error: 'q required for search' }, 400);
 
   const [places, events, exps, history] = await Promise.all([

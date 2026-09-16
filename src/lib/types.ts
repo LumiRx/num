@@ -412,6 +412,9 @@ export interface AppState {
   /** The tab to reopen on next launch, so a night out survives a reload. */
   tabId: string | null;
 
+  /** Search and Suggest — which tab is open, or null. See lib/discover.ts. */
+  discoverOpen: 'search' | 'suggest' | null;
+
   /** The errand board: what's open nearby, and what's yours. */
   errandsOpen: boolean;
   errands: Errand[];

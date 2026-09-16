@@ -2237,7 +2237,7 @@ export default {
     // Search and Suggest for a group: places, events, experiences and the
     // crew's own history, labelled by source, ranked never-tried first. No
     // model call — see discover.mjs.
-    if (url.pathname === '/api/discover') {
+    if (url.pathname === '/api/discover' || url.pathname === '/api/discover/dislike') {
       const { handleDiscover } = await import('./discover.mjs');
       return await handleDiscover(request, env);
     }
