@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.313 — 2026-09-16 19:44 UTC
+
+subscription loop, iOS gate, answer quality
+
+- commit `2d91b7a`
+
 ## 0.8.312 — 2026-09-15 16:37 UTC
 
 (no note given)
