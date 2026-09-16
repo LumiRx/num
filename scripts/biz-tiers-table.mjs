@@ -52,6 +52,17 @@ export function tiersTable(tiers = DEFAULT_BIZ_TIERS) {
 </tr>`;
   }).join('\n');
 
+  // Enterprise is not a tier the product enforces — it is a conversation with
+  // no public price (Sept 15 rate card: 25+ locations or a group brand). It is
+  // generated here so the page and the code cannot drift on it either.
+  const enterprise = `<tr>
+  <td><b>Enterprise</b></td>
+  <td>Talk to us</td>
+  <td>25+ locations or a group brand? Enterprise adds single sign-on, roll-up reporting across properties, a named contact, an uptime commitment and one consolidated invoice.
+    <ul class="tierlist"><li>Everything in Full</li><li>Single sign-on and roll-up reporting across properties</li><li>A named contact and an uptime commitment</li><li>One consolidated invoice</li></ul>
+    <a href="/contact/">Talk to us &rarr;</a></td>
+</tr>`;
+
   // Stated once, above the table, because repeating it in every row is how a
   // reader concludes it must be conditional on something.
   const always = tierMatrix(tiers)[0].always.map((a) => `<li>${esc(a)}</li>`).join('');
@@ -62,6 +73,7 @@ export function tiersTable(tiers = DEFAULT_BIZ_TIERS) {
 <table class="tbl">
 <tr><th style="width:26%">Plan</th><th style="width:20%">Price</th><th>What it adds</th></tr>
 ${rows}
+${enterprise}
 </table>
 <p class="sub" style="margin-top:18px;max-width:70ch">Prices are in US dollars and every paid plan cancels
 monthly. Cancelling never removes your listing &mdash; the free plan is the floor, not a trial.

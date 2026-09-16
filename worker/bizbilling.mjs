@@ -86,11 +86,13 @@ export const DEFAULT_BIZ_TIERS = Object.freeze({
   full: Object.freeze({
     name: 'Full',
     price_cents: 5000,
-    blurb: 'A full year of analytics, unlimited locations, and new NUM for Business features before anyone else gets them.',
+    blurb: 'A full year of analytics, up to 25 locations, and new NUM for Business features before anyone else gets them.',
     entitlements: Object.freeze({
       analytics_days: 365,
       promotions: true,
-      multi_location_max: null,
+      // 25, not unlimited: the Sept 15 rate card puts a group brand or 25+
+      // locations on Enterprise, which has no public price.
+      multi_location_max: 25,
       beta_features: true,
     }),
   }),
