@@ -66,3 +66,4 @@ _to_delete/
 # like everyone's. See scripts/deploydrift.mjs.
 .deploy-shipped.json
 .ticketmaster_key
+.uber_*
