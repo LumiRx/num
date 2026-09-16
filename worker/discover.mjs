@@ -78,7 +78,10 @@ export function sameThing(a, b) {
 }
 
 const withTimeout = (p, ms, fallback) =>
-  Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), ms))]).catch(() => fallback);
+  Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), ms))])
+    // A thrown error is not a timeout; say which it was, so ?debug=1 can tell
+    // an expired key from a slow network.
+    .catch((e) => (fallback && typeof fallback === 'object' ? { ...fallback, reason: `error: ${String(e?.message ?? e).slice(0, 80)}` } : fallback));
 
 export function haversineKm(lat1, lng1, lat2, lng2) {
   if ([lat1, lng1, lat2, lng2].some((v) => v == null || Number.isNaN(Number(v)))) return null;

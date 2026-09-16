@@ -109,7 +109,7 @@ test('search refuses to call out when there is no key', async () => {
 });
 
 const fakeFetch = (taxonomy, products) => async (url, init) => {
-  if (String(url).includes('taxonomy')) {
+  if (String(url).includes('/destinations') && !String(url).includes('products')) {
     return { ok: true, json: async () => ({ data: taxonomy }) };
   }
   const body = JSON.parse(init.body);
@@ -145,7 +145,7 @@ test('count is capped so a search cannot flood the prompt', async () => {
   _resetForTests();
   let sent = null;
   const spy = async (url, init) => {
-    if (String(url).includes('taxonomy')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
+    if (String(url).includes('/destinations') && !String(url).includes('products')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
     sent = JSON.parse(init.body);
     return { ok: true, json: async () => ({ products: [], totalCount: 0 }) };
   };
@@ -158,7 +158,7 @@ test('the taxonomy is fetched once and reused within an isolate', async () => {
   _resetForTests();
   let taxonomyCalls = 0;
   const spy = async (url) => {
-    if (String(url).includes('taxonomy')) {
+    if (String(url).includes('/destinations') && !String(url).includes('products')) {
       taxonomyCalls++;
       return { ok: true, json: async () => ({ data: TAXONOMY }) };
     }
@@ -172,7 +172,7 @@ test('the taxonomy is fetched once and reused within an isolate', async () => {
 test('an upstream failure is reported, never faked', async () => {
   _resetForTests();
   const failing = async (url) => {
-    if (String(url).includes('taxonomy')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
+    if (String(url).includes('/destinations') && !String(url).includes('products')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
     return { ok: false, status: 429 };
   };
   const r = await search({ VIATOR_API_KEY: 'k' }, { name: 'Phuket' }, failing);
@@ -262,7 +262,7 @@ test('a broken Viator costs a block, never a reply', async () => {
 test('an unresolvable place costs a block, never a reply', async () => {
   _resetForTests();
   const ok = async (url) => {
-    if (String(url).includes('taxonomy')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
+    if (String(url).includes('/destinations') && !String(url).includes('products')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
     return { ok: true, json: async () => ({ products: [PRODUCT], totalCount: 1 }) };
   };
   assert.equal(await blockFor({ VIATOR_API_KEY: 'k' }, { name: 'Nowhereton' }, 'things to do', ok), '');
@@ -271,7 +271,7 @@ test('an unresolvable place costs a block, never a reply', async () => {
 test('the happy path reaches the prompt with real products in it', async () => {
   _resetForTests();
   const ok = async (url) => {
-    if (String(url).includes('taxonomy')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
+    if (String(url).includes('/destinations') && !String(url).includes('products')) return { ok: true, json: async () => ({ data: TAXONOMY }) };
     return { ok: true, json: async () => ({ products: [PRODUCT], totalCount: 1 }) };
   };
   const block = await blockFor({ VIATOR_API_KEY: 'k' }, { name: 'Phuket', country_code: 'TH' }, 'things to do here', ok);
@@ -343,7 +343,7 @@ test('parent names are resolved from parentId so the country tiebreak works', as
   ];
   let seen = null;
   const spy = async (url, init) => {
-    if (String(url).includes('taxonomy')) return { ok: true, json: async () => ({ data: taxonomy }) };
+    if (String(url).includes('/destinations') && !String(url).includes('products')) return { ok: true, json: async () => ({ data: taxonomy }) };
     seen = JSON.parse(init.body);
     return { ok: true, json: async () => ({ products: [], totalCount: 0 }) };
   };

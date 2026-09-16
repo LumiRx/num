@@ -117,7 +117,10 @@ async function taxonomy(env, fetchImpl = fetch) {
   if (taxonomyCache && Date.now() - taxonomyCache.at < TAXONOMY_TTL_MS) return taxonomyCache.rows;
   const stored = await taxonomyFromD1(env);
   if (stored) { taxonomyCache = { at: Date.now(), rows: stored }; return stored; }
-  const res = await fetchImpl(`${BASE}/v1/taxonomy/destinations`, { headers: headers(env) });
+  // /v1/taxonomy/destinations returns 404 as of 16 Sep 2026; the v2 list is
+  // GET /destinations (same fields, `destinations` array). Measured, not read:
+  // the old path is what made every Viator search in production come back empty.
+  const res = await fetchImpl(`${BASE}/destinations`, { headers: headers(env) });
   if (!res.ok) throw new Error(`viator taxonomy ${res.status}`);
   const body = await res.json();
   const raw = (body?.data || body?.destinations || []).map((d) => ({
