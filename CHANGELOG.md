@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.314 — 2026-09-16 06:36 UTC
+
+discover: real categories, Viator timeout
+
+- commit `e5c4ec1`
+
 ## 0.8.313 — 2026-09-16 06:34 UTC
 
 Search and Suggest API (/api/discover); Full tier 25 locations
