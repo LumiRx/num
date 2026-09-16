@@ -38,6 +38,7 @@ import PartySheet from './PartySheet';
 import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 import InstallPrompt from './InstallPrompt';
+import PlanNudge from './PlanNudge';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
@@ -426,6 +427,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           lift={78}
           suppressed={overlayOpen || profileOpen || dmOpen}
         />
+      )}
+
+      {/* "You've been using Num" — the only place in the app that mentions a
+          plan unprompted, and it waits for the THIRD ask before it does.
+          Never on iOS: the component returns null there before it fetches
+          anything (App Store 3.1.1 — see the file's header). Shown once. */}
+      {standalone && (
+        <PlanNudge suppressed={overlayOpen || profileOpen || dmOpen} />
       )}
 
       {/* sheet backdrop — mouse convenience only; keyboard users close sheets with Escape (root onKeyDown) */}

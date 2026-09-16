@@ -8,6 +8,7 @@ import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack, requestCashout } from '../../lib/concierge';
 import { canOfferSubscription } from '../../lib/native';
 import { TabStarter } from './TabSheet';
+import MembershipCard from './MembershipCard';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
 import { apiUrl } from '../../lib/apibase';
@@ -48,7 +49,28 @@ export default function WalletSheet() {
 
   const close = () => store.set({ walletOpen: false });
   return (
-    <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    // maxHeight + overflowY: this sheet just grew.
+    //
+    // It was balance + top-ups + tab + errands + receipts, which fitted. Adding
+    // the plan ladder on 16 Sep put two more priced cards inside it, and with
+    // no ceiling on the root the bottom of the sheet simply runs off the
+    // bottom of a phone — which is precisely how WelcomePlans shipped with its
+    // only exit button below the fold. Caught by sheetbackground.test.mjs
+    // within a minute of the ladder going in.
+    //
+    // The receipts list keeps its own inner scroller; this is the outer one,
+    // so a short phone can still reach everything.
+    <div
+      ref={ref}
+      className="glass-strong"
+      style={{
+        ...sheetBase,
+        maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))',
+        overflowY: 'auto',
+        visibility: open ? 'visible' : 'hidden',
+        transform: open ? 'translateY(0)' : 'translateY(105%)',
+      }}
+    >
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
@@ -117,6 +139,52 @@ export default function WalletSheet() {
         </div>
       </div>
       )}
+
+      {/* WHY YOUR BALANCE CHANGED — shown only to the people it happened to.
+          
+          On 16 Sep 2026 the welcome grant was cut ★100 → ★5 and the 94 members
+          already holding ★100 were brought down with it. They did nothing
+          wrong and they were not asked, so the least we owe them is a
+          sentence, in the one place they would go to find out — next to the
+          balance, not buried in a changelog nobody reads.
+          
+          Conditioned on the member's OWN ledger rather than a date or a flag:
+          if the rebalance move is not in their receipts, this never renders.
+          The activity feed is already loaded for the sheet, so this costs no
+          extra request. */}
+      {activity.some((a) => String(a.id).startsWith('rebal20260916_')) && (
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--ink-08)', background: 'var(--ink-04, rgba(0,0,0,.02))' }}>
+          <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)' }}>ABOUT YOUR WELCOME STARS</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
+            We started everyone on ★100 and have moved that to ★5. The welcome
+            Stars were only ever spendable between members inside Num — they
+            could never be cashed out — and we would rather the number meant
+            something real than look generous. Anything you bought or earned is
+            untouched, and it is all itemised below.
+          </div>
+        </div>
+      )}
+
+      {/* THE PLANS, LISTED — this is the buy surface, so prices are shown.
+          
+          Dre, 16 Sep 2026: "we need to list the subscriptions to buy for the
+          app in the buy section."
+          
+          This mounts the SAME MembershipCard the profile uses rather than a
+          second copy of the ladder. That matters beyond tidiness: the card
+          already owns the canOfferSubscription() gate, the server-owned
+          prices, the Stars door, the cancel button and the rule that no tier
+          may ever advertise a travel benefit (California B&P §17550.27). A
+          hand-rolled list here would be a second surface where every one of
+          those could drift out of agreement — and the travel one is a
+          $100,000 bond, not a copy nit.
+          
+          `startOpen` because a shop that hides its prices behind a tap is a
+          shop nobody buys from. iOS still renders none of it. */}
+      <div style={{ borderBottom: '1px solid var(--ink-08)', padding: '2px 4px 8px' }}>
+        <MembershipCard startOpen />
+      </div>
+
       {/* EARNED — the money side. Shown only when there is something to show,
           so it never nags a traveller who has never run an errand. */}
       {!!out && out.cashable > 0 && (

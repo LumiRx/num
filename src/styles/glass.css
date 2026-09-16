@@ -93,60 +93,44 @@ body {
   box-sizing: border-box;
   overflow: hidden;
 }
-/* THE PHONE FRAME IS FOR BROWSERS ONLY — `html:not(.num-native)`.
-
-   Above 520px the app is drawn as a 440px phone-shaped column on a dark
-   stage. In a desktop browser that is the intended launch stage: the product
-   shown inside a phone. Inside an INSTALLED iPad binary it is a mockup of a
-   phone floating on black, and that is what App Review photographed on an
-   iPad Air M3 while reviewing 1.0(2).
-
-   Somebody who downloaded an app wants the app, at whatever width their
-   device happens to be. This is the same mistake the `innerWidth < 720` test
-   in useStandalone once made — a viewport-width rule that is right for a
-   browser and meaningless inside a binary — so it is fixed the same way:
-   App.tsx marks the document `.num-native`, and the frame skips it.
-
-   The frame is otherwise unchanged, so the web launch stage is untouched. */
+/* A BIG SCREEN GETS THE APP, NOT A PICTURE OF A PHONE.
+ *
+ * Until 16 Sep 2026 a browser window 520px or wider drew the app as a 440px
+ * phone-shaped column floating on a dark stage. That was deliberate: desktop
+ * web was a LAUNCH STAGE, the product shown inside a phone, because desktop
+ * visitors were there to look rather than to use.
+ *
+ * Two things ended that. App Review photographed the mockup on an iPad Air
+ * while reviewing 1.0(2) — a phone floating on black is not an iPad app — and
+ * then the X flight sent 133 US desktop visitors in a day, of whom exactly
+ * none asked Num anything, because app.itsnum.com was not giving them the
+ * product at all. App.tsx now routes every browser to the app and keeps the
+ * pitch page at `?stage`, so this rule has no reason to draw a phone any more.
+ *
+ * WHAT REPLACES IT is the treatment the installed iPad build already uses and
+ * which was already reasoned through here: the SHELL fills the viewport —
+ * background, aurora, safe areas, all of it — and the CONTENT inside is
+ * centred at a comfortable measure. A chat bubble stretched across 1180px is
+ * genuinely worse to read than the mockup was to look at, and a 760px column
+ * is the normal shape of a phone-first app on a wide screen. It needs no
+ * per-view layout work: one rule on the shell's own child.
+ *
+ * The two cases are now IDENTICAL, so they are one rule rather than two that
+ * can drift. Phones never reach 520px CSS pixels in portrait, so nothing here
+ * changes the device most people use.
+ */
 @media (min-width: 520px) {
-  html:not(.num-native) .app-shell {
-    width: 440px;
-    /* The framed launch stage has its own height; subtract the keyboard the
-       same way so a desktop browser with a software keyboard (a tablet in
-       browser mode) behaves like the app rather than like neither. */
-    height: min(100dvh - 48px - var(--kb, 0px), 940px);
-    margin: auto;
-    border-radius: 32px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-  html:not(.num-native) .app-shell-stage {
+  .app-shell-stage {
     height: 100dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    /* A whisper of the old stage, behind a shell that now covers it almost
+       entirely — it shows only as tone at the very edges on a wide monitor,
+       which is what stops a centred column looking like it fell off. */
     background:
-      radial-gradient(60% 50% at 30% 20%, rgba(236, 48, 19, 0.16) 0%, transparent 70%),
-      radial-gradient(55% 45% at 75% 80%, rgba(64, 90, 255, 0.12) 0%, transparent 70%),
-      #14100e;
+      radial-gradient(60% 50% at 30% 20%, rgba(236, 48, 19, 0.06) 0%, transparent 70%),
+      radial-gradient(55% 45% at 75% 80%, rgba(64, 90, 255, 0.05) 0%, transparent 70%),
+      var(--bg, #fff);
   }
-}
-/* AN INSTALLED APP ON A BIG SCREEN: fill it, but keep the reading column sane.
-
-   Dropping the phone frame (above) makes the shell full-bleed, which is what
-   an iPad user expects from something they downloaded. Left there, though, a
-   chat bubble and a settings row would stretch across 1180px, and a line that
-   wide is genuinely worse to read than the mockup was to look at.
-
-   So the SHELL fills the device — background, aurora, safe areas, all of it —
-   and the CONTENT inside it is centred at a comfortable measure. That is the
-   normal shape of a phone-first app on a tablet, and it needs no per-view
-   layout work: one rule on the shell's own child.
-
-   Phones never reach 520px CSS pixels in portrait, so nothing here changes
-   how the app looks on the device most people use. */
-@media (min-width: 520px) {
-  html.num-native .app-shell > div {
+  .app-shell > div {
     max-width: 760px;
     margin-inline: auto;
     width: 100%;

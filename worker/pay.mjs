@@ -929,7 +929,11 @@ export async function handlePay(request, env, path) {
 
     // What a person would call this, not what the column says.
     const STAR_LABEL = {
-      welcome: () => 'Welcome Stars',
+      // A welcome move is normally the +grant at sign-up. It can also be the
+      // 16 Sep 2026 rebalance, which is NEGATIVE — and 'Welcome Stars −95' is
+      // a line that tells somebody their balance dropped and not one word
+      // about why. When the move carries its own note, the note IS the title.
+      welcome: (r) => (r.delta < 0 ? (r.note || 'Welcome balance adjusted') : 'Welcome Stars'),
       purchase: () => 'Bought Stars',
       refund: () => 'Refunded — Stars returned',
       pay: (r) => `Sent to ${r.other_name ?? 'someone'}`,

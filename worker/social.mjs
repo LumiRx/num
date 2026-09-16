@@ -1895,7 +1895,27 @@ async function prefsWrite(env, req) {
 // double-entered into num_star_moves so a balance can always be reconstructed
 // from the log rather than trusted on its own.
 
-const WELCOME_STARS = 100;
+// ── THE WELCOME GRANT: ★100 → ★5, 16 Sep 2026 ────────────────────────────
+//
+// Dre, 16 Sep 2026: "we need to adjust the 100 stars we add in when users
+// sign up."
+//
+// ★100 at the 1:1 peg reads as $100 handed to anyone who types in a phone
+// number. It was never $100 of exposure — `welcome` is in PROMO_KINDS, so
+// spendable() holds all of it back from leaving Num, and it is not in
+// EARNED_KINDS, so none of it can be cashed out. The grant could only ever
+// move between members inside Num.
+//
+// The reason to cut it anyway is that a number nobody can spend is a promise
+// the product does not keep. ★5 is small enough to read as a welcome and
+// honest enough to be worth what it says.
+//
+// The 94 members already holding ★100 are reduced by
+// scripts/rebalance-stars-2026-09-16.sql, which writes a real move per member
+// rather than editing a balance behind the ledger's back. That move is booked
+// as `welcome`, not `adjustment`, so it stays on the promotional side of
+// spendable() — see the header of that file.
+const WELCOME_STARS = 5;
 
 /**
  * Credit a new member their welcome balance exactly once.

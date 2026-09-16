@@ -143,7 +143,38 @@ export default function WelcomePlans({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div style={sheetBase} role="dialog" aria-modal="true" aria-label="Your plan" ref={ref}>
+    // `glass-strong` IS THE BACKGROUND. Without it this sheet is transparent.
+    //
+    // 16 Sep 2026, from a screenshot on Dre's phone: the plans sheet rendered
+    // with no background at all, so the dashboard showed straight through it.
+    // "The concierge is yours. Free, forever." sat on top of "Nothing booked
+    // yet", the tier cards overlapped the trip-check rows, and the whole thing
+    // ran off the bottom of the screen. It was unreadable — on the one screen
+    // whose entire job is to sell a subscription, while we were paying X for
+    // traffic to reach it.
+    //
+    // `sheetBase` only does position, radius and safe-area padding; its own
+    // comment says "pair with className='glass-strong'". Every other sheet in
+    // the app does. This one was written without it and nothing caught that,
+    // because a missing class is not a type error and the sheet still
+    // "rendered" — it just rendered see-through.
+    //
+    // maxHeight + overflowY for the same reason: every other sheet caps itself
+    // and scrolls inside. Without it a three-tier ladder on a small phone runs
+    // off the bottom and the "Not now" button — the only way out — goes with it.
+    <div
+      ref={ref}
+      className="glass-strong"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Your plan"
+      style={{
+        ...sheetBase,
+        maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))',
+        overflowY: 'auto',
+        padding: '0 16px',
+      }}
+    >
       <div style={grabberStyle} />
 
       <p style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)', margin: '4px 0 8px' }}>

@@ -72,13 +72,25 @@ function highlights(t: Tier, free: Tier | undefined): string[] {
   return out;
 }
 
-export default function MembershipCard() {
+/**
+ * `startOpen` — the plans are LISTED, not hidden behind a tap.
+ *
+ * In the profile the card is a status line first, so the ladder stays folded
+ * until somebody asks for it. In the wallet it is the opposite: that sheet is
+ * the buy surface, somebody opening it is already thinking about spending, and
+ * a shop that makes you tap "see what things cost" is a shop hiding its prices.
+ *
+ * It only ever changes what is open on FIRST paint. Every gate below is
+ * untouched — canOfferSubscription() still decides whether any of this renders,
+ * so nothing here can put a price in front of an iOS reviewer.
+ */
+export default function MembershipCard({ startOpen = false }: { startOpen?: boolean }) {
   const me = useApp((s) => s.me);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
   const [mine, setMine] = useState<{ tier: string; used?: Record<string, number>; renews_at?: string | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [wallet, setWallet] = useState<StarWallet | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
 

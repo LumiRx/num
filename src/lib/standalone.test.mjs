@@ -13,9 +13,21 @@
  * four devices Apple could have reviewed on, and a certain 2.1 rejection on
  * any of them.
  *
+ * ── 16 SEP 2026: WIDTH STOPPED DECIDING ANYTHING ────────────────────────
+ *
+ * The iPad fix above bolted `native` in FRONT of the width test rather than
+ * removing it, so the bad proxy survived for browsers. It came back the same
+ * way it always does: the X ad flight sent 136 people to app.itsnum.com in a
+ * day, 133 of them US desktop, every one shown a marketing page describing an
+ * app they could not open. Zero asked Num anything.
+ *
+ * So `innerWidth` is gone from routing entirely. Every browser gets the app;
+ * the pitch page is kept at `?stage`. Width still decides LAYOUT, in
+ * glass.css, where a media query can widen a column without unmounting the
+ * product mid-session.
+ *
  * Asserted on the source because the decision lives in a React hook that
- * needs a DOM, and the property that matters — "native wins before width is
- * consulted at all" — is structural.
+ * needs a DOM, and the properties that matter are structural.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,13 +46,33 @@ const hook = src.slice(src.indexOf('function useStandalone'), src.indexOf('expor
  */
 const code = hook.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
-test('the native app short-circuits the width check', () => {
+test('the native app is still asked about first', () => {
   assert.match(code, /isNativeApp\(\)/,
-    'useStandalone no longer asks whether it is running natively — an iPad gets the launch stage again');
-  const native = code.indexOf('isNativeApp()');
-  const width = code.indexOf('innerWidth');
-  assert.ok(native > 0 && native < width,
-    'the width check is consulted before the native check — order decides which product an iPad renders');
+    'useStandalone no longer asks whether it is running natively');
+});
+
+test('WIDTH NO LONGER DECIDES WHICH PRODUCT RENDERS', () => {
+  // The whole bug, removed at the root rather than ordered around.
+  //
+  // `innerWidth < 720` was a proxy for "is this a phone", used to answer "does
+  // this person want the product". It was wrong for every iPad (a 2.1
+  // rejection risk on three of the four devices Apple could review on) and
+  // then wrong for 133 desktop visitors the X flight sent on 16 Sep 2026, none
+  // of whom asked Num anything because they never reached it.
+  //
+  // Layout by width is fine and lives in glass.css. ROUTING by width is what
+  // this forbids.
+  assert.ok(!/innerWidth/.test(code),
+    'width is deciding which product to render again — layout belongs in CSS, not in routing');
+});
+
+test('nothing re-renders on resize any more', () => {
+  // The width test was state, recomputed on every resize, so dragging a window
+  // or rotating an iPad across 720px tore down the app mid-session and swapped
+  // in the marketing site. That is what Dre hit signing up on an iPad and
+  // described as the screen "glitching out".
+  assert.ok(!/addEventListener\('resize'/.test(code),
+    'useStandalone listens for resize again — the app can swap itself out mid-session');
 });
 
 test('native appears first in the returned expression', () => {
@@ -54,11 +86,20 @@ test('App.tsx imports the native helper it depends on', () => {
     'isNativeApp is used without being imported — the bundle will not build');
 });
 
-test('the launch stage is still reachable for real browsers', () => {
-  // The fix must not delete the marketing page: a desktop browser at
-  // itsnum.com should still get the pitch, not a phone-shaped app.
+test('the launch stage is KEPT, but behind an explicit ask', () => {
+  // The pitch page is good and the investor material links to it, so deleting
+  // it would lose something real. It is simply no longer what a stranger who
+  // clicked an ad gets by accident: it now requires `?stage`.
   assert.match(src, /return <LaunchStage \/>/,
-    'the launch stage branch was removed — desktop web now renders the app shell');
-  assert.match(code, /innerWidth < 720/,
-    'the width heuristic was deleted entirely — desktop browsers lose the launch stage');
+    'the launch stage branch was removed entirely — the pitch page is gone');
+  assert.match(code, /has\('stage'\)/,
+    'nothing reaches the launch stage any more — it is unreachable, not just un-default');
+});
+
+test('a plain desktop browser gets the app', () => {
+  // The property the X flight actually needed: no ?app, no ?stage, wide
+  // window, not native — and still the product.
+  const ret = code.slice(code.lastIndexOf('return '));
+  assert.match(ret, /!stage/,
+    'the default is not the app — a desktop visitor falls through to the pitch page again');
 });
