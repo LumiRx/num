@@ -52,7 +52,7 @@ export default function DiscoverSheet() {
   return (
     <div ref={ref} role="dialog" aria-modal="true" className="glass-strong" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--safe-top, 0px)))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
-      <div {...pressable(closeDiscover)} aria-label="Close" className="glass press" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+      <div {...pressable(closeDiscover)} aria-label="Close" className="glass press tap" style={{ position: 'absolute', top: 4, right: 4, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />
       </div>
 
