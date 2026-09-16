@@ -99,7 +99,7 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
   const cats = mood ? MOOD_CATEGORIES[mood] ?? [] : [];
   const like = q ? `%${slug(q).split(' ').filter((w) => w.length > 2)[0] ?? ''}%` : null;
   try {
-    let sql = `SELECT id, name, category, area, lat, lng, rating, photo_url
+    let sql = `SELECT id, name, category, area, lat, lng, rating, reviews, photo_url
                  FROM places WHERE dest = ?1 AND (alive IS NULL OR alive = 1)`;
     const binds = [String(dest).slice(0, 60)];
     if (cats.length) { sql += ` AND (${cats.map((_, i) => `lower(category) LIKE ?${i + 2}`).join(' OR ')})`; binds.push(...cats.map((c) => `${c}%`)); }
@@ -109,7 +109,7 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
     const { results } = await env.DB.prepare(sql).bind(...binds).all();
     return (results ?? []).map((r) => ({
       source: 'num', id: `pl_${r.id}`, title: r.name, sub: [r.category, r.area].filter(Boolean).join(' · '),
-      image: r.photo_url ?? null, rating: r.rating ?? null, price: null, currency: null, url: null,
+      image: r.photo_url ?? null, rating: r.rating ?? null, reviews: r.reviews ?? null, price: null, currency: null, url: null,
       lat: r.lat ?? null, lng: r.lng ?? null, distance_km: haversineKm(lat, lng, r.lat, r.lng),
       label: 'Checked by NUM',
     }));
@@ -136,7 +136,7 @@ export async function experiencesFor(env, { dest, country, lat, lng, mood, curre
   if (!r?.ok) return Object.assign([], { reason: r?.reason ?? 'unknown' });
   return r.products.map((p) => ({
     source: 'viator', id: `vi_${p.code}`, title: p.title, sub: [p.duration, p.reviews ? `${p.reviews} reviews` : null].filter(Boolean).join(' · '),
-    image: p.image ?? null, rating: p.rating ?? null, price: p.from ?? null, currency: p.currency ?? null, url: p.url,
+    image: p.image ?? null, rating: p.rating ?? null, reviews: p.reviews ?? null, price: p.from ?? null, currency: p.currency ?? null, url: p.url,
     lat: null, lng: null, distance_km: null, label: 'Bookable on Viator',
   }));
 }
@@ -194,14 +194,21 @@ export function annotate(candidates, history, { me } = {}) {
     });
 }
 
-/** Never-tried first, then closer, then cheaper, then better rated. */
+/**
+ * Never-tried first. Then the concierge's own order: the best-regarded thing,
+ * where "regarded" is the rating weighted by how many people gave it — a 5.0
+ * from 3 reviews must not beat a 4.8 from 2,100. Then closer, then cheaper.
+ * Leading with price would make this a comparison site (viator.mjs says the
+ * same about its own sort).
+ */
+export const regard = (i) => (i.rating == null ? 0 : Number(i.rating) * (1 + Math.log10((i.reviews ?? 0) + 1)));
 export function rank(items) {
   const price = (i) => (i.price == null ? 1e9 : Number(i.price));
   return [...items].sort((a, b) =>
     Number(b.novelty?.never_tried) - Number(a.novelty?.never_tried)
+    || regard(b) - regard(a)
     || (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9)
-    || price(a) - price(b)
-    || (b.rating ?? 0) - (a.rating ?? 0));
+    || price(a) - price(b));
 }
 
 /** Three cards, one per source where possible, so a deal is never three boat trips. */

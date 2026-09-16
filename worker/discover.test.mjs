@@ -31,14 +31,14 @@ test('annotate drops disliked things and stamps never-tried from the crew histor
   assert.match(cook.reason, /None of you has done this. Ari and Kim/);
 });
 
-test('rank puts never-tried first, then closer, then cheaper', () => {
+test('rank puts never-tried first, then the best-regarded, then closer, then cheaper', () => {
   const r = rank([
-    { title: 'a', novelty: { never_tried: false }, distance_km: 1, price: 1 },
-    { title: 'b', novelty: { never_tried: true }, distance_km: 9, price: 50 },
-    { title: 'c', novelty: { never_tried: true }, distance_km: 2, price: 80 },
-    { title: 'd', novelty: { never_tried: true }, distance_km: 2, price: 20 },
+    { title: 'a', novelty: { never_tried: false }, distance_km: 1, price: 1, rating: 5, reviews: 9000 },
+    { title: 'b', novelty: { never_tried: true }, distance_km: 9, price: 50, rating: 4.8, reviews: 2100 },
+    { title: 'c', novelty: { never_tried: true }, distance_km: 2, price: 80, rating: 5, reviews: 3 },
+    { title: 'd', novelty: { never_tried: true }, distance_km: 2, price: 20, rating: 5, reviews: 3 },
   ]);
-  assert.deepEqual(r.map((i) => i.title), ['d', 'c', 'b', 'a']);
+  assert.deepEqual(r.map((i) => i.title), ['b', 'd', 'c', 'a'], 'a 4.8 from 2,100 beats a 5.0 from 3; then distance, then price');
 });
 
 test('dealThree prefers one card per source so a deal is never three boat trips', () => {

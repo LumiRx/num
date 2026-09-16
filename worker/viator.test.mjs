@@ -151,7 +151,7 @@ test('count is capped so a search cannot flood the prompt', async () => {
   };
   await search({ VIATOR_API_KEY: 'k' }, { name: 'Phuket', count: 500 }, spy);
   assert.equal(sent.pagination.count, 12);
-  assert.equal(sent.sorting.sort, 'TRAVELLER_RATING', 'a concierge leads with the best, not the cheapest');
+  assert.equal(sent.sorting.sort, 'TRAVELER_RATING', 'a concierge leads with the best, not the cheapest');
 });
 
 test('the taxonomy is fetched once and reused within an isolate', async () => {

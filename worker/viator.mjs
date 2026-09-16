@@ -312,7 +312,8 @@ export async function search(env, { name, country = '', lat = null, lng = null, 
     headers: headers(env),
     body: JSON.stringify({
       filtering,
-      sorting: { sort: 'TRAVELLER_RATING', order: 'DESCENDING' },
+      // American spelling is the API's: TRAVELLER_RATING is a 400.
+      sorting: { sort: 'TRAVELER_RATING', order: 'DESCENDING' },
       pagination: { start: 1, count: Math.min(Math.max(1, count), 12) },
       currency,
     }),
