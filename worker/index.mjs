@@ -2234,6 +2234,14 @@ export default {
       return await handleSuggest(request, env);
     }
 
+    // Search and Suggest for a group: places, events, experiences and the
+    // crew's own history, labelled by source, ranked never-tried first. No
+    // model call — see discover.mjs.
+    if (url.pathname === '/api/discover') {
+      const { handleDiscover } = await import('./discover.mjs');
+      return await handleDiscover(request, env);
+    }
+
     if (url.pathname === '/api/version') {
       // What is actually wired, in one place. Each flag is a capability claim,
       // so it reads the same predicate the code paths do rather than a list
