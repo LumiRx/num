@@ -67,3 +67,4 @@ _to_delete/
 .deploy-shipped.json
 .ticketmaster_key
 .uber_*
+.aerodatabox_key
