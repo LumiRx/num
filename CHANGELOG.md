@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.313 — 2026-09-16 06:34 UTC
+
+Search and Suggest API (/api/discover); Full tier 25 locations
+
+- commit `d522f80`
+
 ## 0.8.312 — 2026-09-15 16:37 UTC
 
 (no note given)
