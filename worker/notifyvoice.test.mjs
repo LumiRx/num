@@ -204,9 +204,12 @@ test('the subtitle carries the fact so the body can carry the sentence', () => {
   // was tomorrow on the day it was written and became today the next morning —
   // so the test passed once and then failed every day after. A date literal in
   // an assertion about relative time is a bomb with a one-day fuse.
+  // ...and computed in UTC, because a zoneless `at` is displayed in UTC. On a
+  // Pacific evening the local date is still yesterday and "tomorrow" in local
+  // time is "today" in UTC, which failed this test every night after 17:00.
   const t = new Date(Date.now() + 86400000);
   const pad = (n) => String(n).padStart(2, '0');
-  const at = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} 20:00:00`;
+  const at = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())} 20:00:00`;
   const c = C.confirmed({ what: 'Baan Rim Pa', at, where: 'Kalim Bay', detail: 'The corner table.' });
   assert.match(c.subtitle, /Tomorrow, 8pm/);
   assert.match(c.subtitle, /Kalim Bay/);

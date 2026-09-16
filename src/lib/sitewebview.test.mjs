@@ -127,7 +127,7 @@ test('the home page sends people straight to Num, and diverts only a webview', (
   // test fails rather than quietly shipping the dark screen to social traffic.
   const ctas = [...homePage.matchAll(/<a\b[^>]*class="btn[^"]*"[^>]*href="([^"]+)"[^>]*>/gi)].map((m) => m[1]);
   assert.ok(ctas.length >= 2, 'the home page has lost its buttons');
-  assert.ok(ctas.some((h) => /^https:\/\/app\.itsnum\.com\/?$/.test(h)),
+  assert.ok(ctas.some((h) => /^https:\/\/app\.itsnum\.com\/?(\?app=1)?$/.test(h)),
     'no home CTA opens Num directly');
 
   const site = readFileSync(new URL('assets/site.js', SITE), 'utf8');
