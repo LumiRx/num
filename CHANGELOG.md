@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.327 — 2026-09-17 20:07 UTC
+
+Owner columns before the index; payment history; receipts; billing portal; buyer's currency
+
+- commit `8f0fdae`
+
 ## 0.8.326 — 2026-09-17 20:02 UTC
 
 Plans in the buyer's currency; receipts; billing portal; payment history; switch no longer double-bills
