@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.333 — 2026-09-17 22:31 UTC
+
+Mongolian answered by /api/i18n too — the app list and the worker list now agree
+
+- commit `3785db5`
+
 ## 0.8.332 — 2026-09-17 22:30 UTC
 
 Mongolian in the app and on the site; Ulaanbaatar page; Mongolia in the destinations index; invites send from itsnum.com
