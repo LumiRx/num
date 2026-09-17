@@ -92,6 +92,25 @@ export const EMERGENCY = Object.freeze({
   KH: { police: '117', fire: '118', ambulance: '119' },
   LK: { police: '119', ambulance: '1990' },
   MV: { police: '119', ambulance: '102' },
+  // Mongolia. Added 17 Sep 2026, because worker/emergency.test.mjs failed:
+  // a destination had been added to scripts/destinations.mjs and Num was
+  // sending travellers to a country it could not answer this question for.
+  // That test is the reason this was caught rather than discovered by a
+  // guest in Ulaanbaatar.
+  //
+  // Verified against Mongolia's own Communications Regulatory Commission,
+  // which lists 101 fire, 102 police, 103 ambulance and 105 emergency
+  // response (101/102/103/105 are answered by the General Police
+  // Department's Information and Express Management Center):
+  //   https://admin.crc.gov.mn/list/harilcaa-holboony-jlchilgee/en?show=195
+  // Corroborated by UK FCDO travel advice, which gives ambulance 103,
+  // fire 101, police 102:
+  //   https://www.gov.uk/foreign-travel-advice/mongolia/getting-help
+  //
+  // 105 is deliberately NOT set as `all`. Only one of the two sources
+  // mentions it, and this file's rule is that a gap producing the honest
+  // fallback is safe where a plausible wrong number is not.
+  MN: { police: '102', ambulance: '103', fire: '101' },
 });
 
 /**

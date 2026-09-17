@@ -2,14 +2,14 @@
 
 > NUM is an AI travel concierge, run by 5arz. A traveller messages it in ordinary
 > language and it answers with real local places and books one for them. It covers
-> 2,686,795 places in 104 destinations across 38 countries. It is free for travellers.
+> 2,686,795 places in 106 destinations across 39 countries. It is free for travellers.
 > Businesses list free and pay a commission on a booking NUM completes — 10% of a restaurant bill, 15% on a room or appointment, 20% on an activity
 > — out of their side, never added to the traveller's bill.
 
 Facts, as of 2026-09-10:
 
 - Operator: 5arz Inc. NUM is a 5arz product. Contact info@5arz.com.
-- Coverage: 2,686,795 places, 104 destinations, 38 countries.
+- Coverage: 2,686,795 places, 106 destinations, 38 countries.
 - Channels: the web app at https://app.itsnum.com (works on any phone or
   computer, no install), and LINE (@799pyrus). WhatsApp and WeChat in progress.
 - Traveller price: free. There is no traveller subscription and no booking fee.
@@ -29,7 +29,7 @@ Facts, as of 2026-09-10:
 - [Home](https://itsnum.com/): what NUM is and how to start.
 - [How it works](https://itsnum.com/how-it-works/): chat, plan, book, verified places only.
 - [Get the app](https://itsnum.com/app/): add NUM on LINE or to a phone home screen.
-- [Destinations](https://itsnum.com/destinations/): all 104 destinations with place counts.
+- [Destinations](https://itsnum.com/destinations/): all 106 destinations with place counts.
 - [Perks](https://itsnum.com/perks/): what members get at verified places.
 
 ## For businesses
