@@ -119,6 +119,13 @@ export const PAGES = Object.freeze([
     blurb: 'What you are on, what the others give you, and how to change or cancel.',
   },
   {
+    // `needs: null` — free, deliberately. A record of what you have been
+    // charged is not a feature to sell; a business that cannot see its own
+    // payments is a business that has to email to ask.
+    id: 'billing', label: 'Payments', nav: true, needs: null,
+    blurb: 'Every charge NUM has taken from you, what it was for, and whether it went through.',
+  },
+  {
     id: 'beta', label: 'Early access', nav: true,
     needs: (e) => !!e?.beta_features,
     unlock: 'New NUM for Business features before anyone else, and a direct line to say what is wrong with them.',

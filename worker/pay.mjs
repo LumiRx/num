@@ -30,6 +30,8 @@
 import { checkPayment, refusal, STAR_PACKS } from './preflight.mjs';
 import { alert } from './health.mjs';
 
+import { formatPrice } from './planprice.mjs';
+
 const STRIPE = 'https://api.stripe.com/v1';
 
 // Whether Num can issue a ticket decides how travel settles, and therefore
@@ -253,6 +255,30 @@ async function stripe(env, path, body, idem, method = 'POST') {
   return parsed;
 }
 
+/**
+ * Who a payment belongs to — added 17 Sep 2026, and it fixes a real bug.
+ *
+ * `requestSubscription` bound its `ownerId` into the **member_id** column.
+ * For a member that was right. For a business it wrote a biz_… id into a
+ * column called member_id, and for a host a host_… id, so one column held
+ * three different id namespaces and `idx_num_payments_member` indexed the
+ * mixture. Nothing had noticed because no business or host subscription had
+ * ever been created — the first one would have been the first corrupt row.
+ *
+ * It also made the thing asked for on 17 Sep impossible: a business cannot
+ * be shown "every charge NUM has taken from you" when its payments are
+ * filed under a column that means something else.
+ *
+ * So: owner_kind ('member' | 'biz' | 'host') and owner_id, set on every
+ * write. member_id stays, populated only for real members, because other
+ * code reads it and a column that quietly changes meaning is how this
+ * started.
+ */
+const PAYMENT_ALTERS = [
+  'ALTER TABLE num_payments ADD COLUMN owner_kind TEXT',
+  'ALTER TABLE num_payments ADD COLUMN owner_id TEXT',
+];
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS num_payments (
   id TEXT PRIMARY KEY, member_id TEXT, mode TEXT NOT NULL, ref TEXT,
@@ -261,6 +287,7 @@ CREATE TABLE IF NOT EXISTS num_payments (
   created_at TEXT NOT NULL DEFAULT (datetime('now')), paid_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_num_payments_member ON num_payments(member_id);
+CREATE INDEX IF NOT EXISTS idx_num_payments_owner ON num_payments(owner_kind, owner_id);
 CREATE INDEX IF NOT EXISTS idx_num_payments_ref ON num_payments(ref);
 CREATE TABLE IF NOT EXISTS num_star_ledger (
   id TEXT PRIMARY KEY, member_id TEXT NOT NULL, delta INTEGER NOT NULL,
@@ -269,11 +296,30 @@ CREATE TABLE IF NOT EXISTS num_star_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_num_star_ledger_member ON num_star_ledger(member_id, created_at);
 `;
-let ready = false;
+const ready = new WeakSet();
 async function ensure(env) {
-  if (ready || !env.DB) return;
+  if (!env.DB || ready.has(env.DB)) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
-  ready = true;
+  for (const sql of PAYMENT_ALTERS) {
+    await env.DB.prepare(sql).run().catch((e) => {
+      const m = String(e?.message ?? e);
+      if (!/duplicate column/i.test(m)) console.warn('[pay] ensure', m);
+    });
+  }
+  // Backfill what the ref already tells us, so the history is complete rather
+  // than starting today. Safe to re-run: it only fills nulls.
+  await env.DB.prepare(
+    `UPDATE num_payments SET owner_kind='member', owner_id=member_id
+      WHERE owner_kind IS NULL AND member_id IS NOT NULL
+        AND (ref IS NULL OR ref NOT LIKE 'biztier:%' AND ref NOT LIKE 'hosttier:%')`,
+  ).run().catch(() => {});
+  await env.DB.prepare(
+    "UPDATE num_payments SET owner_kind='biz', owner_id=member_id WHERE owner_kind IS NULL AND ref LIKE 'biztier:%'",
+  ).run().catch(() => {});
+  await env.DB.prepare(
+    "UPDATE num_payments SET owner_kind='host', owner_id=member_id WHERE owner_kind IS NULL AND ref LIKE 'hosttier:%'",
+  ).run().catch(() => {});
+  ready.add(env.DB);
 }
 
 /**
@@ -298,8 +344,10 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
     const url = table[link ?? 'default'] ?? Object.values(table)[0];
     if (!url) return { ok: false, mode, error: 'No matching payment link is configured.' };
     await env.DB?.prepare(
-      'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)',
-    ).bind(id, clip(memberId, 40), 'links', clip(ref, 60), amountCents ?? null, currency, clip(description, 200), url).run().catch(() => {});
+      `INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, url, owner_kind, owner_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`,
+    ).bind(id, clip(memberId, 40), 'links', clip(ref, 60), amountCents ?? null, currency, clip(description, 200), url,
+      memberId ? 'member' : null, clip(memberId, 40)).run().catch(() => {});
     return {
       ok: true,
       mode,
@@ -349,8 +397,10 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
   );
 
   await env.DB?.prepare(
-    'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
-  ).bind(id, clip(memberId, 40), 'stripe', clip(ref, 60), amount, currency, clip(description, 200), session.id, session.url).run().catch(() => {});
+    `INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url, owner_kind, owner_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`,
+  ).bind(id, clip(memberId, 40), 'stripe', clip(ref, 60), amount, currency, clip(description, 200), session.id, session.url,
+    memberId ? 'member' : null, clip(memberId, 40)).run().catch(() => {});
 
   return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency };
 }
@@ -419,8 +469,13 @@ export async function requestSubscription(env, { memberId, businessId, hostId, a
   );
 
   await env.DB?.prepare(
-    'INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)',
-  ).bind(id, clip(ownerId, 40), 'stripe-sub', clip(ref, 60), amount, cur, clip(name, 200), session.id, session.url).run().catch(() => {});
+    `INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, description, session_id, url, owner_kind, owner_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`,
+    // member_id gets the member and NOBODY ELSE. It used to get `ownerId`,
+    // which meant a business subscription filed a biz_… id in a column named
+    // member_id. The owner columns carry the truth for all three kinds.
+  ).bind(id, memberId ? clip(memberId, 40) : null, 'stripe-sub', clip(ref, 60), amount, cur, clip(name, 200), session.id, session.url,
+    hostId ? 'host' : businessId ? 'biz' : 'member', clip(ownerId, 40)).run().catch(() => {});
 
   return { ok: true, mode, url: session.url, id, session_id: session.id, amount_cents: amount, currency: cur };
 }
@@ -475,6 +530,71 @@ async function ownerOfSub(env, subId) {
     console.warn('[pay] could not identify the owner of', subId, err?.message ?? err);
   }
   return { kind: null, tier: null };
+}
+
+/**
+ * Every charge NUM has taken from one owner, newest first.
+ *
+ * ── WHY THIS IS A FUNCTION AND NOT THREE QUERIES ─────────────────────────
+ *
+ * A business, a host and a traveller all want the same sentence — "what have
+ * I paid you, and did it go through" — and before 17 Sep none of them could
+ * get it anywhere. The only queries over num_payments in the estate were in
+ * worker/console.mjs, which is the ADMIN console: 5arz staff could see every
+ * payment in the system and the person who made one could see nothing.
+ *
+ * The Stripe billing portal shows invoices, but only for a business that has
+ * a Stripe customer, only after it has been charged, and only in Stripe's
+ * words. This is NUM's own record, which is what "a history in the profile"
+ * has to mean.
+ *
+ * `state` is returned verbatim rather than prettified. A row that says
+ * `created` is a checkout somebody started and never finished — which is a
+ * true and useful thing to show, and 10 of the 11 payments in the table on
+ * the day this was written were exactly that.
+ */
+export async function paymentHistory(env, ownerKind, ownerId, limit = 50) {
+  if (!env?.DB || !ownerKind || !ownerId) return { ok: false, payments: [] };
+  // A history is an extra on a page whose real job is something else — the
+  // host's plan, the business's dashboard. If it cannot be read, the page
+  // still renders and simply shows nothing, the same rule the receipt and
+  // the revenue hook follow. Throwing here would 500 a plan page over a
+  // missing column.
+  try {
+    await ensure(env);
+  } catch (err) {
+    console.warn('[pay] history unavailable:', err?.message ?? err);
+    return { ok: false, payments: [] };
+  }
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const { results } = await env.DB.prepare(
+    `SELECT id, ref, amount_cents, currency, description, state, mode, created_at, paid_at
+       FROM num_payments
+      WHERE owner_kind = ?1 AND owner_id = ?2
+      ORDER BY created_at DESC
+      LIMIT ${n}`,
+  ).bind(ownerKind, ownerId).all().catch(() => ({ results: [] }));
+
+  const rows = (results ?? []).map((r) => ({
+    ...r,
+    // The amount as the payer saw it, from the same formatter the checkout
+    // page and the receipt use. A history that renders ฿349 as "349" or,
+    // worse, "$349" is the bug this whole day has been about.
+    display: r.amount_cents == null ? null : formatPrice(r.amount_cents, String(r.currency ?? 'usd').toUpperCase()),
+  }));
+  const paid = rows.filter((r) => r.state === 'paid');
+  return {
+    ok: true,
+    payments: rows,
+    // Totals per currency, never summed across them — adding baht to dollars
+    // is how a number becomes a lie.
+    paid_total: paid.reduce((acc, r) => {
+      const cur = String(r.currency ?? 'usd').toLowerCase();
+      acc[cur] = (acc[cur] ?? 0) + Number(r.amount_cents ?? 0);
+      return acc;
+    }, {}),
+    count: rows.length,
+  };
 }
 
 /**

@@ -669,6 +669,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
     <p class="hint" id="plStatus" style="margin-top:14px"></p>
     <p style="margin-top:10px"><button class="btn" type="button" id="plCancel" style="display:none">Cancel my plan</button></p>
+
+    <!-- What you have actually been charged. A host could see the plan and
+         never see a single payment for it, which is the kind of gap that
+         gets answered by email instead of by the product. -->
+    <div id="plHistory" style="margin-top:22px"></div>
   </section>
 
   <!-- ── REMOVING SOMEONE ─────────────────────────────────────────────
@@ -1615,9 +1620,37 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     full:  'Everything in Pro, plus products, Ghost Message and promotion'
   };
 
+  // Status words in the product's own language, not Stripe's. `created` is a
+  // checkout that was opened and never finished — shown, not hidden, because
+  // a history with gaps in it is not a history.
+  var PAYSTATE = { paid: 'Paid', created: 'Not finished', failed: 'Declined', refunded: 'Refunded', disputed: 'Disputed' };
+
+  function paintHistory(rows) {
+    var el = $('plHistory');
+    if (!el) return;
+    if (!rows || !rows.length) {
+      el.innerHTML = '<h3 style="margin:0 0 6px;font-size:16px">Payments</h3>' +
+        '<p class="hint" style="margin:0">Nothing yet — you have not been charged.</p>';
+      return;
+    }
+    el.innerHTML = '<h3 style="margin:0 0 8px;font-size:16px">Payments</h3>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:14px">' +
+      rows.map(function (r) {
+        var when = String(r.paid_at || r.created_at || '').slice(0, 10);
+        var amount = r.display || '';
+        return '<tr style="border-top:1px solid rgba(0,0,0,.08)">' +
+          '<td style="padding:7px 8px 7px 0;white-space:nowrap">' + when + '</td>' +
+          '<td style="padding:7px 8px">' + (r.description || r.ref || '—') + '</td>' +
+          '<td style="padding:7px 8px;white-space:nowrap" translate="no">' + amount + '</td>' +
+          '<td style="padding:7px 0 7px 8px;white-space:nowrap">' + (PAYSTATE[r.state] || r.state) + '</td>' +
+          '</tr>';
+      }).join('') + '</table>';
+  }
+
   function paintPlan(d, profileTier) {
     var current = d && d.tier ? d.tier : (profileTier || 'free');
     var plans = (d && d.plans) || {};
+    paintHistory(d && d.history);
     $('plRows').innerHTML = PLAN_ORDER.map(function (k) {
       var mine = k === current;
       var price = k === 'free' ? 'Free'

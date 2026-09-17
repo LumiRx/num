@@ -139,3 +139,65 @@ test('the agent quota refusal no longer quotes a price nothing can sell', () => 
   assert.doesNotMatch(src.replace(/^\s*\/\/.*$/gm, ''), /\$9\.99|\$19\.99|\$50/,
     'no code path grants an agent tier, so no agent-facing copy may price one');
 });
+
+test('a payment is filed under its real owner, and a history is per-currency', async () => {
+  const { requestSubscription, paymentHistory } = await import('./pay.mjs');
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE num_payments (
+    id TEXT PRIMARY KEY, member_id TEXT, mode TEXT NOT NULL, ref TEXT,
+    amount_cents INTEGER, currency TEXT, description TEXT,
+    session_id TEXT, url TEXT, state TEXT NOT NULL DEFAULT 'created',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')), paid_at TEXT,
+    owner_kind TEXT, owner_id TEXT)`);
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.com/x' }),
+    { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    const env = { DB: d1(db), STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_WEBHOOK_SECRET: 'whsec_x' };
+    await requestSubscription(env, { businessId: 'biz_1', amountCents: 34900, currency: 'THB', name: 'Small', ref: 'biztier:small' });
+    await requestSubscription(env, { hostId: 'host_1', amountCents: 1999, currency: 'GBP', name: 'Pro', ref: 'hosttier:pro' });
+    await requestSubscription(env, { memberId: 'mem_1', amountCents: 898, currency: 'USD', name: 'Plus', ref: 'tier:plus' });
+
+    // THE BUG THIS EXISTS FOR: a business id must never land in member_id.
+    const biz = db.prepare("SELECT member_id, owner_kind, owner_id FROM num_payments WHERE ref='biztier:small'").get();
+    assert.equal(biz.owner_kind, 'biz');
+    assert.equal(biz.owner_id, 'biz_1');
+    assert.equal(biz.member_id, null, 'a business id in member_id is the bug this column split fixes');
+
+    const host = db.prepare("SELECT member_id, owner_kind, owner_id FROM num_payments WHERE ref='hosttier:pro'").get();
+    assert.equal(host.owner_kind, 'host');
+    assert.equal(host.member_id, null);
+
+    const mem = db.prepare("SELECT member_id, owner_kind, owner_id FROM num_payments WHERE ref='tier:plus'").get();
+    assert.equal(mem.owner_kind, 'member');
+    assert.equal(mem.member_id, 'mem_1', 'a real member still populates member_id — other code reads it');
+
+    // Each owner sees their own and nobody else's.
+    const bizHist = await paymentHistory(env, 'biz', 'biz_1');
+    assert.equal(bizHist.payments.length, 1);
+    assert.equal(bizHist.payments[0].display, '฿349', 'the amount as the payer saw it');
+    assert.equal((await paymentHistory(env, 'member', 'biz_1')).payments.length, 0,
+      'a business must not appear in a member history just because ids are strings');
+    assert.equal((await paymentHistory(env, 'host', 'host_1')).payments[0].display, '£19.99');
+
+    // Totals never add baht to dollars.
+    db.exec("UPDATE num_payments SET state='paid' WHERE ref='biztier:small'");
+    const paid = await paymentHistory(env, 'biz', 'biz_1');
+    assert.deepEqual(paid.paid_total, { thb: 34900 });
+    assert.ok(!('usd' in paid.paid_total), 'currencies are never summed together');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('a history that cannot be read never takes the page down with it', async () => {
+  const { paymentHistory } = await import('./pay.mjs');
+  // A DB with no batch() — exactly the shape that 500'd the host plan route
+  // before this was made to fail soft.
+  const broken = { prepare() { throw new Error('nope'); } };
+  const out = await paymentHistory({ DB: broken }, 'biz', 'biz_1');
+  assert.equal(out.ok, false);
+  assert.deepEqual(out.payments, []);
+});

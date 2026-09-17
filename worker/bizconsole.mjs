@@ -441,6 +441,66 @@ function planSection(plan, allTiers, token, saved, err, cur = 'USD', wanted = ''
           period you already paid for ends.</p>` : ''}
     </div>`;
 }
+/**
+ * Payments — what NUM has charged this business, and whether it landed.
+ *
+ * The states are shown in the product's own words rather than Stripe's:
+ * `paid` is "Paid", `created` is "Not finished" (a checkout somebody opened
+ * and closed, which is a true thing to show and was 10 of the 11 rows in the
+ * table the day this was written), `failed` is "Declined". Nothing is
+ * hidden, because a history with gaps in it is not a history.
+ *
+ * Totals are per currency and never added together. A business that paid in
+ * baht and once in dollars has two totals, not one meaningless one.
+ */
+function billingSection(history, hasCustomer, token) {
+  const rows = history?.payments ?? [];
+  const STATE = {
+    paid: { label: 'Paid', tone: '#1e7a4d' },
+    created: { label: 'Not finished', tone: '#8a8577' },
+    failed: { label: 'Declined', tone: '#b3261e' },
+    refunded: { label: 'Refunded', tone: '#8a8577' },
+    disputed: { label: 'Disputed', tone: '#b3261e' },
+  };
+  const body = rows.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:14.5px">
+        <thead><tr style="text-align:left;color:#68705f;font-size:13px">
+          <th style="padding:6px 8px 6px 0">Date</th><th style="padding:6px 8px">What for</th>
+          <th style="padding:6px 8px">Amount</th><th style="padding:6px 0 6px 8px">Status</th>
+        </tr></thead><tbody>
+        ${rows.map((r) => {
+          const st = STATE[r.state] ?? { label: r.state, tone: '#8a8577' };
+          const when = String(r.paid_at || r.created_at || '').slice(0, 10);
+          return `<tr style="border-top:1px solid #e0ddd4">
+            <td style="padding:8px 8px 8px 0;white-space:nowrap">${H(when)}</td>
+            <td style="padding:8px">${H(r.description || r.ref || '—')}</td>
+            <td style="padding:8px;white-space:nowrap" translate="no">${H(r.display ?? '—')}</td>
+            <td style="padding:8px 0 8px 8px;color:${st.tone};white-space:nowrap">${H(st.label)}</td>
+          </tr>`;
+        }).join('')}
+        </tbody></table>`
+    : `<p class="sub" style="margin:0">Nothing yet. You have never been charged —
+        listing and receiving bookings is free, and it stays that way unless you choose a plan.</p>`;
+
+  const totals = Object.entries(history?.paid_total ?? {})
+    .map(([cur, cents]) => `<b translate="no">${H(PRICE(cents, cur.toUpperCase()))}</b>`).join(' &middot; ');
+
+  return `<h2>Payments</h2>
+    <div class="card">
+      ${body}
+      ${totals ? `<p class="sub" style="margin:12px 0 0">Paid to date: ${totals}</p>` : ''}
+    </div>
+    ${hasCustomer ? `<div class="card" style="margin-top:14px">
+        <h3 style="margin-bottom:2px">Invoices and your card</h3>
+        <p class="sub" style="margin:0 0 10px">Stripe holds the invoices and the card itself. This opens their page.</p>
+        <form method="post">
+          <input type="hidden" name="action" value="portal">
+          <input type="hidden" name="s" value="${H(token)}">
+          <button type="submit">Manage billing</button>
+        </form>
+      </div>` : ''}`;
+}
+
 /* ──────────────────────────── the pages ──────────────────────────────────
  *
  * The console was one long scroll: numbers, listing form, ownership, demand,
@@ -1104,6 +1164,7 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
       case 'api':           body = apiPage(place); break;
       case 'beta':          body = betaPage(); break;
       case 'plan':          body = planSection(plan, allTiers, token, planSaved, planErr, cur, wanted); break;
+      case 'billing':       body = billingSection(extra.history, extra.hasCustomer, token); break;
       default:              body = overviewPage(place, insights, bookings, readiness, token, extra.appCard ?? '');
     }
   }
@@ -1305,6 +1366,16 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
     identityCode, identityLink, identityConnections,
     pages: PAGES, pageFor, opens, cheapestTierFor,
     cur: opts.cur ?? 'USD', wanted: opts.wanted ?? '',
+    // Only fetched for the page that shows it — a history nobody is looking
+    // at is a query on every dashboard load.
+    history: page === 'billing' && businessId ? await (async () => {
+      const { paymentHistory } = await import('./pay.mjs');
+      return paymentHistory(env, 'biz', businessId);
+    })() : null,
+    hasCustomer: page === 'billing' && businessId
+      ? !!(await env.DB.prepare('SELECT stripe_customer FROM num_business_subscriptions WHERE business_id=?1')
+          .bind(businessId).first().catch(() => null))?.stripe_customer
+      : false,
   });
 }
 

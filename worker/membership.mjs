@@ -397,6 +397,22 @@ export async function handleMembership(request, env, path) {
     });
   }
 
+  /**
+   * What have I paid?
+   *
+   * The concierge already pushes "Stripe confirmed it — receipt is on your
+   * wallet" when a payment lands. There was no wallet receipt behind that
+   * sentence: nothing in the product listed a traveller's own payments. This
+   * is what makes that notification true.
+   */
+  if (path === '/payments' && request.method === 'GET') {
+    const me = url.searchParams.get('me');
+    if (!me) return json({ error: 'me is required' }, 400);
+    const { paymentHistory } = await import('./pay.mjs');
+    const out = await paymentHistory(env, 'member', me, 50);
+    return json({ payments: out.payments, paid_total: out.paid_total, count: out.count });
+  }
+
   // What am I on, and what have I used?
   if (path === '/me') {
     const me = clip(url.searchParams.get('me'), 40);
