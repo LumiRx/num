@@ -45,7 +45,7 @@ export default function FlightCard({ w, compact = false }: { w: FlightWatch; com
         <div>{f.dep.iata ?? '—'}<small style={{ display: 'block', fontSize: 11, fontWeight: 500, opacity: 0.85, fontFamily: 'var(--font-body)', marginTop: 3 }}>{f.dep.name?.split(' ')[0] ?? ''} {hhmm(f.dep.est_local ?? f.dep.sched_local)}</small></div>
         <div style={{ textAlign: 'right' }}>{f.arr.iata ?? '—'}<small style={{ display: 'block', fontSize: 11, fontWeight: 500, opacity: 0.85, fontFamily: 'var(--font-body)', marginTop: 3 }}>{f.arr.name?.split(' ')[0] ?? ''} {hhmm(f.arr.est_local ?? f.arr.sched_local)}</small></div>
       </div>
-      <div style={{ position: 'relative', margin: '8px 14px 0', display: 'inline-block', fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 10, background: '#fff', color: 'var(--ink)' }}>{h.chip}</div>
+      <div className="glass-strong" style={{ position: 'relative', margin: '8px 14px 0', display: 'inline-block', fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 999, color: 'var(--ink)' }}>{h.chip}</div>
       {!compact && (
         <div style={{ position: 'relative', height: 96, margin: '0 0 -6px' }}>
           <svg viewBox="0 0 300 110" style={{ width: '100%', height: '100%', overflow: 'visible' }} aria-hidden="true">

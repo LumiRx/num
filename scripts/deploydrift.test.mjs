@@ -39,11 +39,10 @@ describe('the real worker map', () => {
     }
   });
 
-  test('num-console is excluded for the stated reason, and that reason still holds', () => {
-    // The comment in deploydrift.mjs says it is assets-only. If somebody gives
-    // it a `main`, this fails rather than quietly excusing a ninth worker.
+  test('num-console ships code since site.mjs, so it is in the map', () => {
     const src = readFileSync('wrangler.jsonc', 'utf8');
-    assert.ok(!/"main"\s*:/.test(src), 'num-console now ships code and must be added to WORKERS');
+    assert.ok(/"main"\s*:/.test(src), 'wrangler.jsonc lost its main; num-console is assets-only again and should leave WORKERS');
+    assert.equal(WORKERS['num-console']?.main, 'worker/site.mjs');
   });
 
   test('THE HOLLYWOOD DRIFT: num-app and num-ai both compile ai/places.js', () => {

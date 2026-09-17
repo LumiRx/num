@@ -49,12 +49,12 @@ const LEDGER = '.deploy-shipped.json';
 /**
  * Every worker that ships CODE, and the command that ships it.
  *
- * num-console is deliberately absent: it is assets-only, has no `main`, and
- * bundles no shared module, so it cannot drift in the way this file detects.
- * A test asserts that reasoning still holds, so the day somebody gives it a
- * `main` the omission fails loudly instead of quietly excusing a ninth worker.
+ * num-console was assets-only until 17 Sep 2026, when `worker/site.mjs`
+ * gave it a `main` (the site in nine languages). It is a code worker now, so
+ * it is in the map like the other eight.
  */
 export const WORKERS = Object.freeze({
+  'num-console': { config: 'wrangler.jsonc', main: 'worker/site.mjs', ship: 'npx wrangler deploy --config wrangler.jsonc' },
   'num-app': { config: 'wrangler.app.jsonc', main: 'worker/index.mjs', ship: 'npm run release:stage "<what changed>" && npm run release:ship' },
   'num-growth': { config: 'growth/wrangler.jsonc', main: 'growth/worker.js', ship: 'npx wrangler deploy --config growth/wrangler.jsonc' },
   'num-ai': { config: 'ai/wrangler.jsonc', main: 'ai/worker.js', ship: 'npx wrangler deploy --config ai/wrangler.jsonc' },
