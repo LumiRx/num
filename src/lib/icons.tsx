@@ -126,6 +126,20 @@ export const UsersIcon = (p?: IconProps) =>
 
 export const CheckIcon = (p?: IconProps) => icon(<path d="M20 6 9 17l-5-5" />, p);
 
+/**
+ * Booked ✓ — the confirmation mark that draws itself (300 ms stroke inside a
+ * green disc that pops). The most repeated moment in the product; used on
+ * every confirmation in the thread, the sheet and the plan. Respects
+ * prefers-reduced-motion through app.css.
+ */
+export const BookedCheck = ({ size = 22 }: { size?: number }) => (
+  <span className="check-pop" style={{ width: size, height: size, borderRadius: 999, background: 'var(--color-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+    <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path className="check-draw" d="M20 6 9 17l-5-5" />
+    </svg>
+  </span>
+);
+
 export const XIcon = (p?: IconProps) => icon(<path d="M18 6 6 18M6 6l12 12" />, p);
 /** Shield — the report control. The App Review notes have promised this icon
     since the first submission; it did not exist until 21 Aug 2026. */

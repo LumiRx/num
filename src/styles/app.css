@@ -14,6 +14,35 @@
   50% { transform: scaleY(1); }
 }
 
+/* ── Motion pack (17 Sep 2026). One clock for everything that appears:
+   160ms taps, 240ms panels, 320ms sheets, one spring. Everything is visible
+   at rest; a reveal moves 12px and never fades from zero. ─────────────── */
+@keyframes draw-check {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes pop-in {
+  from { transform: scale(.6); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  to   { transform: scale(1); }
+}
+@keyframes rise-in {
+  from { transform: translateY(12px); opacity: .001; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes sheet-in {
+  from { transform: translateY(105%); }
+  to   { transform: translateY(0); }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.check-draw { animation: draw-check .32s cubic-bezier(.3,1,.4,1) .08s forwards; stroke-dasharray: 24; stroke-dashoffset: 24; }
+.check-pop { animation: pop-in .36s cubic-bezier(.3,1.4,.5,1) both; }
+.rise-in { animation: rise-in .32s cubic-bezier(.3,1,.4,1) both; }
+.sheet-in { animation: sheet-in .32s cubic-bezier(.3,1,.4,1) both; }
+.skel { border-radius: 10px; background: linear-gradient(90deg, var(--ink-08) 0%, var(--field-bg) 50%, var(--ink-08) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+
 a { color: var(--color-accent-700); }
 a:hover { color: var(--color-accent); }
 

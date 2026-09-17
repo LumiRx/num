@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
-import { CheckIcon, XIcon } from '../../lib/icons';
+import { CheckIcon, BookedCheck, XIcon } from '../../lib/icons';
 import { draftLine, loadMyRequests, requestTable, startBookSync, stateLine } from '../../lib/bookdesk';
 import { calendarUrl } from '../../lib/calendar';
 
@@ -155,7 +155,7 @@ export default function BookSheet() {
                 border: '1px solid var(--ink-08)',
               }}
             >
-              {sent?.state === 'confirmed' ? <CheckIcon size={14} /> : <Dots />}
+              {sent?.state === 'confirmed' ? <BookedCheck size={20} /> : <Dots />}
               <div style={{ fontSize: 12.5, fontWeight: 600, color: sent?.state === 'confirmed' ? '#0e6b45' : 'var(--ink)' }}>
                 {sent ? stateLine(sent) : 'Asked — waiting on the venue'}
               </div>

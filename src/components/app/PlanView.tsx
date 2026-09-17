@@ -8,7 +8,7 @@ import { tagOf, bookingMetaLine, monthName } from '../../lib/derive';
 import { askToChange } from '../../lib/concierge';
 import { PLAN_GROUPS } from '../../lib/data';
 import { Scene } from '../../lib/scenes';
-import { ChevronRightIcon, UsersIcon } from '../../lib/icons';
+import { BookedCheck, ChevronRightIcon, UsersIcon } from '../../lib/icons';
 import type { Booking } from '../../lib/types';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
@@ -146,7 +146,7 @@ function BookingRow({ b }: { b: Booking }) {
           </div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>{bookingMetaLine(demo, b)}</div>
         </div>
-        <span style={tag.st}>{tag.label}</span>
+        {b.status === 'confirmed' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><BookedCheck size={18} /><span style={tag.st}>{tag.label}</span></span> : <span style={tag.st}>{tag.label}</span>}
       </div>
       {exp && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ink-08)' }}>
@@ -300,9 +300,14 @@ export default function PlanView() {
         </div>
       ))}
       <div style={{ padding: '12px 20px 16px', fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.5, textAlign: 'center' }}>
-        {groups.length === 0
-          ? 'Nothing planned yet. Tell NUM where you are and what you feel like — bookings land here by themselves.'
-          : 'Nothing to add here — new plans come from the thread. Ask, and it appears.'}
+        {groups.length === 0 ? (
+          <div className="rise-in">
+            <svg width="120" height="84" viewBox="0 0 120 84" fill="none" aria-hidden="true" style={{ display: 'block', margin: '0 auto 10px' }}><path d="M14 66c18-10 30-2 46-14s26-12 46-2" stroke="var(--ink-12)" strokeWidth="3" strokeLinecap="round" strokeDasharray="1 8"/><path d="M60 14c-9 0-16 7-16 16 0 12 16 30 16 30s16-18 16-30c0-9-7-16-16-16Z" fill="var(--color-accent)"/><circle cx="60" cy="30" r="6" fill="#fff"/><circle cx="104" cy="62" r="7" fill="var(--color-accent)" opacity=".35"/><circle cx="16" cy="62" r="5" fill="var(--color-accent)" opacity=".25"/></svg>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>Nothing planned yet</div>
+            <div style={{ marginTop: 4 }}>Ask NUM for a table, a car or a whole evening. It lands here by itself.</div>
+            <div {...pressable(() => store.set({ threadOpen: true }))} className="press tap" style={{ display: 'inline-flex', marginTop: 12, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '0 18px', cursor: 'pointer' }}>ASK NUM</div>
+          </div>
+        ) : 'Nothing to add here — new plans come from the thread. Ask, and it appears.'}
       </div>
     </div>
   );

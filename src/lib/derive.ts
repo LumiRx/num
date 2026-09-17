@@ -320,7 +320,8 @@ export const sheetBase: CSSProperties = {
   maxHeight: 'calc(100% - var(--sat, 0px) - 8px)',
   // visibility rides the same clock so a closed sheet leaves the
   // accessibility tree after the slide-out instead of lingering off-screen
-  transition: 'transform .38s cubic-bezier(.32,.72,.29,.99), visibility .38s',
+  // One spring for every sheet (motion pack, 17 Sep): 320 ms, overshoot-free.
+  transition: 'transform .32s cubic-bezier(.3,1,.4,1), visibility .32s',
 };
 
 /** The drag-handle grabber every sheet shows at its top. */

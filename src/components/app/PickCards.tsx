@@ -56,8 +56,8 @@ export default function PickCards({ picks }: { picks: Pick[] }) {
         return (
           <div
             key={p.id ?? `${p.name}-${i}`}
-            className="glass"
-            style={{ borderRadius: 14, padding: '11px 13px', display: 'grid', gap: 6 }}
+            className="glass lift rise-in"
+            style={{ borderRadius: 14, padding: '11px 13px', display: 'grid', gap: 6, animationDelay: `${i * 45}ms` }}
           >
             {/* The name IS the link. A separate "View" button next to a name
                 is one more thing to read and one more thing to aim at. */}

@@ -54,7 +54,9 @@ export default function MemoryView() {
       </div>
       {!demo && memories.length === 0 && (
         <div className="glass" style={{ margin: '10px 12px', borderRadius: 'var(--r-md)', padding: '14px 16px', fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>
-          Your shelf is empty — it fills itself as you travel. Every dinner, boat and night out files here quietly, ready to come back the moment you ask.
+          <svg width="120" height="84" viewBox="0 0 120 84" fill="none" aria-hidden="true" style={{ display: 'block', margin: '0 auto 10px' }}><path d="M14 66c18-10 30-2 46-14s26-12 46-2" stroke="var(--ink-12)" strokeWidth="3" strokeLinecap="round" strokeDasharray="1 8"/><path d="M60 14c-9 0-16 7-16 16 0 12 16 30 16 30s16-18 16-30c0-9-7-16-16-16Z" fill="var(--color-accent)"/><circle cx="60" cy="30" r="6" fill="#fff"/><circle cx="104" cy="62" r="7" fill="var(--color-accent)" opacity=".35"/><circle cx="16" cy="62" r="5" fill="var(--color-accent)" opacity=".25"/></svg>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: 'var(--ink)', textAlign: 'center' }}>Your shelf is empty</div>
+          <div style={{ textAlign: 'center', marginTop: 4 }}>Every dinner, boat and night out files here by itself. Ask NUM later: “when was that omakase?”</div>
         </div>
       )}
       {/* The demo's shelf headings are the demo's. A real account with nothing
