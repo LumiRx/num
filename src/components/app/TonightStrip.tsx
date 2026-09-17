@@ -53,17 +53,17 @@ export function countdown(i: TonightItem, now = Date.now()): string {
  * rows get the check.
  */
 function SourceMark({ source }: { source: TonightItem['source'] }) {
-  const base: React.CSSProperties = { position: 'absolute', right: 8, top: 8, borderRadius: 999, padding: '3px 7px', fontSize: 8.5, fontWeight: 800, letterSpacing: '.02em', display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff' };
+  const base: React.CSSProperties = { flex: 'none', borderRadius: 999, padding: '2px 6px', fontSize: 8, fontWeight: 800, letterSpacing: '.02em', display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--ink-60)', background: 'var(--field-bg)', border: '1px solid var(--ink-12)' };
   if (source === 'ticketmaster') {
     return (
-      <span className="glass-dark" style={base} aria-label="Listed on Ticketmaster">
-        <svg width="10" height="10" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="#fff" strokeWidth="1.6" /><path d="M8 5v10" stroke="#fff" strokeWidth="1.4" strokeDasharray="1.5 1.5" /></svg>
+      <span style={base} aria-label="Listed on Ticketmaster">
+        <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8 5v10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" /></svg>
         ticketmaster
       </span>
     );
   }
   return (
-    <span className="glass-dark" style={{ ...base, color: '#9FF0D6' }} aria-label="Checked by NUM">
+    <span style={{ ...base, color: 'var(--color-accent)' }} aria-label="Checked by NUM">
       <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5 8.2 14.5 16 6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       NUM
     </span>
@@ -107,11 +107,13 @@ export default function TonightStrip() {
               <div style={{ height: 96, position: 'relative', background: i.image ? `url(${i.image}) center/cover` : 'linear-gradient(135deg, var(--color-accent-300, #9fe3cf), var(--field-bg))' }}>
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(5,15,20,.75) 100%)' }} />
                 {cd && <span className="glass-dark" style={{ position: 'absolute', top: 8, left: 8, color: '#fff', borderRadius: 999, padding: '3px 8px', fontSize: 10.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{cd}</span>}
-                <SourceMark source={i.source} />
                 <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff', fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 13, lineHeight: 1.15, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{i.title}</div>
               </div>
               <div style={{ padding: '7px 9px 9px', display: 'grid', gap: 3, fontSize: 11 }}>
-                <span style={{ color: 'var(--ink-60)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[i.venue ?? i.sub, price].filter(Boolean).join(' · ')}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span style={{ flex: 1, color: 'var(--ink-60)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[i.venue ?? i.sub, price].filter(Boolean).join(' · ')}</span>
+                  <SourceMark source={i.source} />
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 4 }}>
                   {i.url ? (
                     <a href={i.url} target="_blank" rel="noopener noreferrer" className="tap press" style={{ textDecoration: 'none', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>Tickets</a>
