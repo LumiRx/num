@@ -83,6 +83,56 @@ export function unmask(translated, kept) {
   return out.replace(/\s{2,}/g, ' ').replace(/\s+([.,!?;:)\]}’”])/g, '$1').replace(/([(\[{“‘])\s+/g, '$1').trim();
 }
 
+/**
+ * The good translator: the concierge's own model, a batch at a time.
+ *
+ * m2m100 is literal ("Give NUM the flight. It watches." comes back word for
+ * word, in the wrong register). A person in Bangkok reads NUM the way they
+ * would read a good hotel's card, so the strings go to the model that already
+ * speaks as NUM, with the same rules: brand words and {placeholders} exactly
+ * as written, short, warm, never formal. Returns {english: translated} for
+ * the strings it got right; the rest fall through to m2m100.
+ */
+const NAMES = { th: 'Thai', zh: 'Simplified Chinese', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic' };
+export const MODEL_ENGINE = 'claude-catalogue-1';
+async function translateBatch(env, strings, lang) {
+  if (!env?.ANTHROPIC_API_KEY || !strings.length) return {};
+  try {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const system = [
+      `You translate the interface strings of NUM, a concierge you can text, from English into ${NAMES[lang] ?? lang}.`,
+      'NUM is warm, brief and plain: the register of a good hotel concierge speaking to a friend, never formal, never corporate.',
+      'Rules: keep brand words exactly as written (NUM, 5arz, LINE, WhatsApp, Ticketmaster, Viator, Stripe, Apple, Google).',
+      'Keep every {placeholder} exactly as written. Keep numbers, times and prices as they are. Keep UPPERCASE labels short and uppercase where the script has case.',
+      'Never say "booked" or "reserved" for something NUM cannot confirm; where the English says "asks" or "checked", keep that meaning.',
+      'Answer with a JSON object only: {"<english>": "<translation>", ...} with the English strings as keys, exactly as given, nothing else.',
+    ].join('\n');
+    const res = await client.messages.create({
+      model: env.NUM_MODEL_I18N || env.NUM_MODEL_STRONG || 'claude-opus-5',
+      max_tokens: 8000,
+      system,
+      messages: [{ role: 'user', content: JSON.stringify(strings) }],
+    });
+    const text = (res?.content ?? []).map((c) => c?.text ?? '').join('');
+    const body = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    const parsed = JSON.parse(body);
+    const out = {};
+    for (const s of strings) {
+      const v = parsed?.[s];
+      if (typeof v !== 'string' || !v.trim() || v === s) continue;
+      // Every placeholder and brand word the English carried must survive.
+      const { kept } = mask(s);
+      if (kept.some((k) => !v.includes(k))) continue;
+      out[s] = v.trim();
+    }
+    return out;
+  } catch (err) {
+    console.warn('[i18n] model batch failed', lang, err?.message ?? err);
+    return {};
+  }
+}
+
 async function translateOne(env, text, lang) {
   const meta = APP_LANGS[lang];
   if (!meta || lang === 'en' || !env?.AI) return null;
@@ -141,17 +191,26 @@ export async function bundleFor(env, lang, strings) {
     else missing.push([s, ids[n]]);
   });
 
-  // Translate what is new, a few at a time, and remember it.
+  // Translate what is new and remember it: the model in batches first, and
+  // m2m100 one at a time for anything the model left out.
   const now = Date.now();
-  let cursor = 0;
   const rows = [];
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, missing.length) }, async () => {
-    while (cursor < missing.length) {
-      const [s, id] = missing[cursor++];
+  const idOf = new Map(missing);
+  const todo = missing.filter(([s]) => isTranslatable(s)).map(([s]) => s);
+  const BATCH = 80;
+  const batches = [];
+  for (let i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATCH));
+  const got = await Promise.all(batches.map((b) => translateBatch(env, b, lang)));
+  for (const g of got) for (const [s, t] of Object.entries(g)) { map[s] = t; rows.push([`ls_${locale}_${idOf.get(s)}`, idOf.get(s), locale, t, MODEL_ENGINE, now]); }
+  const left = todo.filter((s) => !(s in map));
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, left.length) }, async () => {
+    while (cursor < left.length) {
+      const s = left[cursor++];
       const t = await translateOne(env, s, lang);
       if (!t) continue;
       map[s] = t;
-      rows.push([`ls_${locale}_${id}`, id, locale, t, id, now]);
+      rows.push([`ls_${locale}_${idOf.get(s)}`, idOf.get(s), locale, t, ENGINE, now]);
     }
   }));
   for (const r of rows) {
@@ -160,7 +219,7 @@ export async function bundleFor(env, lang, strings) {
         `INSERT OR IGNORE INTO num_translations
            (id, entity_type, entity_id, field, locale, text, source, engine, source_locale, source_hash, status, created_at, updated_at)
          VALUES (?1, 'locale_string', ?2, 'text', ?3, ?4, 'machine', ?5, 'en', ?6, 'machine', ?7, ?7)`,
-      ).bind(r[0], r[1], r[2], r[3], ENGINE, r[4], r[5]).run();
+      ).bind(r[0], r[1], r[2], r[3], r[4], r[1], r[5]).run();
     } catch (err) { console.warn('[i18n] save failed', err?.message ?? err); }
   }
   return map;
