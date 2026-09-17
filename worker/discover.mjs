@@ -239,6 +239,35 @@ export async function nearestDest(env, lat, lng) {
 
 /* ── Route ─────────────────────────────────────────────────────────────── */
 
+/**
+ * What "tonight" means, decided in one place. `day` is the phone's own date
+ * (the worker's clock is UTC; Bangkok is already tomorrow at 17:00 UTC).
+ *
+ * - Nothing that has finished. A curated row counts while it is running
+ *   (an exhibition that opened in August is still "on now" if it ends after
+ *   today); a ticketed row counts from today.
+ * - Today first; tomorrow only fills the gaps, so the strip never opens with
+ *   next week. Curated rows may look two days ahead — they are rare and worth
+ *   a day's notice.
+ * - One card per title: Ticketmaster lists a museum's every timed slot as an
+ *   event, and six copies of the same exhibition is not a night out.
+ */
+export function tonightPick(curated, tm, day = null, { limit = 6 } = {}) {
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(String(day ?? '')) ? day : new Date().toISOString().slice(0, 10);
+  const plus = (n) => new Date(Date.parse(today) + n * 86400000).toISOString().slice(0, 10);
+  const tomorrow = plus(1), soon = plus(2);
+  const live = [
+    ...curated.filter((r) => r.starts_on && r.starts_on <= soon && (r.ends_on ?? r.starts_on) >= today),
+    ...tm.filter((r) => r.starts_on && r.starts_on >= today && r.starts_on <= tomorrow),
+  ];
+  const seen = new Set();
+  const uniq = live.filter((r) => { const k = slug(r.title); if (seen.has(k)) return false; seen.add(k); return true; });
+  const onDay = (r) => ((r.starts_on <= today && (r.ends_on ?? r.starts_on) >= today) ? 0 : r.starts_on === tomorrow ? 1 : 2);
+  return uniq
+    .sort((a, b) => onDay(a) - onDay(b) || String(a.starts_at ?? a.starts_on).localeCompare(String(b.starts_at ?? b.starts_on)))
+    .slice(0, limit);
+}
+
 export async function handleDiscover(request, env, fetchImpl = fetch) {
   const url = new URL(request.url);
   // 👎 from a Suggest card. Stored as a member fact so the same rule that
@@ -285,9 +314,9 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     const curated = (ours ?? []).map((r) => ({
       source: 'num', id: `ce_${slug(r.title)}`, title: r.title, sub: [r.venue, r.area].filter(Boolean).join(' · '),
       image: null, rating: null, price: null, currency: null, price_note: r.price_note ?? null, url: null,
-      starts_on: r.starts_on ?? null, starts_at: null, venue: r.venue ?? null, label: 'Checked by NUM', why: r.why ?? null,
+      starts_on: r.starts_on ?? null, ends_on: r.ends_on ?? null, starts_at: null, venue: r.venue ?? null, label: 'Checked by NUM', why: r.why ?? null,
     }));
-    const items = [...curated, ...tm].sort((a, b) => String(a.starts_on ?? '9').localeCompare(String(b.starts_on ?? '9'))).slice(0, 6);
+    const items = tonightPick(curated, tm, g('day'));
     return json({ ok: true, mode, dest, items, sources: { num: curated.length, ticketmaster: tm.length } });
   }
 

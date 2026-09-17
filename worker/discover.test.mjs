@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameThing, slug, annotate, rank, dealThree, haversineKm, MOOD_TAGS } from './discover.mjs';
+import { sameThing, slug, annotate, rank, dealThree, haversineKm, MOOD_TAGS, tonightPick } from './discover.mjs';
 
 test('slug strips accents and punctuation so "Havana Música!" matches "havana musica"', () => {
   assert.equal(slug('Havana Música!'), 'havana musica');
@@ -63,4 +63,22 @@ test('haversine: Patong to Phuket Town is about 12 km', () => {
 
 test('every mood maps to real Viator tag ids', () => {
   for (const [, tags] of Object.entries(MOOD_TAGS)) assert.ok(tags.every((t) => Number.isInteger(t) && t > 10000));
+});
+
+test('tonight: today first, tomorrow fills, nothing finished, one card per title', () => {
+  const day = '2026-09-17';
+  const curated = [
+    { title: 'Immersive show', starts_on: '2026-08-13', ends_on: '2026-10-01' },
+    { title: 'Half marathon', starts_on: '2026-09-27', ends_on: null },
+    { title: 'Closed already', starts_on: '2026-09-01', ends_on: '2026-09-10' },
+  ];
+  const tm = [
+    { title: 'Twist Museum', starts_on: '2026-09-17', starts_at: '2026-09-17T10:45:00' },
+    { title: 'Twist Museum', starts_on: '2026-09-17', starts_at: '2026-09-17T11:00:00' },
+    { title: 'Yesterday jazz', starts_on: '2026-09-16', starts_at: '2026-09-16T17:00:00' },
+    { title: 'Tomorrow gig', starts_on: '2026-09-18', starts_at: '2026-09-18T19:00:00' },
+    { title: 'Next week', starts_on: '2026-09-24', starts_at: '2026-09-24T19:00:00' },
+  ];
+  const out = tonightPick(curated, tm, day).map((r) => r.title);
+  assert.deepEqual(out, ['Immersive show', 'Twist Museum', 'Tomorrow gig']);
 });

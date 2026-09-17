@@ -17,8 +17,11 @@ import { openShareCard } from '../../lib/sharecard';
 interface TonightItem {
   source: 'num' | 'ticketmaster'; id: string; title: string; sub: string; image: string | null;
   price: number | null; currency: string | null; price_note?: string | null; url: string | null;
-  starts_on: string | null; starts_at: string | null; venue: string | null; label: string; why?: string | null;
+  starts_on: string | null; ends_on?: string | null; starts_at: string | null; venue: string | null; label: string; why?: string | null;
 }
+
+/** The phone's own date — the worker's clock is UTC, and Bangkok is already tomorrow at 17:00 UTC. */
+const localDay = (now = Date.now()) => { const d = new Date(now); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 };
 
@@ -35,8 +38,8 @@ export function countdown(i: TonightItem, now = Date.now()): string {
     }
   }
   if (i.starts_on) {
-    const today = new Date(now).toISOString().slice(0, 10);
-    if (i.starts_on <= today) return 'On now';
+    const today = localDay(now);
+    if (i.starts_on <= today) return i.ends_on && i.ends_on > today ? `On now · until ${i.ends_on.slice(5).replace('-', '/')}` : 'On today';
     const d = Math.round((Date.parse(i.starts_on) - Date.parse(today)) / 86400000);
     return d === 1 ? 'Tomorrow' : `In ${d} days`;
   }
@@ -53,7 +56,7 @@ export default function TonightStrip() {
 
   useEffect(() => {
     if (demo || (!place && !here)) { setItems(null); return; }
-    const qs = new URLSearchParams({ mode: 'tonight' });
+    const qs = new URLSearchParams({ mode: 'tonight', day: localDay() });
     if (place) qs.set('place', place);
     if (here) { qs.set('lat', String(here.lat)); qs.set('lng', String(here.lng)); }
     let dead = false;
