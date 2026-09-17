@@ -110,13 +110,19 @@ async function translateBatch(env, strings, lang) {
     ].join('\n');
     const res = await client.messages.create({
       model: env.NUM_MODEL_I18N || env.NUM_MODEL_STRONG || 'claude-opus-5',
-      max_tokens: 8000,
+      max_tokens: 12000,
       system,
       messages: [{ role: 'user', content: JSON.stringify(strings) }],
     });
     const text = (res?.content ?? []).map((c) => c?.text ?? '').join('');
     const body = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    const parsed = JSON.parse(body);
+    let parsed;
+    try { parsed = JSON.parse(body); } catch {
+      // Thai and Japanese run long; a batch cut off by max_tokens is still
+      // mostly good. Keep every complete pair before the cut.
+      const cut = body.lastIndexOf('",');
+      parsed = cut > 0 ? JSON.parse(body.slice(0, cut + 1) + '}') : {};
+    }
     const out = {};
     for (const s of strings) {
       const v = parsed?.[s];
@@ -205,7 +211,7 @@ export async function bundleFor(env, lang, strings, { defer = null } = {}) {
   const rows = [];
   const idOf = new Map(missing);
   const todo = missing.filter(([s]) => isTranslatable(s)).map(([s]) => s);
-  const BATCH = 80;
+  const BATCH = 40;
   const batches = [];
   for (let i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATCH));
   const got = await Promise.all(batches.map((b) => translateBatch(env, b, lang)));
