@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.326 — 2026-09-17 20:02 UTC
+
+Plans in the buyer's currency; receipts; billing portal; payment history; switch no longer double-bills
+
+- commit `0b76667`
+
 ## 0.8.325 — 2026-09-17 19:59 UTC
 
 The app in nine languages, one look in two lights, Ask NUM pill

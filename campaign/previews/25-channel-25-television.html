@@ -1,21 +1,10 @@
-/**
- * The invite HTML, embedded as a string.
- *
- * Workers have no filesystem, so this cannot `readFileSync` campaign/invite_v2.html
- * the way the CLI sender (scripts/send_invites.mjs) does. Rather than keep a
- * second hand-copied template that drifts from the one marketing edits, this
- * file is REGENERATED from campaign/invite_v2.html by
- * scripts/build_invite_template.mjs — never hand-edit the string below.
- * Edit the .html, then run: node scripts/build_invite_template.mjs
- */
-export const INVITE_TEMPLATE = `
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="x-apple-disable-message-reformatting">
-<title>{{business_name}} — claim your AI profile on NUM</title>
+<title>25 дугаар суваг телевиз / Channel 25 Television — claim your AI profile on NUM</title>
 <style>
   @media only screen and (max-width:620px){
     .w{width:100%!important}
@@ -29,7 +18,7 @@ export const INVITE_TEMPLATE = `
 </head>
 <body style="margin:0;padding:0;background:#EEF0FA;-webkit-font-smoothing:antialiased;">
 
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">{{preheader}}&#8203;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">Free to claim. Travellers asking for somewhere to stay in Ulaanbaatar can be sent to you.&#8203;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EEF0FA">
 <tr><td align="center" style="padding:28px 12px 40px">
@@ -53,14 +42,27 @@ export const INVITE_TEMPLATE = `
     <!-- headline block -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td class="px" style="padding:34px 42px 0">
-        <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#7C7FE8">AI text-message concierge &middot; {{place_line}}</div>
+        <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#7C7FE8">AI text-message concierge &middot; Ulaanbaatar</div>
         <h1 class="h1" style="margin:13px 0 0;font-family:'Helvetica Neue',Arial,sans-serif;font-size:31px;line-height:1.2;font-weight:800;color:#181B3C;letter-spacing:-.6px">
-          {{business_name}} already has a profile on NUM.<br>Claim it — free.
+          25 дугаар суваг телевиз / Channel 25 Television already has a profile on NUM.<br>Claim it — free.
         </h1>
         <p style="margin:16px 0 0;font-family:'Helvetica Neue',Arial,sans-serif;font-size:15.5px;line-height:1.62;color:#4E5478">
-          {{personal_open}}
+          We're building the concierge travellers text when they want somewhere to stay in Ulaanbaatar, in whatever language they speak. 25 дугаар суваг телевиз / Channel 25 Television is already on the map. It just isn't yours yet.
         </p>
-        {{mn_block_html}}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 0">
+<tr><td style="background:#F4F5FD;border-left:3px solid #6366F1;border-radius:6px;padding:18px 20px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2C3054">
+<div style="font-size:11.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#7C7FE8;margin:0 0 10px">Монголоор</div>
+<p style="margin:0 0 10px">NUM бол аялагчид мессежээр ашигладаг аялалын туслах юм. Улаанбаатарт ирсэн жуулчин «хаана сайхан хоол идэх вэ?» эсвэл «хаана байрлах вэ?» гэж бичихэд бид өөрийн бүртгэлээс газар санал болгодог.</p>
+<p style="margin:0 0 10px"><b>25 дугаар суваг телевиз / Channel 25 Television</b> энэ бүртгэлд аль хэдийн байгаа. Гэхдээ эзэмшигч нь хараахан баталгаажуулаагүй байна.</p>
+<ul style="margin:0 0 12px;padding-left:20px">
+<li style="margin:0 0 6px">Үнэгүй. Бүртгэлийн төлбөр байхгүй, картын мэдээлэл шаардахгүй.</li>
+<li style="margin:0 0 6px">Аялагчид таныг өөрсдийн хэлээр олно — NUM 16 хэлээр ажилладаг.</li>
+<li style="margin:0 0 6px">Захиалга шууд таны утас руу ирнэ. Зочин танд шууд төлнө.</li>
+<li style="margin:0 0 6px">Шимтгэлийг зөвхөн биелсэн захиалгын дараа авна.</li>
+<li style="margin:0 0 6px">Сэтгэгдэл зөвхөн бодитоор үйлчлүүлсэн зочдоос ирнэ.</li>
+</ul>
+<p style="margin:0"><a href="https://itsnum.com/api/accounts/claim?t=c190baff-2ba8-4fec-9b62-15c3af2fc074" style="color:#5457D8;font-weight:700">Баталгаажуулах — 2 минут, үнэгүй &rarr;</a></p>
+</td></tr></table>
       </td></tr>
     </table>
 
@@ -76,7 +78,7 @@ export const INVITE_TEMPLATE = `
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
               <td align="right">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="bub" style="max-width:78%">
-                  <tr><td style="background:#E2E5F6;border-radius:16px 16px 4px 16px;padding:11px 15px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.5;color:#2C3054">{{traveller_ask}}</td></tr>
+                  <tr><td style="background:#E2E5F6;border-radius:16px 16px 4px 16px;padding:11px 15px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.5;color:#2C3054">we need a room for two nights — somewhere good, not a chain</td></tr>
                 </table>
                 <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#9AA0C4;padding:5px 3px 0">a traveller, 8 minutes away</div>
               </td>
@@ -86,7 +88,7 @@ export const INVITE_TEMPLATE = `
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="padding-top:14px"><tr>
               <td align="left" style="padding-top:14px">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="bub" style="max-width:82%">
-                  <tr><td style="background:#6366F1;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:16px 16px 16px 4px;padding:12px 16px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.55;color:#FFFFFF">{{num_reply}}</td></tr>
+                  <tr><td style="background:#6366F1;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:16px 16px 16px 4px;padding:12px 16px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.55;color:#FFFFFF">25 дугаар суваг телевиз / Channel 25 Television — 6 minutes from you in Ulaanbaatar. I can hold a room for you now. Want me to?</td></tr>
                 </table>
                 <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#9AA0C4;padding:5px 3px 0">NUM &middot; answering in the traveller's own language</div>
               </td>
@@ -129,7 +131,7 @@ export const INVITE_TEMPLATE = `
           <tr>
             <td width="30" valign="top" style="font-size:19px;line-height:1.3;padding-bottom:15px">💸</td>
             <td valign="top" style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.55;color:#4E5478;padding-bottom:15px">
-              <b style="color:#181B3C">{{fee_line}}</b><br>{{walkin_line}}<br>No subscription, no setup fee, no card.
+              <b style="color:#181B3C">15% of the booking value, charged only when the booking completes.</b><br>₮7000 per bill settled through Num by a guest we did not refer — flat, never a percentage.<br>No subscription, no setup fee, no card.
             </td>
           </tr>
           <tr>
@@ -148,7 +150,7 @@ export const INVITE_TEMPLATE = `
       <tr><td class="px" align="center" style="padding:32px 42px 0">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0">
           <tr><td align="center" style="background:#6366F1;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:14px">
-            <a href="{{claim_url}}" style="display:inline-block;padding:17px 40px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:16.5px;font-weight:700;color:#FFFFFF;letter-spacing:-.2px">Claim {{business_name_short}} — free &rarr;</a>
+            <a href="https://itsnum.com/api/accounts/claim?t=c190baff-2ba8-4fec-9b62-15c3af2fc074" style="display:inline-block;padding:17px 40px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:16.5px;font-weight:700;color:#FFFFFF;letter-spacing:-.2px">Claim 25 дугаар суваг — free &rarr;</a>
           </td></tr>
         </table>
         <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.6;color:#8A90B4;padding-top:13px">
@@ -162,7 +164,7 @@ export const INVITE_TEMPLATE = `
       <tr><td class="px" style="padding:24px 42px 0">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F6FD;border-radius:14px">
           <tr><td style="padding:16px 20px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:13.5px;line-height:1.65;color:#5E6489">
-            {{contact_block_html}}
+            Or simply reply to this email and we'll set it up for you — a human replies.
           </td></tr>
         </table>
       </td></tr>
@@ -172,9 +174,9 @@ export const INVITE_TEMPLATE = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td class="px" style="padding:26px 42px 36px">
         <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.65;color:#4E5478">
-          {{sign_off}}<br><br>
+          No catch, no card, no contract. Just bookings arriving on your phone when a traveller nearby asks for you.<br><br>
           <b style="color:#181B3C">The NUM team</b><br>
-          <span style="color:#8A90B4;font-size:13.5px">5arz &middot; <a href="{{website_url}}" style="color:#5457D8">itsnum.com</a> &middot; <a href="mailto:info@5arz.com" style="color:#5457D8">info@5arz.com</a></span>
+          <span style="color:#8A90B4;font-size:13.5px">5arz &middot; <a href="https://itsnum.com/business/?utm_source=invite&utm_medium=email&utm_campaign=ulaanbaatar&utm_content=Hotel&s=c190baff-2ba8-4fec-9b62-15c3af2fc074" style="color:#5457D8">itsnum.com</a> &middot; <a href="mailto:info@5arz.com" style="color:#5457D8">info@5arz.com</a></span>
         </div>
       </td></tr>
     </table>
@@ -184,13 +186,13 @@ export const INVITE_TEMPLATE = `
   <!-- ── Footer / compliance ─────────────────────────────────── -->
   <tr><td class="px" style="padding:22px 42px 0">
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:11.5px;line-height:1.7;color:#9AA0C4;text-align:center">
-      You're receiving this one-time invitation because {{business_name}} is publicly listed as a business in {{place_line}}.<br>
-      <a href="{{unsub_url}}" style="color:#7C82AC;text-decoration:underline">Unsubscribe &amp; remove our listing</a>
+      You're receiving this one-time invitation because 25 дугаар суваг телевиз / Channel 25 Television is publicly listed as a business in Ulaanbaatar.<br>
+      <a href="https://itsnum.com/api/accounts/unsubscribe?t=c190baff-2ba8-4fec-9b62-15c3af2fc074" style="color:#7C82AC;text-decoration:underline">Unsubscribe &amp; remove our listing</a>
       &nbsp;&middot;&nbsp;
       <a href="https://itsnum.com/privacy" style="color:#7C82AC;text-decoration:underline">Privacy</a>
       &nbsp;&middot;&nbsp;
       <a href="https://itsnum.com/terms" style="color:#7C82AC;text-decoration:underline">Terms</a>
-      <br>{{postal_address}}
+      <br>16192 Coastal Highway, Lewes, DE 19958, USA
       <br>© 2026 5arz. We won't email you again unless you reply.
     </div>
   </td></tr>
@@ -200,7 +202,6 @@ export const INVITE_TEMPLATE = `
 </td></tr>
 </table>
 
-<img src="{{pixel_url}}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;opacity:0">
+<img src="https://itsnum.com/api/accounts/i.gif?t=c190baff-2ba8-4fec-9b62-15c3af2fc074" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;opacity:0">
 </body>
 </html>
-`;

@@ -291,6 +291,11 @@ const RISK = {
   DE:'hold', AT:'hold', IT:'hold',                      // strictest opt-in regimes for B2B
   ES:'care', FR:'care', GR:'care', HU:'care', PT:'care', CZ:'care', HR:'care',
   GB:'ok', IE:'ok', NL:'ok', SE:'ok', DK:'ok', CH:'ok', IS:'ok', TH:'ok',
+  // Mongolia, 17 Sep 2026, for the Ulaanbaatar soft launch. No GDPR, and
+  // the 2021 Law on Personal Data Protection governs personal data, not a
+  // business's published contact address. Same posture as TH: published
+  // B2B address, one message, working unsubscribe. Counsel has not read it.
+  MN:'ok',
   // US moved from the default 'care' to 'ok' on 31 Aug 2026, and the reason is
   // specific rather than a loosening of nerve. CAN-SPAM is an opt-out regime:
   // cold B2B email is lawful with accurate headers, a working unsubscribe and
@@ -414,8 +419,68 @@ function possessive(n) {
   return /['’]s$/i.test(n) ? n : /s$/i.test(n) ? `${n}'` : `${n}'s`;
 }
 
+/* ── Mongolian ──────────────────────────────────────────────────────────
+ *
+ * Ulaanbaatar, 17 Sep 2026. A UB hotel manager may read English; the person
+ * who answers a ger camp's inbox may not. So an MN lead gets the whole offer
+ * in Mongolian FIRST, and the English invite underneath unchanged — nothing
+ * is lost if one of the two is skimmed.
+ *
+ * This block is deliberately NOT variant-generated like the English copy. A
+ * pool of machine-written Mongolian variants is a pool of ways to be wrong in
+ * a language nobody here can proofread. One block, one wording, checked once.
+ *
+ * It promises exactly what the English does: free, conditional recommendation,
+ * commission only on a completed booking. No claim about traveller volume.
+ */
+function mnText(lead, fields) {
+  const name = lead.name;
+  return [
+    'Сайн байна уу,',
+    '',
+    'NUM бол аялагчид мессежээр ашигладаг аялалын туслах юм. Улаанбаатарт ирсэн жуулчин «хаана сайхан хоол идэх вэ?» эсвэл «хаана байрлах вэ?» гэж бичихэд бид өөрийн бүртгэлээс газар санал болгодог.',
+    '',
+    `${name} энэ бүртгэлд аль хэдийн байгаа. Гэхдээ эзэмшигч нь хараахан баталгаажуулаагүй байна.`,
+    '',
+    'Баталгаажуулбал:',
+    '• Үнэгүй. Бүртгэлийн төлбөр байхгүй, картын мэдээлэл шаардахгүй.',
+    '• Аялагчид таныг өөрсдийн хэлээр олно — NUM 16 хэлээр ажилладаг.',
+    '• Захиалга шууд таны утас руу ирнэ. Зочин танд шууд төлнө.',
+    '• Шимтгэлийг зөвхөн биелсэн захиалгын дараа авна.',
+    '• Сэтгэгдэл зөвхөн бодитоор үйлчлүүлсэн зочдоос ирнэ.',
+    '',
+    `Баталгаажуулах (2 минут, үнэгүй): ${fields.claim_url}`,
+    'Эсвэл энэ захидалд хариу бичээрэй — бид тохируулж өгье.',
+    '',
+    'Сонирхохгүй бол доорх холбоосоор бүртгэлээс хасаарай. Бид дахин бичихгүй.',
+  ].join('\n');
+}
+
+function mnBlockHtml(lead, fields) {
+  const name = esc(lead.name);
+  const li = (t) => `<li style="margin:0 0 6px">${t}</li>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 0">
+<tr><td style="background:#F4F5FD;border-left:3px solid #6366F1;border-radius:6px;padding:18px 20px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2C3054">
+<div style="font-size:11.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#7C7FE8;margin:0 0 10px">Монголоор</div>
+<p style="margin:0 0 10px">NUM бол аялагчид мессежээр ашигладаг аялалын туслах юм. Улаанбаатарт ирсэн жуулчин «хаана сайхан хоол идэх вэ?» эсвэл «хаана байрлах вэ?» гэж бичихэд бид өөрийн бүртгэлээс газар санал болгодог.</p>
+<p style="margin:0 0 10px"><b>${name}</b> энэ бүртгэлд аль хэдийн байгаа. Гэхдээ эзэмшигч нь хараахан баталгаажуулаагүй байна.</p>
+<ul style="margin:0 0 12px;padding-left:20px">
+${li('Үнэгүй. Бүртгэлийн төлбөр байхгүй, картын мэдээлэл шаардахгүй.')}
+${li('Аялагчид таныг өөрсдийн хэлээр олно — NUM 16 хэлээр ажилладаг.')}
+${li('Захиалга шууд таны утас руу ирнэ. Зочин танд шууд төлнө.')}
+${li('Шимтгэлийг зөвхөн биелсэн захиалгын дараа авна.')}
+${li('Сэтгэгдэл зөвхөн бодитоор үйлчлүүлсэн зочдоос ирнэ.')}
+</ul>
+<p style="margin:0"><a href="${fields.claim_url}" style="color:#5457D8;font-weight:700">Баталгаажуулах — 2 минут, үнэгүй &rarr;</a></p>
+</td></tr></table>`;
+}
+
 function subjectLine(lead, place, cat) {
   const short = shortName(lead.name);
+  // One subject, not a variant pool — same reason as mnText above.
+  if (String(lead.country || '').toUpperCase() === 'MN') {
+    return `${short} — NUM дээрх профайлаа үнэгүй баталгаажуулна уу`;
+  }
   const V = [
     `${short} — your AI profile on NUM is ready to claim (free)`,
     `${short} is on NUM. Travellers who ask for ${cat.noun} in ${place} can be sent to you.`,
@@ -599,6 +664,10 @@ export function generateInvite(lead, opts = {}) {
     contact_block_html:  contactBlockHtml(lead, short, 'https://line.me/R/ti/p/@799pyrus'),
   };
 
+  // Empty string for everyone else, so the placeholder always resolves.
+  const isMN = String(lead.country || '').toUpperCase() === 'MN';
+  fields.mn_block_html = isMN ? mnBlockHtml(lead, fields) : '';
+
   let html = String(opts.template || '');
   for (const [k, v] of Object.entries(fields)) {
     // URLs are already encoded and `_html` fields are assembled here with
@@ -609,6 +678,7 @@ export function generateInvite(lead, opts = {}) {
   }
 
   const text = [
+    ...(isMN ? [mnText(lead, fields), '', '— — —', ''] : []),
     `${fields.business_name} already has a profile on NUM. Claim it — free.`,
     ``,
     fields.personal_open,
