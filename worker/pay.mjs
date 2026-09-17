@@ -225,9 +225,9 @@ function form(obj, prefix = '') {
  */
 export { stripe as stripeCall, form as stripeForm };
 
-async function stripe(env, path, body, idem) {
+async function stripe(env, path, body, idem, method = 'POST') {
   const res = await fetch(`${STRIPE}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -425,6 +425,79 @@ export async function requestSubscription(env, { memberId, businessId, hostId, a
  * is also why this needs no membership write here — with no further
  * invoice.paid, renews_at simply expires on its own schedule.
  */
+/**
+ * The receipt, sent once a grant has actually succeeded.
+ *
+ * Deliberately AFTER the grant and conditional on it: an email saying "you're
+ * on Pro" that arrives when the grant failed is worse than no email, because
+ * the person then argues with a dashboard that disagrees with their inbox.
+ *
+ * The currency is read off the Stripe session rather than re-derived from the
+ * buyer's country, because the session is what actually charged them — if a
+ * VPN or a travelling card made those two differ, the receipt must match the
+ * statement.
+ */
+async function receipt(env, session, ownerKind, tier, renewsAt) {
+  const { sendPlanMail, payerEmail } = await import('./planmail.mjs');
+  return sendPlanMail(env, 'plan_receipt', {
+    to: payerEmail(session),
+    ownerKind,
+    tier,
+    currency: String(session?.currency ?? 'usd').toUpperCase(),
+    renewsAt,
+  });
+}
+
+/**
+ * Which ladder a Stripe subscription id belongs to, and at what tier.
+ *
+ * A sub id belongs to exactly one of the three tables — the same assumption
+ * invoice.paid already makes when it tries member, then business, then host.
+ * Returns nulls rather than throwing: an email with a generic plan name is
+ * still worth sending, and a failed renewal must not fail on a lookup.
+ */
+async function ownerOfSub(env, subId) {
+  if (!env?.DB || !subId) return { kind: null, tier: null };
+  try {
+    const m = await env.DB.prepare('SELECT tier FROM num_memberships WHERE stripe_sub=?1').bind(subId).first().catch(() => null);
+    if (m?.tier) return { kind: 'member', tier: m.tier };
+    const b = await env.DB.prepare('SELECT tier FROM num_business_subscriptions WHERE stripe_sub=?1').bind(subId).first().catch(() => null);
+    if (b?.tier) return { kind: 'biz', tier: b.tier };
+    const h = await env.DB.prepare('SELECT tier FROM num_hosts WHERE plan_sub_id=?1').bind(subId).first().catch(() => null);
+    if (h?.tier) return { kind: 'host', tier: h.tier };
+  } catch (err) {
+    console.warn('[pay] could not identify the owner of', subId, err?.message ?? err);
+  }
+  return { kind: null, tier: null };
+}
+
+/**
+ * End a subscription NOW, not at the end of its period.
+ *
+ * cancelSubscription() below sets cancel_at_period_end, which is right when a
+ * customer chooses to stop: they paid for this month and they keep it. It is
+ * WRONG when someone switches plan, because they are already paying for the
+ * new one — leaving the old subscription to run means two live subscriptions
+ * and two charges, of which our own table tracked exactly one.
+ *
+ * Stripe ends a subscription immediately on DELETE, which is why stripe()
+ * above now takes a method.
+ */
+export async function endSubscriptionNow(env, subId) {
+  if (!env.STRIPE_SECRET_KEY || !subId) return { ok: false, error: 'nothing to end' };
+  try {
+    await stripe(env, `/subscriptions/${encodeURIComponent(subId)}`, null, null, 'DELETE');
+    console.log('[pay] previous subscription', subId, 'ended immediately — plan switched');
+    return { ok: true };
+  } catch (err) {
+    // Already gone is a success for our purposes: the goal is "not billing".
+    if (err?.status === 404) return { ok: true, note: 'already gone' };
+    // Loud, because the failure mode is a customer being charged twice.
+    console.error('[pay] COULD NOT END PREVIOUS SUBSCRIPTION', subId, '— this owner may now hold two live subscriptions.', err?.message);
+    return { ok: false, error: err?.message ?? 'stripe refused' };
+  }
+}
+
 export async function cancelSubscription(env, subId) {
   if (!env.STRIPE_SECRET_KEY) return { ok: false, error: 'Stripe is not connected.' };
   try {
@@ -521,6 +594,7 @@ export async function handlePay(request, env, path) {
             // a renewal that can't find its member extends nothing.
             const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
             console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
+            if (g.ok) await receipt(env, s, 'member', tierMatch[1], g.renews_at ?? null);
           }
         }
 
@@ -549,6 +623,7 @@ export async function handlePay(request, env, path) {
             console.error(`[pay] BIZ TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${bizPaidCur}. Grant refused; refund ${id} and find out which client built this session.`);
           } else {
             const g = await grantBizTier(env, businessId, bizTierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
+            if (g.ok) await receipt(env, s, 'biz', bizTierMatch[1], g.renews_at ?? null);
             console.log('[pay] biz tier', bizTierMatch[1], g.ok ? 'granted to' : 'FAILED for', businessId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
 
             // ── MONEY ARRIVED FROM A BUSINESS ────────────────────────────
@@ -599,6 +674,7 @@ export async function handlePay(request, env, path) {
             console.error(`[pay] HOST TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${hostPaidCur}. Grant refused; refund ${id}.`);
           } else {
             const g = await grantHostTier(env, hostId, hostTierMatch[1], { ref: id, sub: s.subscription ?? null, customer: s.customer ?? null });
+            if (g.ok) await receipt(env, s, 'host', hostTierMatch[1], null);
             console.log('[pay] host tier', hostTierMatch[1], g.ok ? 'granted to' : 'FAILED for', hostId);
           }
         }
@@ -683,19 +759,34 @@ export async function handlePay(request, env, path) {
 
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data?.object ?? {};
+      let endedKind = null;
       const { lapseBySub } = await import('./membership.mjs');
       const r = await lapseBySub(env, sub.id);
       if (r.ok) {
         console.log('[pay] subscription ended', sub.id, '— membership lapsed');
+        endedKind = 'member';
       } else {
         const { lapseBizBySub } = await import('./bizbilling.mjs');
         const rb = await lapseBizBySub(env, sub.id);
-        if (rb.ok) console.log('[pay] subscription ended', sub.id, '— business plan lapsed');
+        if (rb.ok) { console.log('[pay] subscription ended', sub.id, '— business plan lapsed'); endedKind = 'biz'; }
         else {
           const { lapseHostBySub } = await import('./hostmoney.mjs');
           const rh = await lapseHostBySub(env, sub.id);
           console.log('[pay] subscription ended', sub.id, rh.ok ? '— host plan lapsed' : '— no membership, business or host plan held it');
+          if (rh.ok) endedKind = 'host';
         }
+      }
+      // Stripe puts the payer's address on the subscription's customer, not on
+      // the subscription, so this is best-effort: no address, no email, and
+      // the lapse itself is unaffected.
+      if (endedKind) {
+        const { sendPlanMail } = await import('./planmail.mjs');
+        await sendPlanMail(env, 'plan_ended', {
+          to: sub.customer_email ?? sub.metadata?.num_email ?? null,
+          ownerKind: endedKind,
+          tier: null,
+          currency: String(sub.currency ?? 'usd').toUpperCase(),
+        });
       }
       return json({ received: true });
     }
@@ -707,6 +798,21 @@ export async function handlePay(request, env, path) {
       // instant downgrade that un-downgrades two days later.
       console.warn('[pay] renewal payment failed for', inv.subscription ?? 'unknown sub', '— Stripe will retry; grace covers it');
       await alert(env, `[pay] renewal failed: ${inv.subscription ?? '?'} (${inv.customer_email ?? 'no email'})`).catch(() => {});
+      // This handler has always HAD the customer's address and spent it on a
+      // console line. Stripe retries for a few days, so this message is the
+      // window in which a person can fix a card before the plan lapses —
+      // which makes it the single most valuable email in this file.
+      {
+        const { sendPlanMail } = await import('./planmail.mjs');
+        const owner = await ownerOfSub(env, inv.subscription);
+        await sendPlanMail(env, 'plan_renewal_failed', {
+          to: inv.customer_email,
+          ownerKind: owner.kind,
+          tier: owner.tier,
+          currency: String(inv.currency ?? 'usd').toUpperCase(),
+          priceOverride: Number.isFinite(Number(inv.amount_due)) ? Number(inv.amount_due) : null,
+        });
+      }
       return json({ received: true });
     }
 

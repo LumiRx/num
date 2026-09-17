@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.320 — 2026-09-17 09:52 UTC
+
+Flight Watch in the workflow, Tonight on TODAY, ask-first sign-up
+
+- commit `40e6bdd`
+
 ## 0.8.319 — 2026-09-17 08:54 UTC
 
 Flight Watch phase A

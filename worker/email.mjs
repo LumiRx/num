@@ -172,6 +172,121 @@ export const TEMPLATES = {
     ].join('\n'),
   }),
 
+  /**
+   * The receipt for a plan.
+   *
+   * ── WHY THIS EXISTS ────────────────────────────────────────────────────
+   *
+   * Until 17 Sep a subscriber received NOTHING. `checkout.session.completed`
+   * granted the tier, pushed one in-app notification to members, and sent
+   * business and host buyers silence. The only receipt anyone got was
+   * Stripe's own, if that happened to be switched on in the dashboard.
+   *
+   * A recurring charge with no email is how a card gets disputed: in three
+   * weeks nobody remembers what "NUM" on a statement was, and the cheapest
+   * way to find out is to ask the bank. So this states the four things a
+   * person needs to recognise the charge and act on it — what they bought,
+   * what it cost, when it charges again, and how to stop it.
+   *
+   * The price is passed in ALREADY FORMATTED by worker/planprice.mjs. It is
+   * never recomputed here: an email that disagrees with the checkout page by
+   * one currency is worse than no email.
+   */
+  plan_receipt: (d) => ({
+    subject: `Your ${d.plan ?? 'NUM'} plan — ${d.price ?? ''}`,
+    preheader: `${esc(String(d.price ?? ''))} a month. Renews ${esc(String(d.renews ?? 'in a month'))}. Cancel any time.`,
+    kicker: 'RECEIPT',
+    title: `You're on ${esc(String(d.plan ?? 'your plan'))}`,
+    body:
+      `<p style="margin:0 0 14px;">Thanks — Stripe confirmed the payment.</p>`
+      + `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;font-size:15px;color:${BRAND.ink};">`
+      + `<tr><td style="padding:3px 18px 3px 0;color:${BRAND.muted};">Plan</td><td><b>${esc(String(d.plan ?? ''))}</b></td></tr>`
+      + `<tr><td style="padding:3px 18px 3px 0;color:${BRAND.muted};">Price</td><td><b>${esc(String(d.price ?? ''))}</b> a month</td></tr>`
+      + `<tr><td style="padding:3px 18px 3px 0;color:${BRAND.muted};">Renews</td><td>${esc(String(d.renews ?? 'in a month'))}</td></tr>`
+      + `</table>`
+      + (d.what ? `<p style="margin:0 0 14px;">${esc(String(d.what))}</p>` : '')
+      + `<p style="margin:0;color:${BRAND.muted};font-size:13.5px;">`
+      + `It charges the same card every month until you cancel, and cancelling leaves your free listing exactly as it is.</p>`,
+    cta: d.link ? { href: d.link, label: 'Open your dashboard' } : null,
+    footnote: 'This charge appears as NUM on your statement.',
+    text: [
+      `You're on ${d.plan ?? 'your plan'}.`,
+      '',
+      `Price: ${d.price ?? ''} a month`,
+      `Renews: ${d.renews ?? 'in a month'}`,
+      d.what ? '' : null,
+      d.what ?? null,
+      '',
+      'It charges the same card every month until you cancel, and cancelling',
+      'leaves your free listing exactly as it is.',
+      d.link ? '' : null,
+      d.link ?? null,
+    ].filter((l) => l !== null).join('\n'),
+  }),
+
+  /**
+   * A renewal that did not go through.
+   *
+   * The webhook had `customer_email` in hand and wrote a console warning with
+   * it. Nobody reads a console. Stripe retries for a few days, so this is the
+   * window in which a person can fix a card before anything is lost — and
+   * saying so plainly is the difference between a lapsed plan and a renewed
+   * one.
+   *
+   * Deliberately NOT alarming. Nothing has been taken away at the point this
+   * sends, and a message that implies otherwise earns a support reply rather
+   * than a new card.
+   */
+  plan_renewal_failed: (d) => ({
+    subject: `Your ${d.plan ?? 'NUM'} plan could not renew`,
+    preheader: 'The card was declined. Nothing has changed yet — Stripe will try again.',
+    kicker: 'PAYMENT',
+    title: 'That card was declined',
+    body:
+      `<p style="margin:0 0 14px;">Your <b>${esc(String(d.plan ?? 'NUM'))}</b> plan tried to renew at `
+      + `<b>${esc(String(d.price ?? ''))}</b> and the card was declined.</p>`
+      + `<p style="margin:0 0 14px;">Nothing has changed yet. Stripe will try the same card again over the next few days, `
+      + `and your plan stays active while it does.</p>`
+      + `<p style="margin:0;color:${BRAND.muted};font-size:13.5px;">`
+      + `If it keeps failing, the plan ends and your listing goes back to free — which costs nothing and stays live.</p>`,
+    cta: d.link ? { href: d.link, label: 'Check your plan' } : null,
+    footnote: 'Reply to this email and a person will pick it up.',
+    text: [
+      `Your ${d.plan ?? 'NUM'} plan tried to renew at ${d.price ?? ''} and the card was declined.`,
+      '',
+      'Nothing has changed yet. Stripe will try the same card again over the',
+      'next few days, and your plan stays active while it does.',
+      '',
+      'If it keeps failing, the plan ends and your listing goes back to free',
+      '— which costs nothing and stays live.',
+      d.link ? '' : null,
+      d.link ?? null,
+    ].filter((l) => l !== null).join('\n'),
+  }),
+
+  /** A plan that has ended, by cancellation or by a card that never recovered. */
+  plan_ended: (d) => ({
+    subject: `Your ${d.plan ?? 'NUM'} plan has ended`,
+    preheader: 'No further charges. Your free listing is untouched.',
+    kicker: 'PLAN',
+    title: 'That plan has ended',
+    body:
+      `<p style="margin:0 0 14px;">Your <b>${esc(String(d.plan ?? 'NUM'))}</b> plan has ended and `
+      + `<b>you will not be charged again</b>.</p>`
+      + `<p style="margin:0;color:${BRAND.muted};font-size:13.5px;">`
+      + `Your listing stays live and free, bookings still reach you, and you can start a plan again whenever you want one.</p>`,
+    cta: d.link ? { href: d.link, label: 'Open your dashboard' } : null,
+    footnote: 'Nothing else about your listing changed.',
+    text: [
+      `Your ${d.plan ?? 'NUM'} plan has ended and you will not be charged again.`,
+      '',
+      'Your listing stays live and free, bookings still reach you, and you can',
+      'start a plan again whenever you want one.',
+      d.link ? '' : null,
+      d.link ?? null,
+    ].filter((l) => l !== null).join('\n'),
+  }),
+
   booking: (d) => ({
     subject: `Confirmed — ${d.title}`,
     preheader: `${d.title}${d.day ? ' · ' + d.day : ''}${d.time ? ' at ' + d.time : ''}. Everything you need is in here.`,
@@ -333,6 +448,22 @@ export const TEMPLATES = {
  * chain still want these templates, so the rendering is separated from the
  * sending rather than copied.
  */
+/**
+ * Subject, HTML and text together.
+ *
+ * renderTemplate() returns only the HTML, which is all the EMAIL binding
+ * needed. worker/mailer.mjs — the transport that actually reaches a customer,
+ * because it falls back across providers and reports per-message status —
+ * wants all three. Rather than a second copy of the shell, this returns the
+ * whole message and lets the caller choose how to post it.
+ */
+export function composeTemplate(template, data) {
+  const t = TEMPLATES[template];
+  if (!t) return null;
+  const r = t(data ?? {});
+  return { subject: r.subject, html: renderTemplate(template, data), text: r.text };
+}
+
 export function renderTemplate(template, data) {
   const t = TEMPLATES[template];
   if (!t) return null;
