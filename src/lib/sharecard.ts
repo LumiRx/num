@@ -3,7 +3,7 @@
  *
  * ── WHY THIS IS ONE FILE AND NOT TWO BUTTONS ─────────────────────────────
  *
- * Two different things a person wants to do with something Num just showed
+ * Two different things a person wants to do with something NUM just showed
  * them, and until now neither was possible:
  *
  *   "look at this fare"      → a message to a friend

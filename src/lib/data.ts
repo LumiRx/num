@@ -22,7 +22,7 @@ export const seedMemories: MemoryItem[] = [
 
 export const seedChips: Chip[] = [
   { id: 'bill', label: 'Pay my bill — Le Du' },
-  { id: 'photos', label: 'Let Num organize my photos' },
+  { id: 'photos', label: 'Let NUM organize my photos' },
   { id: 'dinner', label: 'Dinner on Thursday' },
   { id: 'meet', label: 'Set a meeting with Mei' },
   { id: 'recall', label: 'When was that Tokyo omakase?' },
@@ -102,11 +102,12 @@ function baseState() {
     tabOpen: null,
     tabId: null,
     discoverOpen: null,
+    placeOpen: false,
     errandsOpen: false,
     errands: [],
     myErrands: [],
     inbox: { connects: [], plans: [], events: [] },
-    // Default layout. Num rewrites this as the trip changes — directions only
+    // Default layout. NUM rewrites this as the trip changes — directions only
     // earn a slot when there is somewhere to be.
     widgets: ['next', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     pushOn: false,
@@ -172,7 +173,7 @@ export function demoState(): AppState {
   };
 }
 
-/** A brand-new user, anywhere in the world: Num asks before assuming. */
+/** A brand-new user, anywhere in the world: NUM asks before assuming. */
 export function freshState(): AppState {
   return {
     ...baseState(),
@@ -196,7 +197,7 @@ export function freshState(): AppState {
         // reply. Concrete beats grand — "remembers you don't eat shellfish"
         // lands where "your whole trip, handled" does not. Location is NOT
         // asked here; one question at a time, and the name comes first.
-        text: 'Hi — I’m Num.\n\nThink of me as the friend who knows the good tables, gets a car to actually turn up, and remembers you don’t eat shellfish. Dinner tonight, a driver at six, a whole weekend for eight — you ask, I’ll sort it.\n\nLet’s start with your name.',
+        text: 'Hi, I’m NUM. Tell me what you want, in any language. I’ll find three real places and book the one you pick.\n\nLet’s start with your name.',
       },
     ],
     bookings: [],
@@ -210,7 +211,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.

@@ -1,6 +1,6 @@
 // What a desktop visitor sees. Phones (<720px) get the real app — see
 // useStandalone() in App.tsx — so this page's only job is to convince someone
-// at a laptop and then get Num onto their phone.
+// at a laptop and then get NUM onto their phone.
 // (The internal prototype canvas — poster, demo script, release notes — is
 // still available at ?canvas.)
 //
@@ -19,7 +19,7 @@
 //     are taller than a laptop viewport. That one property was the bug.
 //   · THERE IS A BUTTON ABOVE THE MOCKUPS. Someone who has already decided
 //     should never have to scroll past a screenshot to act.
-//   · THE DESKTOP → PHONE HANDOFF IS EXPLICIT. Num lives on a phone home
+//   · THE DESKTOP → PHONE HANDOFF IS EXPLICIT. NUM lives on a phone home
 //     screen; a laptop visitor needs telling how to get it there.
 import { useCallback, useEffect, useState } from 'react';
 import { isNativeApp, escapeCard } from '../../lib/native';
@@ -62,11 +62,11 @@ const PROMISES: Array<[label: string, Icon: (p?: IconProps) => JSX.Element]> = [
  * sold depends on which link they happened to click.
  */
 const FEATURES: Array<[emoji: string, title: string, body: string]> = [
-  ['🍴', 'Ask in plain words', '“Dinner for four tonight, somewhere with a view” — Num finds it, checks it, books it.'],
+  ['🍴', 'Ask in plain words', '“Dinner for four tonight, somewhere with a view” — NUM finds it, checks it, books it.'],
   ['🚗', 'Cars that actually turn up', 'Airport pickups, drivers for the day, a ride home at 2am — sorted from one message.'],
   ['👥', 'Plan together', 'Pull your friends in. Everyone sees the plan, nobody retypes an address, the group decides once.'],
   ['⭐', 'Split anything', 'Open a tab for the night out. Everyone pays for exactly what they were in on.'],
-  ['🔔', 'It thinks ahead', 'Rain coming before your beach day? A table to reconfirm? Num tells you before you ask.'],
+  ['🔔', 'It thinks ahead', 'Rain coming before your beach day? A table to reconfirm? NUM tells you before you ask.'],
 ];
 
 /**
@@ -85,15 +85,15 @@ const detectPlatform = (): Platform => {
 };
 const INSTALL: Record<Platform, { heading: string; steps: string[] }> = {
   ios: {
-    heading: 'Add Num to your home screen',
-    steps: ['Tap the Share button at the bottom of Safari', 'Choose “Add to Home Screen”', 'Tap Add — Num opens like any other app'],
+    heading: 'Add NUM to your home screen',
+    steps: ['Tap the Share button at the bottom of Safari', 'Choose “Add to Home Screen”', 'Tap Add — NUM opens like any other app'],
   },
   android: {
-    heading: 'Add Num to your home screen',
-    steps: ['Tap the ⋮ menu in Chrome', 'Choose “Install app” or “Add to Home screen”', 'Confirm — Num opens like any other app'],
+    heading: 'Add NUM to your home screen',
+    steps: ['Tap the ⋮ menu in Chrome', 'Choose “Install app” or “Add to Home screen”', 'Confirm — NUM opens like any other app'],
   },
   desktop: {
-    heading: 'Put Num on your phone',
+    heading: 'Put NUM on your phone',
     steps: [
       'Open app.itsnum.com in your phone’s browser',
       'Tap Share (iPhone) or the ⋮ menu (Android), then “Add to Home Screen”',
@@ -106,7 +106,7 @@ const INSTALL: Record<Platform, { heading: string; steps: string[] }> = {
  * The numbers, and only the ones we have actually earned.
  *
  * A landing page is where borrowed proof gets invented — "50,000 happy
- * travellers", five gold stars, a wall of stock-photo faces. Num has 77 members
+ * travellers", five gold stars, a wall of stock-photo faces. NUM has 77 members
  * and two onboarded venues, so any of that would be a lie told to someone who
  * is about to trust us with their evening. What IS true is the scale of the
  * directory and the fact that the free tier is the whole product, so that is
@@ -133,13 +133,13 @@ const FAQ: Array<[q: string, a: string]> = [
   ['Is it free?',
     'Yes. The free tier is the whole concierge, not a demo of one — asking, planning and booking all work without paying us anything. If you book something that costs money, you pay the venue as you normally would.'],
   ['Do I have to download an app?',
-    'No. Num runs in your browser and you can start right now. Adding it to your home screen takes about ten seconds and makes it open full screen, keep your thread and notify you when a booking is confirmed. There is no App Store step today.'],
+    'No. NUM runs in your browser and you can start right now. Adding it to your home screen takes about ten seconds and makes it open full screen, keep your thread and notify you when a booking is confirmed. There is no App Store step today.'],
   ['Will it work where I am going?',
-    '104 destinations are live and the directory holds over 2.7 million places, deepest across Thailand. Ask about somewhere we do not cover properly and Num says so plainly instead of inventing a recommendation — that is a deliberate rule, not a gap we are hiding.'],
+    '104 destinations are live and the directory holds over 2.7 million places, deepest across Thailand. Ask about somewhere we do not cover properly and NUM says so plainly instead of inventing a recommendation — that is a deliberate rule, not a gap we are hiding.'],
   ['Do I need an account?',
     'No. Open it and start typing. You only give a phone number or email if you want your thread on more than one device, or want us to reach you about a booking.'],
   ['What happens to what I tell it?',
-    'Num keeps a short profile of your preferences so it never asks twice. It deliberately does not store health conditions, religion, politics, ID or payment details even if you mention them. Text FORGET and it is erased; profiles unused for 12 months are deleted automatically.'],
+    'NUM keeps a short profile of your preferences so it never asks twice. It deliberately does not store health conditions, religion, politics, ID or payment details even if you mention them. Text FORGET and it is erased; profiles unused for 12 months are deleted automatically.'],
   ['Is it a bot or real people?',
     'Both, honestly. The concierge answers you directly and real bookings go to real venues who confirm them. If something cannot be arranged you are told — you will not be left holding a confirmation that reached nobody.'],
 ];
@@ -396,7 +396,7 @@ export default function LaunchStage() {
         >
           Ask for anything.
           <br />
-          <span style={{ color: 'var(--color-accent)' }}>Num sorts it.</span>
+          <span style={{ color: 'var(--color-accent)' }}>NUM sorts it.</span>
         </h1>
 
         <p style={{ fontSize: 'clamp(16px, 1.7vw, 19px)', color: 'var(--ink-60)', margin: '18px auto 0', lineHeight: 1.55, maxWidth: 560 }}>
@@ -422,7 +422,7 @@ export default function LaunchStage() {
                   boxShadow: '0 12px 30px rgba(236,48,19,.38)',
                 }}
               >
-                {nativeInstall ? 'Add Num to my home screen — one tap' : 'Add Num to my home screen'}
+                {nativeInstall ? 'Add NUM to my home screen — one tap' : 'Add NUM to my home screen'}
               </a>
               <a
                 href={withSearch('/?app=1')}
@@ -446,7 +446,7 @@ export default function LaunchStage() {
                   boxShadow: '0 12px 30px rgba(236,48,19,.38)',
                 }}
               >
-                Open Num
+                Open NUM
               </a>
               <a
                 href="#on-your-phone"
@@ -488,7 +488,7 @@ export default function LaunchStage() {
           where a cursor lands. With pointer events live, the wheel scrolled the
           app inside the frame and the page appeared frozen; three separate
           "the page won't scroll" reports were all this, not the CSS.
-          The frames are a showcase here: the way in is the Open Num button, so
+          The frames are a showcase here: the way in is the Open NUM button, so
           they are inert and the wheel always belongs to the page. */}
       <div
         style={{
@@ -512,7 +512,7 @@ export default function LaunchStage() {
           the attention, the words tell you what you are looking at. */}
       <section style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 900 }}>
         <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: 22, letterSpacing: '-.015em', textAlign: 'center', margin: '0 0 20px' }}>
-          What Num does
+          What NUM does
         </h2>
         <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))' }}>
           {FEATURES.map(([emoji, title, body]) => (
@@ -561,7 +561,7 @@ export default function LaunchStage() {
           ))}
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--ink-40)', textAlign: 'center', margin: '14px auto 0', maxWidth: 620, lineHeight: 1.6 }}>
-          Those are the real figures from our own directory. Num is in early access — we would
+          Those are the real figures from our own directory. NUM is in early access — we would
           rather tell you exactly what it can do today than borrow numbers we have not earned.
         </p>
       </section>
@@ -589,7 +589,7 @@ export default function LaunchStage() {
         ))}
       </section>
 
-      {/* The handoff. Num is a home-screen app; the steps differ per device and
+      {/* The handoff. NUM is a home-screen app; the steps differ per device and
           giving an iPhone user Android instructions is the same as giving them
           none. Wording matches InstallPrompt.tsx so the floating prompt and
           this section never disagree. */}
@@ -634,7 +634,7 @@ export default function LaunchStage() {
           ))}
         </ol>
         <p style={{ fontSize: 14, color: 'var(--ink-40)', margin: '20px 0 0', lineHeight: 1.6 }}>
-          No app store, nothing to download. Num is a website that keeps your thread,
+          No app store, nothing to download. NUM is a website that keeps your thread,
           so it works the moment you open it — adding it to your home screen just
           makes it open like an app.
         </p>

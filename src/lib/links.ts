@@ -1,4 +1,4 @@
-// Every link Num hands to another person, built in one place.
+// Every link NUM hands to another person, built in one place.
 //
 // The rule, learned the hard way twice in one day:
 //
@@ -8,7 +8,7 @@
 // window.location.origin is right for neither case reliably. Open the app from
 // a preview deploy, a workers.dev URL, or localhost, and every invite you send
 // carries that host — which is how a share link reads
-// "num-app.thatislumi.workers.dev", looks like nothing to do with Num, and in
+// "num-app.thatislumi.workers.dev", looks like nothing to do with NUM, and in
 // one earlier version pointed at a domain we do not own and got flagged as
 // phishing.
 //

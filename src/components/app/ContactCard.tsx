@@ -1,6 +1,6 @@
 // A WAY TO REACH YOU — added after the fact, for the people who never gave one.
 //
-// On 12 Sep 2026, 107 of Num's 147 members had no phone and no email on file.
+// On 12 Sep 2026, 107 of NUM's 147 members had no phone and no email on file.
 // New sign-ups now have to give one (worker/membercontact.mjs), but the people
 // who joined under the old rule are the reason the rule changed, and locking
 // them out for a change we made would be punishing them for our decision. So

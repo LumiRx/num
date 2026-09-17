@@ -1,19 +1,19 @@
-// The travel handoff — where Num stops searching and an agency takes over.
+// The travel handoff — where NUM stops searching and an agency takes over.
 //
 // This is BookSheet's sibling and is built the same way on purpose: the facts
 // sit above the button in full, the button says what it does, and after the tap
 // the sheet becomes the waiting room rather than closing. What differs is the
 // sentence, and the sentence is the product:
 //
-//   **Num presents. The agency issues.**
+//   **NUM presents. The agency issues.**
 //
 // So this screen never says booked, reserved, held or ticketed. It shows the
 // agency's quote in the agency's own currency, exactly as they sent it — no
-// conversion, because a converted number is a price Num computed and Num does
+// conversion, because a converted number is a price NUM computed and NUM does
 // not price travel. And on acceptance it says, in the server's own words, that
 // the agency will contact the member to take payment. That sentence is the
-// whole reason Num can do this at all without holding passenger money, and
-// blurring it would put the money back on Num's side of the line.
+// whole reason NUM can do this at all without holding passenger money, and
+// blurring it would put the money back on NUM's side of the line.
 import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
@@ -125,7 +125,7 @@ export default function TravelSheet() {
           {draft.cabin && <Fact k="Cabin" v={draft.cabin} />}
           {draft.budget_cs && draft.budget_currency && (
             /* THEIR ceiling, in THEIR currency — a number the member gave, not
-               one Num worked out. */
+               one NUM worked out. */
             <Fact k="Your budget" v={`up to ${(draft.budget_cs / 100).toFixed(2)} ${draft.budget_currency}`} />
           )}
           {draft.notes && <Fact k="Notes" v={draft.notes} />}
@@ -150,7 +150,7 @@ export default function TravelSheet() {
                 </div>
                 <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>NOT YET</div>
                 <div style={{ ...help, marginTop: 12 }}>
-                  A travel agency gets this with a Num reference and comes back with options and a price.
+                  A travel agency gets this with a NUM reference and comes back with options and a price.
                   They quote it, they take the payment and they issue the confirmation — I don’t handle the money.
                 </div>
               </>
@@ -224,7 +224,7 @@ function Fact({ k, v, last }: { k: string; v: string; last?: boolean }) {
   );
 }
 
-/** The same three-dot pulse the thread uses while Num is thinking. */
+/** The same three-dot pulse the thread uses while NUM is thinking. */
 function Dots() {
   return (
     <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>

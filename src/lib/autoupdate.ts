@@ -1,5 +1,5 @@
 /**
- * The app updates itself. Nobody reinstalls Num to get a fix.
+ * The app updates itself. Nobody reinstalls NUM to get a fix.
  *
  * 11 Aug 2026: replies were fixed on the server and Dre's installed app still
  * showed "we've dropped the line", because the phone was running JavaScript

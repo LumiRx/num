@@ -1,6 +1,6 @@
 // Where the guest is — asked, never assumed.
 //
-// The bug this exists to kill: Num told a user with no stated location that
+// The bug this exists to kill: NUM told a user with no stated location that
 // they were in Copenhagen, twice, with the confidence of a fact. It came from
 // the edge's IP geolocation, which is a reasonable HINT and a terrible CLAIM —
 // it is the datacentre's guess, it is wrong on VPNs, roaming and airport wifi,
@@ -54,7 +54,7 @@ export async function fixPosition(silent = false): Promise<{ lat: number; lng: n
     // ── THE DEADLINE IS NOT OPTIONAL ────────────────────────────────────
     //
     // `getCurrentPosition`'s own `timeout` option does NOT cover the
-    // permission prompt. While iOS is showing "Allow Num to use your
+    // permission prompt. While iOS is showing "Allow NUM to use your
     // location?", the clock is not running — so a guest who ignores that
     // dialog, or a WebView where the prompt never appears at all, leaves this
     // promise pending FOREVER. Neither callback is ever invoked.

@@ -1,5 +1,5 @@
 // What a visitor gets:
-//   phone-sized viewport (or ?app) → the Num app, full-bleed
+//   phone-sized viewport (or ?app) → the NUM app, full-bleed
 //   desktop                        → the app in a phone frame on the launch stage
 //   ?canvas                        → the internal prototype canvas (pitch artifact:
 //                                    poster, demo script, v0.8 release notes)
@@ -17,7 +17,7 @@ function useStandalone(): boolean {
   // On a phone that is true and everything worked, which is why it survived.
   // On an iPad it is FALSE — and the bundled app has no `?app` in its URL
   // (the origin is capacitor://localhost/), so `forced` is false too. The app
-  // fell through to `<LaunchStage />`: a reviewer installing Num on an iPad
+  // fell through to `<LaunchStage />`: a reviewer installing NUM on an iPad
   // got the marketing pitch page and no product at all.
   //
   // The target declares iPad, Mac (Designed for iPad) and Apple Vision as

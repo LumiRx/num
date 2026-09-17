@@ -13,7 +13,7 @@ import './styles/glass.css';
 import './styles/themes.css';
 
 // Measurement is injected, never blocking — see lib/analyticsLoader.ts.
-// Num's own tracker everywhere; the third-party pair (Cloudflare Insights,
+// NUM's own tracker everywhere; the third-party pair (Cloudflare Insights,
 // Google Analytics) on the web only. Inside the App Store build they would
 // need an App Tracking Transparency prompt in front of them — guideline
 // 5.1.2 — and a page-view counter is not worth asking a guest for that.
@@ -50,7 +50,7 @@ for (const [type, read] of [
     // not loaded in the App Store build at all — so on the one platform where
     // a launch failure costs a review cycle, the line above reports nothing.
     //
-    // /api/crash is Num's own: open, always answers 200, hashes the device,
+    // /api/crash is NUM's own: open, always answers 200, hashes the device,
     // and folds a crash loop onto one row with a count. It is exactly what
     // was missing when Apple said "the app crashed after the initial launch"
     // and there was no record on our side of what threw.
@@ -118,7 +118,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 const web = !isNativeApp();
 
 // Installed-app behaviour: instant launch from cache, usable without a
-// connection (the scripted demo runs offline; Num's live replies need network).
+// connection (the scripted demo runs offline; NUM's live replies need network).
 // Production only — a service worker caching a dev server just confuses HMR.
 if (web && 'serviceWorker' in navigator && import.meta.env.PROD) {
   // A tab that has been open across a deploy gets the new worker on its next

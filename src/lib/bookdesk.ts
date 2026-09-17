@@ -1,6 +1,6 @@
 // Asking a real restaurant for a real table, from the app's side.
 //
-// The whole loop lives in worker/bookdesk.mjs: Num texts the venue, the venue
+// The whole loop lives in worker/bookdesk.mjs: NUM texts the venue, the venue
 // taps CONFIRM or DECLINE in the text, and the guest's phone buzzes. This
 // module does two things and deliberately no more — it sends the request, and
 // it reads back what the venue said.
@@ -38,7 +38,7 @@ export interface TableRequest {
   answered_at: string | null;
 }
 
-/** What Num is about to ask for, shown in full before anything is sent. */
+/** What NUM is about to ask for, shown in full before anything is sent. */
 export interface TableDraft {
   venue_name: string;
   venue_phone: string | null;

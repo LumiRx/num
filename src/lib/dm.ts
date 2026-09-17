@@ -26,7 +26,7 @@ export interface DmMessage {
   from_id: string;
   to_id: string;
   body: string;
-  /** 'text', or 'event' for an invite card the other Num sent across. */
+  /** 'text', or 'event' for an invite card the other NUM sent across. */
   kind: string;
   created_at: string;
   read_at: string | null;

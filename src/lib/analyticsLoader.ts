@@ -40,8 +40,8 @@ const inject = (src: string): void => {
  * `/api/analytics.js` pulls in Cloudflare Insights and Google Analytics. Both
  * are third parties collecting from every user, and inside a native app that
  * needs an App Tracking Transparency prompt in front of it (guideline 5.1.2)
- * — a prompt Num does not show and does not want to show for a page-view
- * counter. `/num-track.js` is Num's own, hits Num's own origin, and stays.
+ * — a prompt NUM does not show and does not want to show for a page-view
+ * counter. `/num-track.js` is NUM's own, hits NUM's own origin, and stays.
  *
  * Measurement is worth having. It is not worth a rejection, and it is
  * certainly not worth asking a guest for tracking permission on first launch.

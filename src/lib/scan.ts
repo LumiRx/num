@@ -1,12 +1,12 @@
-// Scanning somebody else's Num code, from inside the app.
+// Scanning somebody else's NUM code, from inside the app.
 //
 // Worth being clear about why this is a convenience rather than the main path:
-// every code Num shows is a plain https link, so the phone's OWN camera app
+// every code NUM shows is a plain https link, so the phone's OWN camera app
 // already scans it and opens it correctly. That is the route most people take
 // and it needs no code from us.
 //
 // This exists for the case where the camera app is not the obvious move —
-// someone already inside Num, looking at their own code, who wants to scan
+// someone already inside NUM, looking at their own code, who wants to scan
 // back. On Android that is a genuinely better flow. On iPhone it is not
 // available at all: Safari has no BarcodeDetector, and shipping a QR *decoder*
 // is a different order of problem from the encoder in qr.ts (binarisation,
@@ -46,10 +46,10 @@ export const scanSupported = (): boolean => !!detectorCtor() && !!navigator.medi
 /**
  * Pull a code out of whatever the camera read.
  *
- * Accepts both shapes a Num code can take, because both exist in the wild: the
+ * Accepts both shapes a NUM code can take, because both exist in the wild: the
  * short path we mint today (`/c/mem_x`) and the query form the Worker redirects
  * it to (`/?c=mem_x`), which is what a screenshot of an already-opened link
- * carries. Anything that is not a Num connect link returns null so the caller
+ * carries. Anything that is not a NUM connect link returns null so the caller
  * can say so rather than silently doing nothing.
  */
 export function memberIdFrom(raw: string): string | null {
@@ -70,7 +70,7 @@ export interface ScanHandle {
 }
 
 /**
- * Open the back camera, watch for a Num code, connect on the first hit.
+ * Open the back camera, watch for a NUM code, connect on the first hit.
  *
  * Stops itself on success — a scanner that keeps running after it worked reads
  * as if it did not. The caller gets `stop()` for the cancel/unmount path.

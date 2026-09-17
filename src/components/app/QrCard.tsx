@@ -71,7 +71,7 @@ export default function QrCard() {
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <div
-          {...pressable(() => void shareNative({ title: tab === 'connect' ? 'Connect with me on Num' : 'Pay me on Num', text: label, url: value }))}
+          {...pressable(() => void shareNative({ title: tab === 'connect' ? 'Connect with me on NUM' : 'Pay me on NUM', text: label, url: value }))}
           style={{ cursor: 'pointer', flex: 1, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '11px 14px', textAlign: 'center', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}
         >
           <ShareIcon size={13} /> SHARE

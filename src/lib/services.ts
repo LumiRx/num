@@ -1,7 +1,7 @@
 // Getting the thing actually done — cars, food, tables, treatments — plus the
 // share paths that put an invite on someone's phone.
 //
-// Num holds no commercial accounts with Uber, Grab, DoorDash and the rest yet,
+// NUM holds no commercial accounts with Uber, Grab, DoorDash and the rest yet,
 // so for now every fulfilment is a HAND-OFF: one tap into the app the user
 // already has, prefilled with the destination. The server picks the providers
 // by country (worker/services.mjs) and sends them down with the action, so the

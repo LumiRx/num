@@ -30,7 +30,7 @@ const starterChip: React.CSSProperties = {
  * Emoji reactions. They rate the *suggestion*, not the message — 😍 means find
  * more like this, 👎 means never offer it again, 🥱 means the answer was too
  * long. It is the cheapest possible feedback channel, which is why people
- * actually use it, and it is what teaches Num this user's taste.
+ * actually use it, and it is what teaches NUM this user's taste.
  */
 function Reactions({ index, subject }: { index: number; subject: string }) {
   const chosen = useApp((s) => s.reactions[index]);
@@ -63,7 +63,7 @@ function Reactions({ index, subject }: { index: number; subject: string }) {
 }
 
 /**
- * The hand-off tray. Num has no account with Uber or Grab yet, so it does not
+ * The hand-off tray. NUM has no account with Uber or Grab yet, so it does not
  * pretend to have ordered — it picks the right app for this country and opens
  * it prefilled. One tap, and the honesty is the feature.
  */
@@ -317,7 +317,7 @@ function FlightTray() {
         })}
       </div>
       <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-        Real fares from Sabre. Num prices and re-checks them; the ticket is issued by whoever you continue to.
+        Real fares from Sabre. NUM prices and re-checks them; the ticket is issued by whoever you continue to.
       </div>
     </div>
   );
@@ -366,8 +366,8 @@ function ServiceTray() {
       </div>
       <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 7, lineHeight: 1.5 }}>
         {h.mode === 'connected'
-          ? 'Num completes this for you.'
-          : 'Opens in your own app with the destination already filled in — Num can’t place it for you yet.'}
+          ? 'NUM completes this for you.'
+          : 'Opens in your own app with the destination already filled in — NUM can’t place it for you yet.'}
       </div>
     </div>
   );
@@ -381,7 +381,7 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
       <div
         className={u ? undefined : 'glass'}
         style={{
-          // 13px was set for density; this is a READING surface. Num's replies
+          // 13px was set for density; this is a READING surface. NUM's replies
           // run several sentences, often on a phone, often outdoors, often by
           // someone tired at the end of a travel day. 15.5/1.62 is the size
           // people actually read prose at — the extra millimetre costs a line
@@ -426,7 +426,7 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
             </div>
           </div>
         )}
-        {/* Only Num's own suggestions are rateable. Rating your own message is
+        {/* Only NUM's own suggestions are rateable. Rating your own message is
             nonsense; rating an acknowledgement is noise; and rating the
             onboarding questions — which is what a pure length test did — makes
             the app look like it wants applause for saying hello. */}
@@ -451,8 +451,8 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
 // offering coffee the moment its cafés land, with no deploy.
 //
 // FALLBACK stays here deliberately. A guest whose network drops, or whose
-// destination is not known yet, must still see what Num can do — an empty
-// strip teaches a brand-new user that Num does nothing. Every line in it is a
+// destination is not known yet, must still see what NUM can do — an empty
+// strip teaches a brand-new user that NUM does nothing. Every line in it is a
 // capability that is true everywhere, independent of any local directory.
 type Starter = { emoji: string; label: string; prompt: string };
 
@@ -473,7 +473,7 @@ const FALLBACK: Starter[] = [
 function useSuggestions(dest: string | null, meId: string | null) {
   const [starters, setStarters] = useState<Starter[]>(FALLBACK);
   const [rotating, setRotating] = useState<string | null>(null);
-  // Num speaking first: one line about what THIS member has coming up, from
+  // NUM speaking first: one line about what THIS member has coming up, from
   // worker/briefing.mjs. Null for guests and for members with nothing dated.
   const [briefing, setBriefing] = useState<string | null>(null);
 
@@ -520,7 +520,7 @@ export default function ThreadView() {
   // el.scrollHeight; })` — no dependency array, so it ran after every one of
   // those redraws and slammed the thread to the bottom each time.
   //
-  // Num polls constantly: the booking desk every 15s, errands every 15s, the
+  // NUM polls constantly: the booking desk every 15s, errands every 15s, the
   // party plan every 8s, suggestions every 90s, DMs, autoupdate. So somebody
   // reading a list of flight fares — a tall block, several offers, exactly the
   // thing you scroll back through to compare — was thrown to the bottom every
@@ -570,7 +570,7 @@ export default function ThreadView() {
             key={i}
             m={m}
             index={i}
-            // A suggestion is something Num said in ANSWER to something. Until
+            // A suggestion is something NUM said in ANSWER to something. Until
             // the user has spoken, nothing on screen is a suggestion.
             rateable={m.who === 'c' && msgs.slice(0, i).some((p) => p.who === 'u') && (!!m.card || cleanText(m.text).length > 90)}
           />
@@ -589,7 +589,7 @@ export default function ThreadView() {
       {/* ── THE WAY BACK ────────────────────────────────────────────────
           Shown only when the reader has scrolled up AND something new has
           arrived below them. Without it, "we will not move you" turns into
-          "you are stranded" — they scroll up to compare two fares, Num
+          "you are stranded" — they scroll up to compare two fares, NUM
           answers, and nothing on screen says so.
 
           Positioned over the thread rather than in the composer so it cannot
@@ -620,12 +620,12 @@ export default function ThreadView() {
       <div className="glass-bar" style={{ padding: '10px 14px max(env(safe-area-inset-bottom), 14px)', flex: 'none' }}>
         <FlightTray />
         <ServiceTray />
-        {/* One line, changing every 90s, showing a thing Num can do that this
+        {/* One line, changing every 90s, showing a thing NUM can do that this
             guest has probably not tried. Only ever claims a capability the
             destination can actually serve — see worker/suggest.mjs. */}
-        {/* Num speaks first. When the member has a plan coming up this line
+        {/* NUM speaks first. When the member has a plan coming up this line
             outranks the showcase, stays visible deeper into the thread, and
-            reads as a sentence from Num rather than a feature hint. */}
+            reads as a sentence from NUM rather than a feature hint. */}
         {!demo && briefing && msgs.length < 12 && (
           <div style={{ padding: '0 4px 7px', fontSize: 12.5, lineHeight: 1.4, fontWeight: 600 }}>
             <SparklesIcon size={12} style={{ color: 'var(--color-accent)', verticalAlign: '-1px', marginRight: 5 }} />
@@ -691,7 +691,7 @@ export default function ThreadView() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-            placeholder="Message Num…"
+            placeholder="Message NUM…"
             /* The iOS return key reads "send" instead of "return", which is
                the only affordance telling a guest that enter submits. */
             enterKeyHint="send"
@@ -712,10 +712,10 @@ export default function ThreadView() {
           ) : (
             <div
               {...pressable(openVoice)}
-              aria-label="Talk to Num"
+              aria-label="Talk to NUM"
               className="press"
               style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.35)', flex: 'none' }}
-              title="Talk to Num"
+              title="Talk to NUM"
             >
               <MicIcon size={17} />
             </div>

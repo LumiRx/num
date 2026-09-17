@@ -114,7 +114,7 @@ test('a non-JSON response is an error, not an empty object', () => {
   const s = raw.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.ok(!/res\.json\(\)\.catch\(\(\) => \(\{\}\)\)/.test(s),
     'the JSON swallow is back — the next network misconfiguration will surface as a property error');
-  assert.match(raw, /Couldn't reach Num — the server answered with something unexpected\./);
+  assert.match(raw, /Couldn't reach NUM — the server answered with something unexpected\./);
 });
 
 test('signup refuses to continue without an account', () => {

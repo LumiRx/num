@@ -7,7 +7,7 @@ import { detectInAppBrowser, escapeInstruction } from './webview.mjs';
  * rules live in one file instead of scattered platform sniffs:
  *
  *  - INSTALL PROMPTS: never inside the native app. Asking someone who is
- *    already in the app to "add Num to your home screen" reads as a bug.
+ *    already in the app to "add NUM to your home screen" reads as a bug.
  *
  *  - SUBSCRIPTION OFFERS: hidden on iOS native. This is the Netflix model —
  *    Apple's 3.1.1 requires IAP for digital subscriptions sold in-app on
@@ -123,7 +123,7 @@ export const isStandalone = (): boolean => {
  * That distinction is not academic. On iOS an installed PWA and a WKWebView
  * send the SAME signature — neither carries a Safari or Version token — so
  * without the display-mode answer we would tell people who had just installed
- * Num to go and install Num.
+ * NUM to go and install NUM.
  */
 export const webviewState = () =>
   detectInAppBrowser(

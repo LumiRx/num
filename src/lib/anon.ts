@@ -5,7 +5,7 @@
  *
  * On 15 Aug, 4 of 283 recorded questions carried a member id. Not because
  * attribution was broken — the client sends `me.id` correctly — but because
- * almost nobody asking Num is a member. People land, ask something, and
+ * almost nobody asking NUM is a member. People land, ask something, and
  * leave, and letting them do that without a signup wall is the right product
  * decision: the answer is the demo.
  *

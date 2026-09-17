@@ -74,7 +74,7 @@ describe('the second tier', () => {
 
   test('the person is told what they are about to lose, and what they are not', () => {
     assert.match(B, /You stay signed in/);
-    assert.match(B, /on Num&rsquo;s side, not this phone/);
+    assert.match(B, /on NUM&rsquo;s side, not this phone/);
   });
 });
 

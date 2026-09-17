@@ -236,7 +236,7 @@ test('HTML with status 200 — the capacitor bug — is a failure, not an empty 
   answer('/api/social/me', 200, '<!doctype html><html><head><title>Num</title></head><body></body></html>', 'text/html');
 
   await assert.rejects(social.signUp('Andre', '+66811110001'), (err) => {
-    assert.match(err.message, /Couldn't reach Num — the server answered with something unexpected\./,
+    assert.match(err.message, /Couldn't reach NUM — the server answered with something unexpected\./,
       'a 200 full of HTML parsed into `{}` again, and the failure will surface two frames away as a property error');
     assert.doesNotMatch(err.message, /undefined is not an object/);
     return true;

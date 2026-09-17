@@ -122,7 +122,7 @@ function RequestsWidget() {
               than leaving people to wonder how it got here. */}
           {e.via === 'agent' && (
             <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 3 }}>
-              Their Num asked yours — answer here or in your messages.
+              Their NUM asked yours — answer here or in your messages.
             </div>
           )}
           <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
@@ -167,7 +167,7 @@ function RequestsWidget() {
 
 /**
  * DIRECTIONS — the only useful question about a route is what time to leave.
- * We hold no Directions API key, so Num opens the route in the maps app they
+ * We hold no Directions API key, so NUM opens the route in the maps app they
  * already use rather than inventing a live traffic figure; the leave-by advice
  * comes from the thread, where the transport specialist reasons about the
  * actual traffic pattern of that city at that hour.
@@ -230,7 +230,7 @@ function NextUp() {
         <div style={kicker}>NEXT UP</div>
         <div style={{ ...h, marginTop: 6 }}>Nothing booked yet</div>
         <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
-          Tell Num where you are and what you feel like — it lands here.
+          Tell NUM where you are and what you feel like — it lands here.
         </div>
       </div>
     );
@@ -313,7 +313,7 @@ function CalendarStrip() {
   );
 }
 
-/** Trip check — arithmetic done on-device, then handed to Num to explain. */
+/** Trip check — arithmetic done on-device, then handed to NUM to explain. */
 function TripCheck() {
   const state = useApp((s) => s);
   const [open, setOpen] = useState(false);
@@ -357,10 +357,10 @@ function TripCheck() {
 const CONNECTIONS: Array<{ key: keyof Connections; label: string; why: string; icon: JSX.Element }> = [
   { key: 'contacts', label: 'Contacts', why: 'so “invite Sam” finds the right Sam', icon: <UsersIcon size={14} /> },
   { key: 'photos', label: 'Photos', why: 'files your trip shots to the right night', icon: <CameraIcon size={14} /> },
-  { key: 'calendar', label: 'Calendar', why: 'Num books around what’s already there', icon: <CalendarIcon size={14} /> },
+  { key: 'calendar', label: 'Calendar', why: 'NUM books around what’s already there', icon: <CalendarIcon size={14} /> },
   { key: 'crypto', label: 'Crypto wallet', why: 'balances on this screen, settle bills in USDC', icon: <WalletIcon size={14} /> },
   { key: 'email', label: 'Email', why: 'pulls confirmations in so you never forward one', icon: <MessageIcon size={14} /> },
-  { key: 'texts', label: 'Texts', why: 'the venue’s “running late?” reaches Num too', icon: <BellIcon size={14} /> },
+  { key: 'texts', label: 'Texts', why: 'the venue’s “running late?” reaches NUM too', icon: <BellIcon size={14} /> },
 ];
 
 /**
@@ -378,7 +378,7 @@ function ConnectionsCard() {
   return (
     <Collapsible
       title="CONNECT YOUR WORLD"
-      summary={on ? `${on} of ${CONNECTIONS.length} connected` : 'All off — Num asks only when it needs one'}
+      summary={on ? `${on} of ${CONNECTIONS.length} connected` : 'All off — NUM asks only when it needs one'}
     >
       <div>
         {CONNECTIONS.map((c) => {
@@ -445,7 +445,7 @@ export default function DashView() {
     void refreshRequests();
   }, [me?.id]);
 
-  // The dash is a LIST, not a layout. Num rewrites `widgets` as the trip
+  // The dash is a LIST, not a layout. NUM rewrites `widgets` as the trip
   // changes, and a widget that has nothing to say returns null and costs a
   // slot rather than a screenful.
   const RENDER: Record<WidgetId, () => JSX.Element | null> = {

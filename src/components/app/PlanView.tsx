@@ -77,7 +77,7 @@ function Attendees({ title }: { title: string }) {
                 textDecoration: out ? 'line-through' : 'none',
                 background: a.rsvp === 'going' ? 'var(--field-bg)' : 'transparent',
                 color: a.rsvp === 'maybe' ? 'var(--color-accent-700)' : 'var(--ink)',
-                // A guest with no Num account is shown lighter rather than
+                // A guest with no NUM account is shown lighter rather than
                 // annotated — a trailing mark next to a name reads as a typo.
                 borderStyle: a.member_id ? 'solid' : 'dashed',
               }}
@@ -301,7 +301,7 @@ export default function PlanView() {
       ))}
       <div style={{ padding: '12px 20px 16px', fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.5, textAlign: 'center' }}>
         {groups.length === 0
-          ? 'Nothing planned yet. Tell Num where you are and what you feel like — bookings land here by themselves.'
+          ? 'Nothing planned yet. Tell NUM where you are and what you feel like — bookings land here by themselves.'
           : 'Nothing to add here — new plans come from the thread. Ask, and it appears.'}
       </div>
     </div>

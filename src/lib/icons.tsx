@@ -1,4 +1,4 @@
-// Liquid Num icon set — Lucide-style 24-grid stroke icons, inline so the app
+// Liquid NUM icon set — Lucide-style 24-grid stroke icons, inline so the app
 // stays dependency-free. All icons inherit currentColor; pass size to scale.
 import type { CSSProperties } from 'react';
 

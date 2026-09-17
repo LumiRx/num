@@ -2,7 +2,7 @@
 //
 // The rule that decides whether this works at all: **iOS only allows push for
 // an app that has been added to the home screen**, and only asks once. Ask at
-// the wrong moment and the answer is no, permanently. So Num never asks on
+// the wrong moment and the answer is no, permanently. So NUM never asks on
 // launch — it asks when there is something worth being told about.
 import { store } from './store';
 import { openDm } from './dm';
@@ -25,7 +25,7 @@ export const pushSupported = (): boolean => 'serviceWorker' in navigator && 'Pus
  * The App Store build counts as installed even though neither PWA signal
  * fires inside it — it is a WKWebView, not a home-screen web app. Without
  * isNativeApp() here, pushState() returns 'needs-install' on iOS native and
- * the app shows a "add Num to your home screen to get notifications" prompt
+ * the app shows a "add NUM to your home screen to get notifications" prompt
  * to somebody running the App Store app, whose push arrives over APNs and
  * needs no install at all.
  */
@@ -50,7 +50,7 @@ export async function enablePush(): Promise<{ ok: boolean; message: string }> {
   if (!me) return { ok: false, message: 'Add your name first — a notification has to know who it is for.' };
   if (!pushSupported()) return { ok: false, message: 'This browser can’t do notifications.' };
   if (pushState() === 'needs-install') {
-    return { ok: false, message: 'Add Num to your home screen first — iPhone only allows notifications for installed apps.' };
+    return { ok: false, message: 'Add NUM to your home screen first — iPhone only allows notifications for installed apps.' };
   }
 
   const permission = await Notification.requestPermission();
@@ -89,7 +89,7 @@ export async function disablePush(): Promise<void> {
 /**
  * Leave the member id where the service worker can find it with the app shut.
  *
- * This is the path that actually matters: a push arrives when Num is closed,
+ * This is the path that actually matters: a push arrives when NUM is closed,
  * so there is no page to ask, and without this every real notification
  * degrades to "Something needs you". A cache entry is the only storage a
  * service worker can read synchronously from a push event — localStorage and
@@ -128,7 +128,7 @@ export function serveIdentityToWorker(): void {
     if (data?.type === 'num-open') {
       // A tapped notification should land on the thing it was about. A message
       // from a friend carries `?dm=<their id>` and opens THAT conversation —
-      // dropping someone into the Num thread instead is the app answering a
+      // dropping someone into the NUM thread instead is the app answering a
       // different question from the one the notification asked.
       const dm = new URL(data.url ?? '/', location.origin).searchParams.get('dm');
       if (dm) openDm(dm);

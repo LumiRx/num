@@ -1,8 +1,8 @@
-// The table request — the one screen where Num stops advising and commits.
+// The table request — the one screen where NUM stops advising and commits.
 //
 // Everything on this sheet exists to serve one rule: **a real restaurant is
 // about to be texted on this person's behalf, so this person taps the button.**
-// Num can propose the venue, the party and the hour; it cannot decide to put a
+// NUM can propose the venue, the party and the hour; it cannot decide to put a
 // stranger's phone number and a guest's name into a message. That is the same
 // line ErrandSheet draws around money and InviteSheet draws around who an
 // invite goes to, and it is drawn here for a stronger reason: an errand can be
@@ -200,7 +200,7 @@ function Fact({ k, v, last }: { k: string; v: string; last?: boolean }) {
   );
 }
 
-/** The same three-dot pulse the thread uses while Num is thinking. */
+/** The same three-dot pulse the thread uses while NUM is thinking. */
 function Dots() {
   return (
     <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>

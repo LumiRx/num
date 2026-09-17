@@ -104,7 +104,7 @@ export function plausibleMobile(e164: string): boolean {
 
 /**
  * Everything the sign-up sheet needs to say about a number BEFORE it is sent:
- * the exact string Num will text, whether the country code was typed or
+ * the exact string NUM will text, whether the country code was typed or
  * guessed from the device, and a sentence when the guess cannot be right.
  *
  * The 2 Sep 2026 case this is written for: a person with an Indian SIM,

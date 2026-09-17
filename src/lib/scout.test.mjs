@@ -65,7 +65,7 @@ describe('the door into it', () => {
   test('somebody who is not an expert yet is told how to become one', () => {
     // Sign-up is open, so hiding the door would be hiding something they are
     // allowed to walk through.
-    assert.match(SHEET, /You are not a Num Expert yet/);
+    assert.match(SHEET, /You are not a NUM Expert yet/);
     assert.match(SHEET, /href="\/scout"/);
   });
 

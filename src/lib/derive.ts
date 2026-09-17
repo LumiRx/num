@@ -8,7 +8,7 @@ export interface Tag {
   st: CSSProperties;
 }
 
-// Liquid Num: soft rounded pills, tinted per status — lively but quiet.
+// Liquid NUM: soft rounded pills, tinted per status — lively but quiet.
 const tagBase: CSSProperties = {
   fontSize: 8.5,
   letterSpacing: '.07em',
@@ -283,7 +283,7 @@ export function liveActivity(s: AppState): LiveActivity {
     .sort((a, b) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time))[0];
   return next
     ? { tag: 'NEXT UP', line: next.title, meta: `${wd(false, next.mo, next.day)} ${next.day} ${monthName(next.mo)} · ${next.time}${next.place ? ' · ' + next.place : ''}`, pulse: false, red: false }
-    : { tag: 'READY', line: 'Num is watching your trip', meta: 'Nothing needs you right now', pulse: false, red: false };
+    : { tag: 'READY', line: 'NUM is watching your trip', meta: 'Nothing needs you right now', pulse: false, red: false };
 }
 
 // ── Shared sheet/segment styles ─────────────────────────────────────────────

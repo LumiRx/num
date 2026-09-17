@@ -135,7 +135,7 @@ function Pulse({ d }: { d: Overview }) {
         </div>
         <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
           {d.app.members
-            ? `${Math.round((d.engagement.ever_asked / d.app.members) * 100)}% of people who signed up have actually asked Num for something. That gap is the product problem, not the funnel.`
+            ? `${Math.round((d.engagement.ever_asked / d.app.members) * 100)}% of people who signed up have actually asked NUM for something. That gap is the product problem, not the funnel.`
             : 'Nobody has signed up yet.'}
         </div>
       </div>
@@ -720,7 +720,7 @@ export default function AdminView() {
                     <Stat n={fmt(data.reach.notifications_delivered)} label="DELIVERED" />
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
-                    Queued but undelivered means the wake-ups aren’t landing — everything else can look healthy while nobody hears from Num.
+                    Queued but undelivered means the wake-ups aren’t landing — everything else can look healthy while nobody hears from NUM.
                   </div>
                 </Panel>
 

@@ -1,5 +1,5 @@
 // Profile: the picture, the identity, and everything the traveller chooses to
-// tell Num about themselves.
+// tell NUM about themselves.
 //
 // The avatar is resized to 160px on the device before it is ever sent. That is
 // not an optimisation, it is the reason we can store it at all — a raw phone
@@ -33,7 +33,7 @@ export async function saveProfile({ name, bio }: { name?: string; bio?: Record<s
   });
   store.set((s) => ({
     me: out.me,
-    // Everything the user typed is a fact Num should already know, so it goes
+    // Everything the user typed is a fact NUM should already know, so it goes
     // straight into the same profile the model reads. No second source.
     profile: { ...s.profile, ...(bio ?? {}) },
   }));

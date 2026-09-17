@@ -1,7 +1,7 @@
 {
-  "name": "Num — Your Concierge",
-  "short_name": "Num",
-  "description": "One thread, one calendar, zero forms.",
+  "name": "NUM",
+  "short_name": "NUM",
+  "description": "A concierge you can text, anywhere you land.",
   "start_url": "/?app",
   "scope": "/",
   "id": "/?app",

@@ -271,7 +271,7 @@ function NewErrand({ balance, hasAccount, draft, onDone }: {
               : 'SET A BOUNTY'}
       </div>
       <div style={{ fontSize: 10.5, color: 'var(--ink-40)', lineHeight: 1.55 }}>
-        ★{held.toLocaleString() || '0'} leaves your balance the moment you post and is held by Num until you confirm delivery. That’s what makes a stranger willing to go. Cancel before anyone claims it and you get all of it back.
+        ★{held.toLocaleString() || '0'} leaves your balance the moment you post and is held by NUM until you confirm delivery. That’s what makes a stranger willing to go. Cancel before anyone claims it and you get all of it back.
       </div>
       {err && <div style={{ fontSize: 11.5, color: 'var(--color-accent)' }}>{err}</div>}
     </div>

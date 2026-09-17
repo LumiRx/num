@@ -3,7 +3,7 @@
  *
  * ── WHY (6 Sep 2026) ──────────────────────────────────────────────────────
  *
- * A customer sent Dre a screenshot of Num answering with code. Two separate
+ * A customer sent Dre a screenshot of NUM answering with code. Two separate
  * leaks put it there, and neither was anybody's mistake — they were the
  * default behaviour of code written for developers:
  *

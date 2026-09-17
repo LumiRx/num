@@ -127,9 +127,9 @@ export default function PartySheet() {
 
   /**
    * The bridge from "we've decided" to "it's booked": close the sheet and put
-   * the request straight into the Num thread, where the booking flow already
+   * the request straight into the NUM thread, where the booking flow already
    * lives (provider tray, confirmation, mirror back onto this plan). No second
-   * booking path to maintain — the group decides here, Num books where Num
+   * booking path to maintain — the group decides here, NUM books where NUM
    * books.
    */
   const bookWithNum = (itemTitle: string, day?: string | null, place?: string | null) => {
@@ -316,7 +316,7 @@ export default function PartySheet() {
 
             {/* Group intelligence consent. Lives ON the plan because that is
                 what's being consented to — sharing your diet with THIS group,
-                not with Num (Num already knows). Default off; the copy says
+                not with NUM (NUM already knows). Default off; the copy says
                 exactly what travels and to whom. */}
             {fit && (
               <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 12, cursor: 'pointer', fontSize: 11, color: 'var(--color-neutral-600)', lineHeight: 1.5 }}>
@@ -442,7 +442,7 @@ export default function PartySheet() {
               <div {...pressable(addIdea)} style={{ ...primary, padding: '12px 18px', opacity: busy || !idea.trim() ? 0.6 : 1 }}>ADD</div>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 }}>
-              Everyone in the plan sees this within the minute — their Num tells them what changed, and anything booked lands on all your calendars.
+              Everyone in the plan sees this within the minute — their NUM tells them what changed, and anything booked lands on all your calendars.
             </div>
 
             {/* The group's own thread: comments from people, one-liners from

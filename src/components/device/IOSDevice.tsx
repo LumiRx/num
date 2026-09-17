@@ -69,7 +69,7 @@ export default function IOSDevice({
             That was reported as "the page won't scroll" three times and
             half-fixed twice — pointer-events:none on the wrapper stopped the
             wheel, but a touch drag on a phone still had somewhere to go.
-            The way into the real app is the Open Num button, so nothing here
+            The way into the real app is the Open NUM button, so nothing here
             needs to scroll. */}
         <div className="no-scrollbar" style={{ flex: 1, overflow: 'hidden' }}>{children}</div>
       </div>

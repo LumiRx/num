@@ -1,17 +1,17 @@
-// Share Num with somebody, with your referral carried in the link.
+// Share NUM with somebody, with your referral carried in the link.
 //
 // This used to be a share-the-plan sheet full of demo scaffolding — a
 // hardcoded "Viv's SE Asia loop" and a concierge.travel URL that pointed
 // nowhere. Sharing a PLAN already has a home: the invite flow, which mints a
 // real token and can attach a specific plan. What was missing is the ordinary
-// thing — handing Num to a friend.
+// thing — handing NUM to a friend.
 //
 // Two details decide whether this works:
 //
 //   · The link comes from lib/links, which uses the CANONICAL host — never
 //     window.location.origin. Opened from a preview deploy, an origin-derived
 //     link reads "num-app.thatislumi.workers.dev", which looks like nothing to
-//     do with Num and lands the recipient where their account does not exist.
+//     do with NUM and lands the recipient where their account does not exist.
 //   · The referral code rides along, so whoever taps it is attributed to the
 //     person who shared it. A share with no attribution is one nobody can be
 //     thanked for.
@@ -117,7 +117,7 @@ export default function ShareSheet() {
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE NUM</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>Give someone a concierge</div>
         <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
-          Your link is in here. When they join you’re connected — whatever either of you books, the other’s Num can see it.
+          Your link is in here. When they join you’re connected — whatever either of you books, the other’s NUM can see it.
         </div>
 
         {!me ? (
@@ -159,7 +159,7 @@ export default function ShareSheet() {
             {/* Post it, rather than send it.
                 An ordinary link, not an API call: it opens X's own compose box
                 with the text ready and the member sends it from their own
-                account. Nothing is posted by Num and nothing is posted without
+                account. Nothing is posted by NUM and nothing is posted without
                 them reading it first.
                 An <a> rather than window.open because an installed PWA blocks
                 programmatic popups, and a share button that silently does
@@ -187,7 +187,7 @@ export default function ShareSheet() {
             </div>
 
             <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 14, lineHeight: 1.55 }}>
-              Anyone who joins on your link is credited to you. If they already have Num it just connects the two of you — it won’t make them sign in again.
+              Anyone who joins on your link is credited to you. If they already have NUM it just connects the two of you — it won’t make them sign in again.
             </div>
           </>
         )}

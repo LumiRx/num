@@ -9,13 +9,13 @@
 //               at all, so there the row becomes Send & Share — the system
 //               share sheet, which also floats over the app.
 //   photos    → the photo picker, same idea: a sheet, hand-picked, in-app.
-//   calendar  → Num's own calendar. On = every dated group plan mirrors onto
+//   calendar  → NUM's own calendar. On = every dated group plan mirrors onto
 //               the shelf automatically (and back-fills the ones already set).
 //   crypto    → a wallet address held on-device; balances read from a public
 //               RPC. Nothing signs, nothing moves — read-only by construction.
 //   email     → your personal forwarding address (num+<id>@itsnum.com).
-//               Forward a confirmation; it lands in your Num inbox.
-//   texts     → Num's real phone number. Texts to it reach your account —
+//               Forward a confirmation; it lands in your NUM inbox.
+//   texts     → NUM's real phone number. Texts to it reach your account —
 //               the server matches your verified number.
 //
 // Success flips the switch; a dismissed picker or a failed grant leaves it
@@ -40,7 +40,7 @@ export async function sendAndShare(): Promise<void> {
   const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
   try {
     if (nav.share) {
-      await nav.share({ title: 'Num', text: 'Get Num — plans, bookings, one concierge.', url });
+      await nav.share({ title: 'NUM', text: 'Get NUM — plans, bookings, one concierge.', url });
       return;
     }
   } catch {
@@ -124,13 +124,13 @@ async function connectEmail(): Promise<void> {
   try { await navigator.clipboard.writeText(addr); } catch { /* shown on the row regardless */ }
 }
 
-/** Num's number, fetched from the server so app and worker never disagree. */
+/** NUM's number, fetched from the server so app and worker never disagree. */
 async function connectTexts(): Promise<void> {
   try {
     const r = await fetch(apiUrl('/api/version'));
     const d = (await r.json()) as { sms_number?: string | null };
     if (d.sms_number) {
-      setConn('texts', true, `Text ${d.sms_number} — it reaches your Num`);
+      setConn('texts', true, `Text ${d.sms_number} — it reaches your NUM`);
       try { await navigator.clipboard.writeText(d.sms_number); } catch { /* row shows it */ }
     } else {
       setConn('texts', false, 'Texting line isn’t switched on yet');

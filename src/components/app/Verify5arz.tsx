@@ -177,8 +177,8 @@ export default function Verify5arz() {
       ) : (
         <>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', lineHeight: 1.5, margin: '6px 0 9px' }}>
-            Already verified on 5arz? Link it — sign in with the same Google account and Num carries the
-            “verified human” badge. One 5arz identity links to one Num account, ever.
+            Already verified on 5arz? Link it — sign in with the same Google account and NUM carries the
+            “verified human” badge. One 5arz identity links to one NUM account, ever.
           </div>
           <div id="g5arz-btn" style={{ opacity: busy ? 0.5 : 1, display: 'flex', justifyContent: 'center', maxWidth: '100%', overflow: 'hidden' }} />
           {outcome && 'message' in outcome && (

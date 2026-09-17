@@ -36,7 +36,7 @@ const LABEL: Record<string, (n: number) => string> = {
   friends: (n) => `${n} connection${n === 1 ? '' : 's'}`,
   plans_owned: (n) => `${n} plan${n === 1 ? '' : 's'} you made`,
   plans_joined: (n) => `${n} plan${n === 1 ? '' : 's'} you joined`,
-  messages: (n) => `${n} message${n === 1 ? '' : 's'} with Num`,
+  messages: (n) => `${n} message${n === 1 ? '' : 's'} with NUM`,
   live_errands: (n) => `${n} live errand${n === 1 ? '' : 's'}`,
   open_tabs: (n) => `${n} open tab${n === 1 ? '' : 's'}`,
 };
@@ -53,7 +53,7 @@ export default function DangerZone() {
     setBusy(true);
     const out = await deleteAccount(false);
     setBusy(false);
-    if (!out) { setNote('Couldn’t reach Num just now.'); return; }
+    if (!out) { setNote('Couldn’t reach NUM just now.'); return; }
     setLook(out);
     setStage('look');
   };
@@ -91,7 +91,7 @@ export default function DangerZone() {
       setNote(out.blockers?.length ? out.blockers.join(' ') : (out.note ?? 'That didn’t go through.'));
       if (out.blockers?.length) setLook({ ...(look ?? {}), ...out, can_delete: false });
     }
-    if (!out) setNote('Couldn’t reach Num just now. Nothing was deleted.');
+    if (!out) setNote('Couldn’t reach NUM just now. Nothing was deleted.');
   };
 
   if (stage === 'shut') {
@@ -122,7 +122,7 @@ export default function DangerZone() {
             {busy ? 'Checking…' : 'Delete my account'}
           </div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.45 }}>
-            Permanently erases your account, your thread and everything Num remembers.
+            Permanently erases your account, your thread and everything NUM remembers.
           </div>
         </div>
         {note && <div style={{ fontSize: 11, color: '#a3271c', padding: '8px 2px 0' }}>{note}</div>}

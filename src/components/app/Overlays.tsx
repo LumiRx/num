@@ -29,7 +29,7 @@ export function PermissionDialog() {
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.4)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 34px' }}>
       <div ref={ref} role="dialog" aria-modal="true" className="glass-strong" style={{ borderRadius: 'var(--r-lg)', overflow: 'hidden', width: '100%' }}>
         <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>“Num” would like to access your photos</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>“NUM” would like to access your photos</div>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-700)', marginTop: 6, lineHeight: 1.5 }}>
             To pair photos with your reservations by time and place, and file them to your memories. Nothing is shared without your say-so.
           </div>

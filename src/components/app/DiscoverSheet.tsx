@@ -119,7 +119,9 @@ function Search({ onMsg }: { onMsg: (m: string | null) => void }) {
         {busy && !res && <div style={{ fontSize: 12, color: 'var(--ink-40)' }}>Looking…</div>}
         {res && res.items.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--ink-40)', lineHeight: 1.6, padding: '6px 2px' }}>
-            {res.error ? 'Couldn’t search just now.' : (res.note ?? 'Nothing for that here. Ask NUM in the thread and it will look wider.')}
+            {res.error === 'no_place'
+              ? <span>Tell NUM where you are first. <span {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer' }}>Where am I?</span></span>
+              : res.error ? 'Couldn’t search just now.' : (res.note ?? 'Nothing for that here. Ask NUM in the thread and it will look wider.')}
           </div>
         )}
         {res?.items.map((i) => <Row key={i.id} i={i} onMsg={onMsg} />)}
@@ -184,7 +186,7 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
   const deal = async (m: Mood | null) => {
     setBusy(true); onMsg(null);
     const r = await discover({ mode: 'surprise', mood: m });
-    setDeck(r.items); setNote(r.error ? 'Couldn’t reach the shelf just now.' : r.note); setBusy(false);
+    setDeck(r.items); setNote(r.error === 'no_place' ? 'no_place' : r.error ? 'Couldn’t reach the shelf just now.' : r.note); setBusy(false);
   };
   useEffect(() => { void deal(null); /* first open deals a hand */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -216,7 +218,13 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
       </div>
 
       <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
-        {!busy && deck.length === 0 && (
+        {!busy && deck.length === 0 && note === 'no_place' && (
+          <div className="glass" style={{ borderRadius: 14, padding: 12, display: 'grid', gap: 8 }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>Tell NUM where you are first. One tap, and it deals from there.</div>
+            <div {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ ...small, background: 'var(--grad-accent)', color: '#fff', border: 0 }}>Where am I?</div>
+          </div>
+        )}
+        {!busy && deck.length === 0 && note !== 'no_place' && (
           <div style={{ fontSize: 12, color: 'var(--ink-40)', lineHeight: 1.6, padding: '6px 2px' }}>{note ?? 'Nothing new here yet.'}</div>
         )}
         {deck.map((i) => <SuggestCard key={i.id} i={i} planId={planId} onDone={(m) => { drop(i.id); onMsg(m); }} />)}

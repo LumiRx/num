@@ -113,7 +113,7 @@ export default function WalletSheet() {
         {!!bought && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-accent-700)', fontWeight: 600 }}>{bought}</div>}
         {/* Said plainly, where the money decision happens. */}
         <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
-          Stars you buy spend inside Num — errands, tabs, bookings. Stars you <strong>earn</strong> can be cashed out to 5arz.
+          Stars you buy spend inside NUM — errands, tabs, bookings. Stars you <strong>earn</strong> can be cashed out to 5arz.
         </div>
       </div>
       )}
@@ -129,7 +129,7 @@ export default function WalletSheet() {
                 {out.open
                   ? 'Sends to your 5arz account.'
                   : 'Counted and safe — cash-out opens shortly.'}
-                {out.locked_purchased > 0 && ` ★${out.locked_purchased.toLocaleString()} bought, spends in Num.`}
+                {out.locked_purchased > 0 && ` ★${out.locked_purchased.toLocaleString()} bought, spends in NUM.`}
               </div>
             </div>
             <div

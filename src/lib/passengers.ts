@@ -21,7 +21,7 @@ export const GENDERS = ['m', 'f'] as const;
 export type PassengerTitle = (typeof TITLES)[number];
 export type PassengerGender = (typeof GENDERS)[number];
 
-/** Exactly the fields Duffel's create-order requires, plus what Num needs. */
+/** Exactly the fields Duffel's create-order requires, plus what NUM needs. */
 export interface Passenger {
   id: string;
   is_self: boolean;
@@ -71,7 +71,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new Error(
       res.ok
-        ? "Couldn't reach Num — the server answered with something unexpected."
+        ? "Couldn't reach NUM — the server answered with something unexpected."
         : `passengers ${res.status}`,
     );
   }

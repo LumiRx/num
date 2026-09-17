@@ -4,14 +4,14 @@
 // Dre, 13 Sep 2026: "we had someone looking at flights and the screen got
 // stuck scrolling."
 //
-// It was not stuck. It was being dragged. Both threads in Num — the concierge
+// It was not stuck. It was being dragged. Both threads in NUM — the concierge
 // thread and direct messages — did this:
 //
 //     useEffect(() => { el.scrollTop = el.scrollHeight; });
 //
 // No dependency array, so it ran after EVERY render. And both components
 // subscribe to the whole store, so every render meant every state change
-// anywhere in the app. Num polls constantly — the booking desk every 15s,
+// anywhere in the app. NUM polls constantly — the booking desk every 15s,
 // errands every 15s, the party plan every 8s, suggestions every 90s, DMs,
 // autoupdate — so somebody reading a list of flight fares was thrown back to
 // the bottom every few seconds by a timer that had nothing to do with them.
@@ -26,7 +26,7 @@
 // until they ask.
 //
 // ── WHY A SHARED HOOK AND NOT TWO FIXES ─────────────────────────────────
-// The DM version carried the comment "Same rule as the Num thread" — the two
+// The DM version carried the comment "Same rule as the NUM thread" — the two
 // were written to match and had already drifted into the same bug twice. One
 // implementation is the only way that stays true.
 import { useEffect, useRef, useState } from 'react';

@@ -34,7 +34,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     // origin that does not exist. Safari rejects this with "Load failed",
     // which names nothing at all, so we say the address out loud instead.
     console.warn('[social] no response', { url, origin: window.location.origin, err });
-    throw new Error(`Couldn't reach Num — nothing answered at ${url}. Check your connection and try again.`);
+    throw new Error(`Couldn't reach NUM — nothing answered at ${url}. Check your connection and try again.`);
   }
   // NOT `.catch(() => ({}))`.
   //
@@ -69,19 +69,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     });
     throw new Error(
       res.ok
-        ? "Couldn't reach Num — the server answered with something unexpected. That is the app asking the wrong address, not anything you did; the console has the address it used."
+        ? "Couldn't reach NUM — the server answered with something unexpected. That is the app asking the wrong address, not anything you did; the console has the address it used."
         : `social ${res.status}`,
     );
   }
   if (!res.ok) {
     // The server writes these sentences for people — "That number is already
-    // on Num, and I can't text a code to it right now. Message us and we'll
+    // on NUM, and I can't text a code to it right now. Message us and we'll
     // get you back in." — so they pass through untouched. Rewording them here
     // would leave two versions of one message to keep in step, and the one the
     // user sees would be the one nobody edits.
     const said = (body as { error?: string }).error;
     console.warn('[social] error', { url, status: res.status, body });
-    throw new Error(said || `Num couldn't finish that one (${res.status}). Try again in a moment.`);
+    throw new Error(said || `NUM couldn't finish that one (${res.status}). Try again in a moment.`);
   }
   return body as T;
 }
@@ -130,7 +130,7 @@ function nudgeForContact(me: { phone?: string | null; email?: string | null } | 
     // Private mode: ask this once rather than not at all. Worst case they see
     // it again next launch, which is a smaller failure than never asking.
   }
-  // Deferred so it lands after the thread has drawn and reads as Num speaking,
+  // Deferred so it lands after the thread has drawn and reads as NUM speaking,
   // not as a modal firing at boot.
   setTimeout(() => {
     store.set((s) => ({
@@ -221,7 +221,7 @@ export function bootSocial(): void {
   //
   // A concierge is most useful at the moment you see the thing — a friend
   // sends a restaurant link, you spot a hotel, someone forwards an event. The
-  // manifest registers Num in the OS share sheet, so that moment costs one tap
+  // manifest registers NUM in the OS share sheet, so that moment costs one tap
   // instead of copy → switch app → paste. The shared text becomes a question.
   const shared = [q.get('share_title'), q.get('share_text'), q.get('share_url')]
     .filter(Boolean).join(' ').trim();
@@ -244,7 +244,7 @@ export function bootSocial(): void {
   // On iOS the home-screen app and Safari keep SEPARATE storage, so each has
   // its own member id. A friend link tapped in Messages opens Safari — and
   // accepting it there bound the friendship to a Safari identity the person's
-  // real app can never see. That is why friends "went to my Safari Num".
+  // real app can never see. That is why friends "went to my Safari NUM".
   //
   // So when a connect or invite arrives OUTSIDE the installed app, we do not
   // consume it. We park it server-side and show a short code to carry across.
@@ -302,7 +302,7 @@ export function bootSocial(): void {
   }
 
   // No account on this device. EVERY first open asks for a name and a number —
-  // not just invited ones. Without them Num has no way to connect this person
+  // not just invited ones. Without them NUM has no way to connect this person
   // to anybody, and a demo that ends with an anonymous device is a demo we
   // cannot follow up on.
   // The cold-start welcome already ends with "Let's start with your name", so
@@ -319,7 +319,7 @@ export function bootSocial(): void {
             },
           ]
         : s.msgs,
-    chips: [{ id: 'signup', label: 'Tell Num who I am' }],
+    chips: [{ id: 'signup', label: 'Tell NUM who I am' }],
   }));
   // Put the form in front of them rather than hoping they tap the chip. It
   // lands after the first paint so the app is visibly there behind it.
@@ -497,7 +497,7 @@ export async function signUp(name: string, phone?: string, email?: string): Prom
     method: 'POST',
     body: JSON.stringify({ id: deviceId(), name, phone, email, dest: store.get().place, utm, ref: firstTouchRef }),
   });
-  // OUTCOME 2 — this number is already on Num, so this is a sign-IN.
+  // OUTCOME 2 — this number is already on NUM, so this is a sign-IN.
   //
   // The server has texted a code to the number ON FILE and told us nothing
   // else: no member, no id. That is not a failure and it must not read like
@@ -515,8 +515,8 @@ export async function signUp(name: string, phone?: string, email?: string): Prom
       out.verification?.channel === 'review'
         ? 'That number already has an account here. Enter the sign-in code and I will bring it back.'
         : byEmail
-          ? 'That address is already on Num — which means you have an account, not that you are locked out.\n\nI have just emailed it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.'
-          : 'That number is already on Num — which means you have an account, not that you are locked out.\n\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.',
+          ? 'That address is already on NUM — which means you have an account, not that you are locked out.\n\nI have just emailed it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.'
+          : 'That number is already on NUM — which means you have an account, not that you are locked out.\n\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.',
     );
     // Not `sign_up`: nobody signed up, somebody came back. Counting a
     // recovery as a fresh signup would inflate the exact number the ad
@@ -539,7 +539,7 @@ export async function signUp(name: string, phone?: string, email?: string): Prom
   // it, and the error names a minified variable. If the server ever returns a
   // shape we do not expect, say so in words.
   if (!out?.me?.id) {
-    throw new Error("Couldn't finish signing you up — Num didn't send an account back. Try again in a moment.");
+    throw new Error("Couldn't finish signing you up — NUM didn't send an account back. Try again in a moment.");
   }
   // Pinned to a local, because TypeScript widens a narrowed property back to
   // `Member | undefined` inside the callbacks below — and `out.me!` would be a
@@ -682,9 +682,9 @@ export async function verifyCode(code: string, phone?: string, email?: string): 
     ref?: string;
   }>('/verify', {
     method: 'POST',
-    // `anon` rides along so the server can fold everything Num noticed about
+    // `anon` rides along so the server can fold everything NUM noticed about
     // this device into the account it just became. Without it, verifying a
-    // phone would make Num forget you — see mergeAnon in soulprofile.mjs.
+    // phone would make NUM forget you — see mergeAnon in soulprofile.mjs.
     body: JSON.stringify(
       me ? { id: me.id, code, anon: anonId() }
         : recovering ? { phone: recovering, code, anon: anonId() }
@@ -726,7 +726,7 @@ export async function verifyCode(code: string, phone?: string, email?: string): 
  *
  * A separate function from `signUp` because it is a separate situation: this
  * person already IS somebody here. They have plans, friends and Stars, and the
- * only thing missing is a way for Num to reach them — which is true of 107 of
+ * only thing missing is a way for NUM to reach them — which is true of 107 of
  * the 147 members who existed on 12 Sep 2026, all of whom signed up when the
  * field was optional.
  *
@@ -829,7 +829,7 @@ export const REPORT_REASONS: { id: ReportReason; label: string }[] = [
  * Report somebody, and block them at the same time if asked.
  *
  * Apple guideline 1.2 requires an app carrying user-generated content to offer
- * a way to report it, not only a way to block its author. Num carries DMs,
+ * a way to report it, not only a way to block its author. NUM carries DMs,
  * plan comments, and profile names and bios that friends can see, so it is a
  * UGC app whether or not it feels like one.
  *
@@ -985,7 +985,7 @@ export async function redeemPairCode(code: string): Promise<string | null> {
     store.set({ pairCode: null });
     return null;
   } catch {
-    return 'Couldn’t reach Num — try again in a moment.';
+    return 'Couldn’t reach NUM — try again in a moment.';
   }
 }
 
@@ -1001,7 +1001,7 @@ export async function acceptInvite(token: string): Promise<void> {
     await refreshFriends();
     if (out.plan) {
       await openPlan(out.plan.id);
-      narrate(`You’re in — ${out.plan.title}. ${out.friend?.name ?? 'Your friend'}’s Num and mine are talking now: whatever either side books, the whole group sees it here.`);
+      narrate(`You’re in — ${out.plan.title}. ${out.friend?.name ?? 'Your friend'}’s NUM and mine are talking now: whatever either side books, the whole group sees it here.`);
     } else if (out.friend) {
       narrate(`Connected with ${out.friend.name}. From here our two Nums can hand each other reservations, addresses and photos without either of you retyping a thing.`);
     }
@@ -1027,7 +1027,7 @@ export async function refreshFriends(): Promise<void> {
 //
 // Agent-to-agent invites arrive without the member having typed anything, so
 // the member decides who may send them: people they're connected to (the
-// default), anyone on Num, or nobody. See worker/permissions.mjs.
+// default), anyone on NUM, or nobody. See worker/permissions.mjs.
 
 export type InvitePolicy = 'friends' | 'public' | 'off';
 
@@ -1146,7 +1146,7 @@ export async function mintInvite(name: string, phone?: string, planId?: string |
   const me = store.get().me;
   if (!me) {
     store.set({ inviteOpen: { name, phone, planId } });
-    narrate('I need your name and number first — an invite has to come from someone. Tap “Set up my Num account” and I’ll send it straight after.');
+    narrate('I need your name and number first — an invite has to come from someone. Tap “Set up my NUM account” and I’ll send it straight after.');
     return;
   }
   const minted = await api<InviteDraft['minted']>('/invite', {
@@ -1186,10 +1186,10 @@ export async function textInviteFromNum(): Promise<{ ok: boolean; note: string }
       method: 'POST',
       body: JSON.stringify({ token: minted.token, from: me.id }),
     });
-    if (out.ok) return { ok: true, note: out.already ? 'Already sent — once is enough.' : `Sent by Num to ${out.to ?? 'them'}.` };
-    return { ok: false, note: out.error ?? 'Num could not send it — use TEXT IT instead.' };
+    if (out.ok) return { ok: true, note: out.already ? 'Already sent — once is enough.' : `Sent by NUM to ${out.to ?? 'them'}.` };
+    return { ok: false, note: out.error ?? 'NUM could not send it — use TEXT IT instead.' };
   } catch (err) {
-    return { ok: false, note: (err as Error).message || 'Num could not send it — use TEXT IT instead.' };
+    return { ok: false, note: (err as Error).message || 'NUM could not send it — use TEXT IT instead.' };
   }
 }
 
@@ -1257,7 +1257,7 @@ export async function setAttendee(
     try {
       body = (await res.json()) as typeof body;
     } catch {
-      return { ok: false, message: 'That didn’t go through — Num didn’t answer properly. Try again?' };
+      return { ok: false, message: 'That didn’t go through — NUM didn’t answer properly. Try again?' };
     }
     if (!res.ok) return { ok: false, message: body.error ?? 'That didn’t go through.' };
     // Patch the item in place rather than re-syncing the whole plan: the
@@ -1351,7 +1351,7 @@ export async function votePlan(vote: 'in' | 'out'): Promise<void> {
 }
 
 /**
- * Which of these phones already belong to Num members. Boolean per phone,
+ * Which of these phones already belong to NUM members. Boolean per phone,
  * nothing else — the server refuses to be a reverse phone book (see
  * lookupPhones in worker/social.mjs for the guardrails).
  */
@@ -1422,7 +1422,7 @@ export async function confirmPlanItem(id: string, patch: Partial<PlanItem> = {})
 
 /**
  * The agent-to-agent channel. Everything the other members' Nums did since we
- * last looked comes back as one-line summaries, and this Num says them in the
+ * last looked comes back as one-line summaries, and this NUM says them in the
  * thread — which is what "the AIs talk to each other" actually looks like from
  * inside the app.
  */
@@ -1543,8 +1543,8 @@ export function mirrorPlanDate(plan: PartyPlan): void {
 }
 
 /**
- * The other direction: a booking this member's Num just made is pushed to the
- * shared plan, so everyone else's Num can announce it on their side.
+ * The other direction: a booking this member's NUM just made is pushed to the
+ * shared plan, so everyone else's NUM can announce it on their side.
  */
 export async function pushBookingToPlan(b: Booking): Promise<void> {
   const { me, planId } = store.get();
@@ -1694,7 +1694,7 @@ export async function myIdentities(): Promise<Array<{
  * with, so the dashboard appears in their own app instead of behind a second
  * login.
  *
- * Sends nothing but "it is me". The proof is the number Num texted THEM,
+ * Sends nothing but "it is me". The proof is the number NUM texted THEM,
  * matched server-side against the number on the ownership record — a venue's
  * published phone is printed on its own door and proves nothing, so the client
  * is deliberately given no say in which number is compared. See the note on
@@ -1711,7 +1711,7 @@ export async function linkMyBusiness(): Promise<{ ok: boolean; error?: string }>
     }).then((r) => r.json()) as { ok?: boolean; error?: string };
     return { ok: !!out.ok, error: out.error };
   } catch {
-    return { ok: false, error: 'Couldn\u2019t reach Num just now — try again in a moment.' };
+    return { ok: false, error: 'Couldn\u2019t reach NUM just now — try again in a moment.' };
   }
 }
 
@@ -1733,7 +1733,7 @@ export async function linkMyHost(consoleKey: string): Promise<{ ok: boolean; err
     }).then((r) => r.json()) as { ok?: boolean; error?: string };
     return { ok: !!out.ok, error: out.error };
   } catch {
-    return { ok: false, error: 'Couldn\u2019t reach Num just now — try again in a moment.' };
+    return { ok: false, error: 'Couldn\u2019t reach NUM just now — try again in a moment.' };
   }
 }
 

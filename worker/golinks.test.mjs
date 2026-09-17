@@ -118,7 +118,7 @@ test('the desktop landing page can scroll and has a way in', () => {
   const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
   assert.ok(!/overflow:\s*'hidden'/.test(stage),
     "the landing page hides its overflow again — content taller than the viewport becomes unreachable");
-  assert.match(stage, /Open Num/,
+  assert.match(stage, /Open NUM/,
     'the landing page has no primary call to action');
   assert.match(stage, /id="on-your-phone"/,
     'the desktop → phone handoff section is gone; a laptop visitor cannot install from here and needs telling how');
@@ -141,8 +141,8 @@ test('a phone visitor is asked to install, a laptop visitor is not', () => {
   // backwards asks people for something they cannot give.
   const stage = readFileSync(join(HERE, '..', 'src', 'components', 'canvas', 'LaunchStage.tsx'), 'utf8');
   assert.match(stage, /onPhone\s*\?/, 'the primary call to action no longer varies by device');
-  assert.match(stage, /Add Num to my home screen/, 'phones are not offered the install as the primary action');
-  assert.match(stage, /Open Num/, 'there is no way into the app');
+  assert.match(stage, /Add NUM to my home screen/, 'phones are not offered the install as the primary action');
+  assert.match(stage, /Open NUM/, 'there is no way into the app');
 });
 
 test('the headline scales instead of being pinned to one size', () => {

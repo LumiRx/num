@@ -153,7 +153,7 @@ export default function BusinessSheet() {
               </div>
             </div>
             <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-              These are the details Num quotes to travellers. Changing the phone here does not change what verified you —
+              These are the details NUM quotes to travellers. Changing the phone here does not change what verified you —
               that stays tied to the number we already reached you on.
             </div>
           </div>
@@ -177,7 +177,7 @@ export default function BusinessSheet() {
           <div style={{ marginTop: 18 }}>
             <div style={{ ...label, color: 'var(--ink-60)' }}>PEOPLE ASKED FOR YOU</div>
             <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.5 }}>
-              Requests Num could not complete — demand, not bookings.
+              Requests NUM could not complete — demand, not bookings.
             </div>
             {data.demand.map((d) => (
               <div key={d.ts} style={{ fontSize: 11.5, color: 'var(--ink)', padding: '7px 0', borderBottom: '1px solid var(--ink-08)', lineHeight: 1.5 }}>

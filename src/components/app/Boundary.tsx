@@ -3,7 +3,7 @@
  *
  * ── WHY THIS EXISTS ──────────────────────────────────────────────────────
  *
- * There was no error boundary anywhere in Num. React's behaviour without one
+ * There was no error boundary anywhere in NUM. React's behaviour without one
  * is not "the broken bit disappears" — it is `unmountComponentAtNode` on the
  * WHOLE tree. One thrown render, anywhere, and `#root` is empty. The body
  * keeps whatever background it had, or none, and the person is looking at a
@@ -26,7 +26,7 @@
  *
  * ── WHY "RELOAD" IS NOT ENOUGH ───────────────────────────────────────────
  *
- * Num installs a service worker, so a plain reload can be served the exact
+ * NUM installs a service worker, so a plain reload can be served the exact
  * bundle that just crashed, forever. The recovery button unregisters the
  * worker and clears its caches first. That is the difference between a reload
  * that helps and one that reproduces the bug at speed.
@@ -210,7 +210,7 @@ export default class Boundary extends Component<Props, State> {
   };
 
   private copy = () => {
-    const text = `Num crashed\n${String(this.state.err?.message ?? this.state.err)}\n${navigator.userAgent}`;
+    const text = `NUM crashed\n${String(this.state.err?.message ?? this.state.err)}\n${navigator.userAgent}`;
     const done = () => this.setState({ copied: true });
     try {
       if (navigator.clipboard?.writeText) {
@@ -241,7 +241,7 @@ export default class Boundary extends Component<Props, State> {
             NUM
           </div>
           <h1 style={{ fontSize: 22, lineHeight: 1.25, margin: '10px 0 8px', fontWeight: 700 }}>
-            Num stopped short.
+            NUM stopped short.
           </h1>
           <p style={{ margin: '0 0 20px', fontSize: 15, color: '#5b5754' }}>
             Something in the app broke while drawing this screen. Nothing you
@@ -256,7 +256,7 @@ export default class Boundary extends Component<Props, State> {
               padding: '15px 20px', borderRadius: 999, fontFamily: 'inherit',
             }}
           >
-            Reload Num
+            Reload NUM
           </button>
           {this.state.triedBefore && (
             <button
@@ -275,7 +275,7 @@ export default class Boundary extends Component<Props, State> {
           {this.state.triedBefore && (
             <p style={{ margin: '8px 0 0', fontSize: 13, color: '#8a827c' }}>
               Clears this trip&rsquo;s saved chat on this device. You stay signed in, and
-              your plans and bookings are on Num&rsquo;s side, not this phone.
+              your plans and bookings are on NUM&rsquo;s side, not this phone.
             </p>
           )}
           <button
@@ -291,7 +291,7 @@ export default class Boundary extends Component<Props, State> {
             {this.state.copied ? 'Copied — send it to info@itsnum.com' : 'Copy what went wrong'}
           </button>
           <p style={{ margin: '18px 0 0', fontSize: 13, color: '#8a827c' }}>
-            Still stuck? Num also answers on{' '}
+            Still stuck? NUM also answers on{' '}
             <a href="https://line.me/R/ti/p/@799pyrus" style={{ color: '#ec3013' }}>LINE</a>.
           </p>
         </div>

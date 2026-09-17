@@ -29,7 +29,7 @@
 // file so a future table change cannot bring the copy back. A paid tier that
 // advertises travel access is a "seller of travel discount program" under
 // California B&P §17550.27(a)(1), which carries a $100,000 bond it is not
-// possible for Num to post lawfully. See HQ COMPLIANCE_GUARDRAILS.md.
+// possible for NUM to post lawfully. See HQ COMPLIANCE_GUARDRAILS.md.
 import { useEffect, useState } from 'react';
 import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
@@ -156,7 +156,7 @@ export default function MembershipCard() {
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <div style={kicker}>YOUR PLAN</div>
         <div style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: current === 'free' ? 'var(--ink-60)' : 'var(--color-accent)' }}>
-          {currentTier?.name ?? 'Num'}
+          {currentTier?.name ?? 'NUM'}
         </div>
       </div>
 

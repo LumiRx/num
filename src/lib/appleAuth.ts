@@ -41,7 +41,7 @@ export type AppleSignInResult =
  * Run the whole flow: native sheet → identity token → our Worker.
  *
  * `me` is the device's current anonymous member, passed so a guest who has
- * already been using Num keeps their account instead of being handed a new
+ * already been using NUM keeps their account instead of being handed a new
  * empty one the moment they sign in.
  */
 export async function signInWithApple(currentMemberId?: string | null): Promise<AppleSignInResult> {

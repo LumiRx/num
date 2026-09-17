@@ -1,6 +1,6 @@
 // Invite sheet — sign up with a number, pick who you meant, send the invite
-// from your own phone, and show the invitee how to keep Num on their home
-// screen. Everything that turns one Num user into two happens here.
+// from your own phone, and show the invitee how to keep NUM on their home
+// screen. Everything that turns one NUM user into two happens here.
 import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
@@ -42,7 +42,7 @@ const helpText: React.CSSProperties = { fontSize: 10.5, color: 'var(--color-neut
  *   · A PWA that lives in a browser tab is a PWA nobody opens twice. Installed,
  *     it is on the home screen next to everything else they use.
  *   · On iPhone, push notifications ONLY work for an installed app. Every
- *     "your table moved" Num will ever send depends on this one tap.
+ *     "your table moved" NUM will ever send depends on this one tap.
  *
  * The instructions differ per platform and getting them wrong is worse than
  * omitting them — an iPhone user told to look for "Install app" will hunt for
@@ -54,7 +54,7 @@ function AddToHomeScreen() {
   // `(display-mode: standalone)` is a PWA question, and the App Store build is
   // not a PWA — it is a WKWebView serving a bundle from capacitor://localhost,
   // where that query is false and `navigator.standalone` is undefined. So this
-  // card, whose entire subject is "here is how to install Num", rendered
+  // card, whose entire subject is "here is how to install NUM", rendered
   // INSIDE the installed app. src/lib/native.ts was written on 15 Aug to fix
   // exactly this and canOfferInstall() is the answer it exports; this call
   // site was simply never moved over.
@@ -98,7 +98,7 @@ function AddToHomeScreen() {
           : 'Open the ⋮ menu at the top right of Chrome and choose “Add to Home screen” or “Install app”.'}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
-        It opens full screen, remembers you, and it is the only way Num can reach you when a table moves or a friend replies.
+        It opens full screen, remembers you, and it is the only way NUM can reach you when a table moves or a friend replies.
       </div>
     </div>
   );
@@ -145,7 +145,7 @@ export default function InviteSheet() {
   const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<'shared' | 'copied' | null>(null);
-  // Num texting it for them: idle → sending → the server's one-line verdict.
+  // NUM texting it for them: idle → sending → the server's one-line verdict.
   const [numText, setNumText] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; note?: string }>({ state: 'idle' });
   /**
    * Seconds until "Send it again" is offered.
@@ -159,7 +159,7 @@ export default function InviteSheet() {
   const [resendNote, setResendNote] = useState<string | null>(null);
 
 
-  // Each time the sheet opens, seed the fields from whatever Num already
+  // Each time the sheet opens, seed the fields from whatever NUM already
   // resolved — a name said in chat, a phone from a picked contact.
   useEffect(() => {
     if (!draft) return;
@@ -201,11 +201,11 @@ export default function InviteSheet() {
   //
   // It was optional, for a measured reason that still stands: 48 of our first
   // 77 sign-ups typed a name and stopped dead at this field — 62% of everyone
-  // who opened Num. Asking a stranger for their mobile before the app has done
+  // who opened NUM. Asking a stranger for their mobile before the app has done
   // anything for them trades most of the funnel for it.
   //
   // What that policy bought, by 12 Sep 2026: 107 of 147 members with no way to
-  // reach them at all. Num cannot text them that a table moved, cannot email
+  // reach them at all. NUM cannot text them that a table moved, cannot email
   // them a confirmation, and cannot get them back into their account on a new
   // phone. That is not a member, it is a row.
   //
@@ -215,7 +215,7 @@ export default function InviteSheet() {
   // it still costs conversion is to move WHEN we ask, never to go back to
   // accounts nobody can reach.
   //
-  // What Num will actually text, shown BEFORE the tap — including the country
+  // What NUM will actually text, shown BEFORE the tap — including the country
   // it guessed from the device. The one real campaign arrival who ever tried
   // to sign in typed an Indian mobile while in the UK, got +44 put on it, and
   // never received a code. He would have fixed it in a keystroke had he seen it.
@@ -263,7 +263,7 @@ export default function InviteSheet() {
     try {
       const out = await signUp(name.trim(), tidy ?? undefined, tidyEmail ?? undefined);
 
-      // OUTCOME 2 — the number is already on Num. Not an error, not a new
+      // OUTCOME 2 — the number is already on NUM. Not an error, not a new
       // account: a sign-in that needs the code we just texted. Stay on this
       // sheet and swap it for the code step; closing it here would drop the
       // person into the app with no account and no idea a code was sent.
@@ -294,7 +294,7 @@ export default function InviteSheet() {
       setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
       if (out.verification?.sent) { setResendIn(RESEND_COOLDOWN_SEC); setResendNote(null); }
       // Cold first run: they came to try the app, not to invite someone. Get
-      // out of the way — Num picks the conversation up in the thread. When an
+      // out of the way — NUM picks the conversation up in the thread. When an
       // invite IS in flight, stay put and carry straight on to it.
       if (!sending) store.set({ inviteOpen: null, threadOpen: true });
     } catch (err) {
@@ -551,7 +551,7 @@ export default function InviteSheet() {
                   </div>
                 )}
                 <div style={{ ...helpText, marginTop: 0 }}>
-                  Num emails you a six-digit code to finish. Nothing else goes to this address unless you
+                  NUM emails you a six-digit code to finish. Nothing else goes to this address unless you
                   ask for it.
                 </div>
               </>
@@ -561,7 +561,7 @@ export default function InviteSheet() {
                 a test pins the two copies to the same words. */}
             {!sending && phone.trim() && (
               <div style={{ ...helpText, marginTop: 0 }}>
-                By continuing, Num may text this number to sign you in and about your own bookings, plans and friends’ invites. Message rates may apply. Reply STOP any time.
+                By continuing, NUM may text this number to sign you in and about your own bookings, plans and friends’ invites. Message rates may apply. Reply STOP any time.
               </div>
             )}
             <div
@@ -587,7 +587,7 @@ export default function InviteSheet() {
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
 
           {/* Add to home screen. Deliberately large and above the fold on this
-              screen, because it is the single step that decides whether Num is
+              screen, because it is the single step that decides whether NUM is
               an app somebody has or a tab they lose. It only shows in a
               browser — once installed, telling someone to install is noise. */}
           <AddToHomeScreen />
@@ -698,8 +698,8 @@ export default function InviteSheet() {
                     }}
                   >
                     {onNum
-                      ? '✓ Already on Num — your invite connects you two instantly, no download needed.'
-                      : 'Not on Num yet — create the invite and text it to them; the link sets them up.'}
+                      ? '✓ Already on NUM — your invite connects you two instantly, no download needed.'
+                      : 'Not on NUM yet — create the invite and text it to them; the link sets them up.'}
                   </div>
                 )}
                 {contactsSupported() && (
@@ -725,13 +725,13 @@ export default function InviteSheet() {
               </div>
               <div style={helpText}>
                 {contactsSupported()
-                  ? 'The picker only ever returns the person you tap — Num never reads your address book.'
+                  ? 'The picker only ever returns the person you tap — NUM never reads your address book.'
                   : 'This browser has no contacts API, so type the name. Nothing is read from your phone.'}
               </div>
               {inviteNote && <div style={{ ...helpText, color: 'var(--color-accent-700)' }}>{inviteNote}</div>}
             </div>
           ) : (minted as { on_num?: boolean }).on_num ? (
-            /* 4a — they're already on Num: the agents handled it. The plan is
+            /* 4a — they're already on NUM: the agents handled it. The plan is
                in their app and their phone buzzed. No text message needed —
                offering one anyway would make delivery look like it failed. */
             <div style={{ padding: 16 }}>
@@ -740,7 +740,7 @@ export default function InviteSheet() {
                 ✓ Sent app to app{draft.name ? ` — ${draft.name} has it` : ''}
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--color-neutral-600)', lineHeight: 1.55, marginTop: 8 }}>
-                They’re already on Num, so your Num told theirs directly: the {draft.planId ? 'plan is in their PLAN tab' : 'connection is live'} and their phone just buzzed. Nothing to text, nothing to tap.
+                They’re already on NUM, so your NUM told theirs directly: the {draft.planId ? 'plan is in their PLAN tab' : 'connection is live'} and their phone just buzzed. Nothing to text, nothing to tap.
               </div>
               <div
                 {...pressable(() => store.set({ inviteOpen: null }))}
@@ -764,7 +764,7 @@ export default function InviteSheet() {
               </div>
 
               <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                {/* The one-tap path: Num sends the text, names the member, honours STOP.
+                {/* The one-tap path: NUM sends the text, names the member, honours STOP.
                     Only offered when the server says it can (verified sender, a number,
                     texting switched on) — otherwise the member's own phone is the path. */}
                 {minted.num_text && numText.state !== 'sent' ? (

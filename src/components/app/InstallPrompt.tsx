@@ -1,6 +1,6 @@
-// "Put Num on your home screen" — shown only in the browser, never in the app.
+// "Put NUM on your home screen" — shown only in the browser, never in the app.
 //
-// Why this earns its space: a browser tab is a worse Num in ways the person
+// Why this earns its space: a browser tab is a worse NUM in ways the person
 // cannot see. No push, so a plan change never reaches them. Separate storage
 // from the installed app, so friends and plans made here land on an identity
 // their real app can't see (see PairBridge). And Safari evicts site data, so
@@ -24,9 +24,9 @@ const detect = (): Platform => {
 };
 
 const STEPS: Record<Platform, string[]> = {
-  ios: ['Tap the Share button at the bottom of Safari', 'Choose “Add to Home Screen”', 'Tap Add — Num opens like any other app'],
-  android: ['Tap the ⋮ menu in Chrome', 'Choose “Install app” or “Add to Home screen”', 'Confirm — Num opens like any other app'],
-  desktop: ['Click the install icon in your address bar', 'Choose Install', 'Num opens in its own window'],
+  ios: ['Tap the Share button at the bottom of Safari', 'Choose “Add to Home Screen”', 'Tap Add — NUM opens like any other app'],
+  android: ['Tap the ⋮ menu in Chrome', 'Choose “Install app” or “Add to Home screen”', 'Confirm — NUM opens like any other app'],
+  desktop: ['Click the install icon in your address bar', 'Choose Install', 'NUM opens in its own window'],
 };
 
 import { canOfferInstall, escapeCard, isStandalone } from '../../lib/native';
@@ -36,9 +36,9 @@ import { canOfferInstall, escapeCard, isStandalone } from '../../lib/native';
  *
  * Until 25 Aug 2026 the answer was "LaunchStage only", and LaunchStage is the
  * DESKTOP page: App.tsx sends any viewport under 720px straight to
- * ConciergeApp. So the one surface that could actually install Num — a phone
+ * ConciergeApp. So the one surface that could actually install NUM — a phone
  * in a browser, which is very nearly all of our traffic — was the one surface
- * that never saw this card. We were asking desktops to add Num to a home
+ * that never saw this card. We were asking desktops to add NUM to a home
  * screen they do not have, and asking phones nothing at all.
  *
  * It now mounts on both. The props exist because the two surfaces differ in
@@ -120,37 +120,23 @@ export default function InstallPrompt({
     // account. That reasoning EXPIRED when accounts became portable. An
     // account now belongs to a verified phone number, not to this webview's
     // storage — sign in from anywhere and it follows. So there is nothing
-    // urgent to warn about, and interrupting a stranger before Num has said
+    // urgent to warn about, and interrupting a stranger before NUM has said
     // anything useful spends the one impression we get on a scolding.
     //
-    // Num works perfectly well inside Instagram. Let them use it. The offer
+    // NUM works perfectly well inside Instagram. Let them use it. The offer
     // to put it on a home screen makes sense AFTER they have asked something
     // and got a real answer back — at which point it is an upgrade rather
     // than a toll gate.
-    if (escape) {
+    // 17 Sep 2026: the same rule everywhere, not only inside a webview. On
+    // first open the card sat on top of the starter chips, so the first
+    // tappable things in the app were hidden behind an offer to install it
+    // (audit B7). After the first real answer it is an upgrade; before, a toll.
+    {
       const asked = () => store.get().msgs.some((m) => m.who === 'u');
       if (asked()) { setShow(true); return; }
       const stop = store.subscribe(() => { if (asked()) { setShow(true); stop(); } });
       return () => { stop(); };
     }
-
-    let done = false;
-    const fire = () => {
-      if (done) return;
-      done = true;
-      setShow(true);
-      cleanup();
-    };
-    const onScroll = () => { if (window.scrollY > 120) fire(); };
-    const cleanup = () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pointerdown', fire);
-      clearTimeout(dwell);
-    };
-    const dwell = setTimeout(fire, 15000);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pointerdown', fire, { once: true });
-    return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -249,10 +235,10 @@ export default function InstallPrompt({
             YOU’RE IN A BROWSER
           </div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15.5, marginTop: 4 }}>
-            Put Num on your home screen
+            Put NUM on your home screen
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-            Installed, Num can reach you when a plan moves or a friend replies. In a tab it can’t —
+            Installed, NUM can reach you when a plan moves or a friend replies. In a tab it can’t —
             and your account lives only as long as the browser keeps it.
           </div>
         </div>

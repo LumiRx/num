@@ -5,7 +5,7 @@
 // See src/lib/sharecard.ts for why they share a payload.
 //
 // Deliberately NOT the OS share sheet. navigator.share hands the text to
-// WhatsApp and the conversation leaves Num — which is fine and is what
+// WhatsApp and the conversation leaves NUM — which is fine and is what
 // ShareSheet already offers for inviting people. This one is for the people
 // who are already here, where the reply comes back into the same app.
 import { useRef, useState } from 'react';

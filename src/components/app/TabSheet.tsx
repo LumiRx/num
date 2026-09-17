@@ -202,7 +202,7 @@ export default function TabSheet() {
         </div>
 
         <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 12, lineHeight: 1.5 }}>
-          Stars are in-app credit, not money. Settling moves them between Num accounts straight away — check the split above first, because it can’t be undone from here.
+          Stars are in-app credit, not money. Settling moves them between NUM accounts straight away — check the split above first, because it can’t be undone from here.
         </div>
       </div>
     </div>
@@ -238,7 +238,7 @@ export function TabStarter() {
         <StarIcon size={11} style={{ color: 'var(--color-accent)' }} /> SPLIT A NIGHT OUT
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-        Open a tab and everyone puts their rounds on it. Num keeps the split honest — you only pay for what you were in on.
+        Open a tab and everyone puts their rounds on it. NUM keeps the split honest — you only pay for what you were in on.
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <input

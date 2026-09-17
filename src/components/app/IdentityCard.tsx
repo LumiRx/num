@@ -46,7 +46,7 @@ const when = (iso: string): string => {
  * link something you already linked reads as the app not knowing what it has.
  *
  * Neither control asks for a phone number. The business side proves itself
- * with the number Num already texted this member; the host side with the
+ * with the number NUM already texted this member; the host side with the
  * console key they already hold. Anything a person could read off a signboard
  * is not proof, and asking for it would only teach them that it is.
  */
@@ -142,7 +142,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
         <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-60)' }}>{msg}</div>
       )}
       <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-        Your business links by the number Num already verified for you — the one you signed in with. Your host
+        Your business links by the number NUM already verified for you — the one you signed in with. Your host
         account links by the key in your host console.
       </div>
     </div>
@@ -241,10 +241,10 @@ export default function IdentityCard() {
                         </div>
                         <div
                           {...pressable(() => void shareNative({
-                            title: h.name ?? 'Num',
+                            title: h.name ?? 'NUM',
                             text: h.type === 'member'
-                              ? 'Connect with me on Num.'
-                              : `Find ${h.name ?? 'us'} on Num.`,
+                              ? 'Connect with me on NUM.'
+                              : `Find ${h.name ?? 'us'} on NUM.`,
                             url: h.link ?? '',
                           }))}
                           style={{ cursor: 'pointer', flex: 1, minHeight: 44, borderRadius: 999, border: '1px solid var(--ink-12)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 800, letterSpacing: '.05em' }}

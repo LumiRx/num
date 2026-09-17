@@ -113,7 +113,7 @@ export default function EventSheet() {
   };
 
   /**
-   * Ask a friend who is already on Num.
+   * Ask a friend who is already on NUM.
    *
    * No name to type, no number to find, nothing to send: the invite goes
    * straight into the conversation with them as a card they can answer. The
@@ -129,7 +129,7 @@ export default function EventSheet() {
       const blocked = out.blocked[0];
       setNote(
         asked?.already
-          ? `${name} already has it — their Num is still waiting on an answer.`
+          ? `${name} already has it — their NUM is still waiting on an answer.`
           : (asked?.line ?? blocked?.message ?? `Asked ${name}.`),
       );
       void eventDashboard(eventId).then(setDash);
@@ -142,7 +142,7 @@ export default function EventSheet() {
 
   const chase = dash ? chaseText(dash.event, dash.guests, dash.url) : null;
 
-  // The two halves of a guest list. Friends on Num can be asked directly;
+  // The two halves of a guest list. Friends on NUM can be asked directly;
   // everyone else still needs a link, and that has not changed.
   const onNum = friends.filter((f) => f.state === 'active' && f.id && f.name);
   const invited = new Map((dash?.guests ?? []).filter((g) => g.member_id).map((g) => [g.member_id!, g.rsvp]));
@@ -268,14 +268,14 @@ export default function EventSheet() {
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
             <div style={{ ...label, color: 'var(--ink-60)' }}>INVITE SOMEONE</div>
 
-            {/* Friends on Num first. One tap and their agent has the question —
+            {/* Friends on NUM first. One tap and their agent has the question —
                 no name to type, no number to look up, nothing to send. The
                 already-answered are shown but not tappable, so a host cannot
                 nag someone who has already said yes. */}
             {!!onNum.length && (
               <div style={{ marginTop: 9 }}>
                 <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginBottom: 7 }}>
-                  Already on Num — one tap and their Num asks them.
+                  Already on NUM — one tap and their NUM asks them.
                 </div>
                 <div className="no-scrollbar" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 2 }}>
                   {onNum.map((f) => {

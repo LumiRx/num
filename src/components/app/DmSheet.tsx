@@ -116,8 +116,8 @@ function PeopleList() {
 /**
  * The event card.
  *
- * This is the "tappable event in chat" — the host's Num put the question here,
- * and yes/no/maybe goes back to their Num without either person leaving the
+ * This is the "tappable event in chat" — the host's NUM put the question here,
+ * and yes/no/maybe goes back to their NUM without either person leaving the
  * conversation. `ref` (the invite token) is only ever returned to the person
  * the invite was addressed to, so the buttons simply do not exist for the host
  * looking at their own copy.
@@ -191,7 +191,7 @@ function Conversation() {
   const msgs = useApp((s) => s.dmThread);
   const error = useApp((s) => s.dmError);
   // Shared with the concierge thread — see src/lib/stickyscroll.ts. Both had
-  // the same bug and the comment below used to say "same rule as the Num
+  // the same bug and the comment below used to say "same rule as the NUM
   // thread", which is exactly how two copies drift into it twice.
   const { ref: scrollRef, onScroll, behind, toLatest } = useStickyBottom<HTMLDivElement>();
   const [draft, setDraft] = useState('');

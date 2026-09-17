@@ -61,7 +61,7 @@ const field: React.CSSProperties = {
 
 /** key, label, placeholder, why it helps — the "why" is the whole point. */
 const TRAVEL_FIELDS: Array<[string, string, string, string]> = [
-  ['airline_status', 'Airline status', 'e.g. Delta Platinum, Star Alliance Gold', 'Num weighs status against price instead of just picking the cheapest'],
+  ['airline_status', 'Airline status', 'e.g. Delta Platinum, Star Alliance Gold', 'NUM weighs status against price instead of just picking the cheapest'],
   ['hotel_status', 'Hotel programme', 'e.g. Marriott Titanium, Hyatt Globalist', 'gets you the upgrade you already earned'],
   ['seat', 'Seat', 'aisle / window / bulkhead', 'so a flight suggestion already fits you'],
   ['home_airport', 'Home airport', 'e.g. LAX, BKK', 'the default origin for every fare search'],
@@ -69,13 +69,13 @@ const TRAVEL_FIELDS: Array<[string, string, string, string]> = [
 ];
 
 const TASTE_FIELDS: Array<[string, string, string, string]> = [
-  ['home_city', 'Home city', 'where you live', 'so Num knows what is exotic to you and what is Tuesday'],
+  ['home_city', 'Home city', 'where you live', 'so NUM knows what is exotic to you and what is Tuesday'],
   ['dietary', 'Dietary', 'vegetarian, halal, no shellfish…', 'never books you somewhere you cannot eat'],
-  ['allergies', 'Allergies', 'anything serious', 'flagged to the kitchen when Num books'],
+  ['allergies', 'Allergies', 'anything serious', 'flagged to the kitchen when NUM books'],
   ['budget', 'Usual spend', 'e.g. mid-range, no ceiling on food', 'stops every suggestion landing in the wrong bracket'],
-  ['vibe', 'Your kind of night', 'quiet counter / big table / dancing', 'the single most useful thing you can tell Num'],
+  ['vibe', 'Your kind of night', 'quiet counter / big table / dancing', 'the single most useful thing you can tell NUM'],
   ['work', 'What you do', 'optional', 'context for meetings and introductions'],
-  ['notes', 'Anything else', 'the things a good concierge would remember', 'goes straight into what Num knows about you'],
+  ['notes', 'Anything else', 'the things a good concierge would remember', 'goes straight into what NUM knows about you'],
 ];
 
 /**
@@ -168,7 +168,7 @@ export default function ProfileView() {
           <div style={kicker}>YOUR PROFILE</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Nothing here yet</div>
           <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
-            Add your name and number and this becomes the place Num learns who you are — how you travel, what you eat, the kind of night you actually want.
+            Add your name and number and this becomes the place NUM learns who you are — how you travel, what you eat, the kind of night you actually want.
           </div>
           <div
             {...pressable(() => store.set({ inviteOpen: {} }))}
@@ -338,7 +338,7 @@ export default function ProfileView() {
         />
         <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
           {me.name_locked
-            ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask Num and we’ll sort it.'
+            ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.'
             : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
         </div>
       </Collapsible>
@@ -382,14 +382,14 @@ export default function ProfileView() {
       <Group>TASTE</Group>
       <Section title="SO NUM GETS YOU RIGHT" summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
 
-      {/* what Num has worked out on its own */}
+      {/* what NUM has worked out on its own */}
       <Collapsible
         title="WHAT NUM HAS PICKED UP"
         summary={reactionCount ? `${reactionCount} reaction${reactionCount === 1 ? '' : 's'} so far` : 'Nothing learned yet'}
       >
         {reactionCount === 0 && !Object.keys(style).length ? (
           <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
-            Nothing yet. React to Num’s suggestions with {REACTIONS.map((r) => r.emoji).join(' ')} and it learns what to send you and what to drop.
+            Nothing yet. React to NUM’s suggestions with {REACTIONS.map((r) => r.emoji).join(' ')} and it learns what to send you and what to drop.
           </div>
         ) : (
           <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
@@ -424,7 +424,7 @@ export default function ProfileView() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={kicker}>BUSINESS</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>Own a place on Num?</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>Own a place on NUM?</div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>Claim your listing and get the owner tools</div>
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
@@ -491,18 +491,18 @@ function NotificationsCard() {
     state === 'unsupported'
       ? 'This browser can’t do notifications — everything still waits for you in the app.'
       : state === 'needs-install'
-        ? 'Add Num to your home screen first: tap Share, then “Add to Home Screen”. iPhone only allows notifications for installed apps.'
+        ? 'Add NUM to your home screen first: tap Share, then “Add to Home Screen”. iPhone only allows notifications for installed apps.'
         : state === 'denied'
-          ? 'Notifications are blocked in your browser settings. Turn them back on there and Num can reach you again.'
+          ? 'Notifications are blocked in your browser settings. Turn them back on there and NUM can reach you again.'
           : on
-            ? 'On. Num will tell you when a table moves, a friend answers, or a plan changes — and nothing else.'
+            ? 'On. NUM will tell you when a table moves, a friend answers, or a plan changes — and nothing else.'
             : 'A table that moved, a friend who said yes, a flight that shifted. Only the things you’d want interrupting you.';
 
   const toggle = async () => {
     setBusy(true);
     if (on) {
       await disablePush();
-      setMsg('Off — you’ll still see everything next time you open Num.');
+      setMsg('Off — you’ll still see everything next time you open NUM.');
     } else {
       const out = await enablePush();
       setMsg(out.message);
@@ -517,7 +517,7 @@ function NotificationsCard() {
     <div className="glass" style={{ ...card }}>
       <div style={kicker}>NOTIFICATIONS</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>
-        {on ? 'Num can reach you' : 'Let Num reach you'}
+        {on ? 'NUM can reach you' : 'Let NUM reach you'}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>{blurb}</div>
       {actionable && (
@@ -580,7 +580,7 @@ function HostCard() {
         <div style={kicker}>A PERSON, NOT JUST AN APP</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>Want a VIP host?</div>
         <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
-          A real concierge who knows the city and knows you. Num does the finding; your host does the arranging, in person.
+          A real concierge who knows the city and knows you. NUM does the finding; your host does the arranging, in person.
         </div>
         {mine.find && <a href={mine.find} target="_blank" rel="noreferrer" style={link}>FIND A HOST NEAR YOU</a>}
       </div>
@@ -592,7 +592,7 @@ function HostCard() {
       <div style={kicker}>YOUR HOST</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>{mine.host.name}</div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
-        {does ? `Arranges ${does} for you.` : 'Arranges things for you, in person.'} Ask Num for any of it and say “send it to {mine.host.name}” — it lands in their console, and they confirm with you directly.
+        {does ? `Arranges ${does} for you.` : 'Arranges things for you, in person.'} Ask NUM for any of it and say “send it to {mine.host.name}” — it lands in their console, and they confirm with you directly.
       </div>
       {mine.page && <a href={mine.page} target="_blank" rel="noreferrer" style={link}>MY HOST PAGE</a>}
       {mine.calendar && <a href={mine.calendar.replace(/^https?:/, 'webcal:')} style={link}>SUBSCRIBE TO THEIR BOOKINGS</a>}
@@ -652,7 +652,7 @@ function VersionLine() {
   }, []);
   return (
     <div style={{ padding: '14px 14px 0', textAlign: 'center' }}>
-      <div style={{ fontSize: 10, color: 'var(--ink-40)', letterSpacing: '.04em' }}>Num {versionLine}</div>
+      <div style={{ fontSize: 10, color: 'var(--ink-40)', letterSpacing: '.04em' }}>NUM {versionLine}</div>
       {stale && (
         <div
           {...pressable(() => {
@@ -671,7 +671,7 @@ function VersionLine() {
 /**
  * Where the places come from.
  *
- * Num's directory is built on OpenStreetMap, which is ODbL-licensed: using the
+ * NUM's directory is built on OpenStreetMap, which is ODbL-licensed: using the
  * data obliges us to say so wherever it is used. The website already carries
  * this in /privacy and /terms — but a guest inside the app is not reading our
  * privacy page, and the licence follows the data, not the domain. So it lives
@@ -690,7 +690,7 @@ function SourcesLine() {
         >
           © OpenStreetMap contributors
         </a>{' '}
-        (ODbL), Google, and Num&rsquo;s own verification.
+        (ODbL), Google, and NUM&rsquo;s own verification.
       </div>
     </div>
   );

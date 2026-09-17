@@ -187,7 +187,7 @@ export interface BookHandoff {
  * Called on tap, not on render. Every call mints a referral row, so calling
  * it for five offers the moment a search returns would write five referrals
  * for a person who has not decided anything — the ledger would stop meaning
- * "Num sent somebody" and start meaning "Num showed somebody a list".
+ * "NUM sent somebody" and start meaning "NUM showed somebody a list".
  */
 export async function bookHandoff(o: FlightOffer, q: FlightQuery): Promise<BookHandoff> {
   const seg = o.legs[0]?.segments ?? [];

@@ -40,7 +40,7 @@ function defChips(): Chip[] {
   if (!s.demo) return [];
   const c: Chip[] = [];
   if (!s.billPaid) c.push({ id: 'bill', label: 'Pay my bill — Le Du' });
-  if (!s.photosOn) c.push({ id: 'photos', label: 'Let Num organize my photos' });
+  if (!s.photosOn) c.push({ id: 'photos', label: 'Let NUM organize my photos' });
   return [
     ...c,
     { id: 'dinner', label: 'Dinner on Thursday' },
@@ -80,8 +80,8 @@ function payBill(how: string) {
  * Take earned Stars out as money, to 5arz.
  *
  * Only Stars EARNED through work are cashable — the server computes that from
- * their origin, and this just asks. Bought Stars spend inside Num. That split
- * is what lets Num pay a runner real money without becoming a money
+ * their origin, and this just asks. Bought Stars spend inside NUM. That split
+ * is what lets NUM pay a runner real money without becoming a money
  * transmitter, so the client never tries to talk the server out of it.
  */
 export async function requestCashout(stars: number) {
@@ -131,7 +131,7 @@ export async function buyPack(n: number, cents: number, _label?: string) {
         me: me?.id,
         amount_cents: cents,
         currency: 'usd',
-        description: `Num — ★${n.toLocaleString()} pack`,
+        description: `NUM — ★${n.toLocaleString()} pack`,
         ref: `stars:${n}`,
       }),
     });
@@ -147,7 +147,7 @@ export async function buyPack(n: number, cents: number, _label?: string) {
     // Say what you CAN do instead of leaving them at a dead end.
     push({
       who: 'c',
-      text: 'Top-ups aren’t open yet — but you can earn Stars right now by running errands, and they spend on anything inside Num. If there’s a bill or a booking in front of you, say the word and I’ll settle it directly.',
+      text: 'Top-ups aren’t open yet — but you can earn Stars right now by running errands, and they spend on anything inside NUM. If there’s a bill or a booking in front of you, say the word and I’ll settle it directly.',
     });
   } catch {
     store.set({ bought: 'Couldn’t reach the pay rail — try again in a moment.' });
@@ -341,7 +341,7 @@ export function sendChip(id: string, label: string) {
     reply([{ who: 'c', text: 'Booked the 09:15 speedboat — ฿1,400 on the card, and you’ll beat the ferry crowds by two hours. Ferry refund is processing.', card: { title: 'Speedboat — Phuket → Phi Phi', meta: 'Sun 2 Aug · 09:15 · Rassada VIP jetty', tag: 'rebooked' } }], null, 1300);
   } else if (id === 'meet') {
     reply(
-      [{ who: 'c', text: 'Mei’s on Num, so I asked her agent directly — no texting back and forth. You’re both clear Thursday 15:00 or Friday 09:00. Friday you fly at 10:40, so I’d take Thursday. Which?' }],
+      [{ who: 'c', text: 'Mei’s on NUM, so I asked her agent directly — no texting back and forth. You’re both clear Thursday 15:00 or Friday 09:00. Friday you fly at 10:40, so I’d take Thursday. Which?' }],
       [
         { id: 'meetThu', label: 'Thursday 15:00' },
         { id: 'meetFri', label: 'Friday 09:00 anyway' },
@@ -351,13 +351,13 @@ export function sendChip(id: string, label: string) {
   } else if (id === 'meetThu' || id === 'meetFri') {
     const thu = id === 'meetThu';
     store.set((s) => ({
-      meetings: [...s.meetings.filter((m) => m.id !== 'mm'), { id: 'mm', mo: 7, day: thu ? 30 : 31, time: thu ? '15:00' : '09:00', dur: 30, place: 'Video · Num', title: 'Catch-up — Mei', src: 'NUM' as const }],
+      meetings: [...s.meetings.filter((m) => m.id !== 'mm'), { id: 'mm', mo: 7, day: thu ? 30 : 31, time: thu ? '15:00' : '09:00', dur: 30, place: 'Video · NUM', title: 'Catch-up — Mei', src: 'NUM' as const }],
     }));
     reply(
       [{
         who: 'c',
         text: thu
-          ? 'Set — Thursday 15:00, 30 minutes, video link attached. It’s already on Mei’s calendar too: Num keeps both copies in step, so if either of you moves it, everyone moves.'
+          ? 'Set — Thursday 15:00, 30 minutes, video link attached. It’s already on Mei’s calendar too: NUM keeps both copies in step, so if either of you moves it, everyone moves.'
           : 'Set — Friday 09:00 with a hard stop at 09:45, because you fly at 10:40 and I’m not risking it. It’s on Mei’s calendar too, and both copies stay in step.',
         card: { title: 'Catch-up — Mei', meta: (thu ? 'Thu 30 Jul · 15:00' : 'Fri 31 Jul · 09:00') + ' · video · on both calendars', tag: 'meeting' },
       }],
@@ -537,7 +537,7 @@ function applyAction(a: NumAction) {
     // traveller's dates and contact details into a third-party travel agency's
     // inbox — a disclosure the member makes, not one a sentence may make for
     // them. The sheet opens with the whole request in full and the person taps
-    // SEND. Num presents; the agency quotes, takes payment and issues.
+    // SEND. NUM presents; the agency quotes, takes payment and issues.
     store.set({ travelDraft: a.referral });
   } else if (a.type === 'flight_search' && a.search?.fromCode) {
     void runFlightSearch(a.search);
@@ -555,7 +555,7 @@ function applyAction(a: NumAction) {
       // The verified place the event is at, when there is one — the server
       // turns it into the business, so the venue can see the party coming.
       place_id: a.place_id ?? null,
-      // Named guests go with the event, so the people already on Num are asked
+      // Named guests go with the event, so the people already on NUM are asked
       // in the same round trip that creates it.
       ask: a.ask ?? [],
     });
@@ -577,7 +577,7 @@ export function cleanText(t: string): string {
 
 /** Send a free-typed message to the real NUM AI backend. */
 /**
- * Every place Num has put in front of this guest in this thread, newest last.
+ * Every place NUM has put in front of this guest in this thread, newest last.
  *
  * Names only — the server matches on name so a pick that came from the
  * model's own knowledge, with no partner row behind it, still counts as seen.
@@ -625,7 +625,7 @@ export async function askNum(text: string) {
   // Somewhere-specific advice, and we still don't know where they are. This is
   // the honest moment to ask: they just asked for something local, so the
   // permission dialog explains itself. Asking at launch instead would earn a
-  // permanent "Don't allow" before Num had done anything for them.
+  // permanent "Don't allow" before NUM had done anything for them.
   //
   // Bounded, and its result is not required. If the guest ignores the dialog
   // the question still goes to the server without a fix — a recommendation
@@ -677,7 +677,7 @@ export async function askNum(text: string) {
   };
 
   // Activation, and the truest signal we can measure right now: this person
-  // did not just land and sign up, they asked Num for something. A signup is a
+  // did not just land and sign up, they asked NUM for something. A signup is a
   // form; this is the product working. Fires once per device — see trackOnce.
   trackOnce('first-ask', 'first_ask');
   // Same moment, second pipe: the row the nightly analytics reads. Named by

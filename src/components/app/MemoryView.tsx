@@ -57,7 +57,10 @@ export default function MemoryView() {
           Your shelf is empty — it fills itself as you travel. Every dinner, boat and night out files here quietly, ready to come back the moment you ask.
         </div>
       )}
-      {MEMORY_GROUPS.map(([name, dates]) => (
+      {/* The demo's shelf headings are the demo's. A real account with nothing
+          on it shows the empty line above and nothing else — TOKYO and LISBON
+          were appearing under "Your shelf is empty" (audit B1, 17 Sep). */}
+      {(demo ? MEMORY_GROUPS : [...new Set(memories.map((m) => m.trip))].map((t) => [t, ''] as const)).map(([name, dates]) => (
         <div key={name}>
           <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.05em' }}>

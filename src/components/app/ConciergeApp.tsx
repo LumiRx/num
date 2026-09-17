@@ -1,4 +1,4 @@
-// The Num app screen — header, tab bar, views, sheets and overlays.
+// The NUM app screen — header, tab bar, views, sheets and overlays.
 // Composition and z-layering match Concierge.dc.html exactly.
 import { useEffect } from 'react';
 import type { KeyboardEvent, UIEvent } from 'react';
@@ -29,6 +29,7 @@ import PassengerSheet from './PassengerSheet';
 import TabSheet from './TabSheet';
 import ErrandSheet from './ErrandSheet';
 import DiscoverSheet from './DiscoverSheet';
+import PlaceSheet from './PlaceSheet';
 import BookSheet from './BookSheet';
 import TravelSheet from './TravelSheet';
 import InviteSheet from './InviteSheet';
@@ -40,8 +41,9 @@ import InstallPrompt from './InstallPrompt';
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
   const stars = useApp((s) => s.stars);
+  const planId = useApp((s) => s.planId);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
-  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen);
+  const sheetOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen || s.placeOpen);
   const party = useApp((s) => s.planMembers.length);
   const demo = useApp((s) => s.demo);
   const place = useApp((s) => s.place);
@@ -56,7 +58,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const dmUnread = useApp((s) => s.dmInbox.reduce((n, p) => n + p.unread, 0));
 
   // Demo: the scripted date/loop. Real: today anywhere on Earth, plus wherever
-  // the user told Num they are — or the ask, until they have.
+  // the user told NUM they are — or the ask, until they have.
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   const title = demo ? 'Tue 28 Jul · Bangkok' : place ? `${today} · ${place}` : `${today} · Where to?`;
   const subhead = demo
@@ -65,9 +67,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
       : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
 
-  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null });
+  const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null, placeOpen: false });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen || s.placeOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
@@ -118,7 +120,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         return;
       }
       popped = true;
-      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null });
+      store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null, placeOpen: false });
       if (store.get().voice) closeVoice();
     };
     window.addEventListener('popstate', onPop);
@@ -133,7 +135,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const onEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const s = store.get();
-    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.passengerOpen || s.tabOpen || s.errandsOpen || s.discoverOpen) closeSheets();
+    if (s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || s.inviteOpen || s.payOpen || s.passengerOpen || s.tabOpen || s.errandsOpen || s.discoverOpen || s.placeOpen) closeSheets();
     // Messages are two levels deep: Escape backs out of the conversation
     // first, and only closes the surface once you are on the people list.
     else if (s.dmWith) closeDmThread();
@@ -177,10 +179,10 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
           <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>
-            NUM <span style={{ fontWeight: 400, opacity: 0.55 }}>· YOUR CONCIERGE</span>
+            NUM <span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
+            {me && <div
               {...pressable(() => store.set({ walletOpen: true }))}
               aria-label="Stars wallet"
               className="glass press"
@@ -188,9 +190,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
               title="Stars wallet"
             >
               <StarIcon size={13} /> {stars.toLocaleString()}
-            </div>
+            </div>}
             {/* Messages sit beside YOU, not in the tab bar and not behind the
-                dot. The dot is Num; this is other people, and conflating the
+                dot. The dot is NUM; this is other people, and conflating the
                 two would make "who am I talking to" a question. Hidden until
                 there is an account, since there is nobody to message without
                 one. */}
@@ -234,7 +236,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
                 </span>
               )}
             </div>
-            <div
+            {planId && <div
               {...pressable(() => store.set({ shareOpen: true, copied: false }))}
               aria-label="Share plan"
               className="glass press"
@@ -242,10 +244,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
               title="Share plan"
             >
               <ShareIcon size={15} />
-            </div>
+            </div>}
           </div>
         </div>
-        <div {...pressable(() => store.set((s) => { const M = monthsFor(s.demo)[0]; return { calOpen: true, selDay: s.selDay || `${M.mo}-${M.todayDay ?? 1}` }; }))} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
+        {/* "Where to?" opens the place sheet; a known place opens the calendar.
+            The chevron used to open the calendar in both cases, so the one
+            control a first-timer needed (say where you are) did not exist
+            (audit B3, 17 Sep). */}
+        <div {...pressable(() => { if (!store.get().place && !store.get().demo) { store.set({ placeOpen: true }); return; } store.set((s) => { const M = monthsFor(s.demo)[0]; return { calOpen: true, selDay: s.selDay || `${M.mo}-${M.todayDay ?? 1}` }; }); })} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: 21, fontWeight: 700, lineHeight: 1.1 }}>
             {title} <ChevronDownIcon size={15} style={{ color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
           </div>
@@ -259,7 +265,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       {/* THREAD left the tab bar — it is the floating dot now, reachable from
           every screen instead of being one of three equal places to be. */}
       <div role="tablist" className="glass" style={{ display: 'flex', margin: '10px 10px 2px', borderRadius: 999, padding: 4, position: 'relative', zIndex: 2 }}>
-        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />DASH</div>
+        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />TODAY</div>
         <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />PLAN</div>
         <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />MEMORY</div>
       </div>
@@ -276,7 +282,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           to and lose your place from. */}
       <div
         role="dialog"
-        aria-label="Thread with Num"
+        aria-label="Thread with NUM"
         aria-hidden={!threadOpen}
         style={{
           position: 'absolute', inset: 0, zIndex: 45, display: 'flex', flexDirection: 'column',
@@ -380,7 +386,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <VoiceOverlay />
       <NotifBanner />
 
-      {/* "Put Num on your home screen" — on the surface that can actually do
+      {/* "Put NUM on your home screen" — on the surface that can actually do
           it. `standalone` here means "this IS the app screen", which is the
           phone path; the desktop launch page renders its own copy alongside
           the marketing frame, so gating on it avoids two cards at once.
@@ -420,6 +426,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <TabSheet />
       <ErrandSheet />
       <DiscoverSheet />
+      <PlaceSheet />
       <BookSheet />
       <TravelSheet />
       <InviteSheet />

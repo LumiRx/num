@@ -69,7 +69,7 @@ export async function discover(
   try {
     const res = await fetch(`${apiUrl('/api/discover')}?${qs.toString()}`);
     const body = (await res.json().catch(() => ({}))) as Partial<DiscoverResult>;
-    if (!res.ok) return { ok: false, mode: params.mode, sources: { num: 0, ticketmaster: 0, viator: 0, crew: 0 }, items: [], note: null, error: body.error ?? `discover ${res.status}` };
+    if (!res.ok) return { ok: false, mode: params.mode, sources: { num: 0, ticketmaster: 0, viator: 0, crew: 0 }, items: [], note: null, error: body.error === 'no_place' ? 'no_place' : (body.error ?? `discover ${res.status}`) };
     return { ok: true, mode: params.mode, sources: body.sources ?? { num: 0, ticketmaster: 0, viator: 0, crew: 0 }, items: body.items ?? [], note: body.note ?? null };
   } catch {
     return { ok: false, mode: params.mode, sources: { num: 0, ticketmaster: 0, viator: 0, crew: 0 }, items: [], note: null, error: 'offline' };

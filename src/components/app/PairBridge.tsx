@@ -1,9 +1,9 @@
 // Carrying a friend across the Safari ↔ home-screen wall.
 //
 // iOS gives the installed app and Safari separate storage, so each has its own
-// Num identity. A friend link tapped in Messages opens Safari and used to bind
+// NUM identity. A friend link tapped in Messages opens Safari and used to bind
 // the friendship to an identity the person's real app can never see — "it
-// added them to my Safari Num".
+// added them to my Safari NUM".
 //
 // Two faces, one component:
 //   · In the BROWSER, holding a parked connection → show the code to carry.
@@ -19,7 +19,7 @@ import { redeemPairCode } from '../../lib/social';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
-/** Browser side: "here's the code, open Num." */
+/** Browser side: "here's the code, open NUM." */
 export function PairHandoff() {
   const code = useApp((s) => s.pairCode);
   const [copied, setCopied] = useState(false);
@@ -28,10 +28,10 @@ export function PairHandoff() {
     <div className="glass" style={{ ...card, border: '1px solid var(--color-accent)' }}>
       <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 700, color: 'var(--color-accent)' }}>ONE STEP LEFT</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 16, marginTop: 4 }}>
-        Open Num and enter this code
+        Open NUM and enter this code
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
-        You’re in the browser right now, and your Num app keeps its own account. This carries the
+        You’re in the browser right now, and your NUM app keeps its own account. This carries the
         connection over to where your plans actually live.
       </div>
       <div
@@ -55,7 +55,7 @@ export function PairHandoff() {
         </div>
       </div>
       <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-        Good for 15 minutes. No Num app yet? Add this page to your home screen first — then open it and enter the code.
+        Good for 15 minutes. No NUM app yet? Add this page to your home screen first — then open it and enter the code.
       </div>
     </div>
   );

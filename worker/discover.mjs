@@ -221,6 +221,20 @@ export function dealThree(ranked) {
   return out;
 }
 
+/** The closest live destination to a coordinate, or null past 150 km. */
+export async function nearestDest(env, lat, lng) {
+  if (!env?.DB || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  try {
+    const { results } = await env.DB.prepare('SELECT slug, country, lat, lng FROM destinations WHERE lat IS NOT NULL AND lng IS NOT NULL').all();
+    let best = null;
+    for (const r of results ?? []) {
+      const km = haversineKm(lat, lng, r.lat, r.lng);
+      if (km != null && km <= 150 && (!best || km < best.km)) best = { ...r, km };
+    }
+    return best;
+  } catch { return null; }
+}
+
 /* ── Route ─────────────────────────────────────────────────────────────── */
 
 export async function handleDiscover(request, env, fetchImpl = fetch) {
@@ -242,10 +256,16 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
   // the slug, the country and a fallback coordinate come from the
   // destinations table here, for the reason suggest.mjs gives: resolving on
   // the client silently produced `undefined` on every call.
-  const dest = await resolveDest(env, g('dest') || g('place'));
-  if (!dest) return json({ ok: false, error: 'dest or place required (a place NUM covers)' }, 400);
+  let dest = await resolveDest(env, g('dest') || g('place'));
   let row = null;
-  try { row = await env.DB.prepare('SELECT country, lat, lng FROM destinations WHERE slug = ?1').bind(dest).first(); } catch { /* fall back to the query */ }
+  // No name, but a device fix: the nearest destination NUM covers, within
+  // 150 km. "Near me" from the place sheet lands here.
+  if (!dest && g('lat') != null && g('lng') != null) {
+    const near = await nearestDest(env, Number(g('lat')), Number(g('lng')));
+    if (near) { dest = near.slug; row = near; }
+  }
+  if (!dest) return json({ ok: false, error: 'no_place', hint: 'Tell NUM where you are first.' }, 400);
+  if (!row) { try { row = await env.DB.prepare('SELECT country, lat, lng FROM destinations WHERE slug = ?1').bind(dest).first(); } catch { /* fall back to the query */ } }
   const country = String(g('country') || row?.country || '').toUpperCase().slice(0, 2);
   const lat = g('lat') != null ? Number(g('lat')) : (row?.lat ?? null);
   const lng = g('lng') != null ? Number(g('lng')) : (row?.lng ?? null);

@@ -37,13 +37,13 @@ test('the escape card no longer shows on arrival', () => {
 test('it waits for a message the GUEST sent, not any message', () => {
   // Num speaks first. Keying off msgs.length would fire on the greeting,
   // which is the same interruption with extra steps.
-  const gate = prompt.slice(prompt.indexOf('if (escape) {'));
+  const gate = prompt.slice(prompt.indexOf('const asked = ()'));
   assert.match(gate, /msgs\.some\(\(m\) => m\.who === 'u'\)/,
     'the gate does not require a message from the guest');
 });
 
 test('it subscribes, so the card appears on the first ask and not a reload later', () => {
-  const gate = prompt.slice(prompt.indexOf('if (escape) {'), prompt.indexOf('if (escape) {') + 600);
+  const gate = prompt.slice(prompt.indexOf('const asked = ()'), prompt.indexOf('const asked = ()') + 600);
   assert.match(gate, /store\.subscribe\(/, 'nothing watches for the first message');
   assert.match(gate, /stop\(\)/, 'the subscription is never unsubscribed');
 });

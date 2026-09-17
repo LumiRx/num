@@ -6,7 +6,7 @@
 // email private, and does not track for advertising. This is that option.
 //
 // It also fixes something the guideline did not ask about: until now the ONLY
-// way into a Num account was an SMS code, and of 129 members exactly 2 have
+// way into a NUM account was an SMS code, and of 129 members exactly 2 have
 // ever completed phone verification. This is the first door that does not
 // depend on a carrier.
 //

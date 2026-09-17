@@ -50,7 +50,7 @@ export const CONSENT_VERSION = 'v1';
  * ever got. A test pins that the app shows exactly this sentence.
  */
 export const SIGNUP_CONSENT_TEXT =
-  'By continuing, Num may text this number to sign you in and about your own bookings, plans and friends\u2019 invites. Message rates may apply. Reply STOP any time.';
+  'By continuing, NUM may text this number to sign you in and about your own bookings, plans and friends\u2019 invites. Message rates may apply. Reply STOP any time.';
 
 /** How consent arrived, strongest first. */
 export const SOURCE = Object.freeze({

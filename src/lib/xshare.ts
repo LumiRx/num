@@ -8,10 +8,10 @@
 //
 // That last point is not a small one. Checked 12 Sep 2026: X's free API tier
 // closed to new developers in February, pay-per-use is $0.015 a post — and
-// $0.20 for a post CONTAINING A LINK. Every post Num would make contains a
+// $0.20 for a post CONTAINING A LINK. Every post NUM would make contains a
 // link. Routing member sharing through the API would therefore cost $200 per
 // thousand shares to do worse than this file does for nothing, because a post
-// from Num's account is an advert and a post from the member's account is a
+// from NUM's account is an advert and a post from the member's account is a
 // recommendation.
 //
 // ── THE LINK WE SHARE IS NOT THE LINK WE TEXT ────────────────────────────
@@ -93,9 +93,9 @@ export function xShareUrl(o: XPost): string {
 }
 
 /**
- * The member's own "I use Num" post.
+ * The member's own "I use NUM" post.
  *
- * Written in the member's own voice rather than Num's — the whole value of a
+ * Written in the member's own voice rather than NUM's — the whole value of a
  * share over an advert is that a person is saying it. No name in the text: the
  * poster's account already says who they are, and "It's Dre." reads as a text
  * message that wandered into a public post.
@@ -114,7 +114,7 @@ export function shareNumOnX(link: string): string {
 }
 
 /**
- * Share a place Num recommended.
+ * Share a place NUM recommended.
  *
  * The venue is named and the city is given, because "a great place" shared
  * without either is a post that helps nobody and reflects on nothing.

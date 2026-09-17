@@ -1,4 +1,4 @@
-// Calendar files for the things Num confirmed — a table, a plan, an event.
+// Calendar files for the things NUM confirmed — a table, a plan, an event.
 //
 // The server builds the .ics (worker/calendar.mjs): floating local times,
 // bearer-safe headers, nothing guessed. This only knows the address. The

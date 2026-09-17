@@ -44,7 +44,7 @@ export async function createEvent(
   return { ...event, dispatch: out.summary ? (out as unknown as InviteDispatch) : undefined };
 }
 
-/** Everything this member's Num has been asked to join, already phrased. */
+/** Everything this member's NUM has been asked to join, already phrased. */
 export interface AgentInvite {
   token: string;
   event_id: string;
@@ -71,7 +71,7 @@ export async function pendingInvites(): Promise<AgentInvite[]> {
   }
 }
 
-/** The member's own answer, from inside their Num. */
+/** The member's own answer, from inside their NUM. */
 export async function replyToInvite(
   token: string,
   rsvp: 'yes' | 'no' | 'maybe',
@@ -135,13 +135,13 @@ export interface GuestInvite {
 /**
  * Invite people. One endpoint, two outcomes, decided by who each guest is.
  *
- * A guest we can identify as a member is ASKED — their Num gets the question
+ * A guest we can identify as a member is ASKED — their NUM gets the question
  * as a card in the thread with the host, and there is nothing for the host to
  * send. Anyone else comes back in `invites` as a link the host sends from
  * their own phone, exactly as before.
  *
  * The full dispatch is returned rather than just the links, because "I asked
- * Alex and their Num will tell me" and "here is a link to text Sam" are two
+ * Alex and their NUM will tell me" and "here is a link to text Sam" are two
  * different things to say to a host, and only the caller knows how to say them.
  */
 export async function inviteGuests(

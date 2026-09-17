@@ -1,6 +1,6 @@
 // Handing a trip to a travel agency, from the app's side.
 //
-// The whole loop lives in worker/travelreferral.mjs: Num sends the agency a
+// The whole loop lives in worker/travelreferral.mjs: NUM sends the agency a
 // structured request with a NUM- reference, the agency attaches a quote through
 // a signed link, the member accepts, and the AGENCY takes the payment and
 // issues the confirmation. This module does three things and deliberately no
@@ -9,11 +9,11 @@
 //
 // ── THE LANGUAGE RULE, ENFORCED HERE AND NOT ONLY IN THE PROMPT ──────────
 //
-// Num PRESENTS, the partner ISSUES. Nothing in this file says booked, reserved,
+// NUM PRESENTS, the partner ISSUES. Nothing in this file says booked, reserved,
 // held or ticketed, and nothing here formats a price. `quote_amount_cs` and
 // `quote_currency` arrive as two separate fields and are rendered as the
 // agency's own number in the agency's own currency — a converted figure would
-// be a price Num computed, and Num computing a travel price is the thing this
+// be a price NUM computed, and NUM computing a travel price is the thing this
 // entire structure exists to avoid. The one sentence that matters most, the one
 // on acceptance, comes from the SERVER (`note`), so the app cannot soften it.
 import { store } from './store';
@@ -61,7 +61,7 @@ export interface TravelReferral {
   confirmed_at: string | null;
 }
 
-/** What Num is about to hand over, shown in full before anything is sent. */
+/** What NUM is about to hand over, shown in full before anything is sent. */
 export interface TravelDraft {
   product: string;
   origin: string | null;
@@ -139,7 +139,7 @@ export async function referTravel(d: TravelDraft): Promise<{ ok: boolean; messag
  * The returned message is the server's, verbatim: "they'll contact you directly
  * to take payment and issue the confirmation". It is the single most important
  * sentence in this flow and the app must not paraphrase it into something that
- * sounds like Num did the booking.
+ * sounds like NUM did the booking.
  */
 export async function acceptQuote(ref: string): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;

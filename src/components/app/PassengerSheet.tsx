@@ -2,12 +2,12 @@
 //
 // WHY THIS SCREEN IS BLUNT ABOUT WHAT IT IS ASKING
 //
-// Every other form in Num asks for a preference. This one asks for the name on
+// Every other form in NUM asks for a preference. This one asks for the name on
 // a passport, a date of birth and the gender marker on a travel document, and
 // pretending otherwise would be the wrong kind of polish. An airline will not
 // issue a ticket without them and will not accept a nickname: "Dre" boards
 // nothing. So the copy says that in the first sentence, says who it goes to,
-// says what Num does not do with it, and puts the delete next to the save
+// says what NUM does not do with it, and puts the delete next to the save
 // rather than three screens away.
 //
 // The rules encoded here are Duffel's, transcribed rather than invented —
@@ -161,14 +161,14 @@ export default function PassengerSheet() {
 
         {/* The honest paragraph. It is first, and it is not a tooltip. */}
         <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.6 }}>
-          An airline will not issue a ticket to a nickname. To book a flight, Num has to hand the airline the
+          An airline will not issue a ticket to a nickname. To book a flight, NUM has to hand the airline the
           full name printed on your travel document, your date of birth, and the gender marker on that document —
-          those are the airline’s security checks, not Num’s idea of you. It goes to the airline through Duffel
+          those are the airline’s security checks, not NUM’s idea of you. It goes to the airline through Duffel
           and nowhere else.
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.6 }}>
           It is never sent to 5arz, never shared with a business, and never shown to the concierge —
-          Num answers your questions without knowing your surname. Remove a passenger any time and it is
+          NUM answers your questions without knowing your surname. Remove a passenger any time and it is
           destroyed for good 30 days later.
         </div>
 
@@ -265,7 +265,7 @@ export default function PassengerSheet() {
               options={GENDERS.map((g) => [g, g === 'm' ? 'M' : 'F'] as [string, string])}
             />
             <div style={helpText}>
-              The airline systems accept only M or F. Num is copying the marker on your passport so check-in matches —
+              The airline systems accept only M or F. NUM is copying the marker on your passport so check-in matches —
               it is not a question about you.
             </div>
           </div>
@@ -299,7 +299,7 @@ export default function PassengerSheet() {
         </div>
 
         <div style={{ ...helpText, marginTop: 12 }}>
-          Nothing is booked by saving this. It sits here until you choose a flight, and Num shows you the
+          Nothing is booked by saving this. It sits here until you choose a flight, and NUM shows you the
           fare and the name it is about to send before anything is bought.
         </div>
       </div>

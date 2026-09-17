@@ -98,7 +98,7 @@ export default function PaySheet() {
               </div>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
-              Stars are in-app credit, not money, and they move instantly between Num accounts. Check the name above before you send — this cannot be undone from here.
+              Stars are in-app credit, not money, and they move instantly between NUM accounts. Check the name above before you send — this cannot be undone from here.
             </div>
           </>
         )}

@@ -3,7 +3,7 @@
  *
  * ── WHY THIS COMPONENT EXISTS ────────────────────────────────────────────
  *
- * Until 3 Sep 2026 every recommendation Num gave arrived as one paragraph of
+ * Until 3 Sep 2026 every recommendation NUM gave arrived as one paragraph of
  * prose: three names, three reasons, a phone number and a street address run
  * together in a block of text, with no link to any of them. The reply schema
  * had told the model for weeks that "detail belongs in `picks`" — and `picks`
@@ -107,7 +107,7 @@ export default function PickCards({ picks }: { picks: Pick[] }) {
                 </a>
               ) : null}
               {/* SHARE — the missing half of an idea.
-                  Num suggests three places and the person reading them is
+                  NUM suggests three places and the person reading them is
                   usually deciding on behalf of four people. Until now the
                   only way to get one of these in front of the group was to
                   screenshot it. This puts it on the plan as an idea, or in a

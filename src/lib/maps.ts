@@ -1,7 +1,7 @@
 // Directions, and the only question that actually matters about them: what
 // time do I need to leave?
 //
-// We hold no Directions API key, so Num does not invent a live traffic figure.
+// We hold no Directions API key, so NUM does not invent a live traffic figure.
 // What it does instead is honest and, for a traveller, usually enough: open the
 // route in the maps app they already use with the arrival time set, and reason
 // out loud about the local traffic pattern (the ride specialist is good at

@@ -1,4 +1,4 @@
-// Domain model for Num — ported from the Concierge.dc.html prototype state.
+// Domain model for NUM — ported from the Concierge.dc.html prototype state.
 import type { TabState } from './tabs';
 import type { Errand } from './errands';
 import type { TableDraft, TableRequest } from './bookdesk';
@@ -88,7 +88,7 @@ export interface Pick {
   phone?: string | null;
   tel?: string | null;
   address?: string | null;
-  /** true / false where Num has verified hours; null means unknown, never assume. */
+  /** true / false where NUM has verified hours; null means unknown, never assume. */
   open_now?: boolean | null;
   bookable?: boolean;
   category?: string | null;
@@ -141,7 +141,7 @@ export interface StyleProfile {
   lengths?: number[];
 }
 
-/** One provider Num can hand the user into, resolved server-side by country. */
+/** One provider NUM can hand the user into, resolved server-side by country. */
 export interface ServiceOption {
   id: string;
   name: string;
@@ -153,7 +153,7 @@ export interface ServiceOption {
 
 export interface ServiceHandoff {
   kind: 'ride' | 'food' | 'table' | 'wellness' | 'flight' | 'hotel' | 'rail';
-  /** 'connected' = Num completes it; 'handoff' = one tap into their own app. */
+  /** 'connected' = NUM completes it; 'handoff' = one tap into their own app. */
   mode: 'connected' | 'handoff';
   note?: string | null;
   to?: string | null;
@@ -182,9 +182,9 @@ export interface EventGuest {
   token: string;
   name: string | null;
   phone: string | null;
-  /** Set when the guest is on Num — their agent was asked, not their phone. */
+  /** Set when the guest is on NUM — their agent was asked, not their phone. */
   member_id?: string | null;
-  /** 'agent' — delivered into their Num. 'link' — the host sends a link. */
+  /** 'agent' — delivered into their NUM. 'link' — the host sends a link. */
   via?: 'agent' | 'link';
   rsvp: 'pending' | 'yes' | 'no' | 'maybe';
   plus_ones: number;
@@ -200,13 +200,13 @@ export interface InboxRequests {
   events: Array<{
     token: string; event_id: string; title: string; day: string | null; time: string | null;
     place: string | null; host_name: string | null;
-    /** 'agent' — their Num asked yours. 'link' — a link was sent to you. */
+    /** 'agent' — their NUM asked yours. 'link' — a link was sent to you. */
     via: 'agent' | 'link';
   }>;
 }
 
 /**
- * A dash widget. The list is state, not markup, so Num can add and remove
+ * A dash widget. The list is state, not markup, so NUM can add and remove
  * widgets as the trip needs them — a directions card appears when there is
  * somewhere to be, and goes when there isn't.
  */
@@ -242,7 +242,7 @@ export interface Member {
   name_locked?: boolean;
   /** Small square data URL, resized on-device before it ever leaves. */
   avatar?: string | null;
-  /** Free-form facts the traveller chose to share so Num knows them. */
+  /** Free-form facts the traveller chose to share so NUM knows them. */
   bio?: Record<string, string>;
   ref: string | null;
 }
@@ -275,7 +275,7 @@ export interface PlanItem {
   photo?: string | null;
   by_id?: string | null;
   by_name?: string | null;
-  /** Who is actually coming. A guest with no member_id has no Num account. */
+  /** Who is actually coming. A guest with no member_id has no NUM account. */
   attendees?: Array<{ member_id: string | null; name: string; rsvp: 'going' | 'maybe' | 'out' }>;
   /** Everyone who hasn't said no — the number the venue holds seats against. */
   party_size?: number;
@@ -287,7 +287,7 @@ export interface PlanEvent {
   ts: string;
   by_id: string | null;
   by_name: string | null;
-  /** 'comment' is a human talking; everything else is their Num reporting. */
+  /** 'comment' is a human talking; everything else is their NUM reporting. */
   kind: string;
   summary: string;
 }
@@ -305,7 +305,7 @@ export interface PartyPlan {
   items?: number;
 }
 
-/** Open state for the invite sheet — what Num is about to send, and to whom. */
+/** Open state for the invite sheet — what NUM is about to send, and to whom. */
 export interface InviteDraft {
   name?: string;
   phone?: string;
@@ -321,7 +321,7 @@ export interface InviteDraft {
     sms_url: string;
     whatsapp_url: string;
     install_steps: { ios: string[]; android: string[] };
-    /** True = Num can text this invite for the member (verified sender, a number, texting on). */
+    /** True = NUM can text this invite for the member (verified sender, a number, texting on). */
     num_text?: boolean;
   };
 }
@@ -340,11 +340,11 @@ export interface AppState {
    *  is never treated as knowledge. */
   here: { lat: number; lng: number } | null;
 
-  /** Where the user told Num they are (null until onboarding answers it). */
+  /** Where the user told NUM they are (null until onboarding answers it). */
   place: string | null;
   /** First-run onboarding completed (a place is known or demo entered). */
   onboarded: boolean;
-  /** Facts Num has learned about the traveller ('remember' actions). */
+  /** Facts NUM has learned about the traveller ('remember' actions). */
   profile: Record<string, string>;
 
   calOpen: boolean;
@@ -412,6 +412,9 @@ export interface AppState {
   /** The tab to reopen on next launch, so a night out survives a reload. */
   tabId: string | null;
 
+  /** The place sheet: "where are you?" without typing it into the thread. */
+  placeOpen: boolean;
+
   /** Search and Suggest — which tab is open, or null. See lib/discover.ts. */
   discoverOpen: 'search' | 'suggest' | null;
 
@@ -422,13 +425,13 @@ export interface AppState {
 
   /** Requests waiting on an answer, refreshed with the plan sync. */
   inbox: InboxRequests;
-  /** Which dash widgets are showing, in order. Num may rewrite this. */
+  /** Which dash widgets are showing, in order. NUM may rewrite this. */
   widgets: WidgetId[];
 
   /** Learned response preferences, and the reactions they came from. */
   style: StyleProfile;
   reactions: Record<number, Reaction>;
-  /** The last service hand-off Num offered, shown as tappable providers. */
+  /** The last service hand-off NUM offered, shown as tappable providers. */
   handoff: ServiceHandoff | null;
   /** Outside data sources the user has switched on. */
   connections: Connections;
@@ -462,7 +465,7 @@ export interface AppState {
   /** A `?dm=` deep link that landed before this device had an account. */
   dmPending: string | null;
 
-  /** This device's Num account. Null until they give a name and number. */
+  /** This device's NUM account. Null until they give a name and number. */
   me: Member | null;
   /** Mutual connections — only 'active' ones share anything. */
   friends: Friend[];

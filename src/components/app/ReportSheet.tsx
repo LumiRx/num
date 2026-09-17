@@ -1,7 +1,7 @@
 /**
  * Reporting somebody — Apple guideline 1.2.
  *
- * Num carries user-generated content between members: direct messages, comments
+ * NUM carries user-generated content between members: direct messages, comments
  * on shared plans, and the name, bio and avatar a friend can see. Guideline 1.2
  * asks a UGC app for a way to report that content, and until 21 Aug 2026 we had
  * blocking but no reporting — while the App Review notes claimed "report/block

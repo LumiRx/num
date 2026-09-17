@@ -3,7 +3,7 @@
 //
 // Two signals feed it:
 //
-//   1. Emoji reactions on Num's suggestions. A reaction is a rating with no
+//   1. Emoji reactions on NUM's suggestions. A reaction is a rating with no
 //      typing, so people actually give it, and it tells us both *how they feel
 //      about the suggestion* (drop it, or find more like it) and *how they feel
 //      about the answer* (too long, too many options).

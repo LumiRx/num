@@ -77,10 +77,10 @@ export default function ScoutSheet() {
         {loaded && !data && (
           <>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-              Become a Num Expert
+              Become a NUM Expert
             </div>
             <div style={{ ...muted, marginTop: 8 }}>
-              You are not a Num Expert yet. Experts get a code and a card: tap it at the counter,
+              You are not a NUM Expert yet. Experts get a code and a card: tap it at the counter,
               the business signs up against your name, and you earn once they start producing.
             </div>
             <a
@@ -88,7 +88,7 @@ export default function ScoutSheet() {
               className="glass lift"
               style={{ ...card, display: 'block', textDecoration: 'none', color: 'inherit', textAlign: 'center', fontWeight: 700, fontSize: 13 }}
             >
-              Become a Num Expert
+              Become a NUM Expert
             </a>
           </>
         )}
@@ -143,7 +143,7 @@ export default function ScoutSheet() {
               <div style={{ fontWeight: 700, fontSize: 13 }}>Friends you brought</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginTop: 6 }}>
                 <b style={{ fontSize: 15 }}>{data.friends.count}</b>
-                <span style={{ fontSize: 12.5 }}>joined Num through you</span>
+                <span style={{ fontSize: 12.5 }}>joined NUM through you</span>
               </div>
               {data.friends.note && <div style={{ ...muted, marginTop: 4 }}>{data.friends.note}</div>}
             </div>
@@ -152,7 +152,7 @@ export default function ScoutSheet() {
               <div style={{ fontWeight: 700, fontSize: 13 }}>Your terms</div>
               <div style={{ ...muted, marginTop: 6 }}>
                 {money(data.terms.finder_cents)} per business, released once they have produced{' '}
-                {money(data.terms.finder_gate_minor)} to Num. Then {pct(data.terms.share_bps)} of what Num
+                {money(data.terms.finder_gate_minor)} to NUM. Then {pct(data.terms.share_bps)} of what NUM
                 earns on their bookings and {pct(data.terms.sub_share_bps)} of their subscription, for{' '}
                 {data.terms.term_months} months.
               </div>
