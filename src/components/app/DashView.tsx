@@ -4,6 +4,8 @@
 // in. Everything here is one tap from the thing itself.
 import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
+import FlightCard from './FlightCard';
+import TonightStrip from './TonightStrip';
 import { pressable } from '../../lib/a11y';
 import { tagOf, monthName } from '../../lib/derive';
 import { tripCheck } from '../../lib/prefs';
@@ -222,8 +224,20 @@ const inputStyle: React.CSSProperties = {
 /** The next thing that actually happens — the single most-wanted fact. */
 function NextUp() {
   const bookings = useApp((s) => s.bookings);
+  const flights = useApp((s) => s.flights);
   const live = bookings.filter((b) => b.status !== 'cancelled').sort(sortB);
   const next = live[0];
+  // A watched flight is the one thing everything else waits on, so while
+  // NUM is watching one it is NEXT UP, above the first booking.
+  if (flights.length) {
+    return (
+      <div style={{ ...card, padding: 0, background: 'none', border: 0, boxShadow: 'none', display: 'grid', gap: 8 }}>
+        <div style={{ ...kicker, padding: '0 2px' }}>NEXT UP · NUM IS WATCHING</div>
+        {flights.map((w) => <FlightCard key={w.id} w={w} compact />)}
+        {next && <NextBooking next={next} />}
+      </div>
+    );
+  }
   if (!next) {
     return (
       <div className="glass" style={card}>
@@ -235,6 +249,10 @@ function NextUp() {
       </div>
     );
   }
+  return <NextBooking next={next} />;
+}
+
+function NextBooking({ next }: { next: Booking }) {
   const tag = tagOf(next);
   return (
     <div
@@ -450,6 +468,7 @@ export default function DashView() {
   // slot rather than a screenful.
   const RENDER: Record<WidgetId, () => JSX.Element | null> = {
     next: () => <NextUp />,
+    tonight: () => <TonightStrip />,
     requests: () => <RequestsWidget />,
     directions: () => <DirectionsWidget />,
     calendar: () => <CalendarStrip />,

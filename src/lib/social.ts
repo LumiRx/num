@@ -321,8 +321,12 @@ export function bootSocial(): void {
         : s.msgs,
     chips: [{ id: 'signup', label: 'Tell NUM who I am' }],
   }));
-  // Put the form in front of them rather than hoping they tap the chip. It
-  // lands after the first paint so the app is visibly there behind it.
+  // Ask first. An INVITED person came here to be connected to someone, so the
+  // form lands in front of them after the first paint. Everyone else gets the
+  // app: they can ask NUM for a table anonymously, and the "Tell NUM who I am"
+  // chip is there when they want plans to travel between phones. A sign-up
+  // sheet before a single answer is the fastest way to lose a stranger.
+  if (!token && !ref) return;
   setTimeout(() => {
     if (!store.get().me && !store.get().inviteOpen) store.set({ threadOpen: true, inviteOpen: {} });
   }, 900);

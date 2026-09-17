@@ -211,7 +211,7 @@ export interface InboxRequests {
  * somewhere to be, and goes when there isn't.
  */
 export type WidgetId =
-  | 'next' | 'requests' | 'directions' | 'calendar' | 'tripcheck'
+  | 'next' | 'tonight' | 'requests' | 'directions' | 'calendar' | 'tripcheck'
   | 'group' | 'events' | 'wallet' | 'connections';
 
 /** Outside data the user has chosen to plug in. Off until they say otherwise. */
@@ -416,6 +416,8 @@ export interface AppState {
   placeOpen: boolean;
   /** Flight Watch: the sheet, and the flights NUM is watching (server truth). */
   flightWatchOpen: boolean;
+  /** A flight number NUM spotted in the thread, offered to watch. */
+  flightWatchPrefill: string | null;
   flights: import('./flightwatch').FlightWatch[];
 
   /** Search and Suggest — which tab is open, or null. See lib/discover.ts. */

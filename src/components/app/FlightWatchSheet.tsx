@@ -21,15 +21,16 @@ export default function FlightWatchSheet() {
   const open = useApp((s) => s.flightWatchOpen);
   const flights = useApp((s) => s.flights);
   const me = useApp((s) => s.me);
+  const prefill = useApp((s) => s.flightWatchPrefill);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
   const [no, setNo] = useState('');
   const [date, setDate] = useState(today());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { if (open) { setMsg(null); void refreshFlights(); } }, [open]);
+  useEffect(() => { if (open) { setMsg(null); if (prefill) setNo(prefill); void refreshFlights(); } }, [open, prefill]);
   if (!open) return null;
-  const close = () => store.set({ flightWatchOpen: false });
+  const close = () => store.set({ flightWatchOpen: false, flightWatchPrefill: null });
 
   const go = async () => {
     if (!no.trim() || busy) return;

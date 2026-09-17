@@ -35,6 +35,7 @@ import { search as viatorSearch, viatorReady } from './viator.mjs';
 import { searchEvents } from './eventsearch.mjs';
 import { loadFacts, saveFacts } from './memory.mjs';
 import { resolveDest } from './suggest.mjs';
+import { cityEventsFor } from './cityevents.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -124,6 +125,7 @@ export async function eventsFor(env, { dest, lat, lng, country, fetchImpl }) {
   const out = list.map((e) => ({
     source: 'ticketmaster', id: `tm_${e.id}`, title: e.name, sub: [e.venue, e.date, e.time].filter(Boolean).join(' · '),
     image: e.image ?? null, rating: null, price: e.from ?? null, currency: e.currency ?? null, url: e.url ?? null,
+    starts_on: e.date ?? null, starts_at: e.date && e.time ? `${e.date}T${e.time}` : null, venue: e.venue ?? null,
     lat: null, lng: null, distance_km: null, label: 'Listed on Ticketmaster',
   }));
   return Object.assign(out, { reason: found?.reason ?? (list.length ? 'ok' : 'empty') });
@@ -250,7 +252,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     return json({ ok: true });
   }
   const g = (k) => url.searchParams.get(k);
-  const mode = g('mode') === 'surprise' ? 'surprise' : 'search';
+  const mode = g('mode') === 'surprise' ? 'surprise' : g('mode') === 'tonight' ? 'tonight' : 'search';
   const q = String(g('q') ?? '').slice(0, 120);
   // The app holds a display name ("Kata, Phuket") and maybe a device fix;
   // the slug, the country and a fallback coordinate come from the
@@ -271,6 +273,23 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
   const lng = g('lng') != null ? Number(g('lng')) : (row?.lng ?? null);
   const me = g('me'), planId = g('plan_id'), mood = MOOD_TAGS[g('mood')] ? g('mood') : null;
   if (mode === 'search' && !q) return json({ ok: false, error: 'q required for search' }, 400);
+
+  // TONIGHT: what is on, today and soon, from NUM's own checked list and
+  // Ticketmaster where it has inventory. No places, no Viator — a strip for
+  // the TODAY tab, each row with a start the countdown can tick from.
+  if (mode === 'tonight') {
+    const [tm, ours] = await Promise.all([
+      eventsFor(env, { dest, lat, lng, country, fetchImpl }),
+      withTimeout(cityEventsFor(env, dest, { limit: 4 }), 1500, []),
+    ]);
+    const curated = (ours ?? []).map((r) => ({
+      source: 'num', id: `ce_${slug(r.title)}`, title: r.title, sub: [r.venue, r.area].filter(Boolean).join(' · '),
+      image: null, rating: null, price: null, currency: null, price_note: r.price_note ?? null, url: null,
+      starts_on: r.starts_on ?? null, starts_at: null, venue: r.venue ?? null, label: 'Checked by NUM', why: r.why ?? null,
+    }));
+    const items = [...curated, ...tm].sort((a, b) => String(a.starts_on ?? '9').localeCompare(String(b.starts_on ?? '9'))).slice(0, 6);
+    return json({ ok: true, mode, dest, items, sources: { num: curated.length, ticketmaster: tm.length } });
+  }
 
   const [places, events, exps, history] = await Promise.all([
     placesFor(env, { dest, q: mode === 'search' ? q : null, mood, lat, lng }),

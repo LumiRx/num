@@ -105,6 +105,9 @@ export function shape(e) {
     from: pr?.min ?? null,
     currency: pr?.currency ?? null,
     url: e?.url ?? null,
+    // The poster, 16:9, the smallest that is still sharp on a phone. Shown
+    // with Ticketmaster's credit — it is their image.
+    image: (Array.isArray(e?.images) ? e.images.filter((i) => i?.ratio === '16_9' && (i?.width ?? 0) >= 640 && !i?.fallback).sort((a, b) => a.width - b.width)[0]?.url : null) ?? null,
   };
 }
 

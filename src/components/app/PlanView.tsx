@@ -9,6 +9,7 @@ import { askToChange } from '../../lib/concierge';
 import { PLAN_GROUPS } from '../../lib/data';
 import { Scene } from '../../lib/scenes';
 import { BookedCheck, ChevronRightIcon, UsersIcon } from '../../lib/icons';
+import FlightCard from './FlightCard';
 import type { Booking } from '../../lib/types';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
@@ -282,9 +283,22 @@ export default function PlanView() {
   const bookings = useApp((s) => s.bookings);
   const demo = useApp((s) => s.demo);
   const groups = groupsFor(demo, bookings);
+  const flights = useApp((s) => s.flights);
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
       {!demo && <PartyStrip />}
+      {flights.length > 0 && (
+        <div>
+          <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.05em' }}>
+              FLIGHTS
+              <span style={{ display: 'block', width: 28, height: 3, borderRadius: 999, background: 'var(--grad-accent)', marginTop: 3 }} />
+            </span>
+            <span {...pressable(() => store.set({ flightWatchOpen: true }))} className="tap" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer', padding: '0 4px' }}>WATCH ANOTHER</span>
+          </div>
+          <div style={{ display: 'grid', gap: 8, margin: '0 12px' }}>{flights.map((w) => <FlightCard key={w.id} w={w} compact />)}</div>
+        </div>
+      )}
       {groups.map(({ key, name, dates, items }) => (
         <div key={key}>
           <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

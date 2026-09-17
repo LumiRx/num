@@ -104,6 +104,7 @@ function baseState() {
     discoverOpen: null,
     placeOpen: false,
     flightWatchOpen: false,
+    flightWatchPrefill: null,
     flights: [],
     errandsOpen: false,
     errands: [],
@@ -111,7 +112,7 @@ function baseState() {
     inbox: { connects: [], plans: [], events: [] },
     // Default layout. NUM rewrites this as the trip changes — directions only
     // earn a slot when there is somewhere to be.
-    widgets: ['next', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
+    widgets: ['next', 'tonight', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     pushOn: false,
     theme: 'verified' as const,
     businessOpen: false,
@@ -213,7 +214,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, flightWatchPrefill, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.
@@ -361,6 +362,15 @@ export function repairShapes(saved: Record<string, unknown>): Record<string, unk
   // the store cannot quietly reintroduce the crash.
   for (const k of REPAIRED_ARRAYS) {
     if (k in out) out[k] = arr(out[k]);
+  }
+
+  // A widget added after a phone first saved its list would otherwise never
+  // appear there. Tonight slots in right under NEXT UP, where it was designed
+  // to sit; a list the person has reordered keeps their order.
+  if (Array.isArray(out.widgets) && !(out.widgets as unknown[]).includes('tonight')) {
+    const w = out.widgets as string[];
+    const at = w.indexOf('next');
+    w.splice(at < 0 ? 0 : at + 1, 0, 'tonight');
   }
 
   return out;

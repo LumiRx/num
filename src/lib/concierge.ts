@@ -224,7 +224,29 @@ export function askToChange(title: string) {
   setTimeout(() => sendChip('change', ''), 50);
 }
 
+/**
+ * A flight number in what the guest typed — "TG917 tomorrow", "we land on
+ * BA9 at 6". Airline code (two letters, or letter+digit) plus 1–4 digits,
+ * and only with a travel word nearby, so "room 2412" is not a flight.
+ */
+export function spotFlight(text: string): string | null {
+  const t = String(text ?? '');
+  if (!/\b(flight|fly|flying|land|landing|arriv|depart|board|airport|✈)/i.test(t)) {
+    const bare = /\b([A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])\s?([0-9]{2,4})\b/.exec(t.toUpperCase());
+    // No travel word: accept only the canonical shape with capitals, e.g. "TG917".
+    if (!bare || !/[A-Z]{2}[0-9]{2,4}/.test(t)) return null;
+    return `${bare[1]}${bare[2]}`;
+  }
+  const m = /\b([A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])\s?([0-9]{1,4})\b/i.exec(t);
+  return m ? `${m[1].toUpperCase()}${m[2]}` : null;
+}
+
 export function sendChip(id: string, label: string) {
+  // "Watch TG917": open the sheet with the number in it; nothing is sent.
+  if (id.startsWith('watch:')) {
+    store.set({ flightWatchOpen: true, flightWatchPrefill: id.slice('watch:'.length) });
+    return;
+  }
   // Enter the showroom: swap the whole state for Viv's scripted SE-Asia trip.
   if (id === 'demo') {
     const demo = demoState();
@@ -728,7 +750,9 @@ export async function askNum(text: string) {
       // Unread only counts while the thread is closed — the dot carries it.
       unread: prev.threadOpen ? 0 : prev.unread + 1,
       msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}), ...(out.picks?.length ? { picks: out.picks } : {}) }],
-      chips: out.chips ?? defChips(),
+      // A flight number in the ask gets one extra chip: Watch it. The card
+      // then lives at the top of the thread and on TODAY (flightwatch.ts).
+      chips: (() => { const no = spotFlight(text); const base = out.chips ?? defChips(); return no && !base.some((c) => c.id === `watch:${no}`) ? [{ id: `watch:${no}`, label: `Watch ${no}` }, ...base] : base; })(),
       // The server resolves location against the shared destination database;
       // once it knows where we are, the header follows and onboarding is done.
       ...(out.place ? { place: out.place, onboarded: true } : {}),
