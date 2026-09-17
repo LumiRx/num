@@ -101,6 +101,8 @@ export function shape(e) {
     date: start.dateTBA || start.dateTBD ? null : (start.localDate ?? null),
     time: start.timeTBA || start.noSpecificTime ? null : (start.localTime ?? null),
     venue: venue.name ?? null,
+    lat: Number.isFinite(Number(venue?.location?.latitude)) ? Number(venue.location.latitude) : null,
+    lng: Number.isFinite(Number(venue?.location?.longitude)) ? Number(venue.location.longitude) : null,
     genre: named(cls.genre) || named(cls.segment) || null,
     from: pr?.min ?? null,
     currency: pr?.currency ?? null,

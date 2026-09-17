@@ -253,8 +253,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             control a first-timer needed (say where you are) did not exist
             (audit B3, 17 Sep). */}
         <div {...pressable(() => { if (!store.get().place && !store.get().demo) { store.set({ placeOpen: true }); return; } store.set((s) => { const M = monthsFor(s.demo)[0]; return { calOpen: true, selDay: s.selDay || `${M.mo}-${M.todayDay ?? 1}` }; }); })} style={{ cursor: 'pointer', padding: '2px 16px 12px' }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 21, fontWeight: 700, lineHeight: 1.1 }}>
-            {title} <ChevronDownIcon size={15} style={{ color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
+          <div style={{ fontFamily: 'var(--font-heading)', fontSize: title.length > 26 ? 18 : 21, fontWeight: 700, lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span> <ChevronDownIcon size={15} style={{ flex: 'none', color: posterHeader ? '#fff' : 'var(--color-accent)', verticalAlign: 'middle' }} />
           </div>
           <div style={{ fontSize: 10, letterSpacing: '.14em', marginTop: 3, color: posterHeader ? 'var(--field-bg)' : 'var(--color-neutral-600)' }}>
             {subhead}
@@ -358,14 +358,13 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         <div
           {...pressable(() => store.set({ threadOpen: true, unread: 0 }))}
           aria-label={unread ? `Open thread, ${unread} new` : 'Open thread'}
-          className="press rise-in"
+          className="press rise-in glow"
           style={{
             position: 'absolute', right: 16, bottom: 'max(env(safe-area-inset-bottom), 16px)', zIndex: 40,
             height: 54, padding: '0 20px 0 16px', borderRadius: 999, cursor: 'pointer',
             background: 'var(--grad-accent)', color: '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.01em',
-            boxShadow: '0 10px 28px rgba(14,164,131,.38), inset 0 1px 0 rgba(255,255,255,.28)',
           }}
         >
           <MessageIcon size={20} />

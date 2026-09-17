@@ -85,6 +85,9 @@ const withTimeout = (p, ms, fallback) =>
     // an expired key from a slow network.
     .catch((e) => (fallback && typeof fallback === 'object' ? { ...fallback, reason: `error: ${String(e?.message ?? e).slice(0, 80)}` } : fallback));
 
+/** A ~5 km cell (two decimals of a degree), the unit a "near me" lookup is shared at. */
+export const cell = (lat, lng) => `${(Math.round(lat * 50) / 50).toFixed(2)}_${(Math.round(lng * 50) / 50).toFixed(2)}`;
+
 export function haversineKm(lat1, lng1, lat2, lng2) {
   if ([lat1, lng1, lat2, lng2].some((v) => v == null || Number.isNaN(Number(v)))) return null;
   const R = 6371, toR = (d) => (d * Math.PI) / 180;
@@ -119,15 +122,27 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
 }
 
 /** Real ticketed events near the coordinate (Ticketmaster where it actually has inventory). */
-export async function eventsFor(env, { dest, lat, lng, country, fetchImpl }) {
-  const found = await withTimeout(searchEvents(env, { dest, lat, lng, country, days: 7, fetchImpl }), 4000, { reason: 'timeout' });
+export async function eventsFor(env, { dest, lat, lng, country, fetchImpl, near = false }) {
+  // With the person's own position, search a tight ring around THEM rather
+  // than the city's centre, cached per ~5 km cell so neighbours share a
+  // lookup. "Near me" is the whole point of Tonight: a listing across town
+  // is not tonight, it is a plan.
+  const mine = near && Number.isFinite(lat) && Number.isFinite(lng);
+  const key = mine ? `near_${cell(lat, lng)}` : dest;
+  const found = await withTimeout(
+    searchEvents(env, { dest: key, lat, lng, country, days: mine ? 3 : 7, radiusMiles: mine ? 10 : 25, size: mine ? 14 : 8, fetchImpl }),
+    4000, { reason: 'timeout' },
+  );
   const list = found?.events ?? found?.result?.events ?? [];
-  const out = list.map((e) => ({
-    source: 'ticketmaster', id: `tm_${e.id}`, title: e.name, sub: [e.venue, e.date, e.time].filter(Boolean).join(' · '),
-    image: e.image ?? null, rating: null, price: e.from ?? null, currency: e.currency ?? null, url: e.url ?? null,
-    starts_on: e.date ?? null, starts_at: e.date && e.time ? `${e.date}T${e.time}` : null, venue: e.venue ?? null,
-    lat: null, lng: null, distance_km: null, label: 'Listed on Ticketmaster',
-  }));
+  const out = list.map((e) => {
+    const km = Number.isFinite(lat) && Number.isFinite(lng) && e.lat != null && e.lng != null ? haversineKm(lat, lng, e.lat, e.lng) : null;
+    return {
+      source: 'ticketmaster', id: `tm_${e.id}`, title: e.name, sub: [e.venue, e.date, e.time].filter(Boolean).join(' · '),
+      image: e.image ?? null, rating: null, price: e.from ?? null, currency: e.currency ?? null, url: e.url ?? null,
+      starts_on: e.date ?? null, starts_at: e.date && e.time ? `${e.date}T${e.time}` : null, venue: e.venue ?? null,
+      lat: e.lat ?? null, lng: e.lng ?? null, distance_km: km == null ? null : Math.round(km * 10) / 10, label: 'Listed on Ticketmaster',
+    };
+  });
   return Object.assign(out, { reason: found?.reason ?? (list.length ? 'ok' : 'empty') });
 }
 
@@ -263,8 +278,10 @@ export function tonightPick(curated, tm, day = null, { limit = 6 } = {}) {
   const seen = new Set();
   const uniq = live.filter((r) => { const k = slug(r.title); if (seen.has(k)) return false; seen.add(k); return true; });
   const onDay = (r) => ((r.starts_on <= today && (r.ends_on ?? r.starts_on) >= today) ? 0 : r.starts_on === tomorrow ? 1 : 2);
+  // Today first; within a day, nearer first when distance is known; then by start.
+  const far = (r) => (r.distance_km == null ? 999 : r.distance_km);
   return uniq
-    .sort((a, b) => onDay(a) - onDay(b) || String(a.starts_at ?? a.starts_on).localeCompare(String(b.starts_at ?? b.starts_on)))
+    .sort((a, b) => onDay(a) - onDay(b) || far(a) - far(b) || String(a.starts_at ?? a.starts_on).localeCompare(String(b.starts_at ?? b.starts_on)))
     .slice(0, limit);
 }
 
@@ -308,7 +325,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
   // the TODAY tab, each row with a start the countdown can tick from.
   if (mode === 'tonight') {
     const [tm, ours] = await Promise.all([
-      eventsFor(env, { dest, lat, lng, country, fetchImpl }),
+      eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true }),
       withTimeout(cityEventsFor(env, dest, { limit: 4 }), 1500, []),
     ]);
     const curated = (ours ?? []).map((r) => ({

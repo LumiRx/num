@@ -13,11 +13,12 @@ import { pressable } from '../../lib/a11y';
 import { apiUrl } from '../../lib/apibase';
 import { askNum } from '../../lib/concierge';
 import { openShareCard } from '../../lib/sharecard';
+import { fixPosition } from '../../lib/whereami';
 import { t } from '../../lib/i18n';
 
 interface TonightItem {
   source: 'num' | 'ticketmaster'; id: string; title: string; sub: string; image: string | null;
-  price: number | null; currency: string | null; price_note?: string | null; url: string | null;
+  price: number | null; currency: string | null; price_note?: string | null; url: string | null; distance_km?: number | null;
   starts_on: string | null; ends_on?: string | null; starts_at: string | null; venue: string | null; label: string; why?: string | null;
 }
 
@@ -87,13 +88,32 @@ export default function TonightStrip() {
     return () => { dead = true; };
   }, [place, here?.lat, here?.lng, demo]);
 
+  const [locating, setLocating] = useState(false);
+  // Tonight is about what is CLOSE. Without a fix the strip works from the
+  // city's centre; one tap asks the phone, and from then on the listings are
+  // the ones within a short ride, nearest first, with the distance on each.
+  const nearMe = async () => {
+    if (locating) return;
+    setLocating(true);
+    const fix = await fixPosition();
+    setLocating(false);
+    if (fix) store.set((s) => ({ here: fix, place: s.place ?? t('Near me') }));
+  };
+
   if (!items || items.length === 0) return null;
 
   return (
     <div style={{ margin: '10px 0 2px' }}>
-      <div style={{ ...kicker, padding: '0 14px 8px', display: 'flex', justifyContent: 'space-between' }}>
-        <span>TONIGHT NEAR {String(place ?? 'YOU').toUpperCase()}</span>
-        <span style={{ color: 'var(--color-accent)' }}>{items.length} ON</span>
+      <div style={{ ...kicker, padding: '0 14px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('TONIGHT NEAR {place}', { place: String(here ? t('YOU') : (place ?? t('YOU'))).toUpperCase() })}</span>
+        {here ? (
+          <span style={{ color: 'var(--color-accent)', flex: 'none' }}>{items.length} {t('ON')}</span>
+        ) : (
+          <span {...pressable(() => void nearMe())} className="tap press" style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0 4px', opacity: locating ? 0.6 : 1 }}>
+            <svg width="11" height="11" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3" fill="currentColor" /><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M10 0v4M10 16v4M0 10h4M16 10h4" stroke="currentColor" strokeWidth="1.6" /></svg>
+            {locating ? t('FINDING YOU…') : t('NEAR ME')}
+          </span>
+        )}
       </div>
       <div className="no-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '0 12px 6px', scrollSnapType: 'x mandatory' }}>
         {items.map((i, n) => {
@@ -108,14 +128,14 @@ export default function TonightStrip() {
               </div>
               <div style={{ padding: '7px 9px 9px', display: 'grid', gap: 3, fontSize: 11 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                  <span style={{ flex: 1, color: 'var(--ink-60)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[i.venue ?? i.sub, price].filter(Boolean).join(' · ')}</span>
+                  <span style={{ flex: 1, color: 'var(--ink-60)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[i.distance_km != null ? (i.distance_km < 1 ? `${Math.round(i.distance_km * 1000)} m` : `${i.distance_km} km`) : null, i.venue ?? i.sub, price].filter(Boolean).join(' · ')}</span>
                   <SourceMark source={i.source} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 4 }}>
                   {i.url ? (
-                    <a href={i.url} target="_blank" rel="noopener noreferrer" className="tap press" style={{ textDecoration: 'none', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>{t('Tickets')}</a>
+                    <a href={i.url} target="_blank" rel="noopener noreferrer" className="tap press glow" style={{ textDecoration: 'none', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>{t('Tickets')}</a>
                   ) : (
-                    <div {...pressable(() => { store.set({ threadOpen: true }); void askNum(`Tell me about ${i.title}${i.venue ? ` at ${i.venue}` : ''} tonight and plan the evening around it.`); })} className="tap press" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>{t('Ask NUM')}</div>
+                    <div {...pressable(() => { store.set({ threadOpen: true }); void askNum(`Tell me about ${i.title}${i.venue ? ` at ${i.venue}` : ''} tonight and plan the evening around it.`); })} className="tap press glow" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>{t('Ask NUM')}</div>
                   )}
                   <div {...pressable(() => openShareCard({ kind: 'idea', title: i.title, summary: [i.title, i.venue, cd, price, i.label].filter(Boolean).join(' · '), place: i.venue, day: i.starts_on ?? null, cost: price, link: i.url }))} className="tap glass press" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, fontWeight: 700, fontSize: 10.5 }}>{t('Send')}</div>
                 </div>

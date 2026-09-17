@@ -588,7 +588,7 @@ export default function ThreadView() {
         ))}
         {typing && (
           <div className="msg-in" style={{ padding: '0 16px' }}>
-            <div className="glass" style={{ display: 'inline-flex', gap: 5, borderRadius: 999, padding: '10px 14px' }}>
+            <div className="glass thinking" style={{ display: 'inline-flex', gap: 5, borderRadius: 999, padding: '10px 14px' }}>
               {[0, 0.18, 0.36].map((d) => (
                 <span key={d} style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-text)', animation: `tdot 1.1s ${d}s infinite` }} />
               ))}
@@ -687,7 +687,7 @@ export default function ThreadView() {
             <div
               key={c.id}
               {...pressable(() => sendChip(c.id, c.label))}
-              className="glass lift"
+              className="glass lift chip-in glow-soft"
               style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '8px 13px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 6, flex: 'none', whiteSpace: 'nowrap', ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
             >
               <SparklesIcon size={12} style={{ color: 'var(--color-accent)' }} />
@@ -714,8 +714,8 @@ export default function ThreadView() {
             <div
               {...pressable(send)}
               aria-label={t('Send')}
-              className="press"
-              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.35)', flex: 'none' }}
+              className="press glow"
+              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}
               title={t('Send')}
             >
               <SendIcon size={17} />
@@ -724,8 +724,8 @@ export default function ThreadView() {
             <div
               {...pressable(openVoice)}
               aria-label={t('Talk to NUM')}
-              className="press"
-              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.35)', flex: 'none' }}
+              className="press glow"
+              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}
               title={t('Talk to NUM')}
             >
               <MicIcon size={17} />

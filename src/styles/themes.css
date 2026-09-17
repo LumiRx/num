@@ -80,6 +80,8 @@
   --aurora-a: radial-gradient(circle at 35% 35%, #d5f2e8 0%, #c2ebdd 55%, transparent 72%);
   --aurora-b: radial-gradient(circle at 60% 45%, #dce9f4 0%, #e6f0ee 55%, transparent 72%);
   --aurora-opacity: 0.5;
+  --glow: 0 8px 22px rgba(14,164,131,.30), 0 0 14px rgba(44,196,159,.18);
+  --glow-soft: 0 0 0 1px rgba(14,164,131,.16), 0 4px 16px rgba(14,164,131,.14);
   --shell-bg: #0a1a24;
 }
 
@@ -116,6 +118,8 @@
   --aurora-a: radial-gradient(circle at 35% 35%, #123f3a 0%, #0f3a44 55%, transparent 72%);
   --aurora-b: radial-gradient(circle at 60% 45%, #1a3550 0%, #12303c 55%, transparent 72%);
   --aurora-opacity: 0.7;
+  --glow: 0 8px 24px rgba(44,196,159,.36), 0 0 18px rgba(44,196,159,.28);
+  --glow-soft: 0 0 0 1px rgba(44,196,159,.22), 0 4px 18px rgba(44,196,159,.18);
   --shell-bg: #06121a;
 }
 

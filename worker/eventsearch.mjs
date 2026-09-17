@@ -77,7 +77,7 @@ async function writeCache(env, dest, source, events, { now = Date.now() } = {}) 
  * bonus on top of an answer, and a failed one must leave the concierge exactly
  * as capable as it was before.
  */
-export async function searchEvents(env, { dest, lat, lng, country, days = 7, now = Date.now(), fetchImpl } = {}) {
+export async function searchEvents(env, { dest, lat, lng, country, days = 7, now = Date.now(), radiusMiles = 25, size = 8, fetchImpl } = {}) {
   if (!env?.DB || !dest) return null;
 
   const cached = await readCache(env, dest, { now });
@@ -89,7 +89,7 @@ export async function searchEvents(env, { dest, lat, lng, country, days = 7, now
 
     const out = await tm.search(
       env,
-      { lat, lng, country, days, size: 8 },
+      { lat, lng, country, days, size, radiusMiles },
       fetchImpl ?? fetch,
     );
     if (!out?.ok) {

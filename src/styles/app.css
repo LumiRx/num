@@ -41,6 +41,28 @@
 .check-pop { animation: pop-in .36s cubic-bezier(.3,1.4,.5,1) both; }
 .rise-in { animation: rise-in .32s cubic-bezier(.3,1,.4,1) both; }
 .sheet-in { animation: sheet-in .32s cubic-bezier(.3,1,.4,1) both; }
+/* ── Glow (17 Sep 2026). A soft ring of the accent around the edge of what
+   can be pressed — the tokens live on the theme so light and dark each get
+   their own strength (dark needs more). ──────────────────────────────── */
+.glow { box-shadow: var(--glow), inset 0 1px 0 rgba(255,255,255,.28); }
+.glow-soft { box-shadow: var(--glow-soft); }
+.glow-ring { box-shadow: 0 0 0 1px var(--color-accent-300), var(--glow-soft); }
+
+/* Chat that feels alive: NUM's bubble breathes while it thinks, chips pop in
+   one after another, and the whole reply rises rather than blinks in. */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(14,164,131,.0); }
+  50% { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(14,164,131,.10); }
+}
+.thinking { animation: breathe 1.6s ease-in-out infinite; }
+.chip-in { animation: pop-in .36s cubic-bezier(.3,1.4,.5,1) both; }
+.chip-in:nth-child(2) { animation-delay: 60ms; }
+.chip-in:nth-child(3) { animation-delay: 120ms; }
+.chip-in:nth-child(4) { animation-delay: 180ms; }
+.chip-in:nth-child(5) { animation-delay: 240ms; }
+.chip-in:nth-child(n+6) { animation-delay: 300ms; }
+@media (prefers-reduced-motion: reduce) { .thinking, .chip-in { animation: none; } }
+
 .skel { border-radius: 10px; background: linear-gradient(90deg, var(--ink-08) 0%, var(--field-bg) 50%, var(--ink-08) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 
 a { color: var(--color-accent-700); }
