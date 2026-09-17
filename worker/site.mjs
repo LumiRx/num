@@ -254,7 +254,30 @@ export function switcher(path, current) {
 /* ──────────────────────────────────────────────────────────────── handler */
 
 export default {
+  /**
+   * `run_worker_first` means EVERY page on itsnum.com now comes through
+   * here. That is what makes the rewriting possible and it is also the risk:
+   * before this file, a bug could not take the marketing site down, because
+   * there was no code to have a bug in.
+   *
+   * So the whole of it is wrapped. Anything unexpected — a bad path, a
+   * translation the model mangled into a throw, a change made later by
+   * someone who has not read this comment — serves the plain asset instead.
+   * The worst failure is now an English page with a dollar price, which is
+   * exactly what the site served yesterday. It is never a 500.
+   */
   async fetch(request, env, ctx) {
+    try {
+      return await render(request, env, ctx);
+    } catch (err) {
+      console.error('[site] falling back to the unmodified asset', err?.stack ?? err);
+      return env.ASSETS.fetch(request);
+    }
+  },
+};
+
+async function render(request, env, ctx) {
+  {
     const url = new URL(request.url);
 
     // /th/business/pricing/ → lang "th", asset "/business/pricing/".
@@ -307,5 +330,5 @@ export default {
       ctx.waitUntil(cache.put(cacheKey, out.clone()));
     }
     return out;
-  },
-};
+  }
+}
