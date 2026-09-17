@@ -116,7 +116,7 @@ def register(M):
 </section>
 
 <section class="wrap" style="padding-top:52px"><div class="prose" id="quickstart">
-<h2>Quick start</h2>
+<h2 id="quick-start">Quick start</h2>
 <p>Three requests: sign up, submit, check. No human in the loop to get started, no sales call, no
 waiting for a key.</p>
 

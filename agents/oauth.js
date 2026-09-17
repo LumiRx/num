@@ -230,74 +230,92 @@ function consentPage({ client, account, params }) {
   const scopes = (params.scope || SCOPES.join(" ")).split(/\s+/).filter(Boolean);
   const rows = scopes.map((s) => {
     const label = s === "num.write"
-      ? "Submit businesses and promotions on your behalf (each one is reviewed by a person before it appears)"
+      ? "Submit a business or a promotion for you. A person reviews each one before it appears."
       : s === "num.read"
-        ? "Search NUM's directory of more than 2.5 million places, against your daily quota"
+        ? "Search NUM's directory of more than 2.5 million places, within your daily limit."
         : s;
-    return `<li><code>${esc(s)}</code><span>${esc(label)}</span></li>`;
+    return `<li><span>${esc(label)}<code>${esc(s)}</code></span></li>`;
   }).join("");
 
   const hidden = ["client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "scope", "resource"]
     .map((k) => params[k] ? `<input type="hidden" name="${k}" value="${esc(params[k])}">` : "").join("");
 
+  // Branded to match /signin/ and the rest of itsnum.com (assets/site.css tokens).
+  // This and the sign-in page are the only NUM screens a person connecting from
+  // Claude or ChatGPT sees, so they have to look like one product, not three.
+  const origin = new URL(params.redirect_uri).origin;
   return html(`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize · NUM</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect ${esc(client.client_name)} · NUM</title>
+<meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#faf7f4;--ink:#14201c;--dim:#5d6b66;--line:#e2dbd3;--accent:#0d9488;--card:#fff}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1513;--ink:#e9efec;--dim:#93a29c;--line:#243330;--card:#141d1a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
-font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
-display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
-.card{max-width:460px;width:100%;background:var(--card);border:1px solid var(--line);
-border-radius:16px;padding:30px}
-h1{font-size:20px;margin:0 0 6px;letter-spacing:-.02em}
-.sub{color:var(--dim);font-size:14.5px;margin:0 0 20px}
-ul{list-style:none;padding:0;margin:0 0 20px;border-top:1px solid var(--line)}
-li{padding:13px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:3px}
-li code{font-size:12px;color:var(--accent);font-weight:600}
-li span{font-size:14px;color:var(--dim)}
-.who{font-size:13px;color:var(--dim);margin:0 0 20px;padding:11px 13px;background:var(--bg);
-border:1px solid var(--line);border-radius:9px}
+:root{--pri:#0EA483;--pri-d:#0B7C63;--pri-l:#E7F6F1;--ink:#0A1A24;--slate:#586A74;--line:#E7ECEE;--bg:#F6FAF9}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);
+font:16px/1.6 'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+header{padding:18px 24px;border-bottom:1px solid var(--line);background:rgba(246,250,249,.9)}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--ink);text-decoration:none}
+.brand i{width:12px;height:12px;border-radius:50%;background:var(--pri);box-shadow:0 0 0 4px var(--pri-l);display:block}
+.brand small{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--slate)}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px 56px;
+background:radial-gradient(900px 420px at 50% -10%,#E7F6F1 0%,rgba(231,246,241,0) 70%)}
+.card{max-width:460px;width:100%;background:#fff;border:1px solid var(--line);border-radius:20px;padding:32px 30px 26px;
+box-shadow:0 1px 2px rgba(10,26,36,.04),0 24px 60px rgba(10,26,36,.10)}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--pri-l);color:var(--pri-d);font-size:12px;font-weight:700;
+letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:6px 12px}
+.eyebrow i{width:8px;height:8px;border-radius:50%;background:var(--pri);display:block}
+h1{font-family:'Space Grotesk','Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:600;line-height:1.12;letter-spacing:-.02em;margin:14px 0 8px}
+.sub{color:var(--slate);font-size:15px;margin:0 0 18px}
+ul{list-style:none;padding:0;margin:0 0 18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+li{padding:13px 14px;display:flex;gap:11px;align-items:flex-start;font-size:14.5px;line-height:1.5}
+li+li{border-top:1px solid var(--line)}
+li:before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--pri);margin-top:7px}
+li code{display:block;font:600 11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--slate);margin-top:2px}
+.who{font-size:13px;color:var(--slate);margin:0 0 18px;line-height:1.55}
+.who strong{color:var(--ink)}
+.who code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink)}
 .row{display:flex;gap:10px}
-button{flex:1;padding:12px;border-radius:10px;font:inherit;font-weight:600;font-size:15px;cursor:pointer;
-border:1px solid var(--line);background:transparent;color:var(--ink)}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-</style></head><body><div class="card">
-<h1>Authorize ${esc(client.client_name)}</h1>
-<p class="sub">It is asking to connect to your NUM account.</p>
+button{flex:1;padding:14px;border-radius:12px;font:inherit;font-weight:700;font-size:15px;cursor:pointer;
+border:1px solid var(--line);background:#fff;color:var(--ink);transition:background .15s,border-color .15s,transform .15s}
+button:hover{border-color:#cbd6da}
+button.primary{flex:1.4;background:var(--pri);border-color:var(--pri);color:#fff;box-shadow:0 8px 22px rgba(14,164,131,.28)}
+button.primary:hover{background:var(--pri-d);border-color:var(--pri-d);transform:translateY(-1px)}
+button:focus-visible{outline:3px solid rgba(14,164,131,.4);outline-offset:2px}
+.foot{margin:16px 0 0;text-align:center;font-size:13px;color:var(--slate)}
+.foot a{color:var(--slate);text-decoration:none}.foot a:hover{color:var(--pri-d)}
+@media(max-width:480px){main{padding:24px 16px 40px;align-items:flex-start}.card{padding:26px 20px 22px}h1{font-size:25px}}
+</style></head><body>
+<header><a class="brand" href="/"><i></i>NUM <small>travel concierge</small></a></header>
+<main><div style="width:100%;max-width:460px">
+<div class="card">
+<div class="eyebrow"><i></i>Connect NUM</div>
+<h1>Let ${esc(client.client_name)} use NUM?</h1>
+<p class="sub">It will be able to:</p>
 <ul>${rows}</ul>
-<p class="who">Signed in as <strong>${esc(account.email)}</strong>. Connecting from
-<code>${esc(new URL(params.redirect_uri).origin)}</code>.</p>
+<p class="who">Signed in as <strong>${esc(account.email)}</strong>. You'll go back to <code>${esc(origin)}</code>.
+It never sees your sign-in link, and you can disconnect it at any time.</p>
 <form method="POST" action="/oauth/authorize">${hidden}
 <div class="row">
-<button type="submit" name="decision" value="deny">Deny</button>
+<button type="submit" name="decision" value="deny">Not now</button>
 <button type="submit" name="decision" value="allow" class="primary">Allow</button>
 </div></form>
-</div></body></html>`);
+</div>
+<p class="foot"><a href="/privacy/#developers">Privacy</a> &nbsp;&middot;&nbsp; <a href="/terms/">Terms</a> &nbsp;&middot;&nbsp; <a href="mailto:info@itsnum.com">Help</a></p>
+</div></main></body></html>`);
 }
 
+// Not signed in: go straight to the branded sign-in page, carrying the whole
+// authorize request in ?next= so the emailed link lands back here. This used to
+// be an unbranded 401 page with one button on it ("Sign in, then return to this
+// page and reload it") — an extra screen, in a different design, asking the
+// person to do by hand what ?next= already does.
 function signinInterstitial(returnTo) {
-  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · NUM</title>
-<link rel="icon" href="/favicon.ico">
-<style>
-:root{--bg:#faf7f4;--ink:#14201c;--dim:#5d6b66;--line:#e2dbd3;--accent:#0d9488;--card:#fff}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1513;--ink:#e9efec;--dim:#93a29c;--line:#243330;--card:#141d1a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
-font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
-display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
-.card{max-width:430px;width:100%;background:var(--card);border:1px solid var(--line);
-border-radius:16px;padding:30px;text-align:center}
-h1{font-size:20px;margin:0 0 8px}p{color:var(--dim);font-size:14.5px;margin:0 0 20px}
-a{display:inline-block;padding:12px 22px;border-radius:10px;background:var(--accent);color:#fff;
-text-decoration:none;font-weight:600}
-</style></head><body><div class="card">
-<h1>Sign in to continue</h1>
-<p>NUM needs to know who you are before it can authorize this connection.
-Sign in, then return to this page and reload it.</p>
-<a href="/signin/?next=${encodeURIComponent(returnTo)}">Sign in to NUM</a>
-</div></body></html>`, 401);
+  return new Response(null, {
+    status: 302,
+    headers: { location: "/signin/?next=" + encodeURIComponent(returnTo), "cache-control": "no-store" },
+  });
 }
 
 async function authorizeGet(url, req, env) {

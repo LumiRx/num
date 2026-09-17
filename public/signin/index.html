@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in — NUM</title>
-<meta name="description" content="Sign in to your NUM business account. No password — we email you a one-time link.">
+<meta name="description" content="Sign in to your NUM account. No password: we email you a one-time link.">
 <!-- Sign-in is an account page, not a landing page. Keep it out of the index. -->
 <meta name="robots" content="noindex, follow">
 <link rel="canonical" href="https://itsnum.com/signin/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 /* This page exists because a query string is not routable. "itsnum.com/?signin=1"
    does not match the Cloudflare route "itsnum.com/" — it falls through to the older
@@ -18,44 +18,67 @@
    pattern outright. A path can be routed; a query flag cannot. So every link we put
    in an email, a QR code or a partner deck points here, at /signin/. */
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
-  font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
-  background:linear-gradient(150deg,#F6F7FF 0%,#EEF0FF 45%,#F4F1FF 100%);color:#1B1E3B}
+/* 16 Sep 2026. Two things were wrong here and both showed on the OAuth sign-in
+   that Claude and ChatGPT send people to. (1) body was a flex ROW that centred
+   its children, written when the card was the only child; the shared nav was
+   added later and landed beside the card, halfway down the screen. The body is
+   now a column: nav on top, card centred in what is left. (2) The page was
+   purple. NUM is green (#0EA483, see assets/site.css) and this is the first NUM
+   screen a person connecting from an AI app ever sees. */
+:root{--pri:#0EA483;--pri-d:#0B7C63;--pri-l:#E7F6F1;--ink:#0A1A24;--slate:#586A74;--line:#E7ECEE;--bg:#F6FAF9}
+html,body{height:100%}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.nv{flex:none;width:100%}
+.nsi-main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px 56px;
+  background:radial-gradient(900px 420px at 50% -10%,#E7F6F1 0%,rgba(231,246,241,0) 70%)}
 .wrap{width:100%;max-width:440px}
-.brand{display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:22px;text-decoration:none}
-.brand-mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6366F1,#8B5CF6);
-  display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;letter-spacing:-.03em}
-.brand-name{font-size:19px;font-weight:800;letter-spacing:-.02em;color:#1B1E3B}
-.nsi-card{background:#fff;border-radius:20px;padding:32px 30px 26px;box-shadow:0 24px 70px rgba(30,33,70,.14);border:1px solid rgba(99,102,241,.08)}
-.nsi-eyebrow{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6366F1}
-.nsi-h{font-size:24px;font-weight:800;color:#1B1E3B;margin:8px 0 6px;letter-spacing:-.02em}
-.nsi-p{font-size:14px;line-height:1.55;color:#5E6485;margin:0 0 18px}
-.nsi-in{width:100%;border:1.5px solid #DDE0FB;border-radius:12px;padding:13px 15px;font-size:15px;
-  font-family:inherit;color:#1B1E3B;outline:none;transition:border-color .15s}
-.nsi-in:focus{border-color:#6366F1}
+.nsi-card{background:#fff;border-radius:20px;padding:32px 30px 26px;border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(10,26,36,.04),0 24px 60px rgba(10,26,36,.10)}
+.nsi-eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--pri-l);color:var(--pri-d);
+  font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:6px 12px}
+.nsi-eyebrow i{width:8px;height:8px;border-radius:50%;background:var(--pri);display:block}
+.nsi-h{font-family:'Space Grotesk','Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:600;line-height:1.12;
+  color:var(--ink);margin:14px 0 8px;letter-spacing:-.02em}
+.nsi-p{font-size:15px;line-height:1.6;color:var(--slate);margin:0 0 18px}
+.nsi-ask{display:none;list-style:none;margin:0 0 18px;padding:12px 14px;background:var(--bg);border:1px solid var(--line);
+  border-radius:12px;font-size:14px;line-height:1.5;color:var(--ink)}
+.nsi-ask li{display:flex;gap:10px;align-items:flex-start;padding:3px 0}
+.nsi-ask li:before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--pri);margin-top:7px}
+.nsi-label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
+.nsi-in{width:100%;border:1.5px solid #D5DEE1;border-radius:12px;padding:13px 15px;font-size:16px;
+  font-family:inherit;color:var(--ink);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+.nsi-in::placeholder{color:#94A3AA}
+.nsi-in:focus{border-color:var(--pri);box-shadow:0 0 0 4px rgba(14,164,131,.16)}
 .nsi-btn{width:100%;margin-top:12px;border:0;border-radius:12px;padding:14px;font-size:15px;font-weight:700;
-  font-family:inherit;color:#fff;cursor:pointer;background:linear-gradient(135deg,#6366F1,#8B5CF6);transition:opacity .15s}
-.nsi-btn:hover{opacity:.92}
-.nsi-btn:disabled{opacity:.55;cursor:default}
-.nsi-note{font-size:12.5px;line-height:1.5;color:#8A90AE;margin:14px 0 0;text-align:center}
-.nsi-note a{color:#6366F1;text-decoration:none;font-weight:600}
+  font-family:inherit;color:#fff;cursor:pointer;background:var(--pri);box-shadow:0 8px 22px rgba(14,164,131,.28);
+  transition:background .15s,transform .15s}
+.nsi-btn:hover{background:var(--pri-d);transform:translateY(-1px)}
+.nsi-btn:focus-visible{outline:3px solid rgba(14,164,131,.4);outline-offset:2px}
+.nsi-btn:disabled{opacity:.6;cursor:default;transform:none}
+.nsi-note{font-size:13px;line-height:1.55;color:var(--slate);margin:16px 0 0;text-align:center}
+.nsi-note a{color:var(--pri-d);text-decoration:none;font-weight:700}
 .nsi-note a:hover{text-decoration:underline}
-.nsi-err{font-size:13px;color:#D14343;margin:10px 0 0;display:none}
-.nsi-ok{text-align:center;padding:8px 0 2px}
-.nsi-tick{font-size:40px;line-height:1}
-.foot{margin-top:18px;text-align:center;font-size:12.5px;color:#9096B4}
-.foot a{color:#9096B4;text-decoration:none}
-.foot a:hover{color:#6366F1}
+.nsi-err{font-size:13px;color:#B42318;margin:10px 0 0;display:none}
+.nsi-ok{text-align:center;padding:4px 0 2px}
+.nsi-tick{width:56px;height:56px;border-radius:50%;background:var(--pri-l);color:var(--pri-d);display:grid;place-items:center;
+  margin:0 auto 4px;font-size:26px;line-height:1}
+.foot{margin-top:18px;text-align:center;font-size:13px;color:var(--slate)}
+.foot a{color:var(--slate);text-decoration:none}
+.foot a:hover{color:var(--pri-d)}
+@media(max-width:480px){.nsi-main{padding:24px 16px 40px;align-items:flex-start}.nsi-card{padding:26px 20px 22px}.nsi-h{font-size:25px}}
+@media(prefers-reduced-motion:reduce){.nsi-btn,.nsi-in{transition:none}}
 </style>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NUM">
 <meta property="og:title" content="Sign in — NUM">
-<meta property="og:description" content="Sign in to your NUM business account. No password — we email you a one-time link.">
+<meta property="og:description" content="Sign in to your NUM account. No password: we email you a one-time link.">
 <meta property="og:url" content="https://itsnum.com/signin/">
 <meta property="og:locale" content="en_GB">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Sign in — NUM">
-<meta name="twitter:description" content="Sign in to your NUM business account. No password — we email you a one-time link.">
+<meta name="twitter:description" content="Sign in to your NUM account. No password: we email you a one-time link.">
 <meta property="og:image" content="https://itsnum.com/assets/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -123,38 +146,41 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   </div>
 </nav>
 
+<main class="nsi-main">
 <div class="wrap">
-
-  <a class="brand" href="/">
-    <span class="brand-mark">N</span>
-    <span class="brand-name">NUM</span>
-  </a>
 
   <div class="nsi-card">
     <div id="nsi-form">
-      <div class="nsi-eyebrow">NUM account</div>
-      <h1 class="nsi-h">Sign in</h1>
-      <p class="nsi-p">Enter the email your NUM account uses. We'll send a one-time sign-in link — no password to remember.</p>
+      <div class="nsi-eyebrow"><i></i><span id="nsi-eyebrow">NUM account</span></div>
+      <h1 class="nsi-h" id="nsi-h">Sign in to NUM</h1>
+      <p class="nsi-p" id="nsi-p">Enter your email and we'll send a one-time sign-in link. No password.</p>
+      <ul class="nsi-ask" id="nsi-ask">
+        <li><span>You sign in here, on itsnum.com. <b id="nsi-app2" style="font-weight:600">The app</b> never sees your sign-in link.</span></li>
+        <li><span>Next, you choose what it may do: search places, or also submit a business.</span></li>
+        <li><span>You can disconnect it at any time.</span></li>
+      </ul>
       <form onsubmit="submitSignin();return false;">
-        <input class="nsi-in" id="nsi-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required autofocus>
-        <button class="nsi-btn" id="nsi-go" type="submit">Send my sign-in link</button>
+        <label class="nsi-label" for="nsi-email">Email</label>
+        <input class="nsi-in" id="nsi-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required autofocus>
+        <button class="nsi-btn" id="nsi-go" type="submit">Email me a sign-in link</button>
       </form>
-      <p class="nsi-err" id="nsi-err">Something went wrong. Please try again in a moment.</p>
-      <p class="nsi-note">Don't have an account yet? <a href="/claim/">Claim your business — free</a></p>
+      <p class="nsi-err" id="nsi-err" role="alert">That didn't send. Try again in a moment.</p>
+      <p class="nsi-note" id="nsi-note">No account yet? <a href="/claim/">List your place, free</a></p>
     </div>
 
     <div id="nsi-sent" style="display:none">
       <div class="nsi-ok">
-        <div class="nsi-tick">&#9993;&#65039;</div>
+        <div class="nsi-tick" aria-hidden="true">&#9993;</div>
         <h2 class="nsi-h">Check your email</h2>
-        <p class="nsi-p" style="margin-bottom:6px">If that address has NUM access, a sign-in link is on its way. It works once and expires in 15&nbsp;minutes.</p>
+        <p class="nsi-p" style="margin-bottom:6px" id="nsi-sent-p">If that address has a NUM account, a sign-in link is on its way. It works once and expires in 15&nbsp;minutes.</p>
       </div>
       <p class="nsi-note">Wrong address? <a href="#" onclick="resetSignin();return false;">Try another one</a></p>
     </div>
   </div>
 
-  <p class="foot"><a href="/">&larr; Back to itsnum.com</a> &nbsp;&middot;&nbsp; <a href="/privacy/">Privacy</a> &nbsp;&middot;&nbsp; <a href="/terms/">Terms</a></p>
+  <p class="foot"><a href="/">&larr; itsnum.com</a> &nbsp;&middot;&nbsp; <a href="/privacy/">Privacy</a> &nbsp;&middot;&nbsp; <a href="/terms/">Terms</a> &nbsp;&middot;&nbsp; <a href="mailto:info@itsnum.com">Help</a></p>
 </div>
+</main>
 
 <script>
 (function(){
@@ -178,21 +204,55 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
          which businesses are already on NUM. */
       await fetch('/api/accounts/login', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ email: v, next: new URLSearchParams(location.search).get('next') || '' })
+        body: JSON.stringify({ email: v, next: SAFE_NEXT })
       });
       $('nsi-form').style.display='none'; $('nsi-sent').style.display='';
     }catch(e){
       $('nsi-err').style.display='';
     }
-    btn.disabled = false; btn.textContent = 'Send my sign-in link';
+    btn.disabled = false; btn.textContent = 'Email me a sign-in link';
   };
 
-  /* Already signed in? Don't make them ask for a link they don't need. */
+  /* Where they were headed. Same-origin paths only — the accounts worker applies
+     the same rule to the emailed link, so the two cannot disagree. */
+  var NEXT = new URLSearchParams(location.search).get('next') || '';
+  var SAFE_NEXT = (NEXT.charAt(0) === '/' && NEXT.slice(0,2) !== '//') ? NEXT : '';
+
+  /* Arriving from an AI app's "connect" button. Say so: a bare "Sign in" in the
+     middle of a Claude or ChatGPT flow reads like a phishing page. The app's name
+     is read from the redirect host, which NUM's /oauth/authorize re-checks against
+     the registered client before anything is granted — this is copy, not trust. */
+  (function(){
+    if(SAFE_NEXT.indexOf('/oauth/authorize') !== 0) return;
+    var app = 'an AI app';
+    try{
+      var q = new URLSearchParams(SAFE_NEXT.split('?')[1] || '');
+      var host = new URL(q.get('redirect_uri') || '').hostname;
+      if(/(^|\.)claude\.(ai|com)$/.test(host) || /(^|\.)anthropic\.com$/.test(host)) app = 'Claude';
+      else if(/(^|\.)chatgpt\.com$/.test(host) || /(^|\.)openai\.com$/.test(host)) app = 'ChatGPT';
+      else if(/(^|\.)cursor\.(com|sh)$/.test(host)) app = 'Cursor';
+      else if(/(^|\.)vscode\.dev$/.test(host)) app = 'VS Code';
+      else if(host === 'localhost' || host === '127.0.0.1') app = 'an app on this computer';
+      else if(host) app = host;
+    }catch(e){}
+    $('nsi-eyebrow').textContent = 'Connect NUM';
+    $('nsi-h').textContent = 'Sign in to connect ' + app;
+    $('nsi-p').textContent = app.charAt(0).toUpperCase() + app.slice(1) + ' is asking to use your NUM account. Enter your email and we\'ll send a one-time sign-in link.';
+    $('nsi-app2').textContent = app.charAt(0).toUpperCase() + app.slice(1);
+    $('nsi-ask').style.display = 'block';
+    $('nsi-note').innerHTML = 'No NUM account yet? <a href="/agents/#quick-start">Get a free API key instead</a>';
+    $('nsi-sent-p').innerHTML = 'If that address has a NUM account, a sign-in link is on its way. Open it on this device and you\'ll come straight back to finish connecting. It works once and expires in 15&nbsp;minutes.';
+    document.title = 'Connect ' + app + ' — NUM';
+  })();
+
+  /* Already signed in? Don't make them ask for a link they don't need — and send
+     them where they were going. This used to go to /console/ unconditionally, which
+     dropped a signed-in person out of the OAuth flow they had just started. */
   (async function(){
     try{
       var res = await fetch('/api/accounts/me', { credentials:'same-origin' });
       var me  = await res.json();
-      if(me && me.signed_in) location.replace('/console/');
+      if(me && me.signed_in) location.replace(SAFE_NEXT || '/console/');
     }catch(e){}
   })();
 })();

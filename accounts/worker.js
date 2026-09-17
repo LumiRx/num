@@ -106,7 +106,11 @@ async function handleLogin(request, env) {
     // A same-origin return path, so an OAuth authorize request survives sign-in.
     // Anything with a scheme or a protocol-relative "//" prefix is discarded.
     const raw = String(body.next || '');
-    const nextPath = (raw.startsWith('/') && !raw.startsWith('//')) ? raw.slice(0, 512) : null;
+    // Never TRUNCATE a return path: an OAuth authorize URL cut at 512 characters
+    // loses its trailing parameters (state, scope, resource) and fails after the
+    // person has already clicked the email. ChatGPT's state alone can run long.
+    // Too long to be real → drop it and land on the console instead.
+    const nextPath = (raw.startsWith('/') && !raw.startsWith('//') && raw.length <= 2048) ? raw : null;
     await env.DB.prepare('INSERT INTO magic_links (token, account_id, expires_at, next_path) VALUES (?, ?, ?, ?)')
       .bind(token, account.id, expires, nextPath).run();
     try { await sendMagicLinkEmail(env, account, token); }
