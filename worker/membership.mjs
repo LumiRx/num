@@ -185,14 +185,26 @@ CREATE TABLE IF NOT EXISTS num_usage_counters (
   PRIMARY KEY (member_id, period, key)
 );
 `;
-let ready = false;
+// Keyed on the database, not a module-level boolean.
+//
+// `let ready = false` meant the FIRST env.DB this isolate saw marked the
+// migration done for every other one. In production there is one database so
+// it never bit; under test, and in any isolate that touches a second binding,
+// the second database silently skipped its ALTERs and then failed on the
+// INSERT that needed the column. hostmoney.mjs already keys its own `ready`
+// on env.DB for exactly this reason — this brings the other two level.
+const ready = new WeakSet();
 async function ensure(env) {
-  if (ready || !env.DB) return;
+  if (!env.DB || ready.has(env.DB)) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
   // Migration, not schema: the table predates subscriptions, so the column is
   // added to live rows. Duplicate-column on a re-run is the expected no-op.
   await env.DB.prepare('ALTER TABLE num_memberships ADD COLUMN stripe_sub TEXT').run().catch(() => {});
-  ready = true;
+  // The Stripe customer, so a member can reach the billing portal. Stripe
+  // opens that page for a CUSTOMER, not a subscription, and this ladder
+  // stored only the subscription id.
+  await env.DB.prepare('ALTER TABLE num_memberships ADD COLUMN stripe_customer TEXT').run().catch(() => {});
+  ready.add(env.DB);
 }
 
 const period = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -282,7 +294,7 @@ export async function countUse(env, memberId, key, by = 1) {
  * payment — never from a client request, for the same reason the client can't
  * price a Star pack.
  */
-export async function grantTier(env, memberId, tier, { source = 'stripe', ref = null, months = 1, sub = null, extend = false } = {}) {
+export async function grantTier(env, memberId, tier, { source = 'stripe', ref = null, months = 1, sub = null, extend = false, customer = null } = {}) {
   await ensure(env);
   if (!tiers(env)[tier]) return { ok: false, error: 'unknown tier' };
   // `extend` adds the months to whatever is left rather than replacing it.
@@ -308,9 +320,12 @@ export async function grantTier(env, memberId, tier, { source = 'stripe', ref = 
   }
   const renews = new Date(from + months * 30 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
   await env.DB.prepare(
-    `INSERT INTO num_memberships (member_id, tier, renews_at, source, ref, stripe_sub) VALUES (?1,?2,?3,?4,?5,?6)
-     ON CONFLICT(member_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5, stripe_sub=COALESCE(?6, stripe_sub)`,
-  ).bind(memberId, tier, renews, source, ref, sub).run();
+    `INSERT INTO num_memberships (member_id, tier, renews_at, source, ref, stripe_sub, stripe_customer)
+       VALUES (?1,?2,?3,?4,?5,?6,?7)
+     ON CONFLICT(member_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5,
+       stripe_sub=COALESCE(?6, stripe_sub),
+       stripe_customer=COALESCE(?7, stripe_customer)`,
+  ).bind(memberId, tier, renews, source, ref, sub, customer).run();
   if (sub) {
     const { endReplacedSubscription } = await import('./bizbilling.mjs');
     await endReplacedSubscription(env, prior?.stripe_sub ?? null, sub);

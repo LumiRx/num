@@ -188,7 +188,14 @@ function quotaExceeded(limit) {
   return err(
     "quota_exceeded",
     "This agent has used its " + limit + " directory reads for today (UTC). Writing is always free — only reads are metered. " +
-    "Higher read quotas are on the same tiers as the business dashboards: 2,000/day at $9.99, 20,000/day at $19.99, 200,000/day at $50. See " + SITE + "/pricing/",
+    // These three prices were quoted here for weeks and NOTHING could sell
+    // them: there is no code path that raises an agent above `free`, no
+    // checkout for an agent tier, and no webhook that grants one. Quoting a
+    // price a customer cannot pay is worse than having no paid tier at all —
+    // it turns a limit into a promise we then fail to keep. The prices come
+    // out until an agent tier can actually be bought; the honest ask, which
+    // is a person, stays.
+    "If you need a higher quota, email info@itsnum.com and tell us what you're building.",
     429,
     { limit, resets: "00:00 UTC" }
   );
@@ -1248,7 +1255,14 @@ const INDEX = {
     auth: "OAuth 2.1 (see " + SITE + "/.well-known/oauth-protected-resource) or a numa_live_ key as a bearer token.",
   },
   openapi: SITE + "/openapi.json",
-  read_quotas: { free: QUOTA.free, "$9.99/mo": QUOTA.bundle, "$19.99/mo": QUOTA.pro, "$50/mo": QUOTA.full },
+  // Keyed by tier NAME, not by price. The prices that used to be the keys
+  // here ("$9.99/mo" and friends) advertised a paid agent tier that no code
+  // in this worker can grant — nothing raises an agent above `free`, and
+  // there is no checkout or webhook that would. A machine reading this
+  // document would have concluded it could buy 200,000 reads a day for $50.
+  // The limits are real and stay; the prices go until they can be paid.
+  read_quotas: { free: QUOTA.free, bundle: QUOTA.bundle, pro: QUOTA.pro, full: QUOTA.full },
+  read_quota_note: "Paid agent tiers are not self-serve yet. Email info@itsnum.com with what you're building.",
   contact: "info@5arz.com",
 };
 

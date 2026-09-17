@@ -425,7 +425,14 @@ function planSection(plan, allTiers, token, saved, err, cur = 'USD', wanted = ''
     <div class="card">
       <h3 style="margin-bottom:2px">${H(allTiers[tierId]?.name ?? 'Listed')} — what you get</h3>
       <ul class="entlist">${entRows}</ul>
-      ${!isFree ? `<form method="post" style="margin-top:12px">
+      ${!isFree ? `<form method="post" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+          <input type="hidden" name="action" value="portal">
+          <input type="hidden" name="s" value="${H(token)}">
+          <button type="submit">Manage billing</button>
+        </form>
+        <p class="sub" style="margin:8px 0 0">Your card, your invoices and your receipts, on Stripe's own page.
+          Update a card there before it expires and nothing lapses.</p>
+        <form method="post" style="margin-top:14px">
           <input type="hidden" name="action" value="cancel_plan">
           <input type="hidden" name="s" value="${H(token)}">
           <button type="submit" class="ghost">Cancel plan</button>
@@ -1148,7 +1155,15 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
   const { bizEntitlements, bizTiers } = await import('./bizbilling.mjs');
   const plan = businessId ? await bizEntitlements(env, businessId) : { tier: 'free', analytics_days: 7, promotions: false, multi_location_max: 1, beta_features: false, name: 'Listed' };
   const allTiers = bizTiers(env);
-  const insights = await insightsFor(env, placeId, Math.min(30, plan.analytics_days ?? 7));
+  // The window this plan actually bought.
+  //
+  // This was Math.min(30, ...), which silently capped every tier at 30 days —
+  // so Pro (90) and Full (365) showed a month, and the longer window they are
+  // sold on was reachable only through the REST API. Selling a 365-day
+  // lookback and rendering 30 is the kind of gap a customer finds before we
+  // do. The cap now comes from the entitlement and nowhere else; getInsights
+  // still clamps a REQUESTED window to the plan, which is the real gate.
+  const insights = await insightsFor(env, placeId, plan.analytics_days ?? 7);
 
   const { results: bookings } = await env.DB.prepare(
     `SELECT created_at, guest_name, party, when_text, date, state
@@ -1693,6 +1708,34 @@ export async function handleBizConsole(request, env, url) {
     // with no client JS, same rule as everything else in this file, so
     // handing the browser to Stripe's own hosted page is a 303, not a link
     // the owner has to notice and click.
+    return Response.redirect(out.url, 303);
+  }
+
+  // Stripe's own billing page. The card never touches NUM, and the owner
+  // gets the one thing cancel-at-period-end could not give them: a way to
+  // replace an expiring card before a renewal fails.
+  if (action === 'portal') {
+    const token = val('s');
+    const placeId = await sessionPlace(env, token);
+    if (!placeId) return landing('That session expired — sign in with your key again.');
+    const businessId = await ownerOf(env, placeId);
+    if (!businessId) {
+      return await loadDashboard(env, placeId, token, origin, '', '', '', 'No business is attached to this listing yet — email info@5arz.com.', 'plan', { cur: postCur, wanted: postWanted });
+    }
+    const row = await env.DB.prepare('SELECT stripe_customer FROM num_business_subscriptions WHERE business_id=?1')
+      .bind(businessId).first().catch(() => null);
+    if (!row?.stripe_customer) {
+      return await loadDashboard(env, placeId, token, origin, '', '', '',
+        "There's no billing page yet — this plan has never been charged. If you think that's wrong, email info@5arz.com.",
+        'plan', { cur: postCur, wanted: postWanted });
+    }
+    const { billingPortal } = await import('./pay.mjs');
+    const out = await billingPortal(env, row.stripe_customer, `${origin}/api/biz/console?s=${encodeURIComponent(token)}&p=plan`);
+    if (!out.ok || !out.url) {
+      return await loadDashboard(env, placeId, token, origin, '', '', '', out.error || 'Could not open the billing page — try again in a minute.', 'plan', { cur: postCur, wanted: postWanted });
+    }
+    // Same 303 as the upgrade path: no client JS in this console, so the
+    // browser is handed over rather than shown a link to notice.
     return Response.redirect(out.url, 303);
   }
 

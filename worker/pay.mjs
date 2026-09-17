@@ -478,6 +478,42 @@ async function ownerOfSub(env, subId) {
 }
 
 /**
+ * Stripe's own billing page, for one customer.
+ *
+ * ── WHY THIS IS THE LAST PIECE, NOT THE FIRST ────────────────────────────
+ *
+ * There was no portal anywhere in the estate. A subscriber could start a
+ * plan and cancel it, and nothing in between: no invoice, no receipt history,
+ * and — the one that actually loses money — no way to replace a card before
+ * it expires. A card expires on a date nobody has written down, the renewal
+ * fails, and a plan somebody wanted to keep ends because the product had no
+ * page for the thirty seconds of work that would have saved it.
+ *
+ * Stripe hosts the page itself, which is the point: card numbers never touch
+ * NUM, and PCI scope stays where it already is. All we do is mint a session
+ * for a customer id and hand the browser over.
+ *
+ * The portal's contents are configured in the Stripe dashboard, not here. If
+ * it opens with nothing on it, that is the dashboard's default configuration
+ * and not this function.
+ */
+export async function billingPortal(env, customerId, returnUrl) {
+  if (!env.STRIPE_SECRET_KEY) return { ok: false, error: 'Stripe is not connected.' };
+  if (!customerId) return { ok: false, error: 'No Stripe customer for this account yet.' };
+  try {
+    const session = await stripe(env, '/billing_portal/sessions', {
+      customer: customerId,
+      return_url: returnUrl || `${env.NUM_APP_ORIGIN || 'https://app.itsnum.com'}/api/biz/console`,
+    });
+    if (!session?.url) return { ok: false, error: 'Stripe returned no portal link.' };
+    return { ok: true, url: session.url };
+  } catch (err) {
+    console.error('[pay] billing portal failed for', customerId, err?.message);
+    return { ok: false, error: 'Could not open the billing page — try again in a minute.' };
+  }
+}
+
+/**
  * End a subscription NOW, not at the end of its period.
  *
  * cancelSubscription() below sets cancel_at_period_end, which is right when a
@@ -598,7 +634,7 @@ export async function handlePay(request, env, path) {
             // s.subscription is present only for mode:'subscription' sessions.
             // Storing it is what makes every later invoice.paid attributable —
             // a renewal that can't find its member extends nothing.
-            const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
+            const g = await grantTier(env, memberId, tierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null, customer: s.customer ?? null });
             console.log('[pay] tier', tierMatch[1], g.ok ? 'granted to' : 'FAILED for', memberId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
             if (g.ok) await receipt(env, s, 'member', tierMatch[1], g.renews_at ?? null);
           }
@@ -628,7 +664,7 @@ export async function handlePay(request, env, path) {
           if (!paidRight) {
             console.error(`[pay] BIZ TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${bizPaidCur}. Grant refused; refund ${id} and find out which client built this session.`);
           } else {
-            const g = await grantBizTier(env, businessId, bizTierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
+            const g = await grantBizTier(env, businessId, bizTierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null, customer: s.customer ?? null });
             if (g.ok) await receipt(env, s, 'biz', bizTierMatch[1], g.renews_at ?? null);
             console.log('[pay] biz tier', bizTierMatch[1], g.ok ? 'granted to' : 'FAILED for', businessId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
 
@@ -794,6 +830,48 @@ export async function handlePay(request, env, path) {
           currency: String(sub.currency ?? 'usd').toUpperCase(),
         });
       }
+      return json({ received: true });
+    }
+
+    /**
+     * customer.subscription.updated — the event nothing handled.
+     *
+     * Everything that happens to a subscription on Stripe's side arrives
+     * here: a plan changed in the dashboard, a proration, a card entering
+     * `past_due`, a cancellation scheduled for the end of the period. None of
+     * it reached D1, so our tables described the subscription as it was on the
+     * day it was created and disagreed with Stripe quietly from then on.
+     *
+     * Deliberately NARROW. It moves two facts and no more:
+     *
+     *   · the period end, so `renews_at` matches what Stripe will actually
+     *     charge and the 3-day grace keeps meaning what it means
+     *   · a subscription set to cancel at period end, which is recorded so a
+     *     console can say "ends on the 14th" instead of "renews on the 14th"
+     *
+     * It does NOT re-grant or change a tier from this event. A tier is
+     * granted only after a signed payment of the right amount — that is the
+     * rule the whole webhook is built on — and an `updated` event carries no
+     * payment. A plan genuinely changed on Stripe's side arrives as an
+     * invoice too, and the invoice is what moves money.
+     */
+    if (event.type === 'customer.subscription.updated') {
+      const sub = event.data?.object ?? {};
+      const periodEnd = sub.current_period_end ?? sub.items?.data?.[0]?.current_period_end ?? null;
+      const ending = sub.cancel_at_period_end === true;
+      if (sub.id && periodEnd) {
+        const { recordRenewal } = await import('./membership.mjs');
+        const r = await recordRenewal(env, sub.id, periodEnd);
+        if (!r.ok) {
+          const { recordBizRenewal } = await import('./bizbilling.mjs');
+          const rb = await recordBizRenewal(env, sub.id, periodEnd);
+          if (!rb.ok) {
+            const { recordHostRenewal } = await import('./hostmoney.mjs');
+            await recordHostRenewal(env, sub.id, periodEnd).catch(() => ({ ok: false }));
+          }
+        }
+      }
+      console.log('[pay] subscription updated', sub.id ?? '?', ending ? '— set to end at period end' : '— period moved', sub.status ?? '');
       return json({ received: true });
     }
 

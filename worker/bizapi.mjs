@@ -481,7 +481,19 @@ async function listLocations(env, businessId) {
       ORDER BY po.verified_at DESC`,
   ).bind(businessId).all().catch(() => ({ results: [] }));
   const plan = await bizEntitlements(env, businessId);
-  return json({ locations: results ?? [], count: (results ?? []).length, max: plan.multi_location_max, plan: plan.tier });
+  // `can_add` rather than a bare max, so a caller does not have to re-derive
+  // the comparison and get it wrong. canAddLocation() is the single place
+  // that answers it — see its own note on why the limit has no gate yet.
+  const { canAddLocation } = await import('./bizbilling.mjs');
+  const room = await canAddLocation(env, businessId);
+  return json({
+    locations: results ?? [],
+    count: (results ?? []).length,
+    max: plan.multi_location_max,
+    plan: plan.tier,
+    can_add: room.ok,
+    at_limit_note: room.reason,
+  });
 }
 
 /* ──────────────────────────────── router ───────────────────────────────── */

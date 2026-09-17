@@ -122,11 +122,40 @@ CREATE TABLE IF NOT EXISTS num_business_subscriptions (
   stripe_sub TEXT
 );
 `;
-let ready = false;
+/**
+ * Columns 0013 did not foresee, added lazily — the same shape hostmoney.mjs
+ * uses, and for the same reason: a migration file for one nullable column is
+ * ceremony, and a CREATE TABLE that already ran cannot grow one.
+ *
+ * `stripe_customer` is what makes a billing portal possible. Stripe's portal
+ * is opened for a CUSTOMER, not a subscription, and until now the business
+ * ladder stored only the subscription id — so a business could be charged
+ * every month and had no way to see an invoice or replace an expiring card.
+ * (num_hosts has carried `stripe_customer` since the fee-invoicing work; this
+ * brings the other two ladders level.)
+ */
+const ALTERS = [
+  'ALTER TABLE num_business_subscriptions ADD COLUMN stripe_customer TEXT',
+];
+// Keyed on the database, not a module-level boolean.
+//
+// `let ready = false` meant the FIRST env.DB this isolate saw marked the
+// migration done for every other one. In production there is one database so
+// it never bit; under test, and in any isolate that touches a second binding,
+// the second database silently skipped its ALTERs and then failed on the
+// INSERT that needed the column. hostmoney.mjs already keys its own `ready`
+// on env.DB for exactly this reason — this brings the other two level.
+const ready = new WeakSet();
 async function ensure(env) {
-  if (ready || !env.DB) return;
+  if (!env.DB || ready.has(env.DB)) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
-  ready = true;
+  for (const sql of ALTERS) {
+    await env.DB.prepare(sql).run().catch((e) => {
+      const m = String(e?.message ?? e);
+      if (!/duplicate column/i.test(m)) console.warn('[bizbilling] ensure', m);
+    });
+  }
+  ready.add(env.DB);
 }
 
 /**
@@ -191,7 +220,7 @@ export async function endReplacedSubscription(env, previousSub, nextSub) {
   }
 }
 
-export async function grantBizTier(env, businessId, tier, { source = 'stripe', ref = null, months = 1, sub = null } = {}) {
+export async function grantBizTier(env, businessId, tier, { source = 'stripe', ref = null, months = 1, sub = null, customer = null } = {}) {
   await ensure(env);
   if (!bizTiers(env)[tier]) return { ok: false, error: 'unknown tier' };
   // Read BEFORE the upsert overwrites it — this is the only moment the old
@@ -200,9 +229,15 @@ export async function grantBizTier(env, businessId, tier, { source = 'stripe', r
     .bind(businessId).first().catch(() => null);
   const renews = new Date(Date.now() + months * 30 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
   await env.DB.prepare(
-    `INSERT INTO num_business_subscriptions (business_id, tier, renews_at, source, ref, stripe_sub) VALUES (?1,?2,?3,?4,?5,?6)
-     ON CONFLICT(business_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5, stripe_sub=COALESCE(?6, stripe_sub)`,
-  ).bind(businessId, tier, renews, source, ref, sub).run();
+    `INSERT INTO num_business_subscriptions (business_id, tier, renews_at, source, ref, stripe_sub, stripe_customer)
+       VALUES (?1,?2,?3,?4,?5,?6,?7)
+     ON CONFLICT(business_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5,
+       stripe_sub=COALESCE(?6, stripe_sub),
+       -- COALESCE, never overwrite with null: a Stars grant or an admin fix
+       -- carries no customer, and losing the stored one would take the
+       -- billing portal away from somebody who is still paying.
+       stripe_customer=COALESCE(?7, stripe_customer)`,
+  ).bind(businessId, tier, renews, source, ref, sub, customer).run();
   if (sub) await endReplacedSubscription(env, prior?.stripe_sub ?? null, sub);
   return { ok: true, tier, renews_at: renews };
 }
@@ -235,6 +270,42 @@ export async function lapseBizBySub(env, subId) {
     "UPDATE num_business_subscriptions SET tier='free', renews_at=NULL, stripe_sub=NULL WHERE stripe_sub=?1",
   ).bind(subId).run();
   return { ok: (r?.meta?.changes ?? 0) > 0 };
+}
+
+/**
+ * May this business attach another location?
+ *
+ * ── WHY THIS IS A HOOK AND NOT YET A GATE ────────────────────────────────
+ *
+ * `multi_location_max` is advertised on every tier (1 / 3 / 10 / 25) and was
+ * enforced nowhere, which read like a missing check. It is not: there is no
+ * door to put a check on. Every claim path — bizapi.mjs's verify and
+ * console.mjs's admin promote — creates a NEW business row per listing, so a
+ * business owning several places is a thing the tier table describes and the
+ * product cannot yet do.
+ *
+ * Writing a gate into a flow that does not exist would be worse than the gap:
+ * it would read as enforced, and the first person to build the real
+ * multi-location door would have no reason to look for it. So this is the one
+ * function that answers the question, `listLocations` reports its answer
+ * honestly, and whoever builds that door calls this before attaching.
+ */
+export async function canAddLocation(env, businessId) {
+  const ent = await bizEntitlements(env, businessId);
+  const max = ent?.multi_location_max;
+  const { results } = await env.DB.prepare(
+    'SELECT place_id FROM num_place_owners WHERE business_id=?1 AND revoked_at IS NULL',
+  ).bind(businessId).all().catch(() => ({ results: [] }));
+  const count = (results ?? []).length;
+  if (max == null) return { ok: true, count, max: null, reason: null };
+  if (count < max) return { ok: true, count, max, reason: null };
+  return {
+    ok: false,
+    count,
+    max,
+    tier: ent.tier,
+    reason: `Your ${ent.tier} plan covers ${max} location${max === 1 ? '' : 's'} and you have ${count}.`,
+  };
 }
 
 /* ── routes, mounted under /v1/billing/* by bizapi.mjs ─────────────────────
@@ -308,6 +379,24 @@ export async function handleBizBilling(request, env, path, auth) {
       cancelUrl: clip(b.cancel_url, 300) || undefined,
     });
     return json(out, out.ok ? 200 : 503);
+  }
+
+  // A subscriber can now fix a card, pull an invoice and see what they are
+  // paying — the thing cancel-at-period-end was standing in for. Stripe hosts
+  // the page; we only mint the session and send them there.
+  if (path === '/portal' && request.method === 'POST') {
+    const row = await env.DB.prepare('SELECT stripe_customer FROM num_business_subscriptions WHERE business_id=?1')
+      .bind(auth.businessId).first().catch(() => null);
+    if (!row?.stripe_customer) {
+      // Said plainly rather than with an empty portal: a business on the free
+      // plan has no Stripe customer because it has never been charged, and
+      // that is not an error.
+      return json({ ok: false, error: "You're on the free plan — there's nothing to bill, so there's no billing page yet." }, 400);
+    }
+    const b = await request.json().catch(() => ({}));
+    const { billingPortal } = await import('./pay.mjs');
+    const out = await billingPortal(env, row.stripe_customer, clip(b.return_url, 300) || undefined);
+    return json(out, out.ok ? 200 : 502);
   }
 
   if (path === '/cancel' && request.method === 'POST') {
