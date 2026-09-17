@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.318 — 2026-09-17 08:34 UTC
+
+App pass: bugs, brand, Verified theme, motion pack
+
+- commit `adaa027`
+
 ## 0.8.317 — 2026-09-17 08:32 UTC
 
 App pass: bugs, brand, Verified theme, motion pack
