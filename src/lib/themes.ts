@@ -5,7 +5,8 @@ import { store } from './store';
 import type { ThemeId } from './types';
 
 export const THEMES: Array<{ id: ThemeId; name: string; blurb: string; swatch: [string, string, string] }> = [
-  { id: 'ember', name: 'Ember', blurb: 'The house colours — warm coral on cream', swatch: ['#faf7f4', '#ec3013', '#ffd8c2'] },
+  { id: 'verified', name: 'Verified', blurb: 'The house colours — ink, paper and checked green', swatch: ['#f6faf9', '#0ea483', '#d5f2e8'] },
+  { id: 'ember', name: 'Ember', blurb: 'Warm coral on cream', swatch: ['#faf7f4', '#ec3013', '#ffd8c2'] },
   { id: 'bloom', name: 'Bloom', blurb: 'Rose and lilac, soft and bright', swatch: ['#fdf6fa', '#d6337a', '#f3c7ff'] },
   { id: 'midnight', name: 'Midnight', blurb: 'Dark mode, easy at 2am', swatch: ['#14161c', '#ff7a45', '#4a2f5c'] },
   { id: 'neon', name: 'Neon', blurb: 'Futuristic — cyan and violet on black', swatch: ['#07080f', '#00e5ff', '#b14bff'] },
@@ -26,7 +27,7 @@ export function applyTheme(id: ThemeId): void {
   // Keep the browser chrome in step with the app, or the top of the screen
   // stays cream while the app goes black.
   const bar = getComputedStyle(root).getPropertyValue('--shell-bg').trim() || '#faf7f4';
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', DARK.includes(id) ? bar : '#faf7f4');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', DARK.includes(id) ? bar : id === 'verified' ? '#f6faf9' : '#faf7f4');
   document
     .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
     ?.setAttribute('content', DARK.includes(id) ? 'black-translucent' : 'default');

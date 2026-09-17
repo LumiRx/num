@@ -1,10 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Num mark — Modernist: flat #201e1d square, geometric white N, #ec3013 accent. -->
-  <rect width="512" height="512" fill="#201e1d"/>
-  <!-- N: two verticals + diagonal, drawn as plain geometry (no webfont). -->
-  <rect x="120" y="120" width="72" height="272" fill="#ffffff"/>
-  <rect x="320" y="120" width="72" height="272" fill="#ffffff"/>
-  <path d="M120 120 L192 120 L392 392 L320 392 Z" fill="#ffffff"/>
-  <!-- Accent square, flush bottom-right corner. -->
-  <rect x="440" y="440" width="72" height="72" fill="#ec3013"/>
+  <!-- NUM mark, Verified: ink square, geometric white N, the green dot. -->
+  <rect width="512" height="512" fill="#0A1A24"/>
+  <rect x="112" y="128" width="72" height="256" fill="#F6FAF9"/>
+  <rect x="312" y="128" width="72" height="256" fill="#F6FAF9"/>
+  <path d="M112 128 L184 128 L384 384 L312 384 Z" fill="#F6FAF9"/>
+  <circle cx="436" cy="436" r="40" fill="#0EA483"/>
 </svg>

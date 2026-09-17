@@ -127,7 +127,7 @@ export type VoicePhase = 0 | 1 | 2 | 3;
 
 export type Reaction = 'love' | 'like' | 'meh' | 'no' | 'long';
 
-export type ThemeId = 'ember' | 'bloom' | 'midnight' | 'neon' | 'mono' | 'heritage' | 'forest' | 'plain';
+export type ThemeId = 'verified' | 'ember' | 'bloom' | 'midnight' | 'neon' | 'mono' | 'heritage' | 'forest' | 'plain';
 
 export interface StyleProfile {
   length?: 'short' | 'long';

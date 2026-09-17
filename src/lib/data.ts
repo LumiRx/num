@@ -111,7 +111,7 @@ function baseState() {
     // earn a slot when there is somewhere to be.
     widgets: ['next', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     pushOn: false,
-    theme: 'ember' as const,
+    theme: 'verified' as const,
     businessOpen: false,
     scoutOpen: false,
     deleteOpen: false,

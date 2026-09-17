@@ -48,6 +48,41 @@
   --money-ink: #084d31;
 }
 
+
+/* ── Verified — the brand. Ink, paper and the one green that means "checked".
+   The website's palette (Brand Book, Sept 2026), so a traveller who taps
+   from itsnum.com into the app stays in the same place. Default since 17 Sep. */
+[data-theme='verified'] {
+  --money: #0b6b45;
+  --money-soft: rgba(11, 107, 69, 0.11);
+  --money-ink: #084d31;
+  --color-bg: #f6faf9;
+  --color-surface: #ffffff;
+  --color-text: #0a1a24;
+  --color-accent: #0ea483;
+  --color-accent-700: #0b7c63;
+  --color-accent-300: #9fe3cf;
+  --color-accent-2: #efa43a;
+  --grad-accent: linear-gradient(135deg, #2cc49f 0%, #0ea483 58%, #0b7c63 115%);
+  --color-neutral-500: #7f8f97;
+  --color-neutral-600: #586a74;
+  --color-neutral-700: #3f515b;
+  --ink: #0a1a24;
+  --ink-60: rgba(10, 26, 36, 0.62);
+  --ink-40: rgba(10, 26, 36, 0.4);
+  --ink-12: rgba(10, 26, 36, 0.12);
+  --ink-08: rgba(10, 26, 36, 0.08);
+  --field-bg: rgba(255, 255, 255, 0.82);
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-strong: rgba(255, 255, 255, 0.84);
+  --glass-border: rgba(255, 255, 255, 0.66);
+  --aurora-base: linear-gradient(180deg, #f6faf9 0%, #eef5f2 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #d5f2e8 0%, #c2ebdd 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #dce9f4 0%, #e6f0ee 55%, transparent 72%);
+  --aurora-opacity: 0.5;
+  --shell-bg: #0a1a24;
+}
+
 /* ── Bloom — soft rose and lilac. The other half of "popular". ───────────── */
 [data-theme='bloom'] {
   --money: #0b6b45;
