@@ -277,12 +277,17 @@ export async function handleHost(request, env, url) {
         // satang for a Phuket host, pence for a London one. HOST_CURRENCY
         // remains the fallback, not the answer.
         currency: planCur.toLowerCase(),
-        // What this host has actually been charged. A host paying a monthly
-        // plan could see the plan and never see a single payment for it.
+        // What this host has actually been charged, and what they currently
+        // owe. A host paying a monthly plan could see the plan and never see
+        // a single payment for it, nor a fee accruing against them.
         history: (await (async () => {
           const { paymentHistory } = await import('./pay.mjs');
           return paymentHistory(env, 'host', host.id, 24);
         })()).payments,
+        balance: await (async () => {
+          const { balanceFor } = await import('./balances.mjs');
+          return balanceFor(env, 'host', host.id);
+        })(),
         plans: Object.fromEntries(Object.entries(HOST_PLANS).map(([k, v]) => {
           const block = priceBlock('host', k, planCur);
           return [k, {

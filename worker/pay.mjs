@@ -649,19 +649,101 @@ export async function paymentHistory(env, ownerKind, ownerId, limit = 50) {
  * it opens with nothing on it, that is the dashboard's default configuration
  * and not this function.
  */
+/**
+ * The portal's own configuration, stated here rather than clicked.
+ *
+ * ── WHY THIS IS CODE ─────────────────────────────────────────────────────
+ *
+ * A Stripe Customer Portal opens with whatever is configured in the Stripe
+ * dashboard. With nothing configured, session creation fails outright with
+ * "No configuration provided" — so the Manage billing button would have led
+ * to an error, and the fix would have been a click nobody could review, in a
+ * console nobody versions, that a new Stripe account would need again.
+ *
+ * So the configuration is made from here, once, on the first portal open
+ * that finds none. What it turns on is the whole reason the button exists:
+ *
+ *   · payment_method_update — the one that actually saves plans. A card
+ *     expires on a date nobody wrote down, and without this there is no way
+ *     to replace it before the renewal fails.
+ *   · invoice_history — what they paid, in Stripe's own record, beside the
+ *     one NUM keeps.
+ *   · subscription_cancel at period end — NOT immediate. They paid for this
+ *     month; taking it away the instant they click cancel is a refund we
+ *     did not offer and a month they did not get.
+ *   · customer_update of email and address only. Not the tax id, not the
+ *     name on the account: those are identity, and identity on NUM is
+ *     changed by proving it, not by typing it into Stripe.
+ */
+const PORTAL_CONFIG = (origin) => ({
+  business_profile: {
+    headline: 'NUM — your plan, your card, your invoices.',
+    privacy_policy_url: 'https://itsnum.com/privacy/',
+    terms_of_service_url: 'https://itsnum.com/terms/',
+  },
+  default_return_url: `${origin}/api/biz/console`,
+  features: {
+    payment_method_update: { enabled: true },
+    invoice_history: { enabled: true },
+    customer_update: { enabled: true, allowed_updates: ['email', 'address'] },
+    subscription_cancel: {
+      enabled: true,
+      mode: 'at_period_end',
+      cancellation_reason: {
+        enabled: true,
+        options: ['too_expensive', 'missing_features', 'unused', 'customer_service', 'other'],
+      },
+    },
+  },
+});
+
+/** Stripe says a portal has no configuration in words, not in a code. */
+const NEEDS_CONFIG = /no configuration provided|default configuration has not been created/i;
+
 export async function billingPortal(env, customerId, returnUrl) {
   if (!env.STRIPE_SECRET_KEY) return { ok: false, error: 'Stripe is not connected.' };
   if (!customerId) return { ok: false, error: 'No Stripe customer for this account yet.' };
+  const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
+  const open = () => stripe(env, '/billing_portal/sessions', {
+    customer: customerId,
+    return_url: returnUrl || `${origin}/api/biz/console`,
+  });
   try {
-    const session = await stripe(env, '/billing_portal/sessions', {
-      customer: customerId,
-      return_url: returnUrl || `${env.NUM_APP_ORIGIN || 'https://app.itsnum.com'}/api/biz/console`,
-    });
+    let session;
+    try {
+      session = await open();
+    } catch (err) {
+      if (!NEEDS_CONFIG.test(String(err?.message ?? ''))) throw err;
+      // First portal open on this Stripe account. Make the configuration,
+      // then try again exactly once — a second failure is a real failure.
+      console.log('[pay] no portal configuration on this account — creating the default one');
+      await stripe(env, '/billing_portal/configurations', PORTAL_CONFIG(origin));
+      session = await open();
+    }
     if (!session?.url) return { ok: false, error: 'Stripe returned no portal link.' };
     return { ok: true, url: session.url };
   } catch (err) {
     console.error('[pay] billing portal failed for', customerId, err?.message);
     return { ok: false, error: 'Could not open the billing page — try again in a minute.' };
+  }
+}
+
+/**
+ * Create or refresh the portal configuration without waiting for a customer.
+ *
+ * Exposed so it can be run deliberately — from the admin console, or once
+ * after a Stripe account change — rather than only discovered by the first
+ * business unlucky enough to click Manage billing.
+ */
+export async function configurePortal(env) {
+  if (!env.STRIPE_SECRET_KEY) return { ok: false, error: 'Stripe is not connected.' };
+  const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
+  try {
+    const cfg = await stripe(env, '/billing_portal/configurations', PORTAL_CONFIG(origin));
+    return { ok: true, id: cfg?.id ?? null, active: cfg?.active ?? null, is_default: cfg?.is_default ?? null };
+  } catch (err) {
+    console.error('[pay] could not configure the portal', err?.message);
+    return { ok: false, error: String(err?.message ?? err).slice(0, 200) };
   }
 }
 
@@ -876,6 +958,33 @@ export async function handlePay(request, env, path) {
         const packMatch = /^stars:(\d{1,7})$/.exec(ref);
         if (firstTime && packMatch && memberId && env.STARS_SALE_OK === '1') {
           const n = Number(packMatch[1]);
+          // VERIFY THE MONEY, exactly as the three tier branches above do.
+          //
+          // This branch read the pack size out of the ref and credited it,
+          // and nothing here checked what was actually paid. preflight.mjs
+          // does price `stars:` refs at request time, which is why it has
+          // held — but that is one layer, and the tier branches learned the
+          // hard way (see the note above them: ref "tier:pro" and fifty
+          // cents bought a $28.98 membership) that the request layer is not
+          // the one holding the money. Now that packs are priced in five
+          // currencies there are five more ways for the two to disagree.
+          //
+          // Same rule as everywhere else: the price is looked up in the
+          // currency the session actually charged.
+          const { starPackPrice } = await import('./planprice.mjs');
+          const { tierPaidRight } = await import('./preflight.mjs');
+          const paidCur = String(s.currency ?? 'usd').toUpperCase();
+          const owedStars = starPackPrice(n, paidCur);
+          const starsPaidRight = owedStars != null && tierPaidRight(s, owedStars, paidCur);
+          if (!starsPaidRight) {
+            // Refuse the credit, but do NOT return: the rest of this event
+            // still has work to do, and an early return here would also
+            // swallow the member notification below. Loud, because money was
+            // taken and Stars are being withheld.
+            console.error(`[pay] STAR PACK UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owedStars} ${paidCur}. Nothing credited; refund ${id}.`);
+            await alert(env, `[pay] star pack underpayment on ${id} — ${ref} paid ${s.amount_total} ${s.currency}`).catch(() => {});
+          }
+          if (starsPaidRight) {
           await env.DB?.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)').bind(memberId).run().catch(() => {});
           await env.DB?.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1').bind(memberId, n).run().catch(() => {});
           // num_star_moves — the SAME table every other Star movement uses.
@@ -894,6 +1003,7 @@ export async function handlePay(request, env, path) {
             "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'purchase',?4,NULL)",
           ).bind(`sm_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`, memberId, n, `Stripe ${id}`).run().catch((e) => console.warn('[pay] moves', e?.message));
           console.log('[pay] credited', n, 'stars to', memberId, 'for', id);
+          }
         }
 
         if (memberId) {
@@ -1140,6 +1250,22 @@ export async function handlePay(request, env, path) {
     }
 
     return json({ received: true });
+  }
+
+  /**
+   * Make (or refresh) the Stripe Customer Portal configuration.
+   *
+   * Admin-gated and deliberately manual. billingPortal() creates the config
+   * on its own the first time a portal is opened without one, but discovering
+   * your billing page for the first time through a customer's click is not a
+   * plan. This is the button that does it on purpose.
+   */
+  if (path === '/portal-config' && request.method === 'POST') {
+    const { adminGuard } = await import('./adminkey.mjs');
+    const denied = adminGuard(request, env);
+    if (denied) return denied;
+    const out = await configurePortal(env);
+    return json(out, out.ok ? 200 : 502);
   }
 
   if (path === '/status' || path === '/' || path === '') {

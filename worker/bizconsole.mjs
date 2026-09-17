@@ -453,8 +453,23 @@ function planSection(plan, allTiers, token, saved, err, cur = 'USD', wanted = ''
  * Totals are per currency and never added together. A business that paid in
  * baht and once in dollars has two totals, not one meaningless one.
  */
-function billingSection(history, hasCustomer, token) {
+/** Nothing owed still has to be written in some currency; use the one the
+ *  balance is denominated in, or the plan's, rather than assuming dollars. */
+const cur0 = (balance) => (balance?.owed?.by_currency?.[0]?.currency ?? 'usd').toUpperCase();
+
+function billingSection(history, hasCustomer, token, balance = null) {
   const rows = history?.payments ?? [];
+  // What they owe, above what they have paid — because the first question a
+  // merchant opens this page with is "do I owe you anything", and the answer
+  // for almost every business on NUM is no.
+  const owed = balance?.owed?.by_currency ?? [];
+  const owedBlock = balance ? `<div class="card" style="margin-bottom:14px">
+      <p class="sub" style="margin:0 0 4px">Commission owed</p>
+      <p style="margin:0;font-size:26px;font-weight:700" translate="no">${
+        owed.length ? owed.map((m) => H(m.display)).join(' &middot; ') : H(formatPrice(0, cur0(balance)))
+      }</p>
+      <p class="sub" style="margin:8px 0 0">${H(balance.owed?.note ?? '')}</p>
+    </div>` : '';
   const STATE = {
     paid: { label: 'Paid', tone: '#1e7a4d' },
     created: { label: 'Not finished', tone: '#8a8577' },
@@ -486,6 +501,7 @@ function billingSection(history, hasCustomer, token) {
     .map(([cur, cents]) => `<b translate="no">${H(PRICE(cents, cur.toUpperCase()))}</b>`).join(' &middot; ');
 
   return `<h2>Payments</h2>
+    ${owedBlock}
     <div class="card">
       ${body}
       ${totals ? `<p class="sub" style="margin:12px 0 0">Paid to date: ${totals}</p>` : ''}
@@ -1133,7 +1149,7 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
     // The buyer's currency and the plan they clicked before signing in.
     // Both travel in `extra` because that is how everything else this
     // renderer needs gets here.
-    cur = 'USD', wanted = '',
+    cur = 'USD', wanted = '', balance = null,
   } = extra;
   const page = pageFor(extra.page);
   const link = `/api/biz/console?s=${encodeURIComponent(token)}&p=${encodeURIComponent(page.id)}`;
@@ -1164,7 +1180,7 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
       case 'api':           body = apiPage(place); break;
       case 'beta':          body = betaPage(); break;
       case 'plan':          body = planSection(plan, allTiers, token, planSaved, planErr, cur, wanted); break;
-      case 'billing':       body = billingSection(extra.history, extra.hasCustomer, token); break;
+      case 'billing':       body = billingSection(extra.history, extra.hasCustomer, token, balance); break;
       default:              body = overviewPage(place, insights, bookings, readiness, token, extra.appCard ?? '');
     }
   }
@@ -1371,6 +1387,10 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
     history: page === 'billing' && businessId ? await (async () => {
       const { paymentHistory } = await import('./pay.mjs');
       return paymentHistory(env, 'biz', businessId);
+    })() : null,
+    balance: page === 'billing' && businessId ? await (async () => {
+      const { balanceFor } = await import('./balances.mjs');
+      return balanceFor(env, 'biz', businessId);
     })() : null,
     hasCustomer: page === 'billing' && businessId
       ? !!(await env.DB.prepare('SELECT stripe_customer FROM num_business_subscriptions WHERE business_id=?1')

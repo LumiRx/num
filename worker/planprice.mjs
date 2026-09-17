@@ -72,6 +72,31 @@ export const PLAN_PRICES = Object.freeze({
   }),
 });
 
+/**
+ * Star packs, per currency.
+ *
+ * The peg is one Star = 100 minor units of USD (CENTS_PER_STAR), and it does
+ * not move. What moves is what a pack COSTS somewhere else, and for the same
+ * reason the plans do: ฿17,500 is a price a Bangkok merchant recognises;
+ * "500 Stars for $500, which is about ฿17,300 today" is a conversion they
+ * have to do and then distrust when it changes tomorrow.
+ *
+ * Deliberately round. These are gift-shop numbers, not FX output.
+ */
+export const STAR_PACK_PRICES = Object.freeze({
+  500: Object.freeze({ USD: 50000, GBP: 40000, EUR: 47500, THB: 1750000, MNT: 175000000 }),
+  1000: Object.freeze({ USD: 100000, GBP: 80000, EUR: 95000, THB: 3500000, MNT: 350000000 }),
+  5000: Object.freeze({ USD: 500000, GBP: 400000, EUR: 475000, THB: 17500000, MNT: 1750000000 }),
+});
+
+/** What a pack costs in one currency, in minor units. null for an unknown pack. */
+export function starPackPrice(stars, currency) {
+  const row = STAR_PACK_PRICES[Number(stars)];
+  if (!row) return null;
+  const cur = String(currency ?? '').toUpperCase();
+  return row[cur] ?? row[DEFAULT_CURRENCY] ?? null;
+}
+
 /** Currencies this table actually prices. Anything else falls to USD. */
 export const PRICED_CURRENCIES = Object.freeze(['USD', 'GBP', 'EUR', 'THB', 'MNT']);
 

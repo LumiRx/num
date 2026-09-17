@@ -229,7 +229,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         <li>Every request read, triaged and drafted</li>
       </ul>
     </div>
-    <div class="card2">
+    <div class="card2 plan-card">
       <h3 style="margin:0 0 4px">Small</h3>
       <p translate="no" data-num-price="host:small" style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;9.99<span style="font-size:15px;font-weight:500;color:var(--ink2)">/month</span></p>
       <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
@@ -239,7 +239,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       </ul>
       <a class="pickplan" href="/host/?plan=small">Choose this plan</a>
     </div>
-    <div class="card2">
+    <div class="card2 plan-card">
       <h3 style="margin:0 0 4px">Pro</h3>
       <p translate="no" data-num-price="host:pro" style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;19.99<span style="font-size:15px;font-weight:500;color:var(--ink2)">/month</span></p>
       <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
@@ -249,7 +249,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       </ul>
       <a class="pickplan" href="/host/?plan=pro">Choose this plan</a>
     </div>
-    <div class="card2">
+    <div class="card2 plan-card">
       <h3 style="margin:0 0 4px">Full</h3>
       <p translate="no" data-num-price="host:full" style="margin:0 0 12px;font-family:var(--disp,inherit);font-size:26px;font-weight:700">&pound;50<span style="font-size:15px;font-weight:500;color:var(--ink2)">/month</span></p>
       <ul style="margin:0;padding-left:20px;color:var(--ink2);line-height:1.75;font-size:15px">
@@ -516,5 +516,86 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
 <script src="/assets/site.js" defer></script>
   <script src="/assets/translate.js" defer></script>
+<style>
+/* ── The upgrade moment ────────────────────────────────────────────────
+   Motion that earns its place: it draws the eye to the choice and never
+   animates a price into something other than what the server said.
+
+   Every rule below is inside the reduced-motion guard's opposite — a
+   person who has asked their OS for less movement gets none of it, and
+   the page is identical in every other respect. That is not a courtesy,
+   it is the difference between "considered" and "makes me ill". */
+.tier,.plan-card{transition:transform .22s cubic-bezier(.2,.7,.3,1),box-shadow .22s ease,border-color .22s ease}
+.tier:hover,.tier:focus-within,.plan-card:hover,.plan-card:focus-within{transform:translateY(-3px);box-shadow:0 10px 30px rgba(31,58,52,.10);border-color:#c8d6cd}
+.tier .pick,.plan-card .pickplan{position:relative;overflow:hidden;transition:transform .16s ease,box-shadow .16s ease,background .16s ease}
+.tier .pick:hover,.plan-card .pickplan:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(30,122,77,.28)}
+.tier .pick:active,.plan-card .pickplan:active{transform:translateY(0)}
+/* A single sweep of light across the button on hover. Once, quickly, then
+   gone — a loop would turn a button into an advert. */
+.tier .pick::after,.plan-card .pickplan::after{content:"";position:absolute;inset:0;transform:translateX(-120%);
+  background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.34) 50%,transparent 65%)}
+.tier .pick:hover::after,.plan-card .pickplan:hover::after{transform:translateX(120%);transition:transform .65s ease}
+.tier .why,.plan-card .why{display:block;margin-top:8px;font-size:13px;line-height:1.5;color:#68705f}
+.tier.lift,.plan-card.lift{opacity:0;transform:translateY(10px)}
+.tier.lift.in,.plan-card.lift.in{opacity:1;transform:none;transition:opacity .45s ease,transform .45s cubic-bezier(.2,.7,.3,1)}
+@media (prefers-reduced-motion:reduce){
+  .tier,.tier .pick,.plan-card .pickplan{transition:none}
+  .tier:hover,.tier:focus-within,.tier .pick:hover,.plan-card .pickplan:hover{transform:none}
+  .tier .pick::after,.plan-card .pickplan::after{display:none}
+  .tier.lift,.plan-card.lift{opacity:1;transform:none}
+}
+</style>
+<script>
+(function(){
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Count a price up to the number already on the page.
+     THE RULE: the final frame is the ORIGINAL STRING, put back verbatim.
+     The server decided that text — currency symbol, separators and all —
+     and an animation that leaves behind its own formatting would be an
+     animation that changed a price. So we animate a parsed copy and then
+     restore exactly what we were given. */
+  function countUp(el){
+    var original = el.firstChild && el.firstChild.nodeValue;
+    if (original == null) return;
+    var m = String(original).match(/([^\d]*)([\d.,]+)(.*)/);
+    if (!m) return;
+    var target = parseFloat(m[2].replace(/,/g,''));
+    if (!isFinite(target) || target <= 0) return;
+    var decimals = (m[2].split('.')[1] || '').length;
+    var start = performance.now(), ms = 620;
+    function frame(now){
+      var t = Math.min(1, (now - start) / ms);
+      var eased = 1 - Math.pow(1 - t, 3);
+      var v = (target * eased).toFixed(decimals);
+      if (decimals === 0) v = Number(v).toLocaleString('en-US');
+      el.firstChild.nodeValue = m[1] + v + m[3];
+      if (t < 1) requestAnimationFrame(frame);
+      else el.firstChild.nodeValue = original;   // exactly what the server sent
+    }
+    requestAnimationFrame(frame);
+  }
+
+  var cards = [].slice.call(document.querySelectorAll('.tier,.plan-card'));
+  if (!cards.length) return;
+  if (reduce) return;
+  cards.forEach(function(c){ c.classList.add('lift'); });
+
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (!e.isIntersecting) return;
+      var card = e.target, i = cards.indexOf(card);
+      setTimeout(function(){
+        card.classList.add('in');
+        var price = card.querySelector('[data-num-price]');
+        if (price) countUp(price);
+      }, Math.min(i,4) * 70);
+      io.unobserve(card);
+    });
+  }, { threshold: 0.25 });
+  cards.forEach(function(c){ io.observe(c); });
+})();
+</script>
+
 </body>
 </html>

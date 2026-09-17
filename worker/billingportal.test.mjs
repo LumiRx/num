@@ -267,3 +267,47 @@ test('an existing payments table without the owner columns is migrated, not cras
     globalThis.fetch = realFetch;
   }
 });
+
+test('a Star pack is priced in every currency, and the peg does not move', async () => {
+  const { starPackPrice, formatPrice, PRICED_CURRENCIES } = await import('./planprice.mjs');
+  const { CENTS_PER_STAR } = await import('./preflight.mjs');
+  // The peg is what a Star IS. It is asserted here as well as in the star
+  // tests because these prices are the first thing that could quietly imply
+  // a different one.
+  assert.equal(CENTS_PER_STAR, 100);
+  assert.equal(formatPrice(starPackPrice(500, 'USD'), 'USD'), '$500');
+  assert.equal(formatPrice(starPackPrice(5000, 'USD'), 'USD'), '$5,000');
+  assert.equal(formatPrice(starPackPrice(500, 'THB'), 'THB'), '฿17,500');
+  // Every priced currency prices every pack — a gap would fall back to USD
+  // and quote dollars to someone who cannot pay in them.
+  for (const cur of PRICED_CURRENCIES) {
+    for (const pack of [500, 1000, 5000]) {
+      const p = starPackPrice(pack, cur);
+      assert.ok(Number.isInteger(p) && p > 0, `${pack} stars must have a price in ${cur}`);
+    }
+  }
+  // An unknown pack buys nothing.
+  assert.equal(starPackPrice(777, 'USD'), null);
+  assert.equal(starPackPrice(0, 'USD'), null);
+});
+
+test('the webhook verifies what was paid before crediting Stars', () => {
+  // This branch used to read the pack size out of the ref and credit it with
+  // no check on the money at all, while the three tier branches beside it all
+  // verified — the same shape as the incident noted above them, where
+  // ref "tier:pro" and fifty cents bought a $28.98 membership. Now that packs
+  // are priced in five currencies there are five more ways for the request
+  // layer and the paying layer to disagree.
+  //
+  // Asserted against the source because signing a Stripe webhook in a unit
+  // test proves the signature code, not this.
+  const src = readFileSync(new URL('./pay.mjs', import.meta.url), 'utf8');
+  const branch = src.slice(src.indexOf("const packMatch"), src.indexOf("const packMatch") + 2600);
+  assert.match(branch, /starPackPrice/, 'the pack price must be looked up server-side');
+  assert.match(branch, /tierPaidRight\(s, owedStars, paidCur\)/, 'amount AND currency must be checked');
+  assert.match(branch, /STAR PACK UNDERPAYMENT/, 'a mismatch must be loud');
+  // And the credit itself must sit behind the check.
+  const creditAt = branch.indexOf('num_star_balances');
+  const guardAt = branch.indexOf('if (starsPaidRight)');
+  assert.ok(guardAt > 0 && guardAt < creditAt, 'the guard must come before the credit');
+});

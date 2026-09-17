@@ -409,8 +409,12 @@ export async function handleMembership(request, env, path) {
     const me = url.searchParams.get('me');
     if (!me) return json({ error: 'me is required' }, 400);
     const { paymentHistory } = await import('./pay.mjs');
-    const out = await paymentHistory(env, 'member', me, 50);
-    return json({ payments: out.payments, paid_total: out.paid_total, count: out.count });
+    const { balanceFor } = await import('./balances.mjs');
+    const [out, balance] = await Promise.all([
+      paymentHistory(env, 'member', me, 50),
+      balanceFor(env, 'member', me),
+    ]);
+    return json({ balance, payments: out.payments, paid_total: out.paid_total, count: out.count });
   }
 
   // What am I on, and what have I used?
