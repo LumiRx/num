@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.330 — 2026-09-17 21:05 UTC
+
+Portal configures itself; balances for all three; packs in every currency; upgrade motion
+
+- commit `16cd2ca`
+
 ## 0.8.329 — 2026-09-17 21:00 UTC
 
 Answers in a third of the time; Profile ORDER FASTER; nine languages; one look
