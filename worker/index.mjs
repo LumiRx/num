@@ -192,7 +192,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         events: [formatEvents(grounding.events ?? []), formatSearchedEvents(grounding.searchedEvents)].filter(Boolean).join('\n\n'),
         profile: safeProfile.profile,
         buzz: grounding.buzz,
-        services: servicesBlock(grounding.place, env ?? {}),
+        services: servicesBlock(grounding.place, env ?? {}, { ask: userText ?? '' }),
         // Two per-guest style sources, and they do not conflict: styleBlock is
         // learned from what this guest REACTED well and badly to, registerFor is
         // read from how they WRITE. Reactions win where both speak, because a
