@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.329 — 2026-09-17 21:00 UTC
+
+Answers in a third of the time; Profile ORDER FASTER; nine languages; one look
+
+- commit `7eb76ea`
+
 ## 0.8.328 — 2026-09-17 20:40 UTC
 
 Restricted Stripe key reads as live; Tonight, i18n and discover from today's work

@@ -36,8 +36,12 @@ import { generateInvite, riskOf, excludeReason, normaliseCategory, isFreemail } 
 
 /* ── config ─────────────────────────────────────────────────────────────── */
 
-const FROM      = 'Num by 5arz <info@5arz.com>';
-const REPLY_TO  = 'info@5arz.com';
+// 17 Sep 2026: the local Resend key is not authorised for 5arz.com — 25 Mongolian
+// hotels came back 403 and nothing left the building. itsnum.com is verified on
+// the same account (and receiving is on, so replies land), and info@itsnum.com is
+// already the decided contact address. Sender and body now agree.
+const FROM      = 'NUM <info@itsnum.com>';
+const REPLY_TO  = 'info@itsnum.com';
 const DB        = 'num-db';
 const TEMPLATE  = 'campaign/invite_v2.html';
 const SENT_LOG  = 'campaign/sent_log.csv';   // wave 1, pre-ledger
@@ -294,7 +298,7 @@ for (const { lead, token, draft } of drafts) {
         html: draft.html,
         text: draft.text,
         headers: {
-          'List-Unsubscribe': `<${draft.fields.unsub_url}>, <mailto:info@5arz.com?subject=unsubscribe>`,
+          'List-Unsubscribe': `<${draft.fields.unsub_url}>, <mailto:info@itsnum.com?subject=unsubscribe>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         },
       }),

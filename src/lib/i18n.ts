@@ -24,6 +24,10 @@ export const LANGS = {
   fr: { name: 'Français', dir: 'ltr' },
   de: { name: 'Deutsch', dir: 'ltr' },
   ar: { name: 'العربية', dir: 'rtl' },
+  // Mongolian, 17 Sep 2026, for the Ulaanbaatar launch. Nothing else to do:
+  // /api/i18n translates the catalogue on first ask and caches it in
+  // num_translations, so a Mongolian phone gets Mongolian on its next load.
+  mn: { name: 'Монгол', dir: 'ltr' },
 } as const;
 export type Lang = keyof typeof LANGS;
 export const isLang = (v: unknown): v is Lang => typeof v === 'string' && v in LANGS;

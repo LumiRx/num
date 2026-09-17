@@ -68,6 +68,7 @@ export const LANGS = Object.freeze({
   fr: { name: 'Français', dir: 'ltr' },
   de: { name: 'Deutsch', dir: 'ltr' },
   ar: { name: 'العربية', dir: 'rtl' },
+  mn: { name: 'Монгол', dir: 'ltr' },   // Ulaanbaatar launch, 17 Sep 2026 → /mn/
 });
 const DEFAULT_LANG = 'en';
 

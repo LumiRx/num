@@ -703,7 +703,7 @@ export function generateInvite(lead, opts = {}) {
     ``,
     `The NUM team — 5arz`,
     `More about NUM: ${fields.website_url}`,
-    `info@5arz.com`,
+    `info@itsnum.com`,
     POSTAL_ADDRESS,
     ``,
     `You're receiving this one-time invitation because ${fields.business_name} is publicly listed as a business in ${place}.`,

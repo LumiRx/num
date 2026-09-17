@@ -172,8 +172,45 @@ footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);font-si
 .gtx .goog-te-gadget{font-size:0}.gtx .goog-te-combo{font:inherit;border:0;background:transparent;color:inherit}
 body{top:0!important}.skiptranslate iframe{display:none!important}
 </style>
+<link rel="stylesheet" href="/assets/nav.css">
+<script src="/assets/nav.js" defer></script>
 </head>
 <body>
+<!-- ONE NAV, EVERY PAGE. See assets/nav.css for why it is self-contained. -->
+<nav class="nv">
+  <div class="nv-bar">
+    <a class="nv-brand" href="/"><span class="nv-dot"></span>NUM <small>travel concierge</small></a>
+    <div class="nv-links">
+      <a href="/what-we-do/">What we do</a>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/destinations/">Destinations</a>
+      <span class="nv-sep"></span>
+      <a href="/business/">For business</a>
+      <a href="/hosts/">For hosts</a>
+      <a href="/agents/">For AI agents</a>
+    </div>
+    <div class="nv-end">
+      <a class="nv-signin" id="navAuth" href="/signin/">Sign in</a>
+      <a class="nv-cta" href="https://app.itsnum.com/?app=1">Get NUM</a>
+    </div>
+    <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
+  </div>
+  <div class="nv-menu" hidden>
+    <p class="nv-group">Travellers</p>
+    <a href="/what-we-do/">What we do</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/destinations/">Destinations</a>
+    <a href="/perks/">Perks</a>
+    <p class="nv-group">Partners</p>
+    <a href="/business/">For business</a>
+    <a href="/claim/">List your business</a>
+    <a href="/hosts/">For hosts</a>
+    <a href="/agents/">For AI agents</a>
+    <p class="nv-group">Account</p>
+    <a href="/signin/">Sign in</a>
+    <a href="/contact/">Contact</a>
+  </div>
+</nav>
 <div class="wrap">
 <p class="eyebrow">NUM · ${esc(dest.country)}</p>
 <h1>A concierge that already knows ${esc(dest.name)}</h1>
@@ -202,9 +239,7 @@ when it completes a booking for you — out of our side, never added to the gues
 <footer>NUM is a 5arz Inc. product. <a href="/">Home</a> · <a href="/destinations/">All destinations</a> ·
 <a href="/business/">For business</a> · <a href="/privacy/">Privacy</a></footer>
 </div>
-<div id="gtx" class="gtx"></div>
-<script>function gtInit(){try{new google.translate.TranslateElement({pageLanguage:'en',layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'gtx')}catch(e){}}</script>
-<script src="https://translate.google.com/translate_a/element.js?cb=gtInit" defer></script>
+<script src="/assets/translate.js" defer></script>
 </body>
 </html>`;
 }
