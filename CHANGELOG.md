@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.328 — 2026-09-17 20:40 UTC
+
+Restricted Stripe key reads as live; Tonight, i18n and discover from today's work
+
+- commit `535b876`
+
 ## 0.8.327 — 2026-09-17 20:07 UTC
 
 Owner columns before the index; payment history; receipts; billing portal; buyer's currency
