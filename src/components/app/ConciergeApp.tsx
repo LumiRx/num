@@ -66,8 +66,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const subhead = demo
     ? `SE ASIA LOOP · 3 CITIES · ${nBookings} BOOKINGS`
     : place
-      ? `${nBookings === 1 ? '1 BOOKING' : nBookings + ' BOOKINGS'} · NUM IS ON IT`
-      : 'TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED';
+      ? `${nBookings === 1 ? t('1 BOOKING') : t('{n} BOOKINGS', { n: nBookings })} · ${t('NUM IS ON IT')}`
+      : t('TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED');
 
   const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null, placeOpen: false, flightWatchOpen: false });
 
@@ -186,7 +186,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       >
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>{t('NUM')}{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>NUM{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {me && <div

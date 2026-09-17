@@ -18,7 +18,7 @@
 // Same rules as worker/site.mjs, restated rather than imported so num-app
 // does not bundle the site worker's entry file.
 export const KEEP = Object.freeze([
-  'NUM', 'Num', '5arz', 'LINE', 'WhatsApp', 'WeChat', 'Stripe', 'itsnum.com', 'Ticketmaster', 'Viator', 'Uber', 'Google', 'Apple',
+  'NUM', 'Num', '5arz', 'LINE', 'WhatsApp', 'WeChat', 'Stripe', 'itsnum.com', 'Ticketmaster', 'ticketmaster', 'Viator', 'Uber', 'Google', 'Apple', 'Duffel',
 ]);
 const CARRIES_A_NUMBER = /[$£€฿]\s?\d|\d+\s?%|\d+\.\d{2}/;
 export const isTranslatable = (t) => {

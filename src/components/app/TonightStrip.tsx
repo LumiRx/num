@@ -30,20 +30,20 @@ const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', colo
 /** "Doors in 1h 42m" / "On now" / "Tomorrow 19:00" from the listing's own start. */
 export function countdown(i: TonightItem, now = Date.now()): string {
   if (i.starts_at) {
-    const t = Date.parse(i.starts_at);
-    if (Number.isFinite(t)) {
-      const m = Math.round((t - now) / 60000);
-      if (m <= 0 && m > -180) return 'On now';
-      if (m < 0) return 'Earlier today';
-      if (m < 60 * 24) return `Doors in ${m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m} min`}`;
+    const at = Date.parse(i.starts_at);
+    if (Number.isFinite(at)) {
+      const m = Math.round((at - now) / 60000);
+      if (m <= 0 && m > -180) return t('On now');
+      if (m < 0) return t('Earlier today');
+      if (m < 60 * 24) return t('Doors in {when}', { when: m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m} min` });
       return `${i.starts_on} · ${i.starts_at.slice(11, 16)}`;
     }
   }
   if (i.starts_on) {
     const today = localDay(now);
-    if (i.starts_on <= today) return i.ends_on && i.ends_on > today ? `On now · until ${i.ends_on.slice(5).replace('-', '/')}` : 'On today';
+    if (i.starts_on <= today) return i.ends_on && i.ends_on > today ? t('On now · until {date}', { date: i.ends_on.slice(5).replace('-', '/') }) : t('On today');
     const d = Math.round((Date.parse(i.starts_on) - Date.parse(today)) / 86400000);
-    return d === 1 ? 'Tomorrow' : `In ${d} days`;
+    return d === 1 ? t('Tomorrow') : t('In {n} days', { n: d });
   }
   return '';
 }
@@ -59,12 +59,12 @@ function SourceMark({ source }: { source: TonightItem['source'] }) {
   if (source === 'ticketmaster') {
     return (
       <span style={base} aria-label={t('Listed on Ticketmaster')}>
-        <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8 5v10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" /></svg>{t('ticketmaster')}</span>
+        <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8 5v10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" /></svg>ticketmaster</span>
     );
   }
   return (
     <span style={{ ...base, color: 'var(--color-accent)' }} aria-label={t('Checked by NUM')}>
-      <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5 8.2 14.5 16 6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>{t('NUM')}</span>
+      <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5 8.2 14.5 16 6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>NUM</span>
   );
 }
 

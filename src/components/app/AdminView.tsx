@@ -457,7 +457,7 @@ export default function AdminView() {
           <div className="glass" style={{ position: 'relative', zIndex: 2, margin: '0 8px', borderRadius: '0 0 var(--r-lg) var(--r-lg)', borderTop: 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 14px) 16px 12px' }}>
               <div>
-                <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>{t('NUM')}{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· OPERATOR</span>
+                <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>NUM{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· OPERATOR</span>
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 3 }}>
                   {data?.operator?.signed_in_as ?? 'live'} · refreshes every 30s
