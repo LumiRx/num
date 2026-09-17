@@ -38,7 +38,7 @@ import PartySheet from './PartySheet';
 import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 import InstallPrompt from './InstallPrompt';
-import { t } from '../../lib/i18n';
+import { fmtDate, loadLang, pickLang, t, useI18nTick } from '../../lib/i18n';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
@@ -61,8 +61,8 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
 
   // Demo: the scripted date/loop. Real: today anywhere on Earth, plus wherever
   // the user told NUM they are — or the ask, until they have.
-  const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-  const title = demo ? 'Tue 28 Jul · Bangkok' : place ? `${today} · ${place}` : `${today} · Where to?`;
+  const today = fmtDate(new Date());
+  const title = demo ? 'Tue 28 Jul · Bangkok' : place ? `${today} · ${place}` : `${today} · ${t('Where to?')}`;
   const subhead = demo
     ? `SE ASIA LOOP · 3 CITIES · ${nBookings} BOOKINGS`
     : place
@@ -100,6 +100,12 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // The reader's language: chosen in Profile, else the phone's. The map
+  // arrives (from cache, then the network) and the tree below re-keys, so
+  // every t() reads the new map without each component subscribing.
+  const i18nTick = useI18nTick();
+  useEffect(() => { void loadLang(pickLang()); }, []);
 
   // The system back button/gesture must close what's open, never quit the
   // app: opening an overlay pushes one history entry; popping it (Android
@@ -162,7 +168,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   };
 
   return (
-    <div onKeyDown={onEscape} onScroll={holdFrame} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
+    <div key={i18nTick} onKeyDown={onEscape} onScroll={holdFrame} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
       {/* living ground — aurora blobs drift behind all content */}
       <div className="aurora-layer" aria-hidden="true" />
       {/* header — floating glass panel */}

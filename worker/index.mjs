@@ -2252,7 +2252,7 @@ export default {
     // The app in the reader's language: machine once, stored, human-editable. See i18n.mjs.
     if (url.pathname === '/api/i18n') {
       const { handleI18n } = await import('./i18n.mjs');
-      return await handleI18n(request, env);
+      return await handleI18n(request, env, ctx);
     }
 
     if (url.pathname === '/api/discover' || url.pathname === '/api/discover/dislike') {

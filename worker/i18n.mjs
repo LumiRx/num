@@ -166,7 +166,7 @@ async function ensureTable(env) {
  * The map for one language: stored lines first (a human's approved line beats
  * the machine's), then the machine for whatever is new, saved for next time.
  */
-export async function bundleFor(env, lang, strings) {
+export async function bundleFor(env, lang, strings, { defer = null } = {}) {
   const meta = APP_LANGS[lang];
   const map = {};
   if (!meta || lang === 'en' || !env?.DB) return map;
@@ -190,6 +190,14 @@ export async function bundleFor(env, lang, strings) {
     if (row) map[s] = row.text;
     else missing.push([s, ids[n]]);
   });
+
+  // A phone that already has 95% of its language should not wait a minute
+  // for the last few lines: answer with what is stored and translate the
+  // rest after the response (ctx.waitUntil), ready for the next launch.
+  if (defer && missing.length && missing.length <= 40 && Object.keys(map).length > 0) {
+    defer(bundleFor(env, lang, missing.map(([s]) => s)));
+    return map;
+  }
 
   // Translate what is new and remember it: the model in batches first, and
   // m2m100 one at a time for anything the model left out.
@@ -226,7 +234,7 @@ export async function bundleFor(env, lang, strings) {
 }
 
 /** POST /api/i18n {lang, strings[]} → {ok, lang, dir, map}. GET /api/i18n → the languages. */
-export async function handleI18n(request, env) {
+export async function handleI18n(request, env, ctx = null) {
   if (request.method === 'GET') {
     return json({ ok: true, langs: Object.fromEntries(Object.entries(APP_LANGS).map(([k, v]) => [k, { name: v.name, dir: v.dir }])) });
   }
@@ -238,6 +246,7 @@ export async function handleI18n(request, env) {
     ? [...new Set(body.strings.filter((s) => typeof s === 'string' && s.length > 0 && s.length <= 600))].slice(0, MAX_STRINGS)
     : [];
   if (lang === 'en') return json({ ok: true, lang, dir: 'ltr', map: {} });
-  const map = await bundleFor(env, lang, strings);
+  const defer = ctx?.waitUntil ? (p) => ctx.waitUntil(p.catch((err) => console.warn('[i18n] deferred', err?.message ?? err))) : null;
+  const map = await bundleFor(env, lang, strings, { defer });
   return json({ ok: true, lang, dir: APP_LANGS[lang].dir, map, translated: Object.keys(map).length, asked: strings.length });
 }
