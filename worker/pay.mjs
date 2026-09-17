@@ -207,6 +207,12 @@ export { STAR_PACKS };
  */
 function form(obj, prefix = '') {
   const out = [];
+  // A bodyless request is a real Stripe call — DELETE /subscriptions/{id} has
+  // nothing to send. Object.entries(null) throws, and because every caller
+  // wraps this in a try/catch the throw surfaced as a plausible-looking
+  // "Stripe refused" rather than as the programming error it was. Found by
+  // worker/planmail.test.mjs, which asserted a cancellation that never fired.
+  if (obj == null) return '';
   for (const [k, v] of Object.entries(obj)) {
     if (v == null) continue;
     const key = prefix ? `${prefix}[${k}]` : k;
@@ -486,7 +492,7 @@ async function ownerOfSub(env, subId) {
 export async function endSubscriptionNow(env, subId) {
   if (!env.STRIPE_SECRET_KEY || !subId) return { ok: false, error: 'nothing to end' };
   try {
-    await stripe(env, `/subscriptions/${encodeURIComponent(subId)}`, null, null, 'DELETE');
+    await stripe(env, `/subscriptions/${encodeURIComponent(subId)}`, {}, null, 'DELETE');
     console.log('[pay] previous subscription', subId, 'ended immediately — plan switched');
     return { ok: true };
   } catch (err) {
