@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.316 — 2026-09-16 07:34 UTC
+
+Search and Suggest in the app
+
+- commit `15f63c4`
+
 ## 0.8.315 — 2026-09-16 06:41 UTC
 
 Search and Suggest API; Viator search repaired; Full tier 25 locations
