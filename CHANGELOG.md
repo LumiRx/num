@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.317 — 2026-09-17 08:32 UTC
+
+App pass: bugs, brand, Verified theme, motion pack
+
+- commit `c3b1d45`
+
 ## 0.8.316 — 2026-09-16 07:34 UTC
 
 Search and Suggest in the app
