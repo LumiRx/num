@@ -509,6 +509,33 @@ function useSuggestions(dest: string | null, meId: string | null) {
   return { starters, rotating, briefing };
 }
 
+/**
+ * The typing pill, with something to read once the wait is real. Dots alone
+ * say "working"; after four seconds a person wants to know on what, and
+ * after twelve they want to know it has not died. The lines are about the
+ * checking NUM does — real places, real listings — because that is what the
+ * time is for, and saying so is the difference between slow and careful.
+ */
+function Thinking() {
+  const [since] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  const secs = (now - since) / 1000;
+  const line = secs >= 12 ? t('Still on it — checking the real listings, not guessing.')
+    : secs >= 4 ? t('Checking places that are actually open…')
+    : null;
+  return (
+    <div className="msg-in" style={{ padding: '0 16px', display: 'grid', gap: 6, justifyItems: 'start' }}>
+      <div className="glass thinking" style={{ display: 'inline-flex', gap: 5, borderRadius: 999, padding: '10px 14px' }}>
+        {[0, 0.18, 0.36].map((d) => (
+          <span key={d} style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-text)', animation: `tdot 1.1s ${d}s infinite` }} />
+        ))}
+      </div>
+      {line && <div className="rise-in" style={{ fontSize: 11.5, color: 'var(--ink-40)', paddingLeft: 4 }}>{line}</div>}
+    </div>
+  );
+}
+
 export default function ThreadView() {
   // Whole-state subscription on purpose: the thread has to redraw for sheets,
   // notifications and chips, not only for new messages.
@@ -586,15 +613,7 @@ export default function ThreadView() {
             rateable={m.who === 'c' && msgs.slice(0, i).some((p) => p.who === 'u') && (!!m.card || cleanText(m.text).length > 90)}
           />
         ))}
-        {typing && (
-          <div className="msg-in" style={{ padding: '0 16px' }}>
-            <div className="glass thinking" style={{ display: 'inline-flex', gap: 5, borderRadius: 999, padding: '10px 14px' }}>
-              {[0, 0.18, 0.36].map((d) => (
-                <span key={d} style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-text)', animation: `tdot 1.1s ${d}s infinite` }} />
-              ))}
-            </div>
-          </div>
-        )}
+        {typing && <Thinking />}
       </div>
 
       {/* ── THE WAY BACK ────────────────────────────────────────────────

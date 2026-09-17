@@ -499,7 +499,7 @@ function extractText(res) {
  * path is strict all the way down: if the shape is not what we asked for, it
  * throws and the chain moves on.
  */
-async function callStructuredJson(env, brain, { messages, system, model = null, maxTokens = 1400 }) {
+async function callStructuredJson(env, brain, { messages, system, model = null, maxTokens = 3200 }) {
   const pick = (names) => names.map((n) => env[n]).find((v) => v);
   const base = String(pick(brain.env.base)).replace(/\/+$/, '');
   const key = pick(brain.env.key);
@@ -525,10 +525,16 @@ async function callStructuredJson(env, brain, { messages, system, model = null, 
       // name and failed with something that read like an outage.
       model: model || pick(brain.env.model) || brain.fallbackModel || 'gpt-5-mini',
       messages: [{ role: 'system', content: system }, ...messages.slice(-8)],
+      // 17 Sep 2026: the budget covers the model's THINKING as well as the
+      // answer on GPT-5, so 1400 "ran out of room mid-object" on ordinary
+      // turns — a paid call thrown away, then the next brain, then the
+      // next: 25–40 s a turn measured. Low effort keeps the shape and the
+      // taste (the schema does the heavy lifting) at a third of the wait.
       max_completion_tokens: maxTokens,
+      ...(/^gpt-5|^o[1-9]/.test(String(model || pick(brain.env.model) || '')) ? { reasoning_effort: env.NUM_OPENAI_REASONING || 'low' } : {}),
       response_format: format,
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(Number(env.NUM_BRAIN_TIMEOUT_MS) || 22_000),
   });
   if (!res.ok) {
     const why = await res.text().catch(() => '');
@@ -607,6 +613,13 @@ export async function callProse(env, brain, { messages, system, maxTokens = 700,
         messages: chat,
         max_tokens: maxTokens,
         temperature: 0.7,
+        // Reasoning models think first and, when the budget runs out mid-
+        // thought, answer with an empty `content` — "returned nothing
+        // (fields: …reasoning…)" in the tail, 10 s a time. A concierge reply
+        // is prose over a grounded block; it does not need a chain of
+        // thought, and it needs the seconds. Both dialects, since the vendor
+        // behind NUM_LLM_BASE_URL has changed before and will again.
+        ...(env.NUM_LLM_THINK ? {} : { reasoning: { enabled: false }, thinking: { type: 'disabled' } }),
         // JSON mode where the vendor supports it. Every OpenAI-compatible
         // provider that implements `response_format` ignores it harmlessly
         // when it does not, and the parse below tolerates plain prose either
@@ -614,7 +627,7 @@ export async function callProse(env, brain, { messages, system, maxTokens = 700,
         ...(wantJson ? { response_format: { type: 'json_object' } } : {}),
       }),
       // A brain behind a home tunnel must never hold a user's turn hostage.
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(Number(env.NUM_BRAIN_TIMEOUT_MS) || 20_000),
     });
     // 6 Sep 2026: carry the STATUS on the error, not just in its text.
     // `brainstate.classify()` reads `err.status` first and only then pattern-
@@ -698,7 +711,7 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
     order = [...wanted, ...healthOrder.filter((b) => !wanted.includes(b))];
   }
 
-  for (const brain of order) {
+  const attempt = async (brain) => {
     const started = Date.now();
     try {
       // A STRUCTURED brain that is not Anthropic. Same schema, same shape of
@@ -835,7 +848,43 @@ export async function ask(env, { structuredCall, messages, persona, voice, conte
       // billing job, "claude failed: auth" is a key job, and reading the raw
       // message to work out which one has cost us hours before.
       console.warn(`[brains] ${brain.id} failed (${noted.class}):`, err?.message ?? err);
+      throw err;
     }
+  };
+
+  // ── HEDGED, NOT SERIAL ──────────────────────────────────────────────────
+  //
+  // 17 Sep 2026, measured on production: 25–40 s a turn, 62 ms of it CPU.
+  // The chain was strictly serial, and a brain that stalled or died mid-
+  // object cost its whole timeout before the next one was even asked.
+  // Now the first brain gets a head start (NUM_HEDGE_MS, 6 s); if it has not
+  // answered by then the next one is started ALONGSIDE it, and whichever
+  // answers well first wins. A brain that fails hands over at once. Worst
+  // case is bounded by the hedge plus the fastest healthy brain rather than
+  // by the sum of everybody's timeouts, and the order — who we would
+  // rather hear from — is unchanged: a leader that answers in time still
+  // leads. The price is an occasional second call on a slow turn.
+  const HEDGE_MS = Math.max(1500, Number(env?.NUM_HEDGE_MS) || 6000);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let next = 0;
+  const inflight = new Map(); // promise → brain
+  const settle = (p) => p.then((r) => ({ ok: true, r, p }), (e) => ({ ok: false, e, p }));
+  const pending = new Map(); // p → settled wrapper
+  while (next < order.length || inflight.size) {
+    if (next < order.length) {
+      const brain = order[next++];
+      const p = attempt(brain);
+      inflight.set(p, brain);
+      pending.set(p, settle(p));
+    }
+    const timer = next < order.length ? sleep(HEDGE_MS).then(() => ({ hedge: true })) : null;
+    const outcome = await Promise.race([...pending.values(), ...(timer ? [timer] : [])]);
+    if (outcome.hedge) continue; // the leader is slow: start the next one beside it
+    inflight.delete(outcome.p); pending.delete(outcome.p);
+    if (outcome.ok) return outcome.r;
+    // A failure: if others are still running, wait on them (and the hedge
+    // clock) before starting more; if nothing is running, the loop starts
+    // the next brain at once.
   }
   const err = new Error('every brain failed');
   err.tried = tried;
