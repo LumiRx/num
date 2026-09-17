@@ -161,7 +161,7 @@ function Section({ title, summary, fields, values, onChange, defaultOpen = false
                     const on = v.trim().toLowerCase() === t(c).toLowerCase();
                     return (
                       <span key={c} {...pressable(() => onChange(key, on ? '' : t(c)))} aria-pressed={on} className="tap press"
-                        style={{ cursor: 'pointer', flex: 'none', fontSize: 11, fontWeight: 600, padding: '6px 10px', borderRadius: 999, whiteSpace: 'nowrap',
+                        style={{ cursor: 'pointer', flex: 'none', minWidth: 56, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '8px 14px', borderRadius: 12, whiteSpace: 'nowrap',
                           background: on ? 'var(--color-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink-60)', border: '1px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-12)') }}>
                         {t(c)}
                       </span>
