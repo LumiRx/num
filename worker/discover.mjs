@@ -109,7 +109,7 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
     binds.push(limit);
     const { results } = await env.DB.prepare(sql).bind(...binds).all();
     return (results ?? []).map((r) => ({
-      source: 'num', id: `pl_${r.id}`, title: r.name, sub: [r.category, r.area].filter(Boolean).join(' · '),
+      source: 'num', id: `pl_${r.id}`, title: r.name, sub: [r.category ? String(r.category).replace(/ location$/i, '') : null, r.area].filter(Boolean).join(' · '),
       image: r.photo_url ?? null, rating: r.rating ?? null, reviews: r.reviews ?? null, price: null, currency: null, url: null,
       lat: r.lat ?? null, lng: r.lng ?? null, distance_km: haversineKm(lat, lng, r.lat, r.lng),
       label: 'Checked by NUM',

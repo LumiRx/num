@@ -237,7 +237,9 @@ function SuggestCard({ i, planId, onDone }: { i: DiscoverItem; planId: string | 
   const price = priceLine(i);
   return (
     <div className="glass" style={{ borderRadius: 18, overflow: 'hidden' }}>
-      <div style={{ height: i.image ? 130 : 0, backgroundImage: i.image ? `url(${i.image})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+      {/* No photo (most directory rows) gets a tinted band so the stamp and
+          the source label have somewhere to sit instead of the title. */}
+      <div style={{ height: i.image ? 130 : 44, background: i.image ? `url(${i.image}) center/cover` : 'linear-gradient(135deg, var(--color-accent-300, #9fe3cf), var(--field-bg))', position: 'relative' }}>
         {i.novelty.never_tried && (
           <div style={{ position: 'absolute', top: 8, left: 8, background: 'var(--color-accent)', color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '3px 8px', borderRadius: 8 }}>NEVER TRIED</div>
         )}
