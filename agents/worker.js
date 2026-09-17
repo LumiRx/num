@@ -1277,8 +1277,14 @@ export default {
       const proof = ownershipProof(p, env);
       if (proof) return proof;
       // MCP Registry domain-ownership proof (com.itsnum namespace), HTTP method.
+      // Rotated 16 Sep 2026: the private half of the August key (p=Rz4PS0hn…) was
+      // not on the machine that needed to publish 1.2.0, and a proof nobody can
+      // sign with is not a proof. The private key for THIS one is at
+      // ~/private_keys/mcp-registry-itsnum-ed25519.pem — back it up. To publish:
+      //   mcp-publisher login http --domain itsnum.com --private-key <hex>
+      //   cd agents && mcp-publisher publish
       if (p === "/.well-known/mcp-registry-auth") {
-        return new Response("v=MCPv1; k=ed25519; p=Rz4PS0hnOA7MmKGIbnQjbHPV3As7jDXni83srIhKv6U=\n", {
+        return new Response("v=MCPv1; k=ed25519; p=j2fnkuPnWjgEM/3+YTyrgZ5SmQUCx2A+hR2dPBTDky0=\n", {
           status: 200,
           headers: { ...CORS, "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
         });

@@ -258,6 +258,10 @@ any time.</p>
     "num": { "type": "http", "url": "https://itsnum.com/mcp" }
   }
 }</pre>
+<p><b>One click:</b>
+<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=num&amp;config=eyJ1cmwiOiJodHRwczovL2l0c251bS5jb20vbWNwIn0%3D">Add to Cursor</a> &middot;
+<a href="https://insiders.vscode.dev/redirect/mcp/install?name=num&amp;config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A//itsnum.com/mcp%22%7D">Install in VS Code</a> &middot;
+Claude Code: <code class="inl">claude mcp add --transport http num https://itsnum.com/mcp</code></p>
 <p>Three things to ask once it is connected:</p>
 <ul>
 <li>Find three Thai restaurants in Patong, Phuket, with a phone number I can call.</li>
