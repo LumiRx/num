@@ -28,7 +28,7 @@ import ContactCard from './ContactCard';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
-import { t, LANGS, isLang, phoneLang, setLang, type Lang } from '../../lib/i18n';
+import { T, t, LANGS, isLang, phoneLang, setLang, type Lang } from '../../lib/i18n';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
@@ -60,21 +60,46 @@ const field: React.CSSProperties = {
   fontSize: 16, background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-body)', color: 'var(--color-text)',
 };
 
+/**
+ * key, label, placeholder, why it helps, and — where an answer is usually
+ * one of a few — the quick answers as chips. The "why" is the whole point;
+ * the chips are so filling this in takes taps, not typing.
+ */
+type Field = [string, string, string, string, string[]?];
+
+/**
+ * ORDER FASTER. What a good concierge asks once and never again: where you
+ * are staying, how many of you, when you eat, how you like to get around and
+ * pay. Every one of these is a question NUM would otherwise have to ask in
+ * the thread before it can act, and every answer here is read on every turn
+ * (KNOWN FACTS in worker/prompt.mjs). Card numbers are never asked: payment
+ * is a preference here and a Stripe sheet at the moment of paying.
+ */
+const QUICK_FIELDS: Field[] = [
+  ['staying_at', T('Where you are staying'), T('hotel or address'), T('cars and deliveries start from here without asking'), []],
+  ['party_size', T('Usually how many of you'), T('e.g. 2'), T('tables and cars sized right first time'), ['1', '2', '3', '4', '6+']],
+  ['dinner_time', T('When you like to eat'), T('e.g. 19:30'), T('“dinner tonight” lands at your hour, not a default'), ['18:30', '19:30', '20:30', T('Late')]],
+  ['ride_pref', T('How you like to get around'), T('Grab, taxi, private car…'), T('the right car is requested without a follow-up question'), ['Grab', T('Taxi'), T('Private car'), T('Walk / BTS')]],
+  ['pay_pref', T('How you usually pay'), T('card, Stars, cash'), T('NUM picks the right payment step when it books'), [T('Card'), T('Stars'), T('Cash')]],
+  ['confirm_via', T('Where confirmations should reach you'), T('in the app, WhatsApp, LINE, SMS'), T('so a confirmation never goes to a channel you do not check'), [T('In the app'), 'WhatsApp', 'LINE', 'SMS']],
+  ['kids', T('Kids with you'), T('ages, or none'), T('tables, menus and times that work for them'), [T('None'), T('Under 5'), T('5–12'), T('Teens')]],
+];
+
 /** key, label, placeholder, why it helps — the "why" is the whole point. */
-const TRAVEL_FIELDS: Array<[string, string, string, string]> = [
+const TRAVEL_FIELDS: Field[] = [
   ['airline_status', 'Airline status', 'e.g. Delta Platinum, Star Alliance Gold', 'NUM weighs status against price instead of just picking the cheapest'],
   ['hotel_status', 'Hotel programme', 'e.g. Marriott Titanium, Hyatt Globalist', 'gets you the upgrade you already earned'],
-  ['seat', 'Seat', 'aisle / window / bulkhead', 'so a flight suggestion already fits you'],
+  ['seat', 'Seat', 'aisle / window / bulkhead', 'so a flight suggestion already fits you', ['Aisle', 'Window', 'Bulkhead']],
   ['home_airport', 'Home airport', 'e.g. LAX, BKK', 'the default origin for every fare search'],
   ['passport', 'Passport country', 'e.g. United States', 'drives the visa line in a trip check — never stored as a number'],
 ];
 
-const TASTE_FIELDS: Array<[string, string, string, string]> = [
+const TASTE_FIELDS: Field[] = [
   ['home_city', 'Home city', 'where you live', 'so NUM knows what is exotic to you and what is Tuesday'],
-  ['dietary', 'Dietary', 'vegetarian, halal, no shellfish…', 'never books you somewhere you cannot eat'],
+  ['dietary', 'Dietary', 'vegetarian, halal, no shellfish…', 'never books you somewhere you cannot eat', ['Vegetarian', 'Vegan', 'Halal', 'No shellfish', 'No pork']],
   ['allergies', 'Allergies', 'anything serious', 'flagged to the kitchen when NUM books'],
-  ['budget', 'Usual spend', 'e.g. mid-range, no ceiling on food', 'stops every suggestion landing in the wrong bracket'],
-  ['vibe', 'Your kind of night', 'quiet counter / big table / dancing', 'the single most useful thing you can tell NUM'],
+  ['budget', 'Usual spend', 'e.g. mid-range, no ceiling on food', 'stops every suggestion landing in the wrong bracket', ['Keep it cheap', 'Mid-range', 'No ceiling on food']],
+  ['vibe', 'Your kind of night', 'quiet counter / big table / dancing', 'the single most useful thing you can tell NUM', ['Quiet counter', 'Big table', 'Dancing', 'Early night']],
   ['work', 'What you do', 'optional', 'context for meetings and introductions'],
   ['notes', 'Anything else', 'the things a good concierge would remember', 'goes straight into what NUM knows about you'],
 ];
@@ -112,24 +137,42 @@ function Collapsible({ title, summary, defaultOpen = false, children }: {
   );
 }
 
-function Section({ title, summary, fields, values, onChange }: {
+function Section({ title, summary, fields, values, onChange, defaultOpen = false }: {
   title: string;
   summary: string;
-  fields: Array<[string, string, string, string]>;
+  fields: Field[];
   values: Record<string, string>;
   onChange: (k: string, v: string) => void;
+  defaultOpen?: boolean;
 }) {
   const filled = fields.filter(([k]) => (values[k] ?? '').trim()).length;
   return (
-    <Collapsible title={title} summary={filled ? `${filled} of ${fields.length} filled in` : summary}>
+    <Collapsible title={title} summary={filled ? t('{n} of {total} filled in', { n: filled, total: fields.length }) : summary} defaultOpen={defaultOpen}>
       <div style={{ display: 'grid', gap: 12 }}>
-        {fields.map(([key, label, placeholder, why]) => (
-          <div key={key}>
-            <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>{label}</div>
-            <input style={field} placeholder={placeholder} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} />
-            <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.45 }}>{why}</div>
-          </div>
-        ))}
+        {fields.map(([key, label, placeholder, why, chips]) => {
+          const v = values[key] ?? '';
+          return (
+            <div key={key}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>{t(label)}</div>
+              <input style={field} placeholder={t(placeholder)} value={v} onChange={(e) => onChange(key, e.target.value)} />
+              {chips && chips.length > 0 && (
+                <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 6, padding: '2px 0' }}>
+                  {chips.map((c) => {
+                    const on = v.trim().toLowerCase() === t(c).toLowerCase();
+                    return (
+                      <span key={c} {...pressable(() => onChange(key, on ? '' : t(c)))} aria-pressed={on} className="tap press"
+                        style={{ cursor: 'pointer', flex: 'none', fontSize: 11, fontWeight: 600, padding: '6px 10px', borderRadius: 999, whiteSpace: 'nowrap',
+                          background: on ? 'var(--color-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink-60)', border: '1px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-12)') }}>
+                        {t(c)}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.45 }}>{t(why)}</div>
+            </div>
+          );
+        })}
       </div>
     </Collapsible>
   );
@@ -151,6 +194,7 @@ export default function ProfileView() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [values, setValues] = useState<Record<string, string>>({});
+  const autosave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [name, setName] = useState('');
   const [saved, setSaved] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -187,6 +231,10 @@ export default function ProfileView() {
   const change = (k: string, v: string) => {
     setValues((prev) => ({ ...prev, [k]: v }));
     setSaved(false);
+    // A chip tap or a finished field saves itself a moment later; the SAVE
+    // button stays for people who want to see it happen.
+    if (autosave.current) clearTimeout(autosave.current);
+    autosave.current = setTimeout(() => { void save(); }, 1200);
   };
 
   const save = async () => {
@@ -346,7 +394,7 @@ export default function ProfileView() {
         </div>
       </Collapsible>
 
-      <Collapsible title={t('YOUR CODES')} summary="Scan to connect, or to pay you in Stars" defaultOpen>
+      <Collapsible title={t('YOUR CODES')} summary={t('Scan to connect, or to pay you in Stars')}>
         <QrCard />
       </Collapsible>
 
@@ -360,8 +408,11 @@ export default function ProfileView() {
 
       <NotificationsCard />
 
+      <Group>{t('ORDER FASTER')}</Group>
+      <Section title={t('THE THINGS NUM WOULD OTHERWISE ASK')} summary={t('Where you stay, how many, when you eat, how you move and pay — two minutes, then every ask is one message')} fields={QUICK_FIELDS} values={values} onChange={change} defaultOpen />
+
       <Group>{t('TRAVEL')}</Group>
-      <Section title={t('HOW YOU TRAVEL')} summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
+      <Section title={t('HOW YOU TRAVEL')} summary={t('Status, seat, home airport — so a fare search already fits you')} fields={TRAVEL_FIELDS} values={values} onChange={change} />
 
       {/* Passenger details live behind their own sheet rather than inline with
           the preference fields above, because they are a different KIND of
@@ -380,7 +431,7 @@ export default function ProfileView() {
         <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
       </div>
       <Group>{t('TASTE')}</Group>
-      <Section title={t('SO NUM GETS YOU RIGHT')} summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
+      <Section title={t('SO NUM GETS YOU RIGHT')} summary={t('Diet, budget, the kind of night you actually want')} fields={TASTE_FIELDS} values={values} onChange={change} />
 
       {/* what NUM has worked out on its own */}
       <Collapsible

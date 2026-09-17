@@ -387,10 +387,18 @@ export function direct(text, state = {}, env = {}) {
       // again — which is the whole point, and it is why the order is written
       // here rather than left to whoever edits this next.
       const steps = [];
+      // NUM_LEAD_BRAIN=haiku (17 Sep 2026): measured on production, GPT-5
+      // mini answers an ordinary turn in 8–10 s and Haiku in 2–4 s at the
+      // same shape. When the seconds matter more than the four cents,
+      // Haiku leads and the cost-ordered chain stays underneath as the
+      // hedge and the backstop.
+      const haikuFirst = String(env?.NUM_LEAD_BRAIN ?? '') === 'haiku' && !!env?.ANTHROPIC_API_KEY;
+      if (haikuFirst) steps.push({ brain: 'haiku', model: bulk });
       if (gpt) steps.push({ brain: 'openai', model: gptModel });
       if (hosted) steps.push({ brain: 'hosted', model: flash }, { brain: 'hosted', model: mid });
-      steps.push({ brain: 'haiku', model: bulk }, { brain: 'claude', model: strong });
-      const lead = gpt ? gptModel : (hosted ? flash : bulk);
+      if (!haikuFirst) steps.push({ brain: 'haiku', model: bulk });
+      steps.push({ brain: 'claude', model: strong });
+      const lead = haikuFirst ? bulk : gpt ? gptModel : (hosted ? flash : bulk);
       return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(lead)] ?? null, signals, reason };
     }
     case TIERS.COMPLEX: {
@@ -414,12 +422,11 @@ export function direct(text, state = {}, env = {}) {
       if (!gpt) {
         return { tier, steps: [{ brain: 'claude', model: strong }], estCostUsd: MODEL_COSTS[strong] ?? null, signals, reason };
       }
-      const steps = [
-        { brain: 'openai', model: gptModel },
-        { brain: 'haiku', model: bulk },
-        { brain: 'claude', model: strong },
-      ];
-      return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(gptModel)] ?? null, signals, reason };
+      const haikuFirst = String(env?.NUM_LEAD_BRAIN ?? '') === 'haiku';
+      const steps = haikuFirst
+        ? [{ brain: 'haiku', model: bulk }, { brain: 'openai', model: gptModel }, { brain: 'claude', model: strong }]
+        : [{ brain: 'openai', model: gptModel }, { brain: 'haiku', model: bulk }, { brain: 'claude', model: strong }];
+      return { tier, steps, estCostUsd: MODEL_COSTS[normaliseModel(haikuFirst ? bulk : gptModel)] ?? null, signals, reason };
     }
     default: {
       // CRITICAL — money, commitment, trouble, a group. The turn where

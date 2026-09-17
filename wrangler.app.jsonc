@@ -91,7 +91,11 @@
   // ADMIN_EMAIL is an identity, not a credential — ADMIN_KEY is still the gate.
   // It stamps the signed session so the console can say who is looking, and so
   // the sign-in log has a name in it rather than a row of anonymous successes.
-  "vars": { "VAPID_SUBJECT": "mailto:hello@itsnum.com", "SABRE_PCC": "FF9A", "ADMIN_EMAIL": "andre@thatislumi.com",
+  "vars": {
+    // 17 Sep 2026: Haiku leads everyday turns (2–4 s) with the cost-ordered
+    // chain hedging underneath. See worker/director.mjs and brains.mjs.
+    "NUM_LEAD_BRAIN": "haiku", "NUM_HEDGE_MS": "5000",
+    "VAPID_SUBJECT": "mailto:hello@itsnum.com", "SABRE_PCC": "FF9A", "ADMIN_EMAIL": "andre@thatislumi.com",
     // Every reply-capable email carries this as Reply-To, and every
     // non-bulk send is blind-copied here. info@itsnum.com is NOT used:
     // its MX points at an SES inbound host with no receipt rule set, so

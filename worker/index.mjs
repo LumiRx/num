@@ -771,6 +771,11 @@ export async function handleNum(request, env, ctx) {
   // to the try meant that when every brain failed we threw away work we had
   // already done and apologised instead of answering with it.
   let grounding = null;
+  // Where the seconds go, stage by stage. Returned only when the caller
+  // asks (x-num-debug: 1); always in the log line at the end.
+  const T0 = Date.now();
+  const marks = {};
+  const mark = (k) => { marks[k] = Date.now() - T0; };
   let lastUser = '';
   try {
     // Same brain as the texts: resolve the user's location and pull
@@ -823,6 +828,7 @@ export async function handleNum(request, env, ctx) {
       memberId ? hostFor(env, memberId).catch(() => null) : Promise.resolve(null),
     ]);
     grounding = groundResult;
+    mark('grounded');
 
     // Who delivers to where this guest is (worker/delivery.mjs). Members only:
     // an order needs a member to belong to, so an anonymous guest is never
@@ -1404,10 +1410,25 @@ export async function handleNum(request, env, ctx) {
       }
     }
 
+    mark('answered');
     let quality = inspect({ ask: lastUser, reply: result.reply, picks: result.picks, context: groundingBlock });
     if (quality.hard) {
       try {
-        const fixed = await callNum(quality.note);
+        // ── THE RETRY IS BOUNDED ──────────────────────────────────────────
+        // 17 Sep 2026: a third of turns were retried, every retry went to
+        // Opus regardless of who answered first, and it added 12–15 s on
+        // top of an answer already judged good enough to send. Now the
+        // retry stays on the lane that answered (an Anthropic model keeps
+        // its model; anything else uses the default) and gets
+        // NUM_RETRY_TIMEOUT_MS (9 s). Past that the first answer ships —
+        // which is exactly what already happened when a retry errored.
+        const sameLane = /^claude-/.test(String(result._model ?? '')) ? result._model : null;
+        const budget = Number(env.NUM_RETRY_TIMEOUT_MS) || 9000;
+        const fixed = await Promise.race([
+          callNum(quality.note, sameLane),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('retry-timeout')), budget)),
+        ]);
+        mark('retried');
         const fixedGuard = guardReply(fixed.reply);
         if (fixedGuard.ok) {
           const reFixedRaw = resolvePicks(fixed.picks, grounding?.partners ?? []);
@@ -1428,10 +1449,13 @@ export async function handleNum(request, env, ctx) {
             quality = { ...quality, flags: [...quality.flags, 'retry-failed'] };
           }
         }
-      } catch {
+      } catch (err) {
         // The first answer is already good enough to send. A failed retry
         // must never cost the guest the reply they had.
-        quality = { ...quality, flags: [...quality.flags, 'retry-error'] };
+        const timedOut = /retry-timeout/.test(String(err?.message));
+        quality = timedOut
+          ? { ...quality, flags: [...quality.flags, 'retry-timeout'] }
+          : { ...quality, flags: [...quality.flags, 'retry-error'] };
       }
     }
     // The ask FIRST, then the cost that answered it, joined by ask_id.
@@ -1604,7 +1628,11 @@ export async function handleNum(request, env, ctx) {
     // asks nobody could serve, the exact ones that write the roadmap, were
     // the ones being dropped.
     // (the ask was recorded above, with its cost joined by ask_id)
-    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}) });
+    mark('done');
+    const timing = { ...marks, brain: result._brain ?? null, model: result._model ?? null, tried: (result._tried ?? []).map((x) => x.brain), lane: answeredLane };
+    console.log(`[num-ai] timing ${JSON.stringify(timing)}`);
+    const wantsDebug = request.headers.get('x-num-debug') === '1';
+    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}), ...(wantsDebug ? { _timing: timing } : {}) });
   } catch (err) {
     console.error('[num-ai]', err);
     // A ReferenceError or TypeError is OUR bug, not an outage. The two look
