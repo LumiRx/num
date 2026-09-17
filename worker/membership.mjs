@@ -292,6 +292,10 @@ export async function grantTier(env, memberId, tier, { source = 'stripe', ref = 
   // for vanish the moment the new grant overwrites renews_at. Stripe never hit
   // this because Stripe sends its own period end; a member topping up with
   // Stars picks their own moment, and it is usually before they run out.
+  // Same rule as the business and host ladders: whatever subscription this
+  // member already had is about to be overwritten, so capture it now.
+  const prior = await env.DB.prepare('SELECT stripe_sub FROM num_memberships WHERE member_id=?1')
+    .bind(memberId).first().catch(() => null);
   let from = Date.now();
   if (extend) {
     const cur = await env.DB.prepare('SELECT tier, renews_at FROM num_memberships WHERE member_id=?1')
@@ -307,6 +311,10 @@ export async function grantTier(env, memberId, tier, { source = 'stripe', ref = 
     `INSERT INTO num_memberships (member_id, tier, renews_at, source, ref, stripe_sub) VALUES (?1,?2,?3,?4,?5,?6)
      ON CONFLICT(member_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5, stripe_sub=COALESCE(?6, stripe_sub)`,
   ).bind(memberId, tier, renews, source, ref, sub).run();
+  if (sub) {
+    const { endReplacedSubscription } = await import('./bizbilling.mjs');
+    await endReplacedSubscription(env, prior?.stripe_sub ?? null, sub);
+  }
   return { ok: true, tier, renews_at: renews };
 }
 

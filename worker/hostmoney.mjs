@@ -85,6 +85,11 @@ export async function ensure(env) {
 export async function grantHostTier(env, hostId, tier, { ref = null, sub = null, periodEnd = null, customer = null } = {}) {
   if (!env?.DB || !hostId || !HOST_PLANS[tier]) return { ok: false };
   await ensure(env);
+  // See endReplacedSubscription in worker/bizbilling.mjs: read the old
+  // subscription id before the UPDATE below writes over it, or a host who
+  // switches plan keeps paying for the one they left.
+  const prior = await env.DB.prepare('SELECT plan_sub_id FROM num_hosts WHERE id=?1')
+    .bind(hostId).first().catch(() => null);
   const r = await env.DB.prepare(
     `UPDATE num_hosts SET tier = ?2, plan_status = 'active', plan_sub_id = ?3, plan_renews_at = ?4, updated_at = ?5,
             stripe_customer = COALESCE(?6, stripe_customer)
@@ -92,6 +97,10 @@ export async function grantHostTier(env, hostId, tier, { ref = null, sub = null,
   ).bind(hostId, tier, sub, stamp(periodEnd), now(), customer).run().catch(() => null);
   const ok = (r?.meta?.changes ?? 0) > 0;
   if (ok && ref) console.log('[hostmoney] plan', tier, 'granted to host', hostId, 'ref', ref);
+  if (ok && sub) {
+    const { endReplacedSubscription } = await import('./bizbilling.mjs');
+    await endReplacedSubscription(env, prior?.plan_sub_id ?? null, sub);
+  }
   return { ok };
 }
 

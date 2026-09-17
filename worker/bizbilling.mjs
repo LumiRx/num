@@ -159,14 +159,51 @@ export async function bizEntitlements(env, businessId) {
  * verified payment — never from a client request, for the exact reason a
  * client can't price its own Star pack or membership tier.
  */
+/**
+ * End the subscription this owner is REPLACING, if there is one.
+ *
+ * ── THE BUG ──────────────────────────────────────────────────────────────
+ *
+ * The console's "Switch" button, and every other upgrade path, called
+ * requestSubscription() again and then granted the new tier. The grant's
+ * upsert overwrote `stripe_sub` with the new subscription id — and nothing
+ * ever told Stripe about the old one. It stayed live and kept charging. The
+ * customer held two subscriptions; this table knew about one; and the one it
+ * had forgotten was the one still taking money with no row pointing at it.
+ *
+ * Immediate, not at-period-end: they are already paying for the new plan
+ * from today, so leaving the old one to run out bills them twice for the
+ * overlap. A customer choosing to STOP still gets cancel_at_period_end —
+ * that is a different action and keeps the month they paid for.
+ *
+ * Best-effort on purpose. If Stripe refuses, the grant still stands (the
+ * money for the new plan has already been taken and withholding the plan
+ * would be the worse failure) and endSubscriptionNow logs loudly so a human
+ * can finish the job.
+ */
+export async function endReplacedSubscription(env, previousSub, nextSub) {
+  if (!previousSub || previousSub === nextSub) return;
+  try {
+    const { endSubscriptionNow } = await import('./pay.mjs');
+    await endSubscriptionNow(env, previousSub);
+  } catch (err) {
+    console.error('[plan] could not end the replaced subscription', previousSub, err?.message ?? err);
+  }
+}
+
 export async function grantBizTier(env, businessId, tier, { source = 'stripe', ref = null, months = 1, sub = null } = {}) {
   await ensure(env);
   if (!bizTiers(env)[tier]) return { ok: false, error: 'unknown tier' };
+  // Read BEFORE the upsert overwrites it — this is the only moment the old
+  // subscription id still exists anywhere.
+  const prior = await env.DB.prepare('SELECT stripe_sub FROM num_business_subscriptions WHERE business_id=?1')
+    .bind(businessId).first().catch(() => null);
   const renews = new Date(Date.now() + months * 30 * 86400_000).toISOString().slice(0, 19).replace('T', ' ');
   await env.DB.prepare(
     `INSERT INTO num_business_subscriptions (business_id, tier, renews_at, source, ref, stripe_sub) VALUES (?1,?2,?3,?4,?5,?6)
      ON CONFLICT(business_id) DO UPDATE SET tier=?2, renews_at=?3, source=?4, ref=?5, stripe_sub=COALESCE(?6, stripe_sub)`,
   ).bind(businessId, tier, renews, source, ref, sub).run();
+  if (sub) await endReplacedSubscription(env, prior?.stripe_sub ?? null, sub);
   return { ok: true, tier, renews_at: renews };
 }
 

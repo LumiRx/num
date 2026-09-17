@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.321 — 2026-09-17 10:18 UTC
+
+Flight Watch in the workflow, Tonight on TODAY, ask-first sign-up; plans priced in the buyer's currency, site in nine languages
+
+- commit `b60cda9`
+
 ## 0.8.320 — 2026-09-17 09:52 UTC
 
 Flight Watch in the workflow, Tonight on TODAY, ask-first sign-up

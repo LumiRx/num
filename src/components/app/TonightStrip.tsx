@@ -53,7 +53,7 @@ export function countdown(i: TonightItem, now = Date.now()): string {
  * rows get the check.
  */
 function SourceMark({ source }: { source: TonightItem['source'] }) {
-  const base: React.CSSProperties = { position: 'absolute', right: 8, bottom: 8, borderRadius: 999, padding: '3px 7px', fontSize: 8.5, fontWeight: 800, letterSpacing: '.02em', display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff' };
+  const base: React.CSSProperties = { position: 'absolute', right: 8, top: 8, borderRadius: 999, padding: '3px 7px', fontSize: 8.5, fontWeight: 800, letterSpacing: '.02em', display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff' };
   if (source === 'ticketmaster') {
     return (
       <span className="glass-dark" style={base} aria-label="Listed on Ticketmaster">
