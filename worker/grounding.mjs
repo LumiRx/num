@@ -55,8 +55,26 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
 
     if (!loc?.dest || !TRUSTED.has(loc.source)) return none;
 
+    // Real ratings for this neighbourhood BEFORE the ranking runs — one
+    // Google Maps search per cell per category per month, written onto our
+    // rows (worker/placeratings.mjs). Bounded at 3.5 s: a slow first visit
+    // still answers, and the ratings land for the next one.
+    const catForRatings = detectCat(userText) ?? (topicHint ? detectCat(topicHint) : null);
+    const ratingLat = loc.lat ?? loc.dest?.lat, ratingLng = loc.lng ?? loc.dest?.lng;
+    if (env.SERPAPI_KEY && Number.isFinite(ratingLat) && Number.isFinite(ratingLng) && (!catForRatings || ['restaurant', 'cafe', 'bar', 'seafood', 'breakfast', 'dessert', 'spa', 'attraction', 'market'].includes(catForRatings))) {
+      try {
+        const { enrichCell } = await import('./placeratings.mjs');
+        await Promise.race([
+          enrichCell(env, { lat: ratingLat, lng: ratingLng, cat: catForRatings ?? 'restaurant' }),
+          new Promise((r) => setTimeout(() => r({ skipped: 'slow' }), 3500)),
+        ]);
+      } catch (err) { console.warn('[ratings]', err?.message ?? err); }
+    }
+
     const [{ rows, widened }, guide, buzz, showtimes, events] = await Promise.all([
-      nearbyPlaces(env, loc, userText, 6, topicHint).catch(() => ({ rows: [] })),
+      // Ten candidates, not six: enough for three good picks that are not
+      // the same three as last time (see the rotation in nearbyPlaces).
+      nearbyPlaces(env, loc, userText, 10, topicHint, { memberId: member?.id ?? null }).catch(() => ({ rows: [] })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
       // Only on a movie ask, and dark without a SERPAPI_KEY secret — the

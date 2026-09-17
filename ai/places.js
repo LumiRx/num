@@ -598,7 +598,7 @@ async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, 
  * coming back empty: a guest asking for seafood in a quiet town should get the
  * best nearby restaurants, not an apology.
  */
-export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null) {
+export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null, { memberId = null } = {}) {
   // THE TOPIC CAN LIVE IN THE PREVIOUS TURN, AND USUALLY DOES WHEN NUM ASKED.
   //
   // On 14 Sep a guest was asked "full-service spa, quick walk-in, or
@@ -667,6 +667,35 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null) 
       rows = results || [];
     }
   } catch (e) { console.log('nearbyPlaces', String(e)); }
+
+  // ── NOT THE SAME THREE AGAIN ─────────────────────────────────────────
+  //
+  // 17 Sep 2026: with almost no rating signal the ranking was stable, so a
+  // member asking "where should we eat" on Tuesday and Thursday got the
+  // identical list, and said so. Two adjustments, both after the query so
+  // the SQL stays cacheable:
+  //   1. places this member was SHOWN in the last 14 days (num_place_
+  //      impressions) drop below the ones they have not seen — they are
+  //      still there if nothing else fits, just not first;
+  //   2. among rows the score cannot separate (no rating on either), a
+  //      quiet daily shuffle keyed on the day and the member, so two
+  //      equally-unknown places take turns.
+  // A rated place stays ahead of an unrated one either way.
+  try {
+    if (rows.length > 3) {
+      const seen = new Set();
+      if (memberId && env?.DB) {
+        const { results } = await env.DB.prepare(
+          `SELECT DISTINCT place_id FROM num_place_impressions WHERE member_id = ?1 AND ts >= datetime('now', '-14 day')`,
+        ).bind(memberId).all();
+        for (const r of results ?? []) seen.add(r.place_id);
+      }
+      const day = Math.floor(Date.now() / 86400000);
+      const jitter = (id) => { let h = 0; const k = `${id}|${day}|${memberId ?? ''}`; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) | 0; return (Math.abs(h) % 1000) / 1000; };
+      const key = (r) => (r.rating != null ? 2 : 0) + (seen.has(r.id) ? -1 : 0) + (r.rating != null ? 0 : jitter(r.id) * 0.5);
+      rows = rows.map((r, i) => ({ r, i, k: key(r) })).sort((a, b) => b.k - a.k || a.i - b.i).map((x) => x.r);
+    }
+  } catch (e) { console.log('nearbyPlaces rotate', String(e)); }
   return { cat, rows: withOpenState(rows, loc?.dest?.tz), near, widened };
 }
 

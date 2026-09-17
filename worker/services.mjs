@@ -607,8 +607,17 @@ function airBlock(env) {
   );
 }
 
-export function servicesBlock(place, env = {}) {
+/** Does this ask want food brought to them, rather than a place to go? */
+export const wantsDelivery = (text) => /\b(deliver|delivery|order (me|us|some|food|dinner|lunch)|bring (it|me|us|food)|to (my|the) (room|hotel|villa|condo|apartment|office)|room service|takeaway|take-away|takeout|take out|door ?dash|uber ?eats|grab ?food|foodpanda|deliveroo)\b/i.test(String(text ?? ''));
+
+export function servicesBlock(place, env = {}, { ask = null } = {}) {
   const country = place?.country_code || place?.country || '';
+  // 17 Sep 2026: a guest asking for a restaurant was being handed DoorDash.
+  // The delivery apps are listed only when the ask is about delivery; a
+  // "where should we eat" turn never sees them, so the model cannot reach
+  // for them. The prompt's own rule (ask eat-there / delivered / collect)
+  // still applies when the ask is ambiguous — see prompt.mjs.
+  const deliveryAsk = ask == null ? true : wantsDelivery(ask);
   const kinds = [
     ['ride', 'a car'],
     ['food', 'delivery'],
@@ -626,7 +635,7 @@ export function servicesBlock(place, env = {}) {
   // for a feature that already shipped. The summary must not contradict the
   // detail; where we can price but not buy, the line has to say exactly that.
   const canShop = { flight: connected(env, 'sabre_air'), hotel: connected(env, 'sabre_hotel') };
-  const lines = kinds.map(([kind, label]) => {
+  const lines = kinds.filter(([kind]) => kind !== 'food' || deliveryAsk).map(([kind, label]) => {
     const { mode, options } = optionsFor(kind, { country, city: place?.name }, env);
     const names = options.map((o) => o.name + (o.note ? ` (${o.note})` : '')).join(', ');
     const status = canShop[kind]

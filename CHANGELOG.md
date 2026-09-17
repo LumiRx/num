@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.332 — 2026-09-17 22:30 UTC
+
+Mongolian in the app and on the site; Ulaanbaatar page; Mongolia in the destinations index; invites send from itsnum.com
+
+- commit `67cec13`
+
 ## 0.8.331 — 2026-09-17 21:09 UTC
 
 <what changed> # uploads, NOT live

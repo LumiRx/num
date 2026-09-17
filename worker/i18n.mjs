@@ -40,6 +40,11 @@ export const APP_LANGS = Object.freeze({
   fr: { name: 'Français', dir: 'ltr', engine: 'fr', locale: 'fr' },
   de: { name: 'Deutsch', dir: 'ltr', engine: 'de', locale: 'de' },
   ar: { name: 'العربية', dir: 'rtl', engine: 'ar', locale: 'ar' },
+  // Mongolian, 17 Sep 2026. The app and the site both list it; this is the
+  // list that actually answers /api/i18n, and without the row here a
+  // Mongolian phone gets 'unknown language' and stays English. m2m100
+  // speaks mn, so the catalogue fills on first ask like every other tongue.
+  mn: { name: 'Монгол', dir: 'ltr', engine: 'mn', locale: 'mn' },
 });
 
 const ENGINE = '@cf/meta/m2m100-1.2b';
