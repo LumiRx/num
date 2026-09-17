@@ -103,6 +103,8 @@ function baseState() {
     tabId: null,
     discoverOpen: null,
     placeOpen: false,
+    flightWatchOpen: false,
+    flights: [],
     errandsOpen: false,
     errands: [],
     myErrands: [],
@@ -211,7 +213,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.

@@ -414,6 +414,9 @@ export interface AppState {
 
   /** The place sheet: "where are you?" without typing it into the thread. */
   placeOpen: boolean;
+  /** Flight Watch: the sheet, and the flights NUM is watching (server truth). */
+  flightWatchOpen: boolean;
+  flights: import('./flightwatch').FlightWatch[];
 
   /** Search and Suggest — which tab is open, or null. See lib/discover.ts. */
   discoverOpen: 'search' | 'suggest' | null;

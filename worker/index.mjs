@@ -2237,6 +2237,12 @@ export default {
     // Search and Suggest for a group: places, events, experiences and the
     // crew's own history, labelled by source, ranked never-tried first. No
     // model call — see discover.mjs.
+    // Flight Watch: look up, keep watching, push what changes. See flightwatch.mjs.
+    if (url.pathname === '/api/flightwatch' || url.pathname === '/api/flightwatch/stop') {
+      const { handleFlightWatch } = await import('./flightwatch.mjs');
+      return await handleFlightWatch(request, env, url.pathname);
+    }
+
     if (url.pathname === '/api/discover' || url.pathname === '/api/discover/dislike') {
       const { handleDiscover } = await import('./discover.mjs');
       return await handleDiscover(request, env);
@@ -2932,6 +2938,14 @@ export default {
   // record the verdict, and shout ONLY when the state changes.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
+    // Watched flights whose next look is due. One AeroDataBox call per flight
+    // per window, shared by every watcher; pushes only what changed.
+    ctx.waitUntil(
+      import('./flightwatch.mjs')
+        .then((m) => m.sweepFlights(env, { ctx }))
+        .then((r) => { if (r?.checked) console.log(`[flightwatch] checked ${r.checked}, pushed ${r.pushed}`); })
+        .catch((e) => console.error('[flightwatch]', e?.message ?? e)),
+    );
     // Does mail actually leave the building? For five days in August the
     // answer was no and nothing said so — the evidence was one column in
     // num_invites nobody read. Set MAIL_SELFTEST to an address and the next

@@ -14,6 +14,8 @@ import { tagOf } from '../../lib/derive';
 import { askNum, cleanText, sendChip, openVoice } from '../../lib/concierge';
 import { openPlan } from '../../lib/social';
 import { openDiscover } from '../../lib/discover';
+import FlightCard from './FlightCard';
+import { refreshFlights } from '../../lib/flightwatch';
 import { MicIcon, SendIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { Scene } from '../../lib/scenes';
 import { REACTIONS, react } from '../../lib/prefs';
@@ -530,6 +532,8 @@ export default function ThreadView() {
   // only while the reader is ALREADY there. The moment they scroll up they
   // have said "I am reading this", and nothing may move them until they ask.
   const { msgs, typing, chips, demo, place, me } = useApp((s) => s);
+  const flights = useApp((s) => s.flights);
+  useEffect(() => { if (me) void refreshFlights(); }, [me]);
   // One implementation, shared with DmSheet — see src/lib/stickyscroll.ts for
   // the flight-results bug that produced it.
   const { ref: scrollRef, onScroll, behind, toLatest } = useStickyBottom<HTMLDivElement>();
@@ -565,6 +569,13 @@ export default function ThreadView() {
           WebkitOverflowScrolling: 'touch',
         }}
       >
+        {/* A watched flight lives at the top of the thread while it is live —
+            the one thing that moves everything else. */}
+        {flights.length > 0 && (
+          <div style={{ padding: '0 12px', display: 'grid', gap: 8 }}>
+            {flights.map((w) => <FlightCard key={w.id} w={w} />)}
+          </div>
+        )}
         {msgs.map((m, i) => (
           <MsgBubble
             key={i}
@@ -643,10 +654,10 @@ export default function ThreadView() {
             {/* Two fixed starters ahead of the destination's own: the box for
                 people who know what they want, the dice for people who don't.
                 Neither sends a message — they open the Search & Suggest sheet. */}
-            {[['🎲', 'Surprise me', 'suggest'], ['🔍', 'Search', 'search']].map(([emoji, label, tab]) => (
+            {[['🎲', 'Surprise me', 'suggest'], ['🔍', 'Search', 'search'], ['🛬', 'Watch my flight', 'flight']].map(([emoji, label, tab]) => (
               <div
                 key={label}
-                {...pressable(() => openDiscover(tab as 'search' | 'suggest'))}
+                {...pressable(() => (tab === 'flight' ? store.set({ flightWatchOpen: true }) : openDiscover(tab as 'search' | 'suggest')))}
                 className="glass lift"
                 style={{ ...starterChip, whiteSpace: 'nowrap' }}
               >
