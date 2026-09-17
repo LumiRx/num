@@ -68,7 +68,7 @@ Attach a \`card\` when a booking, meeting, bill, or memory deserves a visual rec
  * a verified-partner list and destination guide from the shared D1 the LINE
  * concierge uses. Everything here sits AFTER the cache breakpoint.
  */
-export function contextBlock({ now = new Date(), place = null, partners = [], widened = false, guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null, events = null, shown = null, entryDocs = null, essentials = null, holidays = null, passport = null, health = null } = {}) {
+export function contextBlock({ now = new Date(), place = null, partners = [], widened = false, guide = null, profile = {}, buzz = [], services = null, style = null, party = null, trip = null, air = false, acceptLang = null, showtimes = null, events = null, shown = null, entryDocs = null, essentials = null, holidays = null, passport = null, health = null, fares = null } = {}) {
   const lines = [];
   const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: place?.tz || 'UTC' });
   const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: place?.tz || 'UTC' });
@@ -223,6 +223,10 @@ export function contextBlock({ now = new Date(), place = null, partners = [], wi
   if (entryDocs) lines.push(entryDocs);
   // Only on the turns that need one — see needsEssentials in index.mjs.
   if (essentials) lines.push(essentials);
+  // Published taxi tariff, on a taxi ask, in a destination we hold one for.
+  // Sits with the other honesty blocks rather than inside SERVICES, because
+  // what it carries is a number the guest can check, not a rail we can book.
+  if (fares) lines.push(fares);
   if (holidays) lines.push(holidays);
   if (passport) lines.push(passport);
   if (health) lines.push(health);

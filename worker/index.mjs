@@ -26,6 +26,7 @@ import { keepRouting, fallbackRouting, laneLabel } from './routinglabel.mjs';
 import { publicNumber as whatsAppNumber } from './whatsapp.mjs';
 import { corsHeaders, enforceRateLimit, validatePayload, LIMITS } from './guard.mjs';
 import { groundRequest } from './grounding.mjs';
+import { faresBlock } from './fares.mjs';
 // How Num suggests a place — one house style, read on every turn.
 import { SUGGESTION_STYLE } from './suggestionstyle.mjs';
 import { formatEvents } from './cityevents.mjs';
@@ -185,6 +186,7 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         place: grounding.place,
         partners: grounding.partners,
         widened: grounding.widened,
+        fares: faresBlock({ place: grounding.place, text: userText ?? '' }),
         guide: grounding.guide,
         showtimes: grounding.showtimes ?? null,
         events: [formatEvents(grounding.events ?? []), formatSearchedEvents(grounding.searchedEvents)].filter(Boolean).join('\n\n'),
@@ -1227,6 +1229,7 @@ export async function handleNum(request, env, ctx) {
       shown: rotation.block,
       entryDocs,
       essentials,
+      fares: faresBlock({ place: grounding.place, text: lastUser }),
       holidays,
       passport,
       health,

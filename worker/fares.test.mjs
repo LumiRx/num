@@ -36,3 +36,51 @@ test('no tariff, no number', () => {
   assert.equal(meterFare('bangkok', 'far'), null);
   assert.equal(hasTariff('chiang mai'), false);
 });
+
+import { faresBlock, wantsFares } from './fares.mjs';
+
+/* The block is as much about what it REFUSES to say as what it says. A tariff
+   is checkable; a total for a trip whose distance nobody measured is not. */
+
+test('it fires on a taxi ask and stays quiet otherwise', () => {
+  for (const q of ['how much is a taxi to the airport?', 'what should a cab cost', 'is the tuk tuk price a rip-off', 'taxi fare from town']) {
+    assert.ok(wantsFares(q), q);
+  }
+  for (const q of ['dinner for two tonight', 'a massage near me', 'book me a table']) {
+    assert.equal(wantsFares(q), false, q);
+  }
+});
+
+test('a taxi ask in a city we hold a tariff for renders the published rates', () => {
+  const b = faresBlock({ place: { slug: 'bangkok' }, text: 'how much is a taxi to the airport?' });
+  assert.match(b, /OFFICIAL METERED TAXI FARE — Bangkok/);
+  assert.match(b, /first 1 km: 35 THB/);
+  assert.match(b, /1–10 km: 6\.5 THB\/km/);
+  assert.match(b, /beyond 80 km/);
+  assert.match(b, /from the airport: \+50 THB/);
+  assert.match(b, /suvarnabhumi\.airportthai\.co\.th/);
+});
+
+test('it tells the model to quote rates, never a total it cannot know', () => {
+  const b = faresBlock({ place: { slug: 'phuket' }, text: 'taxi price to Patong?' });
+  assert.match(b, /Quote the rates, not a total/);
+  assert.match(b, /Never invent a distance/);
+  assert.match(b, /show the arithmetic/);
+});
+
+test('an unverified tariff says so, in the block, where the model will read it', () => {
+  const b = faresBlock({ place: { slug: 'phuket' }, text: 'what does a taxi cost' });
+  assert.match(b, /could not be confirmed against a primary government source/);
+  assert.doesNotMatch(
+    faresBlock({ place: { slug: 'bangkok' }, text: 'what does a taxi cost' }),
+    /could not be confirmed/,
+    'Bangkok has a primary source and must not carry the caveat',
+  );
+});
+
+test('no tariff and no ask both produce nothing at all', () => {
+  assert.equal(faresBlock({ place: { slug: 'edinburgh' }, text: 'how much is a taxi?' }), null);
+  assert.equal(faresBlock({ place: { slug: 'bangkok' }, text: 'where should I eat?' }), null);
+  assert.equal(faresBlock({ place: null, text: 'how much is a taxi?' }), null);
+  assert.equal(faresBlock(), null);
+});

@@ -79,3 +79,61 @@ export function meterFare(cityKey, km, { fromAirport = false } = {}) {
 }
 
 export const hasTariff = (cityKey) => Boolean(TARIFFS[String(cityKey || '').toLowerCase()]);
+
+/* -------------------------------------------------------------------------- *
+ * The prompt block.
+ *
+ * Narrow on purpose, like essentialsBlock next door: matched on the ASK, not
+ * pushed every turn. A tariff table in front of somebody choosing a restaurant
+ * is noise, and a block nobody reads is a block that teaches the model to skim.
+ *
+ * What it deliberately does NOT do is quote a fare for a named trip. That needs
+ * a distance, Num has no routing engine, and a made-up "about 400 baht to
+ * Patong" is exactly the invented certainty this product exists to avoid. The
+ * rates are published and checkable; the distance is not ours to guess. If the
+ * guest supplies the distance, the model has everything it needs to do the sum
+ * and is told to show its working so they can check it against the meter.
+ * -------------------------------------------------------------------------- */
+
+const TAXI_ASK = new RegExp([
+  'taxi|cab\\b|meter|metered',
+  'tuk.?tuk|songthaew|song.?taew',
+  'how much.{0,30}(?:ride|car|airport|town|from the airport)',
+  '(?:fare|cost|price).{0,20}(?:taxi|cab|ride|airport|transfer)',
+  'grab (?:price|fare|cost)|rip.?off|overcharg',
+].join('|'), 'i');
+
+export const wantsFares = (text) => TAXI_ASK.test(String(text || ''));
+
+/**
+ * @param {{place: {slug?: string}|null, text: string}} args
+ * @returns {string|null} a prompt block, or null when this turn does not need one.
+ */
+export function faresBlock({ place = null, text = '' } = {}) {
+  if (!wantsFares(text)) return null;
+  const t = TARIFFS[String(place?.slug || '').toLowerCase()];
+  if (!t) return null;
+
+  const bands = t.bands.map(([upTo, rate], i) => {
+    const from = i === 0 ? t.flagFallKm : t.bands[i - 1][0];
+    const span = upTo === Infinity ? `beyond ${from} km` : `${from}–${upTo} km`;
+    return `  ${span}: ${rate} ${t.currency}/km`;
+  }).join('\n');
+
+  return [
+    `OFFICIAL METERED TAXI FARE — ${t.city}. Published tariff, checked ${t.checked}. Source: ${t.source}`,
+    `  first ${t.flagFallKm} km: ${t.flagFall} ${t.currency}`,
+    bands,
+    `  from the airport: +${t.airportSurcharge} ${t.currency}`,
+    '',
+    ...t.caveats.map((c) => `- ${c}`),
+    '',
+    'HOW TO USE THIS. Quote the rates, not a total — you do not know how far their trip is.',
+    'If they tell you the distance, work it out and show the arithmetic so they can check it against the meter.',
+    'If they ask what a specific trip costs and have not said how far it is, say what the meter charges and ask,',
+    'or tell them to agree the price before getting in. Never invent a distance and never quote a flat fare as if it were official.',
+    t.verified
+      ? ''
+      : 'This tariff could not be confirmed against a primary government source. Say it is the official rate and that drivers here mostly quote fixed fares instead.',
+  ].filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n');
+}

@@ -42,9 +42,22 @@ const httpBlock = (key = 'mcpServers', typeField = 'type') => json({
   },
 });
 
+/**
+ * The same block with the Authorization header removed — which is the entire
+ * difference OAuth makes to a config file. `oauth: true` marks a client that
+ * speaks the MCP authorization spec, so the URL alone is enough and the first
+ * tool call opens a sign-in page. Set per client rather than inferred: guessing
+ * which clients support it is exactly the kind of confident wrongness the
+ * `checked` date at the bottom of every page exists to prevent.
+ */
+const oauthHttpBlock = (key = 'mcpServers', typeField = 'type') => json({
+  [key]: { num: { [typeField]: 'http', url: MCP_URL } },
+});
+
 export const CLIENTS = Object.freeze([
   {
     slug: 'claude-desktop',
+    oauth: true,
     name: 'Claude Desktop',
     vendor: 'Anthropic',
     docs: 'https://modelcontextprotocol.io/docs/develop/connect-local-servers',
@@ -60,6 +73,8 @@ export const CLIENTS = Object.freeze([
   },
   {
     slug: 'claude-code',
+    oauth: true,
+    oauthConfig: `claude mcp add --transport http num ${MCP_URL}`,
     name: 'Claude Code',
     vendor: 'Anthropic',
     docs: 'https://docs.claude.com/en/docs/claude-code/mcp',
@@ -74,6 +89,8 @@ export const CLIENTS = Object.freeze([
   },
   {
     slug: 'cursor',
+    oauth: true,
+    oauthConfig: oauthHttpBlock(),
     name: 'Cursor',
     vendor: 'Anysphere',
     docs: 'https://cursor.com/docs/context/mcp',
@@ -88,6 +105,8 @@ export const CLIENTS = Object.freeze([
   },
   {
     slug: 'vs-code',
+    oauth: true,
+    oauthConfig: oauthHttpBlock('servers'),
     name: 'VS Code',
     vendor: 'Microsoft',
     docs: 'https://code.visualstudio.com/docs/copilot/customization/mcp-servers',
@@ -150,6 +169,7 @@ export const CLIENTS = Object.freeze([
   },
   {
     slug: 'chatgpt',
+    oauth: true,
     name: 'ChatGPT',
     vendor: 'OpenAI',
     docs: 'https://platform.openai.com/docs/mcp',

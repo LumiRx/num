@@ -321,6 +321,7 @@ test('the committed candidate list is inside its own rules', () => {
 
 /* ══ the product set — /agents/<client>/ ════════════════════════════════ */
 
+import { TRUTH } from '../coverage-claims.mjs';
 import { CLIENTS, MCP_URL, CHECKED } from './clients.mjs';
 import { clientPage } from './genclients.mjs';
 
@@ -364,7 +365,16 @@ test('every client page states the endpoint in text a model can quote', () => {
     const text = h.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ');
     assert.ok(text.includes(MCP_URL), `${c.slug} never states ${MCP_URL} outside markup`);
     assert.ok(text.includes('numa_live_'), `${c.slug} never states the token prefix`);
-    assert.ok(text.includes('2,529,721'), `${c.slug} never states the coverage`);
+    // Coverage, not a frozen number. This assertion used to pin the literal
+    // '2,529,721', which quietly made the test the reason the pages could not
+    // be corrected: the count moves with every import and the destination list
+    // moves when a city is added. Assert the SHAPE — a floor and a derived
+    // destination count — so the pages stay quotable without being stale.
+    assert.ok(text.includes('more than 2.5 million real places'), `${c.slug} never states the place floor`);
+    assert.ok(
+      text.includes(`${TRUTH.destinations} destinations in ${TRUTH.countries} countries`),
+      `${c.slug} never states the destination coverage`,
+    );
   }
 });
 

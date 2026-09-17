@@ -23,6 +23,7 @@ const SCOPES = ["num.read", "num.write"];
 const ACCESS_TTL = 3600;             // 1 hour
 const REFRESH_TTL = 60 * 60 * 24 * 30; // 30 days
 const CODE_TTL = 60;                 // 60 seconds, single use
+const REGISTER_PER_DAY = 20;         // dynamic client registrations, per IP, per UTC day
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -191,6 +192,23 @@ async function register(req, env) {
     }
   }
 
+  // Registration has to stay open — the MCP spec requires it and both Claude and
+  // ChatGPT register themselves on first connect — but open is not the same as
+  // unlimited. A person connects a handful of clients; a script that wants a
+  // thousand throwaway client_ids is doing something else. Same salted-hash
+  // guard as agent signup, in the same table, under its own scope string so the
+  // two counts never share a bucket.
+  const ip = req.headers.get("cf-connecting-ip") || "0.0.0.0";
+  const salt = env.VISITOR_SALT || "num-agents-unsalted";
+  const ipHash = await sha256hex(salt + "|oauth-register|" + ip);
+  const day = new Date().toISOString().slice(0, 10);
+  const guard = await env.DB.prepare("SELECT count FROM num_ai_signup_guard WHERE ip_hash=?1 AND day=?2")
+    .bind(ipHash, day).first();
+  if (guard && guard.count >= REGISTER_PER_DAY) {
+    return oaErr("invalid_client_metadata",
+      "Too many client registrations from this address today. Reuse the client_id you already have.", 429);
+  }
+
   const method = b.token_endpoint_auth_method || "none";
   const clientId = rand("numc_", 16);
   let secret = null, secretHash = null;
@@ -210,6 +228,11 @@ async function register(req, env) {
     b.client_uri || null, b.software_id || null, b.software_version || null, created,
   ).run();
 
+  await env.DB.prepare(
+    "INSERT INTO num_ai_signup_guard (ip_hash, day, count) VALUES (?1,?2,1) " +
+    "ON CONFLICT(ip_hash, day) DO UPDATE SET count = count + 1"
+  ).bind(ipHash, day).run();
+
   const out = {
     client_id: clientId,
     client_id_issued_at: created,
@@ -226,32 +249,12 @@ async function register(req, env) {
 
 /* --------------------------------------------------------------- authorize */
 
-function consentPage({ client, account, params }) {
-  const scopes = (params.scope || SCOPES.join(" ")).split(/\s+/).filter(Boolean);
-  const rows = scopes.map((s) => {
-    const label = s === "num.write"
-      ? "Submit a business or a promotion for you. A person reviews each one before it appears."
-      : s === "num.read"
-        ? "Search NUM's directory of more than 2.5 million places, within your daily limit."
-        : s;
-    return `<li><span>${esc(label)}<code>${esc(s)}</code></span></li>`;
-  }).join("");
-
-  const hidden = ["client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "scope", "resource"]
-    .map((k) => params[k] ? `<input type="hidden" name="${k}" value="${esc(params[k])}">` : "").join("");
-
-  // Branded to match /signin/ and the rest of itsnum.com (assets/site.css tokens).
-  // This and the sign-in page are the only NUM screens a person connecting from
-  // Claude or ChatGPT sees, so they have to look like one product, not three.
-  const origin = new URL(params.redirect_uri).origin;
-  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect ${esc(client.client_name)} · NUM</title>
-<meta name="robots" content="noindex">
-<link rel="icon" href="/favicon.ico">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<style>
-:root{--pri:#0EA483;--pri-d:#0B7C63;--pri-l:#E7F6F1;--ink:#0A1A24;--slate:#586A74;--line:#E7ECEE;--bg:#F6FAF9}
+/* One page shell for every screen this file serves, so the consent screen, the
+   connected-apps page and /signin/ read as one product. The tokens are the ones
+   in public/assets/site.css; they are copied rather than imported because this
+   worker serves HTML from a different origin path than the site assets and a
+   stylesheet fetch is one more thing that can fail mid-authorization. */
+const PAGE_CSS = `:root{--pri:#0EA483;--pri-d:#0B7C63;--pri-l:#E7F6F1;--ink:#0A1A24;--slate:#586A74;--line:#E7ECEE;--bg:#F6FAF9;--warn:#B42318;--warn-bg:#FEF3F2;--warn-line:#FECDCA}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);
 font:16px/1.6 'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
@@ -261,7 +264,7 @@ header{padding:18px 24px;border-bottom:1px solid var(--line);background:rgba(246
 .brand small{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--slate)}
 main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px 56px;
 background:radial-gradient(900px 420px at 50% -10%,#E7F6F1 0%,rgba(231,246,241,0) 70%)}
-.card{max-width:460px;width:100%;background:#fff;border:1px solid var(--line);border-radius:20px;padding:32px 30px 26px;
+.card{width:100%;background:#fff;border:1px solid var(--line);border-radius:20px;padding:32px 30px 26px;
 box-shadow:0 1px 2px rgba(10,26,36,.04),0 24px 60px rgba(10,26,36,.10)}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--pri-l);color:var(--pri-d);font-size:12px;font-weight:700;
 letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:6px 12px}
@@ -283,27 +286,211 @@ button:hover{border-color:#cbd6da}
 button.primary{flex:1.4;background:var(--pri);border-color:var(--pri);color:#fff;box-shadow:0 8px 22px rgba(14,164,131,.28)}
 button.primary:hover{background:var(--pri-d);border-color:var(--pri-d);transform:translateY(-1px)}
 button:focus-visible{outline:3px solid rgba(14,164,131,.4);outline-offset:2px}
+.warn{border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:12px;padding:14px 15px;margin:0 0 18px}
+.warn b{display:block;color:var(--warn);font-size:14.5px;margin-bottom:4px}
+.warn p{margin:0;font-size:14px;line-height:1.5;color:var(--ink)}
+.warn code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.apps{list-style:none;padding:0;margin:0 0 18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.apps li{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px}
+.apps li:before{display:none}
+.apps .nm{font-weight:700;font-size:15px}
+.apps .meta{font-size:12.5px;color:var(--slate);margin-top:2px}
+.apps button{flex:none;padding:9px 14px;font-size:13.5px;border-radius:10px}
+.apps button:hover{border-color:var(--warn-line);color:var(--warn);background:var(--warn-bg)}
+.apps li.risk{background:var(--warn-bg)}
+.apps .flag{font-size:12.5px;font-weight:700;color:var(--warn);margin-top:4px}
+.apps button.danger{border-color:var(--warn-line);color:var(--warn)}
+.empty{font-size:14.5px;color:var(--slate);padding:18px 14px;text-align:center}
 .foot{margin:16px 0 0;text-align:center;font-size:13px;color:var(--slate)}
 .foot a{color:var(--slate);text-decoration:none}.foot a:hover{color:var(--pri-d)}
-@media(max-width:480px){main{padding:24px 16px 40px;align-items:flex-start}.card{padding:26px 20px 22px}h1{font-size:25px}}
-</style></head><body>
+@media(max-width:480px){main{padding:24px 16px 40px;align-items:flex-start}.card{padding:26px 20px 22px}h1{font-size:25px}
+.apps li{flex-direction:column;align-items:flex-start}}`;
+
+function shell({ title, width = 460, body }) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · NUM</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>${PAGE_CSS}</style></head><body>
 <header><a class="brand" href="/"><i></i>NUM <small>travel concierge</small></a></header>
-<main><div style="width:100%;max-width:460px">
-<div class="card">
+<main><div style="width:100%;max-width:${width}px">${body}
+<p class="foot"><a href="/oauth/apps">Connected apps</a> &nbsp;&middot;&nbsp; <a href="/privacy/#developers">Privacy</a> &nbsp;&middot;&nbsp; <a href="/terms/">Terms</a> &nbsp;&middot;&nbsp; <a href="mailto:info@itsnum.com">Help</a></p>
+</div></main></body></html>`;
+}
+
+/* ----------------------------------------------------------- impersonation
+ *
+ * Registration is open, because the MCP authorization spec requires it and
+ * because Claude and ChatGPT both register themselves on first connect. That is
+ * correct and it is not going to change. What it costs is this: `client_name`
+ * is whatever the registrant typed, so anyone can register an app called
+ * "Claude" pointing at their own server, and the consent screen — served from
+ * itsnum.com, over TLS, with our logo on it — will say "Let Claude use NUM?".
+ *
+ * The one fact that cannot be faked is where the browser is sent afterwards,
+ * because it must exactly match a URI registered with the client. So compare
+ * the two: a name that claims a brand plus a return address that is not that
+ * brand's is the shape of a phishing attempt, and the person is told so in
+ * words, above the Allow button.
+ *
+ * Loopback is exempt. Claude Code and every other desktop client legitimately
+ * return to http://localhost, and warning about those would teach people to
+ * click through warnings — which is worse than not warning at all.
+ */
+const BRANDS = Object.freeze([
+  { label: "Claude", claims: /claude|anthropic/i, hosts: /(^|\.)(claude\.ai|claude\.com|anthropic\.com)$/i },
+  { label: "ChatGPT", claims: /chat\s*-?gpt|openai/i, hosts: /(^|\.)(chatgpt\.com|openai\.com)$/i },
+  { label: "Gemini", claims: /\bgemini\b/i, hosts: /(^|\.)(google\.com|googleapis\.com|gemini\.google\.com)$/i },
+  { label: "Copilot", claims: /copilot/i, hosts: /(^|\.)(microsoft\.com|github\.com|githubcopilot\.com)$/i },
+  { label: "Cursor", claims: /\bcursor\b/i, hosts: /(^|\.)cursor\.(com|sh)$/i },
+  { label: "VS Code", claims: /vs\s*code|visual\s*studio/i, hosts: /(^|\.)(vscode\.dev|visualstudio\.com|github\.dev)$/i },
+  { label: "Smithery", claims: /smithery/i, hosts: /(^|\.)smithery\.ai$/i },
+  { label: "NUM", claims: /^num\b|itsnum/i, hosts: /(^|\.)(itsnum\.com|5arz\.com)$/i },
+]);
+
+/** @returns {{label:string, host:string}|null} — a brand claimed by a stranger. */
+export function impersonation(clientName, redirectUri) {
+  let host;
+  try { host = new URL(redirectUri).hostname.toLowerCase(); } catch { return null; }
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return null;
+  const name = String(clientName || "");
+  for (const b of BRANDS) {
+    if (b.claims.test(name) && !b.hosts.test(host)) return { label: b.label, host };
+  }
+  return null;
+}
+
+function consentPage({ client, account, params }) {
+  const scopes = (params.scope || SCOPES.join(" ")).split(/\s+/).filter(Boolean);
+  const rows = scopes.map((s) => {
+    const label = s === "num.write"
+      ? "Submit a business or a promotion for you. A person reviews each one before it appears."
+      : s === "num.read"
+        ? "Search NUM's directory of more than 2.5 million places, within your daily limit."
+        : s;
+    return `<li><span>${esc(label)}<code>${esc(s)}</code></span></li>`;
+  }).join("");
+
+  const hidden = ["client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "scope", "resource"]
+    .map((k) => params[k] ? `<input type="hidden" name="${k}" value="${esc(params[k])}">` : "").join("");
+
+  const origin = new URL(params.redirect_uri).origin;
+  const fake = impersonation(client.client_name, params.redirect_uri);
+  const warn = fake ? `<div class="warn">
+<b>This may not really be ${esc(fake.label)}.</b>
+<p>It calls itself &ldquo;${esc(client.client_name)}&rdquo;, but it sends you to <code>${esc(fake.host)}</code>, which is not ${esc(fake.label)}&rsquo;s. Anyone can pick that name. If you did not start this from ${esc(fake.label)} yourself, choose Not now.</p>
+</div>` : "";
+
+  return html(shell({
+    title: "Connect " + client.client_name,
+    body: `<div class="card">
 <div class="eyebrow"><i></i>Connect NUM</div>
 <h1>Let ${esc(client.client_name)} use NUM?</h1>
-<p class="sub">It will be able to:</p>
+${warn}<p class="sub">It will be able to:</p>
 <ul>${rows}</ul>
 <p class="who">Signed in as <strong>${esc(account.email)}</strong>. You'll go back to <code>${esc(origin)}</code>.
-It never sees your sign-in link, and you can disconnect it at any time.</p>
+It never sees your sign-in link, and you can disconnect it whenever you like at <a href="/oauth/apps">itsnum.com/oauth/apps</a>.</p>
 <form method="POST" action="/oauth/authorize">${hidden}
-<div class="row">
-<button type="submit" name="decision" value="deny">Not now</button>
-<button type="submit" name="decision" value="allow" class="primary">Allow</button>
+<div class="row">${fake
+  // When we are warning, the safe answer becomes the big green button. Leaving
+  // Allow as the obvious one while telling somebody not to press it is how you
+  // get it pressed.
+  ? `<button type="submit" name="decision" value="allow">Allow anyway</button>
+<button type="submit" name="decision" value="deny" class="primary" autofocus>Not now</button>`
+  : `<button type="submit" name="decision" value="deny">Not now</button>
+<button type="submit" name="decision" value="allow" class="primary">Allow</button>`}
 </div></form>
-</div>
-<p class="foot"><a href="/privacy/#developers">Privacy</a> &nbsp;&middot;&nbsp; <a href="/terms/">Terms</a> &nbsp;&middot;&nbsp; <a href="mailto:info@itsnum.com">Help</a></p>
-</div></main></body></html>`);
+</div>`,
+  }));
+}
+
+/* ------------------------------------------------------- connected apps
+ *
+ * "You can disconnect it at any time" was true of the protocol and false of the
+ * product: every screen said it and there was nowhere to do it. This is that
+ * page. It reads the token table, which is the only record of a live connection.
+ *
+ * Disconnecting revokes both halves of the pair, so the app's next call gets a
+ * 401 and its refresh token is dead — there is no quiet re-issue.
+ *
+ * CSRF: the session cookie is SameSite=Lax, so a POST from another origin
+ * arrives without it and lands on the signed-out page instead of revoking
+ * anything.
+ */
+async function appsFor(account, env) {
+  const { results } = await env.DB.prepare(
+    "SELECT t.client_id AS client_id, MAX(c.client_name) AS client_name, MAX(c.redirect_uris) AS redirect_uris, " +
+    "MAX(t.scope) AS scope, MIN(t.created_at) AS first_at, MAX(t.created_at) AS last_at, " +
+    "MAX(CASE WHEN t.kind='refresh' THEN t.expires_at END) AS refresh_until " +
+    "FROM num_oauth_tokens t LEFT JOIN num_oauth_clients c ON c.client_id = t.client_id " +
+    "WHERE t.account_id = ?1 AND t.revoked = 0 GROUP BY t.client_id ORDER BY MAX(t.created_at) DESC"
+  ).bind(account.id).all();
+  return results || [];
+}
+
+const hostOf = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+
+/** redirect_uris is stored as a JSON array; the first one is what the app uses. */
+const firstRedirect = (json) => {
+  try { const a = JSON.parse(json || "[]"); return Array.isArray(a) && a.length ? String(a[0]) : ""; }
+  catch { return ""; }
+};
+
+const when = (secs) => {
+  const n = Number(secs);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return new Date(n * 1000).toISOString().slice(0, 10);
+};
+
+async function appsPage(req, env, { revoked = "" } = {}) {
+  const account = await sessionAccount(req, env);
+  if (!account) return signinInterstitial("/oauth/apps");
+  const apps = await appsFor(account, env);
+
+  const rows = apps.map((a) => {
+    const name = a.client_name || a.client_id;
+    const uri = firstRedirect(a.redirect_uris);
+    const fake = impersonation(a.client_name, uri);
+    const scopes = String(a.scope || "").split(/\s+/).filter(Boolean).join(", ") || "num.read";
+    const host = hostOf(uri);
+    // Two apps can both be called "Claude". Only one of them returns you to
+    // Claude. That host is the line that tells them apart, so it is on every row.
+    const meta = [scopes, host ? "returns to " + host : "", "connected " + when(a.first_at)]
+      .filter(Boolean).map(esc).join(" &middot; ");
+    return `<li${fake ? ' class="risk"' : ""}><div><div class="nm">${esc(name)}</div>
+<div class="meta">${meta}</div>${fake
+  ? `<div class="flag">Not ${esc(fake.label)}. Disconnect it unless you know what it is.</div>` : ""}</div>
+<form method="POST" action="/oauth/apps"><input type="hidden" name="client_id" value="${esc(a.client_id)}">
+<button type="submit"${fake ? ' class="danger"' : ""}>Disconnect</button></form></li>`;
+  }).join("");
+
+  const body = `<div class="card">
+<div class="eyebrow"><i></i>Your account</div>
+<h1>Apps connected to NUM</h1>
+<p class="sub">Every app you have allowed to use your NUM account. Disconnecting one takes effect immediately.</p>
+${revoked ? `<div class="warn" style="border-color:#A6E5D4;background:var(--pri-l)"><b style="color:var(--pri-d)">Disconnected ${esc(revoked)}.</b><p>It can no longer search or submit anything with your account.</p></div>` : ""}
+${apps.length ? `<ul class="apps">${rows}</ul>` : `<ul class="apps"><li><div class="empty">Nothing is connected. When you add <code>itsnum.com/mcp</code> in Claude or ChatGPT, it will appear here.</div></li></ul>`}
+<p class="who">Signed in as <strong>${esc(account.email)}</strong>. API keys are separate — rotate one with <code>POST /api/agent/me/rotate</code>.</p>
+</div>`;
+  return html(shell({ title: "Connected apps", width: 560, body }));
+}
+
+async function appsDisconnect(req, env) {
+  const account = await sessionAccount(req, env);
+  if (!account) return signinInterstitial("/oauth/apps");
+  const f = await req.formData().catch(() => null);
+  const clientId = f && String(f.get("client_id") || "");
+  if (!clientId) return appsPage(req, env);
+
+  const row = await env.DB.prepare("SELECT client_name FROM num_oauth_clients WHERE client_id=?1")
+    .bind(clientId).first();
+  // Scoped to THIS account: one person disconnecting an app must never revoke
+  // anybody else's tokens for the same client.
+  await env.DB.prepare("UPDATE num_oauth_tokens SET revoked=1 WHERE account_id=?1 AND client_id=?2")
+    .bind(account.id, clientId).run();
+  return appsPage(req, env, { revoked: (row && row.client_name) || "that app" });
 }
 
 // Not signed in: go straight to the branded sign-in page, carrying the whole
@@ -529,6 +716,11 @@ export async function oauthRoutes(p, req, env) {
   }
   if (p === "/oauth/token") {
     return m === "POST" ? token(req, env) : oaErr("invalid_request", "POST to the token endpoint.", 405);
+  }
+  if (p === "/oauth/apps") {
+    if (m === "GET") return appsPage(req, env);
+    if (m === "POST") return appsDisconnect(req, env);
+    return oaErr("invalid_request", "GET or POST only.", 405);
   }
   if (p === "/oauth/revoke") {
     return m === "POST" ? revoke(req, env) : oaErr("invalid_request", "POST to revoke.", 405);

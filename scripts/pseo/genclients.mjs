@@ -15,6 +15,17 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CLIENTS, MCP_URL, SIGNUP, CHECKED } from './clients.mjs';
+// Derived, never typed. The last time a coverage number was hand-written into
+// these pages it said 77 destinations for a month after the database held 104,
+// and the footer of every page disagreed with the page listing the cities.
+// scripts/coverage-claims.mjs is the guard that caught it; TRUTH is its source.
+import { TRUTH } from '../coverage-claims.mjs';
+
+const COVERAGE = `${TRUTH.destinations} destinations in ${TRUTH.countries} countries`;
+// A floor, not a count. The exact figure moves every import and no page that
+// states one stays true for long; "more than 2.5 million" survives both.
+const PLACES = 'more than 2.5 million real places';
+
 
 const PUBLIC = fileURLToPath(new URL('../../public/', import.meta.url));
 
@@ -28,22 +39,51 @@ const stepHtml = (s) => s;
 const stepText = (s) => String(s).replace(/<[^>]*>/g, '');
 
 const TOOLS = [
-  ['num_search_places', 'search 2.5M places across 77 destinations'],
+  ['num_search_places', `search ${PLACES} across ${COVERAGE}`],
   ['num_get_place', 'the full record for one place'],
   ['num_submit_business', 'add a business — free, unmetered, human-reviewed'],
   ['num_submit_promo', 'post a promotion against a business you submitted'],
   ['num_list_submissions', 'what you sent and what a reviewer decided'],
 ];
 
-const nav = `<nav class="nav"><div class="wrap row">
-  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
-  <div class="navlinks">
-    <a href="/what-we-do/">What we do</a><a href="/how-it-works/">How it works</a>
-    <a href="/agents/">For AI agents</a><a href="/business/">For business</a>
-    <a class="btn pri" href="${SIGNUP}" style="padding:10px 18px;font-size:14px">Get a key</a>
+// ONE NAVIGATION, EVERY PAGE — worker/nav.test.mjs is the guard, and it caught
+// this generator still emitting the old `.nav`/`.navlinks` markup months after
+// the rest of the site moved to `.nv`. Kept byte-identical to the shared nav;
+// if it drifts, that test fails rather than the difference shipping.
+const nav = `<nav class="nv">
+  <div class="nv-bar">
+    <a class="nv-brand" href="/"><span class="nv-dot"></span>NUM <small>travel concierge</small></a>
+    <div class="nv-links">
+      <a href="/what-we-do/">What we do</a>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/destinations/">Destinations</a>
+      <span class="nv-sep"></span>
+      <a href="/business/">For business</a>
+      <a href="/hosts/">For hosts</a>
+      <a href="/agents/">For AI agents</a>
+    </div>
+    <div class="nv-end">
+      <a class="nv-signin" id="navAuth" href="/signin/">Sign in</a>
+      <a class="nv-cta" href="https://app.itsnum.com/?app=1">Get NUM</a>
+    </div>
+    <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
   </div>
-  <button class="menu-btn" aria-label="Menu">&#9776;</button>
-</div></nav>`;
+  <div class="nv-menu" hidden>
+    <p class="nv-group">Travellers</p>
+    <a href="/what-we-do/">What we do</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/destinations/">Destinations</a>
+    <a href="/perks/">Perks</a>
+    <p class="nv-group">Partners</p>
+    <a href="/business/">For business</a>
+    <a href="/claim/">List your business</a>
+    <a href="/hosts/">For hosts</a>
+    <a href="/agents/">For AI agents</a>
+    <p class="nv-group">Account</p>
+    <a href="/signin/">Sign in</a>
+    <a href="/contact/">Contact</a>
+  </div>
+</nav>`;
 
 const CSS = `<style>.prose{max-width:74ch}.prose h2{margin-top:40px}
 pre.code{background:#0d1b24;color:#d8e6ee;border-radius:14px;padding:18px;overflow-x:auto;
@@ -62,7 +102,7 @@ table.tbl td:first-child{font-family:ui-monospace,Menlo,monospace;font-size:13px
 function clientPage(c, others) {
   const title = `Connect NUM to ${c.name} — MCP server for travel places`;
   const path = `/agents/${c.slug}/`;
-  const desc = `Add NUM's travel places MCP server to ${c.name}: ${MCP_URL}, bearer token, five tools over 2,529,721 places in 77 destinations.`;
+  const desc = `Add NUM's travel places MCP server to ${c.name}: ${MCP_URL}, sign in with OAuth or use a bearer token, five tools over ${PLACES} in ${COVERAGE}.`;
 
   const graph = [
     {
@@ -107,8 +147,15 @@ function clientPage(c, others) {
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/nav.css">
+<script src="/assets/nav.js" defer></script>
 <script type="application/ld+json">${jsonld({ '@context': 'https://schema.org', '@graph': graph })}</script>
 <script src="/num-capture.js" data-page="agents-${esc(c.slug)}" defer></script>
+<!-- Nine languages. Every public page carries this; worker/translate.test.mjs
+     fails the build for any that does not, which is how the omission in this
+     generator was found — a hand-edit had added it to the built pages and the
+     next regeneration silently took it away again. -->
+<script src="/assets/translate.js" defer></script>
 ${CSS}
 </head>
 <body>
@@ -121,20 +168,33 @@ ${nav}
 <section class="wrap prose">
 
 <h2>What you are connecting to</h2>
-<p>NUM is a directory of <b>2,529,721 real places across 77 destinations in 38 countries</b> —
+<p>NUM is a directory of <b>${PLACES} across ${COVERAGE}</b> —
 restaurants, bars, hotels, spas, tours, shops — run by 5arz. The MCP server is at
-<code class="inl">${MCP_URL}</code>. It speaks streamable HTTP and authenticates with a bearer
-token that starts <code class="inl">numa_live_</code>. Reads are metered against a daily quota;
-writes are free.</p>
+<code class="inl">${MCP_URL}</code>. It speaks streamable HTTP. Reads are metered against a daily
+quota; writes are free.</p>
 
 <table class="tbl"><tbody>
 ${TOOLS.map(([t, d]) => `  <tr><td>${esc(t)}</td><td>${esc(d)}</td></tr>`).join('\n')}
 </tbody></table>
 
-<h2>Get a token first</h2>
+${c.oauth ? `<h2>Signing in, or a key</h2>
+<p><b>${esc(c.name)} can sign in.</b> Give it the URL and nothing else: the first tool call opens a
+NUM sign-in page, you approve <code class="inl">num.read</code> to search and
+<code class="inl">num.write</code> to submit, and that is the whole setup. It is OAuth 2.1 with PKCE
+and dynamic client registration — metadata at
+<a href="/.well-known/oauth-protected-resource">/.well-known/oauth-protected-resource</a>. Access
+lasts an hour and renews itself, and you can disconnect it at
+<a href="/oauth/apps">itsnum.com/oauth/apps</a> whenever you like.</p>
+${c.oauthConfig ? `<pre class="code">${esc(c.oauthConfig)}</pre>` : ''}
+<p><b>Or use a key</b>, if you are scripting against NUM rather than chatting with it. An agent signs
+itself up — no sales call, no waiting list. POST to <code class="inl">${SIGNUP}</code>, then send it
+as <code class="inl">Authorization: Bearer numa_live_…</code>${c.config ? ' in the config below' : ' as a header'}. Both
+doors share one quota.</p>` : `<h2>Get a token first</h2>
 <p>An agent signs itself up — there is no sales call and no waiting list.
 POST to <code class="inl">${SIGNUP}</code>, or read the
-<a href="/agents/">full contract</a> and the <a href="/openapi.json">OpenAPI spec</a>.</p>
+<a href="/agents/">full contract</a> and the <a href="/openapi.json">OpenAPI spec</a>.</p>`}
+<p>Either way, the reference is the <a href="/agents/">full contract</a> and the
+<a href="/openapi.json">OpenAPI spec</a>.</p>
 
 <h2>Then, in ${esc(c.name)}</h2>
 ${c.file ? `<p class="file">${esc(c.file)}</p>` : ''}
