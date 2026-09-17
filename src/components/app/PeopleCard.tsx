@@ -14,6 +14,7 @@ import { pressable } from '../../lib/a11y';
 import { unfriend } from '../../lib/social';
 import { UsersIcon } from '../../lib/icons';
 import ReportSheet from './ReportSheet';
+import { t } from '../../lib/i18n';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -54,7 +55,7 @@ export default function PeopleCard() {
     <div className="glass" style={card}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <UsersIcon size={13} style={{ color: 'var(--ink-40)' }} />
-        <div style={kicker}>YOUR PEOPLE</div>
+        <div style={kicker}>{t('YOUR PEOPLE')}</div>
         <div style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--ink-40)' }}>{friends.length}</div>
       </div>
 
@@ -95,9 +96,7 @@ export default function PeopleCard() {
                       style={{ marginTop: 2, accentColor: 'var(--color-accent)' }}
                     />
                     <span>
-                      <b style={{ color: 'var(--ink)' }}>Also block them.</b> Without this they can add you
-                      straight back — by link or by scanning your code.
-                    </span>
+                      <b style={{ color: 'var(--ink)' }}>{t('Also block them.')}</b>{' '}{t('Without this they can add you straight back — by link or by scanning your code.')}</span>
                   </label>
                   <div
                     {...pressable(() => { if (!busy && f.id) void remove(f.id); })}
@@ -111,9 +110,7 @@ export default function PeopleCard() {
                   </div>
                   {/* Said plainly so nobody removes someone expecting it to
                       land as a message. */}
-                  <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 7, lineHeight: 1.45, textAlign: 'center' }}>
-                    They aren’t told.
-                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 7, lineHeight: 1.45, textAlign: 'center' }}>{t('They aren’t told.')}</div>
                   {/* Removing is a preference; reporting says a human should
                       look. Kept visually quieter than REMOVE so the common
                       action stays the obvious one. */}

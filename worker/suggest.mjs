@@ -209,6 +209,22 @@ export async function handleSuggest(request, env) {
     me ? import('./briefing.mjs').then((m) => m.briefingFor(env, { memberId: me, tz })).catch(() => null) : Promise.resolve(null),
   ]);
   const body = buildSuggestions(rows);
+  // The chips in the reader's language (worker/i18n.mjs: machine once,
+  // stored). Labels only — the prompt a chip SENDS stays English, because
+  // the concierge answers in whatever it is written in and the label is what
+  // the person reads. Fails soft to English.
+  const lang = (url.searchParams.get('lang') ?? '').toLowerCase().slice(0, 2);
+  if (lang && lang !== 'en') {
+    try {
+      const { bundleFor, APP_LANGS } = await import('./i18n.mjs');
+      if (APP_LANGS[lang]) {
+        const labels = [...new Set([...(body.starters ?? []).map((s) => s.label), body.rotating].filter(Boolean))];
+        const map = await bundleFor(env, lang, labels);
+        body.starters = (body.starters ?? []).map((s) => ({ ...s, label: map[s.label] ?? s.label }));
+        if (body.rotating) body.rotating = map[body.rotating] ?? body.rotating;
+      }
+    } catch (err) { console.warn('[suggest] i18n', err?.message ?? err); }
+  }
   return new Response(JSON.stringify({ ...body, dest, briefing: briefing ?? null }), {
     headers: {
       'Content-Type': 'application/json',
@@ -216,6 +232,7 @@ export async function handleSuggest(request, env) {
       // the rotation window is 90s anyway. Personal the moment a member is
       // named — then nothing between here and their screen may keep a copy.
       'Cache-Control': me ? 'private, no-store' : 'public, max-age=60',
+      'Vary': 'Accept-Language',
     },
   });
 }

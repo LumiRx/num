@@ -27,6 +27,7 @@ import { pressable } from '../../lib/a11y';
 import { openShareCard } from '../../lib/sharecard';
 import type { Pick } from '../../lib/types';
 import { webEvent } from '../../lib/track';
+import { t } from '../../lib/i18n';
 
 const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' };
 
@@ -37,8 +38,8 @@ function OpenState({ open }: { open: boolean | null | undefined }) {
   // Three states, shown as three things. Unknown stays SILENT rather than
   // guessing: an unverified "open" is the claim that gets somebody a locked
   // door at the end of a long day.
-  if (open === true) return <span style={{ color: 'var(--ok, #0e6b45)', fontWeight: 700 }}>Open now</span>;
-  if (open === false) return <span style={{ color: 'var(--warn, #9a3412)', fontWeight: 700 }}>Closed now</span>;
+  if (open === true) return <span style={{ color: 'var(--ok, #0e6b45)', fontWeight: 700 }}>{t('Open now')}</span>;
+  if (open === false) return <span style={{ color: 'var(--warn, #9a3412)', fontWeight: 700 }}>{t('Closed now')}</span>;
   return null;
 }
 
@@ -97,14 +98,10 @@ export default function PickCards({ picks }: { picks: Pick[] }) {
                 Directions
               </a>
               {p.tel ? (
-                <a href={p.tel} onClick={() => webEvent('pick_call_click')} style={pill}>
-                  Call
-                </a>
+                <a href={p.tel} onClick={() => webEvent('pick_call_click')} style={pill}>{t('Call')}</a>
               ) : null}
               {p.link_kind === 'website' ? (
-                <a href={p.link} target="_blank" rel={REL} onClick={() => webEvent('pick_link_click', 'website')} style={pill}>
-                  Website
-                </a>
+                <a href={p.link} target="_blank" rel={REL} onClick={() => webEvent('pick_link_click', 'website')} style={pill}>{t('Website')}</a>
               ) : null}
               {/* SHARE — the missing half of an idea.
                   NUM suggests three places and the person reading them is

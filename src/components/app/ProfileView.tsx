@@ -28,6 +28,7 @@ import ContactCard from './ContactCard';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
+import { t, LANGS, isLang, phoneLang, setLang, type Lang } from '../../lib/i18n';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
@@ -165,11 +166,9 @@ export default function ProfileView() {
     return (
       <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
         <div className="glass" style={{ ...card, marginTop: 16 }}>
-          <div style={kicker}>YOUR PROFILE</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Nothing here yet</div>
-          <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
-            Add your name and number and this becomes the place NUM learns who you are — how you travel, what you eat, the kind of night you actually want.
-          </div>
+          <div style={kicker}>{t('YOUR PROFILE')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('Nothing here yet')}</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>{t('Add your name and number and this becomes the place NUM learns who you are — how you travel, what you eat, the kind of night you actually want.')}</div>
           <div
             {...pressable(() => store.set({ inviteOpen: {} }))}
             style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
@@ -213,13 +212,13 @@ export default function ProfileView() {
       <div className="glass" style={{ ...card, display: 'flex', gap: 13, alignItems: 'center' }}>
         <div
           {...pressable(() => fileRef.current?.click())}
-          aria-label="Change profile picture"
+          aria-label={t('Change profile picture')}
           style={{
             cursor: 'pointer', width: 62, height: 62, borderRadius: 999, flex: 'none', position: 'relative',
             background: me.avatar ? `center/cover url(${me.avatar})` : 'var(--grad-accent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
             fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22,
-            boxShadow: '0 6px 18px rgba(236,48,19,.25)',
+            boxShadow: '0 6px 18px rgba(14,164,131,.25)',
           }}
         >
           {!me.avatar && (me.name?.[0]?.toUpperCase() ?? '?')}
@@ -257,7 +256,7 @@ export default function ProfileView() {
           />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>YOU</div>
+          <div style={kicker}>{t('YOU')}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 2 }}>{me.name ?? 'Traveller'}</div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             {me.phone ?? me.email ?? 'no number'}
@@ -310,7 +309,7 @@ export default function ProfileView() {
           });
         })}
         role="button"
-        aria-label="Delete my account"
+        aria-label={t('Delete my account')}
         className="glass lift"
         style={{
           margin: '2px 12px 0', padding: '11px 14px', borderRadius: 'var(--r-md, 12px)',
@@ -328,13 +327,13 @@ export default function ProfileView() {
       {/* Finish a connection that opened in the browser instead of the app. */}
       <PairBridge installed />
 
-      <Collapsible title="NAME ON THE ACCOUNT" summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
+      <Collapsible title={t('NAME ON THE ACCOUNT')} summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
         <input
           style={{ ...field, opacity: me.name_locked ? 0.6 : 1 }}
           value={name}
           disabled={me.name_locked}
           onChange={(e) => { setName(e.target.value); setSaved(false); }}
-          placeholder="Your name"
+          placeholder={t('Your name')}
         />
         <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
           {me.name_locked
@@ -343,7 +342,7 @@ export default function ProfileView() {
         </div>
       </Collapsible>
 
-      <Collapsible title="YOUR CODES" summary="Scan to connect, or to pay you in Stars" defaultOpen>
+      <Collapsible title={t('YOUR CODES')} summary="Scan to connect, or to pay you in Stars" defaultOpen>
         <QrCard />
       </Collapsible>
 
@@ -357,8 +356,8 @@ export default function ProfileView() {
 
       <NotificationsCard />
 
-      <Group>TRAVEL</Group>
-      <Section title="HOW YOU TRAVEL" summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
+      <Group>{t('TRAVEL')}</Group>
+      <Section title={t('HOW YOU TRAVEL')} summary="Status, seat, home airport — so a fare search already fits you" fields={TRAVEL_FIELDS} values={values} onChange={change} />
 
       {/* Passenger details live behind their own sheet rather than inline with
           the preference fields above, because they are a different KIND of
@@ -371,20 +370,17 @@ export default function ProfileView() {
         style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>PASSENGER DETAILS</div>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-            The passport name and date of birth an airline needs before it will issue a ticket. Only used for
-            booking, never shown to the concierge.
-          </div>
+          <div style={kicker}>{t('PASSENGER DETAILS')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('The passport name and date of birth an airline needs before it will issue a ticket. Only used for booking, never shown to the concierge.')}</div>
         </div>
         <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
       </div>
-      <Group>TASTE</Group>
-      <Section title="SO NUM GETS YOU RIGHT" summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
+      <Group>{t('TASTE')}</Group>
+      <Section title={t('SO NUM GETS YOU RIGHT')} summary="Diet, budget, the kind of night you actually want" fields={TASTE_FIELDS} values={values} onChange={change} />
 
       {/* what NUM has worked out on its own */}
       <Collapsible
-        title="WHAT NUM HAS PICKED UP"
+        title={t('WHAT NUM HAS PICKED UP')}
         summary={reactionCount ? `${reactionCount} reaction${reactionCount === 1 ? '' : 's'} so far` : 'Nothing learned yet'}
       >
         {reactionCount === 0 && !Object.keys(style).length ? (
@@ -393,11 +389,11 @@ export default function ProfileView() {
           </div>
         ) : (
           <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-            {style.length === 'short' && <Line>Keeps replies short for you.</Line>}
-            {style.length === 'long' && <Line>Gives you the reasoning, not just the answer.</Line>}
-            {style.decisiveness === 'one' && <Line>One pick, no menus.</Line>}
-            {style.decisiveness === 'options' && <Line>Offers a couple of options with a house pick.</Line>}
-            {style.emoji === 'no' && <Line>No emoji in replies.</Line>}
+            {style.length === 'short' && <Line>{t('Keeps replies short for you.')}</Line>}
+            {style.length === 'long' && <Line>{t('Gives you the reasoning, not just the answer.')}</Line>}
+            {style.decisiveness === 'one' && <Line>{t('One pick, no menus.')}</Line>}
+            {style.decisiveness === 'options' && <Line>{t('Offers a couple of options with a house pick.')}</Line>}
+            {style.emoji === 'no' && <Line>{t('No emoji in replies.')}</Line>}
             {!!style.loved?.length && <Line>More like: {style.loved.slice(-3).join(', ')}</Line>}
             {!!style.rejected?.length && <Line>Never again: {style.rejected.slice(-3).join(', ')}</Line>}
             <div
@@ -410,7 +406,7 @@ export default function ProfileView() {
         )}
       </Collapsible>
 
-      <Group>ACCOUNT</Group>
+      <Group>{t('ACCOUNT')}</Group>
       <ContactCard />
       <IdentityCard />
       {/* business tools, only if they have one */}
@@ -423,9 +419,9 @@ export default function ProfileView() {
           <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>BUSINESS</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>Own a place on NUM?</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>Claim your listing and get the owner tools</div>
+          <div style={kicker}>{t('BUSINESS')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Own a place on NUM?')}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>{t('Claim your listing and get the owner tools')}</div>
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
@@ -442,9 +438,9 @@ export default function ProfileView() {
           <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>NUM EXPERT</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>Sign businesses up</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>Your code, your businesses, what you have earned</div>
+          <div style={kicker}>{t('NUM EXPERT')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Sign businesses up')}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>{t('Your code, your businesses, what you have earned')}</div>
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
@@ -458,7 +454,7 @@ export default function ProfileView() {
       <div style={{ padding: '4px 12px 0' }}>
         <div
           {...pressable(save)}
-          style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.3)' }}
+          style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)' }}
         >
           {saved ? 'SAVED — NUM KNOWS' : 'SAVE MY PROFILE'}
         </div>
@@ -515,7 +511,7 @@ function NotificationsCard() {
 
   return (
     <div className="glass" style={{ ...card }}>
-      <div style={kicker}>NOTIFICATIONS</div>
+      <div style={kicker}>{t('NOTIFICATIONS')}</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>
         {on ? 'NUM can reach you' : 'Let NUM reach you'}
       </div>
@@ -577,65 +573,70 @@ function HostCard() {
   if (!mine.host) {
     return (
       <div className="glass" style={{ ...card }}>
-        <div style={kicker}>A PERSON, NOT JUST AN APP</div>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>Want a VIP host?</div>
+        <div style={kicker}>{t('A PERSON, NOT JUST AN APP')}</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>{t('Want a VIP host?')}</div>
         <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
           A real concierge who knows the city and knows you. NUM does the finding; your host does the arranging, in person.
         </div>
-        {mine.find && <a href={mine.find} target="_blank" rel="noreferrer" style={link}>FIND A HOST NEAR YOU</a>}
+        {mine.find && <a href={mine.find} target="_blank" rel="noreferrer" style={link}>{t('FIND A HOST NEAR YOU')}</a>}
       </div>
     );
   }
   const does = mine.host.services.map((k) => SERVICE_WORDS[k] ?? k).join(', ');
   return (
     <div className="glass" style={{ ...card }}>
-      <div style={kicker}>YOUR HOST</div>
+      <div style={kicker}>{t('YOUR HOST')}</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>{mine.host.name}</div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
         {does ? `Arranges ${does} for you.` : 'Arranges things for you, in person.'} Ask NUM for any of it and say “send it to {mine.host.name}” — it lands in their console, and they confirm with you directly.
       </div>
-      {mine.page && <a href={mine.page} target="_blank" rel="noreferrer" style={link}>MY HOST PAGE</a>}
-      {mine.calendar && <a href={mine.calendar.replace(/^https?:/, 'webcal:')} style={link}>SUBSCRIBE TO THEIR BOOKINGS</a>}
+      {mine.page && <a href={mine.page} target="_blank" rel="noreferrer" style={link}>{t('MY HOST PAGE')}</a>}
+      {mine.calendar && <a href={mine.calendar.replace(/^https?:/, 'webcal:')} style={link}>{t('SUBSCRIBE TO THEIR BOOKINGS')}</a>}
     </div>
   );
 }
 
 /**
- * The colour picker. A theme is a token override, so the preview is honest —
- * those three swatches are literally the page background, the accent and the
- * aurora the theme will use.
+ * Look and language. One brand in two lights (Auto follows the phone), and
+ * the nine languages NUM speaks. A language change swaps the whole app's
+ * strings (src/lib/i18n.ts) and tells the concierge which language to answer
+ * in when a message leaves it ambiguous.
  */
 function ThemePicker() {
   const current = useApp((s) => s.theme);
-  const name = THEMES.find((t) => t.id === current)?.name ?? 'Ember';
+  const lang = useApp((s) => s.lang);
+  const chosen = isLang(lang) ? lang : phoneLang();
+  const name = THEMES.find((th) => th.id === current)?.name ?? 'Auto';
+  const tile: React.CSSProperties = { cursor: 'pointer', borderRadius: 14, padding: '10px 10px', background: 'var(--field-bg)', display: 'grid', gap: 6 };
   return (
-    <Collapsible title="COLOUR" summary={`${name} — tap to change`}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {THEMES.map((t) => {
-          const on = current === t.id;
+    <Collapsible title={t('LOOK & LANGUAGE')} summary={`${t(name)} · ${LANGS[chosen].name}`}>
+      <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--ink-40)', margin: '2px 0 8px' }}>{t('LOOK')}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        {THEMES.map((th) => {
+          const on = current === th.id;
           return (
-            <div
-              key={t.id}
-              {...pressable(() => setTheme(t.id))}
-              aria-pressed={on}
-              style={{
-                cursor: 'pointer', borderRadius: 14, padding: 10,
-                border: '1.5px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-08)'),
-                background: 'var(--field-bg)',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 4, marginBottom: 7 }}>
-                {t.swatch.map((c, i) => (
-                  <span key={i} style={{ width: 18, height: 18, borderRadius: 999, background: c, border: '1px solid var(--ink-08)' }} />
-                ))}
+            <div key={th.id} {...pressable(() => setTheme(th.id))} aria-pressed={on} className="tap" style={{ ...tile, border: '1.5px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-08)') }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {th.swatch.map((c, i) => <span key={i} style={{ width: 16, height: 16, borderRadius: 999, background: c, border: '1px solid var(--ink-08)' }} />)}
                 {on && <CheckIcon size={13} style={{ marginLeft: 'auto', color: 'var(--color-accent)' }} />}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.name}</div>
-              <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.4, marginTop: 2 }}>{t.blurb}</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{t(th.name)}</div>
             </div>
           );
         })}
       </div>
+      <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--ink-40)', margin: '14px 0 8px' }}>{t('LANGUAGE')}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        {(Object.keys(LANGS) as Lang[]).map((code) => {
+          const on = chosen === code;
+          return (
+            <div key={code} {...pressable(() => setLang(code))} aria-pressed={on} lang={code} className="tap" style={{ ...tile, border: '1.5px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-08)'), fontSize: 12.5, fontWeight: 700, textAlign: 'center', alignContent: 'center' }}>
+              {LANGS[code].name}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-40)', lineHeight: 1.5, marginTop: 10 }}>{t('NUM answers in whatever language you write. This sets the app itself.')}</div>
     </Collapsible>
   );
 }

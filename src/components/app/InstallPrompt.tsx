@@ -30,6 +30,7 @@ const STEPS: Record<Platform, string[]> = {
 };
 
 import { canOfferInstall, escapeCard, isStandalone } from '../../lib/native';
+import { t } from '../../lib/i18n';
 
 /**
  * ── WHERE THIS RENDERS ────────────────────────────────────────────────────
@@ -178,7 +179,7 @@ export default function InstallPrompt({
           </div>
           <div
             {...pressable(dismiss)}
-            aria-label="Dismiss"
+            aria-label={t('Dismiss')}
             style={{ flex: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, color: 'var(--ink-40)', padding: 2 }}
           >
             ×
@@ -231,20 +232,13 @@ export default function InstallPrompt({
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
-            YOU’RE IN A BROWSER
-          </div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15.5, marginTop: 4 }}>
-            Put NUM on your home screen
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-            Installed, NUM can reach you when a plan moves or a friend replies. In a tab it can’t —
-            and your account lives only as long as the browser keeps it.
-          </div>
+          <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>{t('YOU’RE IN A BROWSER')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15.5, marginTop: 4 }}>{t('Put NUM on your home screen')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('Installed, NUM can reach you when a plan moves or a friend replies. In a tab it can’t — and your account lives only as long as the browser keeps it.')}</div>
         </div>
         <div
           {...pressable(dismiss)}
-          aria-label="Not now"
+          aria-label={t('Not now')}
           style={{ flex: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, color: 'var(--ink-40)', padding: 2 }}
         >
           ×

@@ -12,7 +12,7 @@
 // nothing is lost) — components do not each subscribe.
 import { store, useApp } from './store';
 import { apiUrl } from './apibase';
-import catalog from '../i18n/catalog.json';
+import { CATALOG as catalog } from '../i18n/catalog';
 
 export const LANGS = {
   en: { name: 'English', dir: 'ltr' },
@@ -39,6 +39,8 @@ export function t(en: string, vars?: Record<string, string | number>): string {
 }
 
 export const currentLang = (): Lang => current;
+
+export { T } from './i18nmark';
 
 /** The phone's language, if NUM speaks it. */
 export function phoneLang(): Lang {

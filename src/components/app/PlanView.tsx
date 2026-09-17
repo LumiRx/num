@@ -11,6 +11,7 @@ import { Scene } from '../../lib/scenes';
 import { BookedCheck, ChevronRightIcon, UsersIcon } from '../../lib/icons';
 import FlightCard from './FlightCard';
 import type { Booking } from '../../lib/types';
+import { t } from '../../lib/i18n';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
 
@@ -95,7 +96,7 @@ function Attendees({ title }: { title: string }) {
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => (e.key === 'Enter' ? void add() : e.key === 'Escape' ? setAdding(false) : null)}
             onBlur={() => (name.trim() ? void add() : setAdding(false))}
-            placeholder="Name"
+            placeholder={t('Name')}
             style={{
               borderRadius: 999, padding: '5px 11px', fontSize: 11, width: 110,
               border: '1px solid var(--color-accent)', background: 'var(--field-bg)',
@@ -114,9 +115,7 @@ function Attendees({ title }: { title: string }) {
           </span>
         )}
       </div>
-      <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.45 }}>
-        A name with no account still counts toward the table. Anyone who drops out frees their seat.
-      </div>
+      <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.45 }}>{t('A name with no account still counts toward the table. Anyone who drops out frees their seat.')}</div>
     </div>
   );
 }
@@ -167,7 +166,7 @@ function BookingRow({ b }: { b: Booking }) {
               style={{
                 padding: '6px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
                 background: 'var(--grad-accent)', color: '#fff', cursor: 'pointer',
-                boxShadow: '0 3px 12px rgba(236,48,19,.3)',
+                boxShadow: '0 3px 12px rgba(14,164,131,.3)',
               }}
             >
               ASK TO CHANGE
@@ -245,7 +244,7 @@ function PartyStrip() {
         style={{
           cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
           fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '12px 14px', textAlign: 'center',
-          boxShadow: '0 4px 14px rgba(236,48,19,.28)',
+          boxShadow: '0 4px 14px rgba(14,164,131,.28)',
         }}
       >
         + NEW PLAN
@@ -271,9 +270,7 @@ function PartyStrip() {
         </div>
       ))}
       {plans.length === 0 && (
-        <div style={{ fontSize: 11, color: 'var(--ink-60)', margin: '10px 4px 0', lineHeight: 1.5 }}>
-          No dates and no bookings needed — start a plan, pull friends in, decide together.
-        </div>
+        <div style={{ fontSize: 11, color: 'var(--ink-60)', margin: '10px 4px 0', lineHeight: 1.5 }}>{t('No dates and no bookings needed — start a plan, pull friends in, decide together.')}</div>
       )}
     </div>
   );
@@ -290,11 +287,9 @@ export default function PlanView() {
       {flights.length > 0 && (
         <div>
           <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.05em' }}>
-              FLIGHTS
-              <span style={{ display: 'block', width: 28, height: 3, borderRadius: 999, background: 'var(--grad-accent)', marginTop: 3 }} />
+            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.05em' }}>{t('FLIGHTS')}<span style={{ display: 'block', width: 28, height: 3, borderRadius: 999, background: 'var(--grad-accent)', marginTop: 3 }} />
             </span>
-            <span {...pressable(() => store.set({ flightWatchOpen: true }))} className="tap" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer', padding: '0 4px' }}>WATCH ANOTHER</span>
+            <span {...pressable(() => store.set({ flightWatchOpen: true }))} className="tap" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer', padding: '0 4px' }}>{t('WATCH ANOTHER')}</span>
           </div>
           <div style={{ display: 'grid', gap: 8, margin: '0 12px' }}>{flights.map((w) => <FlightCard key={w.id} w={w} compact />)}</div>
         </div>
@@ -317,9 +312,9 @@ export default function PlanView() {
         {groups.length === 0 ? (
           <div className="rise-in">
             <svg width="120" height="84" viewBox="0 0 120 84" fill="none" aria-hidden="true" style={{ display: 'block', margin: '0 auto 10px' }}><path d="M14 66c18-10 30-2 46-14s26-12 46-2" stroke="var(--ink-12)" strokeWidth="3" strokeLinecap="round" strokeDasharray="1 8"/><path d="M60 14c-9 0-16 7-16 16 0 12 16 30 16 30s16-18 16-30c0-9-7-16-16-16Z" fill="var(--color-accent)"/><circle cx="60" cy="30" r="6" fill="#fff"/><circle cx="104" cy="62" r="7" fill="var(--color-accent)" opacity=".35"/><circle cx="16" cy="62" r="5" fill="var(--color-accent)" opacity=".25"/></svg>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>Nothing planned yet</div>
-            <div style={{ marginTop: 4 }}>Ask NUM for a table, a car or a whole evening. It lands here by itself.</div>
-            <div {...pressable(() => store.set({ threadOpen: true }))} className="press tap" style={{ display: 'inline-flex', marginTop: 12, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '0 18px', cursor: 'pointer' }}>ASK NUM</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>{t('Nothing planned yet')}</div>
+            <div style={{ marginTop: 4 }}>{t('Ask NUM for a table, a car or a whole evening. It lands here by itself.')}</div>
+            <div {...pressable(() => store.set({ threadOpen: true }))} className="press tap" style={{ display: 'inline-flex', marginTop: 12, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '0 18px', cursor: 'pointer' }}>{t('ASK NUM')}</div>
           </div>
         ) : 'Nothing to add here — new plans come from the thread. Ask, and it appears.'}
       </div>

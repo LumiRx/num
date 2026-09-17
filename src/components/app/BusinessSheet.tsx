@@ -9,6 +9,7 @@ import { CheckIcon, StarIcon, XIcon } from '../../lib/icons';
 import { businessOverview, businessUpdate } from '../../lib/profile';
 import { nativePlatform } from '../../lib/native';
 import type { BusinessOverview } from '../../lib/profile';
+import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -18,7 +19,7 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center',
-  boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 
 export default function BusinessSheet() {
@@ -53,7 +54,7 @@ export default function BusinessSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -61,19 +62,15 @@ export default function BusinessSheet() {
       </div>
 
       <div style={{ padding: 16 }}>
-        <div style={label}>BUSINESS</div>
+        <div style={label}>{t('BUSINESS')}</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
           {data?.places.length ? 'Your listings' : 'Claim your place'}
         </div>
 
         {!me && (
           <>
-            <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>
-              Add your name and number first — a claim has to belong to someone.
-            </div>
-            <div {...pressable(() => store.set({ businessOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>
-              INTRODUCE YOURSELF
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('Add your name and number first — a claim has to belong to someone.')}</div>
+            <div {...pressable(() => store.set({ businessOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
           </>
         )}
 
@@ -99,15 +96,9 @@ export default function BusinessSheet() {
                 When an in-app claim exists, replace this branch with it —
                 do not restore the outbound link. */}
             {nativePlatform() === 'ios' ? (
-              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 14, lineHeight: 1.55 }}>
-                To claim a listing, visit itsnum.com/claim on a computer or
-                phone browser and sign in there. Once the code arrives on your
-                business number, your listing appears here automatically.
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 14, lineHeight: 1.55 }}>{t('To claim a listing, visit itsnum.com/claim on a computer or phone browser and sign in there. Once the code arrives on your business number, your listing appears here automatically.')}</div>
             ) : (
-              <a href="https://itsnum.com/claim" target="_blank" rel="noreferrer" style={{ ...primary, display: 'block', marginTop: 14, textDecoration: 'none', color: '#fff' }}>
-                START A CLAIM
-              </a>
+              <a href="https://itsnum.com/claim" target="_blank" rel="noreferrer" style={{ ...primary, display: 'block', marginTop: 14, textDecoration: 'none', color: '#fff' }}>{t('START A CLAIM')}</a>
             )}
           </>
         )}
@@ -122,8 +113,7 @@ export default function BusinessSheet() {
                 </div>
               </div>
               <span style={{ flex: 'none', fontSize: 9, fontWeight: 800, letterSpacing: '.08em', padding: '4px 8px', borderRadius: 999, background: 'rgba(22,140,90,.14)', color: '#0e6b45', display: 'flex', gap: 4, alignItems: 'center' }}>
-                <CheckIcon size={10} /> VERIFIED
-              </span>
+                <CheckIcon size={10} />{' '}{t('VERIFIED')}</span>
             </div>
             {p.rating != null && (
               <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 6, display: 'flex', gap: 5, alignItems: 'center' }}>
@@ -152,16 +142,13 @@ export default function BusinessSheet() {
                 {saved === p.id ? 'SAVED' : 'SAVE DETAILS'}
               </div>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-              These are the details NUM quotes to travellers. Changing the phone here does not change what verified you —
-              that stays tied to the number we already reached you on.
-            </div>
+            <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('These are the details NUM quotes to travellers. Changing the phone here does not change what verified you — that stays tied to the number we already reached you on.')}</div>
           </div>
         ))}
 
         {!!data?.events?.length && (
           <div style={{ marginTop: 18 }}>
-            <div style={{ ...label, color: 'var(--ink-60)' }}>YOUR EVENTS</div>
+            <div style={{ ...label, color: 'var(--ink-60)' }}>{t('YOUR EVENTS')}</div>
             {data.events.map((e) => (
               <div key={e.id} className="glass" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 'var(--r-md)' }}>
                 <div style={{ fontWeight: 700, fontSize: 12.5 }}>{e.title}</div>
@@ -175,10 +162,8 @@ export default function BusinessSheet() {
 
         {!!data?.demand?.length && (
           <div style={{ marginTop: 18 }}>
-            <div style={{ ...label, color: 'var(--ink-60)' }}>PEOPLE ASKED FOR YOU</div>
-            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.5 }}>
-              Requests NUM could not complete — demand, not bookings.
-            </div>
+            <div style={{ ...label, color: 'var(--ink-60)' }}>{t('PEOPLE ASKED FOR YOU')}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.5 }}>{t('Requests NUM could not complete — demand, not bookings.')}</div>
             {data.demand.map((d) => (
               <div key={d.ts} style={{ fontSize: 11.5, color: 'var(--ink)', padding: '7px 0', borderBottom: '1px solid var(--ink-08)', lineHeight: 1.5 }}>
                 · {d.summary}

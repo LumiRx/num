@@ -15,7 +15,11 @@ const clean = (s) => s.replace(/\s+/g, ' ').trim();
 
 // Skip: entities, pure brand, code-ish, template braces, and anything that
 // looks like a comparison rather than a tag boundary.
-const skip = (txt) => !LETTERS.test(txt) || /&[a-z#0-9]+;/i.test(txt) || /^[A-Z0-9 ·•.]*$/.test(txt) && !/[A-Z]{2}/.test(txt) && false;
+const skip = (txt) =>
+  !LETTERS.test(txt)
+  || /&[a-z#0-9]+;/i.test(txt)
+  || /[;=`]|\(\)|\bconst\b|\breturn\b|\bnull\b|=>/.test(txt)
+  || !/^[\p{L}\p{N}“"'’(…✓★•—+#@€£$฿]/u.test(txt);
 
 let total = 0;
 for (const file of files) {

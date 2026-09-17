@@ -19,6 +19,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, XIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 import {
   acceptQuote, itineraryLine, loadMyReferrals, paxLine, quoteLine, referTravel, startTravelSync,
 } from '../../lib/travel';
@@ -99,7 +100,7 @@ export default function TravelSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -136,23 +137,16 @@ export default function TravelSheet() {
           <>
             {!me ? (
               <>
-                <div style={{ ...help, marginTop: 14, color: 'var(--ink-60)' }}>
-                  Tell me your name first — an agency quoting a trip needs to know whose it is.
-                </div>
-                <div {...pressable(() => store.set({ travelDraft: null, inviteOpen: {} }))} style={{ ...button, marginTop: 12 }}>
-                  INTRODUCE YOURSELF
-                </div>
+                <div style={{ ...help, marginTop: 14, color: 'var(--ink-60)' }}>{t('Tell me your name first — an agency quoting a trip needs to know whose it is.')}</div>
+                <div {...pressable(() => store.set({ travelDraft: null, inviteOpen: {} }))} style={{ ...button, marginTop: 12 }}>{t('INTRODUCE YOURSELF')}</div>
               </>
             ) : (
               <>
                 <div {...pressable(send)} aria-disabled={busy} style={{ ...button, marginTop: 14, opacity: busy ? 0.55 : 1 }}>
                   {busy ? 'SENDING…' : 'SEND THIS TO THE AGENCY'}
                 </div>
-                <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>NOT YET</div>
-                <div style={{ ...help, marginTop: 12 }}>
-                  A travel agency gets this with a NUM reference and comes back with options and a price.
-                  They quote it, they take the payment and they issue the confirmation — I don’t handle the money.
-                </div>
+                <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>{t('NOT YET')}</div>
+                <div style={{ ...help, marginTop: 12 }}>{t('A travel agency gets this with a NUM reference and comes back with options and a price. They quote it, they take the payment and they issue the confirmation — I don’t handle the money.')}</div>
               </>
             )}
             {err && <div style={{ fontSize: 11.5, color: 'var(--color-accent)', marginTop: 10 }}>{err}</div>}
@@ -193,10 +187,7 @@ export default function TravelSheet() {
                 <div {...pressable(accept)} aria-disabled={busy} style={{ ...button, marginTop: 14, opacity: busy ? 0.55 : 1 }}>
                   {busy ? 'PASSING IT ON…' : 'YES — GO AHEAD'}
                 </div>
-                <div style={{ ...help, marginTop: 10 }}>
-                  Saying yes tells the agency to go ahead. They’ll contact you to take payment and issue the
-                  confirmation in their own name — nothing is held until they do that with you directly.
-                </div>
+                <div style={{ ...help, marginTop: 10 }}>{t('Saying yes tells the agency to go ahead. They’ll contact you to take payment and issue the confirmation in their own name — nothing is held until they do that with you directly.')}</div>
               </>
             )}
 

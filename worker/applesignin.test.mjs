@@ -89,7 +89,7 @@ test('5.1.1(v) — account deletion is findable, not merely present', () => {
   // as 10.5px --ink-40 text at the foot of a long scroll. Existing is not the
   // bar; a reviewer (and a user) has to be able to see it.
   const dz = root('src/components/app/DangerZone.tsx');
-  assert.match(dz, /aria-label="Delete my account"/, 'the delete control lost its accessible name');
+  assert.match(dz, /aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/, 'the delete control lost its accessible name');
   const size = /fontSize: (\d+(?:\.\d+)?), fontWeight: 700, color: '#a3271c'/.exec(dz);
   assert.ok(size && Number(size[1]) >= 13, 'the delete control shrank back below legible size');
   assert.ok(!/fontSize: 10\.5[\s\S]{0,80}DELETE MY ACCOUNT/.test(dz),

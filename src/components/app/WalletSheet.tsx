@@ -11,6 +11,7 @@ import { TabStarter } from './TabSheet';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
 import { apiUrl } from '../../lib/apibase';
+import { t } from '../../lib/i18n';
 
 // No PACKS constant here on purpose. The wallet used to carry its own copy of
 // the prices, which is two sources of truth for a number an attacker would
@@ -52,7 +53,7 @@ export default function WalletSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -60,7 +61,7 @@ export default function WalletSheet() {
       </div>
       <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
-          <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>STARS — YOUR BALANCE</div>
+          <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('STARS — YOUR BALANCE')}</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
             <StarIcon size={22} style={{ color: 'var(--color-accent)' }} />
             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 30, lineHeight: 1 }}>{stars.toLocaleString()}</span>
@@ -69,9 +70,7 @@ export default function WalletSheet() {
         {/* No exchange rate here. The old line ("1★ ≈ $0.30") read as a
             redemption promise across the whole balance, which is only true of
             the earned half — that number lives in its own row below. */}
-        <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', textAlign: 'right', lineHeight: 1.5 }}>
-          Earn it, spend it, cash it out<br />friends see plans, never stars
-        </div>
+        <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', textAlign: 'right', lineHeight: 1.5 }}>{t('Earn it, spend it, cash it out')}<br />{t('friends see plans, never stars')}</div>
       </div>
       {/* NOT ON iOS. Stars are currency spent inside the app — errands, tabs,
           bounties — so selling them here is digital content under App Store
@@ -88,7 +87,7 @@ export default function WalletSheet() {
           cash-out everywhere. */}
       {canOfferSubscription() && (
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ink-08)' }}>
-        <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)', marginBottom: 8 }}>TOP UP — INSTANT</div>
+        <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)', marginBottom: 8 }}>{t('TOP UP — INSTANT')}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {(pay?.packs ?? []).map((p) => (
             <div
@@ -105,23 +104,19 @@ export default function WalletSheet() {
               we made up. A wrong price shown for half a second is still a
               wrong price someone can tap. */}
           {!pay?.packs?.length && (
-            <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', padding: '6px 0' }}>
-              Checking today’s prices…
-            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', padding: '6px 0' }}>{t('Checking today’s prices…')}</div>
           )}
         </div>
         {!!bought && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-accent-700)', fontWeight: 600 }}>{bought}</div>}
         {/* Said plainly, where the money decision happens. */}
-        <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
-          Stars you buy spend inside NUM — errands, tabs, bookings. Stars you <strong>earn</strong> can be cashed out to 5arz.
-        </div>
+        <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>{t('Stars you buy spend inside NUM — errands, tabs, bookings. Stars you')}{' '}<strong>{t('earn')}</strong>{' '}{t('can be cashed out to 5arz.')}</div>
       </div>
       )}
       {/* EARNED — the money side. Shown only when there is something to show,
           so it never nags a traveller who has never run an errand. */}
       {!!out && out.cashable > 0 && (
         <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--ink-08)' }}>
-          <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)' }}>EARNED — YOURS TO CASH OUT</div>
+          <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)' }}>{t('EARNED — YOURS TO CASH OUT')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 17 }}>★{out.cashable.toLocaleString()}</div>
@@ -154,36 +149,28 @@ export default function WalletSheet() {
           className="glass lift"
           style={{ cursor: 'pointer', marginTop: 14, borderRadius: 14, padding: '12px 13px' }}
         >
-          <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>ERRANDS</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>
-            Need something fetched?
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2, lineHeight: 1.45 }}>
-            Post it with a bounty and someone nearby goes — or earn Stars running one yourself.
-          </div>
+          <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('ERRANDS')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Need something fetched?')}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2, lineHeight: 1.45 }}>{t('Post it with a bounty and someone nearby goes — or earn Stars running one yourself.')}</div>
         </div>
       </div>
       {/* Payment methods: what the server says is wired, never a costume. */}
       <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--ink-08)', display: 'flex', gap: 14, fontSize: 10.5, color: 'var(--color-neutral-700)' }}>
         {pay?.mode === 'stripe' ? (
           <>
-            <span style={{ fontWeight: 600 }}> Apple Pay · ready</span>
-            <span>Cards via Stripe</span>
-            {!pay.stars_sale && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>Top-ups opening soon</span>}
+            <span style={{ fontWeight: 600 }}>{' '}{t('Apple Pay · ready')}</span>
+            <span>{t('Cards via Stripe')}</span>
+            {!pay.stars_sale && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>{t('Top-ups opening soon')}</span>}
           </>
         ) : (
-          <span>Pay rail connects soon — Stars are earned, and bills settle in person until then.</span>
+          <span>{t('Pay rail connects soon — Stars are earned, and bills settle in person until then.')}</span>
         )}
       </div>
       <div className="no-scrollbar" style={{ padding: '12px 16px 18px', maxHeight: 150, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--color-neutral-600)', marginBottom: 6 }}>
-          <WalletIcon size={12} style={{ color: 'var(--ink-40)' }} />
-          ACTIVITY & RECEIPTS
-        </div>
+          <WalletIcon size={12} style={{ color: 'var(--ink-40)' }} />{t('ACTIVITY & RECEIPTS')}</div>
         {activity.length === 0 && (
-          <div style={{ fontSize: 11, color: 'var(--color-neutral-500)', lineHeight: 1.5, padding: '4px 0' }}>
-            Nothing yet. Stars you earn, bills you settle and anything you're charged all land here.
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-neutral-500)', lineHeight: 1.5, padding: '4px 0' }}>{t('Nothing yet. Stars you earn, bills you settle and anything you\'re charged all land here.')}</div>
         )}
         {activity.map((a) => {
           const note = stateNote(a);

@@ -1,4 +1,5 @@
 // Seed data — ported verbatim from Concierge.dc.html (NUM v0.8 canonical prototype).
+import { T } from './i18nmark';
 import type { AppState, Booking, Chip, Meeting, MemoryItem, Msg, Txn, WidgetId } from './types';
 
 export const seedTxns: Txn[] = [
@@ -114,7 +115,9 @@ function baseState() {
     // earn a slot when there is somewhere to be.
     widgets: ['next', 'tonight', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     pushOn: false,
-    theme: 'verified' as const,
+    theme: 'auto' as const,
+    lang: null,
+    i18nTick: 0,
     businessOpen: false,
     scoutOpen: false,
     deleteOpen: false,
@@ -200,7 +203,7 @@ export function freshState(): AppState {
         // reply. Concrete beats grand — "remembers you don't eat shellfish"
         // lands where "your whole trip, handled" does not. Location is NOT
         // asked here; one question at a time, and the name comes first.
-        text: 'Hi, I’m NUM. Tell me what you want, in any language. I’ll find three real places and book the one you pick.\n\nLet’s start with your name.',
+        text: T('Hi, I’m NUM. Tell me what you want, in any language. I’ll find three real places and book the one you pick.\n\nLet’s start with your name.'),
       },
     ],
     bookings: [],
@@ -219,6 +222,7 @@ export function persistable(s: AppState) {
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.
     bookDraft, bookRequests,
+    i18nTick,
     // Same reasoning for the travel pair: a referral restored from
     // localStorage would show "waiting on the agency" for an agency that
     // quoted yesterday, and a handoff nobody sent is not worth a reload.
@@ -363,6 +367,10 @@ export function repairShapes(saved: Record<string, unknown>): Record<string, unk
   for (const k of REPAIRED_ARRAYS) {
     if (k in out) out[k] = arr(out[k]);
   }
+
+  // The colour themes of the summer are gone; whatever a phone saved
+  // (ember, midnight, bloom…) becomes Auto — the one look, light or dark.
+  if ('theme' in out && !['auto', 'verified', 'verified-dark'].includes(String(out.theme))) out.theme = 'auto';
 
   // A widget added after a phone first saved its list would otherwise never
   // appear there. Tonight slots in right under NEXT UP, where it was designed

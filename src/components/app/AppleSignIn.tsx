@@ -19,6 +19,7 @@
 import { useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { canSignInWithApple, signInWithApple } from '../../lib/appleAuth';
+import { t } from '../../lib/i18n';
 
 const AppleMark = ({ size = 17 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 17 20" aria-hidden="true" focusable="false">
@@ -78,9 +79,7 @@ export default function AppleSignIn({ onDone }: { onDone?: () => void }) {
         <AppleMark />
         {busy ? 'Signing in…' : 'Sign in with Apple'}
       </button>
-      <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.5, marginTop: 7, textAlign: 'center' }}>
-        Apple shares only your name and email, and you can hide the email. No code, no waiting for a text.
-      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.5, marginTop: 7, textAlign: 'center' }}>{t('Apple shares only your name and email, and you can hide the email. No code, no waiting for a text.')}</div>
       {note && (
         <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.5, color: 'var(--color-accent-700)', textAlign: 'center' }}>
           {note}

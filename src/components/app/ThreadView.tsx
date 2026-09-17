@@ -21,6 +21,7 @@ import { Scene } from '../../lib/scenes';
 import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
+import { T, t, currentLang } from '../../lib/i18n';
 
 /** One starter chip, shared by the fixed pair and the destination's own. */
 const starterChip: React.CSSProperties = {
@@ -89,9 +90,7 @@ function FlightTray() {
 
   if (busy) {
     return (
-      <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px', fontSize: 12, color: 'var(--ink-60)' }}>
-        Checking live fares…
-      </div>
+      <div className="glass" style={{ margin: '0 2px 10px', borderRadius: 'var(--r-md)', padding: '11px 12px', fontSize: 12, color: 'var(--ink-60)' }}>{t('Checking live fares…')}</div>
     );
   }
   if (error && !state) {
@@ -269,7 +268,7 @@ function FlightTray() {
                 <div
                   {...pressable(() => shareOffer(o))}
                   className="press tap"
-                  aria-label="Send this fare to someone"
+                  aria-label={t('Send this fare to someone')}
                   style={{
                     cursor: 'pointer', borderRadius: 999, padding: '0 14px', textAlign: 'center',
                     fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
@@ -344,7 +343,7 @@ function ServiceTray() {
         <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
           {KIND_LABEL[h.kind].toUpperCase()}
         </div>
-        <span {...pressable(dismissService)} aria-label="Dismiss" style={{ cursor: 'pointer', color: 'var(--ink-40)' }}>
+        <span {...pressable(dismissService)} aria-label={t('Dismiss')} style={{ cursor: 'pointer', color: 'var(--ink-40)' }}>
           <XIcon size={13} />
         </span>
       </div>
@@ -357,7 +356,7 @@ function ServiceTray() {
             className="press"
             style={{
               cursor: 'pointer', flex: 'none', borderRadius: 999, padding: '9px 14px', fontSize: 11.5, fontWeight: 700,
-              background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px rgba(236,48,19,.28)',
+              background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px rgba(14,164,131,.28)',
               display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap',
             }}
           >
@@ -393,11 +392,11 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
           letterSpacing: '.005em',
           borderRadius: 18,
           ...(u
-            ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(236,48,19,.25)' }
+            ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(14,164,131,.25)' }
             : { borderBottomLeftRadius: 6, color: 'var(--ink)' }),
         }}
       >
-        <div style={{ whiteSpace: 'pre-line' }}>{u ? m.text : cleanText(m.text)}</div>
+        <div style={{ whiteSpace: 'pre-line' }}>{u ? m.text : t(cleanText(m.text))}</div>
         {/* Recommended places, each with a real link. Rendered as cards rather
             than prose since 3 Sep 2026 — see PickCards.tsx for why. */}
         {!u && m.picks?.length ? <PickCards picks={m.picks} /> : null}
@@ -459,10 +458,10 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
 type Starter = { emoji: string; label: string; prompt: string };
 
 const FALLBACK: Starter[] = [
-  { emoji: '🚗', label: 'Car to the airport', prompt: 'Get me a car to the airport tomorrow morning' },
-  { emoji: '🍽️', label: 'Dinner tonight', prompt: 'Where should we eat tonight?' },
-  { emoji: '✈️', label: 'Find a flight', prompt: 'What flights are there to Bangkok on Friday?' },
-  { emoji: '🧳', label: 'Plan with friends', prompt: 'Start a group plan I can build with my friends' },
+  { emoji: '🚗', label: T('Car to the airport'), prompt: 'Get me a car to the airport tomorrow morning' },
+  { emoji: '🍽️', label: T('Dinner tonight'), prompt: 'Where should we eat tonight?' },
+  { emoji: '✈️', label: T('Find a flight'), prompt: 'What flights are there to Bangkok on Friday?' },
+  { emoji: '🧳', label: T('Plan with friends'), prompt: 'Start a group plan I can build with my friends' },
 ];
 
 /**
@@ -484,6 +483,7 @@ function useSuggestions(dest: string | null, meId: string | null) {
     const load = () => {
       const q = new URLSearchParams();
       if (dest) q.set('dest', dest);
+      if (currentLang() !== 'en') q.set('lang', currentLang());
       if (meId) {
         q.set('me', meId);
         try { q.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone); } catch { /* server default */ }
@@ -654,7 +654,7 @@ export default function ThreadView() {
             {/* Two fixed starters ahead of the destination's own: the box for
                 people who know what they want, the dice for people who don't.
                 Neither sends a message — they open the Search & Suggest sheet. */}
-            {[['🎲', 'Surprise me', 'suggest'], ['🔍', 'Search', 'search'], ['🛬', 'Watch my flight', 'flight']].map(([emoji, label, tab]) => (
+            {[['🎲', T('Surprise me'), 'suggest'], ['🔍', T('Search'), 'search'], ['🛬', T('Watch my flight'), 'flight']].map(([emoji, label, tab]) => (
               <div
                 key={label}
                 {...pressable(() => (tab === 'flight' ? store.set({ flightWatchOpen: true }) : openDiscover(tab as 'search' | 'suggest')))}
@@ -662,7 +662,7 @@ export default function ThreadView() {
                 style={{ ...starterChip, whiteSpace: 'nowrap' }}
               >
                 <span aria-hidden="true">{emoji}</span>
-                {label}
+                {t(label)}
               </div>
             ))}
             {starters.map(({ emoji, label, prompt }) => (
@@ -673,7 +673,7 @@ export default function ThreadView() {
                 style={{ ...starterChip, ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
               >
                 <span aria-hidden="true">{emoji}</span>
-                {label}
+                {t(label)}
               </div>
             ))}
           </div>
@@ -691,7 +691,7 @@ export default function ThreadView() {
               style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '8px 13px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 6, flex: 'none', whiteSpace: 'nowrap', ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
             >
               <SparklesIcon size={12} style={{ color: 'var(--color-accent)' }} />
-              {c.label}
+              {t(c.label)}
             </div>
           ))}
         </div>
@@ -702,7 +702,7 @@ export default function ThreadView() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-            placeholder="Message NUM…"
+            placeholder={t('Message NUM…')}
             /* The iOS return key reads "send" instead of "return", which is
                the only affordance telling a guest that enter submits. */
             enterKeyHint="send"
@@ -713,20 +713,20 @@ export default function ThreadView() {
           {draft.trim() ? (
             <div
               {...pressable(send)}
-              aria-label="Send"
+              aria-label={t('Send')}
               className="press"
-              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.35)', flex: 'none' }}
-              title="Send"
+              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.35)', flex: 'none' }}
+              title={t('Send')}
             >
               <SendIcon size={17} />
             </div>
           ) : (
             <div
               {...pressable(openVoice)}
-              aria-label="Talk to NUM"
+              aria-label={t('Talk to NUM')}
               className="press"
-              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.35)', flex: 'none' }}
-              title="Talk to NUM"
+              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.35)', flex: 'none' }}
+              title={t('Talk to NUM')}
             >
               <MicIcon size={17} />
             </div>

@@ -4,6 +4,7 @@
 // agent backend would slot in later.
 import { anonId } from './anon';
 import { store } from './store';
+import { currentLang } from './i18n';
 import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
 import { demoState } from './data';
 import { addPlanItem, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
@@ -726,7 +727,7 @@ export async function askNum(text: string) {
       // and the server takes those places out of the block entirely rather
       // than asking the model nicely not to repeat them.
       body: JSON.stringify({
-        messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs),
+        messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs), lang: currentLang(),
       }),
     });
     if (!res.ok) throw new Error('backend ' + res.status);

@@ -14,6 +14,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { fixPosition } from '../../lib/whereami';
 import { XIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 
 const field: React.CSSProperties = {
   width: '100%', height: 46, borderRadius: 14, border: '1px solid var(--ink-12)', padding: '0 14px',
@@ -58,15 +59,13 @@ export default function PlaceSheet() {
   return (
     <div ref={ref} role="dialog" aria-modal="true" className="glass-strong sheet-in" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(80%, calc(100% - var(--safe-top, 0px)))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
-      <div {...pressable(close)} aria-label="Close" className="glass press tap" style={{ position: 'absolute', top: 4, right: 4, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', zIndex: 2 }}>
+      <div {...pressable(close)} aria-label={t('Close')} className="glass press tap" style={{ position: 'absolute', top: 4, right: 4, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />
       </div>
       <div style={{ padding: 16 }}>
-        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>WHERE ARE YOU?</div>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>Tell NUM where you are</div>
-        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
-          Everything NUM suggests starts from here. Your position is never shown to anyone.
-        </div>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('WHERE ARE YOU?')}</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>{t('Tell NUM where you are')}</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>{t('Everything NUM suggests starts from here. Your position is never shown to anyone.')}</div>
         <div {...pressable(() => { if (!busy) void locate(); })} className="press" style={{ ...button, marginTop: 14, opacity: busy ? 0.7 : 1 }}>
           {busy ? 'Finding you…' : 'Use my location'}
         </div>
@@ -76,7 +75,7 @@ export default function PlaceSheet() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(text); }}
-            placeholder="Or type it: Kata, Phuket"
+            placeholder={t('Or type it: Kata, Phuket')}
             enterKeyHint="done"
             style={field}
           />

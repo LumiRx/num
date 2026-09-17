@@ -20,6 +20,7 @@ import { pretty } from '../../lib/links';
 import { shareNative } from '../../lib/services';
 import { myIdentities, myConnections, linkMyBusiness, linkMyHost } from '../../lib/social';
 import { ChevronRightIcon, CopyIcon, ShareIcon, UsersIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 
 type Hat = { type: string; id: string; name: string | null; code: string | null; link: string | null };
 type Met = {
@@ -83,11 +84,8 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
 
   return (
     <div style={{ marginTop: 14, paddingTop: 13, borderTop: '1px solid var(--ink-08)' }}>
-      <div style={kicker}>ALREADY ON NUM ANOTHER WAY?</div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-        If you claimed a business listing or run as a VIP host, bring it in here and you manage it from this
-        app — same account, separate dashboard.
-      </div>
+      <div style={kicker}>{t('ALREADY ON NUM ANOTHER WAY?')}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('If you claimed a business listing or run as a VIP host, bring it in here and you manage it from this app — same account, separate dashboard.')}</div>
 
       <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
         {!hasBusiness && (
@@ -113,7 +111,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
             <input
               value={key}
               onChange={(e) => setKey(e.target.value.trim())}
-              placeholder="Host console key"
+              placeholder={t('Host console key')}
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
@@ -141,10 +139,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
       {msg && (
         <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-60)' }}>{msg}</div>
       )}
-      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-        Your business links by the number NUM already verified for you — the one you signed in with. Your host
-        account links by the key in your host console.
-      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('Your business links by the number NUM already verified for you — the one you signed in with. Your host account links by the key in your host console.')}</div>
     </div>
   );
 }
@@ -178,11 +173,8 @@ export default function IdentityCard() {
 
   return (
     <div className="glass" style={{ ...card }}>
-      <div style={kicker}>YOUR CODES</div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-        One code each. Scanning it or opening the link does the same thing, so it
-        counts once however someone found you.
-      </div>
+      <div style={kicker}>{t('YOUR CODES')}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('One code each. Scanning it or opening the link does the same thing, so it counts once however someone found you.')}</div>
 
       <div style={{ marginTop: 11, display: 'grid', gap: 7 }}>
         {hats.map((h) => {
@@ -219,7 +211,7 @@ export default function IdentityCard() {
                       dangerouslySetInnerHTML={{ __html: svg }}
                     />
                   ) : (
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-60)' }}>No code yet — reopen this in a moment.</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-60)' }}>{t('No code yet — reopen this in a moment.')}</div>
                   )}
 
                   {h.link && (
@@ -249,8 +241,7 @@ export default function IdentityCard() {
                           }))}
                           style={{ cursor: 'pointer', flex: 1, minHeight: 44, borderRadius: 999, border: '1px solid var(--ink-12)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 800, letterSpacing: '.05em' }}
                         >
-                          <ShareIcon size={13} /> SHARE
-                        </div>
+                          <ShareIcon size={13} />{' '}{t('SHARE')}</div>
                       </div>
                     </>
                   )}

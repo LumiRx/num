@@ -22,6 +22,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, ChevronRightIcon, XIcon } from '../../lib/icons';
 import { GENDERS, TITLES, listPassengers, removePassenger, savePassenger } from '../../lib/passengers';
 import type { Passenger, PassengerDraft } from '../../lib/passengers';
+import { t } from '../../lib/i18n';
 
 const field: React.CSSProperties = {
   width: '100%', height: 44, borderRadius: 12, border: '1px solid var(--ink-12)',
@@ -32,7 +33,7 @@ const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
   fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px',
   display: 'flex', gap: 7, alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const legend: React.CSSProperties = { fontSize: 10, letterSpacing: '.1em', fontWeight: 700, color: 'var(--ink-40)', marginBottom: 5 };
@@ -145,36 +146,25 @@ export default function PassengerSheet() {
   };
 
   return (
-    <div ref={ref} role="dialog" aria-modal="true" aria-label="Passenger details" className="glass-strong"
+    <div ref={ref} role="dialog" aria-modal="true" aria-label={t('Passenger details')} className="glass-strong"
       style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
-      <div {...pressable(close)} aria-label="Close" className="glass press"
+      <div {...pressable(close)} aria-label={t('Close')} className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />
       </div>
 
       <div style={{ padding: 16 }}>
-        <div style={label}>WHO IS FLYING</div>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 24, lineHeight: 1.2, marginTop: 8, letterSpacing: '-.01em' }}>
-          Exactly as it appears on the passport
-        </div>
+        <div style={label}>{t('WHO IS FLYING')}</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 24, lineHeight: 1.2, marginTop: 8, letterSpacing: '-.01em' }}>{t('Exactly as it appears on the passport')}</div>
 
         {/* The honest paragraph. It is first, and it is not a tooltip. */}
-        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.6 }}>
-          An airline will not issue a ticket to a nickname. To book a flight, NUM has to hand the airline the
-          full name printed on your travel document, your date of birth, and the gender marker on that document —
-          those are the airline’s security checks, not NUM’s idea of you. It goes to the airline through Duffel
-          and nowhere else.
-        </div>
-        <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.6 }}>
-          It is never sent to 5arz, never shared with a business, and never shown to the concierge —
-          NUM answers your questions without knowing your surname. Remove a passenger any time and it is
-          destroyed for good 30 days later.
-        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.6 }}>{t('An airline will not issue a ticket to a nickname. For the airline to issue a ticket, NUM has to hand it the full name printed on your travel document, your date of birth, and the gender marker on that document — those are the airline’s security checks, not NUM’s idea of you. It goes to the airline through Duffel and nowhere else.')}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.6 }}>{t('It is never sent to 5arz, never shared with a business, and never shown to the concierge — NUM answers your questions without knowing your surname. Remove a passenger any time and it is destroyed for good 30 days later.')}</div>
 
         {saved.length > 0 && (
           <div style={{ marginTop: 18 }}>
-            <div style={legend}>SAVED</div>
+            <div style={legend}>{t('SAVED')}</div>
             <div style={{ display: 'grid', gap: 8 }}>
               {saved.map((p) => (
                 <div key={p.id} style={{ borderRadius: 'var(--r-lg)', border: '1px solid var(--ink-12)', background: 'var(--field-bg)', padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -191,9 +181,7 @@ export default function PassengerSheet() {
                     <ChevronRightIcon size={16} />
                   </div>
                   <div {...pressable(() => void remove(p.id))} aria-label={`Remove ${p.given_name}`} className="press"
-                    style={{ cursor: 'pointer', fontSize: 10.5, letterSpacing: '.08em', fontWeight: 700, color: 'var(--ink-40)' }}>
-                    REMOVE
-                  </div>
+                    style={{ cursor: 'pointer', fontSize: 10.5, letterSpacing: '.08em', fontWeight: 700, color: 'var(--ink-40)' }}>{t('REMOVE')}</div>
                 </div>
               ))}
             </div>
@@ -202,7 +190,7 @@ export default function PassengerSheet() {
 
         <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
           <div>
-            <div style={legend}>THIS PASSENGER IS</div>
+            <div style={legend}>{t('THIS PASSENGER IS')}</div>
             <Segmented
               name="Who this record is for"
               value={draft.is_self ? 'self' : 'other'}
@@ -212,16 +200,16 @@ export default function PassengerSheet() {
             {!draft.is_self && (
               <input
                 style={{ ...field, marginTop: 8 }}
-                placeholder="What to call this one — “Mum”, “Sam”"
+                placeholder={t('What to call this one — “Mum”, “Sam”')}
                 value={draft.label ?? ''}
                 onChange={(e) => set({ label: e.target.value })}
-                aria-label="Label"
+                aria-label={t('Label')}
               />
             )}
           </div>
 
           <div>
-            <div style={legend}>TITLE</div>
+            <div style={legend}>{t('TITLE')}</div>
             <Segmented
               name="Title"
               value={draft.title ?? ''}
@@ -229,60 +217,54 @@ export default function PassengerSheet() {
               options={TITLES.map((t) => [t, TITLE_LABEL[t]] as [string, string])}
             />
             {draft.title === 'dr' && (
-              <div style={helpText}>Some airlines refuse “Dr” and the booking comes back rejected. If it does, Mr/Ms works.</div>
+              <div style={helpText}>{t('Some airlines refuse “Dr” and send the ticket request back rejected. If it does, Mr/Ms works.')}</div>
             )}
           </div>
 
           <div>
-            <div style={legend}>GIVEN NAME</div>
+            <div style={legend}>{t('GIVEN NAME')}</div>
             <input style={field} value={draft.given_name ?? ''} onChange={(e) => set({ given_name: e.target.value })}
-              placeholder="As printed" autoComplete="given-name" aria-label="Given name" />
+              placeholder={t('As printed')} autoComplete="given-name" aria-label={t('Given name')} />
           </div>
 
           <div>
-            <div style={legend}>FAMILY NAME</div>
+            <div style={legend}>{t('FAMILY NAME')}</div>
             <input style={field} value={draft.family_name ?? ''} onChange={(e) => set({ family_name: e.target.value })}
-              placeholder="As printed" autoComplete="family-name" aria-label="Family name" />
-            <div style={helpText}>
-              Letters, spaces, hyphens and apostrophes only, and the two names together fit in 40 characters —
-              that is the airline’s limit, not ours.
-            </div>
+              placeholder={t('As printed')} autoComplete="family-name" aria-label={t('Family name')} />
+            <div style={helpText}>{t('Letters, spaces, hyphens and apostrophes only, and the two names together fit in 40 characters — that is the airline’s limit, not ours.')}</div>
           </div>
 
           <div>
-            <div style={legend}>DATE OF BIRTH</div>
+            <div style={legend}>{t('DATE OF BIRTH')}</div>
             <input style={field} type="date" value={draft.born_on ?? ''} onChange={(e) => set({ born_on: e.target.value })}
-              autoComplete="bday" aria-label="Date of birth" />
-            <div style={helpText}>Airlines price by age and check it at the gate. A child under two travels on an adult’s lap and has to be linked to one.</div>
+              autoComplete="bday" aria-label={t('Date of birth')} />
+            <div style={helpText}>{t('Airlines price by age and check it at the gate. A child under two travels on an adult’s lap and has to be linked to one.')}</div>
           </div>
 
           <div>
-            <div style={legend}>GENDER ON THE DOCUMENT</div>
+            <div style={legend}>{t('GENDER ON THE DOCUMENT')}</div>
             <Segmented
               name="Gender marker on the travel document"
               value={draft.gender ?? ''}
               onPick={(v) => set({ gender: v })}
               options={GENDERS.map((g) => [g, g === 'm' ? 'M' : 'F'] as [string, string])}
             />
-            <div style={helpText}>
-              The airline systems accept only M or F. NUM is copying the marker on your passport so check-in matches —
-              it is not a question about you.
-            </div>
+            <div style={helpText}>{t('The airline systems accept only M or F. NUM is copying the marker on your passport so check-in matches — it is not a question about you.')}</div>
           </div>
 
           <div>
-            <div style={legend}>EMAIL</div>
+            <div style={legend}>{t('EMAIL')}</div>
             <input style={field} type="email" inputMode="email" value={draft.email ?? ''} onChange={(e) => set({ email: e.target.value })}
-              placeholder="you@example.com" autoComplete="email" aria-label="Email" />
-            <div style={helpText}>The airline sends the confirmation and any disruption notice here, directly to the passenger.</div>
+              placeholder={t('you@example.com')} autoComplete="email" aria-label={t('Email')} />
+            <div style={helpText}>{t('The airline sends the confirmation and any disruption notice here, directly to the passenger.')}</div>
           </div>
 
           <div>
-            <div style={legend}>PHONE</div>
+            <div style={legend}>{t('PHONE')}</div>
             <input style={field} type="tel" inputMode="tel" value={draft.phone_number ?? ''} onChange={(e) => set({ phone_number: e.target.value })}
-              placeholder="+44 20 8016 0509" autoComplete="tel" aria-label="Phone number" />
+              placeholder="+44 20 8016 0509" autoComplete="tel" aria-label={t('Phone number')} />
             {draft.phone_number && !phone && (
-              <div style={{ ...helpText, color: 'var(--color-accent)' }}>That number needs its country code — start it with +.</div>
+              <div style={{ ...helpText, color: 'var(--color-accent)' }}>{t('That number needs its country code — start it with +.')}</div>
             )}
           </div>
         </div>
@@ -298,10 +280,7 @@ export default function PassengerSheet() {
           {busy ? 'SAVING…' : editing ? 'UPDATE PASSENGER' : 'SAVE PASSENGER'}
         </div>
 
-        <div style={{ ...helpText, marginTop: 12 }}>
-          Nothing is booked by saving this. It sits here until you choose a flight, and NUM shows you the
-          fare and the name it is about to send before anything is bought.
-        </div>
+        <div style={{ ...helpText, marginTop: 12 }}>{t('Nothing is bought by saving this. It sits here until you choose a flight, and NUM shows you the fare and the name it is about to send before anything is bought.')}</div>
       </div>
     </div>
   );

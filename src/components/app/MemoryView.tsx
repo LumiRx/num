@@ -6,6 +6,7 @@ import { MEMORY_GROUPS } from '../../lib/data';
 import { Scene } from '../../lib/scenes';
 import { CameraIcon } from '../../lib/icons';
 import type { MemoryItem } from '../../lib/types';
+import { t } from '../../lib/i18n';
 
 function MemoryRow({ m }: { m: MemoryItem }) {
   const exp = useApp((s) => s.expanded === m.id);
@@ -32,7 +33,7 @@ function MemoryRow({ m }: { m: MemoryItem }) {
             ) : null}
           </div>
         </div>
-        <span style={memTag}>MEMORY</span>
+        <span style={memTag}>{t('MEMORY')}</span>
       </div>
       {exp && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ink-08)', fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>
@@ -50,13 +51,12 @@ export default function MemoryView() {
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
       <div className="glass" style={{ margin: '10px 12px 4px', borderRadius: 'var(--r-md)', padding: '12px 14px', fontSize: 12, color: 'var(--ink)', lineHeight: 1.55 }}>
         Everything you’ve done, kept quietly — not a cluster, a shelf. Ask the thread —{' '}
-        <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>“when was that omakase?”</span> — and it comes back.
-      </div>
+        <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>{t('“when was that omakase?”')}</span>{' '}{t('— and it comes back.')}</div>
       {!demo && memories.length === 0 && (
         <div className="glass" style={{ margin: '10px 12px', borderRadius: 'var(--r-md)', padding: '14px 16px', fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>
           <svg width="120" height="84" viewBox="0 0 120 84" fill="none" aria-hidden="true" style={{ display: 'block', margin: '0 auto 10px' }}><path d="M14 66c18-10 30-2 46-14s26-12 46-2" stroke="var(--ink-12)" strokeWidth="3" strokeLinecap="round" strokeDasharray="1 8"/><path d="M60 14c-9 0-16 7-16 16 0 12 16 30 16 30s16-18 16-30c0-9-7-16-16-16Z" fill="var(--color-accent)"/><circle cx="60" cy="30" r="6" fill="#fff"/><circle cx="104" cy="62" r="7" fill="var(--color-accent)" opacity=".35"/><circle cx="16" cy="62" r="5" fill="var(--color-accent)" opacity=".25"/></svg>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: 'var(--ink)', textAlign: 'center' }}>Your shelf is empty</div>
-          <div style={{ textAlign: 'center', marginTop: 4 }}>Every dinner, boat and night out files here by itself. Ask NUM later: “when was that omakase?”</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: 'var(--ink)', textAlign: 'center' }}>{t('Your shelf is empty')}</div>
+          <div style={{ textAlign: 'center', marginTop: 4 }}>{t('Every dinner, boat and night out files here by itself. Ask NUM later: “when was that omakase?”')}</div>
         </div>
       )}
       {/* The demo's shelf headings are the demo's. A real account with nothing

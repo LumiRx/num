@@ -273,7 +273,7 @@ describe('the sign-up sheet offers the door and the button says which is missing
 
   test('the email field exists and is reachable in one tap', () => {
     assert.match(sheet, /use my email instead/);
-    assert.match(sheet, /placeholder="Email address"/);
+    assert.match(sheet, /placeholder=(?:"Email address"|\{t\('Email address'\)\})/);
   });
 
   test('trying to continue with both blank opens the other door for them', () => {

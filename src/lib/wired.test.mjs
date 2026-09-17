@@ -90,7 +90,7 @@ describe('one tap on the profile row produces the question', () => {
   test('the row opens the panel, it does not merely scroll', () => {
     // The bug: it scrolled to a control that stayed shut, so the page moved
     // and nothing else happened. Scrolling without opening is not an action.
-    const i = PROFILE.indexOf('aria-label="Delete my account"');
+    const i = PROFILE.search(/aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/);
     assert.ok(i > 0, 'the profile row is missing');
     const el = PROFILE.slice(Math.max(0, i - 900), i);
     assert.match(el, /store\.set\(\{ deleteOpen: true \}\)/, 'the row must open the flow');

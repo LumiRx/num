@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { deleteAccount } from '../../lib/social';
+import { t } from '../../lib/i18n';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -111,7 +112,7 @@ export default function DangerZone() {
         <div
           {...pressable(() => { if (!busy) void inspect(); })}
           role="button"
-          aria-label="Delete my account"
+          aria-label={t('Delete my account')}
           style={{
             cursor: 'pointer', padding: '13px 14px', borderRadius: 'var(--r-md, 12px)',
             border: '1px solid rgba(163,39,28,.22)', background: 'rgba(163,39,28,.045)',
@@ -121,9 +122,7 @@ export default function DangerZone() {
           <div style={{ fontSize: 13.5, fontWeight: 700, color: '#a3271c' }}>
             {busy ? 'Checking…' : 'Delete my account'}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.45 }}>
-            Permanently erases your account, your thread and everything NUM remembers.
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.45 }}>{t('Permanently erases your account, your thread and everything NUM remembers.')}</div>
         </div>
         {note && <div style={{ fontSize: 11, color: '#a3271c', padding: '8px 2px 0' }}>{note}</div>}
       </div>
@@ -135,17 +134,13 @@ export default function DangerZone() {
 
   return (
     <div className="glass" style={{ ...card, border: '1.5px solid rgba(190,40,30,.28)' }}>
-      <div style={{ ...kicker, color: '#a3271c' }}>DELETE YOUR ACCOUNT</div>
+      <div style={{ ...kicker, color: '#a3271c' }}>{t('DELETE YOUR ACCOUNT')}</div>
 
       {inv.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>
-          There’s nothing stored against this account yet — deleting it removes it and nothing else.
-        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>{t('There’s nothing stored against this account yet — deleting it removes it and nothing else.')}</div>
       ) : (
         <>
-          <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>
-            This goes, permanently:
-          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>{t('This goes, permanently:')}</div>
           <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
             {inv.map(([k, n]) => (
               <div key={k} style={{ fontSize: 12, color: 'var(--ink)' }}>· {(LABEL[k] ?? ((x: number) => `${x} ${k}`))(n)}</div>
@@ -166,23 +161,19 @@ export default function DangerZone() {
 
       {blocked ? (
         <div style={{ marginTop: 12, borderRadius: 12, background: 'var(--field-bg)', padding: 11 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, marginBottom: 5 }}>Not yet — finish these first:</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, marginBottom: 5 }}>{t('Not yet — finish these first:')}</div>
           {(look?.blockers ?? []).map((b) => (
             <div key={b} style={{ fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.5 }}>· {b}</div>
           ))}
-          <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 7, lineHeight: 1.5 }}>
-            Deleting now would burn what you’re holding or leave someone waiting on you.
-          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 7, lineHeight: 1.5 }}>{t('Deleting now would burn what you’re holding or leave someone waiting on you.')}</div>
         </div>
       ) : (
         <>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 12, lineHeight: 1.5 }}>
-            There’s no undo and no export. Type <b style={{ color: 'var(--ink)' }}>DELETE</b> to confirm.
-          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 12, lineHeight: 1.5 }}>{t('There’s no undo and no export. Type')}{' '}<b style={{ color: 'var(--ink)' }}>{t('DELETE')}</b>{' '}{t('to confirm.')}</div>
           <input
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
-            placeholder="DELETE"
+            placeholder={t('DELETE')}
             autoCapitalize="characters"
             style={{
               width: '100%', height: 42, borderRadius: 12, border: '1px solid var(--ink-12)', padding: '0 13px',

@@ -21,6 +21,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, BookedCheck, XIcon } from '../../lib/icons';
 import { draftLine, loadMyRequests, requestTable, startBookSync, stateLine } from '../../lib/bookdesk';
 import { calendarUrl } from '../../lib/calendar';
+import { t } from '../../lib/i18n';
 
 const button: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
@@ -88,7 +89,7 @@ export default function BookSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -122,19 +123,15 @@ export default function BookSheet() {
           <>
             {!me ? (
               <>
-                <div style={{ ...help, marginTop: 14, color: 'var(--ink-60)' }}>
-                  Tell me your name first — a restaurant holding a table needs to know whose it is.
-                </div>
-                <div {...pressable(() => store.set({ bookDraft: null, inviteOpen: {} }))} style={{ ...button, marginTop: 12 }}>
-                  INTRODUCE YOURSELF
-                </div>
+                <div style={{ ...help, marginTop: 14, color: 'var(--ink-60)' }}>{t('Tell me your name first — a restaurant holding a table needs to know whose it is.')}</div>
+                <div {...pressable(() => store.set({ bookDraft: null, inviteOpen: {} }))} style={{ ...button, marginTop: 12 }}>{t('INTRODUCE YOURSELF')}</div>
               </>
             ) : (
               <>
                 <div {...pressable(send)} aria-disabled={busy} style={{ ...button, marginTop: 14, opacity: busy ? 0.55 : 1 }}>
                   {busy ? 'ASKING…' : `SEND THE REQUEST TO ${draft.venue_name.toUpperCase()}`}
                 </div>
-                <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>NOT YET</div>
+                <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>{t('NOT YET')}</div>
                 <div style={{ ...help, marginTop: 12 }}>
                   {draft.venue_phone
                     ? 'They get one text with your party size and time, and two links — confirm or decline. Nothing is held until they tap one.'

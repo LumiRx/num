@@ -12,6 +12,7 @@ import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, s
 import { canOfferInstall } from '../../lib/native';
 import AppleSignIn from './AppleSignIn';
 import { guestMessage } from '../../lib/saferr';
+import { t } from '../../lib/i18n';
 
 /** Matches RESEND_COOLDOWN_SEC in worker/social.mjs. Kept in step by hand;
  *  the client one only has to be >= the server's, since the server is the
@@ -29,7 +30,7 @@ const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
   fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px',
   display: 'flex', gap: 7, alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const helpText: React.CSSProperties = { fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 };
@@ -79,7 +80,7 @@ function AddToHomeScreen() {
         textAlign: 'center',
       }}
     >
-      <div style={{ fontSize: 10, letterSpacing: '.16em', fontWeight: 800, color: 'var(--color-accent)' }}>PUT NUM ON YOUR PHONE</div>
+      <div style={{ fontSize: 10, letterSpacing: '.16em', fontWeight: 800, color: 'var(--color-accent)' }}>{t('PUT NUM ON YOUR PHONE')}</div>
       <div
         style={{
           fontFamily: 'var(--font-heading)',
@@ -97,9 +98,7 @@ function AddToHomeScreen() {
           ? 'The Share button is at the bottom of Safari — the square with an arrow coming out of it. Scroll down the list and pick “Add to Home Screen”.'
           : 'Open the ⋮ menu at the top right of Chrome and choose “Add to Home screen” or “Install app”.'}
       </div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
-        It opens full screen, remembers you, and it is the only way NUM can reach you when a table moves or a friend replies.
-      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>{t('It opens full screen, remembers you, and it is the only way NUM can reach you when a table moves or a friend replies.')}</div>
     </div>
   );
 }
@@ -405,7 +404,7 @@ export default function InviteSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -419,10 +418,8 @@ export default function InviteSheet() {
              it. Deliberately its own screen: the verify box in the signed-in
              branch needs a `me`, and on this path there is not one yet. */
           <div style={{ padding: 16 }}>
-            <div style={label}>WELCOME BACK</div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
-              That number already has an account
-            </div>
+            <div style={label}>{t('WELCOME BACK')}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>{t('That number already has an account')}</div>
             <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 5, lineHeight: 1.55 }}>
               Nothing is lost and nothing was started from scratch. I have sent a six-digit code to{' '}
               {recoverPhone.slice(-4).padStart(7, '•')} — type it in and your friends, plans and Stars come straight back.
@@ -430,7 +427,7 @@ export default function InviteSheet() {
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <input
                 style={{ ...field, flex: 1 }}
-                placeholder="6-digit code"
+                placeholder={t('6-digit code')}
                 inputMode="numeric"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -455,7 +452,7 @@ export default function InviteSheet() {
                 <span
                   {...pressable(doResend)}
                   role="button"
-                  aria-label="Send the code again"
+                  aria-label={t('Send the code again')}
                   style={{
                     fontSize: 10.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline',
                     color: 'var(--color-neutral-700)', opacity: busy ? 0.5 : 1,
@@ -537,7 +534,7 @@ export default function InviteSheet() {
               <>
                 <input
                   style={field}
-                  placeholder="Email address"
+                  placeholder={t('Email address')}
                   inputMode="email"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -546,23 +543,16 @@ export default function InviteSheet() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
                 {email.trim() && !emailOk && (
-                  <div style={{ fontSize: 12, lineHeight: 1.4, color: '#c0392b' }}>
-                    That address doesn’t look complete — check for a missing @ or a typo in the domain.
-                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.4, color: '#c0392b' }}>{t('That address doesn’t look complete — check for a missing @ or a typo in the domain.')}</div>
                 )}
-                <div style={{ ...helpText, marginTop: 0 }}>
-                  NUM emails you a six-digit code to finish. Nothing else goes to this address unless you
-                  ask for it.
-                </div>
+                <div style={{ ...helpText, marginTop: 0 }}>{t('NUM emails you a six-digit code to finish. Nothing else goes to this address unless you ask for it.')}</div>
               </>
             )}
             {/* The consent sentence. Recorded verbatim server-side when the
                 number is verified (worker/smsconsent.mjs SIGNUP_CONSENT_TEXT);
                 a test pins the two copies to the same words. */}
             {!sending && phone.trim() && (
-              <div style={{ ...helpText, marginTop: 0 }}>
-                By continuing, NUM may text this number to sign you in and about your own bookings, plans and friends’ invites. Message rates may apply. Reply STOP any time.
-              </div>
+              <div style={{ ...helpText, marginTop: 0 }}>{t('By continuing, NUM may text this number to sign you in and about your own bookings, plans and friends’ invites. Message rates may apply. Reply STOP any time.')}</div>
             )}
             <div
               {...pressable(doSignUp)}
@@ -610,8 +600,8 @@ export default function InviteSheet() {
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
               <div style={label}>{me.phone ? 'VERIFY YOUR NUMBER' : 'VERIFY YOUR EMAIL'}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <input style={{ ...field, flex: 1 }} placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
-                <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px' }}>CHECK</div>
+                <input style={{ ...field, flex: 1 }} placeholder={t('6-digit code')} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
+                <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px' }}>{t('CHECK')}</div>
               </div>
               {accountNote && <div style={helpText}>{accountNote}</div>}
             {/* "I didn't get it." Always present, never a dead control: it
@@ -629,7 +619,7 @@ export default function InviteSheet() {
                       <span
                         {...pressable(doResend)}
                         role="button"
-                        aria-label="Send the code again"
+                        aria-label={t('Send the code again')}
                         style={{
                           fontSize: 10.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline',
                           color: 'var(--color-neutral-700)', opacity: busy ? 0.5 : 1,
@@ -673,10 +663,10 @@ export default function InviteSheet() {
               )}
 
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-                <input style={field} placeholder="Their name" value={toName} onChange={(e) => setToName(e.target.value)} />
+                <input style={field} placeholder={t('Their name')} value={toName} onChange={(e) => setToName(e.target.value)} />
                 <input
                   style={field}
-                  placeholder="Their mobile number (optional)"
+                  placeholder={t('Their mobile number (optional)')}
                   inputMode="tel"
                   value={toPhone}
                   onChange={(e) => setToPhone(e.target.value)}
@@ -693,7 +683,7 @@ export default function InviteSheet() {
                   <div
                     style={{
                       fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: '8px 12px', lineHeight: 1.45,
-                      background: onNum ? 'rgba(22,140,90,.12)' : 'rgba(236,48,19,.08)',
+                      background: onNum ? 'rgba(22,140,90,.12)' : 'rgba(14,164,131,.08)',
                       color: onNum ? '#0e6b45' : 'var(--color-accent-700)',
                     }}
                   >
@@ -735,7 +725,7 @@ export default function InviteSheet() {
                in their app and their phone buzzed. No text message needed —
                offering one anyway would make delivery look like it failed. */
             <div style={{ padding: 16 }}>
-              <div style={label}>DELIVERED</div>
+              <div style={label}>{t('DELIVERED')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
                 ✓ Sent app to app{draft.name ? ` — ${draft.name} has it` : ''}
               </div>
@@ -755,7 +745,7 @@ export default function InviteSheet() {
           ) : (
             /* 4 — ready to send, from the member's own phone. */
             <div style={{ padding: 16 }}>
-              <div style={label}>READY TO SEND</div>
+              <div style={label}>{t('READY TO SEND')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
                 {draft.name ? `${draft.name}’s invite is ready` : 'Your invite is ready'}
               </div>
@@ -790,17 +780,13 @@ export default function InviteSheet() {
                   <ShareIcon size={14} /> {sent === 'shared' ? 'SENT' : sent === 'copied' ? 'COPIED — PASTE IT TO THEM' : minted.num_text && numText.state !== 'sent' ? 'OR SEND IT YOURSELF' : 'SEND IT'}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <a href={minted.sms_url} className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>
-                    TEXT IT
-                  </a>
-                  <a href={minted.whatsapp_url} target="_blank" rel="noreferrer" className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>
-                    WHATSAPP
-                  </a>
+                  <a href={minted.sms_url} className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>{t('TEXT IT')}</a>
+                  <a href={minted.whatsapp_url} target="_blank" rel="noreferrer" className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>{t('WHATSAPP')}</a>
                   <div
                     {...pressable(() => { void navigator.clipboard?.writeText(minted.link); setSent('copied'); })}
                     className="glass press"
                     style={{ cursor: 'pointer', borderRadius: 999, padding: '11px 14px', display: 'flex', alignItems: 'center' }}
-                    aria-label="Copy link"
+                    aria-label={t('Copy link')}
                   >
                     <CopyIcon size={14} />
                   </div>
@@ -815,9 +801,7 @@ export default function InviteSheet() {
                     <li key={s}>{s}</li>
                   ))}
                 </ol>
-                <div style={{ ...helpText, marginTop: 8 }}>
-                  Their invite carries your referral code, so the moment they join it counts to you — and the two Nums connect on their own.
-                </div>
+                <div style={{ ...helpText, marginTop: 8 }}>{t('Their invite carries your referral code, so the moment they join it counts to you — and the two Nums connect on their own.')}</div>
               </div>
 
               <div

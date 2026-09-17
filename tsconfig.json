@@ -11,6 +11,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "noEmit": true,
     "useDefineForClassFields": true,
     // import.meta.env (Vite) — used to register the service worker in prod only

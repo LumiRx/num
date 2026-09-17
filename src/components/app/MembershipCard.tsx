@@ -36,6 +36,7 @@ import { pressable } from '../../lib/a11y';
 import { CheckIcon } from '../../lib/icons';
 import { canOfferSubscription } from '../../lib/native';
 import { apiUrl } from '../../lib/apibase';
+import { t } from '../../lib/i18n';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -154,7 +155,7 @@ export default function MembershipCard() {
   return (
     <div className="glass" style={card}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div style={kicker}>YOUR PLAN</div>
+        <div style={kicker}>{t('YOUR PLAN')}</div>
         <div style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: current === 'free' ? 'var(--ink-60)' : 'var(--color-accent)' }}>
           {currentTier?.name ?? 'NUM'}
         </div>
@@ -204,12 +205,12 @@ export default function MembershipCard() {
 
       {(open || current !== 'free') && canOfferSubscription() && (
         <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-          {paid.map((t) => {
-            const on = t.id === current;
-            const lines = highlights(t, free);
+          {paid.map((tr) => {
+            const on = tr.id === current;
+            const lines = highlights(tr, free);
             return (
               <div
-                key={t.id}
+                key={tr.id}
                 style={{
                   borderRadius: 14, padding: 12,
                   border: '1.5px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-08)'),
@@ -217,8 +218,8 @@ export default function MembershipCard() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15 }}>{t.name}</div>
-                  <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800 }}>{money(t.price_cents)}<span style={{ fontSize: 10, color: 'var(--ink-40)', fontWeight: 600 }}>/mo</span></div>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15 }}>{tr.name}</div>
+                  <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800 }}>{money(tr.price_cents)}<span style={{ fontSize: 10, color: 'var(--ink-40)', fontWeight: 600 }}>/mo</span></div>
                 </div>
                 <div style={{ marginTop: 7, display: 'grid', gap: 4 }}>
                   {lines.map((l) => (
@@ -229,41 +230,39 @@ export default function MembershipCard() {
                   ))}
                 </div>
                 {on ? (
-                  <div style={{ marginTop: 10, fontSize: 10.5, fontWeight: 800, letterSpacing: '.07em', color: 'var(--color-accent)', textAlign: 'center' }}>
-                    YOUR PLAN
-                  </div>
+                  <div style={{ marginTop: 10, fontSize: 10.5, fontWeight: 800, letterSpacing: '.07em', color: 'var(--color-accent)', textAlign: 'center' }}>{t('YOUR PLAN')}</div>
                 ) : (
                   <>
                     <div
-                      {...pressable(() => { if (!busy) void subscribe(t.id); })}
+                      {...pressable(() => { if (!busy) void subscribe(tr.id); })}
                       style={{
                         cursor: 'pointer', marginTop: 11, borderRadius: 999, padding: '11px 14px', textAlign: 'center',
                         background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
                         opacity: busy ? 0.5 : 1,
                       }}
                     >
-                      {busy === t.id ? 'OPENING…' : `GET ${t.name.toUpperCase()}`}
+                      {busy === tr.id ? 'OPENING…' : `GET ${tr.name.toUpperCase()}`}
                     </div>
                     {/* The Stars door. Shown whenever a Star price exists, and
                         AFFORDABLE only when the member has enough of their own
                         Stars — the welcome gift is deliberately not spendable
                         here, so the price is shown either way rather than the
                         button quietly vanishing and leaving them puzzled. */}
-                    {starCost(t.id) != null && (
-                      (wallet?.spendable ?? 0) >= (starCost(t.id) as number) ? (
+                    {starCost(tr.id) != null && (
+                      (wallet?.spendable ?? 0) >= (starCost(tr.id) as number) ? (
                         <div
-                          {...pressable(() => { if (!busy) void payWithStars(t.id); })}
+                          {...pressable(() => { if (!busy) void payWithStars(tr.id); })}
                           style={{
                             cursor: 'pointer', marginTop: 7, borderRadius: 999, padding: '10px 14px', textAlign: 'center',
                             border: '1.5px solid var(--color-accent)', color: 'var(--color-accent-700)',
                             fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
                           }}
                         >
-                          {busy === `stars:${t.id}` ? 'PAYING…' : `OR PAY ★${starCost(t.id)} FOR A MONTH`}
+                          {busy === `stars:${tr.id}` ? 'PAYING…' : `OR PAY ★${starCost(tr.id)} FOR A MONTH`}
                         </div>
                       ) : (
                         <div style={{ marginTop: 8, fontSize: 10.5, color: 'var(--ink-40)', textAlign: 'center', lineHeight: 1.5 }}>
-                          Or ★{starCost(t.id)} a month — you have ★{wallet?.spendable ?? 0} to spend
+                          Or ★{starCost(tr.id)} a month — you have ★{wallet?.spendable ?? 0} to spend
                         </div>
                       )
                     )}
@@ -272,17 +271,13 @@ export default function MembershipCard() {
               </div>
             );
           })}
-          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
-            Cancel any time. If a payment lapses you drop back to the free plan — you never lose the app, only the extra room.
-          </div>
+          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>{t('Cancel any time. If a payment lapses you drop back to the free plan — you never lose the app, only the extra room.')}</div>
           {(wallet?.promo_locked ?? 0) > 0 && (
             <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
               ★{wallet?.promo_locked} of your balance is the welcome gift — that one spends on plans, tabs and errands rather than on a membership.
             </div>
           )}
-          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
-            Months paid in Stars simply end — nothing renews on its own and no card is stored.
-          </div>
+          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>{t('Months paid in Stars simply end — nothing renews on its own and no card is stored.')}</div>
         </div>
       )}
 

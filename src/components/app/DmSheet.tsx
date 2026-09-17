@@ -13,6 +13,7 @@ import { refreshRequests } from '../../lib/requests';
 import { ChevronLeftIcon, ChevronRightIcon, SendIcon, ShieldIcon, SparklesIcon, UserIcon, XIcon } from '../../lib/icons';
 import ReportSheet from './ReportSheet';
 import type { DmMessage } from '../../lib/dm';
+import { t } from '../../lib/i18n';
 
 /** 'now', '4m', '2h', 'Tue' — a timestamp you read without thinking about it. */
 function ago(iso: string): string {
@@ -56,11 +57,7 @@ function PeopleList() {
 
   if (!rows.length) {
     return (
-      <div style={{ padding: '32px 22px', textAlign: 'center', color: 'var(--ink-60)', fontSize: 12.5, lineHeight: 1.6 }}>
-        Nobody to message yet.
-        <div style={{ marginTop: 8, color: 'var(--ink-40)', fontSize: 11.5 }}>
-          Messages only go between people who are connected — scan a friend’s code or send them an invite, and they’ll show up here.
-        </div>
+      <div style={{ padding: '32px 22px', textAlign: 'center', color: 'var(--ink-60)', fontSize: 12.5, lineHeight: 1.6 }}>{t('Nobody to message yet.')}<div style={{ marginTop: 8, color: 'var(--ink-40)', fontSize: 11.5 }}>{t('Messages only go between people who are connected — scan a friend’s code or send them an invite, and they’ll show up here.')}</div>
       </div>
     );
   }
@@ -150,8 +147,7 @@ function EventCard({ m }: { m: DmMessage }) {
   return (
     <div className="glass" style={{ borderRadius: 'var(--r-md)', padding: '12px 13px', maxWidth: '86%' }}>
       <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)', display: 'flex', gap: 6, alignItems: 'center' }}>
-        <SparklesIcon size={12} /> INVITE
-      </div>
+        <SparklesIcon size={12} />{' '}{t('INVITE')}</div>
       <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 7, whiteSpace: 'pre-line' }}>{m.body}</div>
       {m.ref && !answer && (
         <div style={{ display: 'flex', gap: 7, marginTop: 11 }}>
@@ -164,7 +160,7 @@ function EventCard({ m }: { m: DmMessage }) {
                 cursor: 'pointer', flex: 1, textAlign: 'center', borderRadius: 999, padding: '9px 6px',
                 fontSize: 11.5, fontWeight: 800,
                 ...(id === 'yes'
-                  ? { background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px rgba(236,48,19,.28)' }
+                  ? { background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px rgba(14,164,131,.28)' }
                   : { background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)' }),
                 ...(busy ? { pointerEvents: 'none' as const, opacity: 0.5 } : {}),
               }}
@@ -237,7 +233,7 @@ function Conversation() {
                   maxWidth: '82%', fontSize: 13, lineHeight: 1.5, padding: '10px 13px', borderRadius: 18,
                   opacity: m.pending ? 0.6 : 1,
                   ...(mine
-                    ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(236,48,19,.25)' }
+                    ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(14,164,131,.25)' }
                     : { borderBottomLeftRadius: 6, color: 'var(--ink)' }),
                 }}
               >
@@ -291,14 +287,14 @@ function Conversation() {
           />
           <div
             {...pressable(send)}
-            aria-label="Send"
+            aria-label={t('Send')}
             className="press"
             style={{
               cursor: 'pointer', width: 44, height: 44, borderRadius: 999, flex: 'none',
               background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(236,48,19,.35)', opacity: draft.trim() ? 1 : 0.45,
+              boxShadow: '0 4px 14px rgba(14,164,131,.35)', opacity: draft.trim() ? 1 : 0.45,
             }}
-            title="Send"
+            title={t('Send')}
           >
             <SendIcon size={17} />
           </div>
@@ -336,7 +332,7 @@ export default function DmSheet() {
         {withWho && (
           <div
             {...pressable(closeDmThread)}
-            aria-label="Back to messages"
+            aria-label={t('Back to messages')}
             className="glass press"
             style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
@@ -351,7 +347,7 @@ export default function DmSheet() {
           <div
             {...pressable(() => setReporting(true))}
             aria-label={`Report or block ${withWho.name ?? 'this person'}`}
-            title="Report or block"
+            title={t('Report or block')}
             className="glass press"
             style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
@@ -360,7 +356,7 @@ export default function DmSheet() {
         )}
         <div
           {...pressable(() => store.set({ dmOpen: false, dmWith: null, dmThread: [] }))}
-          aria-label="Close messages"
+          aria-label={t('Close messages')}
           className="glass press"
           style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >

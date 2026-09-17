@@ -8,6 +8,7 @@ import { qrSvg } from '../../lib/qr';
 import { connectLink, payLink } from '../../lib/stars';
 import { shareNative } from '../../lib/services';
 import { CopyIcon, ShareIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 
 function Qr({ value }: { value: string }) {
   // Rendered as an SVG string: it scales to any screen without blurring and
@@ -63,7 +64,7 @@ export default function QrCard() {
         <input
           style={{ width: '100%', height: 42, borderRadius: 12, border: '1px solid var(--ink-12)', padding: '0 13px', fontSize: 16, background: 'var(--field-bg)', outline: 'none', fontFamily: 'var(--font-body)', color: 'var(--color-text)', marginTop: 10 }}
           inputMode="numeric"
-          placeholder="Ask for a set amount (optional)"
+          placeholder={t('Ask for a set amount (optional)')}
           value={amount}
           onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
         />
@@ -74,8 +75,7 @@ export default function QrCard() {
           {...pressable(() => void shareNative({ title: tab === 'connect' ? 'Connect with me on NUM' : 'Pay me on NUM', text: label, url: value }))}
           style={{ cursor: 'pointer', flex: 1, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '11px 14px', textAlign: 'center', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}
         >
-          <ShareIcon size={13} /> SHARE
-        </div>
+          <ShareIcon size={13} />{' '}{t('SHARE')}</div>
         <div
           {...pressable(() => { void navigator.clipboard?.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 2000); })}
           className="glass press"

@@ -17,6 +17,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, XIcon } from '../../lib/icons';
 import { act, loadBoard, nextActions, postErrand, startErrandSync, stateLine, type Errand } from '../../lib/errands';
+import { t } from '../../lib/i18n';
 
 const field: React.CSSProperties = {
   width: '100%', height: 46, borderRadius: 14, border: '1px solid var(--ink-12)', padding: '0 14px',
@@ -60,12 +61,12 @@ export default function ErrandSheet() {
   return (
     <div ref={ref} role="dialog" aria-modal="true" className="glass-strong sheet-in" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(90%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
-      <div {...pressable(close)} aria-label="Close" className="glass press" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+      <div {...pressable(close)} aria-label={t('Close')} className="glass press" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />
       </div>
 
       <div style={{ padding: 16 }}>
-        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>ERRANDS</div>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('ERRANDS')}</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
           {tab === 'new' ? 'What do you need?' : 'Someone nearby can go'}
         </div>
@@ -158,7 +159,7 @@ function Card({ e, onMsg }: { e: Errand; onMsg: (m: string) => void }) {
 
       {confirming ? (
         <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-          <input style={{ ...field, height: 42, letterSpacing: '.14em' }} placeholder="Handoff code" maxLength={6}
+          <input style={{ ...field, height: 42, letterSpacing: '.14em' }} placeholder={t('Handoff code')} maxLength={6}
             value={handoff} onChange={(ev) => setHandoff(ev.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())} />
           {e.spend_cap > 0 && (
             <input style={{ ...field, height: 42 }} inputMode="numeric" placeholder={`What did it cost? (up to ★${e.spend_cap})`}
@@ -172,7 +173,7 @@ function Card({ e, onMsg }: { e: Errand; onMsg: (m: string) => void }) {
               style={{ ...button, flex: 1, opacity: busy || handoff.length !== 6 ? 0.55 : 1 }}>
               {busy ? 'PAYING…' : 'CONFIRM & PAY'}
             </div>
-            <div {...pressable(() => setConfirming(false))} style={{ ...ghost, flex: 'none', padding: '13px 16px' }}>BACK</div>
+            <div {...pressable(() => setConfirming(false))} style={{ ...ghost, flex: 'none', padding: '13px 16px' }}>{t('BACK')}</div>
           </div>
         </div>
       ) : actions.length > 0 ? (
@@ -233,29 +234,23 @@ function NewErrand({ balance, hasAccount, draft, onDone }: {
   if (!hasAccount) {
     return (
       <div style={{ marginTop: 14 }}>
-        <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>
-          Add your name and number first — errands move real Stars between people, so we need to know whose they are.
-        </div>
-        <div {...pressable(() => store.set({ errandsOpen: false, inviteOpen: {} }))} style={{ ...button, marginTop: 14 }}>
-          INTRODUCE YOURSELF
-        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>{t('Add your name and number first — errands move real Stars between people, so we need to know whose they are.')}</div>
+        <div {...pressable(() => store.set({ errandsOpen: false, inviteOpen: {} }))} style={{ ...button, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
       </div>
     );
   }
 
   return (
     <div style={{ display: 'grid', gap: 9, marginTop: 14 }}>
-      <input style={field} placeholder="What do you need?" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <input style={field} placeholder="Any detail that matters (optional)" value={detail} onChange={(e) => setDetail(e.target.value)} />
-      <input style={field} placeholder="Where from? (optional)" value={from} onChange={(e) => setFrom(e.target.value)} />
-      <input style={field} placeholder="Deliver to — address or room" value={to} onChange={(e) => setTo(e.target.value)} />
+      <input style={field} placeholder={t('What do you need?')} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <input style={field} placeholder={t('Any detail that matters (optional)')} value={detail} onChange={(e) => setDetail(e.target.value)} />
+      <input style={field} placeholder={t('Where from? (optional)')} value={from} onChange={(e) => setFrom(e.target.value)} />
+      <input style={field} placeholder={t('Deliver to — address or room')} value={to} onChange={(e) => setTo(e.target.value)} />
       <div style={{ display: 'flex', gap: 8 }}>
-        <input style={{ ...field, flex: 1 }} inputMode="numeric" placeholder="Bounty ★" value={bounty} onChange={(e) => setBounty(e.target.value.replace(/[^\d]/g, ''))} />
-        <input style={{ ...field, flex: 1 }} inputMode="numeric" placeholder="Spend cap ★" value={cap} onChange={(e) => setCap(e.target.value.replace(/[^\d]/g, ''))} />
+        <input style={{ ...field, flex: 1 }} inputMode="numeric" placeholder={t('Bounty ★')} value={bounty} onChange={(e) => setBounty(e.target.value.replace(/[^\d]/g, ''))} />
+        <input style={{ ...field, flex: 1 }} inputMode="numeric" placeholder={t('Spend cap ★')} value={cap} onChange={(e) => setCap(e.target.value.replace(/[^\d]/g, ''))} />
       </div>
-      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', lineHeight: 1.55 }}>
-        The <b>bounty</b> is what they earn. The <b>spend cap</b> is what they’re allowed to lay out on the thing itself — they get that back too, and anything unspent returns to you.
-      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', lineHeight: 1.55 }}>{t('The')}{' '}<b>{t('bounty')}</b>{' '}{t('is what they earn. The')}{' '}<b>{t('spend cap')}</b>{' '}{t('is what they’re allowed to lay out on the thing itself — they get that back too, and anything unspent returns to you.')}</div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--ink-60)' }}>
         <StarIcon size={12} style={{ color: 'var(--color-accent)' }} /> You have ★{balance.toLocaleString()}

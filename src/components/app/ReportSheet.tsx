@@ -24,6 +24,7 @@ import { useState } from 'react';
 import { pressable } from '../../lib/a11y';
 import { reportMember, REPORT_REASONS, type ReportReason } from '../../lib/social';
 import { XIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 
 // Local, matching InviteSheet — the app's sheet controls are defined per-sheet
 // rather than in derive, so a shared import here would be the odd one out.
@@ -36,7 +37,7 @@ const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
   fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px',
   display: 'flex', gap: 7, alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 
 export default function ReportSheet({
@@ -79,7 +80,7 @@ export default function ReportSheet({
     >
       <div
         {...pressable(onClose)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -88,13 +89,13 @@ export default function ReportSheet({
 
       {done ? (
         <div style={{ padding: 16 }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18 }}>Thank you</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18 }}>{t('Thank you')}</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.6 }}>{done}</div>
-          <div {...pressable(onClose)} style={{ ...primary, marginTop: 14 }}>DONE</div>
+          <div {...pressable(onClose)} style={{ ...primary, marginTop: 14 }}>{t('DONE')}</div>
         </div>
       ) : (
         <div style={{ padding: 16 }}>
-          <div style={{ fontSize: 10, letterSpacing: '.16em', fontWeight: 700, color: 'var(--color-neutral-600)' }}>REPORT</div>
+          <div style={{ fontSize: 10, letterSpacing: '.16em', fontWeight: 700, color: 'var(--color-neutral-600)' }}>{t('REPORT')}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
             Report {who}
           </div>
@@ -123,7 +124,7 @@ export default function ReportSheet({
 
           <textarea
             style={{ ...field, height: 74, marginTop: 10, padding: 11, resize: 'none', fontFamily: 'var(--font-body)' }}
-            placeholder="Anything else we should know? (optional)"
+            placeholder={t('Anything else we should know? (optional)')}
             maxLength={500}
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -137,8 +138,7 @@ export default function ReportSheet({
               style={{ marginTop: 2, accentColor: 'var(--color-accent)' }}
             />
             <span>
-              <b style={{ color: 'var(--ink)' }}>Also block them.</b> They can’t message you or add you again.
-            </span>
+              <b style={{ color: 'var(--ink)' }}>{t('Also block them.')}</b>{' '}{t('They can’t message you or add you again.')}</span>
           </label>
 
           <div

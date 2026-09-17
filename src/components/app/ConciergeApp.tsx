@@ -38,6 +38,7 @@ import PartySheet from './PartySheet';
 import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 import InstallPrompt from './InstallPrompt';
+import { t } from '../../lib/i18n';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
@@ -179,16 +180,15 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       >
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>
-            NUM <span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>{t('NUM')}{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {me && <div
               {...pressable(() => store.set({ walletOpen: true }))}
-              aria-label="Stars wallet"
+              aria-label={t('Stars wallet')}
               className="glass press"
               style={{ cursor: 'pointer', borderRadius: 999, padding: '5px 10px', display: 'flex', gap: 5, alignItems: 'center', fontWeight: 700, fontSize: 11 }}
-              title="Stars wallet"
+              title={t('Stars wallet')}
             >
               <StarIcon size={13} /> {stars.toLocaleString()}
             </div>}
@@ -203,7 +203,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
                 aria-label={dmUnread ? `Messages, ${dmUnread} new` : 'Messages'}
                 className="glass press"
                 style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Messages"
+                title={t('Messages')}
               >
                 <UsersIcon size={15} />
                 {dmUnread > 0 && (
@@ -217,14 +217,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
                 occasionally, not one of the three things the app is for. */}
             <div
               {...pressable(() => store.set({ profileOpen: true }))}
-              aria-label="Your profile"
+              aria-label={t('Your profile')}
               className="glass press"
               style={{
                 cursor: 'pointer', width: 32, height: 32, borderRadius: 999, position: 'relative',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                 background: me?.avatar ? `center/cover url(${me.avatar})` : undefined,
               }}
-              title="Your profile"
+              title={t('Your profile')}
             >
               {!me?.avatar && (me?.name ? (
                 <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 13 }}>{me.name[0].toUpperCase()}</span>
@@ -239,10 +239,10 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             </div>
             {planId && <div
               {...pressable(() => store.set({ shareOpen: true, copied: false }))}
-              aria-label="Share plan"
+              aria-label={t('Share plan')}
               className="glass press"
               style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              title="Share plan"
+              title={t('Share plan')}
             >
               <ShareIcon size={15} />
             </div>}
@@ -266,9 +266,9 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       {/* THREAD left the tab bar — it is the floating dot now, reachable from
           every screen instead of being one of three equal places to be. */}
       <div role="tablist" className="glass" style={{ display: 'flex', margin: '10px 10px 2px', borderRadius: 999, padding: 4, position: 'relative', zIndex: 2 }}>
-        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />TODAY</div>
-        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />PLAN</div>
-        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />MEMORY</div>
+        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />{t('TODAY')}</div>
+        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />{t('PLAN')}</div>
+        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />{t('MEMORY')}</div>
       </div>
 
       {/* views float above the aurora ground; wrapper mirrors the root's flex column */}
@@ -283,7 +283,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           to and lose your place from. */}
       <div
         role="dialog"
-        aria-label="Thread with NUM"
+        aria-label={t('Thread with NUM')}
         aria-hidden={!threadOpen}
         style={{
           position: 'absolute', inset: 0, zIndex: 45, display: 'flex', flexDirection: 'column',
@@ -305,12 +305,11 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             Every full-screen overlay in this file must use the same padding
             expression. If you add another, copy this line. */}
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 12px) 16px 6px' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
-            THREAD <span style={{ fontWeight: 400, opacity: 0.5 }}>· ASK NUM ANYTHING</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>{t('THREAD')}{' '}<span style={{ fontWeight: 400, opacity: 0.5 }}>· ASK NUM ANYTHING</span>
           </div>
           <div
             {...pressable(() => store.set({ threadOpen: false }))}
-            aria-label="Close thread"
+            aria-label={t('Close thread')}
             className="glass press"
             style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
@@ -326,7 +325,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           spend half the screen on the sheet's own chrome. */}
       <div
         role="dialog"
-        aria-label="Your profile"
+        aria-label={t('Your profile')}
         aria-hidden={!profileOpen}
         style={{
           position: 'absolute', inset: 0, zIndex: 46, display: 'flex', flexDirection: 'column',
@@ -338,12 +337,11 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       >
         <div className="aurora-layer" aria-hidden="true" />
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 12px) 16px 6px' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
-            YOU <span style={{ fontWeight: 400, opacity: 0.5 }}>· WHAT NUM KNOWS</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>{t('YOU')}{' '}<span style={{ fontWeight: 400, opacity: 0.5 }}>· WHAT NUM KNOWS</span>
           </div>
           <div
             {...pressable(() => store.set({ profileOpen: false }))}
-            aria-label="Close profile"
+            aria-label={t('Close profile')}
             className="glass press"
             style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
@@ -360,16 +358,18 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         <div
           {...pressable(() => store.set({ threadOpen: true, unread: 0 }))}
           aria-label={unread ? `Open thread, ${unread} new` : 'Open thread'}
-          className="press"
+          className="press rise-in"
           style={{
             position: 'absolute', right: 16, bottom: 'max(env(safe-area-inset-bottom), 16px)', zIndex: 40,
-            width: 56, height: 56, borderRadius: 999, cursor: 'pointer',
+            height: 54, padding: '0 20px 0 16px', borderRadius: 999, cursor: 'pointer',
             background: 'var(--grad-accent)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 24px rgba(236,48,19,.38)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 14, letterSpacing: '.01em',
+            boxShadow: '0 10px 28px rgba(14,164,131,.38), inset 0 1px 0 rgba(255,255,255,.28)',
           }}
         >
-          <MessageIcon size={22} />
+          <MessageIcon size={20} />
+          <span>{t('Ask NUM')}</span>
           {(unread > 0 || typing) && (
             <span
               style={{

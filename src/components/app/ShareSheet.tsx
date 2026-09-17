@@ -23,6 +23,7 @@ import { CheckIcon, CopyIcon, XIcon } from '../../lib/icons';
 import QrCard from './QrCard';
 import { connectLink, pretty, referralLink } from '../../lib/links';
 import { shareNumOnX } from '../../lib/xshare';
+import { t } from '../../lib/i18n';
 
 export default function ShareSheet() {
   const open = useApp((s) => s.shareOpen);
@@ -106,7 +107,7 @@ export default function ShareSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -114,17 +115,13 @@ export default function ShareSheet() {
       </div>
 
       <div style={{ padding: 16 }}>
-        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>SHARE NUM</div>
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>Give someone a concierge</div>
-        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
-          Your link is in here. When they join you’re connected — whatever either of you books, the other’s NUM can see it.
-        </div>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('SHARE NUM')}</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>{t('Give someone a concierge')}</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>{t('Your link is in here. When they join you’re connected — whatever either of you books, the other’s NUM can see it.')}</div>
 
         {!me ? (
           <>
-            <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 14, lineHeight: 1.55 }}>
-              Add your name first so the invite comes from someone — an anonymous link is one nobody taps.
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 14, lineHeight: 1.55 }}>{t('Add your name first so the invite comes from someone — an anonymous link is one nobody taps.')}</div>
             <div
               {...pressable(() => store.set({ shareOpen: false, inviteOpen: {} }))}
               style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center' }}
@@ -137,7 +134,7 @@ export default function ShareSheet() {
             <div
               {...pressable(share)}
               className="press"
-              style={{ cursor: 'pointer', marginTop: 16, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '14px 16px', textAlign: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.3)' }}
+              style={{ cursor: 'pointer', marginTop: 16, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '14px 16px', textAlign: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)' }}
             >
               SHARE MY INVITE
             </div>
@@ -174,9 +171,7 @@ export default function ShareSheet() {
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-                POST ON X
-              </a>
+                </svg>{t('POST ON X')}</a>
             ) : null}
 
             {/* The same invite as a code. Somebody sitting opposite you scans
@@ -186,9 +181,7 @@ export default function ShareSheet() {
               <QrCard />
             </div>
 
-            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 14, lineHeight: 1.55 }}>
-              Anyone who joins on your link is credited to you. If they already have NUM it just connects the two of you — it won’t make them sign in again.
-            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 14, lineHeight: 1.55 }}>{t('Anyone who joins on your link is credited to you. If they already have NUM it just connects the two of you — it won’t make them sign in again.')}</div>
           </>
         )}
       </div>

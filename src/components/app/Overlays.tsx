@@ -5,6 +5,7 @@ import { useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { closeVoice, permAllow, permDeny } from '../../lib/concierge';
 import { BellIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 
 export function NotifBanner() {
   const on = useApp((s) => s.notifOn);
@@ -13,9 +14,9 @@ export function NotifBanner() {
     <div className="glass-dark msg-in" style={{ position: 'absolute', top: 10, left: 12, right: 12, borderRadius: 'var(--r-md)', color: '#fff', padding: '11px 13px', zIndex: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <BellIcon size={14} style={{ color: 'var(--color-accent-300)' }} />
-        <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--color-accent-300)', fontWeight: 700 }}>ANDAMAN WAVE FERRIES · NOW</div>
+        <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--color-accent-300)', fontWeight: 700 }}>{t('ANDAMAN WAVE FERRIES · NOW')}</div>
       </div>
-      <div style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.4 }}>Service alert: 09:00 Phuket → Phi Phi on 2 Aug is cancelled (weather).</div>
+      <div style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.4 }}>{t('Service alert: 09:00 Phuket → Phi Phi on 2 Aug is cancelled (weather).')}</div>
     </div>
   );
 }
@@ -29,18 +30,12 @@ export function PermissionDialog() {
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(24,20,18,.4)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 34px' }}>
       <div ref={ref} role="dialog" aria-modal="true" className="glass-strong" style={{ borderRadius: 'var(--r-lg)', overflow: 'hidden', width: '100%' }}>
         <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>“NUM” would like to access your photos</div>
-          <div style={{ fontSize: 11.5, color: 'var(--color-neutral-700)', marginTop: 6, lineHeight: 1.5 }}>
-            To pair photos with your reservations by time and place, and file them to your memories. Nothing is shared without your say-so.
-          </div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>{t('“NUM” would like to access your photos')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-neutral-700)', marginTop: 6, lineHeight: 1.5 }}>{t('To pair photos with your reservations by time and place, and file them to your memories. Nothing is shared without your say-so.')}</div>
         </div>
         <div style={{ display: 'flex', borderTop: '1px solid var(--ink-08)' }}>
-          <div {...pressable(permDeny)} style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', color: 'var(--ink-60)' }}>
-            DON’T ALLOW
-          </div>
-          <div {...pressable(permAllow)} className="press" style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', background: 'var(--grad-accent)', color: '#fff' }}>
-            ALLOW
-          </div>
+          <div {...pressable(permDeny)} style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', color: 'var(--ink-60)' }}>{t('DON’T ALLOW')}</div>
+          <div {...pressable(permAllow)} className="press" style={{ flex: 1, padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', cursor: 'pointer', background: 'var(--grad-accent)', color: '#fff' }}>{t('ALLOW')}</div>
         </div>
       </div>
     </div>
@@ -58,7 +53,7 @@ export function VoiceOverlay() {
     <div
       ref={ref}
       {...pressable(closeVoice)}
-      aria-label="Dismiss voice"
+      aria-label={t('Dismiss voice')}
       style={{ position: 'absolute', inset: 0, background: 'rgba(20,18,17,.72)', backdropFilter: 'blur(14px) saturate(1.4)', WebkitBackdropFilter: 'blur(14px) saturate(1.4)', zIndex: 80, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 22px 70px', color: '#fff', cursor: 'pointer' }}
     >
       <div style={{ fontSize: 10, letterSpacing: '.18em', color: 'var(--color-accent-300)', fontWeight: 700 }}>{label}</div>
@@ -75,7 +70,7 @@ export function VoiceOverlay() {
           />
         ))}
       </div>
-      <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.45)', marginTop: 18, letterSpacing: '.08em' }}>TAP ANYWHERE TO DISMISS</div>
+      <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.45)', marginTop: 18, letterSpacing: '.08em' }}>{t('TAP ANYWHERE TO DISMISS')}</div>
     </div>
   );
 }

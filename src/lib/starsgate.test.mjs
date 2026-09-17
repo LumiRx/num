@@ -28,7 +28,7 @@ describe('the iOS gate', () => {
   test('the Stars button lives inside the same block as the card button', () => {
     const gate = code.indexOf('(open || current !== \'free\') && canOfferSubscription()');
     assert.ok(gate > 0, 'the pricing ladder gate is still there');
-    assert.ok(code.indexOf('payWithStars(t.id)') > gate, 'the Stars button is inside it');
+    assert.ok(code.search(/payWithStars\((?:t|tr)\.id\)/) > gate, 'the Stars button is inside it');
   });
 
   test('every purchase path in this file is gated — no unguarded sale exists', () => {

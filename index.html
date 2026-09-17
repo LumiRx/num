@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="verified">
   <head>
     <meta charset="UTF-8" />
     <!-- interactive-widget: on browsers that support it the keyboard resizes the
@@ -9,6 +9,7 @@
     <meta name="description" content="Num — your concierge. One thread, one calendar, zero forms." />
     <!-- Matches the aurora's top colour so the status bar blends into the app -->
     <meta name="theme-color" content="#f6faf9" />
+    <script>try{if(matchMedia("(prefers-color-scheme: dark)").matches){var s=localStorage.getItem("num-trip-v1");var th=s&&JSON.parse(s).theme;if(!th||th==="auto"||th==="verified-dark"){document.documentElement.setAttribute("data-theme","verified-dark")}}}catch(e){}</script>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

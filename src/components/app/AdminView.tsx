@@ -10,6 +10,7 @@ import { pressable } from '../../lib/a11y';
 import { ChevronRightIcon, XIcon } from '../../lib/icons';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
+import { t } from '../../lib/i18n';
 
 const TOKEN_KEY = 'num-admin-session';
 const PAYOUT_TOKEN_KEY = 'num-payout-session';
@@ -64,7 +65,7 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center',
-  boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 
 const fmt = (n: number | null | undefined) => (n ?? 0).toLocaleString();
@@ -126,7 +127,7 @@ function Pulse({ d }: { d: Overview }) {
   return (
     <>
       <div className="glass" style={card}>
-        <div style={kicker}>RIGHT NOW</div>
+        <div style={kicker}>{t('RIGHT NOW')}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
           <Stat n={fmt(d.engagement.active_1d)} label="ACTIVE TODAY" accent />
           <Stat n={fmt(d.engagement.active_7d)} label="ACTIVE · 7D" />
@@ -143,9 +144,7 @@ function Pulse({ d }: { d: Overview }) {
       <div className="glass" style={card}>
         <div style={kicker}>{alarms.length ? 'NEEDS YOU' : 'NOTHING NEEDS YOU'}</div>
         {alarms.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>
-            Escrow balances, no disputes, notifications landing, partners answering. Quiet is the correct state.
-          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>{t('Escrow balances, no disputes, notifications landing, partners answering. Quiet is the correct state.')}</div>
         ) : (
           <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
             {alarms.map((a, i) => (
@@ -166,7 +165,7 @@ function Pulse({ d }: { d: Overview }) {
       </div>
 
       <div className="glass" style={card}>
-        <div style={kicker}>TODAY’S MOVEMENT</div>
+        <div style={kicker}>{t('TODAY’S MOVEMENT')}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
           <Stat n={fmt(d.ai.turns)} label={`TURNS · ${d.ai.window_days}D`} />
           <Stat n={'$' + d.ai.spend_usd.toFixed(2)} label="AI SPEND" />
@@ -177,7 +176,7 @@ function Pulse({ d }: { d: Overview }) {
 
       {d.engagement.top_users.length > 0 && (
         <div className="glass" style={card}>
-          <div style={kicker}>WHO IS ACTUALLY USING IT</div>
+          <div style={kicker}>{t('WHO IS ACTUALLY USING IT')}</div>
           <div style={{ marginTop: 8 }}>
             {d.engagement.top_users.slice(0, 8).map((u) => (
               <Row
@@ -277,7 +276,7 @@ function PayoutPanel() {
 
   return (
     <Panel
-      title="PAYOUT DESK"
+      title={t('PAYOUT DESK')}
       summary={data ? `${money(data.totals.payable_cents)} clear · ${data.totals.block ?? 0} blocked · ${data.totals.hold ?? 0} need a human` : (err ?? 'loading…')}
       defaultOpen
     >
@@ -298,16 +297,16 @@ function PayoutPanel() {
             <Stat n={data.rails.ready.length} label="RAILS LIVE" />
           </div>
 
-          <div style={kicker}>RAILS</div>
+          <div style={kicker}>{t('RAILS')}</div>
           {data.rails.all.map((r) => (
             <Row
               key={r.id}
-              left={<>{r.label} {r.ready ? <span style={{ color: '#0e6b45' }}>✓</span> : <span style={{ color: 'var(--ink-40)' }}>not connected</span>}</>}
+              left={<>{r.label} {r.ready ? <span style={{ color: '#0e6b45' }}>✓</span> : <span style={{ color: 'var(--ink-40)' }}>{t('not connected')}</span>}</>}
               right={r.ready ? 'live' : r.needs}
             />
           ))}
 
-          <div style={{ ...kicker, marginTop: 14 }}>EVERYONE WITH A BALANCE</div>
+          <div style={{ ...kicker, marginTop: 14 }}>{t('EVERYONE WITH A BALANCE')}</div>
           {data.rows.map((r) => (
             <div key={r.member_id} style={{ borderBottom: '1px solid var(--ink-08)' }}>
               <div
@@ -330,7 +329,7 @@ function PayoutPanel() {
                       {f.severity === 'block' ? '✕' : f.severity === 'hold' ? '!' : '·'} {f.message}
                     </div>
                   ))}
-                  {!r.findings.length && <div style={{ fontSize: 11.5, marginTop: 5, color: '#0e6b45' }}>Nothing wrong — clear to pay.</div>}
+                  {!r.findings.length && <div style={{ fontSize: 11.5, marginTop: 5, color: '#0e6b45' }}>{t('Nothing wrong — clear to pay.')}</div>}
                 </div>
               )}
             </div>
@@ -424,16 +423,14 @@ export default function AdminView() {
             <div className="aurora-layer" aria-hidden="true" />
             <div style={{ position: 'relative', zIndex: 1, margin: 'auto', padding: 22, width: '100%', maxWidth: 380 }}>
               <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: 20 }}>
-                <div style={{ fontSize: 11, letterSpacing: '.2em', fontWeight: 800, color: 'var(--color-accent)' }}>NUM · OPERATOR</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 21, marginTop: 8 }}>Sign in</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
-                  Your admin key, once. It is exchanged for a 12-hour session on this device and never goes in the address bar.
-                </div>
+                <div style={{ fontSize: 11, letterSpacing: '.2em', fontWeight: 800, color: 'var(--color-accent)' }}>{t('NUM · OPERATOR')}</div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 21, marginTop: 8 }}>{t('Sign in')}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>{t('Your admin key, once. It is exchanged for a 12-hour session on this device and never goes in the address bar.')}</div>
                 <input
                   style={{ ...field, marginTop: 14 }}
                   type="password"
                   autoComplete="current-password"
-                  placeholder="Admin key"
+                  placeholder={t('Admin key')}
                   value={key}
                   onChange={(e) => setKey(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void signIn(); }}
@@ -460,8 +457,7 @@ export default function AdminView() {
           <div className="glass" style={{ position: 'relative', zIndex: 2, margin: '0 8px', borderRadius: '0 0 var(--r-lg) var(--r-lg)', borderTop: 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 14px) 16px 12px' }}>
               <div>
-                <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
-                  NUM <span style={{ fontWeight: 400, opacity: 0.55 }}>· OPERATOR</span>
+                <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>{t('NUM')}{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· OPERATOR</span>
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 3 }}>
                   {data?.operator?.signed_in_as ?? 'live'} · refreshes every 30s
@@ -482,7 +478,7 @@ export default function AdminView() {
                     {d}d
                   </span>
                 ))}
-                <span {...pressable(signOut)} aria-label="Sign out" className="glass press" style={{ cursor: 'pointer', width: 28, height: 28, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span {...pressable(signOut)} aria-label={t('Sign out')} className="glass press" style={{ cursor: 'pointer', width: 28, height: 28, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <XIcon size={13} />
                 </span>
               </div>
@@ -514,7 +510,7 @@ export default function AdminView() {
           </div>
 
           <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', position: 'relative', zIndex: 1, paddingBottom: 40 }}>
-            {!data && <div style={{ ...card, fontSize: 12, color: 'var(--ink-60)' }}>Loading…</div>}
+            {!data && <div style={{ ...card, fontSize: 12, color: 'var(--ink-60)' }}>{t('Loading…')}</div>}
             {err && <div style={{ ...card, fontSize: 12, color: 'var(--color-accent-700)' }}>{err}</div>}
             {data && (
               <TabCtx.Provider value={tab}>
@@ -539,7 +535,7 @@ export default function AdminView() {
                 </div>
                 )}
 
-                <Panel in="people" title="THE APP" summary={`${fmt(data.app.members)} signed up · ${fmt(data.app.active24)} active today`} defaultOpen>
+                <Panel in="people" title={t('THE APP')} summary={`${fmt(data.app.members)} signed up · ${fmt(data.app.active24)} active today`} defaultOpen>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                     <Stat n={fmt(data.app.members)} label="SIGNED UP" accent />
                     <Stat n={fmt(data.app.verified)} label="VERIFIED" />
@@ -552,7 +548,7 @@ export default function AdminView() {
                   </div>
                   {!!data.app.recent.length && (
                     <div style={{ marginTop: 14 }}>
-                      <div style={kicker}>NEWEST</div>
+                      <div style={kicker}>{t('NEWEST')}</div>
                       {data.app.recent.map((r) => (
                         <Row
                           key={r.id}
@@ -564,21 +560,21 @@ export default function AdminView() {
                   )}
                 </Panel>
 
-                <Panel in="people" title="ITSNUM.COM" summary={`${fmt(data.site.leads)} leads · ${fmt(data.site.accounts)} accounts`}>
+                <Panel in="people" title={t('ITSNUM.COM')} summary={`${fmt(data.site.leads)} leads · ${fmt(data.site.accounts)} accounts`}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                     <Stat n={fmt(data.site.leads)} label="LEADS" accent />
                     <Stat n={fmt(data.site.leadsNew)} label="UNWORKED" />
                     <Stat n={fmt(data.site.accounts)} label="ACCOUNTS" />
                   </div>
                   <div style={{ marginTop: 12 }}>
-                    <div style={kicker}>LEADS BY DESTINATION</div>
+                    <div style={kicker}>{t('LEADS BY DESTINATION')}</div>
                     {data.site.byDest.map((d) => (
                       <Row key={d.dest ?? 'none'} left={d.dest ?? '—'} right={fmt(d.n)} />
                     ))}
                   </div>
                 </Panel>
 
-                <Panel in="activity" title="LINE & WHATSAPP BRAIN" summary={`${fmt(data.brain.messages)} messages · ${fmt(data.brain.requests)} requests`}>
+                <Panel in="activity" title={t('LINE & WHATSAPP BRAIN')} summary={`${fmt(data.brain.messages)} messages · ${fmt(data.brain.requests)} requests`}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                     <Stat n={fmt(data.brain.messages)} label="MESSAGES" />
                     <Stat n={fmt(data.brain.requests)} label="REQUESTS" accent />
@@ -587,7 +583,7 @@ export default function AdminView() {
                   </div>
                   {!!data.brain.byTier.length && (
                     <div style={{ marginTop: 12 }}>
-                      <div style={kicker}>MODEL TIERS</div>
+                      <div style={kicker}>{t('MODEL TIERS')}</div>
                       {data.brain.byTier.map((t) => (
                         <Row key={t.tier} left={t.tier ?? '—'} right={`${t.calls} calls · ${fmt((t.in_tokens ?? 0) + (t.out_tokens ?? 0))} tok · ${Math.round(t.avg_ms ?? 0)}ms`} />
                       ))}
@@ -595,7 +591,7 @@ export default function AdminView() {
                   )}
                   {!!data.brain.recentRequests.length && (
                     <div style={{ marginTop: 12 }}>
-                      <div style={kicker}>RECENT REQUESTS</div>
+                      <div style={kicker}>{t('RECENT REQUESTS')}</div>
                       {data.brain.recentRequests.map((r) => (
                         <Row key={r.id} left={`${r.vertical ?? r.intent ?? '—'}${r.area ? ' · ' + r.area : ''}`} right={r.status ?? '—'} />
                       ))}
@@ -603,7 +599,7 @@ export default function AdminView() {
                   )}
                 </Panel>
 
-                <Panel in="activity" title="DIRECTORY" summary={`${fmt(data.directory.places)} places · ${fmt(data.directory.destinations)} destinations`}>
+                <Panel in="activity" title={t('DIRECTORY')} summary={`${fmt(data.directory.places)} places · ${fmt(data.directory.destinations)} destinations`}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                     <Stat n={fmt(data.directory.places)} label="PLACES" accent />
                     <Stat n={fmt(data.directory.withPhoto)} label="WITH PHOTO" />
@@ -612,7 +608,7 @@ export default function AdminView() {
                   </div>
                   {!!data.directory.latestBuzz.length && (
                     <div style={{ marginTop: 12 }}>
-                      <div style={kicker}>SCOUT — LATEST</div>
+                      <div style={kicker}>{t('SCOUT — LATEST')}</div>
                       {data.directory.latestBuzz.map((b, i) => (
                         <Row key={i} left={b.title} right={`${b.dest} · ${b.publisher ?? ''}`} />
                       ))}
@@ -620,7 +616,7 @@ export default function AdminView() {
                   )}
                 </Panel>
 
-                <Panel in="activity" title="BUSINESSES" summary={`${fmt(data.business.businesses)} claimed · ${fmt(data.business.claims)} claims`}>
+                <Panel in="activity" title={t('BUSINESSES')} summary={`${fmt(data.business.businesses)} claimed · ${fmt(data.business.claims)} claims`}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                     <Stat n={fmt(data.business.businesses)} label="BUSINESSES" accent />
                     <Stat n={fmt(data.business.claims)} label="CLAIMS" />
@@ -638,7 +634,7 @@ export default function AdminView() {
                     moved without an errand moving. Shown first, and loudly
                     when it is wrong. */}
                 <Panel in="money"
-                  title="STARS & ESCROW"
+                  title={t('STARS & ESCROW')}
                   summary={`★${fmt(data.money.circulating)} circulating · ★${fmt(data.money.escrow_held)} held${data.money.escrow_balanced ? '' : ' · LEDGER DRIFT'}`}
                   defaultOpen
                 >
@@ -673,7 +669,7 @@ export default function AdminView() {
                 </Panel>
 
                 <Panel in="activity"
-                  title="ERRANDS"
+                  title={t('ERRANDS')}
                   summary={`${fmt(data.errands.live)} live · ★${fmt(data.errands.bounties_paid)} paid out${data.errands.disputed ? ` · ${data.errands.disputed} disputed` : ''}`}
                   defaultOpen={data.errands.disputed > 0}
                 >
@@ -700,7 +696,7 @@ export default function AdminView() {
                   )}
                 </Panel>
 
-                <Panel in="money" title="LIVE TABS" summary={`${fmt(data.tabs.open)} open · ★${fmt(data.tabs.settled_value)} settled`}>
+                <Panel in="money" title={t('LIVE TABS')} summary={`${fmt(data.tabs.open)} open · ★${fmt(data.tabs.settled_value)} settled`}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
                     <Stat n={fmt(data.tabs.open)} label="OPEN NOW" />
                     <Stat n={fmt(data.tabs.all_time)} label="ALL TIME" />
@@ -710,7 +706,7 @@ export default function AdminView() {
                 </Panel>
 
                 <Panel in="system"
-                  title="REACH"
+                  title={t('REACH')}
                   summary={`${fmt(data.reach.push_subscriptions)} devices · ${data.reach.delivery_rate == null ? 'nothing sent yet' : `${Math.round(data.reach.delivery_rate * 100)}% delivered`}`}
                 >
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
@@ -719,14 +715,12 @@ export default function AdminView() {
                     <Stat n={fmt(data.reach.notifications_queued)} label="QUEUED" />
                     <Stat n={fmt(data.reach.notifications_delivered)} label="DELIVERED" />
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
-                    Queued but undelivered means the wake-ups aren’t landing — everything else can look healthy while nobody hears from NUM.
-                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>{t('Queued but undelivered means the wake-ups aren’t landing — everything else can look healthy while nobody hears from NUM.')}</div>
                 </Panel>
 
                 {/* Read from the same predicates the code paths use, so this
                     cannot drift from what is really switched on. */}
-                <Panel in="system" title="RAILS" summary={`${Object.values(data.rails).filter((v) => v === true).length} connected`} defaultOpen>
+                <Panel in="system" title={t('RAILS')} summary={`${Object.values(data.rails).filter((v) => v === true).length} connected`} defaultOpen>
                   <div style={{ display: 'grid', gap: 5, marginTop: 10 }}>
                     {Object.entries(data.rails).map(([k, v]) => (
                       <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '4px 0' }}>
@@ -742,8 +736,8 @@ export default function AdminView() {
                   </div>
                 </Panel>
 
-                <Panel in="activity" title="ASKED FOR, COULDN'T DO" summary={`${data.product.open_feature_requests} open`} defaultOpen>
-                  {data.product.asks.length === 0 && <div style={{ fontSize: 12, color: 'var(--ink-60)' }}>Nothing flagged.</div>}
+                <Panel in="activity" title={t('ASKED FOR, COULDN\'T DO')} summary={`${data.product.open_feature_requests} open`} defaultOpen>
+                  {data.product.asks.length === 0 && <div style={{ fontSize: 12, color: 'var(--ink-60)' }}>{t('Nothing flagged.')}</div>}
                   {data.product.asks.map((a) => (
                     <div key={a.id} style={{ padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.45 }}>{a.summary}</div>
@@ -754,7 +748,7 @@ export default function AdminView() {
                 </Panel>
 
                 {!!data.app.referrals.length && (
-                  <Panel in="people" title="REFERRALS" summary={`${data.app.referrals.length} codes`}>
+                  <Panel in="people" title={t('REFERRALS')} summary={`${data.app.referrals.length} codes`}>
                     {data.app.referrals.map((r) => (
                       <Row key={r.code} left={<>{r.code} <span style={{ color: 'var(--ink-40)' }}>{r.owner_type}</span></>} right={`${r.joined} joined`} />
                     ))}

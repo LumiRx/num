@@ -17,6 +17,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { askNum } from '../../lib/concierge';
 import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 import {
   MOODS, addToPlan, closeDiscover, discover, dislike, priceLine, sendItem,
   type DiscoverItem, type DiscoverResult, type Mood,
@@ -52,7 +53,7 @@ export default function DiscoverSheet() {
   return (
     <div ref={ref} role="dialog" aria-modal="true" className="glass-strong sheet-in" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--safe-top, 0px)))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
-      <div {...pressable(closeDiscover)} aria-label="Close" className="glass press tap" style={{ position: 'absolute', top: 4, right: 4, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', zIndex: 2 }}>
+      <div {...pressable(closeDiscover)} aria-label={t('Close')} className="glass press tap" style={{ position: 'absolute', top: 4, right: 4, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />
       </div>
 
@@ -116,11 +117,11 @@ function Search({ onMsg }: { onMsg: (m: string | null) => void }) {
         </div>
       )}
       <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-        {busy && !res && <div style={{ fontSize: 12, color: 'var(--ink-40)' }}>Looking…</div>}
+        {busy && !res && <div style={{ fontSize: 12, color: 'var(--ink-40)' }}>{t('Looking…')}</div>}
         {res && res.items.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--ink-40)', lineHeight: 1.6, padding: '6px 2px' }}>
             {res.error === 'no_place'
-              ? <span>Tell NUM where you are first. <span {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer' }}>Where am I?</span></span>
+              ? <span>{t('Tell NUM where you are first.')}{' '}<span {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer' }}>{t('Where am I?')}</span></span>
               : res.error ? 'Couldn’t search just now.' : (res.note ?? 'Nothing for that here. Ask NUM in the thread and it will look wider.')}
           </div>
         )}
@@ -145,7 +146,7 @@ function Row({ i, onMsg }: { i: DiscoverItem; onMsg: (m: string | null) => void 
         {!i.novelty.never_tried && <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 2 }}>{i.reason}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 8 }}>
           <Primary i={i} />
-          <div {...pressable(() => sendItem(i))} style={small}>Send</div>
+          <div {...pressable(() => sendItem(i))} style={small}>{t('Send')}</div>
           <div
             {...pressable(async () => {
               if (!planId) { sendItem(i); return; }
@@ -164,12 +165,10 @@ function Row({ i, onMsg }: { i: DiscoverItem; onMsg: (m: string | null) => void 
 /** The one button that moves towards a booking, honestly labelled. */
 function Primary({ i }: { i: DiscoverItem }) {
   const style: React.CSSProperties = { ...small, background: 'var(--grad-accent)', color: '#fff', border: 0 };
-  if (i.source === 'ticketmaster' && i.url) return <a href={i.url} target="_blank" rel="noopener noreferrer" style={{ ...style, textDecoration: 'none', display: 'block' }}>Tickets</a>;
-  if (i.source === 'viator' && i.url) return <a href={i.url} target="_blank" rel="noopener noreferrer" style={{ ...style, textDecoration: 'none', display: 'block' }}>See tour</a>;
+  if (i.source === 'ticketmaster' && i.url) return <a href={i.url} target="_blank" rel="noopener noreferrer" style={{ ...style, textDecoration: 'none', display: 'block' }}>{t('Tickets')}</a>;
+  if (i.source === 'viator' && i.url) return <a href={i.url} target="_blank" rel="noopener noreferrer" style={{ ...style, textDecoration: 'none', display: 'block' }}>{t('See tour')}</a>;
   return (
-    <div {...pressable(() => { closeDiscover(); void askNum(`Tell me about ${i.title} and book it if you can.`); })} style={style}>
-      Ask NUM
-    </div>
+    <div {...pressable(() => { closeDiscover(); void askNum(`Tell me about ${i.title} and book it if you can.`); })} style={style}>{t('Ask NUM')}</div>
   );
 }
 
@@ -220,8 +219,8 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
       <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
         {!busy && deck.length === 0 && note === 'no_place' && (
           <div className="glass" style={{ borderRadius: 14, padding: 12, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>Tell NUM where you are first. One tap, and it deals from there.</div>
-            <div {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ ...small, background: 'var(--grad-accent)', color: '#fff', border: 0 }}>Where am I?</div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{t('Tell NUM where you are first. One tap, and it deals from there.')}</div>
+            <div {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ ...small, background: 'var(--grad-accent)', color: '#fff', border: 0 }}>{t('Where am I?')}</div>
           </div>
         )}
         {!busy && deck.length === 0 && note !== 'no_place' && (
@@ -241,7 +240,7 @@ function SuggestCard({ i, planId, onDone }: { i: DiscoverItem; planId: string | 
           the source label have somewhere to sit instead of the title. */}
       <div style={{ height: i.image ? 130 : 44, background: i.image ? `url(${i.image}) center/cover` : 'linear-gradient(135deg, var(--color-accent-300, #9fe3cf), var(--field-bg))', position: 'relative' }}>
         {i.novelty.never_tried && (
-          <div style={{ position: 'absolute', top: 8, left: 8, background: 'var(--color-accent)', color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '3px 8px', borderRadius: 8 }}>NEVER TRIED</div>
+          <div style={{ position: 'absolute', top: 8, left: 8, background: 'var(--color-accent)', color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '3px 8px', borderRadius: 8 }}>{t('NEVER TRIED')}</div>
         )}
         <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 9.5, fontWeight: 700, background: 'rgba(0,0,0,.45)', color: '#fff', padding: '2px 6px', borderRadius: 6 }}>{i.label}</div>
       </div>
@@ -272,8 +271,7 @@ function SuggestCard({ i, planId, onDone }: { i: DiscoverItem; planId: string | 
           })}
           style={{ ...small, background: 'var(--grad-accent)', color: '#fff', border: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
         >
-          <CheckIcon size={12} /> Send to crew
-        </div>
+          <CheckIcon size={12} />{' '}{t('Send to crew')}</div>
       </div>
     </div>
   );

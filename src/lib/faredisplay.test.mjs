@@ -116,8 +116,9 @@ describe('the price is the money colour, everywhere it can be', () => {
   });
 
   test('every theme defines it — a green that only exists on one is a bug', () => {
-    const themes = [...CSS.matchAll(/\[data-theme='([a-z]+)'\]/g)].map((m) => m[1]);
-    assert.ok(themes.length >= 6, `only found ${themes.length} themes`);
+    // One brand in two lights since 17 Sep 2026 (the nine colour themes are retired).
+    const themes = [...CSS.matchAll(/\[data-theme='([a-z-]+)'\]/g)].map((m) => m[1]);
+    assert.ok(themes.length >= 2, `only found ${themes.length} themes`);
     for (const t of themes) {
       const block = CSS.slice(CSS.indexOf(`[data-theme='${t}']`));
       const body = block.slice(0, block.indexOf('}'));
@@ -128,7 +129,7 @@ describe('the price is the money colour, everywhere it can be', () => {
   test('the dark themes get a light green, not the paper one', () => {
     // #0b6b45 on #14161c is unreadable. This is the check that a copy-paste
     // of the :root block into a dark theme does not sail through review.
-    for (const t of ['midnight', 'neon']) {
+    for (const t of ['verified-dark']) {
       const block = CSS.slice(CSS.indexOf(`[data-theme='${t}']`));
       const money = /--money:\s*#([0-9a-f]{6})/i.exec(block.slice(0, block.indexOf('}')));
       assert.ok(money, `${t} has no hex --money`);

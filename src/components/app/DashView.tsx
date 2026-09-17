@@ -21,6 +21,7 @@ import {
 } from '../../lib/icons';
 import type { Booking, Connections, WidgetId } from '../../lib/types';
 import { guestMessage } from '../../lib/saferr';
+import { T, t } from '../../lib/i18n';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 13 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -94,7 +95,7 @@ function RequestsWidget() {
   return (
     <div className="glass" style={{ ...card, borderLeft: pending ? '3px solid var(--color-accent)' : undefined }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={kicker}>WAITING ON YOU</div>
+        <div style={kicker}>{t('WAITING ON YOU')}</div>
         {pending > 0 && (
           <span style={{ background: 'var(--grad-accent)', color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: 999, padding: '2px 7px' }}>{pending}</span>
         )}
@@ -123,9 +124,7 @@ function RequestsWidget() {
               texting you is a surprising thing, and saying so once is cheaper
               than leaving people to wonder how it got here. */}
           {e.via === 'agent' && (
-            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 3 }}>
-              Their NUM asked yours — answer here or in your messages.
-            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 3 }}>{t('Their NUM asked yours — answer here or in your messages.')}</div>
           )}
           <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
             <Btn label="GOING" primary onClick={() => void act('event', e.token, 'accept')} />
@@ -135,7 +134,7 @@ function RequestsWidget() {
           </div>
           {replyTo === e.token && (
             <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
-              <input style={inputStyle} placeholder="A note back to the host…" value={draft} onChange={(ev) => setDraft(ev.target.value)} />
+              <input style={inputStyle} placeholder={t('A note back to the host…')} value={draft} onChange={(ev) => setDraft(ev.target.value)} />
               <Btn label="SEND" primary onClick={() => void act('event', e.token, 'accept', { message: draft })} />
             </div>
           )}
@@ -154,8 +153,8 @@ function RequestsWidget() {
           </div>
           {replyTo === p.id && (
             <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
-              <input style={inputStyle} placeholder="When suits you? e.g. Friday 8pm" value={when} onChange={(ev) => setWhen(ev.target.value)} />
-              <input style={inputStyle} placeholder="Add a note (optional)" value={draft} onChange={(ev) => setDraft(ev.target.value)} />
+              <input style={inputStyle} placeholder={t('When suits you? e.g. Friday 8pm')} value={when} onChange={(ev) => setWhen(ev.target.value)} />
+              <input style={inputStyle} placeholder={t('Add a note (optional)')} value={draft} onChange={(ev) => setDraft(ev.target.value)} />
               <Btn label="SUGGEST IT" primary onClick={() => void act('plan', p.id, 'propose', { time: when, message: draft })} />
             </div>
           )}
@@ -185,7 +184,7 @@ function DirectionsWidget() {
 
   return (
     <div className="glass" style={card}>
-      <div style={kicker}>GETTING THERE</div>
+      <div style={kicker}>{t('GETTING THERE')}</div>
       <div style={{ ...h, marginTop: 4 }}>{next.title}</div>
       <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3, lineHeight: 1.45 }}>
         {next.place}
@@ -201,9 +200,7 @@ function DirectionsWidget() {
         >
           {app === 'apple' ? 'APPLE MAPS' : 'GOOGLE MAPS'}
         </a>
-        <a href={trafficUrl(next.place)} target="_blank" rel="noreferrer" className="glass press tap" style={{ textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}>
-          TRAFFIC NOW
-        </a>
+        <a href={trafficUrl(next.place)} target="_blank" rel="noreferrer" className="glass press tap" style={{ textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}>{t('TRAFFIC NOW')}</a>
         <span
           {...pressable(() => { store.set({ threadOpen: true }); void askNum(`What time should I leave for ${next.title} at ${next.place}? Account for traffic at that hour.`); })}
           className="glass press tap"
@@ -232,7 +229,7 @@ function NextUp() {
   if (flights.length) {
     return (
       <div style={{ ...card, padding: 0, background: 'none', border: 0, boxShadow: 'none', display: 'grid', gap: 8 }}>
-        <div style={{ ...kicker, padding: '0 2px' }}>NEXT UP · NUM IS WATCHING</div>
+        <div style={{ ...kicker, padding: '0 2px' }}>{t('NEXT UP · NUM IS WATCHING')}</div>
         {flights.map((w) => <FlightCard key={w.id} w={w} compact />)}
         {next && <NextBooking next={next} />}
       </div>
@@ -241,11 +238,9 @@ function NextUp() {
   if (!next) {
     return (
       <div className="glass" style={card}>
-        <div style={kicker}>NEXT UP</div>
-        <div style={{ ...h, marginTop: 6 }}>Nothing booked yet</div>
-        <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
-          Tell NUM where you are and what you feel like — it lands here.
-        </div>
+        <div style={kicker}>{t('NEXT UP')}</div>
+        <div style={{ ...h, marginTop: 6 }}>{t('Nothing booked yet')}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>{t('Tell NUM where you are and what you feel like — it lands here.')}</div>
       </div>
     );
   }
@@ -265,7 +260,7 @@ function NextBooking({ next }: { next: Booking }) {
           model-written and can run long ("BY tap Grab by 03:20"), which
           squeezed the title into three lines when they shared a row. */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={kicker}>NEXT UP</div>
+        <div style={kicker}>{t('NEXT UP')}</div>
         <div style={{ ...h, marginTop: 3 }}>{next.title}</div>
         <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
           {monthName(next.mo)} {next.day} · {next.time}
@@ -294,13 +289,12 @@ function CalendarStrip() {
   return (
     <div className="glass" style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={kicker}>NEXT TWO WEEKS</div>
+        <div style={kicker}>{t('NEXT TWO WEEKS')}</div>
         <span
           {...pressable(() => store.set((s) => ({ calOpen: true, selDay: s.selDay ?? `${today.getMonth() + 1}-${today.getDate()}` })))}
           style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent)', display: 'flex', gap: 4, alignItems: 'center' }}
         >
-          <CalendarIcon size={12} /> FULL CALENDAR
-        </span>
+          <CalendarIcon size={12} />{' '}{t('FULL CALENDAR')}</span>
       </div>
       <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 10, paddingBottom: 2 }}>
         {days.map((d, i) => {
@@ -341,11 +335,11 @@ function TripCheck() {
   return (
     <div className="glass" style={card}>
       <div {...pressable(() => setOpen((v) => !v))} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: clean ? 'rgba(22,140,90,.14)' : 'rgba(236,48,19,.12)', color: clean ? '#0e6b45' : 'var(--color-accent-700)' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: clean ? 'rgba(22,140,90,.14)' : 'rgba(14,164,131,.12)', color: clean ? '#0e6b45' : 'var(--color-accent-700)' }}>
           {clean ? <CheckIcon size={15} /> : <BellIcon size={15} />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>TRIP CHECK</div>
+          <div style={kicker}>{t('TRIP CHECK')}</div>
           <div style={{ ...h, marginTop: 3 }}>
             {clean ? 'Nothing needs you' : `${findings.length} thing${findings.length === 1 ? '' : 's'} to look at`}
           </div>
@@ -373,12 +367,12 @@ function TripCheck() {
 }
 
 const CONNECTIONS: Array<{ key: keyof Connections; label: string; why: string; icon: JSX.Element }> = [
-  { key: 'contacts', label: 'Contacts', why: 'so “invite Sam” finds the right Sam', icon: <UsersIcon size={14} /> },
-  { key: 'photos', label: 'Photos', why: 'files your trip shots to the right night', icon: <CameraIcon size={14} /> },
-  { key: 'calendar', label: 'Calendar', why: 'NUM books around what’s already there', icon: <CalendarIcon size={14} /> },
-  { key: 'crypto', label: 'Crypto wallet', why: 'balances on this screen, settle bills in USDC', icon: <WalletIcon size={14} /> },
-  { key: 'email', label: 'Email', why: 'pulls confirmations in so you never forward one', icon: <MessageIcon size={14} /> },
-  { key: 'texts', label: 'Texts', why: 'the venue’s “running late?” reaches NUM too', icon: <BellIcon size={14} /> },
+  { key: 'contacts', label: T('Contacts'), why: T('so “invite Sam” finds the right Sam'), icon: <UsersIcon size={14} /> },
+  { key: 'photos', label: T('Photos'), why: T('files your trip shots to the right night'), icon: <CameraIcon size={14} /> },
+  { key: 'calendar', label: T('Calendar'), why: T('NUM books around what’s already there'), icon: <CalendarIcon size={14} /> },
+  { key: 'crypto', label: T('Crypto wallet'), why: T('balances on this screen, settle bills in USDC'), icon: <WalletIcon size={14} /> },
+  { key: 'email', label: T('Email'), why: T('pulls confirmations in so you never forward one'), icon: <MessageIcon size={14} /> },
+  { key: 'texts', label: T('Texts'), why: T('the venue’s “running late?” reaches NUM too'), icon: <BellIcon size={14} /> },
 ];
 
 /**
@@ -395,7 +389,7 @@ function ConnectionsCard() {
   const on = Object.values(conn).filter(Boolean).length;
   return (
     <Collapsible
-      title="CONNECT YOUR WORLD"
+      title={t('CONNECT YOUR WORLD')}
       summary={on ? `${on} of ${CONNECTIONS.length} connected` : 'All off — NUM asks only when it needs one'}
     >
       <div>
@@ -413,9 +407,9 @@ function ConnectionsCard() {
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600 }}>Send &amp; Share</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>invite anyone from the share sheet — you stay right here</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>{t('invite anyone from the share sheet — you stay right here')}</div>
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-60)' }}>OPEN</span>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-60)' }}>{t('OPEN')}</span>
               </div>
             );
           }
@@ -431,9 +425,9 @@ function ConnectionsCard() {
                 {c.icon}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t(c.label)}</div>
                 <div style={{ fontSize: 10.5, color: on && detail[c.key] ? 'var(--ink-80, var(--ink-60))' : 'var(--ink-60)', overflowWrap: 'anywhere' }}>
-                  {(on && detail[c.key]) || c.why}
+                  {(on && detail[c.key]) || t(c.why)}
                 </div>
               </div>
               <span
@@ -501,7 +495,7 @@ function GroupCard() {
         <UsersIcon size={15} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={kicker}>GROUP</div>
+        <div style={kicker}>{t('GROUP')}</div>
         <div style={{ ...h, marginTop: 3 }}>{plan ? plan.title : 'Plan it with friends'}</div>
         <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>
           {plan ? `${partySize || 1} in · everything syncs both ways` : 'Start one on the PLAN tab — no dates or bookings needed'}
@@ -524,7 +518,7 @@ function EventsCard() {
         <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={kicker}>EVENTS</div>
+        <div style={kicker}>{t('EVENTS')}</div>
         <div style={{ ...h, marginTop: 3 }}>{events.length ? events[0].title : 'Host something'}</div>
         <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>
           {events.length ? `${events[0].yes ?? 0} of ${events[0].invited ?? 0} coming · RSVP by text` : 'Guests RSVP from one text — no app on their side'}
@@ -547,9 +541,9 @@ function WalletCard() {
         <StarIcon size={15} style={{ color: 'var(--color-accent)' }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={kicker}>WALLET</div>
+        <div style={kicker}>{t('WALLET')}</div>
         <div style={{ ...h, marginTop: 3 }}>★{stars.toLocaleString()}</div>
-        <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>Settles bills at the table</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>{t('Settles bills at the table')}</div>
       </div>
       <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
     </div>

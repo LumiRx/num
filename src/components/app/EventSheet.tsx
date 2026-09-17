@@ -14,6 +14,7 @@ import type { EventDashboard, GuestInvite } from '../../lib/events';
 import { shareNative } from '../../lib/services';
 import { calendarUrl } from '../../lib/calendar';
 import { guestMessage } from '../../lib/saferr';
+import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -23,7 +24,7 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', display: 'flex', gap: 7, alignItems: 'center',
-  justifyContent: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 const ghost: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, padding: '11px 14px', fontSize: 11.5, fontWeight: 700,
@@ -33,7 +34,7 @@ const ghost: React.CSSProperties = {
 const RSVP_STYLE: Record<string, { bg: string; fg: string; text: string }> = {
   yes: { bg: 'rgba(22,140,90,.14)', fg: '#0e6b45', text: 'COMING' },
   no: { bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)', text: 'CAN’T' },
-  maybe: { bg: 'rgba(236,48,19,.12)', fg: 'var(--color-accent-700)', text: 'MAYBE' },
+  maybe: { bg: 'rgba(14,164,131,.12)', fg: 'var(--color-accent-700)', text: 'MAYBE' },
   pending: { bg: 'rgba(32,30,29,.05)', fg: 'var(--ink-40)', text: 'NO REPLY' },
 };
 
@@ -156,7 +157,7 @@ export default function EventSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -165,30 +166,24 @@ export default function EventSheet() {
 
       {!me ? (
         <div style={{ padding: 16 }}>
-          <div style={label}>EVENTS</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Host something</div>
-          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>
-            Your guests RSVP from one text — no app, no account on their side. You just need your own name and number first.
-          </div>
-          <div {...pressable(() => store.set({ eventOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>
-            INTRODUCE YOURSELF
-          </div>
+          <div style={label}>{t('EVENTS')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('Host something')}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('Your guests RSVP from one text — no app, no account on their side. You just need your own name and number first.')}</div>
+          <div {...pressable(() => store.set({ eventOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
         </div>
       ) : !eventId ? (
         <div style={{ padding: 16 }}>
-          <div style={label}>NEW EVENT</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>What are you hosting?</div>
-          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>
-            Only the name is required — you can fill the rest in once the venue is settled. Guests get one link that answers where, when and what to wear.
-          </div>
+          <div style={label}>{t('NEW EVENT')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('What are you hosting?')}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('Only the name is required — you can fill the rest in once the venue is settled. Guests get one link that answers where, when and what to wear.')}</div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder="e.g. Sam’s 30th" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input style={field} placeholder={t('e.g. Sam’s 30th')} value={title} onChange={(e) => setTitle(e.target.value)} />
             <div style={{ display: 'flex', gap: 8 }}>
               <input style={{ ...field, flex: 1 }} type="date" value={day} onChange={(e) => setDay(e.target.value)} />
               <input style={{ ...field, width: 120 }} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
             </div>
-            <input style={field} placeholder="Venue" value={place} onChange={(e) => setPlace(e.target.value)} />
-            <input style={field} placeholder="Dress code (optional)" value={dress} onChange={(e) => setDress(e.target.value)} />
+            <input style={field} placeholder={t('Venue')} value={place} onChange={(e) => setPlace(e.target.value)} />
+            <input style={field} placeholder={t('Dress code (optional)')} value={dress} onChange={(e) => setDress(e.target.value)} />
             <div {...pressable(doCreate)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
               {busy ? 'ONE SEC…' : 'CREATE THE EVENT'}
             </div>
@@ -196,7 +191,7 @@ export default function EventSheet() {
           {note && <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', marginTop: 10 }}>{note}</div>}
           {!!events.length && (
             <div style={{ marginTop: 18 }}>
-              <div style={{ ...label, color: 'var(--ink-60)' }}>YOUR EVENTS</div>
+              <div style={{ ...label, color: 'var(--ink-60)' }}>{t('YOUR EVENTS')}</div>
               {events.map((e) => (
                 <div
                   key={e.id}
@@ -216,7 +211,7 @@ export default function EventSheet() {
       ) : (
         <>
           <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)' }}>
-            <div style={label}>EVENT DASHBOARD</div>
+            <div style={label}>{t('EVENT DASHBOARD')}</div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{dash?.event.title ?? 'Loading…'}</div>
             {dash && (
               <>
@@ -245,8 +240,7 @@ export default function EventSheet() {
                     {...pressable(() => void shareNative({ title: dash.event.title, text: `${dash.event.title} — details and RSVP:`, url: dash.url }))}
                     style={{ ...primary, flex: 1 }}
                   >
-                    <ShareIcon size={14} /> SHARE THE PAGE
-                  </div>
+                    <ShareIcon size={14} />{' '}{t('SHARE THE PAGE')}</div>
                   <div
                     {...pressable(() => { store.set({ eventId: null }); void listEvents(); })}
                     className="glass press"
@@ -266,7 +260,7 @@ export default function EventSheet() {
 
           {/* invite one more */}
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
-            <div style={{ ...label, color: 'var(--ink-60)' }}>INVITE SOMEONE</div>
+            <div style={{ ...label, color: 'var(--ink-60)' }}>{t('INVITE SOMEONE')}</div>
 
             {/* Friends on NUM first. One tap and their agent has the question —
                 no name to type, no number to look up, nothing to send. The
@@ -274,9 +268,7 @@ export default function EventSheet() {
                 nag someone who has already said yes. */}
             {!!onNum.length && (
               <div style={{ marginTop: 9 }}>
-                <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginBottom: 7 }}>
-                  Already on NUM — one tap and their NUM asks them.
-                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginBottom: 7 }}>{t('Already on NUM — one tap and their NUM asks them.')}</div>
                 <div className="no-scrollbar" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 2 }}>
                   {onNum.map((f) => {
                     const already = invited.get(f.id!);
@@ -309,10 +301,10 @@ export default function EventSheet() {
             {!minted ? (
               <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
                 {!!onNum.length && (
-                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>Anyone else — they get a link, no app needed.</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>{t('Anyone else — they get a link, no app needed.')}</div>
                 )}
-                <input style={field} placeholder="Their name" value={guest} onChange={(e) => setGuest(e.target.value)} />
-                <input style={field} placeholder="Their mobile (optional)" inputMode="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} />
+                <input style={field} placeholder={t('Their name')} value={guest} onChange={(e) => setGuest(e.target.value)} />
+                <input style={field} placeholder={t('Their mobile (optional)')} inputMode="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} />
                 <div {...pressable(doInvite)} style={{ ...primary, opacity: busy ? 0.6 : 1 }}>
                   {busy ? 'ONE SEC…' : 'CREATE THEIR INVITE'}
                 </div>
@@ -325,15 +317,14 @@ export default function EventSheet() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <div {...pressable(() => void shareNative(minted.share))} style={{ ...primary, flex: 1 }}>
-                    <ShareIcon size={14} /> SEND IT
-                  </div>
-                  <a href={minted.sms_url} className="glass press" style={ghost}>TEXT</a>
-                  <a href={minted.whatsapp_url} target="_blank" rel="noreferrer" className="glass press" style={ghost}>WA</a>
+                    <ShareIcon size={14} />{' '}{t('SEND IT')}</div>
+                  <a href={minted.sms_url} className="glass press" style={ghost}>{t('TEXT')}</a>
+                  <a href={minted.whatsapp_url} target="_blank" rel="noreferrer" className="glass press" style={ghost}>{t('WA')}</a>
                   <div
                     {...pressable(() => void navigator.clipboard?.writeText(minted.url))}
                     className="glass press"
                     style={{ ...ghost, padding: '11px 13px', display: 'flex', alignItems: 'center' }}
-                    aria-label="Copy link"
+                    aria-label={t('Copy link')}
                   >
                     <CopyIcon size={14} />
                   </div>
@@ -351,9 +342,7 @@ export default function EventSheet() {
           {/* the list */}
           <div style={{ padding: '12px 16px' }}>
             {dash?.guests.length === 0 && (
-              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', lineHeight: 1.55 }}>
-                Nobody invited yet. Add the first name above — they’ll get a text with a link that answers everything and takes one tap to RSVP.
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', lineHeight: 1.55 }}>{t('Nobody invited yet. Add the first name above — they’ll get a text with a link that answers everything and takes one tap to RSVP.')}</div>
             )}
             {dash?.guests.map((g) => {
               const st = RSVP_STYLE[g.rsvp] ?? RSVP_STYLE.pending;

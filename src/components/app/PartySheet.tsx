@@ -9,6 +9,7 @@ import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan, removePlan, planFit, shareWithPlan } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
 import { calendarUrl } from '../../lib/calendar';
+import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -18,13 +19,13 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', display: 'flex', gap: 7, alignItems: 'center',
-  justifyContent: 'center', boxShadow: '0 4px 14px rgba(236,48,19,.3)',
+  justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)',
 };
 
 const STATUS: Record<string, { text: string; bg: string; fg: string }> = {
   idea: { text: 'IDEA', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
   proposed: { text: 'PROPOSED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
-  held: { text: 'HELD', bg: 'rgba(236,48,19,.12)', fg: 'var(--color-accent-700)' },
+  held: { text: 'HELD', bg: 'rgba(14,164,131,.12)', fg: 'var(--color-accent-700)' },
   confirmed: { text: 'BOOKED', bg: 'rgba(22,140,90,.14)', fg: '#0e6b45' },
   cancelled: { text: 'DROPPED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
 };
@@ -149,7 +150,7 @@ export default function PartySheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -158,31 +159,25 @@ export default function PartySheet() {
 
       {!me ? (
         <div style={{ padding: 16 }}>
-          <div style={label}>GROUP PLANS</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>Plan it with your friends</div>
-          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>
-            A plan doesn’t need a single reservation to start — drop in ideas, pull friends in, book it when you’ve agreed. You just need an account first so the group knows who’s who.
-          </div>
-          <div {...pressable(() => store.set({ partyOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>
-            SET UP MY ACCOUNT
-          </div>
+          <div style={label}>{t('GROUP PLANS')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('Plan it with your friends')}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('A plan doesn’t need a single reservation to start — drop in ideas, pull friends in, book it when you’ve agreed. You just need an account first so the group knows who’s who.')}</div>
+          <div {...pressable(() => store.set({ partyOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>{t('SET UP MY ACCOUNT')}</div>
         </div>
       ) : !plan ? (
         <div style={{ padding: 16 }}>
-          <div style={label}>NEW PLAN</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>What are we planning?</div>
-          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>
-            No dates or bookings needed. Name it, add whoever’s coming, and we’ll firm it up together.
-          </div>
+          <div style={label}>{t('NEW PLAN')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('What are we planning?')}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('No dates or bookings needed. Name it, add whoever’s coming, and we’ll firm it up together.')}</div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder="e.g. Sam’s birthday weekend" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input style={field} placeholder={t('e.g. Sam’s birthday weekend')} value={title} onChange={(e) => setTitle(e.target.value)} />
             <div {...pressable(newPlan)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
               {busy ? 'ONE SEC…' : 'START THE PLAN'}
             </div>
           </div>
           {!!plans.length && (
             <div style={{ marginTop: 18 }}>
-              <div style={{ ...label, color: 'var(--ink-60)' }}>YOUR PLANS</div>
+              <div style={{ ...label, color: 'var(--ink-60)' }}>{t('YOUR PLANS')}</div>
               {plans.map((p) => (
                 <div
                   key={p.id}
@@ -205,7 +200,7 @@ export default function PartySheet() {
       ) : (
         <>
           <div style={{ padding: 16, borderBottom: '1px solid var(--ink-08)' }}>
-            <div style={label}>GROUP PLAN</div>
+            <div style={label}>{t('GROUP PLAN')}</div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{plan.title}</div>
             <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 3 }}>
               {/* Pluralise off the number actually shown: before the first sync
@@ -302,9 +297,7 @@ export default function PartySheet() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <div {...pressable(() => { close(); startInvite({ planId: plan.id }); })} style={{ ...primary, flex: 1 }}>
-                INVITE FRIENDS
-              </div>
+              <div {...pressable(() => { close(); startInvite({ planId: plan.id }); })} style={{ ...primary, flex: 1 }}>{t('INVITE FRIENDS')}</div>
               <div
                 {...pressable(() => { store.set({ planId: null }); void syncPlan(); })}
                 className="glass press"
@@ -327,7 +320,7 @@ export default function PartySheet() {
                   style={{ marginTop: 2, accentColor: 'var(--color-accent)' }}
                 />
                 <span>
-                  <b style={{ color: 'var(--ink)' }}>Let this plan use my preferences.</b>{' '}
+                  <b style={{ color: 'var(--ink)' }}>{t('Let this plan use my preferences.')}</b>{' '}
                   Diet, budget, arrival — so suggestions fit everyone, not just whoever asked.
                   Only this group{fit.members ? ` (${fit.sharing ?? 0} of ${fit.members} sharing)` : ''}, never your whole profile.
                 </span>
@@ -379,9 +372,7 @@ export default function PartySheet() {
 
           <div style={{ padding: '12px 16px' }}>
             {items.length === 0 && (
-              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', lineHeight: 1.55, padding: '8px 0 14px' }}>
-                Nothing in here yet. Drop an idea below — a restaurant, a neighbourhood, “somewhere with a view”. Booking comes later.
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', lineHeight: 1.55, padding: '8px 0 14px' }}>{t('Nothing in here yet. Drop an idea below — a restaurant, a neighbourhood, “somewhere with a view”. Booking comes later.')}</div>
             )}
             {items.map((i) => {
               const st = STATUS[i.status] ?? STATUS.idea;
@@ -416,15 +407,13 @@ export default function PartySheet() {
                         {...pressable(() => bookWithNum(i.title, i.day, i.address || i.place))}
                         style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center' }}
                       >
-                        <SparklesIcon size={12} /> ASK NUM TO BOOK
-                      </div>
+                        <SparklesIcon size={12} />{' '}{t('ASK NUM TO BOOK')}</div>
                       <div
                         {...pressable(() => void confirmPlanItem(i.id))}
-                        title="Already reserved it yourself? Mark it booked."
+                        title={t('Already reserved it yourself? Mark it booked.')}
                         style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--ink-60)', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center' }}
                       >
-                        <CheckIcon size={12} /> IT’S BOOKED
-                      </div>
+                        <CheckIcon size={12} />{' '}{t('IT’S BOOKED')}</div>
                     </div>
                   )}
                 </div>
@@ -434,27 +423,23 @@ export default function PartySheet() {
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <input
                 style={{ ...field, flex: 1 }}
-                placeholder="Add an idea…"
+                placeholder={t('Add an idea…')}
                 value={idea}
                 onChange={(e) => setIdea(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void addIdea(); }}
               />
-              <div {...pressable(addIdea)} style={{ ...primary, padding: '12px 18px', opacity: busy || !idea.trim() ? 0.6 : 1 }}>ADD</div>
+              <div {...pressable(addIdea)} style={{ ...primary, padding: '12px 18px', opacity: busy || !idea.trim() ? 0.6 : 1 }}>{t('ADD')}</div>
             </div>
-            <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 }}>
-              Everyone in the plan sees this within the minute — their NUM tells them what changed, and anything booked lands on all your calendars.
-            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 }}>{t('Everyone in the plan sees this within the minute — their NUM tells them what changed, and anything booked lands on all your calendars.')}</div>
 
             {/* The group's own thread: comments from people, one-liners from
                 their Nums, in the order they happened. Same feed the server
                 pushes on — nothing here is a second timeline. */}
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--ink-08)' }}>
-              <div style={{ ...label, color: 'var(--ink-60)' }}>GROUP CHAT</div>
+              <div style={{ ...label, color: 'var(--ink-60)' }}>{t('GROUP CHAT')}</div>
               <div style={{ marginTop: 8, display: 'grid', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
                 {feed.length === 0 && (
-                  <div style={{ fontSize: 11.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>
-                    Nothing said yet. Anything you type here reaches everyone on the plan.
-                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>{t('Nothing said yet. Anything you type here reaches everyone on the plan.')}</div>
                 )}
                 {feed.map((e) =>
                   e.kind === 'comment' ? (
@@ -482,14 +467,12 @@ export default function PartySheet() {
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <input
                   style={{ ...field, flex: 1 }}
-                  placeholder="Say it to the group…"
+                  placeholder={t('Say it to the group…')}
                   value={say}
                   onChange={(e) => setSay(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void sendComment(); }}
                 />
-                <div {...pressable(sendComment)} style={{ ...primary, padding: '12px 18px', opacity: busy || !say.trim() ? 0.6 : 1 }}>
-                  SEND
-                </div>
+                <div {...pressable(sendComment)} style={{ ...primary, padding: '12px 18px', opacity: busy || !say.trim() ? 0.6 : 1 }}>{t('SEND')}</div>
               </div>
             </div>
           </div>

@@ -846,7 +846,10 @@ export async function handleNum(request, env, ctx) {
     // actually TYPED wins every time — somebody with an English phone asking
     // in Thai wants Thai back — but on a first message of two words there is
     // nothing else to go on.
-    const acceptLang = String(request.headers.get('Accept-Language') ?? '').split(',')[0].trim().slice(0, 12) || null;
+    // The app's own language setting, when it sends one, beats the header:
+    // a person who switched NUM to Thai in Profile has said so explicitly.
+    const chosenLang = typeof body?.lang === 'string' && /^[a-z]{2}(-[A-Za-z]{2,5})?$/.test(body.lang) ? body.lang : null;
+    const acceptLang = chosenLang ?? (String(request.headers.get('Accept-Language') ?? '').split(',')[0].trim().slice(0, 12) || null);
 
     // Profile + trip state carry long-term context now, so the model only
     // needs the recent turns.
@@ -2244,6 +2247,12 @@ export default {
     if (url.pathname === '/api/flightwatch' || url.pathname === '/api/flightwatch/stop') {
       const { handleFlightWatch } = await import('./flightwatch.mjs');
       return await handleFlightWatch(request, env, url.pathname);
+    }
+
+    // The app in the reader's language: machine once, stored, human-editable. See i18n.mjs.
+    if (url.pathname === '/api/i18n') {
+      const { handleI18n } = await import('./i18n.mjs');
+      return await handleI18n(request, env);
     }
 
     if (url.pathname === '/api/discover' || url.pathname === '/api/discover/dislike') {

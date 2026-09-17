@@ -16,6 +16,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { StarIcon, XIcon } from '../../lib/icons';
 import { addItem, closeTab, joinTab, openTab, settleTab, startTabSync } from '../../lib/tabs';
 import { guestMessage } from '../../lib/saferr';
+import { t } from '../../lib/i18n';
 
 const field: React.CSSProperties = {
   width: '100%', height: 46, borderRadius: 14, border: '1px solid var(--ink-12)', padding: '0 14px',
@@ -76,7 +77,7 @@ export default function TabSheet() {
   return (
     <div ref={ref} role="dialog" aria-modal="true" className="glass-strong" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(90%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
-      <div {...pressable(close)} aria-label="Close" className="glass press" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+      <div {...pressable(close)} aria-label={t('Close')} className="glass press" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />
       </div>
 
@@ -93,12 +94,10 @@ export default function TabSheet() {
         {live && (
           <div className="glass" style={{ borderRadius: 14, padding: '11px 14px', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>ANYONE CAN JOIN WITH</div>
+              <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('ANYONE CAN JOIN WITH')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22, letterSpacing: '.18em', marginTop: 2 }}>{tab.tab.code}</div>
             </div>
-            <div {...pressable(() => void navigator.clipboard?.writeText(tab.tab.code).then(() => setMsg('Code copied.')))} style={{ ...ghost, padding: '9px 14px', fontSize: 10.5 }}>
-              COPY
-            </div>
+            <div {...pressable(() => void navigator.clipboard?.writeText(tab.tab.code).then(() => setMsg('Code copied.')))} style={{ ...ghost, padding: '9px 14px', fontSize: 10.5 }}>{t('COPY')}</div>
           </div>
         )}
 
@@ -139,7 +138,7 @@ export default function TabSheet() {
         {live && (
           <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input style={{ ...field, flex: 1 }} placeholder="What was it?" value={label} onChange={(e) => setLabel(e.target.value)} />
+              <input style={{ ...field, flex: 1 }} placeholder={t('What was it?')} value={label} onChange={(e) => setLabel(e.target.value)} />
               <input style={{ ...field, width: 96 }} inputMode="numeric" placeholder="★" value={stars} onChange={(e) => setStars(e.target.value.replace(/[^\d]/g, ''))} />
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -170,7 +169,7 @@ export default function TabSheet() {
 
         {/* Where everyone stands. Quiet, but checkable. */}
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>WHERE EVERYONE STANDS</div>
+          <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('WHERE EVERYONE STANDS')}</div>
           <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
             {tab.split.map((s) => (
               <div key={s.member_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, padding: '5px 2px' }}>
@@ -197,13 +196,11 @@ export default function TabSheet() {
             </div>
           )}
           {live && tab.tab.owner_id === me?.id && (
-            <div {...pressable(() => void closeTab())} style={ghost}>CLOSE THE TAB</div>
+            <div {...pressable(() => void closeTab())} style={ghost}>{t('CLOSE THE TAB')}</div>
           )}
         </div>
 
-        <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 12, lineHeight: 1.5 }}>
-          Stars are in-app credit, not money. Settling moves them between NUM accounts straight away — check the split above first, because it can’t be undone from here.
-        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 12, lineHeight: 1.5 }}>{t('Stars are in-app credit, not money. Settling moves them between NUM accounts straight away — check the split above first, because it can’t be undone from here.')}</div>
       </div>
     </div>
   );
@@ -235,17 +232,14 @@ export function TabStarter() {
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
-        <StarIcon size={11} style={{ color: 'var(--color-accent)' }} /> SPLIT A NIGHT OUT
-      </div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-        Open a tab and everyone puts their rounds on it. NUM keeps the split honest — you only pay for what you were in on.
-      </div>
+        <StarIcon size={11} style={{ color: 'var(--color-accent)' }} />{' '}{t('SPLIT A NIGHT OUT')}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('Open a tab and everyone puts their rounds on it. NUM keeps the split honest — you only pay for what you were in on.')}</div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <input
           // Uppercase the value, not the placeholder — "JOIN CODE" shouted at
           // someone who has not typed anything reads as an instruction.
           style={{ ...field, flex: 1, ...(code ? { letterSpacing: '.14em', textTransform: 'uppercase' as const } : {}) }}
-          placeholder="Join code"
+          placeholder={t('Join code')}
           maxLength={6}
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}

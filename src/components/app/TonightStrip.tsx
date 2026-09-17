@@ -13,6 +13,7 @@ import { pressable } from '../../lib/a11y';
 import { apiUrl } from '../../lib/apibase';
 import { askNum } from '../../lib/concierge';
 import { openShareCard } from '../../lib/sharecard';
+import { t } from '../../lib/i18n';
 
 interface TonightItem {
   source: 'num' | 'ticketmaster'; id: string; title: string; sub: string; image: string | null;
@@ -56,17 +57,13 @@ function SourceMark({ source }: { source: TonightItem['source'] }) {
   const base: React.CSSProperties = { flex: 'none', borderRadius: 999, padding: '2px 6px', fontSize: 8, fontWeight: 800, letterSpacing: '.02em', display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--ink-60)', background: 'var(--field-bg)', border: '1px solid var(--ink-12)' };
   if (source === 'ticketmaster') {
     return (
-      <span style={base} aria-label="Listed on Ticketmaster">
-        <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8 5v10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" /></svg>
-        ticketmaster
-      </span>
+      <span style={base} aria-label={t('Listed on Ticketmaster')}>
+        <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8 5v10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" /></svg>{t('ticketmaster')}</span>
     );
   }
   return (
-    <span style={{ ...base, color: 'var(--color-accent)' }} aria-label="Checked by NUM">
-      <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5 8.2 14.5 16 6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      NUM
-    </span>
+    <span style={{ ...base, color: 'var(--color-accent)' }} aria-label={t('Checked by NUM')}>
+      <svg width="9" height="9" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5 8.2 14.5 16 6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>{t('NUM')}</span>
   );
 }
 
@@ -116,11 +113,11 @@ export default function TonightStrip() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 4 }}>
                   {i.url ? (
-                    <a href={i.url} target="_blank" rel="noopener noreferrer" className="tap press" style={{ textDecoration: 'none', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>Tickets</a>
+                    <a href={i.url} target="_blank" rel="noopener noreferrer" className="tap press" style={{ textDecoration: 'none', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>{t('Tickets')}</a>
                   ) : (
-                    <div {...pressable(() => { store.set({ threadOpen: true }); void askNum(`Tell me about ${i.title}${i.venue ? ` at ${i.venue}` : ''} tonight and plan the evening around it.`); })} className="tap press" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>Ask NUM</div>
+                    <div {...pressable(() => { store.set({ threadOpen: true }); void askNum(`Tell me about ${i.title}${i.venue ? ` at ${i.venue}` : ''} tonight and plan the evening around it.`); })} className="tap press" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10.5 }}>{t('Ask NUM')}</div>
                   )}
-                  <div {...pressable(() => openShareCard({ kind: 'idea', title: i.title, summary: [i.title, i.venue, cd, price, i.label].filter(Boolean).join(' · '), place: i.venue, day: i.starts_on ?? null, cost: price, link: i.url }))} className="tap glass press" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, fontWeight: 700, fontSize: 10.5 }}>Send</div>
+                  <div {...pressable(() => openShareCard({ kind: 'idea', title: i.title, summary: [i.title, i.venue, cd, price, i.label].filter(Boolean).join(' · '), place: i.venue, day: i.starts_on ?? null, cost: price, link: i.url }))} className="tap glass press" style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, fontWeight: 700, fontSize: 10.5 }}>{t('Send')}</div>
                 </div>
               </div>
             </div>

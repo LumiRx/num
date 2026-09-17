@@ -16,6 +16,7 @@ import { normalisePhone, describePhone } from '../../lib/phone';
 import { normaliseEmail } from '../../lib/contact';
 import { addContact, verifyCode, resendCode } from '../../lib/social';
 import { guestMessage } from '../../lib/saferr';
+import { t } from '../../lib/i18n';
 
 const kicker: React.CSSProperties = {
   fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)',
@@ -137,7 +138,7 @@ export default function ContactCard() {
         <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
           {!emailMode ? (
             <>
-              <input style={field} placeholder="Mobile number" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <input style={field} placeholder={t('Mobile number')} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
               <div
                 {...pressable(() => { setEmailMode(true); setPhone(''); })}
                 style={{ fontSize: 11, color: 'var(--ink-40)', cursor: 'pointer', textDecoration: 'underline', minHeight: 44, display: 'flex', alignItems: 'center' }}
@@ -148,7 +149,7 @@ export default function ContactCard() {
           ) : (
             <>
               <input
-                style={field} placeholder="Email address" inputMode="email"
+                style={field} placeholder={t('Email address')} inputMode="email"
                 autoCapitalize="none" autoCorrect="off" spellCheck={false}
                 value={email} onChange={(e) => setEmail(e.target.value)}
               />
@@ -173,7 +174,7 @@ export default function ContactCard() {
       {proving && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <input
-            style={{ ...field, flex: 1 }} placeholder="6-digit code" inputMode="numeric"
+            style={{ ...field, flex: 1 }} placeholder={t('6-digit code')} inputMode="numeric"
             value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
           />
           <div

@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { pressable } from '../../lib/a11y';
 import { askNum } from '../../lib/concierge';
 import { headline, hhmm, progress, sky, stopWatching, type FlightWatch } from '../../lib/flightwatch';
+import { t } from '../../lib/i18n';
 
 const SKY: Record<ReturnType<typeof sky>, [string, string]> = {
   dawn: ['#F2A07B', '#F6D5B8'], day: ['#2F78C4', '#91CBEB'], dusk: ['#4B3B8F', '#C77C9B'], night: ['#06131C', '#173447'],
@@ -27,8 +28,8 @@ export default function FlightCard({ w, compact = false }: { w: FlightWatch; com
   const landed = h.pill === 'Landed';
   const [c1, c2] = SKY[s];
   // Arc geometry (viewBox 300×110): a quadratic from (24,96) to (276,96).
-  const t = p, x = 24 + 252 * t, y = (1 - t) * (1 - t) * 96 + 2 * (1 - t) * t * -18 + t * t * 96;
-  const dx = 252, dy = 2 * (1 - t) * (-18 - 96) + 2 * t * (96 + 18);
+  const q = p, x = 24 + 252 * q, y = (1 - q) * (1 - q) * 96 + 2 * (1 - q) * q * -18 + q * q * 96;
+  const dx = 252, dy = 2 * (1 - q) * (-18 - 96) + 2 * q * (96 + 18);
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
   const pillBg = h.tone === 'late' ? '#E9A23B' : h.tone === 'bad' ? '#D9534F' : 'rgba(255,255,255,.22)';
 
@@ -61,15 +62,15 @@ export default function FlightCard({ w, compact = false }: { w: FlightWatch; com
       <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', padding: '10px 14px 12px', borderTop: '1px dashed rgba(255,255,255,.45)', fontSize: 11 }}>
         {landed ? (
           <>
-            <div>Belt<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.arr.belt ?? '—'}</b></div>
-            <div>Terminal<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.arr.terminal ?? '—'}</b></div>
-            <div {...pressable(() => void askNum(`I've just landed at ${f.arr.name ?? f.arr.iata}. Get me a car.`))} className="tap" style={{ cursor: 'pointer', alignSelf: 'center', textAlign: 'center', background: 'var(--color-accent)', borderRadius: 10, padding: '0 6px', fontWeight: 700, fontSize: 11.5 }}>Car from the airport</div>
+            <div>{t('Belt')}<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.arr.belt ?? '—'}</b></div>
+            <div>{t('Terminal')}<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.arr.terminal ?? '—'}</b></div>
+            <div {...pressable(() => void askNum(`I've just landed at ${f.arr.name ?? f.arr.iata}. Get me a car.`))} className="tap" style={{ cursor: 'pointer', alignSelf: 'center', textAlign: 'center', background: 'var(--color-accent)', borderRadius: 10, padding: '0 6px', fontWeight: 700, fontSize: 11.5 }}>{t('Car from the airport')}</div>
           </>
         ) : (
           <>
-            <div>Gate<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.dep.gate ?? '—'}</b></div>
-            <div>Terminal<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.dep.terminal ?? '—'}</b></div>
-            <div>Lands<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{hhmm(f.arr.est_local ?? f.arr.sched_local)}</b></div>
+            <div>{t('Gate')}<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.dep.gate ?? '—'}</b></div>
+            <div>{t('Terminal')}<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{f.dep.terminal ?? '—'}</b></div>
+            <div>{t('Lands')}<b style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 16 }}>{hhmm(f.arr.est_local ?? f.arr.sched_local)}</b></div>
           </>
         )}
       </div>

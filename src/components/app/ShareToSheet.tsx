@@ -14,6 +14,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { closeShareCard, shareToFriend, shareToPlan } from '../../lib/sharecard';
 import { CheckIcon, UsersIcon, XIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = {
   fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700,
@@ -77,7 +78,7 @@ export default function ShareToSheet() {
       {done === id
         ? <span style={{ color: 'var(--money)' }}><CheckIcon size={17} /></span>
         : busy === id
-          ? <span style={{ fontSize: 10.5, color: 'var(--ink-40)', letterSpacing: '.08em' }}>SENDING</span>
+          ? <span style={{ fontSize: 10.5, color: 'var(--ink-40)', letterSpacing: '.08em' }}>{t('SENDING')}</span>
           : null}
     </div>
   );
@@ -86,14 +87,14 @@ export default function ShareToSheet() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Send this to"
+      aria-label={t('Send this to')}
       ref={ref}
       style={{ ...sheetBase, maxHeight: 'min(78%, 620px)', display: 'flex', flexDirection: 'column' }}
     >
       <div style={grabberStyle} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 4px' }}>
-        <div style={label}>SEND THIS TO</div>
-        <span {...pressable(closeShareCard)} aria-label="Close" style={{ cursor: 'pointer', color: 'var(--ink-40)' }}>
+        <div style={label}>{t('SEND THIS TO')}</div>
+        <span {...pressable(closeShareCard)} aria-label={t('Close')} style={{ cursor: 'pointer', color: 'var(--ink-40)' }}>
           <XIcon size={16} />
         </span>
       </div>
@@ -116,7 +117,7 @@ export default function ShareToSheet() {
       >
         {plans.length > 0 && (
           <>
-            <div style={{ ...label, color: 'var(--ink-40)', marginTop: 2 }}>ADD TO A PLAN</div>
+            <div style={{ ...label, color: 'var(--ink-40)', marginTop: 2 }}>{t('ADD TO A PLAN')}</div>
             {plans.map((p) => (
               <Row
                 key={`plan:${p.id}`}
@@ -131,7 +132,7 @@ export default function ShareToSheet() {
 
         {people.length > 0 && (
           <>
-            <div style={{ ...label, color: 'var(--ink-40)', marginTop: plans.length ? 8 : 2 }}>SEND TO SOMEONE</div>
+            <div style={{ ...label, color: 'var(--ink-40)', marginTop: plans.length ? 8 : 2 }}>{t('SEND TO SOMEONE')}</div>
             {people.map((f) => (
               <Row
                 key={`dm:${f.id}`}
@@ -148,9 +149,7 @@ export default function ShareToSheet() {
           // The honest empty state names the two ways out, because "nowhere
           // to send this" with no next step is a dead end and this sheet is
           // most likely to be opened by someone who has neither yet.
-          <div style={{ padding: '26px 18px', textAlign: 'center', color: 'var(--ink-60)', fontSize: 12.5, lineHeight: 1.6 }}>
-            Nowhere to send this yet.
-            <div style={{ marginTop: 8 }}>
+          <div style={{ padding: '26px 18px', textAlign: 'center', color: 'var(--ink-60)', fontSize: 12.5, lineHeight: 1.6 }}>{t('Nowhere to send this yet.')}<div style={{ marginTop: 8 }}>
               <span
                 {...pressable(() => { closeShareCard(); store.set({ shareOpen: true }); })}
                 className="press tap"

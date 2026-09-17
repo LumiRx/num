@@ -16,6 +16,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { XIcon } from '../../lib/icons';
 import { scoutDashboard, money, pct } from '../../lib/scout';
 import type { ScoutDashboard, ScoutState } from '../../lib/scout';
+import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = {
   fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700,
@@ -62,7 +63,7 @@ export default function ScoutSheet() {
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="glass press"
         style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
@@ -70,19 +71,14 @@ export default function ScoutSheet() {
       </div>
 
       <div style={{ padding: 16 }}>
-        <div style={label}>NUM EXPERT</div>
+        <div style={label}>{t('NUM EXPERT')}</div>
 
-        {!loaded && <div style={{ ...muted, marginTop: 12 }}>Loading your round…</div>}
+        {!loaded && <div style={{ ...muted, marginTop: 12 }}>{t('Loading your round…')}</div>}
 
         {loaded && !data && (
           <>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-              Become a NUM Expert
-            </div>
-            <div style={{ ...muted, marginTop: 8 }}>
-              You are not a NUM Expert yet. Experts get a code and a card: tap it at the counter,
-              the business signs up against your name, and you earn once they start producing.
-            </div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('Become a NUM Expert')}</div>
+            <div style={{ ...muted, marginTop: 8 }}>{t('You are not a NUM Expert yet. Experts get a code and a card: tap it at the counter, the business signs up against your name, and you earn once they start producing.')}</div>
             <a
               href="/scout"
               className="glass lift"
@@ -98,9 +94,7 @@ export default function ScoutSheet() {
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
               {data.scout.name}
             </div>
-            <div style={{ ...muted, marginTop: 2 }}>
-              Your code is <b style={{ letterSpacing: '.12em', fontSize: 13 }}>{data.scout.code}</b> — it is on your card.
-            </div>
+            <div style={{ ...muted, marginTop: 2 }}>{t('Your code is')}{' '}<b style={{ letterSpacing: '.12em', fontSize: 13 }}>{data.scout.code}</b>{' '}{t('— it is on your card.')}</div>
 
             {/* Money first, because it is what they opened this for — and it is
                 the server's earned figure, never a sum of introductions. */}
@@ -109,7 +103,7 @@ export default function ScoutSheet() {
                 <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 26, color: 'var(--money, var(--color-accent))' }}>
                   {money(data.money.accrued_minor + data.money.payable_minor + data.money.paid_minor)}
                 </div>
-                <div style={{ ...muted, flex: 1 }}>earned so far</div>
+                <div style={{ ...muted, flex: 1 }}>{t('earned so far')}</div>
               </div>
               <div style={{ ...muted, marginTop: 8 }}>{data.money.note}</div>
               {data.money.paid_minor > 0 && (
@@ -118,7 +112,7 @@ export default function ScoutSheet() {
             </div>
 
             <div className="glass" style={card}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Your businesses</div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{t('Your businesses')}</div>
               {ORDER.map((st) => {
                 const n = data.businesses.byState?.[st] ?? 0;
                 if (!n) return null;
@@ -133,23 +127,21 @@ export default function ScoutSheet() {
                 );
               })}
               {!data.businesses.total && (
-                <div style={{ ...muted, marginTop: 8 }}>
-                  Nothing yet. Tap your card at a counter, or add one from the web dashboard.
-                </div>
+                <div style={{ ...muted, marginTop: 8 }}>{t('Nothing yet. Tap your card at a counter, or add one from the web dashboard.')}</div>
               )}
             </div>
 
             <div className="glass" style={card}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Friends you brought</div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{t('Friends you brought')}</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginTop: 6 }}>
                 <b style={{ fontSize: 15 }}>{data.friends.count}</b>
-                <span style={{ fontSize: 12.5 }}>joined NUM through you</span>
+                <span style={{ fontSize: 12.5 }}>{t('joined NUM through you')}</span>
               </div>
               {data.friends.note && <div style={{ ...muted, marginTop: 4 }}>{data.friends.note}</div>}
             </div>
 
             <div className="glass" style={card}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Your terms</div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{t('Your terms')}</div>
               <div style={{ ...muted, marginTop: 6 }}>
                 {money(data.terms.finder_cents)} per business, released once they have produced{' '}
                 {money(data.terms.finder_gate_minor)} to NUM. Then {pct(data.terms.share_bps)} of what NUM

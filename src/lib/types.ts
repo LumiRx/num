@@ -127,7 +127,7 @@ export type VoicePhase = 0 | 1 | 2 | 3;
 
 export type Reaction = 'love' | 'like' | 'meh' | 'no' | 'long';
 
-export type ThemeId = 'verified' | 'ember' | 'bloom' | 'midnight' | 'neon' | 'mono' | 'heritage' | 'forest' | 'plain';
+export type ThemeId = 'auto' | 'verified' | 'verified-dark';
 
 export interface StyleProfile {
   length?: 'short' | 'long';
@@ -375,6 +375,10 @@ export interface AppState {
 
   /** Chosen colour layout — just a data-theme attribute on <html>. */
   theme: ThemeId;
+  /** Language chosen in Profile; null means the phone's. */
+  lang: string | null;
+  /** Bumps when the translation map changes; the root remounts on it. Not saved. */
+  i18nTick: number;
   /** The owner console, open only for a claimed business. */
   businessOpen: boolean;
   scoutOpen: boolean;

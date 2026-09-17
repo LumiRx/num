@@ -77,7 +77,7 @@ describe('5.1.1(v) — deletion has to be findable, not merely present', () => {
     // should be quiet, not hidden.
     // The label is the action itself, not a direction to it: one tap now
     // opens the confirmation rather than scrolling to a shut control.
-    assert.match(PROFILE, /aria-label="Delete my account"/);
+    assert.match(PROFILE, /aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/);
     assert.match(PROFILE, /store\.set\(\{ deleteOpen: true \}\)/, 'the row must open the flow');
     assert.match(PROFILE, /getElementById\('delete-account'\)/);
     assert.match(DANGER, /id="delete-account"/, 'the signpost needs something to point at');
@@ -111,12 +111,12 @@ describe('the profile reads as a page, not a stack of squares', () => {
     // Eleven identical glass cards in one column, nothing more important than
     // anything else. The cards are fine; the rhythm was missing.
     for (const g of ['TRAVEL', 'TASTE', 'ACCOUNT']) {
-      assert.ok(PROFILE.includes(`<Group>${g}</Group>`), `${g} group heading is missing`);
+      assert.ok(PROFILE.includes(`<Group>${g}</Group>`) || PROFILE.includes(`<Group>{t('${g}')}</Group>`), `${g} group heading is missing`);
     }
   });
 
   test('the delete row is a line, not another big card', () => {
-    const i = PROFILE.indexOf('aria-label="Delete my account"');
+    const i = PROFILE.search(/aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/);
     const el = PROFILE.slice(i, i + 900);
     assert.ok(!/\.\.\.card,/.test(el), 'it should not reuse the full card style');
     assert.match(el, /minHeight: 44/, 'still a full-size tap target');
