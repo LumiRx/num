@@ -50,6 +50,11 @@ const BY_COUNTRY = {
   MY: { ride: ['grab', 'indrive'], food: ['grabfood', 'foodpanda'], table: ['chope', 'thefork'], wellness: ['fresha'] },
   ID: { ride: ['gojek', 'grab'], food: ['gofood', 'grabfood'], table: ['chope'], wellness: ['fresha'] },
   VN: { ride: ['grab', 'be', 'xanhsm'], food: ['grabfood', 'shopeefood'], table: ['chope'], wellness: ['fresha'] },
+  // Mongolia, Sept 2026. Handoff only, and short on purpose: nothing here is
+  // connected, no table platform operates in UB (venues take phone bookings,
+  // which is what NUM does anyway), and naming a wellness app that isn't there
+  // would be the fake-coverage this file exists to avoid.
+  MN: { ride: ['ubcab', 'toki'], food: ['ubcabeats', 'tokifood'], table: [], wellness: [] },
   PH: { ride: ['grab', 'joyride'], food: ['grabfood', 'foodpanda'], table: ['chope'], wellness: ['fresha'] },
   HK: { ride: ['uber', 'hkTaxi'], food: ['foodpanda', 'deliveroo', 'keeta'], table: ['opentable', 'chope', 'sevenrooms'], wellness: ['fresha'] },
   JP: { ride: ['go', 'uber', 'didi'], food: ['ubereats', 'demaecan', 'wolt'], table: ['tabelog', 'opentable'], wellness: ['fresha'] },
@@ -157,11 +162,18 @@ const PROVIDERS = {
   bitaksi: { name: 'BiTaksi', kind: 'ride', link: () => 'https://bitaksi.com/' },
   hkTaxi: { name: 'HKTaxi', kind: 'ride', link: () => 'https://hktaxiapp.com/' },
   littlecab: { name: 'Little', kind: 'ride', link: () => 'https://little.bz/' },
+  // Mongolia. Neither app publishes a stable web booking page, so these are
+  // store links — the tray's job here is "install the one locals use", not a
+  // deep link into a checkout that doesn't exist. No Uber, Grab or Bolt in UB.
+  ubcab: { name: 'UBCab', kind: 'ride', link: () => 'https://play.google.com/store/apps/details?id=com.mezorn.ubcab.ubcab_passanger_v2', note: 'the metered city taxi app' },
+  toki: { name: 'Toki', kind: 'ride', link: () => 'https://play.google.com/store/apps/details?id=com.toki.mn', note: 'super-app: taxi, food, top-ups' },
 
   // ── food ────────────────────────────────────────────────────────────────
   ubereats: { name: 'Uber Eats', kind: 'food', link: (c) => `https://www.ubereats.com/${c.q ? `search?q=${enc(c.q)}` : ''}` },
   doordash: { name: 'DoorDash', kind: 'food', link: (c) => `https://www.doordash.com/${c.q ? `search/store/${enc(c.q)}` : ''}` },
   grubhub: { name: 'Grubhub', kind: 'food', link: () => 'https://www.grubhub.com/' },
+  ubcabeats: { name: 'UBCab Eats', kind: 'food', link: () => 'https://play.google.com/store/apps/details?id=com.mezorn.ubcab.ubcab_passanger_v2' },
+  tokifood: { name: 'Toki', kind: 'food', link: () => 'https://play.google.com/store/apps/details?id=com.toki.mn' },
   deliveroo: { name: 'Deliveroo', kind: 'food', link: () => 'https://deliveroo.com/' },
   justeat: { name: 'Just Eat', kind: 'food', link: () => 'https://www.just-eat.co.uk/' },
   glovo: { name: 'Glovo', kind: 'food', link: () => 'https://glovoapp.com/' },

@@ -49,6 +49,12 @@ export const DESTINATIONS = [
   { slug:'kyoto',       name:'Kyoto',         country:'JP', region:'Asia',   tz:'Asia/Tokyo',       lat:35.011, lng:135.768,bbox:[34.96,135.70,35.06,135.83] },
   { slug:'osaka',       name:'Osaka',         country:'JP', region:'Asia',   tz:'Asia/Tokyo',       lat:34.694, lng:135.502,bbox:[34.64,135.44,34.73,135.56] },
   { slug:'seoul',       name:'Seoul',         country:'KR', region:'Asia',   tz:'Asia/Seoul',       lat:37.566, lng:126.978,bbox:[37.49,126.90,37.60,127.08] },
+  // ─── Mongolia (soft launch, Sept 2026) ──────────────────────────
+  // Ulaanbaatar holds about half the country's population, so the city box
+  // is the launch. Gorkhi-Terelj is the day trip everyone takes out of it,
+  // and its ger camps are lodging OSM actually knows about.
+  { slug:'ulaanbaatar', name:'Ulaanbaatar',   country:'MN', region:'Asia',   tz:'Asia/Ulaanbaatar', lat:47.918, lng:106.917,bbox:[47.86,106.78,47.97,107.02] },
+  { slug:'terelj',      name:'Gorkhi-Terelj', country:'MN', region:'Asia',   tz:'Asia/Ulaanbaatar', lat:47.983, lng:107.467,bbox:[47.85,107.28,48.16,107.72] },
   { slug:'singapore',   name:'Singapore',     country:'SG', region:'Asia',   tz:'Asia/Singapore',   lat:1.290,  lng:103.852,bbox:[1.23,103.76,1.38,103.93] },
   { slug:'hong-kong',   name:'Hong Kong',     country:'HK', region:'Asia',   tz:'Asia/Hong_Kong',   lat:22.302, lng:114.170,bbox:[22.24,114.11,22.35,114.25] },
   { slug:'taipei',      name:'Taipei',        country:'TW', region:'Asia',   tz:'Asia/Taipei',      lat:25.038, lng:121.565,bbox:[24.99,121.49,25.10,121.62] },

@@ -66,7 +66,7 @@ const pct = (bp) => `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%`;
  * this file keeps being rewritten to stop.
  */
 export const CURRENCY_BY_COUNTRY = Object.freeze({
-  TH: 'THB', US: 'USD', GB: 'GBP',
+  TH: 'THB', US: 'USD', GB: 'GBP', MN: 'MNT',
   IE: 'EUR', FR: 'EUR', DE: 'EUR', ES: 'EUR', IT: 'EUR', NL: 'EUR', PT: 'EUR',
 });
 export const DEFAULT_CURRENCY = 'USD';
@@ -106,13 +106,14 @@ export const FLOOR_BY_CURRENCY = Object.freeze({
   GBP: 150,    // £1.50  ≈ $2
   EUR: 200,    // €2.00
   THB: 7000,   // ฿70.00 ≈ $2.14
+  MNT: 700000, // ₮7,000.00 ≈ $2 at ~₮3,500/$ — a number a UB venue recognises
 });
 
 /** The floor in one currency. An unknown currency falls to USD, never to 200. */
 export const floorFor = (currency) =>
   FLOOR_BY_CURRENCY[String(currency ?? '').toUpperCase()] ?? FLOOR_BY_CURRENCY[DEFAULT_CURRENCY];
 
-const SYMBOL = Object.freeze({ USD: '$', GBP: '£', EUR: '€', THB: '฿' });
+const SYMBOL = Object.freeze({ USD: '$', GBP: '£', EUR: '€', THB: '฿', MNT: '₮' });
 
 /**
  * A flat fee, written the way the venue will see it.

@@ -61,21 +61,21 @@ import { currencyForCountry, DEFAULT_CURRENCY } from './commission.mjs';
  */
 export const PLAN_PRICES = Object.freeze({
   biz: Object.freeze({
-    small: Object.freeze({ USD: 999, GBP: 999, EUR: 999, THB: 34900 }),
-    pro: Object.freeze({ USD: 1999, GBP: 1999, EUR: 1999, THB: 69900 }),
-    full: Object.freeze({ USD: 5000, GBP: 5000, EUR: 5000, THB: 175000 }),
+    small: Object.freeze({ USD: 999, GBP: 999, EUR: 999, THB: 34900, MNT: 3500000 }),
+    pro: Object.freeze({ USD: 1999, GBP: 1999, EUR: 1999, THB: 69900, MNT: 7000000 }),
+    full: Object.freeze({ USD: 5000, GBP: 5000, EUR: 5000, THB: 175000, MNT: 17500000 }),
   }),
   host: Object.freeze({
-    small: Object.freeze({ USD: 999, GBP: 999, EUR: 999, THB: 34900 }),
-    pro: Object.freeze({ USD: 1999, GBP: 1999, EUR: 1999, THB: 69900 }),
-    full: Object.freeze({ USD: 5000, GBP: 5000, EUR: 5000, THB: 175000 }),
+    small: Object.freeze({ USD: 999, GBP: 999, EUR: 999, THB: 34900, MNT: 3500000 }),
+    pro: Object.freeze({ USD: 1999, GBP: 1999, EUR: 1999, THB: 69900, MNT: 7000000 }),
+    full: Object.freeze({ USD: 5000, GBP: 5000, EUR: 5000, THB: 175000, MNT: 17500000 }),
   }),
 });
 
 /** Currencies this table actually prices. Anything else falls to USD. */
-export const PRICED_CURRENCIES = Object.freeze(['USD', 'GBP', 'EUR', 'THB']);
+export const PRICED_CURRENCIES = Object.freeze(['USD', 'GBP', 'EUR', 'THB', 'MNT']);
 
-const SYMBOL = Object.freeze({ USD: '$', GBP: '£', EUR: '€', THB: '฿' });
+const SYMBOL = Object.freeze({ USD: '$', GBP: '£', EUR: '€', THB: '฿', MNT: '₮' });
 
 /** Zero-decimal currencies would break /100. None of ours are, but say so. */
 const MINOR_PER_MAJOR = 100;

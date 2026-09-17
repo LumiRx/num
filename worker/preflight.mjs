@@ -62,6 +62,12 @@ export const CENTS_PER_STAR = 100;
 export const CURRENCIES = Object.freeze({
   usd: { min: 50, max: 2_000_000, symbol: '$', name: 'US dollars' },       // Stripe's USD floor · $20k ceiling
   thb: { min: 2_000, max: 70_000_000, symbol: '฿', name: 'Thai baht' },    // ฿20 floor · ฿700k (~$20k) ceiling
+  // Mongolia, Sept 2026 soft launch. MNT is a TWO-decimal currency in
+  // Stripe, so these are möngö: 200_000 = ₮2,000 ≈ $0.57, which clears the
+  // $0.50 USD settlement floor our US account converts into. Ceiling is
+  // ₮70m ≈ $20k, matching the other two. NOTE: Stripe caps NON-CARD amounts
+  // at 8 digits (999,999.99 → ₮999,999 ≈ $285); cards allow 12.
+  mnt: { min: 200_000, max: 7_000_000_000, symbol: '₮', name: 'Mongolian tögrög' },
 });
 
 const money = (cents, currency = 'usd') =>

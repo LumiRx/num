@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.325 — 2026-09-17 19:59 UTC
+
+The app in nine languages, one look in two lights, Ask NUM pill
+
+- commit `5685cf6`
+
+## 0.8.324 — 2026-09-17 19:56 UTC
+
+The app in nine languages, one look in two lights, Ask NUM pill
+
+- commit `c0587eb`
+
 ## 0.8.323 — 2026-09-17 10:21 UTC
 
 Flight Watch in the workflow, Tonight on TODAY, ask-first sign-up; plans priced in the buyer's currency, site in nine languages
