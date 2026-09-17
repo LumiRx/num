@@ -154,6 +154,7 @@ td{padding:9px 12px;border-top:1px solid #f0eee9}
 .ok{color:var(--ok)}.bad{color:var(--bad)}
 a{color:inherit}.foot{margin-top:32px;font-size:13px;color:var(--muted)}
 .plangrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 14px}
+.plancard.picked{border-color:var(--green);box-shadow:0 0 0 2px rgba(30,122,77,.18)}
 .plancard{border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center;background:#fff}
 .plancard.current{border-color:var(--ink);background:#faf9f7}
 .plancard .pname{font-weight:700;font-size:14px;margin:0 0 2px}
@@ -206,10 +207,12 @@ a{color:inherit}.foot{margin-top:32px;font-size:13px;color:var(--muted)}
     { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
+import { currencyForRequest, priceFor, formatPrice } from './planprice.mjs';
+
 const errBox = (m) => (m ? `<div class="err">${H(m)}</div>` : '');
 
 /** Step 0 — find your listing, or sign in with a key you already hold. */
-function landing(err = '', q = '') {
+function landing(err = '', q = '', wanted = '') {
   return shell(`
     <h1>NUM for Business</h1>
     <p class="sub">Claim your listing and manage what NUM tells travellers about you.</p>
@@ -225,7 +228,8 @@ function landing(err = '', q = '') {
     </form>
     <form method="post" class="card">
       <input type="hidden" name="action" value="signin">
-      <h3>Already claimed it?</h3>
+      ${wanted ? `<input type="hidden" name="plan" value="${H(wanted)}"><input type="hidden" name="p" value="plan">` : ''}
+      <h3>${wanted ? 'Sign in to start your plan' : 'Already claimed it?'}</h3>
       <label for="key">Your business key</label>
       <input id="key" name="key" type="password" placeholder="numbiz_…" autocomplete="off" required>
       <button type="submit" class="ghost">Open my dashboard</button>
@@ -365,26 +369,40 @@ function keyIssued(key, token) {
 }
 
 /** Money formatter for the plan cards — cents, US-style, drops the .00. */
-const USD = (cents) => `$${cents % 100 ? (cents / 100).toFixed(2) : cents / 100}`;
+// Was `USD()`, and it printed a dollar sign on whatever it was handed.
+// Since 17 Sep a plan is priced in the buyer's own currency
+// (worker/planprice.mjs), so a Thai owner seeing "$349" — the baht amount
+// with a dollar sign — was the exact bug commission.mjs's money() was
+// rewritten to stop. The currency is now an argument, not an assumption.
+const PRICE = (cents, cur) => formatPrice(cents, cur);
 
 /** The "Your plan" card: what you're on, and the ladder above it. */
-function planSection(plan, allTiers, token, saved, err) {
+function planSection(plan, allTiers, token, saved, err, cur = 'USD', wanted = '') {
   const tierId = plan?.tier ?? 'free';
   const isFree = tierId === 'free';
   const cards = Object.entries(allTiers).map(([id, t]) => {
     const current = id === tierId;
-    const priceLine = t.price_cents > 0
-      ? `${USD(t.price_cents)}<span>/mo</span>` : 'Free';
+    // The price this owner will actually be charged, in their currency —
+    // read from the same table the checkout and the webhook read, so the
+    // card, the Stripe page and the grant can never quote three numbers.
+    const cents = priceFor('biz', id, cur) ?? t.price_cents;
+    const priceLine = cents > 0
+      ? `${PRICE(cents, cur)}<span>/mo</span>` : 'Free';
+    // `wanted` is the plan they clicked on itsnum.com before signing in.
+    // Carrying it this far is the difference between "I chose Pro" and
+    // "here are four plans again, find yours".
+    const picked = !current && wanted === id;
     const action = current
       ? '<button type="button" class="ghost" disabled>Current plan</button>'
-      : t.price_cents > 0
+      : cents > 0
         ? `<form method="post"><input type="hidden" name="action" value="upgrade">
              <input type="hidden" name="s" value="${H(token)}">
+             <input type="hidden" name="p" value="plan">
              <input type="hidden" name="tier" value="${H(id)}">
-             <button type="submit">${isFree ? 'Upgrade' : 'Switch'}</button></form>`
+             <button type="submit">${picked ? `Continue — ${PRICE(cents, cur)}/mo` : isFree ? 'Upgrade' : 'Switch'}</button></form>`
         : '';
-    return `<div class="plancard${current ? ' current' : ''}">
-        <p class="pname">${H(t.name)}${current ? '<span class="tag">you</span>' : ''}</p>
+    return `<div class="plancard${current ? ' current' : ''}${picked ? ' picked' : ''}">
+        <p class="pname">${H(t.name)}${current ? '<span class="tag">you</span>' : ''}${picked ? '<span class="tag">chosen</span>' : ''}</p>
         <span class="pprice">${priceLine}</span>
         <p class="sub" style="margin:0 0 6px;min-height:32px">${H(t.blurb)}</p>
         ${action}
@@ -452,13 +470,13 @@ function pageNav(pages, current, token, entitlements, opens, pending = 0) {
  * offers the upgrade inline. A business should never have to guess what it is
  * being sold, and "upgrade to find out" is the shape of that mistake.
  */
-function lockedPanel(page, tierName, priceCents, token) {
+function lockedPanel(page, tierName, priceCents, token, cur = 'USD') {
   return `<h2>${H(page.label)}</h2>
     <div class="card">
       <span class="big" style="font-size:18px">&#128274; On ${H(tierName ?? 'a paid plan')}</span>
       <span class="sub">${H(page.unlock ?? page.blurb ?? '')}</span>
       ${priceCents != null ? `<p class="sub" style="margin:10px 0 0">${H(tierName)} is
-        <b>${H(USD(priceCents))}</b> a month, cancel any time, and your listing stays free either way.</p>` : ''}
+        <b>${H(PRICE(priceCents, cur))}</b> a month, cancel any time, and your listing stays free either way.</p>` : ''}
       <p style="margin:12px 0 0"><a href="/api/biz/console?s=${encodeURIComponent(token)}&p=plan">
         <button type="button">See the plans</button></a></p>
     </div>`;
@@ -1045,6 +1063,10 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
   const {
     plan = { tier: 'free' }, allTiers = {}, locations = [], promoText = '',
     planErr = '', planSaved = '', pages, pageFor, opens, cheapestTierFor, readiness = null,
+    // The buyer's currency and the plan they clicked before signing in.
+    // Both travel in `extra` because that is how everything else this
+    // renderer needs gets here.
+    cur = 'USD', wanted = '',
   } = extra;
   const page = pageFor(extra.page);
   const link = `/api/biz/console?s=${encodeURIComponent(token)}&p=${encodeURIComponent(page.id)}`;
@@ -1052,7 +1074,10 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
   let body;
   if (!opens(page, plan)) {
     const tier = cheapestTierFor(page.id, allTiers);
-    body = lockedPanel(page, tier?.name, tier?.price_cents, token);
+    // The locked panel quotes a price too, so it reads from the same table
+    // in the same currency as the plan cards. cheapestTierFor returns the
+    // tier WITH its id, which is what priceFor needs.
+    body = lockedPanel(page, tier?.name, priceFor('biz', tier?.id ?? '', cur) ?? tier?.price_cents, token, cur);
   } else {
     switch (page.id) {
       case 'setup':         body = setupPage(readiness, token); break;
@@ -1071,7 +1096,7 @@ function dashboard(place, insights, bookings, token, saved = '', err = '', extra
       case 'payments':      body = payQrSection(extra.payQr); break;
       case 'api':           body = apiPage(place); break;
       case 'beta':          body = betaPage(); break;
-      case 'plan':          body = planSection(plan, allTiers, token, planSaved, planErr); break;
+      case 'plan':          body = planSection(plan, allTiers, token, planSaved, planErr, cur, wanted); break;
       default:              body = overviewPage(place, insights, bookings, readiness, token, extra.appCard ?? '');
     }
   }
@@ -1100,7 +1125,7 @@ async function ownerOf(env, placeId) {
   return row?.business_id ?? null;
 }
 
-async function loadDashboard(env, placeId, token, origin, saved = '', err = '', planSaved = '', planErr = '', page = 'overview') {
+async function loadDashboard(env, placeId, token, origin, saved = '', err = '', planSaved = '', planErr = '', page = 'overview', opts = {}) {
   // READS go to the database directly; WRITES go through the API path.
   //
   // That split is deliberate. /v1/profile authenticates by key, and the session
@@ -1264,6 +1289,7 @@ async function loadDashboard(env, placeId, token, origin, saved = '', err = '', 
     verifyToken, readiness, page, pending, autofilled, offerings, offerCurrency, delivery, tpl,
     identityCode, identityLink, identityConnections,
     pages: PAGES, pageFor, opens, cheapestTierFor,
+    cur: opts.cur ?? 'USD', wanted: opts.wanted ?? '',
   });
 }
 
@@ -1327,7 +1353,9 @@ export async function handleBizConsole(request, env, url) {
     }
 
     const s = url.searchParams.get('s');
-    if (!s) return landing('', prefill);
+    // Arriving from a Choose-this-plan button with no session: the plan
+    // survives the sign-in form rather than being forgotten at the door.
+    if (!s) return landing('', prefill, (url.searchParams.get('plan') ?? '').slice(0, 20));
     const placeId = await sessionPlace(env, s);
     if (!placeId) return landing('That session expired — sign in with your key again.');
     // Stripe redirects here straight from its own hosted checkout page —
@@ -1337,7 +1365,12 @@ export async function handleBizConsole(request, env, url) {
     const upgraded = url.searchParams.get('upgraded');
     const planSaved = upgraded ? `Payment received — your plan updates within a few seconds. Refresh if ${H(upgraded)} doesn't show yet.` : '';
     const page = (url.searchParams.get('p') ?? (upgraded ? 'plan' : 'overview')).slice(0, 24);
-    return await loadDashboard(env, placeId, s, origin, '', '', planSaved, '', page);
+    // ?plan=pro — the plan they picked on itsnum.com/business/pricing/.
+    // A preference, never an authorisation: it highlights a card and labels
+    // a button, and the charge still needs the owner to submit the form.
+    const wanted = (url.searchParams.get('plan') ?? '').slice(0, 20);
+    return await loadDashboard(env, placeId, s, origin, '', '', planSaved, '', page,
+      { cur: currencyForRequest(request, env), wanted });
   }
   if (request.method !== 'POST') return landing();
 
@@ -1350,6 +1383,10 @@ export async function handleBizConsole(request, env, url) {
   // save bounced the owner back to the overview and the change they just made
   // was two clicks away — which reads as "it did not save".
   const backTo = val('p') || 'overview';
+  // Currency comes from the request on every POST too, so an owner who signs
+  // in from Phuket is quoted baht on the page the sign-in lands them on.
+  const postCur = currencyForRequest(request, env);
+  const postWanted = val('plan');
 
   if (action === 'find') {
     const q = val('q');
@@ -1392,7 +1429,8 @@ export async function handleBizConsole(request, env, url) {
     const placeId = r.body?.profile?.place_id ?? r.body?.profile?.id;
     if (!placeId) return landing('That key is valid but is not attached to a listing. Email info@5arz.com.');
     const token = await mintSession(env, placeId);
-    return await loadDashboard(env, placeId, token, origin, '', '', '', '', backTo);
+    return await loadDashboard(env, placeId, token, origin, '', '', '', '', backTo,
+      { cur: postCur, wanted: postWanted });
   }
 
   // Adding or changing something on the list of what they offer.
@@ -1627,13 +1665,22 @@ export async function handleBizConsole(request, env, url) {
     const { bizTiers } = await import('./bizbilling.mjs');
     const tier = val('tier');
     const t = bizTiers(env)[tier];
-    if (!tier || !t || !(t.price_cents > 0)) {
-      return await loadDashboard(env, placeId, token, origin, '', '', '', 'Pick a plan to upgrade to.', 'plan');
+    // This console builds its own Checkout Session rather than calling
+    // /v1/billing/subscribe, so it is a SECOND place a price is stated. It
+    // read `t.price_cents` (always USD) while the card beside it now shows
+    // the local price — the owner would have seen ฿349 and been charged
+    // $9.99. Both paths now read priceFor(), which is also what the webhook
+    // validates against.
+    const amountCents = priceFor('biz', tier, postCur);
+    if (!tier || !t || amountCents == null) {
+      return await loadDashboard(env, placeId, token, origin, '', '', '', 'Pick a plan to upgrade to.', 'plan',
+        { cur: postCur, wanted: postWanted });
     }
     const { requestSubscription } = await import('./pay.mjs');
     const out = await requestSubscription(env, {
       businessId,
-      amountCents: t.price_cents,
+      amountCents,
+      currency: postCur,
       name: `NUM for Business — ${t.name}`,
       ref: `biztier:${tier}`,
       successUrl: `${origin}/api/biz/console?s=${encodeURIComponent(token)}&upgraded=${encodeURIComponent(tier)}`,

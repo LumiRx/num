@@ -913,7 +913,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     pricing = {};
     (p.pricing || []).forEach(function (x) { pricing[x.key] = x; });
     $('currency').value = p.currency || 'GBP';
-    var TIERNAME = { free: 'Free', small: 'Small — £9.99/mo', pro: 'Pro — £19.99/mo', full: 'Full — £50/mo' };
+    // Names only. The prices used to be written into this map in pounds,
+    // which meant a Thai host on ฿699 read "Pro — £19.99/mo" in their own
+    // console. The price now comes from /api/host/plan, which states the
+    // host's own currency.
+    var TIERNAME = { free: 'Free', small: 'Small', pro: 'Pro', full: 'Full' };
     $('tierNow').textContent = TIERNAME[p.tier || 'free'] || 'Free';
     loadPlan(p.tier || 'free');
     var r = document.querySelector('input[name=charge][value="' + (p.charge_mode || 'own') + '"]');
@@ -1617,7 +1621,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     $('plRows').innerHTML = PLAN_ORDER.map(function (k) {
       var mine = k === current;
       var price = k === 'free' ? 'Free'
-        : plans[k] ? '£' + (plans[k].pence / 100).toFixed(2) + '/mo'
+        : plans[k] ? (plans[k].display || (SYM[(plans[k].currency || 'gbp').toUpperCase()] || '') + (plans[k].pence / 100).toFixed(2)) + '/mo'
         : (PLAN_LIST[k] || '—');
       var action = mine
         ? '<span class="hint">Your plan</span>'

@@ -32,6 +32,8 @@
  * override with BIZ_MEMBERSHIP_TIERS, no deploy) and the price a business is
  * actually charged moves with it — one source, not two.
  */
+import { currencyForRequest, priceFor, priceBlock, formatPrice } from './planprice.mjs';
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
     status,
@@ -209,10 +211,26 @@ export async function handleBizBilling(request, env, path, auth) {
   // a key to pay with.
   if (path === '/tiers' || path === '' || path === '/') {
     const all = bizTiers(env);
+    // Priced in the visitor's own currency (worker/planprice.mjs), derived
+    // from Cloudflare's country on THIS request — never from a query param,
+    // because a currency the caller picks is a discount the caller picks.
+    // `price_cents` stays the field name every existing client reads; what
+    // changed is that it is now denominated in `currency` beside it.
+    const cur = currencyForRequest(request, env);
     return json({
-      tiers: Object.entries(all).map(([id, t]) => ({
-        id, name: t.name, price_cents: t.price_cents, blurb: t.blurb, entitlements: t.entitlements,
-      })),
+      currency: cur.toLowerCase(),
+      tiers: Object.entries(all).map(([id, t]) => {
+        const block = priceBlock('biz', id, cur);
+        return {
+          id,
+          name: t.name,
+          price_cents: block?.price_cents ?? t.price_cents,
+          currency: cur.toLowerCase(),
+          display: block?.display ?? formatPrice(t.price_cents, cur),
+          blurb: t.blurb,
+          entitlements: t.entitlements,
+        };
+      }),
       principle: 'Listing and receiving bookings is free, forever. Paying unlocks deeper analytics, promotions, more locations on one plan, and beta features first.',
     });
   }
@@ -233,10 +251,20 @@ export async function handleBizBilling(request, env, path, auth) {
     if (!t || !(t.price_cents > 0)) {
       return json({ ok: false, error: `Which plan? One of: ${Object.keys(bizTiers(env)).filter((k) => bizTiers(env)[k].price_cents > 0).join(', ')}.` }, 400);
     }
+    // Currency comes from the request, price comes from the table. The
+    // webhook in pay.mjs re-derives BOTH from the Stripe session and refuses
+    // the grant if they disagree with this same table, so a forged session
+    // buys nothing.
+    const cur = currencyForRequest(request, env);
+    const amountCents = priceFor('biz', tier, cur);
+    if (amountCents == null) {
+      return json({ ok: false, error: `No price for ${tier} in ${cur}.` }, 400);
+    }
     const { requestSubscription } = await import('./pay.mjs');
     const out = await requestSubscription(env, {
       businessId: auth.businessId,
-      amountCents: t.price_cents,
+      amountCents,
+      currency: cur,
       name: `NUM for Business — ${t.name}`,
       ref: `biztier:${tier}`,
       successUrl: clip(b.success_url, 300) || undefined,

@@ -41,8 +41,13 @@ function fresh() {
   db.exec(`INSERT INTO num_members VALUES ('mem_1','+13105550100',1)`);
   return { DB: d1(db), _db: db, SITE: 'https://itsnum.com', STRIPE_SECRET_KEY: 'sk_test_x' };
 }
-const get = (env, path) => handleHost(new Request('https://app.itsnum.com' + path), env, new URL('https://app.itsnum.com' + path));
-const post = (env, path, body) => handleHost(new Request('https://app.itsnum.com' + path, { method: 'POST', body: JSON.stringify(body ?? {}) }), env, new URL('https://app.itsnum.com' + path));
+// Plans are priced in the visitor's currency since 17 Sep (worker/planprice.mjs),
+// so a request without a country is no longer implicitly British — it is
+// implicitly American, because DEFAULT_CURRENCY is USD. These helpers state
+// the country instead of leaving it to a default, which is what the currency
+// assertions below are actually about.
+const get = (env, path, country = 'GB') => handleHost(new Request('https://app.itsnum.com' + path, { headers: { 'CF-IPCountry': country } }), env, new URL('https://app.itsnum.com' + path));
+const post = (env, path, body, country = 'GB') => handleHost(new Request('https://app.itsnum.com' + path, { method: 'POST', body: JSON.stringify(body ?? {}), headers: { 'CF-IPCountry': country } }), env, new URL('https://app.itsnum.com' + path));
 
 test('the old model is not in this file: no host share of a commission is ever filed', () => {
   const src = readFileSync(new URL('./hostmoney.mjs', import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -149,4 +154,16 @@ test('HTTP: /mine, the feed with bearer-safe headers, and the plan routes behind
   const cancel = await (await post(env, `/api/host/plan/cancel?k=${KEY}`)).json();
   assert.equal(cancel.ok, true); assert.match(cancel.note, /free plan/);
   assert.equal(HOST_PLANS.full.pence, 5000); assert.equal(HOST_CURRENCY, 'gbp');
+
+  // A Phuket host is quoted in baht, not pounds — the point of the change.
+  // ฿699 is a chosen price, not 1999 pence converted, so it must come back
+  // as the table's own number.
+  const th = await (await get(env, `/api/host/plan?k=${KEY}`, 'TH')).json();
+  assert.equal(th.plans.pro.currency, 'thb');
+  assert.equal(th.plans.pro.pence, 69900);
+  assert.equal(th.plans.pro.display, '฿699');
+  // An unpriced country falls to USD rather than to no price at all.
+  const jp = await (await get(env, `/api/host/plan?k=${KEY}`, 'JP')).json();
+  assert.equal(jp.plans.pro.currency, 'usd');
+  assert.equal(jp.plans.pro.pence, 1999);
 });

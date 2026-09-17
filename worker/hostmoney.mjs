@@ -26,6 +26,7 @@
  * ended host cannot subscribe and is never invoiced.
  */
 import { calendar, vevent, floating } from './calendar.mjs';
+import { currencyForRequest, priceFor, priceBlock } from './planprice.mjs';
 
 /* ---------------------------------------------------------------- auth */
 
@@ -259,9 +260,23 @@ export async function handleHost(request, env, url) {
     const host = await hostByKey(env, url.searchParams.get('k'));
     if (!host) return json({ error: 'unauthorised' }, 401);
     if (path === '/plan' && request.method === 'GET') {
+      const planCur = currencyForRequest(request, env);
       return json({
         tier: host.tier ?? 'free', plan_status: host.plan_status ?? 'none', renews_at: host.plan_renews_at ?? null,
-        plans: Object.fromEntries(Object.entries(HOST_PLANS).map(([k, v]) => [k, { name: v.name, pence: v.pence, currency: HOST_CURRENCY }])),
+        // `pence` is kept as the field name every existing caller reads, but
+        // it is now minor units of `currency`, which is the host's own —
+        // satang for a Phuket host, pence for a London one. HOST_CURRENCY
+        // remains the fallback, not the answer.
+        currency: planCur.toLowerCase(),
+        plans: Object.fromEntries(Object.entries(HOST_PLANS).map(([k, v]) => {
+          const block = priceBlock('host', k, planCur);
+          return [k, {
+            name: v.name,
+            pence: block?.price_cents ?? v.pence,
+            currency: planCur.toLowerCase(),
+            display: block?.display ?? null,
+          }];
+        })),
         billing_on: (env.PAY_MODE ?? (env.STRIPE_SECRET_KEY ? 'stripe' : 'off')) === 'stripe',
       });
     }
@@ -269,11 +284,16 @@ export async function handleHost(request, env, url) {
       const b = await request.json().catch(() => ({}));
       const tier = String(b.tier ?? '').toLowerCase();
       if (!HOST_PLANS[tier]) return json({ ok: false, error: `Which plan? One of: ${Object.keys(HOST_PLANS).join(', ')}.` }, 400);
+      // Same rule as bizbilling: currency from the request, price from the
+      // table, and pay.mjs's webhook re-checks both against that same table.
+      const planCur = currencyForRequest(request, env);
+      const amountCents = priceFor('host', tier, planCur);
+      if (amountCents == null) return json({ ok: false, error: `No price for ${tier} in ${planCur}.` }, 400);
       const { requestSubscription } = await import('./pay.mjs');
       const out = await requestSubscription(env, {
         hostId: host.id,
-        amountCents: HOST_PLANS[tier].pence,
-        currency: HOST_CURRENCY,
+        amountCents,
+        currency: planCur,
         name: `NUM for VIP hosts — ${HOST_PLANS[tier].name}`,
         ref: `hosttier:${tier}`,
         successUrl: String(b.success_url ?? '').slice(0, 300) || `${site}/host/?k=${host.console_key}&paid=1`,

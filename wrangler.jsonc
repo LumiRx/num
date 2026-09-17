@@ -1,16 +1,35 @@
 {
-  // NUM partner demo console — assets-only Worker
-  // Deploys public/ as static assets; /console/ serves the demo.
+  // NUM marketing site. WAS assets-only — a directory and no script — which
+  // is why nothing could localise a price or a language, and why fetching
+  // this worker's source returned an empty body: there was none.
+  //
+  // 17 Sep 2026 it gained worker/site.mjs, which does two things a static
+  // file cannot: substitute the visitor's own currency into a price marker,
+  // and serve /<lang>/... translated at the edge. public/ is still the whole
+  // of the content; the script only rewrites what it serves.
   "name": "num-console",
   "compatibility_date": "2026-07-01",
+  "main": "worker/site.mjs",
   "assets": {
     "directory": "./public",
+    // The binding is what lets site.mjs ask for the file behind a /th/ URL.
+    "binding": "ASSETS",
+    // MUST be true. Without it Cloudflare answers any path that matches a
+    // file straight from the asset server and the script never runs — so
+    // /business/pricing/ would keep its written USD price and /th/... would
+    // 404 before reaching the translator. The whole change is inert without
+    // this line.
+    "run_worker_first": true,
     // Without this, an unmatched path falls back to the asset server default and
     // the zone gets an infinite soft-404 space: every nonexistent URL answering
     // 200 with a page. "404-page" serves public/404.html with a real 404 status,
     // which is what stops Google indexing junk.
     "not_found_handling": "404-page"
   },
+  // Translation runs on Workers AI (m2m100), so there is no third-party key
+  // to hold and no per-word invoice. It fails soft: a model error serves the
+  // English string rather than an empty node.
+  "ai": { "binding": "AI" },
   // Off. This was on while num-console was a side project and the workers.dev URL
   // was the only way to see it. Now that it serves the whole marketing site, that
   // hostname would publish a second, fully crawlable copy of every page under a

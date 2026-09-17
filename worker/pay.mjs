@@ -530,12 +530,23 @@ export async function handlePay(request, env, path) {
         const bizTierMatch = /^biztier:([a-z_]{2,20})$/.exec(ref);
         const businessId = s.metadata?.num_business;
         if (firstTime && bizTierMatch && businessId) {
-          const { grantBizTier, bizTiers } = await import('./bizbilling.mjs');
+          const { grantBizTier } = await import('./bizbilling.mjs');
           const { tierPaidRight } = await import('./preflight.mjs');
-          const owed = bizTiers(env)[bizTierMatch[1]]?.price_cents;
-          const paidRight = tierPaidRight(s, owed);
+          const { priceFor } = await import('./planprice.mjs');
+          // The price to check against MUST be read in the currency the
+          // session was actually created in.
+          //
+          // Until 17 Sep every plan was 999/1999/5000 USD and this compared
+          // against one number. Now worker/planprice.mjs prices each plan in
+          // the buyer's own currency, so checking a correctly-paid ฿349
+          // against 999 USD would read as an underpayment, refuse the grant
+          // and refund a customer who did nothing wrong. Same seam on the
+          // host block below. Session currency in, table lookup out.
+          const bizPaidCur = String(s.currency ?? 'usd').toUpperCase();
+          const owed = priceFor('biz', bizTierMatch[1], bizPaidCur);
+          const paidRight = owed != null && tierPaidRight(s, owed, bizPaidCur);
           if (!paidRight) {
-            console.error(`[pay] BIZ TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} usd. Grant refused; refund ${id} and find out which client built this session.`);
+            console.error(`[pay] BIZ TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${bizPaidCur}. Grant refused; refund ${id} and find out which client built this session.`);
           } else {
             const g = await grantBizTier(env, businessId, bizTierMatch[1], { source: 'stripe', ref: id, sub: s.subscription ?? null });
             console.log('[pay] biz tier', bizTierMatch[1], g.ok ? 'granted to' : 'FAILED for', businessId, s.subscription ? `(sub ${s.subscription})` : '(one-off)');
@@ -570,16 +581,22 @@ export async function handlePay(request, env, path) {
           }
         }
 
-        // A VIP host plan — third owner kind, GBP, keyed on num_host.
+        // A VIP host plan — third owner kind, keyed on num_host, priced in
+        // the buyer's currency since 17 Sep.
         // worker/hostmoney.mjs owns the prices and the grant.
         const hostTierMatch = /^hosttier:([a-z_]{2,20})$/.exec(ref);
         const hostId = s.metadata?.num_host;
         if (firstTime && hostTierMatch && hostId) {
-          const { grantHostTier, HOST_PLANS, HOST_CURRENCY } = await import('./hostmoney.mjs');
+          const { grantHostTier } = await import('./hostmoney.mjs');
           const { tierPaidRight } = await import('./preflight.mjs');
-          const owed = HOST_PLANS[hostTierMatch[1]]?.pence;
-          if (!tierPaidRight(s, owed, HOST_CURRENCY)) {
-            console.error(`[pay] HOST TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${HOST_CURRENCY}. Grant refused; refund ${id}.`);
+          const { priceFor } = await import('./planprice.mjs');
+          // Same rule as the business block above: the host ladder is no
+          // longer GBP-only, so the owed price is looked up in the currency
+          // the buyer actually paid in, not in HOST_CURRENCY.
+          const hostPaidCur = String(s.currency ?? 'gbp').toUpperCase();
+          const owed = priceFor('host', hostTierMatch[1], hostPaidCur);
+          if (owed == null || !tierPaidRight(s, owed, hostPaidCur)) {
+            console.error(`[pay] HOST TIER UNDERPAYMENT — ${ref} paid ${s.amount_total} ${s.currency}, price is ${owed} ${hostPaidCur}. Grant refused; refund ${id}.`);
           } else {
             const g = await grantHostTier(env, hostId, hostTierMatch[1], { ref: id, sub: s.subscription ?? null, customer: s.customer ?? null });
             console.log('[pay] host tier', hostTierMatch[1], g.ok ? 'granted to' : 'FAILED for', hostId);
