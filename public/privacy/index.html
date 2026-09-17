@@ -118,7 +118,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 </header>
 <div class="card">
 <h1>Privacy Policy</h1>
-<div class="eff">Effective July 31, 2026 · NUM, operated by 5arz, Thailand</div>
+<div class="eff">Effective July 31, 2026 · Updated September 16, 2026 (section 8b) · NUM, operated by 5arz, Thailand</div>
 
 <p>NUM is an AI travel concierge. You chat with us on LINE, WhatsApp, and similar messaging apps, and we recommend and help you book local businesses. This policy explains what information we handle, why, and the choices you have. It applies to travelers who chat with NUM, business owners in our directory, and visitors to itsnum.com.</p>
 
@@ -194,6 +194,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 <p>NUM is operated by 5arz, and you can verify your identity by linking the 5arz account you already have. When you do, you sign in through <b>Google</b> — we never see or store a password. We check that sign-in with Google directly, then look for a matching verified 5arz account.</p>
 <p>What crosses between the two: your Google account identifier and email, and from 5arz the fact that you are verified, when, and in which country. <b>Your 5arz work history, earnings and payout details are not shared with NUM.</b></p>
 <p>Linking is optional and one-to-one — a 5arz identity can be linked to a single NUM account. Verifying your identity this way does <b>not</b> verify your phone number; those are separate claims and we show them separately.</p>
+
+<h2 id="developers">8b · Developers, the API and the MCP server</h2>
+<p>If you connect an AI assistant or your own software to NUM through the API or the MCP server at <code>itsnum.com/mcp</code>, we collect: the agent name, operator name, email, homepage and purpose you give at sign-up; a salted hash of the IP address used to sign up; when you connect by signing in (OAuth), your NUM account ID, the name of the app you approved and the permissions you granted; a daily count of your reads and writes; and the businesses and promotions you submit. <b>We do not keep a record of what you searched for.</b> API keys and access tokens are stored only as hashes. Our host, Cloudflare, keeps short-lived technical logs of requests.</p>
+<p>We receive only what the assistant sends to a tool. <b>We do not receive or ask for your conversation, your chat history, your files or the assistant's memory.</b></p>
+<p>We use this to answer the request, count reads against your daily quota, review what you submit, and stop abuse. Businesses and promotions you submit are read by a reviewer at 5arz before anything is shown to travellers. We do not sell this data or use it for advertising.</p>
+<p>Your agent record, daily counts and submissions are kept while your agent record exists. You can disconnect an app at any time from the assistant itself, revoke its access at <code>/oauth/revoke</code>, or rotate an API key at <code>/api/agent/me/rotate</code>. Email <a href="mailto:info@itsnum.com">info@itsnum.com</a> to have your agent record, counts and submissions deleted.</p>
 
 <h2>9 · Security & transfers</h2>
 <p>We use encryption in transit, access controls, audit logging, and the sealed-conversation design described above. Our infrastructure providers may process data outside Thailand; where they do, we rely on safeguards recognized under the PDPA and GDPR.</p>

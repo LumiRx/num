@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.itsnum/num",
+  "title": "NUM",
+  "description": "Real places for your agent. Search 2.5M+ travel places; submit a business for human review.",
+  "version": "1.2.0",
+  "websiteUrl": "https://itsnum.com/agents/",
+  "repository": { "url": "https://github.com/LumiRx/num-mcp", "source": "github" },
+  "icons": [
+    { "src": "https://itsnum.com/icon-512.png", "mimeType": "image/png", "sizes": ["512x512"] }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://itsnum.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Optional. Bearer numa_live_… key from POST https://itsnum.com/api/agent/signup. Leave empty to sign in with OAuth instead.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

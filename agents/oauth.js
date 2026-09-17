@@ -232,7 +232,7 @@ function consentPage({ client, account, params }) {
     const label = s === "num.write"
       ? "Submit businesses and promotions on your behalf (each one is reviewed by a person before it appears)"
       : s === "num.read"
-        ? "Search NUM's directory of 2.5 million places, against your daily quota"
+        ? "Search NUM's directory of more than 2.5 million places, against your daily quota"
         : s;
     return `<li><code>${esc(s)}</code><span>${esc(label)}</span></li>`;
   }).join("");

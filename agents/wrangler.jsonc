@@ -28,6 +28,11 @@
     { "pattern": "itsnum.com/openapi.json*",               "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/ai-plugin.json*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/mcp.json*",       "zone_name": "itsnum.com" },
+    // Not covered by the line above: "mcp.json*" does not match "mcp/…".
+    { "pattern": "itsnum.com/.well-known/mcp/server-card.json*", "zone_name": "itsnum.com" },
+    // Directory ownership proofs; 404 until GLAMA_CLAIM / OPENAI_APPS_CHALLENGE are set.
+    { "pattern": "itsnum.com/.well-known/glama.json*",     "zone_name": "itsnum.com" },
+    { "pattern": "itsnum.com/.well-known/openai-apps-challenge*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/mcp-registry-auth*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/oauth-protected-resource*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/.well-known/oauth-authorization-server*", "zone_name": "itsnum.com" },

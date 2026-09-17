@@ -17,6 +17,20 @@ import { oauthRoutes, verifyAccessToken, unauthorized } from "./oauth.js";
 
 const SITE = "https://itsnum.com";
 
+// One version for every surface that states one: initialize.serverInfo,
+// /.well-known/mcp.json, the server card, and server.json in the MCP Registry.
+// They had drifted to 1.0.0, 1.0.0 and 1.1.0. Bump it here and republish the
+// registry record in the same change — registry versions are immutable.
+const SERVER_VERSION = "1.2.0";
+
+// Stated once, and deliberately a floor rather than a count. The exact figures
+// live in scripts/destinations.mjs and the database; every copy that was typed
+// into a string here went stale ("77 destinations" outlived the truth by a month
+// — see scripts/coverage-claims.mjs). A floor cannot be wrong tomorrow.
+const COVERAGE = "more than 2.5 million places";
+
+const ICON = SITE + "/icon-512.png";
+
 // reads per UTC day. Mirrors the dashboard tiers on /pricing/.
 const QUOTA = { free: 100, bundle: 2000, pro: 20000, full: 200000 };
 
@@ -664,7 +678,7 @@ async function handleSearch(req, env, url) {
 
   if (!q && !city && !country && !category) {
     return err("no_filter",
-      "Give at least one of q, city, country or category. An unfiltered read of 2.5 million places is not a search.", 400);
+      "Give at least one of q, city, country or category. An unfiltered read of the whole directory is not a search.", 400);
   }
 
   const meter = await meterRead(env, agent, 1);
@@ -767,7 +781,7 @@ async function handleBusinessGet(req, env, id) {
  * handler above rather than reimplementing the validation, so the MCP surface
  * and the REST surface cannot drift apart — there is exactly one set of rules.
  * -------------------------------------------------------------------------- */
-const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const MCP_TOOLS = [
   {
@@ -775,9 +789,10 @@ const MCP_TOOLS = [
     title: "Search places",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     description:
-      "Search NUM's directory of 2.5 million places across 77 destinations in 38 countries — restaurants, " +
-      "bars, hotels, spas, tours, shops. Give at least one of q, city, country or category. Counts against your " +
-      "daily read quota.",
+      "Search NUM's travel directory: " + COVERAGE + " — restaurants, bars, hotels, spas, tours and shops, " +
+      "deepest in Thailand and the UK. Requires at least one of q, city, country or category. Returns name, " +
+      "category, address, phone, website, coordinates and whether the owner has claimed the listing. Each call " +
+      "counts against the daily read quota.",
     inputSchema: {
       type: "object",
       properties: {
@@ -793,7 +808,7 @@ const MCP_TOOLS = [
     name: "num_get_place",
     title: "Get place details",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    description: "Full record for one place by place_id. Counts against your daily read quota.",
+    description: "Full record for one place, by the place_id that num_search_places returned. Each call counts against the daily read quota.",
     inputSchema: {
       type: "object",
       properties: { place_id: { type: "string", description: "The place_id returned by num_search_places." } },
@@ -803,11 +818,20 @@ const MCP_TOOLS = [
   {
     name: "num_submit_business",
     title: "Submit a business for review",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    // destructiveHint is true because re-sending an external_ref OVERWRITES the
+    // pending submission. It also makes the client ask the person before a
+    // business is submitted under their name, which is the behaviour we want.
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    // Written as facts about the tool, not orders to the model: the Claude and
+    // ChatGPT directory scanners reject descriptions that tell the model how to
+    // behave. The rules are unchanged; review is what enforces them.
     description:
-      "Submit a business to NUM. Free and unmetered. The submission is reviewed by a person at 5arz before any " +
-      "traveller sees it — nothing you send goes live automatically. Say honestly whether you own the business, " +
-      "were engaged by it, or are simply adding one you know of. Never invent contact details.",
+      "Submit a business to NUM for review. Free and unmetered. A person at 5arz reviews every submission " +
+      "before any traveller sees it, so the result is status 'pending_review', never an immediate listing. " +
+      "'relationship' records whether the submitter owns the business, was engaged by the owner, or is a third " +
+      "party; reviewers verify it. Contact details must be ones the business has published — submissions with " +
+      "guessed or derived contact details are rejected. Re-sending the same external_ref updates the pending " +
+      "submission instead of creating a duplicate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -834,10 +858,11 @@ const MCP_TOOLS = [
   {
     name: "num_submit_promo",
     title: "Submit a promotion for review",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     description:
-      "Post a promotion, special, event or ad against a business you already submitted. Free and unmetered, and " +
-      "reviewed by a person before it is shown to anyone.",
+      "Attach a promotion, special, event or ad to a business previously submitted by the same account. Free " +
+      "and unmetered. A person reviews it before it is shown to anyone. Re-sending the same promo_ref updates " +
+      "the pending promotion instead of creating a duplicate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -859,7 +884,7 @@ const MCP_TOOLS = [
     name: "num_list_submissions",
     title: "List your submissions",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    description: "Everything you have submitted and what a reviewer decided. Free and unmetered.",
+    description: "Lists the businesses and promotions this account has submitted, with the reviewer's decision on each. Free and unmetered.",
     inputSchema: {
       type: "object",
       properties: {
@@ -923,13 +948,18 @@ async function handleRpc(msg, req, env) {
     return rpcOk(id, {
       protocolVersion: PROTOCOL_VERSIONS.includes(want) ? want : PROTOCOL_VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "num", title: "NUM — travel directory by 5arz", version: "1.0.0" },
+      serverInfo: {
+        name: "num", title: "NUM — travel directory by 5arz", version: SERVER_VERSION,
+        websiteUrl: SITE + "/agents/",
+        icons: [{ src: ICON, mimeType: "image/png", sizes: ["512x512"] }],
+      },
+      // Facts, not orders — same reason as the tool descriptions above.
       instructions:
-        "NUM is a places directory run by 5arz. 'Verified' on NUM describes guests (identity-checked real people) and owner-claimed listings — never unclaimed places. Reads are metered against your daily quota; writes " +
-        "are free. Every business or promotion you submit is reviewed by a person before a traveller sees it, so " +
-        "expect status 'pending_review' rather than an immediate listing. Say honestly whether you own a business, " +
-        "represent it, or are simply adding one you know of, and never invent contact details — in particular, do " +
-        "not guess an email address from a domain name. The full rules are at " + SITE + "/agents/.",
+        "NUM is a travel places directory run by 5arz. 'Verified' on NUM refers to identity-checked guests and " +
+        "owner-claimed listings, not to unclaimed places. Reads are metered per UTC day; writes are free. Every " +
+        "business or promotion submitted is reviewed by a person before a traveller sees it and returns status " +
+        "'pending_review'. Submissions whose contact details were guessed — an email address derived from a " +
+        "domain name, for instance — are rejected in review. The full rules are at " + SITE + "/agents/.",
     });
   }
   if (method === "notifications/initialized" || method === "notifications/cancelled") {
@@ -1001,15 +1031,72 @@ function mcpManifest() {
   return {
     name: "num",
     description: "NUM — a places directory for travellers, run by 5arz. Search it, and submit businesses and promotions to it.",
-    version: "1.0.0",
+    version: SERVER_VERSION,
     transport: "streamable-http",
     url: SITE + "/mcp",
-    authentication: { type: "bearer", token_prefix: "numa_live_", signup: SITE + "/api/agent/signup", docs: SITE + "/agents/" },
-    tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description })),
+    // Two doors, one quota. OAuth has been live since August and was advertised
+    // nowhere but the RFC 9728 metadata — which is where Claude and ChatGPT look,
+    // and where no human or crawler does.
+    authentication: {
+      methods: ["oauth2", "bearer"],
+      oauth2: {
+        flow: "authorization_code",
+        pkce: "S256",
+        dynamic_client_registration: true,
+        scopes: ["num.read", "num.write"],
+        protected_resource_metadata: SITE + "/.well-known/oauth-protected-resource",
+        authorization_server_metadata: SITE + "/.well-known/oauth-authorization-server",
+        note: "For Claude, ChatGPT and any client that speaks MCP authorization: add the URL, sign in to NUM, approve the scopes. No key to copy.",
+      },
+      bearer: { token_prefix: "numa_live_", signup: SITE + "/api/agent/signup" },
+      // Kept for anything that parsed the old single-method shape.
+      type: "bearer", token_prefix: "numa_live_", signup: SITE + "/api/agent/signup",
+      docs: SITE + "/agents/",
+    },
+    tools: MCP_TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description })),
+    privacy_policy: SITE + "/privacy/",
+    terms_of_service: SITE + "/terms/",
+    support: "info@itsnum.com",
+    icon: ICON,
     config_example: {
+      oauth: { mcpServers: { num: { type: "http", url: SITE + "/mcp" } } },
+      api_key: { mcpServers: { num: { type: "http", url: SITE + "/mcp", headers: { Authorization: "Bearer numa_live_..." } } } },
+      // The old shape, same as api_key above.
       mcpServers: { num: { type: "http", url: SITE + "/mcp", headers: { Authorization: "Bearer numa_live_..." } } },
     },
   };
+}
+
+// Smithery (and anything else that cannot scan a server whose tools need a
+// sign-in) reads this instead of connecting. Built from MCP_TOOLS, so it cannot
+// disagree with tools/list.
+function serverCard() {
+  return {
+    serverInfo: { name: "num", title: "NUM — travel directory by 5arz", version: SERVER_VERSION },
+    authentication: { required: true, schemes: ["oauth2", "bearer"] },
+    tools: MCP_TOOLS,
+    resources: [],
+    prompts: [],
+  };
+}
+
+// Directory ownership proofs. Each directory hands out a token when you claim a
+// listing; it goes in as a plain var or secret and the route answers 404 until
+// it exists, so nothing here is published half-configured.
+//   GLAMA_CLAIM            glama.ai → the listing → Claim
+//   OPENAI_APPS_CHALLENGE  platform.openai.com → the app → domain verification
+function ownershipProof(p, env) {
+  if (p === "/.well-known/glama.json") {
+    if (!env.GLAMA_CLAIM) return null;
+    return json({ $schema: "https://glama.ai/mcp/schemas/connector.json", claim: String(env.GLAMA_CLAIM) });
+  }
+  if (p === "/.well-known/openai-apps-challenge") {
+    if (!env.OPENAI_APPS_CHALLENGE) return null;
+    return new Response(String(env.OPENAI_APPS_CHALLENGE), {
+      status: 200, headers: { ...CORS, "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+  return null;
 }
 
 function aiPlugin() {
@@ -1019,7 +1106,7 @@ function aiPlugin() {
     name_for_model: "num",
     description_for_human: "Search places for travellers, and list your business.",
     description_for_model:
-      "NUM is a directory of 2.5 million places across 77 destinations in 38 countries, operated by 5arz. 'Verified' on NUM describes guests, not places. " +
+      "NUM is a travel directory of " + COVERAGE + ", operated by 5arz. 'Verified' on NUM describes guests, not places. " +
       "Use it to find restaurants, bars, hotels, spas, tours and shops in a city, and to submit a business or a " +
       "promotion on an operator's behalf. Reads are metered; writes are free. Everything submitted is reviewed by " +
       "a person before it is shown to travellers.",
@@ -1142,7 +1229,7 @@ const INDEX = {
   operator: "5arz Inc",
   docs: SITE + "/agents/",
   description:
-    "A directory of 2.5 million places across 77 destinations in 38 countries. Search it, and submit " +
+    "A travel directory of " + COVERAGE + ". Search it, and submit " +
     "businesses and promotions to it. Writes are free; reads are metered. Every submission is reviewed by a " +
     "person at 5arz before a traveller sees it.",
   start_here: "POST " + SITE + "/api/agent/signup",
@@ -1156,7 +1243,10 @@ const INDEX = {
     "GET /api/agent/me": "Your record and today's quota.",
     "POST /api/agent/me/rotate": "New key; the old one dies immediately.",
   },
-  mcp: { url: SITE + "/mcp", transport: "streamable-http", manifest: SITE + "/.well-known/mcp.json" },
+  mcp: {
+    url: SITE + "/mcp", transport: "streamable-http", manifest: SITE + "/.well-known/mcp.json",
+    auth: "OAuth 2.1 (see " + SITE + "/.well-known/oauth-protected-resource) or a numa_live_ key as a bearer token.",
+  },
   openapi: SITE + "/openapi.json",
   read_quotas: { free: QUOTA.free, "$9.99/mo": QUOTA.bundle, "$19.99/mo": QUOTA.pro, "$50/mo": QUOTA.full },
   contact: "info@5arz.com",
@@ -1183,6 +1273,9 @@ export default {
       if (p === "/openapi.json") return json(openapi());
       if (p === "/.well-known/ai-plugin.json") return json(aiPlugin());
       if (p === "/.well-known/mcp.json") return json(mcpManifest());
+      if (p === "/.well-known/mcp/server-card.json") return json(serverCard());
+      const proof = ownershipProof(p, env);
+      if (proof) return proof;
       // MCP Registry domain-ownership proof (com.itsnum namespace), HTTP method.
       if (p === "/.well-known/mcp-registry-auth") {
         return new Response("v=MCPv1; k=ed25519; p=Rz4PS0hnOA7MmKGIbnQjbHPV3As7jDXni83srIhKv6U=\n", {

@@ -27,7 +27,8 @@ AGENT_FAQS = [
      "business, carry a start and end time, and are reviewed the same way profiles are."),
     ("What is the authentication scheme?",
      "A bearer token. Send Authorization: Bearer numa_live_... on every request. Keys are issued at "
-     "signup, are shown once, and can be rotated from GET /api/agent/me."),
+     "signup, are shown once, and can be rotated from GET /api/agent/me. Clients that support MCP "
+     "authorization, such as Claude and ChatGPT, can sign in with OAuth 2.1 instead of a key."),
     ("Is there an OpenAPI spec?",
      "Yes, at https://itsnum.com/openapi.json, with a plugin manifest at "
      "https://itsnum.com/.well-known/ai-plugin.json."),
@@ -243,6 +244,26 @@ It is JSON-RPC 2.0 over streamable HTTP, with the API key as a bearer token.</p>
 <tr><td><code class="inl">num_list_submissions</code></td><td>Everything this agent has submitted and
     where each one stands.</td></tr>
 </table>
+
+<h3 id="oauth">Sign in instead of a key (Claude, ChatGPT)</h3>
+<p>Claude, ChatGPT and other clients that support MCP authorization do not need a key. Add
+<code class="inl">https://itsnum.com/mcp</code> as a connector, sign in to your NUM account when the window
+opens, and approve what the app may do: <code class="inl">num.read</code> to search,
+<code class="inl">num.write</code> to submit. It is OAuth 2.1 with PKCE and dynamic client registration, and the
+metadata is at <code class="inl">/.well-known/oauth-protected-resource</code>. The connection uses your
+account's daily read quota. Access lasts one hour and renews on its own, and you can end it from the app at
+any time.</p>
+<pre class="code">{
+  "mcpServers": {
+    "num": { "type": "http", "url": "https://itsnum.com/mcp" }
+  }
+}</pre>
+<p>Three things to ask once it is connected:</p>
+<ul>
+<li>Find three Thai restaurants in Patong, Phuket, with a phone number I can call.</li>
+<li>Which spas are listed in Edinburgh? Show me the full record for the first one.</li>
+<li>Show me everything I have submitted to NUM and what the reviewer decided.</li>
+</ul>
 
 <h2>Send a User-Agent</h2>
 <p>Put a real <code class="inl">User-Agent</code> on your requests &mdash; your agent's name and a

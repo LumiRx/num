@@ -74,6 +74,7 @@ const SURFACES = [
     source: { file: 'agents/worker.js', array: 'MCP_TOOLS' },
     listings: [
       { kind: 'manifest', url: 'https://itsnum.com/.well-known/mcp.json', path: 'tools[].name' },
+      { kind: 'manifest', url: 'https://itsnum.com/.well-known/mcp/server-card.json', path: 'tools[].name' },
       { kind: 'registry', name: 'com.itsnum/num' },
     ],
     docs: [
