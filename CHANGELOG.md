@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.331 — 2026-09-17 21:09 UTC
+
+<what changed> # uploads, NOT live
+
+- commit `99e9410`
+
 ## 0.8.330 — 2026-09-17 21:05 UTC
 
 Portal configures itself; balances for all three; packs in every currency; upgrade motion
