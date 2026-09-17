@@ -1160,9 +1160,20 @@ export async function handlePay(request, env, path) {
       // Derived from the key prefix, which is not a secret — `sk_test_` vs
       // `sk_live_` is published in Stripe's own docs. The key itself is never
       // read, logged or returned.
+      // RESTRICTED KEYS COUNT. On 17 Sep this reported
+      // "unrecognised-key-prefix" on production while the key was working
+      // perfectly — a staged version minted a real cs_live_ Checkout Session
+      // with it. The key is an `rk_live_` restricted key, which Stripe issues
+      // for exactly the scoping this worker wants, and only sk_ prefixes were
+      // recognised here.
+      //
+      // That is this field's own failure mode inverted: it exists to stop a
+      // system "reporting success while doing nothing", and it was reporting
+      // trouble while everything worked. A monitor that cries wolf gets
+      // ignored on the day it is right.
       stripe_mode: env.STRIPE_SECRET_KEY
-        ? (String(env.STRIPE_SECRET_KEY).startsWith('sk_live_') ? 'live'
-          : String(env.STRIPE_SECRET_KEY).startsWith('sk_test_') ? 'test'
+        ? (/^(sk|rk)_live_/.test(String(env.STRIPE_SECRET_KEY)) ? 'live'
+          : /^(sk|rk)_test_/.test(String(env.STRIPE_SECRET_KEY)) ? 'test'
           : 'unrecognised-key-prefix')
         : null,
       // A webhook secret is not optional decoration: without it every "paid"
