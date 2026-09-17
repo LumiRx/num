@@ -171,11 +171,15 @@ export default function ProfileView() {
           <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>{t('Add your name and number and this becomes the place NUM learns who you are — how you travel, what you eat, the kind of night you actually want.')}</div>
           <div
             {...pressable(() => store.set({ inviteOpen: {} }))}
+            className="press glow"
             style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
           >
-            INTRODUCE YOURSELF
+            {t('INTRODUCE YOURSELF')}
           </div>
         </div>
+        {/* Language and light are not account settings: a stranger in Bangkok
+            needs Thai before they need a name. */}
+        <ThemePicker />
       </div>
     );
   }

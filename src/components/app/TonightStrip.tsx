@@ -124,11 +124,12 @@ export default function TonightStrip() {
               <div style={{ height: 96, position: 'relative', background: i.image ? `url(${i.image}) center/cover` : 'linear-gradient(135deg, var(--color-accent-300, #9fe3cf), var(--field-bg))' }}>
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(5,15,20,.75) 100%)' }} />
                 {cd && <span className="glass-dark" style={{ position: 'absolute', top: 8, left: 8, color: '#fff', borderRadius: 999, padding: '3px 8px', fontSize: 10.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{cd}</span>}
+                {i.distance_km != null && <span className="glass-dark" style={{ position: 'absolute', top: 8, right: 8, color: '#9FF0D6', borderRadius: 999, padding: '3px 7px', fontSize: 10, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{i.distance_km < 1 ? `${Math.round(i.distance_km * 1000)} m` : `${i.distance_km} km`}</span>}
                 <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff', fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 13, lineHeight: 1.15, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{i.title}</div>
               </div>
               <div style={{ padding: '7px 9px 9px', display: 'grid', gap: 3, fontSize: 11 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                  <span style={{ flex: 1, color: 'var(--ink-60)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[i.distance_km != null ? (i.distance_km < 1 ? `${Math.round(i.distance_km * 1000)} m` : `${i.distance_km} km`) : null, i.venue ?? i.sub, price].filter(Boolean).join(' · ')}</span>
+                  <span style={{ flex: 1, color: 'var(--ink-60)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[i.venue ?? i.sub, price].filter(Boolean).join(' · ')}</span>
                   <SourceMark source={i.source} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 4 }}>

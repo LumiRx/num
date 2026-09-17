@@ -135,7 +135,9 @@ export async function eventsFor(env, { dest, lat, lng, country, fetchImpl, near 
   );
   const list = found?.events ?? found?.result?.events ?? [];
   const out = list.map((e) => {
-    const km = Number.isFinite(lat) && Number.isFinite(lng) && e.lat != null && e.lng != null ? haversineKm(lat, lng, e.lat, e.lng) : null;
+    // Distance only from the person's own fix — from a city centroid it would
+    // read as a fact about them and be wrong by the width of the city.
+    const km = mine && e.lat != null && e.lng != null ? haversineKm(lat, lng, e.lat, e.lng) : null;
     return {
       source: 'ticketmaster', id: `tm_${e.id}`, title: e.name, sub: [e.venue, e.date, e.time].filter(Boolean).join(' · '),
       image: e.image ?? null, rating: null, price: e.from ?? null, currency: e.currency ?? null, url: e.url ?? null,
