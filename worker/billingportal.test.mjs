@@ -201,3 +201,69 @@ test('a history that cannot be read never takes the page down with it', async ()
   assert.equal(out.ok, false);
   assert.deepEqual(out.payments, []);
 });
+
+test('an existing payments table without the owner columns is migrated, not crashed', async () => {
+  // THE BUG THIS EXISTS FOR, 17 Sep 2026.
+  //
+  // The owner index was written into SCHEMA beside the member one. On a
+  // database that already had num_payments — production — CREATE TABLE was a
+  // no-op, the columns did not exist, and CREATE INDEX on them threw inside
+  // env.DB.batch(). Nothing caught it, so every route through pay.mjs
+  // returned a Worker exception.
+  //
+  // Every existing test passed, because their D1 shims swallow errors in
+  // run() and their fixtures already have the columns. This one does neither:
+  // the table is production's OLD shape and the shim reports failures the way
+  // real D1 does.
+  const { requestSubscription, paymentHistory } = await import('./pay.mjs');
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE num_payments (
+    id TEXT PRIMARY KEY, member_id TEXT, mode TEXT NOT NULL, ref TEXT,
+    amount_cents INTEGER, currency TEXT, description TEXT,
+    session_id TEXT, url TEXT, state TEXT NOT NULL DEFAULT 'created',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')), paid_at TEXT)`);
+  db.exec("INSERT INTO num_payments (id, member_id, mode, ref, amount_cents, currency, state) VALUES ('pay_old','mem_9','stripe','tier:plus',898,'usd','paid')");
+
+  const strict = {
+    prepare(sql) {
+      const b = (args) => ({
+        bind: (...m) => b([...args, ...m]),
+        all: async () => {
+          const st = db.prepare(sql);
+          if (/^\s*(SELECT|PRAGMA|WITH)/i.test(sql)) return { results: st.all(...args), success: true };
+          st.run(...args); return { results: [], success: true };
+        },
+        first: async () => db.prepare(sql).get(...args) ?? null,
+        // Real D1 rejects. No swallowing — that is what hid this.
+        run: async () => { const r = db.prepare(sql).run(...args); return { success: true, meta: { changes: Number(r.changes ?? 0) } }; },
+      });
+      return b([]);
+    },
+    batch: async (stmts) => Promise.all(stmts.map((x) => x.run())),
+  };
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ id: 'cs_9', url: 'https://checkout.stripe.com/y' }),
+    { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    const env = { DB: strict, STRIPE_SECRET_KEY: 'sk_test_x' };
+    // This threw 1101 in production shape before the ordering was fixed.
+    const out = await requestSubscription(env, {
+      businessId: 'biz_9', amountCents: 999, currency: 'GBP', name: 'Small', ref: 'biztier:small',
+    });
+    assert.equal(out.ok, true, 'a subscription must be creatable against a pre-existing payments table');
+
+    // The columns were added and the old row backfilled from its ref.
+    const old = db.prepare("SELECT owner_kind, owner_id FROM num_payments WHERE id='pay_old'").get();
+    assert.equal(old.owner_kind, 'member', 'an existing member payment is backfilled, not left blank');
+    assert.equal(old.owner_id, 'mem_9');
+
+    // And the index exists, after its columns rather than before them.
+    const idx = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_num_payments_owner'").get();
+    assert.ok(idx, 'the owner index must be created once the columns exist');
+
+    assert.equal((await paymentHistory(env, 'member', 'mem_9')).payments.length, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

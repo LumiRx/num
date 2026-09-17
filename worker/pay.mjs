@@ -274,9 +274,30 @@ async function stripe(env, path, body, idem, method = 'POST') {
  * code reads it and a column that quietly changes meaning is how this
  * started.
  */
+/**
+ * ORDER MATTERS HERE, and getting it wrong 500'd every payment route.
+ *
+ * The owner index was first written into SCHEMA, beside the member one. On a
+ * database that already had num_payments — which is to say production — the
+ * CREATE TABLE was a no-op, the columns did not exist yet, and CREATE INDEX
+ * ON num_payments(owner_kind, owner_id) referenced columns that were not
+ * there. env.DB.batch() throws on that, nothing caught it, and the Worker
+ * returned a 1101 for anything that touched pay.mjs.
+ *
+ * Every test passed, because the test D1 shims swallow errors inside run()
+ * and their fixtures create num_payments WITH the columns. It was caught by
+ * calling the staged version over HTTP before it served traffic — which is
+ * the entire reason that staging step exists.
+ *
+ * So: the columns are added first, the index after them, and both are
+ * tolerant of already existing.
+ */
 const PAYMENT_ALTERS = [
   'ALTER TABLE num_payments ADD COLUMN owner_kind TEXT',
   'ALTER TABLE num_payments ADD COLUMN owner_id TEXT',
+];
+const PAYMENT_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS idx_num_payments_owner ON num_payments(owner_kind, owner_id)',
 ];
 
 const SCHEMA = `
@@ -284,10 +305,10 @@ CREATE TABLE IF NOT EXISTS num_payments (
   id TEXT PRIMARY KEY, member_id TEXT, mode TEXT NOT NULL, ref TEXT,
   amount_cents INTEGER, currency TEXT, description TEXT,
   session_id TEXT, url TEXT, state TEXT NOT NULL DEFAULT 'created',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')), paid_at TEXT
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), paid_at TEXT,
+  owner_kind TEXT, owner_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_num_payments_member ON num_payments(member_id);
-CREATE INDEX IF NOT EXISTS idx_num_payments_owner ON num_payments(owner_kind, owner_id);
 CREATE INDEX IF NOT EXISTS idx_num_payments_ref ON num_payments(ref);
 CREATE TABLE IF NOT EXISTS num_star_ledger (
   id TEXT PRIMARY KEY, member_id TEXT NOT NULL, delta INTEGER NOT NULL,
@@ -299,12 +320,23 @@ CREATE INDEX IF NOT EXISTS idx_num_star_ledger_member ON num_star_ledger(member_
 const ready = new WeakSet();
 async function ensure(env) {
   if (!env.DB || ready.has(env.DB)) return;
-  await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  // Wrapped, because an un-caught schema error here returns 1101 for every
+  // payment route at once — which is exactly what happened on 17 Sep when an
+  // index preceded its own columns.
+  try {
+    await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
+  } catch (err) {
+    console.error('[pay] schema batch failed — continuing, routes must not 500 on it', err?.message ?? err);
+  }
   for (const sql of PAYMENT_ALTERS) {
     await env.DB.prepare(sql).run().catch((e) => {
       const m = String(e?.message ?? e);
       if (!/duplicate column/i.test(m)) console.warn('[pay] ensure', m);
     });
+  }
+  // Only now that the columns exist.
+  for (const sql of PAYMENT_INDEXES) {
+    await env.DB.prepare(sql).run().catch((e) => console.warn('[pay] ensure index', e?.message ?? e));
   }
   // Backfill what the ref already tells us, so the history is complete rather
   // than starting today. Safe to re-run: it only fills nulls.
