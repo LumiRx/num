@@ -66,7 +66,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         const { enrichCell } = await import('./placeratings.mjs');
         await Promise.race([
           enrichCell(env, { lat: ratingLat, lng: ratingLng, cat: catForRatings ?? 'restaurant' }),
-          new Promise((r) => setTimeout(() => r({ skipped: 'slow' }), 3500)),
+          new Promise((r) => setTimeout(() => r({ skipped: 'slow' }), 2500)),
         ]);
       } catch (err) { console.warn('[ratings]', err?.message ?? err); }
     }

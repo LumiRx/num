@@ -129,7 +129,9 @@ test('a hungry guest is asked HOW they want to eat, not sent to a delivery app',
   assert.match(PERSONA, /Eat there.*Delivery.*Pick up/s, 'the three choices are not offered as chips');
   assert.match(PERSONA, /do NOT emit a service action yet/i);
   // And the escape hatch, so it does not become obtuse.
-  assert.match(PERSONA, /Skip the question ONLY when they have already told you/);
+  assert.match(PERSONA, /Skip the question when they have already told you/);
+  // 17 Sep: and read them generously — a named neighbourhood or cuisine is eating there.
+  assert.match(PERSONA, /Only a bare ask .* earns the question/);
 });
 
 test('the food action itself carries the constraint, not just the persona', () => {
