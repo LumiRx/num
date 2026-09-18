@@ -49,6 +49,7 @@ const INPUT = {
   stays: { where: 'Sukhumvit, Bangkok', checkin: '2026-10-03', nights: '3' },
   tables: { what: 'quiet, Thai, near the river', when: 'tomorrow 8pm', people: '2' },
   tonight: {},
+  events: { when: 'this weekend', what: 'live music' },
   charter: { route: 'Bangkok → Phuket', when: 'Saturday 10am', people: '4' },
   rides: { to: 'Suvarnabhumi Airport', when: '6:30am tomorrow' },
   pickup: { what: 'two iced lattes and a croissant', from: '', when: '20 minutes' },
@@ -95,20 +96,21 @@ async function askOne(f) {
   }
 }
 
-/** Two at a time, with a breath between. Four at once earned a 429 from our
- *  own rate limiter on the first run, which reads exactly like a broken
- *  feature until you look at the status code. */
+/** One at a time, five seconds apart. Four at once earned a 429 from our own
+ *  rate limiter, and two at once still did — a throttled door reads exactly
+ *  like a broken one until you look at the status code, so the audit stays
+ *  slower than the limiter rather than teaching you to ignore its failures. */
 async function pool(items, size, fn) {
   const out = [];
   for (let i = 0; i < items.length; i += size) {
     out.push(...await Promise.all(items.slice(i, i + size).map(fn)));
     process.stderr.write(`  …${Math.min(i + size, items.length)}/${items.length}\n`);
-    if (i + size < items.length) await new Promise((r) => setTimeout(r, 1500));
+    if (i + size < items.length) await new Promise((r) => setTimeout(r, 5000));
   }
   return out;
 }
 
-const results = await pool(todo, 2, askOne);
+const results = await pool(todo, 1, askOne);
 
 for (const r of results) {
   console.log(`\n═══ ${r.id.toUpperCase()}  ${r.ok ? 'HTTP ' + r.status : 'FAILED'}  ${(r.ms / 1000).toFixed(1)}s  lane=${r.lane ?? '—'} brain=${r.brain ?? '—'}${r.degraded ? ' DEGRADED' : ''}`);
