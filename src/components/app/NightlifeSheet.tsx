@@ -133,7 +133,7 @@ export default function NightlifeSheet() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 11.5, color: 'var(--ink-60)' }}>
           <span style={{ flex: 1, minWidth: 0 }}>{here ? t('Ranked by distance from where you are.') : place ? t('Ranked from {place}. Tap NEAR ME to rank from your phone.', { place }) : t('Tap NEAR ME to rank from your phone.')}</span>
           {!here && (
-            <span {...pressable(() => void nearMe())} className="tap press" style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', fontWeight: 800, fontSize: 10.5, letterSpacing: '.08em', opacity: locating ? 0.6 : 1 }}>
+            <span {...pressable(() => void nearMe())} className="tap press" style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', fontWeight: 800, fontSize: 11, letterSpacing: '.08em', opacity: locating ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 8px', margin: '-12px -8px' }}>
               {locating ? t('FINDING YOU…') : t('NEAR ME')}
             </span>
           )}
@@ -143,7 +143,7 @@ export default function NightlifeSheet() {
       {data?.error === 'no_place' && (
         <div style={{ margin: '12px 16px', fontSize: 12.5, color: 'var(--ink-60)', lineHeight: 1.5 }}>
           {t('Tell NUM where you are first.')}{' '}
-          <span {...pressable(() => store.set({ nightlifeOpen: false, placeOpen: true }))} style={{ color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer' }}>{t('Where am I?')}</span>
+          <span {...pressable(() => store.set({ nightlifeOpen: false, placeOpen: true }))} style={{ color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 6px', margin: '-12px -6px' }}>{t('Where am I?')}</span>
         </div>
       )}
       {busy && !data?.ok && <div style={{ margin: '12px 16px', fontSize: 12, color: 'var(--ink-40)' }}>{t('Looking…')}</div>}

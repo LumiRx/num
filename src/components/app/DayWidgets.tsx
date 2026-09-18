@@ -111,7 +111,7 @@ export function CalendarStrip() {
         <div style={kicker}>{t('THE NEXT WEEK')}</div>
         <span
           {...pressable(() => store.set((s) => ({ calOpen: true, selDay: s.selDay ?? `${today.getMonth() + 1}-${today.getDate()}` })))}
-          style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent)', display: 'flex', gap: 4, alignItems: 'center' }}
+          style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent)', display: 'flex', gap: 4, alignItems: 'center', minHeight: 44, padding: '0 4px', margin: '-12px -4px' }}
         >
           <CalendarIcon size={12} />{' '}{t('FULL CALENDAR')}</span>
       </div>
@@ -153,7 +153,7 @@ export function TripCheck() {
 
   return (
     <div className="glass" style={card}>
-      <div {...pressable(() => setOpen((v) => !v))} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div {...pressable(() => setOpen((v) => !v))} aria-expanded={open} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, minHeight: 44 }}>
         <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: clean ? 'rgba(22,140,90,.14)' : 'rgba(14,164,131,.12)', color: clean ? '#0e6b45' : 'var(--color-accent-700)' }}>
           {clean ? <CheckIcon size={15} /> : <BellIcon size={15} />}
         </div>

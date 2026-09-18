@@ -424,7 +424,7 @@ export default function InviteSheet() {
         {...pressable(close)}
         aria-label={t('Close')}
         className="glass press"
-        style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
+        style={{ position: 'absolute', top: 6, right: 6, width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}
       >
         <XIcon size={15} />
       </div>
@@ -543,7 +543,7 @@ export default function InviteSheet() {
             {!sending && !emailOpen && (
               <div
                 {...pressable(() => setEmailOpen(true))}
-                style={{ ...helpText, marginTop: 0, cursor: 'pointer', textDecoration: 'underline', minHeight: 44, display: 'flex', alignItems: 'center' }}
+                style={{ ...helpText, marginTop: 0, cursor: 'pointer', textDecoration: 'underline', minHeight: 44, display: 'flex', alignItems: 'center', fontSize: 12 }}
               >
                 No mobile I can be texted on — use my email instead
               </div>

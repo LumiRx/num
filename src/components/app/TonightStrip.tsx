@@ -157,7 +157,7 @@ export default function TonightStrip() {
     <span
       {...pressable(() => void nearMe())}
       className="tap press"
-      style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0 4px', opacity: locating ? 0.6 : 1 }}
+      style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0 8px', minHeight: 44, margin: '-14px -8px', opacity: locating ? 0.6 : 1 }}
     >
       <svg width="11" height="11" viewBox="0 0 20 20" aria-hidden="true">
         <circle cx="10" cy="10" r="3" fill="currentColor" />
