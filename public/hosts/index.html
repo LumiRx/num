@@ -119,6 +119,17 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   <p class="sub" style="max-width:64ch">If you look after people &mdash; a client list, a group of regulars, a family office, a roster of
   travellers &mdash; you are already a concierge. What you do not have is something answering all of them at once, at 3am,
   in the language they asked in. That is what NUM does, and it sends the work to <strong>your</strong> people first.</p>
+
+  <!-- The form is 300 lines down, past pricing, the guarantees and the FAQ.
+       Somebody who arrived already convinced had no way to act on it without
+       reading the whole case first, and a reader who has decided is the one
+       reader you must never make scroll. Anchored rather than duplicated, so
+       there is still exactly ONE form on this page and one place that can be
+       out of date. -->
+  <p style="margin-top:22px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <a class="btn pri" href="#apply" data-cta="hero-create-host">Create my host account</a>
+    <span class="sub" style="margin:0;font-size:14px">Free to join &middot; you keep your clients</span>
+  </p>
 </header>
 
 <section class="wrap" style="padding-top:26px">
@@ -302,7 +313,10 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   </div>
 </section>
 
-<section class="wrap" style="padding:50px 0 76px" id="apply">
+<!-- scroll-margin-top: .nv is position:sticky at z-index 60, so a bare
+     jump to #apply parks "Become a founding host" underneath the nav
+     bar and the reader lands mid-form with no heading. -->
+<section class="wrap" style="padding:50px 0 76px;scroll-margin-top:88px" id="apply">
   <div class="card2" style="padding:38px 30px;max-width:620px;margin:0 auto">
     <h2 style="margin:0 0 10px;text-align:center">Become a founding host</h2>
     <p style="color:var(--ink2);margin:0 auto 24px;font-size:15.5px;line-height:1.65;text-align:center;max-width:52ch">

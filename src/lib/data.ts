@@ -1,6 +1,7 @@
 // Seed data — ported verbatim from Concierge.dc.html (NUM v0.8 canonical prototype).
 import { T } from './i18nmark';
 import type { AppState, Booking, Chip, Meeting, MemoryItem, Msg, Txn, WidgetId } from './types';
+import { coldOpen, readHint } from './coldopen';
 
 export const seedTxns: Txn[] = [
   { id: 't1', t: 'Top-up ★1,000', meta: 'Apple Pay · 24 Jul', amt: '+★1,000', dir: 1 },
@@ -216,9 +217,15 @@ export function freshState(): AppState {
         who: 'c',
         // The first thing anyone reads. It has one job: make them want to
         // reply. Concrete beats grand — "remembers you don't eat shellfish"
-        // lands where "your whole trip, handled" does not. Location is NOT
-        // asked here; one question at a time, and the name comes first.
-        text: T('Hi, I’m NUM. Tell me what you want, in any language. I’ll find three real places and book the one you pick.\n\nLet’s start with your name.'),
+        // lands where "your whole trip, handled" does not.
+        //
+        // It used to end "Let's start with your name", and the name came
+        // first. That cost the whole X campaign: 98 people arrived from an ad
+        // about flights, met a paragraph about dinner that asked who they
+        // were, and not one of them replied. The opening now answers the ad
+        // that sent them and asks for a TASK, never an identity —
+        // see coldopen.ts, and the test that holds the line.
+        text: coldOpen(readHint()).text,
       },
     ],
     bookings: [],

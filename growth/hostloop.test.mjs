@@ -19,7 +19,17 @@ const memberPage = read('public/my-host/index.html');
 /* ── 1. SIGNUP ───────────────────────────────────────────────────────── */
 
 test('signup asks for two things and a consent, and nothing else is required', () => {
-  const form = hostsPage.slice(hostsPage.indexOf('<form id="hostForm"'), hostsPage.indexOf('Create my host account'));
+  // Both ends measured FORWARD from the form. The closing marker is the
+  // submit button's label, and on 18 Sep a hero CTA carrying the same words
+  // was added 200 lines above the form: the unanchored indexOf found that one
+  // instead, the slice ran backwards, and this test reported 0 required
+  // fields on a form that still had 3. A slice with one end floating is a
+  // slice that measures whatever the page happens to say first.
+  const start = hostsPage.indexOf('<form id="hostForm"');
+  assert.ok(start > 0, 'the host signup form is gone from the page');
+  const end = hostsPage.indexOf('Create my host account', start);
+  assert.ok(end > start, 'the submit button that ends the form is gone');
+  const form = hostsPage.slice(start, end);
   // Count the FIELDS carrying the attribute, not the word — the page also
   // uses "required" in prose, and a test that counts prose measures nothing.
   const required = (form.match(/<(?:input|textarea|select)\b[^>]*\brequired\b[^>]*>/g) || []).length;

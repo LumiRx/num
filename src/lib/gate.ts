@@ -45,8 +45,53 @@ export const canSend = (me: Member | null | undefined): boolean =>
     || me.review_access === true
   );
 
+/**
+ * THE FIRST ANSWER IS FREE. (18 Sep 2026, Dre's call.)
+ *
+ * The gate above was briefly the whole story: nothing proved, nothing sent.
+ * It was set in response to "we are getting a ton of users and they're just
+ * closing the sign-in box", and the instinct was right — but the numbers were
+ * not. Over the fourteen days to 18 Sep, roughly FOUR people a day reached the
+ * code box at all, and nearly every one of them finished (two failures in the
+ * whole period). Nobody was closing the box, because almost nobody got to it.
+ *
+ * What was actually happening sat much earlier: 1,903 visitors in a week
+ * produced 18 first messages, and an X campaign that spent $529.05 driving 842
+ * clicks produced 98 arrivals, 0 messages and 0 accounts. A stranger was being
+ * asked to prove a phone number before NUM had been useful even once.
+ *
+ * So the ceiling is gated and the core is not — the rule membership.mjs has
+ * stated all along. One real answer, free, to anybody. After that, being
+ * reachable is the price of continuing, which is fair: by then they have been
+ * given something, and everything past this point either costs money to serve
+ * or has to reach them later.
+ */
+export const FREE_ANSWERS = 1;
+
+/** Questions this person has already asked. The transcript is the counter. */
+export function asksSpent(msgs: ReadonlyArray<{ who: string }> | null | undefined): number {
+  let n = 0;
+  for (const m of msgs ?? []) if (m?.who === 'u') n += 1;
+  return n;
+}
+
+/**
+ * May this person send right now?
+ *
+ * Takes both halves explicitly so a component can compute it from the values
+ * it already subscribes to. Reading the store inside a render instead would
+ * give an answer that never updates when the transcript grows.
+ */
+export const gateOpen = (
+  me: Member | null | undefined,
+  msgs: ReadonlyArray<{ who: string }> | null | undefined,
+): boolean => canSend(me) || asksSpent(msgs) < FREE_ANSWERS;
+
 /** The same question, asked of current state. */
-export const mayAsk = (): boolean => canSend(store.get().me);
+export const mayAsk = (): boolean => {
+  const s = store.get();
+  return gateOpen(s.me, s.msgs);
+};
 
 /**
  * Hold the question, open the door.

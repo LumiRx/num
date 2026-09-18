@@ -39,9 +39,9 @@ globalThis.addEventListener = () => {};
 globalThis.document = { addEventListener() {}, createElement: () => ({ style: {}, setAttribute() {}, appendChild() {} }), body: { appendChild() {}, dataset: {} }, documentElement: { style: { setProperty() {} } } };
 try { Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node', onLine: true }, configurable: true }); } catch { /* fine */ }
 
-let canSend, mayAsk, holdAndAsk, takeHeldAsk, store;
+let canSend, mayAsk, holdAndAsk, takeHeldAsk, store, gateOpen, asksSpent, FREE_ANSWERS;
 before(async () => {
-  ({ canSend, mayAsk, holdAndAsk, takeHeldAsk } = await import('./gate.ts'));
+  ({ canSend, mayAsk, holdAndAsk, takeHeldAsk, gateOpen, asksSpent, FREE_ANSWERS } = await import('./gate.ts'));
   ({ store } = await import('./store.ts'));
 });
 beforeEach(() => store.set({ me: null, pendingAsk: null, inviteOpen: null }));
@@ -128,13 +128,22 @@ describe('the gate is on the one door, not on some of six', () => {
   test('the composer keeps the guest’s sentence in the box rather than into a sheet', () => {
     const t = src('../components/app/ThreadView.tsx');
     const send = t.slice(t.indexOf('const send = () => {'), t.indexOf('return (', t.indexOf('const send = () => {')));
-    const gate = send.indexOf('canSend(store.get().me)');
+    // `mayAsk()` since 18 Sep, because the first answer is free and the
+    // composer must let an unspent stranger straight through. The ORDER is
+    // what this test exists for and has not changed: check before clearing,
+    // so a guest who meets the sheet still has their sentence in the box.
+    const gate = send.indexOf('mayAsk()');
     assert.ok(gate > 0, 'the composer must check before clearing');
     assert.ok(gate < send.indexOf("setDraft('')"), 'the draft must survive the gate');
   });
 
-  test('and it says so above the box, before anyone presses send', () => {
-    assert.match(src('../components/app/ThreadView.tsx'), /!canSend\(me\) && \(/);
+  test('and it says so above the box — but only once the free answer is spent', () => {
+    // Was `!canSend(me)`, which put the rules of the place above an EMPTY box
+    // for every stranger who had never asked anything. That notice was part of
+    // what the 18 Sep numbers indicted, so it now waits for the free answer to
+    // be used. gateOpen takes msgs as well as me precisely so this stays
+    // reactive: read from the store inside render and it would never update.
+    assert.match(src('../components/app/ThreadView.tsx'), /!gateOpen\(me, msgs\) && \(/);
   });
 
   test('the held question fires from ANY door, as a subscription, not a call site', () => {
@@ -169,5 +178,50 @@ describe('the gate is on the one door, not on some of six', () => {
     assert.equal(store.get().pendingAsk, null, 'the held ask was taken the moment the member became sendable');
     assert.equal(store.get().inviteOpen, null, 'and the sheet closed');
     store.set({ me: null });
+  });
+});
+
+/* ── THE FIRST ANSWER IS FREE ─────────────────────────────────────────── */
+
+describe('one answer, then the gate', () => {
+  test('a stranger who has asked nothing may ask', () => {
+    assert.equal(gateOpen(null, []), true, 'the first question must always go through');
+    assert.equal(gateOpen(undefined, undefined), true, 'a cold start with no transcript is a stranger');
+  });
+
+  test('a stranger who has already asked may not ask again', () => {
+    const asked = [{ who: 'c' }, { who: 'u' }, { who: 'c' }];
+    assert.equal(gateOpen(null, asked), false, 'the second question is where being reachable is the price');
+  });
+
+  test('the concierge talking to itself does not spend the free answer', () => {
+    // Greetings, ack lines and answers are all `who: 'c'`. Only the guest's
+    // own words count, or a chatty cold open would close the gate before the
+    // guest had said anything at all.
+    const chatty = [{ who: 'c' }, { who: 'c' }, { who: 'c' }];
+    assert.equal(asksSpent(chatty), 0);
+    assert.equal(gateOpen(null, chatty), true);
+  });
+
+  test('a proved member is never counted or limited', () => {
+    const many = Array.from({ length: 50 }, () => ({ who: 'u' }));
+    assert.equal(gateOpen(member({ phone_verified: true }), many), true);
+    assert.equal(gateOpen(member({ email: 'a@b.com', email_verified: true }), many), true);
+    assert.equal(gateOpen(member({ review_access: true }), many), true,
+      'the App Review reviewer must never meet the gate');
+  });
+
+  test('the free answer is exactly one, and the number is stated once', () => {
+    assert.equal(FREE_ANSWERS, 1);
+    const spent = Array.from({ length: FREE_ANSWERS }, () => ({ who: 'u' }));
+    assert.equal(gateOpen(null, spent), false, 'spending FREE_ANSWERS must close the gate');
+    assert.equal(gateOpen(null, spent.slice(0, -1)), true, 'one short must still be open');
+  });
+
+  test('a malformed transcript does not throw the guest out', () => {
+    // msgs come back from localStorage, where anything can be waiting.
+    assert.equal(asksSpent(null), 0);
+    assert.equal(asksSpent([null, undefined, {}, { who: 7 }]), 0);
+    assert.equal(gateOpen(null, [null, undefined]), true);
   });
 });
