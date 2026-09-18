@@ -33,8 +33,8 @@ const fareBtn: React.CSSProperties = {
 
 /** One starter chip, shared by the fixed pair and the destination's own. */
 const starterChip: React.CSSProperties = {
-  cursor: 'pointer', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, fontWeight: 600, flex: 'none',
-  display: 'flex', gap: 6, alignItems: 'center',
+  cursor: 'pointer', borderRadius: 999, padding: '8px 14px', fontSize: 11.5, fontWeight: 600, flex: 'none',
+  display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
 };
 
 /**
@@ -700,51 +700,62 @@ export default function ThreadView() {
             {rotating}
           </div>
         )}
-        {!demo && (
-          <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 42, alignItems: 'center', padding: '0 2px' }}>
-            {/* Two fixed starters ahead of the destination's own: the box for
-                people who know what they want, the dice for people who don't.
-                Neither sends a message — they open the Search & Suggest sheet. */}
-            {[['🎲', T('Surprise me'), 'suggest'], ['🔍', T('Search'), 'search'], ['🛬', T('Watch my flight'), 'flight']].map(([emoji, label, tab]) => (
-              <div
-                key={label}
-                {...pressable(() => (tab === 'flight' ? store.set({ flightWatchOpen: true }) : openDiscover(tab as 'search' | 'suggest')))}
-                className="glass lift"
-                style={{ ...starterChip, whiteSpace: 'nowrap' }}
-              >
-                <span aria-hidden="true">{emoji}</span>
-                {t(label)}
-              </div>
-            ))}
-            {starters.map(({ emoji, label, prompt }) => (
-              <div
-                key={label}
-                {...pressable(() => { if (!store.get().typing) void askNum(prompt); })}
-                className="glass lift"
-                style={{ ...starterChip, ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
-              >
-                <span aria-hidden="true">{emoji}</span>
-                {t(label)}
-              </div>
-            ))}
-          </div>
-        )}
-        {/* One fixed-height scrolling row, never a wrapping block. Wrapping made
-            the bar 1–3 rows tall depending on how many chips the reply carried,
-            so sending (which clears the chips) resized the whole composer and
-            the thread jumped under it. Height is reserved even when empty. */}
-        <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 46, alignItems: 'center', padding: '0 2px' }}>
+        {/* ONE ROW, NO EMOJI, NO SECOND LINE (18 Sep 2026).
+            There were two rows here — NUM's reply chips above the fixed
+            starters — and each chip carried a leading emoji. On a 375px phone
+            that was ~88px of composer spent on decoration, with "Tell NUM who
+            I am" stranded alone on its own line. Now everything a tap can
+            start lives in a single scrolling row: what NUM just offered comes
+            first, because it is about the thing on screen, then the four
+            fixed doors, then the destination's own starters. Slide for the
+            rest.
+
+            The height stays fixed and the row is rendered even when empty,
+            for the reason the old comment gave: chips clear on send, and a
+            row that collapses resizes the composer and jumps the thread. */}
+        <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', height: 44, alignItems: 'center', padding: '0 2px' }}>
           {chips.map((c) => (
             <div
               key={c.id}
               {...pressable(() => sendChip(c.id, c.label))}
               className="glass lift chip-in glow-soft"
-              style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: '8px 13px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 6, flex: 'none', whiteSpace: 'nowrap', ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
+              style={{ ...starterChip, ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
             >
-              <SparklesIcon size={12} style={{ color: 'var(--color-accent)' }} />
               {t(c.label)}
             </div>
           ))}
+          {!demo && (
+            <>
+              {/* The four fixed doors: the box for people who know what they
+                  want, the dice for people who don't, deep research for the
+                  long answer (its own sheet — it takes a minute and pings when
+                  it lands), and the flight watcher. None sends a message. */}
+              {[[T('Surprise me'), 'suggest'], [T('Search'), 'search'], [T('Look into it'), 'research'], [T('Watch my flight'), 'flight']].map(([label, tab]) => (
+                <div
+                  key={label}
+                  {...pressable(() => {
+                    if (tab === 'flight') { store.set({ flightWatchOpen: true }); return; }
+                    if (tab === 'research') { store.set({ researchOpen: true }); return; }
+                    openDiscover(tab as 'search' | 'suggest');
+                  })}
+                  className="glass lift"
+                  style={starterChip}
+                >
+                  {t(label)}
+                </div>
+              ))}
+              {starters.map(({ label, prompt }) => (
+                <div
+                  key={label}
+                  {...pressable(() => { if (!store.get().typing) void askNum(prompt); })}
+                  className="glass lift"
+                  style={{ ...starterChip, ...(typing ? { pointerEvents: 'none' as const, opacity: 0.55 } : {}) }}
+                >
+                  {t(label)}
+                </div>
+              ))}
+            </>
+          )}
         </div>
         {/* Fixed 44px row: the send/mic swap and the input's own growth can
             never change the composer's height. */}

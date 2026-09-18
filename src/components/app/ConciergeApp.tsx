@@ -27,6 +27,7 @@ import EventSheet from './EventSheet';
 import PaySheet from './PaySheet';
 import BillSheet from './BillSheet';
 import { bootBill } from '../../lib/bill';
+import { resumeResearch } from '../../lib/research';
 import PassengerSheet from './PassengerSheet';
 import TabSheet from './TabSheet';
 import ErrandSheet from './ErrandSheet';
@@ -38,6 +39,7 @@ import EventDetailSheet from './EventDetailSheet';
 import BookSheet from './BookSheet';
 import TravelSheet from './TravelSheet';
 import InviteSheet from './InviteSheet';
+import ResearchSheet from './ResearchSheet';
 import PartySheet from './PartySheet';
 import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
@@ -75,7 +77,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
 
   const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null, placeOpen: false, flightWatchOpen: false, featureOpen: null, eventView: null });
 
-  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen || s.placeOpen || s.flightWatchOpen || !!s.featureOpen || !!s.eventView || s.voice > 0);
+  const overlayOpen = useApp((s) => s.calOpen || s.shareOpen || s.walletOpen || s.partyOpen || s.eventOpen || s.businessOpen || !!s.payOpen || s.passengerOpen || !!s.inviteOpen || !!s.tabOpen || s.errandsOpen || !!s.discoverOpen || s.placeOpen || s.flightWatchOpen || !!s.featureOpen || !!s.eventView || s.researchOpen || s.voice > 0);
 
   // Pick up a referral/invite off the launch URL, then keep the shared plan in
   // step while the app is in the foreground — that polling loop is how the
@@ -85,6 +87,10 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     // params, so a `?dm=` arriving alongside a referral would be lost.
     bootDm();
     bootBill();
+    // A research run outlives the app: it takes a minute, the guest may close
+    // NUM, and a push brings them back. Picking the watch up on boot is what
+    // makes "you can close this" true rather than a promise.
+    resumeResearch();
     bootSocial();
     void restoreTab();
     void refreshDmInbox();
@@ -522,6 +528,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <BookSheet />
       <TravelSheet />
       <InviteSheet />
+      <ResearchSheet />
       <ShareSheet />
       {/* Mounted after ShareSheet on purpose: the two can both be open in a
           confused moment, and this one is the more specific answer. */}

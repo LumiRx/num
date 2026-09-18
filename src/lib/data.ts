@@ -136,6 +136,13 @@ function baseState() {
     events: [],
     eventId: null,
     eventOpen: false,
+    // Deep research. `research` survives a reload so a run started before the
+    // app was closed can be picked up again — see resumeResearch().
+    researchOpen: false,
+    research: null,
+    researchBusy: false,
+    researchError: null,
+    researchLeft: null,
     // The app opens ON the thread — it is still the product. Closing it drops
     // you to the dash, and the floating dot brings it back from anywhere.
     threadOpen: true,

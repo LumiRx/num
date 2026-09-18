@@ -28,7 +28,20 @@ const REPAIRED = (() => {
 
 /** Every array field in AppState that survives persistable(). */
 function persistedArrayFields() {
-  const arrays = [...TYPES.matchAll(/^\s{2}([a-zA-Z]+)\??:\s*([A-Za-z<>\[\]{}| ]+?);$/gm)]
+  // SCOPED TO AppState, which is what the line above has always claimed.
+  //
+  // The regex used to run over the whole of types.ts and match any field
+  // indented two spaces — so every OTHER interface in the file was being read
+  // as though it were the store. It went unnoticed while no other interface
+  // had a plain `name: Thing[];` field; adding ResearchRun on 18 Sep produced
+  // "saved arrays with no repair: constraints, unmet" for two fields that are
+  // not in the store at all and cannot be restored from localStorage.
+  //
+  // Narrowing loses no coverage — AppState is the only thing persisted — and
+  // the sibling test below fails if this ever matches nothing.
+  const start = TYPES.indexOf('export interface AppState {');
+  const state = TYPES.slice(start, TYPES.indexOf('\n}', start));
+  const arrays = [...state.matchAll(/^\s{2}([a-zA-Z]+)\??:\s*([A-Za-z<>\[\]{}| ]+?);$/gm)]
     .filter((m) => /\[\]|Array</.test(m[2])).map((m) => m[1]);
   const pers = DATA.slice(DATA.indexOf('export function persistable'), DATA.indexOf('} = s;'));
   const inner = pers.slice(pers.indexOf('const {') + 7);

@@ -121,8 +121,8 @@ export const FEATURES = Object.freeze([
     code: ['worker/placeratings.mjs', 'ai/places.js'],
     sop: {
       on: 'Set SERPAPI_KEY. One search per ~1 km cell per category per 30 days; the cost is bounded by geography, not by traffic.',
-      check: 'SELECT cell, cat, found, matched FROM num_rating_runs ORDER BY ts DESC LIMIT 5 — matched should be more than half of found.',
-      broken: 'matched near zero means the directory has no rows where people are asking, not that the search failed. Off = the old ranking; picks get duller, nothing errors.',
+      check: 'SELECT cell, cat, datetime(ts/1000,\'unixepoch\') FROM num_rating_runs ORDER BY ts DESC LIMIT 5. The DATE is the check, not the counts: no row since yesterday means this is not running, whatever `state` says above. matched should also be more than half of found.',
+      broken: 'THIS FEATURE READS "on" WHENEVER SERPAPI_KEY IS SET, INCLUDING WHEN EVERY SEARCH IS REFUSED — it was 429ing for nine hours on 18 Sep while this line said on. A refusal (429 spent plan, 401/403 bad key) now records a low-severity `ratings_refused` chore carrying the remedy: GET /api/admin/failures, or the chores count on /api/health. matched near zero is different and harmless — it means the directory has no rows where people are asking. Off entirely = the old ranking; picks get duller, nothing errors.',
     },
   },
   {

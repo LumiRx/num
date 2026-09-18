@@ -8,6 +8,29 @@ import type { DmMessage, DmPeer } from './dm';
 
 export type View = 'dash' | 'thread' | 'plan' | 'mem';
 
+/**
+ * One deep-research run. The server's shape, unchanged — see the `shape()`
+ * function in worker/research.mjs.
+ *
+ * `unmet` is the part not to quietly drop when rendering: it carries what the
+ * evidence could not settle, and any venue the model named that NUM could not
+ * find in its own directory. An answer that hides those is the answer this
+ * feature exists not to give.
+ */
+export interface ResearchRun {
+  id: string;
+  state: 'queued' | 'running' | 'done' | 'empty' | 'failed';
+  brief: string;
+  dest: string | null;
+  questions: { q: string; cat: string }[];
+  constraints: string[];
+  answer: string | null;
+  unmet: string[];
+  places: { id: string; name: string; area: string | null; rating: number | null }[];
+  ms: number | null;
+  error: string | null;
+}
+
 export type CityGroup = 'BKK' | 'HKT' | 'SIN' | 'KP';
 
 export type BookingStatus = 'confirmed' | 'hold' | 'deposit' | 'rebooked' | 'cancelled';
@@ -442,6 +465,13 @@ export interface AppState {
 
   /** Search and Suggest — which tab is open, or null. See lib/discover.ts. */
   discoverOpen: 'search' | 'suggest' | null;
+  /** Deep research — the long answer. See src/lib/research.ts. */
+  researchOpen: boolean;
+  research: ResearchRun | null;
+  researchBusy: boolean;
+  researchError: string | null;
+  /** Runs left this month, as the server reported on the last start. */
+  researchLeft: number | null;
 
   /** The errand board: what's open nearby, and what's yours. */
   errandsOpen: boolean;

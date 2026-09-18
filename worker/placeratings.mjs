@@ -88,9 +88,46 @@ export async function enrichCell(env, { lat, lng, cat, fetchImpl = fetch }) {
 
   let found;
   try { found = await searchMaps(env, { lat, lng, q, fetchImpl }); } catch (err) {
-    console.warn('[ratings] search failed', err?.message ?? err);
+    const msg = String(err?.message ?? err);
+    console.warn('[ratings] search failed', msg);
     await env.DB.prepare('DELETE FROM num_rating_runs WHERE cell = ?1 AND cat = ?2').bind(cell, cat ?? 'restaurant').run();
-    return { error: String(err?.message ?? err) };
+
+    // ── A REFUSAL IS NOT A HICCUP, AND SOMEBODY HAS TO BE TOLD ────────────
+    //
+    // 17 Sep 2026 22:33 was the last rating this product recorded. Every
+    // search since has come back 429, and the only trace was this
+    // console.warn — which nobody reads, because reading it means already
+    // suspecting the thing it would tell you. Meanwhile /api/features
+    // reported `ratings: on`, because the key was set, and the registry
+    // exists precisely so an operator does not have to guess.
+    //
+    // 429 and 401/403 are the two that mean a human must act: the plan is
+    // spent, or the key is wrong. Everything else — a timeout, a 5xx, a
+    // dropped connection — is weather, and recording weather is how a ledger
+    // becomes noise.
+    //
+    // LOW severity, deliberately. `summary()` counts anything above low as
+    // `actionable`, and an untold actionable failure makes /api/health say
+    // DOWN. Ranking that has quietly got duller is a chore with a known
+    // remedy, not an outage — and the night of 17 Sep was spent teaching this
+    // ledger not to cry wolf. It lands in `chores`, in the digest, and in the
+    // admin failures list, where the remedy is written out in full.
+    if (/\b(429|401|403)\b/.test(msg)) {
+      try {
+        const { record } = await import('./failures.mjs');
+        await record(env, {
+          kind: 'ratings_refused',
+          subject: msg.slice(0, 80),
+          detail: 'Google Maps ratings are not being fetched, so places rank on weaker signals and '
+            + 'the "Real ratings" feature is on in name only. 429 = the SerpAPI plan is spent; '
+            + '401/403 = SERPAPI_KEY is wrong or revoked. Top up or replace the key, then confirm with: '
+            + 'SELECT cell, cat, found, matched FROM num_rating_runs ORDER BY ts DESC LIMIT 5 — '
+            + 'a row newer than the incident means it is fixed. Nothing else breaks meanwhile.',
+          severity: 'low',
+        });
+      } catch { /* the ledger must never be the reason an ask fails */ }
+    }
+    return { error: msg };
   }
 
   // Our rows within ~1.5 km of the point.
