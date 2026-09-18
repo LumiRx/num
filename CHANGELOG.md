@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.377 — 2026-09-18 23:31 UTC
+
+motion: sheets, doors, tabs, skeleton, landed pop
+
+- commit `de86611`
+
 ## 0.8.376 — 2026-09-18 23:25 UTC
 
 upgrade nudge under landed bookings
