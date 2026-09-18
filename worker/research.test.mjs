@@ -153,6 +153,20 @@ describe('the shape of a run', () => {
     assert.match(SRC, /, 202\)/, '202 Accepted — started, not finished');
   });
 
+
+  test('the writing pass gets longer than a chat turn', () => {
+    // callProse defaults to 20s, which is right for a conversation and wrong
+    // for this. First production run — "Three days in Phuket with a five-year-
+    // old and a grandmother who cannot walk far", 36 candidates — aborted at
+    // 27.7s. Two simpler briefs had returned in 14.4s and 17.2s, which is how
+    // a fast-path limit gets missed: it only bites the briefs this exists for.
+    assert.match(SRC, /const WRITE_TIMEOUT_MS = 5[0-9]_000/, 'the write pass sets its own ceiling');
+    assert.match(SRC, /NUM_BRAIN_TIMEOUT_MS: String\(WRITE_TIMEOUT_MS\)/, 'and passes it through a cloned env');
+    assert.match(SRC, /const slow = \{ \.\.\.env,/, 'a CLONE — the shared chat path keeps its own ceiling');
+    assert.ok(!/NUM_BRAIN_TIMEOUT_MS/.test(SRC.slice(SRC.indexOf('export async function decompose'), SRC.indexOf('export async function gather'))),
+      'and only the write pass gets it — decompose is short and should stay short');
+  });
+
   test('one run belongs to the member who paid for it', () => {
     assert.match(SRC, /row\.member_id !== me\) return json\(\{ error: 'not yours' \}, 403\)/);
   });

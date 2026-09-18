@@ -268,8 +268,29 @@ export function evidenceBlock(rows) {
 /**
  * PASS THREE — the answer, written against the evidence and nothing else.
  */
+/**
+ * How long the writing pass may take.
+ *
+ * `callProse` defaults to 20 seconds, which is right for a chat turn — twenty
+ * seconds of silence in a conversation is already a failure. Deep research is
+ * the opposite shape by design: it runs under waitUntil and pings when it
+ * lands, and the guest is not sitting watching a cursor.
+ *
+ * 18 Sep 2026, first production run: "Three days in Phuket with a five-year-
+ * old and a grandmother who cannot walk far" — 36 candidate places, a
+ * multi-part brief — aborted at 27.7s against that 20s ceiling. Two simpler
+ * Bangkok briefs had come back in 14.4s and 17.2s, which is how a limit tuned
+ * for the fast path gets missed on the slow one: it only bites the briefs
+ * this feature exists for.
+ *
+ * Passed as a cloned env rather than a new callProse parameter, so the shared
+ * chat path keeps its own ceiling exactly as it is.
+ */
+const WRITE_TIMEOUT_MS = 55_000;
+
 export async function write(env, brain, { brief, dest, constraints, preferences, evidence }) {
-  const out = await callProse(env, brain, {
+  const slow = { ...env, NUM_BRAIN_TIMEOUT_MS: String(WRITE_TIMEOUT_MS) };
+  const out = await callProse(slow, brain, {
     system: 'You are NUM, a travel concierge. You recommend only places listed in the evidence, by their exact name. '
       + 'You never invent a venue, a price, an opening time or a capacity. Where the evidence cannot satisfy a '
       + 'requirement, you say so plainly in one sentence rather than working around it.',
