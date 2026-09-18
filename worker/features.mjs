@@ -335,8 +335,14 @@ export const FEATURES = Object.freeze([
     ungated: true,
     name: 'Bookings',
     does: 'NUM texts the venue, the venue answers, and the guest is told yes or no — no app on the venue\'s side.',
-    needs: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'],
-    ready: (env) => has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN') || has(env, 'RESEND_API_KEY'),
+    // TWILIO_SID / TWILIO_TOKEN are the names actually set on num-app; the
+    // longer spellings are accepted because both appear in this codebase and
+    // a registry that reports a working feature as broken is the exact lie
+    // this file exists to prevent.
+    needs: ['TWILIO_SID', 'TWILIO_TOKEN'],
+    ready: (env) => has(env, 'TWILIO_SID', 'TWILIO_TOKEN')
+      || has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN')
+      || has(env, 'RESEND_API_KEY'),
     surface: 'thread card + BookSheet',
     code: ['worker/booking.mjs', 'worker/bookdesk.mjs', 'src/components/app/BookSheet.tsx'],
     sop: {
@@ -620,8 +626,9 @@ export const FEATURES = Object.freeze([
     entitlement: null,
     name: 'NUM by text',
     does: 'The whole concierge over SMS, for a traveller with no data and no app.',
-    needs: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_MESSAGING_SERVICE_SID'],
-    ready: (env) => has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'),
+    needs: ['TWILIO_SID', 'TWILIO_TOKEN', 'TWILIO_MESSAGING_SERVICE_SID'],
+    ready: (env) => has(env, 'TWILIO_SID', 'TWILIO_TOKEN')
+      || has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'),
     surface: 'a phone number',
     code: ['worker/sms.mjs', 'worker/twiliosender.mjs', 'worker/smsconsent.mjs'],
     sop: {
