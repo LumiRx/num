@@ -110,7 +110,9 @@ describe('the route', () => {
   test('an unknown code prints nothing and says why', async () => {
     const res = await handleScoutKit(req('?code=ZZZZZZ'), envFor(null), 'https://itsnum.com');
     assert.equal(res.status, 404);
-    assert.match(await res.text(), /not\s+an active Expert/i);
+    // The copy breaks the line inside the sentence, so the markup sits between
+    // the words — match across it rather than pretending it is a space.
+    assert.match(await res.text(), /not(<br>|\s)+an active Expert/i);
   });
 
   test('a nonsense sheet name falls back to the index rather than an empty page', async () => {

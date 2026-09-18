@@ -167,7 +167,10 @@ const FOOT = '<div class="foot">NUM is a 5arz company &middot; 5arz verifies a r
  */
 export function onePager(scout, link) {
   const who = firstName(scout.name);
-  const qr = qrSvg(link, { size: 104, margin: 0, dark: '#1f3a34', light: '#ffffff' });
+  // ~30mm on printed A4. Sized up from 104 after a test scan: this is the one
+  // that gets read off a counter in bad light, and a QR nobody can scan is a
+  // leave-behind that credits nobody.
+  const qr = qrSvg(link, { size: 118, margin: 0, dark: '#1f3a34', light: '#ffffff' });
   return `<div class="sheet">
 ${MAST('For Business')}
 <h1>More covers.<br>No monthly fee.</h1>

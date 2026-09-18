@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 04:17 UTC from 12 entries._
+_Built 2026-09-18 04:19 UTC from 13 entries._
 
 ## Deployed right now
 
@@ -17,7 +17,7 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | ⚪ never recorded from this machine |
-| num-app | 🔴 **STALE** — 2 files changed since it shipped |
+| num-app | 🔴 **STALE** — 4 files changed since it shipped |
 | num-growth | ⚪ never recorded from this machine |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
@@ -33,6 +33,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 ## In flight
 
+- 🟡 **num-expert-kit** — worker/scoutkit.mjs: three print-ready sheets per Expert at /api/scouts/kit?code=CODE — business one-pager, counter cards 4-up, pitch+objections card. Personalised: every sheet carries the Expert's code and a QR of itsnum.com/s/CODE drawn by worker/qr.mjs. Verified by decoding a render: 28.7mm on A4, resolves correctly. Prices copied verbatim from public/flyers/business; sample answer names no real venue (the live flyer names three — flagged to Dre). Linked from the dashboard. 15 tests.
+  _claude, 2026-09-18 04:19_
 - 🟡 **num-expert-referrals** — 0032: referred_by_scout_id + referred_by_note on num_scouts, referrer stamped on each place, num_scout_earnings kind widened for referrer_override (safe: 0 rows today). One level only, asserted by test. Smart fields: server tidies name/email/phone (reuses claim/verify normalisePhone), /who confirms a referrer code live, /hello prefills country. 204 scout tests pass. NOT SHIPPED — another session has uncommitted work in this worktree.
   _claude, 2026-09-18 04:06_
 
