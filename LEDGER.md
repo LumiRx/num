@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 05:26 UTC from 16 entries._
+_Built 2026-09-18 05:30 UTC from 17 entries._
 
 ## Deployed right now
 
@@ -50,6 +50,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 03:28_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).
   _claude, 2026-09-15 16:32_
+- 🟢 **num-expert-programme** — Verified end to end on 0.8.344: sign-up + referrer code check, /s/CODE card pages, /claim/?scout= carrying the code, the kit on all three sheets, wallet and milestones, and the in-app ?me= path. Proved attribution by introducing a throwaway place against ZM3CEN — place row created, first_intro milestone auto-awarded with bonus 0 and no earnings row, gate showed needs 500 to release 500 — then deleted both and confirmed the dashboard back to empty. Isaiah's duplicate WFBU77 merged into FARMER wit
+  _claude, 2026-09-18 05:30_
 - 🟢 **num-expert-signup** — itsnum.com/scout/ enrol form and dashboard were 404ing: page fetched /api/scouts on itsnum.com, which only num-app serves. Now points at app.itsnum.com (CORS already allowed). num-console redeployed 18 Sep. Zero self-enrolled scouts existed before this; Isaiah and Adam were inserted by hand.
   _claude, 2026-09-18 03:46_
 - 🟢 **reactions** — 0.8.338: emoji reactions land in num_reactions with lane/brain/place; HOW THEY RATE THE ANSWERS panel on admin ACTIVITY tab
