@@ -2,6 +2,24 @@
 
 Every version that has been live, newest first.
 
+## 0.8.353 — 2026-09-18 07:26 UTC
+
+Calendar first (hoisted), two across, covers that are not buttons, one chip row
+
+- commit `548729c`
+
+## 0.8.352 — 2026-09-18 07:24 UTC
+
+Two across all the way down, the calendar first, connect-your-world into Settings, one chip row with no emoji
+
+- commit `85bdaa2`
+
+## 0.8.351 — 2026-09-18 07:06 UTC
+
+An event opens inside NUM: poster, when, where, what it costs, tickets one labelled tap away
+
+- commit `6b8fcd4`
+
 ## 0.8.350 — 2026-09-18 06:52 UTC
 
 A research run that stops is closed by the cron, not left spinning for ever
