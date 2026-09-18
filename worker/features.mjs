@@ -48,12 +48,39 @@ const has = (env, ...keys) => keys.every((k) => !!env?.[k]);
  * @property {string} surface      where a guest meets it
  * @property {string[]} code       the files, so the next person starts in the right one
  * @property {{on:string, check:string, broken:string}} sop
+ * @property {'free'|'plus'|'pro'} plan  the CHEAPEST plan that includes it
+ * @property {string|null} entitlement   the key in membership.mjs a caller passes
+ *                                       to may(), or null when nothing meters it
+ * @property {boolean} [ungated]   travel — free on every plan, by law, for ever
  */
+
+// ── WHAT `plan` MEANS, AND THE TWO RULES IT CANNOT BREAK ──────────────────
+//
+// `plan` is the cheapest plan a guest can be on and still meet this feature.
+// It is documentation of a decision, not the enforcement of one: the gate
+// itself lives in worker/membership.mjs, and a caller asks `may(env, member,
+// <entitlement>)`. A feature with `entitlement: null` is not metered by
+// anything — and on 18 Sep 2026 that was EVERY feature, because `may()` had
+// no callers anywhere in the product. Declaring the plan here is step one of
+// fixing that; step two is the call site.
+//
+// Rule 1 — GATE THE CEILING, NEVER THE CORE (membership.mjs's own rule).
+//   A free guest is never told "Num can't help with that". They are told
+//   "that's your third plan this month, here's when it resets".
+//
+// Rule 2 — TRAVEL IS UNGATEABLE. This is law, not taste: gating it makes the
+//   paid tiers a "seller of travel discount program" under California B&P
+//   §17550.27, which Num cannot comply with at any price. Anything that shops,
+//   books or advises on travel carries `ungated: true` and `plan: 'free'`, and
+//   a test below refuses any other combination.
+const UNGATEABLE_PLAN = 'free';
 
 /** @type {readonly Feature[]} */
 export const FEATURES = Object.freeze([
   {
     id: 'concierge',
+    plan: 'free',
+    entitlement: 'concierge',
     name: 'The concierge',
     does: 'Answers anything, in any language, with three real places and the one NUM would pick.',
     needs: ['ANTHROPIC_API_KEY'],
@@ -68,6 +95,8 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'tonight',
+    plan: 'free',
+    entitlement: null,
     name: 'Tonight',
     does: 'Events, restaurants and bars near you on the TODAY tab, before you ask.',
     needs: ['TICKETMASTER_API_KEY'],
@@ -82,6 +111,8 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'ratings',
+    plan: 'free',
+    entitlement: null,
     name: 'Real ratings',
     does: 'The first ask about a neighbourhood fetches real ratings for it, so the picks are ranked by something true.',
     needs: ['SERPAPI_KEY'],
@@ -96,6 +127,9 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'flightwatch',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
     name: 'Flight Watch',
     does: 'Watches a flight and pings once when the gate, the time or the plan changes.',
     needs: ['AERODATABOX_KEY'],
@@ -110,6 +144,8 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'i18n',
+    plan: 'free',
+    entitlement: null,
     name: 'The app in nine languages',
     does: 'The whole interface in the reader\'s language, machine-translated once and stored where a person can correct it.',
     needs: ['ANTHROPIC_API_KEY'],
@@ -124,6 +160,8 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'runner',
+    plan: 'free',
+    entitlement: 'errands',
     name: 'Runner',
     does: 'Moves something from A to B — the charger left at the hotel, flowers to the table.',
     needs: ['DOORDASH_KEY', 'UBER_DIRECT_CLIENT_ID'],
@@ -138,6 +176,8 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'push',
+    plan: 'free',
+    entitlement: null,
     name: 'Push',
     does: 'The one ping that matters — a delay, a gate, a table confirmed.',
     needs: ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'],
@@ -152,6 +192,8 @@ export const FEATURES = Object.freeze([
   },
   {
     id: 'discover',
+    plan: 'free',
+    entitlement: null,
     name: 'Search & Suggest',
     does: 'One box in any language, and a "surprise me" deck that never repeats what you have done.',
     needs: [],
@@ -162,6 +204,510 @@ export const FEATURES = Object.freeze([
       on: 'Always on; it reads the directory. VIATOR_KEY adds bookable experiences, TICKETMASTER_API_KEY adds events.',
       check: 'GET /api/discover?mode=surprise&place=phuket&debug=1 — debug says why any rail came back empty.',
       broken: 'An empty rail is honest (nothing there); an empty ANSWER is not. Check ?debug=1 first.',
+    },
+  },
+
+  // ── TRAVEL ────────────────────────────────────────────────────────────
+  // Every feature below carries `ungated: true`. See Rule 2 at the top.
+  {
+    id: 'flights',
+    plan: 'free',
+    entitlement: 'flight_search',
+    ungated: true,
+    name: 'Flight search',
+    does: 'Live fares from two independent sources, so a price is not one vendor\'s opinion.',
+    needs: ['SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'DUFFEL_ACCESS_TOKEN'],
+    ready: (env) => has(env, 'SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET') || has(env, 'DUFFEL_ACCESS_TOKEN'),
+    surface: 'thread card',
+    code: ['worker/sabre.mjs', 'worker/duffel.mjs', 'worker/fares.mjs', 'worker/flighthandoff.mjs'],
+    sop: {
+      on: 'Either rail alone works. Both set = two quotes and a comparison.',
+      check: 'GET /api/works-with — sabre_air and duffel should both read Live.',
+      broken: 'SEARCH ONLY: no ticket is ever issued, on either rail. If a guest is told a seat is held, that is a bug and a liability — DUFFEL_BOOKING_LIVE and SABRE_BOOKING_LIVE stay unset until someone decides otherwise in writing.',
+    },
+  },
+  {
+    id: 'travel_docs',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Entry rules',
+    does: 'What this passport needs to enter that country — visa, onward ticket, passport validity.',
+    needs: [],
+    ready: () => true,
+    surface: 'thread + TravelSheet',
+    code: ['worker/traveldocs.mjs', 'worker/passportcheck.mjs', 'src/components/app/TravelSheet.tsx'],
+    sop: {
+      on: 'Always on; the ruleset ships with the worker.',
+      check: 'GET /api/travel/docs?from=GB&to=TH — expect a rule, a source and a date.',
+      broken: 'An out-of-date rule is worse than no rule: a guest turned away at a border is the failure mode. Every answer carries the date it was last checked, and NUM says "check with the embassy" rather than guessing.',
+    },
+  },
+  {
+    id: 'travel_health',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Vaccinations',
+    does: 'Which jabs are required and which are advised, for where they are going.',
+    needs: [],
+    ready: () => true,
+    surface: 'thread + TravelSheet',
+    code: ['worker/vaccines.mjs'],
+    sop: {
+      on: 'Always on. The ruleset ships with the worker; no key, no vendor.',
+      check: 'GET /api/travel/vaccines?to=TH',
+      broken: 'NUM is not a doctor and the copy says so. Required vs advised must never blur — one is a border, the other is advice.',
+    },
+  },
+  {
+    id: 'travel_insurance',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Travel insurance',
+    does: 'What cover this trip actually needs, and where to get it.',
+    needs: [],
+    ready: () => true,
+    surface: 'thread + TravelSheet',
+    code: ['worker/insurancereq.mjs'],
+    sop: {
+      on: 'Always on. No key: this reads requirements, it does not shop policies.',
+      check: 'GET /api/travel/insurance?to=TH&days=14',
+      broken: 'Insurance is a regulated product in most places. NUM explains and links; it does not sell, quote or advise on a policy.',
+    },
+  },
+  {
+    id: 'travel_pack',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Packing list',
+    does: 'What to take, built from the destination, the season and the length of the trip.',
+    needs: [],
+    ready: () => true,
+    surface: 'thread + TravelSheet',
+    code: ['worker/travelpack.mjs'],
+    sop: {
+      on: 'Always on. Reads the destination, the month and the trip length; no key.',
+      check: 'GET /api/travel/pack?to=TH&days=7&month=11',
+      broken: 'A generic list. Harmless, and the cheapest thing on this page to make delightful.',
+    },
+  },
+  {
+    id: 'travel_holidays',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Public holidays',
+    does: 'What is shut, and when — the reason the restaurant NUM picked is dark tonight.',
+    needs: [],
+    ready: () => true,
+    surface: 'thread, and behind every opening-hours answer',
+    code: ['worker/holidays.mjs', 'worker/hours.mjs'],
+    sop: {
+      on: 'Always on. The calendar ships with the worker and every hours answer reads it.',
+      check: 'GET /api/travel/holidays?country=TH&year=2026',
+      broken: 'Openings read as normal on a holiday. Worth switching off rather than being wrong: an "open now" that is shut is the one mistake a concierge does not get to make twice.',
+    },
+  },
+  {
+    id: 'emergency',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Emergency numbers',
+    does: 'Police, ambulance and the nearest hospital, for the country they are standing in.',
+    needs: [],
+    ready: () => true,
+    surface: 'thread, and one tap from Profile',
+    code: ['worker/emergency.mjs'],
+    sop: {
+      on: 'Always on, in every language, signed in or not.',
+      check: 'Ask the concierge "emergency number" from a Thai IP.',
+      broken: 'NEVER switch this off. A wrong emergency number is the worst single output this product can produce — if the data is in doubt, NUM gives the international 112 and says to confirm locally.',
+    },
+  },
+  {
+    id: 'bookings',
+    plan: 'free',
+    entitlement: 'concierge_booking',
+    ungated: true,
+    name: 'Bookings',
+    does: 'NUM texts the venue, the venue answers, and the guest is told yes or no — no app on the venue\'s side.',
+    needs: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'],
+    ready: (env) => has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN') || has(env, 'RESEND_API_KEY'),
+    surface: 'thread card + BookSheet',
+    code: ['worker/booking.mjs', 'worker/bookdesk.mjs', 'src/components/app/BookSheet.tsx'],
+    sop: {
+      on: 'A channel that reaches venues: Twilio SMS, or Resend where the venue is on email.',
+      check: 'POST /api/concierge/mcp request_table, then booking_status — only `confirmed` means a table.',
+      broken: 'Requests go out and nothing comes back, so a guest sits in "requested" for ever. The status wording never says "booked" until the venue has said so — that distinction is the whole feature.',
+    },
+  },
+  {
+    id: 'activities',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Tours & experiences',
+    does: 'Bookable things to do, with the operator\'s own price and rating.',
+    needs: ['VIATOR_API_KEY'],
+    ready: (env) => has(env, 'VIATOR_API_KEY'),
+    surface: 'thread + Suggest deck',
+    code: ['worker/viator.mjs', 'worker/discover.mjs'],
+    sop: {
+      on: 'Set VIATOR_API_KEY. The destination list caches in D1 for a week.',
+      check: 'GET /api/discover?place=phuket&q=cooking+class — expect Viator rows beside NUM\'s own.',
+      broken: 'Silently empty, which is how this rail spent months dead before 17 Sep 2026: a 404 taxonomy path and a misspelled sort enum returned zero rather than erroring. Check ?debug=1, never the absence of rows.',
+    },
+  },
+  {
+    id: 'tickets',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Event tickets',
+    does: 'What is on while they are there, with a link that sells the ticket.',
+    needs: ['TICKETMASTER_API_KEY'],
+    ready: (env) => has(env, 'TICKETMASTER_API_KEY'),
+    surface: 'thread + TODAY rail',
+    code: ['worker/events.tm.mjs', 'worker/eventsearch.mjs'],
+    sop: {
+      on: 'Set TICKETMASTER_API_KEY (the Discovery API key — the Partner API that sells tickets is a separate, invite-only relationship NUM does not have).',
+      check: 'GET /api/discover?place=edinburgh&mode=tonight',
+      broken: 'NUM links out to Ticketmaster for the purchase and never implies it sold the ticket. Outside GB/US inventory is genuinely thin — an empty list there is honest, not broken.',
+    },
+  },
+  {
+    id: 'luggage',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Luggage storage',
+    does: 'Somewhere to leave the bags between checkout and the flight.',
+    needs: ['BOUNCE_REF'],
+    ready: (env) => has(env, 'BOUNCE_REF'),
+    surface: 'thread, offered when a checkout time and a late flight are both known',
+    code: ['worker/luggage.mjs'],
+    sop: {
+      on: 'Set BOUNCE_REF (affiliate reference).',
+      check: 'Ask the concierge "where can I leave my bags in Patong".',
+      broken: 'The rail goes quiet and NUM says it cannot find storage there. This is the single most under-used feature NUM has: almost nobody knows to ask for it, so it belongs in the starter chips, not behind a question.',
+    },
+  },
+  {
+    id: 'cars',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Car hire',
+    does: 'Cars from local firms rather than the airport desks.',
+    needs: ['LOCALRENT_MARKER'],
+    ready: (env) => has(env, 'LOCALRENT_MARKER'),
+    surface: 'thread card',
+    code: ['worker/localrent.mjs'],
+    sop: {
+      on: 'Set LOCALRENT_MARKER — an affiliate marker, not a key. Not connected as of 18 Sep 2026.',
+      check: 'GET /api/works-with — localrent should read Live.',
+      broken: 'Until the marker is set NUM answers car questions from the directory and the concierge, with no bookable link. That is an honest half-answer, which is why this ships as needs_setup rather than off.',
+    },
+  },
+  {
+    id: 'stays',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Hotel rates',
+    does: 'Live room rates, from the same system the flights come from.',
+    needs: ['SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'SABRE_HOTEL_RATES_PATH'],
+    ready: (env) => has(env, 'SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'SABRE_HOTEL_RATES_PATH'),
+    surface: 'thread card',
+    code: ['worker/sabre.mjs', 'worker/staykind.mjs'],
+    sop: {
+      on: 'Needs the Sabre pair plus SABRE_HOTEL_RATES_PATH. Not connected as of 18 Sep 2026.',
+      check: 'GET /api/works-with — sabre_hotel should read Live.',
+      broken: 'NUM recommends hotels from its own directory and cannot price them. Saying "from $X" without a live rate would be inventing a price, so it does not.',
+    },
+  },
+
+  // ── THE PEOPLE YOU TRAVEL WITH ────────────────────────────────────────
+  // This is where the money is, and it is the only place it can be: these
+  // are not travel benefits under §17550.27, so a ceiling here is lawful.
+  {
+    id: 'plans',
+    plan: 'free',
+    entitlement: 'plans_max',
+    name: 'Plans with friends',
+    does: 'A shared plan everyone can see and vote on, with no app on their side.',
+    needs: [],
+    ready: () => true,
+    surface: 'PLAN tab',
+    code: ['worker/social.mjs', 'worker/planprice.mjs', 'src/components/app/PlanView.tsx'],
+    sop: {
+      on: 'Always on. `plans_max` meters how many run at once: 3 free, 25 on Plus, unlimited on Pro.',
+      check: 'GET /api/social/plans?me=<id>',
+      broken: 'THE LIMIT IS NOT ENFORCED. As of 18 Sep 2026 nothing calls may(env, member, "plans_max"), so every member has unlimited plans whatever they pay. The gate belongs at the create path in social.mjs and nowhere else.',
+    },
+  },
+  {
+    id: 'friends',
+    plan: 'free',
+    entitlement: 'friends_max',
+    name: 'Friends',
+    does: 'Add the people you are travelling with by a link or a text — they need no account to answer.',
+    needs: [],
+    ready: () => true,
+    surface: 'PLAN tab + InviteSheet',
+    code: ['worker/social.mjs', 'worker/friendtext.mjs', 'src/components/app/InviteSheet.tsx'],
+    sop: {
+      on: 'Always on. Unlimited on every plan — a social product that meters friends kills its own growth.',
+      check: 'POST /api/social/invite, then open the link in a private window.',
+      broken: 'Invite links stop connecting people, which silently ends every referral loop NUM has.',
+    },
+  },
+  {
+    id: 'messages',
+    plan: 'free',
+    entitlement: null,
+    name: 'Messages',
+    does: 'Member to member, in the same thread as the plan they are arguing about.',
+    needs: [],
+    ready: () => true,
+    surface: 'DmSheet',
+    code: ['worker/dm.mjs', 'src/components/app/DmSheet.tsx'],
+    sop: {
+      on: 'Always on. Delivery rides on push where a member has it, email where they do not.',
+      check: 'POST /api/dm/send, then GET /api/dm/thread.',
+      broken: 'Messages queue and never arrive. Worse than off, because the sender believes it landed.',
+    },
+  },
+  {
+    id: 'events',
+    plan: 'free',
+    entitlement: null,
+    name: 'Host an event',
+    does: 'Invite a group and collect RSVPs from one text — no app on the guests\' side.',
+    needs: [],
+    ready: () => true,
+    surface: 'EventSheet + TODAY',
+    code: ['worker/events.mjs', 'worker/availability.mjs', 'src/components/app/EventSheet.tsx'],
+    sop: {
+      on: 'Always on; SMS or email carries the invite where a guest has no app.',
+      check: 'Create an event, open the guest link in a private window, RSVP.',
+      broken: 'RSVPs are recorded but never reach the host. The host plans for the wrong number of people, which is the failure a guest never forgives.',
+    },
+  },
+  {
+    id: 'tabs',
+    plan: 'free',
+    entitlement: 'tabs',
+    name: 'Shared tabs',
+    does: 'One bill, several people, settled without anyone doing arithmetic at the table.',
+    needs: [],
+    ready: () => true,
+    surface: 'TabSheet + WALLET',
+    code: ['worker/social.mjs', 'worker/balances.mjs', 'src/components/app/TabSheet.tsx'],
+    sop: {
+      on: 'Always on. Settling in cash needs nothing; settling in Stars needs the wallet.',
+      check: 'Open a tab, add two members, settle it, then check num_memberships and the balances agree.',
+      broken: 'A tab that will not settle leaves people owing each other money inside an app they did not choose. Switch it off rather than run it half-working.',
+    },
+  },
+
+  // ── MONEY ─────────────────────────────────────────────────────────────
+  {
+    id: 'wallet',
+    plan: 'free',
+    entitlement: null,
+    name: 'Stars & wallet',
+    does: 'A balance that settles bills at the table, pays a runner, or buys a month of Plus.',
+    needs: ['STRIPE_SECRET_KEY'],
+    ready: (env) => has(env, 'STRIPE_SECRET_KEY'),
+    surface: 'WALLET',
+    code: ['worker/balances.mjs', 'worker/cashout.mjs', 'worker/starmembership.mjs', 'src/components/app/WalletSheet.tsx'],
+    sop: {
+      on: 'Set STRIPE_SECRET_KEY. Packs are pegged 1:1 to USD, so a Star is a dollar.',
+      check: 'GET /api/balances?me=<id>; buying a pack should move the balance and leave a row in the ledger.',
+      broken: 'Two rules hold whatever else breaks: the ★100 welcome grant can never buy a membership (origin-checked in starmembership.mjs), and paying in Stars is never cheaper than paying cash.',
+    },
+  },
+  {
+    id: 'payments',
+    plan: 'free',
+    entitlement: null,
+    name: 'Payments',
+    does: 'Card payments for packs, memberships and anything NUM settles on a guest\'s behalf.',
+    needs: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
+    ready: (env) => has(env, 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'),
+    surface: 'PaySheet + billing portal',
+    code: ['worker/pay.mjs', 'src/components/app/PaySheet.tsx'],
+    sop: {
+      on: 'Both Stripe keys. The account is LIVE — every write is real money.',
+      check: 'Stripe dashboard: a test purchase should appear with the member id in metadata.',
+      broken: 'The webhook is the part that matters: without it a guest is charged and never granted. If STRIPE_WEBHOOK_SECRET is missing, take purchases offline rather than take the money.',
+    },
+  },
+  {
+    id: 'membership',
+    plan: 'free',
+    entitlement: null,
+    name: 'Num Plus & Num Pro',
+    does: 'The paid plans — more room, more research, new things first.',
+    needs: ['STRIPE_SECRET_KEY'],
+    ready: (env) => has(env, 'STRIPE_SECRET_KEY'),
+    surface: 'Profile → MembershipCard',
+    code: ['worker/membership.mjs', 'worker/starmembership.mjs', 'src/components/app/MembershipCard.tsx'],
+    sop: {
+      on: 'Set STRIPE_SECRET_KEY. Prices live in membership.mjs; MEMBERSHIP_TIERS overrides them without a deploy and can never re-gate travel.',
+      check: 'GET /api/membership — the tier table the client renders.',
+      broken: 'NOTHING IS GATED. may() has no callers, so Plus and Pro currently sell a promise the code does not keep. And `deep_research_monthly` — the headline difference between the three plans — has no implementation anywhere in this repo. Both are fixed before this is advertised again.',
+    },
+  },
+
+  // ── THE PLATFORM ──────────────────────────────────────────────────────
+  {
+    id: 'memory',
+    plan: 'free',
+    entitlement: null,
+    name: 'Memory',
+    does: 'Remembers the allergy, the budget and the fact they hate boats, so nobody says it twice.',
+    needs: [],
+    ready: () => true,
+    surface: 'MEMORY tab',
+    code: ['worker/memory.mjs', 'src/components/app/MemoryView.tsx'],
+    sop: {
+      on: 'Always on. Facts are shown to the member and can be deleted by them.',
+      check: 'Tell NUM a preference, then GET the facts for that member.',
+      broken: 'NUM repeats questions it has been answered. Annoying, never dangerous — except for an allergy, which is why allergies are surfaced on every food answer rather than trusted to the model.',
+    },
+  },
+  {
+    id: 'calendar',
+    plan: 'free',
+    entitlement: null,
+    name: 'Trip calendar',
+    does: 'Every booking in one place, with a warning when two of them collide.',
+    needs: [],
+    ready: () => true,
+    surface: 'TODAY + CalendarSheet',
+    code: ['worker/calendar.mjs', 'src/components/app/CalendarSheet.tsx'],
+    sop: {
+      on: 'Always on. Every booking NUM makes lands here without anyone choosing to save it.',
+      check: 'Create two overlapping bookings and confirm the clash is flagged.',
+      broken: 'A missed clash is a double booking the guest finds out about at the door.',
+    },
+  },
+  {
+    id: 'voice',
+    plan: 'free',
+    entitlement: 'voice',
+    name: 'Voice',
+    does: 'Talk to NUM instead of typing — which is what people do with their hands full and a bag on their shoulder.',
+    needs: ['TWILIO_VOICE_FROM'],
+    ready: (env) => has(env, 'TWILIO_VOICE_FROM') || has(env, 'ELEVENLABS_KEY'),
+    surface: 'the mic in the composer',
+    code: ['worker/voice.mjs', 'worker/notifyvoice.mjs'],
+    sop: {
+      on: 'TWILIO_VOICE_FROM for the phone side, ELEVENLABS_KEY for spoken replies.',
+      check: 'Send a voice note in the app and confirm a transcript reaches num_asks.',
+      broken: 'The mic button is visible in every screenshot of this app and does nothing without a key — so if it is not ready, hide the button rather than offer it.',
+    },
+  },
+  {
+    id: 'sms',
+    plan: 'free',
+    entitlement: null,
+    name: 'NUM by text',
+    does: 'The whole concierge over SMS, for a traveller with no data and no app.',
+    needs: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_MESSAGING_SERVICE_SID'],
+    ready: (env) => has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'),
+    surface: 'a phone number',
+    code: ['worker/sms.mjs', 'worker/twiliosender.mjs', 'worker/smsconsent.mjs'],
+    sop: {
+      on: 'The Twilio trio. A2P 10DLC registration must be live or US carriers drop the messages.',
+      check: 'Text the number and expect an answer; GET /api/sms/status for delivery receipts.',
+      broken: 'Error 30034 = unregistered A2P campaign, and it fails silently from the sender\'s point of view. This is the open blocker behind the Friday-draw winner notification.',
+    },
+  },
+  {
+    id: 'whatsapp',
+    plan: 'free',
+    entitlement: null,
+    name: 'NUM on WhatsApp',
+    does: 'The same concierge where most of Asia and Europe already talks.',
+    needs: ['TWILIO_WHATSAPP_FROM'],
+    ready: (env) => has(env, 'TWILIO_WHATSAPP_FROM'),
+    surface: 'WhatsApp',
+    code: ['worker/whatsapp.mjs'],
+    sop: {
+      on: 'Set TWILIO_WHATSAPP_FROM and approve the templates in Meta Business.',
+      check: 'GET /api/version — connected.whatsapp should be true. It is false as of 18 Sep 2026.',
+      broken: 'Not connected. Every LINE and WhatsApp mention in the marketing should say LINE only until this is true.',
+    },
+  },
+  {
+    id: 'agents',
+    plan: 'free',
+    entitlement: null,
+    name: 'NUM for AI agents',
+    does: 'Other assistants can ask NUM for real places, real hours and a real table — NUM as a tool, not a competitor.',
+    needs: [],
+    ready: () => true,
+    surface: 'MCP, at /api/concierge/mcp and /api/partner/mcp',
+    code: ['worker/conciergemcp.mjs', 'worker/partnermcp.mjs', 'worker/openapi.mjs'],
+    sop: {
+      on: 'Always on. Six partner tools and two concierge tools; the partner surface needs a key, the concierge one does not.',
+      check: 'POST /api/partner/mcp {"method":"tools/list"} — expect search_places, concierge_answer, list_destinations, place_details, open_places, booking_link.',
+      broken: 'This is the quietest surface NUM has and the one with the most leverage: the MCP registry does not list NUM, so nothing can find it. Listing it is a marketing task, not an engineering one.',
+    },
+  },
+  {
+    id: 'business',
+    plan: 'free',
+    entitlement: null,
+    name: 'For businesses',
+    does: 'A venue claims its page, answers booking texts, and is seen by every traveller who asks.',
+    needs: [],
+    ready: () => true,
+    surface: 'itsnum.com/biz + the console',
+    code: ['worker/bizconsole.mjs', 'worker/claim.mjs', 'worker/bizbilling.mjs'],
+    sop: {
+      on: 'Always on. Businesses pay on their own tier table in bizbilling.mjs, separate from member plans.',
+      check: 'GET /api/biz — the console index.',
+      broken: 'Claims stack up unanswered and venues that said yes to NUM hear nothing. The claim queue needs a human; the alert for it is in the ledger.',
+    },
+  },
+  {
+    id: 'verify',
+    plan: 'free',
+    entitlement: null,
+    name: 'Verified identity',
+    does: 'A member can prove who they are, which is what lets NUM vouch for them to a venue.',
+    needs: [],
+    ready: (env) => has(env, 'LEDGER') || has(env, 'VERIFY_5ARZ_URL'),
+    surface: 'Profile → IdentityCard',
+    code: ['worker/identity.mjs', 'worker/bizverify.mjs', 'src/components/app/Verify5arz.tsx'],
+    sop: {
+      on: 'Reads verification from the 5arz ledger binding. NUM never writes to that database.',
+      check: 'GET /api/trust for a verified member.',
+      broken: 'Members show as unverified, so NUM vouches for nobody and high-value bookings stop. Read-only, so it can never corrupt the ledger.',
+    },
+  },
+  {
+    id: 'scout',
+    plan: 'free',
+    entitlement: null,
+    name: 'Scout',
+    does: 'What opened, closed or changed in a destination since last week — so the answers are not last year\'s.',
+    needs: [],
+    ready: () => true,
+    surface: 'behind every answer, and ScoutSheet',
+    code: ['worker/scouts.mjs', 'worker/scoutpage.mjs'],
+    sop: {
+      on: 'Always on; the scout worker writes and the concierge reads.',
+      check: 'GET /api/admin/scout-usage.',
+      broken: 'Answers get stale slowly and nothing errors, which is the hardest kind of decay to notice. Watch the freshest row date, not the endpoint.',
     },
   },
 ]);
@@ -182,7 +728,39 @@ export function statusOf(env, f) {
     switch: off ? `remove "${f.id}" from NUM_OFF` : `NUM_OFF=${f.id}`,
     code: f.code,
     sop: f.sop,
+    plan: f.plan,
+    entitlement: f.entitlement ?? null,
+    ungated: !!f.ungated,
+    // The honest bit. A feature can NAME an entitlement and still not be
+    // metered by it, because naming is not calling. `enforced` is false until
+    // someone puts a may() call in the code path, and the pricing page has no
+    // business claiming a limit this says is not real.
+    enforced: false,
   };
+}
+
+/**
+ * Everything wrong with the registry itself, as a list.
+ *
+ * Kept here rather than only in the test file so an operator can ask the live
+ * worker — a registry that disagrees with the law or with membership.mjs is a
+ * production fact, not a CI detail.
+ */
+export function auditFeatures(plans = ['free', 'plus', 'pro']) {
+  const problems = [];
+  const seen = new Set();
+  for (const f of FEATURES) {
+    if (seen.has(f.id)) problems.push(`duplicate id: ${f.id}`);
+    seen.add(f.id);
+    if (!plans.includes(f.plan)) problems.push(`${f.id}: plan "${f.plan}" is not a real plan`);
+    if (f.ungated && f.plan !== UNGATEABLE_PLAN) {
+      problems.push(`${f.id}: travel is ungateable (B&P §17550.27) but plan is "${f.plan}"`);
+    }
+    for (const k of ['name', 'does', 'surface']) if (!f[k]) problems.push(`${f.id}: missing ${k}`);
+    for (const k of ['on', 'check', 'broken']) if (!f.sop?.[k]) problems.push(`${f.id}: SOP missing "${k}"`);
+    if (!Array.isArray(f.code) || !f.code.length) problems.push(`${f.id}: no code paths`);
+  }
+  return problems;
 }
 
 /** GET /api/features — the operator's one screen. */
@@ -193,6 +771,18 @@ export function handleFeatures(env) {
     on: features.filter((f) => f.state === 'on').length,
     needs_setup: features.filter((f) => f.state === 'needs_setup').map((f) => f.id),
     off: features.filter((f) => f.state === 'off').map((f) => f.id),
+    // What a guest on each plan can meet, and how much of it is actually
+    // enforced. `enforced: 0` is the true answer today and it should stay
+    // visible until it is not.
+    plans: {
+      free: features.filter((f) => f.plan === 'free').length,
+      plus: features.filter((f) => f.plan === 'plus').length,
+      pro: features.filter((f) => f.plan === 'pro').length,
+      metered: features.filter((f) => f.entitlement).map((f) => f.id),
+      enforced: features.filter((f) => f.enforced).map((f) => f.id),
+      ungated: features.filter((f) => f.ungated).map((f) => f.id),
+    },
+    audit: auditFeatures(),
     features,
   };
   return new Response(JSON.stringify(body, null, 2), {

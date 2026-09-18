@@ -1,8 +1,9 @@
 // A feature registry is only worth having if it cannot lie. These are the
-// three ways it could.
+// ways it could.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FEATURES, statusOf, isOff, handleFeatures } from './features.mjs';
+import { FEATURES, statusOf, isOff, handleFeatures, auditFeatures } from './features.mjs';
+import { tiers, UNGATED } from './membership.mjs';
 
 test('every feature declares the things that make it operable', () => {
   const ids = new Set();
@@ -43,4 +44,51 @@ test('the endpoint answers the operator question in one read', async () => {
   assert.ok(body.off.includes('runner'));
   assert.ok(body.needs_setup.includes('flightwatch'));
   assert.ok(body.features.every((f) => f.sop && f.state));
+});
+
+// ── WHAT A GUEST GETS FOR WHAT THEY PAY ────────────────────────────────
+
+test('every feature says which plan it belongs to, and the plan is a real one', () => {
+  const real = Object.keys(tiers({}));
+  for (const f of FEATURES) {
+    assert.ok(real.includes(f.plan), `${f.id}: plan "${f.plan}" is not one of ${real.join(', ')}`);
+  }
+  assert.deepEqual(auditFeatures(real), [], 'the registry audits itself clean');
+});
+
+test('travel is free on every plan, and the registry cannot say otherwise', () => {
+  // B&P §17550.27 — see the header of membership.mjs. This is the test that
+  // stops a future edit quietly moving a travel feature behind a price.
+  for (const f of FEATURES.filter((x) => x.ungated)) {
+    assert.equal(f.plan, 'free', `${f.id} is a travel benefit and must be free on every plan`);
+  }
+  // And the other direction: anything naming an UNGATED entitlement must be
+  // marked ungated, or the marker rots away one careless copy-paste at a time.
+  for (const f of FEATURES.filter((x) => UNGATED.includes(x.entitlement))) {
+    assert.equal(f.ungated, true, `${f.id} meters ${f.entitlement}, which is ungateable — mark it`);
+  }
+});
+
+test('an entitlement a feature names must exist in the tier table', () => {
+  const known = new Set(Object.values(tiers({})).flatMap((t) => Object.keys(t.entitlements ?? {})));
+  for (const f of FEATURES.filter((x) => x.entitlement)) {
+    assert.ok(known.has(f.entitlement), `${f.id}: "${f.entitlement}" is in no tier — the gate would never fire`);
+  }
+});
+
+test('the registry never claims a limit is enforced when it is not', () => {
+  // 18 Sep 2026: may() had zero callers in the whole product, so every paid
+  // limit was decorative. `enforced` stays false until a call site exists, and
+  // this test is the thing that must be edited — deliberately — when one does.
+  const body = FEATURES.map((f) => statusOf({}, f));
+  assert.deepEqual(body.filter((f) => f.enforced).map((f) => f.id), [],
+    'if you enforced a limit, set enforced on that feature and update this test');
+  assert.ok(body.filter((f) => f.entitlement).length >= 5, 'and the metered list is not empty');
+});
+
+test('every surface a guest can meet is named, so nothing ships invisible', async () => {
+  const body = await handleFeatures({}).json();
+  assert.deepEqual(body.audit, [], 'the live endpoint reports its own problems');
+  assert.ok(body.plans.ungated.includes('flights'), 'flight search is ungated, publicly');
+  assert.ok(body.features.length >= 30, 'the registry is the whole product, not a sample');
 });
