@@ -124,6 +124,9 @@ const FILES = [
   // re-runnable. Code reads the table behind a fallback, so shipping the code
   // before running this is safe — see the file header.
   'worker/migrations/0035_pay_rails.sql',
+  // An Expert's own list of shops they found. One CREATE TABLE and two
+  // indexes, all IF NOT EXISTS, so a second pass is a clean no-op.
+  'worker/migrations/0036_scout_leads.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

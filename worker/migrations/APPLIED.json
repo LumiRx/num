@@ -24,5 +24,7 @@
     "0035_pay_rails.sql": "5d3e1a34823b1b1badf0d83ffd19e6a67ab8dd94046b3a8ee23a73f4ad9dab20"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0036_scout_leads.sql"
+  ]
 }
