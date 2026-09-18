@@ -180,6 +180,34 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     <p class="note" id="capline"></p>
   </section>
 
+  <!-- ── your own leads ────────────────────────────────────────── -->
+  <section id="leads" hidden>
+    <h2>Your own list</h2>
+    <div class="card">
+      <p class="note">Somewhere you walked past, spoke to, or mean to go back to. Adding it here does not
+      reserve it and does not earn anything — it is your list, and the office can see it too.</p>
+      <form id="leadForm" style="margin-top:12px">
+        <label for="leadName">Place</label>
+        <input id="leadName" placeholder="What is it called?" required>
+        <label for="leadAddr">Where <span class="note" style="font-weight:400">(optional)</span></label>
+        <input id="leadAddr" placeholder="Street and number, if you have it">
+        <label for="leadPhone">Phone <span class="note" style="font-weight:400">(optional)</span></label>
+        <input id="leadPhone" type="tel" placeholder="If you got one">
+        <label for="leadNote">Note <span class="note" style="font-weight:400">(optional)</span></label>
+        <input id="leadNote" placeholder="Owner back Tuesday, ask for Rosa">
+        <button type="submit" id="leadGo" style="margin-top:12px">Add to my list</button>
+        <div class="err" id="leadErr" hidden></div>
+      </form>
+    </div>
+    <div class="card" id="leadListCard" style="margin-top:10px" hidden>
+      <table>
+        <thead><tr><th>Place</th><th>Where</th><th>How it is going</th></tr></thead>
+        <tbody id="leadRows"></tbody>
+      </table>
+      <p class="note" id="leadNoteLine" style="margin-top:8px"></p>
+    </div>
+  </section>
+
   <!-- ── what is next ──────────────────────────────────────────── -->
   <section id="next" hidden>
     <h2>What is next</h2>
@@ -278,6 +306,12 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     show('empty', !(d.businesses.list || []).length);
     $('capline').textContent = d.cap.left + ' of this month’s ' + d.cap.monthly + ' introductions left.';
 
+    // Their own list. Shown whether or not it has anything in it, because an
+    // empty list with an add form is the invitation; a hidden one is a feature
+    // nobody discovers.
+    show('leads', true);
+    renderLeads(d.leads);
+
     // What is next. The gate goes first because it is the only thing here
     // that names something to go and do today.
     var ms = d.milestones;
@@ -350,6 +384,104 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
       names.textContent = (r.people || []).map(function (p) { return p.name; }).join(', ');
     }
   }
+
+  /* ── the Expert's own list ─────────────────────────────────────────────
+   *
+   * A lead is a note about a conversation. It earns nothing and reserves
+   * nothing — the server says so in `leads.note` and this page repeats the
+   * server's words rather than inventing friendlier ones.
+   */
+  var LEAD_STATES = ['to_visit', 'visited', 'interested', 'signed_up', 'not_now', 'dead'];
+  var LEAD_WORDS = {
+    to_visit: 'Not been yet', visited: 'Been, nothing decided', interested: 'Wants it',
+    signed_up: 'Says they will sign up', not_now: 'Not now', dead: 'Dead'
+  };
+
+  function renderLeads(L) {
+    if (!L) return;
+    $('leadNoteLine').textContent = L.note || '';
+    show('leadListCard', !!(L.list || []).length);
+    var body = $('leadRows');
+    body.textContent = '';
+    (L.list || []).forEach(function (l) {
+      var tr = document.createElement('tr');
+
+      var a = document.createElement('td');
+      a.textContent = l.name;
+      if (l.note) {
+        var n = document.createElement('div');
+        n.className = 'note';
+        n.textContent = l.note;
+        a.appendChild(n);
+      }
+
+      var b = document.createElement('td');
+      b.textContent = l.address || l.area || '';
+
+      // A select rather than a set of buttons: the states are a closed list
+      // on the server and a free-text box here would invent a seventh.
+      var c = document.createElement('td');
+      var sel = document.createElement('select');
+      sel.style.cssText = 'font:inherit;padding:6px;border-radius:8px;min-height:44px';
+      LEAD_STATES.forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = s;
+        o.textContent = LEAD_WORDS[s];
+        if (s === l.state) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.title = (L.meaning || {})[l.state] || '';
+      sel.addEventListener('change', function () {
+        sel.disabled = true;
+        fetch(API + '/api/scouts/leads/update?code=' + encodeURIComponent(CODE), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: l.id, state: sel.value })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function () { sel.disabled = false; sel.title = (L.meaning || {})[sel.value] || ''; load(CODE); })
+          .catch(function () { sel.disabled = false; });
+      });
+      c.appendChild(sel);
+
+      tr.appendChild(a); tr.appendChild(b); tr.appendChild(c);
+      body.appendChild(tr);
+    });
+  }
+
+  document.addEventListener('submit', function (e) {
+    if (e.target.id !== 'leadForm') return;
+    e.preventDefault();
+    if (!CODE) return;
+    show('leadErr', false);
+    $('leadGo').disabled = true;
+    fetch(API + '/api/scouts/leads?code=' + encodeURIComponent(CODE), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: $('leadName').value,
+        address: $('leadAddr').value || null,
+        phone: $('leadPhone').value || null,
+        note: $('leadNote').value || null
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        $('leadGo').disabled = false;
+        if (!b || !b.ok) {
+          $('leadErr').textContent = (b && b.why) || 'That did not save.';
+          show('leadErr', true);
+          return;
+        }
+        // "Already on your list" is not a failure — say so and move on.
+        if (b.already) { $('leadErr').textContent = b.why || ''; show('leadErr', !!b.why); }
+        ['leadName', 'leadAddr', 'leadPhone', 'leadNote'].forEach(function (id) { $(id).value = ''; });
+        load(CODE);
+      })
+      .catch(function () {
+        $('leadGo').disabled = false;
+        $('leadErr').textContent = 'No connection. Try again in a moment.';
+        show('leadErr', true);
+      });
+  });
 
   var CODE = null;
 

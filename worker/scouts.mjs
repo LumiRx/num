@@ -606,6 +606,16 @@ export async function dashboard(env, scoutId, { now = new Date() } = {}) {
       : 'Nobody yet. Anyone who puts your code on the sign-up form shows up here.',
   };
 
+  // Their own list. Counted beside the businesses, never added to them: a
+  // lead is a note about a conversation and an introduction is a claim on a
+  // business, and one number covering both would be the same lie as counting
+  // signatures as revenue.
+  let leads = null;
+  try {
+    const { leadsFor } = await import('./scoutleads.mjs');
+    leads = await leadsFor(env, scoutId);
+  } catch { /* the rest of the dashboard is unaffected */ }
+
   // What they have reached and what is next. Never worth failing a dashboard
   // over — an Expert who cannot see their money because a badge query broke
   // is a worse outcome than an Expert who cannot see a badge.
@@ -665,6 +675,7 @@ export async function dashboard(env, scoutId, { now = new Date() } = {}) {
       note: 'These are the terms you agreed to and they do not change for you if the programme changes.',
     },
     businesses: { total: places.length, byState, meaning: STATE_MEANING, list: places },
+    leads,
     referrals,
     milestones,
     friends,
@@ -755,6 +766,37 @@ export async function handleScouts(request, env, path, origin) {
     if (!scout) return json({ ok: false, why: 'not a Num Expert' }, 403);
     const r = await introduce(env, { ...body, scoutId: scout.id });
     return json(r, r.ok ? 200 : 400);
+  }
+
+  // An Expert's own list — shops they found themselves. Every one of these
+  // resolves the Expert from their code the same way /me does, because that
+  // is already how this whole surface authenticates. A lead is worth nothing
+  // and reserves nothing, which is what keeps that acceptable; see the head of
+  // worker/scoutleads.mjs.
+  if (p.startsWith('/leads')) {
+    const url = new URL(request.url);
+    const scout = await scoutByCode(env, url.searchParams.get('code'));
+    if (!scout) return json({ ok: false, why: 'not a Num Expert' }, 404);
+
+    const { addLead, updateLead, leadsFor, promoteLead } = await import('./scoutleads.mjs');
+    const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
+
+    if (p === '/leads' && request.method === 'GET') {
+      return json({ ok: true, ...await leadsFor(env, scout.id) });
+    }
+    if (p === '/leads' && request.method === 'POST') {
+      const r = await addLead(env, { ...body, scoutId: scout.id });
+      return json(r, r.ok ? 200 : 400);
+    }
+    if (p === '/leads/update' && request.method === 'POST') {
+      const r = await updateLead(env, { ...body, scoutId: scout.id });
+      return json(r, r.ok ? 200 : 400);
+    }
+    if (p === '/leads/promote' && request.method === 'POST') {
+      const r = await promoteLead(env, { ...body, scoutId: scout.id });
+      return json(r, r.ok ? 200 : 400);
+    }
+    return json({ error: 'not found' }, 404);
   }
 
   // The paper an Expert carries. A full printable page rather than JSON,

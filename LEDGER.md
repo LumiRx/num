@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 06:35 UTC from 21 entries._
+_Built 2026-09-18 07:04 UTC from 22 entries._
 
 ## Deployed right now
 
@@ -16,9 +16,9 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-console | 🟢 up to date (2026-09-18 06:35) |
-| num-app | 🔴 **STALE** — 1 file changed since it shipped |
-| num-growth | ⚪ never recorded from this machine |
+| num-console | 🔴 **STALE** — 2 files changed since it shipped |
+| num-app | 🔴 **STALE** — 2 files changed since it shipped |
+| num-growth | 🟢 up to date (2026-09-18 07:04) |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -35,6 +35,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - 🟡 **num-expert-kit** — worker/scoutkit.mjs: three print-ready sheets per Expert at /api/scouts/kit?code=CODE — business one-pager, counter cards 4-up, pitch+objections card. Personalised: every sheet carries the Expert's code and a QR of itsnum.com/s/CODE drawn by worker/qr.mjs. Verified by decoding a render: 28.7mm on A4, resolves correctly. Prices copied verbatim from public/flyers/business; sample answer names no real venue (the live flyer names three — flagged to Dre). Linked from the dashboard. 15 tests.
   _claude, 2026-09-18 04:19_
+- 🟡 **num-expert-leads** — 0036 num_scout_leads: an Expert can add a shop they found themselves and work it. A lead earns nothing, spends no cap and reserves nothing — promoteLead() calls the same introduce() so the cap and first-come still apply, asserted by test. Dashboard counts leads beside businesses, never inside them. Add form and state list on /scout/. 19 lead tests, 5915 suite green.
+  _claude, 2026-09-18 07:04_
 - 🟡 **num-expert-paperwork-desk** — FOUND: isAdmin is (env, req) but expertdocs.mjs:331 and scouts.mjs:798 called it (request, env) — env.ADMIN_KEY read off a Request is undefined, so both returned false for EVERY caller since they shipped. /api/expert-docs/review was unreachable, meaning no NDA or W-9 could ever be accepted and no Expert could ever become payable; /api/scouts/admin fell through to 404 so it read as 'not found' not 'not allowed'. Both fixed, plus worker/adminargs.test.mjs which greps every call site and demonstrat
   _claude, 2026-09-18 06:27_
 - 🟡 **num-expert-referrals** — 0032: referred_by_scout_id + referred_by_note on num_scouts, referrer stamped on each place, num_scout_earnings kind widened for referrer_override (safe: 0 rows today). One level only, asserted by test. Smart fields: server tidies name/email/phone (reuses claim/verify normalisePhone), /who confirms a referrer code live, /hello prefills country. 204 scout tests pass. NOT SHIPPED — another session has uncommitted work in this worktree.
