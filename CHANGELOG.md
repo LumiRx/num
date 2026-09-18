@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.348 — 2026-09-18 06:41 UTC
+
+Deep research tries every brain, and stops calling its own headings invented venues
+
+- commit `ccf2ca4`
+
 ## 0.8.347 — 2026-09-18 06:38 UTC
 
 Deep research tries every brain, the way the rest of NUM always has
