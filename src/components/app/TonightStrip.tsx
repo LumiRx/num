@@ -192,6 +192,14 @@ export default function TonightStrip() {
         onOpen={openPlace}
         onSend={send}
         action="Ask NUM"
+        // Clubs and the late shift live on their own screen (NightlifeSheet),
+        // nearest first; this rail is the drink before, and it says where the
+        // rest of the night is.
+        trailing={(
+          <span {...pressable(() => store.set({ nightlifeOpen: true }))} className="tap press" style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', fontWeight: 800, fontSize: 10, letterSpacing: '.1em', padding: '0 4px' }}>
+            {t('ALL NIGHTLIFE')}
+          </span>
+        )}
       />
     </>
   );

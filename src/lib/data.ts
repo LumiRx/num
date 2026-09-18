@@ -73,6 +73,7 @@ function baseState() {
     thinkingLine: null,
     featureOpen: null,
     eventView: null,
+    nightlifeOpen: false,
     pendingAsk: null,
     savedFlights: [],
     notifOn: false,
@@ -233,7 +234,7 @@ export function persistable(s: AppState) {
     inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, billOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, flightWatchPrefill, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
     // The turn in flight and the page that is open are this launch's business only.
     // savedFlights is NOT here: a fare somebody kept must survive closing the app.
-    thinkingLine, featureOpen, eventView, pendingAsk,
+    thinkingLine, featureOpen, eventView, pendingAsk, nightlifeOpen,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.

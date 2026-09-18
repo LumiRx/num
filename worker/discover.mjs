@@ -143,6 +143,8 @@ export async function eventsFor(env, { dest, lat, lng, country, fetchImpl, near 
       image: e.image ?? null, rating: null, price: e.from ?? null, currency: e.currency ?? null, url: e.url ?? null,
       starts_on: e.date ?? null, starts_at: e.date && e.time ? `${e.date}T${e.time}` : null, venue: e.venue ?? null,
       lat: e.lat ?? null, lng: e.lng ?? null, distance_km: km == null ? null : Math.round(km * 10) / 10, label: 'Listed on Ticketmaster',
+      // The genre travels so NIGHTLIFE can keep the club nights and leave the matinees.
+      genre: e.genre ?? null,
     };
   });
   return Object.assign(out, { reason: found?.reason ?? (list.length ? 'ok' : 'empty') });
@@ -300,7 +302,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     return json({ ok: true });
   }
   const g = (k) => url.searchParams.get(k);
-  const mode = g('mode') === 'surprise' ? 'surprise' : g('mode') === 'tonight' ? 'tonight' : 'search';
+  const mode = g('mode') === 'surprise' ? 'surprise' : g('mode') === 'tonight' ? 'tonight' : g('mode') === 'nightlife' ? 'nightlife' : 'search';
   const q = String(g('q') ?? '').slice(0, 120);
   // The app holds a display name ("Kata, Phuket") and maybe a device fix;
   // the slug, the country and a fallback coordinate come from the
@@ -321,6 +323,69 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
   const lng = g('lng') != null ? Number(g('lng')) : (row?.lng ?? null);
   const me = g('me'), planId = g('plan_id'), mood = MOOD_TAGS[g('mood')] ? g('mood') : null;
   if (mode === 'search' && !q) return json({ ok: false, error: 'q required for search' }, 400);
+
+  // NIGHTLIFE: clubs, late bars, live music and the ticketed nights — nearest
+  // first, always, with the distance on every row. Its own screen because it
+  // is its own question: TONIGHT is "what should I do", this is "where is
+  // everyone going", and the answer is ranked by how far away it is right now.
+  // Three shelves from the same places table and ratings the concierge uses
+  // (real ratings first, unrated dropped when the neighbourhood has rated
+  // ones), plus Ticketmaster's music and party listings for today.
+  //
+  // Not promised here: entry, a table, or a cover charge NUM was never told.
+  if (mode === 'nightlife') {
+    const mine = g('lat') != null && g('lng') != null;
+    const loc = { dest: { slug: dest, name: row?.name ?? dest, tz: row?.tz ?? null, lat: row?.lat ?? null, lng: row?.lng ?? null }, lat, lng, precise: mine, source: mine ? 'shared_location' : 'named' };
+    const memberId = g('me') || null;
+    const asPlace = (r) => ({
+      source: 'num', id: `pl_${r.id}`, title: r.name, sub: [r.cuisine || (r.category ? String(r.category).replace(/ location$/i, '') : null), r.area].filter(Boolean).join(' · '),
+      image: r.photo_url ?? null, rating: r.rating ?? null, reviews: r.reviews ?? null, price: null, currency: null, url: null,
+      open_now: r.open_now ?? null, distance_km: mine && r.km != null ? Math.round(r.km * 10) / 10 : null, label: 'Checked by NUM',
+    });
+    // Nearest first is the ranking, and rated-first is the filter: a shelf
+    // NUM puts forward only carries what it can stand behind (see TONIGHT).
+    const shelf = (rows) => {
+      const rated = rows.filter((r) => r.rating != null);
+      const kept = rated.length >= 3 ? rated : rows;
+      return kept.slice().sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9)).slice(0, 10).map(asPlace);
+    };
+    let clubs = [], bars = [], live = [], tm = [];
+    try {
+      const { enrichCell } = await import('./placeratings.mjs');
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        await Promise.race([
+          Promise.all([
+            enrichCell(env, { lat, lng, cat: 'night_club' }).catch(() => null),
+            enrichCell(env, { lat, lng, cat: 'bar' }).catch(() => null),
+          ]),
+          new Promise((r) => setTimeout(r, 3500)),
+        ]);
+      }
+      const { nearbyPlaces } = await import('../ai/places.js');
+      const [r1, r2, r3, ev] = await Promise.all([
+        withTimeout(nearbyPlaces(env, loc, 'nightclub club dancing', 18, null, { memberId }), 2500, { rows: [] }),
+        withTimeout(nearbyPlaces(env, loc, 'bar cocktails late night', 18, null, { memberId }), 2500, { rows: [] }),
+        withTimeout(nearbyPlaces(env, loc, 'live music venue jazz', 12, null, { memberId }), 2500, { rows: [] }),
+        eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true }),
+      ]);
+      clubs = shelf(r1?.rows ?? []);
+      // A club is not a bar: whatever the bar search returned that is already
+      // on the club shelf stays off the bar shelf.
+      const clubIds = new Set(clubs.map((c) => c.id));
+      bars = shelf(r2?.rows ?? []).filter((b) => !clubIds.has(b.id));
+      live = shelf(r3?.rows ?? []).filter((b) => !clubIds.has(b.id));
+      tm = ev ?? [];
+    } catch (err) { console.warn('[discover] nightlife', err?.message ?? err); }
+    // Tonight's nights: music and party listings for the day asked for, the
+    // matinees and the theatre left to TONIGHT. Nearest first when we have a fix.
+    const NIGHT = /music|dance|electronic|dj|house|techno|hip.?hop|r&b|club|party|night|festival|concert|rock|pop|latin|reggae/i;
+    const day = g('day') || null;
+    const nights = tm
+      .filter((e) => (!e.genre || NIGHT.test(e.genre)) && (!day || !e.starts_on || e.starts_on === day))
+      .sort((a, b) => (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9))
+      .slice(0, 8);
+    return json({ ok: true, mode, dest, clubs, bars, live, nights, near: mine, sources: { clubs: clubs.length, bars: bars.length, live: live.length, ticketmaster: nights.length } });
+  }
 
   // TONIGHT: what is on, today and soon, from NUM's own checked list and
   // Ticketmaster where it has inventory. No places, no Viator — a strip for

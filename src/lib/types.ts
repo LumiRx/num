@@ -374,6 +374,8 @@ export interface AppState {
   featureOpen: import('./features').FeatureId | null;
   /** A question typed before the sender was reachable, held across the sign-in sheet (lib/gate.ts). */
   pendingAsk: string | null;
+  /** NIGHTLIFE — its own screen, nearest first (NightlifeSheet). */
+  nightlifeOpen: boolean;
   /** The event being looked at, carried whole from the rail that was tapped. */
   eventView: import('./eventview').EventCard | null;
   /** Fares the guest kept, so a search is never done twice (src/lib/savedflights.ts). Persisted. */

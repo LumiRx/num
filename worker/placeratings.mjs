@@ -27,7 +27,7 @@ export const cellOf = (lat, lng) => `${Math.round(lat * 100)}_${Math.round(lng *
 
 /** The search phrase Google understands for each of our categories. */
 export const QUERY_FOR = Object.freeze({
-  restaurant: 'restaurants', cafe: 'cafes', bar: 'bars', seafood: 'seafood restaurants', breakfast: 'breakfast',
+  restaurant: 'restaurants', cafe: 'cafes', bar: 'bars', night_club: 'nightclubs', live_music: 'live music venues', seafood: 'seafood restaurants', breakfast: 'breakfast',
   dessert: 'dessert', spa: 'massage spa', hotel: 'hotels', attraction: 'attractions', market: 'markets',
   shopping: 'shopping', gym: 'gym', golf: 'golf', pharmacy: 'pharmacy', cinema: 'cinema', tailor: 'tailor',
   rental: 'scooter rental', diving: 'diving', boat: 'boat tours', tour: 'tours', watersports: 'water sports', beach: 'beach',

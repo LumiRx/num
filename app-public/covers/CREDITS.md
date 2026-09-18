@@ -26,3 +26,4 @@ worst of it: jet.jpg was 14 KB of a 900px frame.
 Rejected on the way: a McDonald's / McCafé bag (brand), a VULKIT wallet (brand),
 a Chinese restaurant's neon sign (a real business name), a Yemeksepeti courier
 (brand) and a courier whose face was visible.
+| nightlife.webp | 5143166 | anonymous dancers in neon light (silhouettes only) |

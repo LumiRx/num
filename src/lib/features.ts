@@ -22,7 +22,7 @@
 import { store } from './store';
 
 export type FeatureId =
-  | 'flights' | 'stays' | 'tables' | 'tonight' | 'charter' | 'rides'
+  | 'flights' | 'stays' | 'tables' | 'tonight' | 'nightlife' | 'charter' | 'rides'
   | 'pickup' | 'hire' | 'wellness' | 'events' | 'plans' | 'wallet';
 
 export interface FeatureField {
@@ -115,6 +115,16 @@ export const FEATURES: readonly Feature[] = [
     id: 'tonight', kicker: 'TONIGHT', title: 'What’s on tonight', cover: '/covers/tonight.webp', cta: 'Show me',
     promise: 'Events, restaurants and bars near you right now — ranked, not listed.',
     compose: () => 'What’s on tonight near me? Events, food and bars — rank them and tell me where you’d start.',
+  },
+  {
+    // ITS OWN TAB (18 Sep 2026). TONIGHT is "what should I do"; this is
+    // "where is everyone going", ranked by distance from the phone with the
+    // distance printed on every card. Opens a screen, not a question — the
+    // list IS the answer, and a tap on any card asks NUM about that one place.
+    id: 'nightlife', kicker: 'NIGHTLIFE', title: 'Out tonight', cover: '/covers/nightlife.webp', cta: 'Nearest first',
+    promise: 'Clubs, late bars, live music and tonight’s ticketed nights — the closest to you at the top.',
+    opens: () => store.set({ featureOpen: null, nightlifeOpen: true }),
+    honest: 'Door policy, covers and dress codes are the venue’s. NUM asks; it never promises entry.',
   },
   {
     id: 'charter', kicker: 'PRIVATE', title: 'Plane, car or boat', cover: '/covers/charter.webp', cta: 'Ask a host',
