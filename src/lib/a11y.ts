@@ -41,6 +41,21 @@ export function pressable(onActivate: (e: SyntheticEvent) => void, role: AriaRol
     tabIndex: 0,
     onClick: onActivate,
     onKeyDown: (e: KeyboardEvent) => {
+      // A KEYSTROKE IN A FIELD IS NOT A TAP ON THE CARD AROUND IT.
+      //
+      // 18 Sep 2026. Pressing Enter in the composer refused to open the
+      // sign-in sheet while TAPPING send opened it every time — same
+      // function, different outcome. The keydown was bubbling out of the
+      // input and activating an ancestor that carries pressable(), so the
+      // sheet the composer had just opened was immediately replaced by that
+      // control's own action. Every field inside a pressable card had this:
+      // typing a space in a name, pressing Enter in a join code.
+      //
+      // Any control that legitimately wants Enter — an input's own submit —
+      // handles it on the field itself, where it does not need to travel.
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault(); // Space must not scroll the page
         onActivate(e);
