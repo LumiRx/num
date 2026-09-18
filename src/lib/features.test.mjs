@@ -219,8 +219,14 @@ describe('wired, not just written', () => {
     // the front on 18 Sep) and pinning the literal made a deliberate change
     // read as a regression.
     const now = /const NOW: WidgetId\[\] = \[([^\]]*)\]/.exec(dash);
-    assert.ok(now, 'the Now strip is gone');
-    for (const id of ["'tonight'", "'requests'"]) assert.ok(now[1].includes(id), `${id} left the day strip`);
+    const after = /const AFTER: WidgetId\[\] = \[([^\]]*)\]/.exec(dash);
+    assert.ok(now && after, 'the Now/After strips are gone');
+    // 18 Sep 2026: "what NUM does above the events and restaurants" — the
+    // grid's covers are ours and always there; a rail depends on the city.
+    // What needs an answer from you stays above the grid.
+    assert.ok(now[1].includes("'requests'"), 'the inbox left the top');
+    assert.ok(after[1].includes("'tonight'"), 'TONIGHT must sit below the grid');
+    assert.ok(!now[1].includes("'tonight'"), 'TONIGHT must not also sit above it');
   });
 
   test('your diary is on PLAN, and TODAY is what is around you', () => {

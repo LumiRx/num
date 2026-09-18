@@ -137,10 +137,37 @@ describe('the gate is on the one door, not on some of six', () => {
     assert.match(src('../components/app/ThreadView.tsx'), /!canSend\(me\) && \(/);
   });
 
-  test('verifying sends what was held, and records the review grant', () => {
-    const s = src('./social.ts');
-    assert.match(s, /const held = takeHeldAsk\(\);/);
-    assert.match(s, /if \(held\) \{ store\.set\(\{ inviteOpen: null, threadOpen: true \}\); void askNum\(held\); \}/);
-    assert.match(s, /if \(out\.review_access\) store\.set/);
+  test('the held question fires from ANY door, as a subscription, not a call site', () => {
+    // Sign in with Apple, a recovered account and the review grant never
+    // reach verifyCode(); the first version fired the held ask only there,
+    // and Dre watched the sheet close on nothing.
+    const g = src('./gate.ts');
+    assert.match(g, /store\.subscribe\(\(\) => \{/);
+    assert.match(g, /if \(now && !wasSendable\)/);
+    assert.match(g, /const held = takeHeldAsk\(\);/);
+    assert.doesNotMatch(src('./social.ts'), /takeHeldAsk/, 'social.ts must not keep its own copy of the rule');
+    assert.match(src('./social.ts'), /if \(out\.review_access\) store\.set/);
+  });
+
+  test('a server refusal holds the question too, and takes the echo back', () => {
+    const c = src('./concierge.ts');
+    const at = c.indexOf("why?.error === 'verify_to_send'");
+    const block = c.slice(at, at + 900);
+    assert.match(block, /pendingAsk: text/);
+    assert.match(block, /s2\.msgs\.slice\(0, -1\)/, 'the echoed question must not appear twice when it is re-sent');
+  });
+
+  test('becoming sendable sends the held question', async () => {
+    // The subscription end to end: hold with no member, then a member with a
+    // proved phone arrives. The ask must leave `pendingAsk` at once; the
+    // actual send is concierge.askNum, imported late.
+    store.set({ me: null, pendingAsk: null });
+    holdAndAsk('a table for six');
+    assert.equal(store.get().pendingAsk, 'a table for six');
+    store.set({ me: member({ phone_verified: true }) });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(store.get().pendingAsk, null, 'the held ask was taken the moment the member became sendable');
+    assert.equal(store.get().inviteOpen, null, 'and the sheet closed');
+    store.set({ me: null });
   });
 });

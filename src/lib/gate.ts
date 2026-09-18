@@ -92,3 +92,32 @@ export function takeHeldAsk(): string | null {
   store.set({ pendingAsk: null });
   return held;
 }
+
+/**
+ * THE HELD QUESTION FIRES THE MOMENT THE PERSON BECOMES REACHABLE — by any
+ * door (18 Sep 2026).
+ *
+ * The first version fired it only at the end of verifyCode(), which is the
+ * SMS and email path. Dre filled in a feature page, met the sheet, signed in,
+ * watched it close — "and nothing happens". Sign in with Apple, a recovered
+ * account and the review grant all make a member sendable without ever
+ * reaching verifyCode(), so the question sat in `pendingAsk` for ever.
+ *
+ * So the rule is a subscription, not a call site: whenever `me` goes from
+ * not-sendable to sendable and a question is waiting, it goes — thread open,
+ * sheet closed, NUM answering. One place, every door, and no future sign-in
+ * path has to remember to do it. concierge.ts is imported late because it
+ * imports this module.
+ */
+let wasSendable = canSend(store.get().me);
+store.subscribe(() => {
+  const now = canSend(store.get().me);
+  if (now && !wasSendable) {
+    const held = takeHeldAsk();
+    if (held) {
+      store.set({ inviteOpen: null, threadOpen: true, unread: 0 });
+      void import('./concierge').then(({ askNum }) => askNum(held)).catch(() => store.set({ pendingAsk: held }));
+    }
+  }
+  wasSendable = now;
+});

@@ -18,7 +18,7 @@ export default function FeatureGrid() {
         {t('EVERYTHING NUM DOES')}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {FEATURES.map((f) => (
+        {FEATURES.map((f, n) => (
           <div
             key={f.id}
             {...pressable(() => openFeature(f.id))}
@@ -43,7 +43,11 @@ export default function FeatureGrid() {
               srcSet={`${tileCover(f.cover)} 640w, ${f.cover} 1280w`}
               sizes="(max-width: 480px) 50vw, 240px"
               alt=""
-              loading="lazy"
+              // The first two rows are above the fold on every phone; asking
+              // the browser to be lazy about them only adds its own delay. The
+              // rest wait for the scroll.
+              loading={n < 4 ? 'eager' : 'lazy'}
+              fetchPriority={n < 2 ? 'high' : 'auto'}
               decoding="async"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
             />

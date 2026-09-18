@@ -12,6 +12,11 @@
     <script>try{if(matchMedia("(prefers-color-scheme: dark)").matches){var s=localStorage.getItem("num-trip-v1");var th=s&&JSON.parse(s).theme;if(!th||th==="auto"||th==="verified-dark"){document.documentElement.setAttribute("data-theme","verified-dark")}}}catch(e){}</script>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- The first row of TODAY, fetched while the JS is still downloading:
+         the tiles paint with the grid instead of a beat after it. Only the
+         two above-the-fold covers — preloading more competes with the bundle. -->
+    <link rel="preload" as="image" href="/covers/flights-sm.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/covers/stays-sm.webp" type="image/webp" fetchpriority="high" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- iOS home-screen install: full-screen, dark status-bar text on our light ground -->
     <meta name="apple-mobile-web-app-capable" content="yes" />

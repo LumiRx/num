@@ -1,0 +1,34 @@
+# Cache headers for the app's static files (Cloudflare Workers static assets
+# reads this file like Pages does).
+#
+# WHY THIS EXISTS (18 Sep 2026). Every static file was going out as
+# `cache-control: public, max-age=0, must-revalidate` — the platform default —
+# so a phone opening NUM re-asked the edge about thirteen cover images, the
+# JS bundle and the CSS on EVERY launch. Each answer was a 304, and each 304
+# was a round trip on mobile data before the first tile could paint. "The
+# picture cover loading speed needs to be way faster" was, mostly, this.
+#
+# /assets/ files are content-hashed by Vite, so a changed file gets a new
+# name and the old one can be cached for as long as we like. index.html is NOT
+# under a rule here and still revalidates on every load, which is what points
+# a returning phone at the new hashes; the autoupdate loop reloads on a new
+# /api/version. Covers are not hashed, so they get a week: a changed cover is
+# a rare event and a week of the old picture is the price of no round trips.
+
+/assets/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+/covers/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+/icon.svg
+  Cache-Control: public, max-age=86400
+
+/icon-192.png
+  Cache-Control: public, max-age=86400
+
+/icon-512.png
+  Cache-Control: public, max-age=86400
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400

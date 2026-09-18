@@ -11,7 +11,6 @@ import { refreshStars } from './stars';
 import { resumeDm } from './dm';
 import { askNum } from './concierge';
 import { track } from './track';
-import { takeHeldAsk } from './gate';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 import { apiUrl } from '../lib/apibase';
 import { isNativeApp } from './native';
@@ -732,12 +731,10 @@ export async function verifyCode(code: string, phone?: string, email?: string): 
   // it is: reachable, unproved.
   if (out.review_access) store.set((s) => ({ me: s.me ? { ...s.me, review_access: true } : s.me }));
 
-  // THE QUESTION THEY ALREADY TYPED. Somebody who asked for a table, met the
-  // sign-in sheet and proved a number has now said what they want once — so
-  // it goes now, rather than being typed again. The sheet closes with it, so
-  // the first thing they see after verifying is NUM answering.
-  const held = takeHeldAsk();
-  if (held) { store.set({ inviteOpen: null, threadOpen: true }); void askNum(held); }
+  // The question they typed before signing in is sent by lib/gate.ts the
+  // moment `me` becomes sendable — from here, from Sign in with Apple, from a
+  // recovered account or the review grant alike. It used to be sent from
+  // this function only, which left every other door silent.
   return true;
 }
 

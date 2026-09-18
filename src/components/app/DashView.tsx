@@ -256,8 +256,14 @@ export default function DashView() {
   // Order comes from the server: `widgets` is NUM's own running order and it
   // earns that, since a delayed flight climbs it. This array only says which
   // of them belong above the grid.
-  const NOW: WidgetId[] = ['tonight', 'requests', 'directions'];
-  const AFTER: WidgetId[] = [];
+  //
+  // THE GRID ABOVE THE RAILS (18 Sep 2026): "I want what NUM does above the
+  // events and restaurants, since they will have consistent images." The
+  // covers are ours and always there; a rail depends on what a city has
+  // tonight. What still sits above the grid is what needs an answer from
+  // you right now — a friend's request, live directions to the next thing.
+  const NOW: WidgetId[] = ['requests', 'directions'];
+  const AFTER: WidgetId[] = ['tonight'];
   const now = widgets.filter((id) => NOW.includes(id));
   const after = widgets.filter((id) => AFTER.includes(id));
 

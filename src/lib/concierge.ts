@@ -768,7 +768,20 @@ export async function askNum(text: string) {
     if (res.status === 403) {
       const why = await res.clone().json().catch(() => null);
       if (why?.error === 'verify_to_send') {
-        store.set({ typing: false, thinkingLine: null });
+        // HOLD IT, THEN OPEN THE DOOR. This is the path a signed-in member
+        // with nothing proved takes — the app-side gate let them through
+        // because `me` existed, the server did not. Dre, 18 Sep 2026: filled
+        // in a stay, met the sheet, verified, "it closes and nothing
+        // happens". The question was echoed and lost. Now the echo is taken
+        // back, the question is held, and lib/gate.ts sends it the moment
+        // verification lands — so what they see after the code is NUM
+        // answering the thing they asked.
+        store.set((s2) => ({
+          typing: false,
+          thinkingLine: null,
+          msgs: s2.msgs.at(-1)?.who === 'u' && s2.msgs.at(-1)?.text === text ? s2.msgs.slice(0, -1) : s2.msgs,
+          pendingAsk: text,
+        }));
         push({ who: 'c', text: String(why.message ?? 'Verify a number or an email and I can answer you.') });
         store.set({ inviteOpen: {} });
         return;
