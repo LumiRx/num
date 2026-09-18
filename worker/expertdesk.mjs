@@ -10,9 +10,21 @@
  * An accept button with nothing to accept and no document to read is not a
  * review flow.
  *
- * So: a queue, a viewer, and two buttons. Nothing else. This is the last thing
- * standing between an Expert who has done the work and an Expert who can be
- * paid, and on 18 Sep 2026 it had two real people waiting in it.
+ * ── HOW IT AUTHENTICATES, AND WHY IT IS BUILT THIS WAY ────────────────────
+ *
+ * The ops console at app.itsnum.com/ops/ keeps its session in sessionStorage
+ * under `num_ops` and sends it as an `X-Admin-Session` header. It never sets
+ * the `num_ops_session` cookie.
+ *
+ * So a page that expected a cookie was unreachable: typing this URL into a
+ * browser sends no header and no cookie, and every navigation would have been
+ * a 403 — a review desk nobody can open. The first version of this file had
+ * exactly that bug, found before anybody tried to use it.
+ *
+ * The shell below therefore carries NO DATA and needs no auth to fetch. Every
+ * byte that matters arrives through /queue and /file, which are admin-only and
+ * called from JavaScript that can set the header. Same origin as /ops/, so the
+ * session in sessionStorage is already there.
  *
  * ── THE FILE HAS SOMEBODY'S SSN IN IT ─────────────────────────────────────
  *
@@ -24,10 +36,13 @@
  *     to and never signed into a shareable link;
  *   · the object key is never sent to the browser, so what the page holds is a
  *     scout id and nothing that survives being copied out of it;
- *   · every response here is no-store, so it does not sit in a disk cache on
- *     whatever laptop did the review;
- *   · Content-Disposition is inline with a boring filename, and the type is
- *     re-asserted from the allow-list rather than echoed from the upload.
+ *   · the form is fetched with the header and shown from a blob URL, which
+ *     belongs to that one document and dies with the tab — better than an
+ *     <img src> could have been, which is the one good thing to come out of
+ *     the cookie mistake;
+ *   · every response is no-store, so nothing sits in a disk cache afterwards;
+ *   · the content type is re-asserted from the allow-list rather than echoed
+ *     from the upload, because text/html here would run in the session.
  */
 import { isAdmin } from './console.mjs';
 import { ALLOWED_TYPES } from './expertdocs.mjs';
@@ -37,22 +52,16 @@ const json = (body, status = 200) =>
     status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
-const H = (v) => String(v ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
 /**
  * Everyone with paperwork that is not finished, newest first.
  *
- * Deliberately shows accepted rows too, greyed out on the page: a desk that
- * only shows work makes it impossible to confirm you did any.
+ * Shows accepted rows too, so it is possible to confirm you did the work.
  */
 export async function queue(env) {
   const { results = [] } = await env.DB.prepare(
-    `SELECT s.id, s.name, s.code, s.email, s.country, s.created_at,
+    `SELECT s.id, s.name, s.code, s.email, s.country,
             n.state AS nda_state, n.signed_name, n.signed_at, n.reject_reason AS nda_reason,
-            w.state AS w9_state, w.uploaded_at, w.content_type, w.bytes,
-            w.reject_reason AS w9_reason,
+            w.state AS w9_state, w.uploaded_at, w.bytes, w.reject_reason AS w9_reason,
             (SELECT COUNT(*) FROM num_scout_places p
               WHERE p.scout_id = s.id AND p.state <> 'void') AS introduced
        FROM num_scouts s
@@ -86,77 +95,28 @@ export async function serveW9(env, scoutId) {
   const obj = await env.PHOTOS.get(row.object_key);
   if (!obj) return json({ error: 'the file is missing from storage' }, 404);
 
-  // Re-asserted from the allow-list rather than trusted from the row: a
-  // content type that came in with the upload is attacker-controlled, and
-  // text/html here would run in the reviewer's session.
   const type = ALLOWED_TYPES.includes(row.content_type) ? row.content_type : 'application/octet-stream';
 
   return new Response(obj.body, {
     headers: {
       'Content-Type': type,
-      'Content-Disposition': 'inline; filename="w9.pdf"',
+      'Content-Disposition': 'inline; filename="w9"',
       'Cache-Control': 'no-store, private',
       'Referrer-Policy': 'no-referrer',
-      // The reviewer's browser should not be talked into rendering this
-      // anywhere but here.
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; object-src 'none'; sandbox",
     },
   });
 }
 
-const WORD = Object.freeze({
-  pending: 'waiting on them',
-  signed: 'SIGNED — needs you',
-  uploaded: 'UPLOADED — needs you',
-  accepted: 'accepted',
-  rejected: 'rejected',
-});
-
-function row(p) {
-  const needs = p.nda_state === 'signed' || p.w9_state === 'uploaded';
-  const cls = needs ? 'card need' : 'card';
-  const w9 = p.w9_state
-    ? `<div class="doc">
-         <b>W-9</b> <span class="st ${p.w9_state}">${H(WORD[p.w9_state] ?? p.w9_state)}</span>
-         ${p.w9_reason ? `<div class="why">${H(p.w9_reason)}</div>` : ''}
-         ${p.w9_state === 'uploaded' || p.w9_state === 'accepted'
-    ? `<div class="actions">
-                <a class="btn ghost" href="/api/expert-docs/file?scout=${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Open the form</a>
-                ${p.w9_state === 'uploaded'
-      ? `<button class="btn" data-act data-scout="${H(p.id)}" data-kind="w9" data-ok="1">Accept</button>
-                     <button class="btn warn" data-act data-scout="${H(p.id)}" data-kind="w9">Reject</button>` : ''}
-              </div>` : ''}
-       </div>`
-    : '<div class="doc"><b>W-9</b> <span class="st">not started</span></div>';
-
-  const nda = p.nda_state
-    ? `<div class="doc">
-         <b>NDA</b> <span class="st ${p.nda_state}">${H(WORD[p.nda_state] ?? p.nda_state)}</span>
-         ${p.signed_name ? `<div class="why">signed “${H(p.signed_name)}” · ${H(String(p.signed_at ?? '').slice(0, 16))}</div>` : ''}
-         ${p.nda_reason ? `<div class="why">${H(p.nda_reason)}</div>` : ''}
-         ${p.nda_state === 'signed'
-    ? `<div class="actions">
-                <button class="btn" data-act data-scout="${H(p.id)}" data-kind="nda" data-ok="1">Accept</button>
-                <button class="btn warn" data-act data-scout="${H(p.id)}" data-kind="nda">Reject</button>
-              </div>` : ''}
-       </div>`
-    : '<div class="doc"><b>NDA</b> <span class="st">not started</span></div>';
-
-  return `<div class="${cls}">
-    <div class="who">
-      <b>${H(p.name)}</b> <span class="code">${H(p.code)}</span>
-      <div class="meta">${H(p.email)} · ${H(p.country ?? '—')} · ${p.introduced} introduced</div>
-    </div>
-    ${nda}
-    ${w9}
-  </div>`;
-}
-
-export function deskPage(q) {
-  const cards = q.people.length
-    ? q.people.map(row).join('')
-    : '<p class="empty">Nobody has started their paperwork yet.</p>';
+/**
+ * The shell. No data, no auth — everything real is fetched with the header.
+ *
+ * Kept as a constant string rather than templated from the queue, because the
+ * moment this function takes data it becomes a page that must be
+ * authenticated, and that is the mistake this file already made once.
+ */
+export function deskShell() {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -186,74 +146,169 @@ h1{font-size:23px;font-weight:800;color:var(--pine);letter-spacing:-.02em}
  font:700 13px/44px inherit;cursor:pointer;text-decoration:none;display:inline-block}
 .btn.ghost{background:#eceae3;color:var(--pine)}
 .btn.warn{background:var(--warn)}
-.empty{color:var(--mute);margin-top:18px}
+.btn[disabled]{opacity:.5;cursor:default}
+.msg{margin-top:18px;color:var(--mute)}
+.msg.bad{color:var(--warn);font-weight:700}
 .note{margin-top:22px;color:var(--mute);font-size:12.5px;border-top:1px solid var(--line);padding-top:12px}
-.err{color:var(--warn);font-weight:700;margin-top:12px}
+a{color:var(--green)}
 </style></head><body><div class="wrap">
 <h1>Expert paperwork</h1>
-<p class="lede">${q.waiting
-    ? `${q.waiting} ${q.waiting === 1 ? 'packet needs' : 'packets need'} you. Earnings accrue while this is outstanding — nothing is lost — but nobody can be PAID until both documents are accepted.`
-    : 'Nothing is waiting. Earnings become payable as soon as both documents are accepted.'}</p>
-<div id="err" class="err" hidden></div>
-${cards}
-<p class="note">The W-9 has someone's SSN on it. It is streamed through this page and never given a shareable link, so do not save a copy anywhere else.</p>
+<p class="lede" id="lede">Reading the queue&hellip;</p>
+<div id="list"></div>
+<p class="note">The W-9 has someone&rsquo;s SSN on it. It is fetched into this tab only and never given a
+shareable link, so do not save a copy anywhere else.</p>
 </div>
 <script>
-document.querySelectorAll('[data-act]').forEach(function (b) {
-  b.addEventListener('click', function () {
-    var accept = b.dataset.ok === '1';
-    var reason = null;
-    if (!accept) {
-      // A rejection with no reason is a person told "no" and left guessing.
-      reason = window.prompt('Why is it being rejected? They will see this.');
-      if (!reason) return;
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var H = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
+
+  // Same origin as /ops/, so its session is already here. Nothing on this page
+  // works without it, and that is the point: the shell carries no data.
+  var token = null;
+  try { token = sessionStorage.getItem('num_ops'); } catch (e) { token = null; }
+
+  function auth(extra) {
+    var h = extra || {};
+    h['X-Admin-Session'] = token;
+    return h;
+  }
+
+  function fail(msg) { $('lede').className = 'lede msg bad'; $('lede').textContent = msg; }
+
+  if (!token) {
+    $('lede').className = 'lede msg bad';
+    $('lede').innerHTML = 'Sign in at <a href="/ops/">NUM Ops</a> first, then reload this page. '
+      + 'That session lives in this browser tab group, so it has to be the same browser.';
+    return;
+  }
+
+  var WORD = { pending: 'waiting on them', signed: 'SIGNED \\u2014 needs you',
+    uploaded: 'UPLOADED \\u2014 needs you', accepted: 'accepted', rejected: 'rejected' };
+
+  function docBlock(p, kind, state, reason, extraHtml) {
+    var label = kind === 'nda' ? 'NDA' : 'W-9';
+    if (!state) return '<div class="doc"><b>' + label + '</b> <span class="st">not started</span></div>';
+    var acts = '';
+    if (kind === 'w9' && (state === 'uploaded' || state === 'accepted')) {
+      acts += '<button class="btn ghost" data-open="' + H(p.id) + '">Open the form</button>';
     }
-    b.disabled = true;
-    fetch('/api/expert-docs/review', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ scout_id: b.dataset.scout, kind: b.dataset.kind, accept: accept, reason: reason })
-    })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-      .then(function (res) {
-        if (!res.ok || !res.j.ok) {
-          b.disabled = false;
-          var e = document.getElementById('err');
-          e.textContent = (res.j && (res.j.why || res.j.error)) || 'That did not go through.';
-          e.hidden = false;
-          return;
-        }
-        location.reload();
+    if (state === 'signed' || state === 'uploaded') {
+      acts += '<button class="btn" data-act data-scout="' + H(p.id) + '" data-kind="' + kind + '" data-ok="1">Accept</button>'
+        + '<button class="btn warn" data-act data-scout="' + H(p.id) + '" data-kind="' + kind + '">Reject</button>';
+    }
+    return '<div class="doc"><b>' + label + '</b> <span class="st ' + H(state) + '">' + H(WORD[state] || state) + '</span>'
+      + (extraHtml || '')
+      + (reason ? '<div class="why">' + H(reason) + '</div>' : '')
+      + (acts ? '<div class="actions">' + acts + '</div>' : '')
+      + '</div>';
+  }
+
+  function render(q) {
+    $('lede').className = 'lede';
+    $('lede').textContent = q.waiting
+      ? q.waiting + (q.waiting === 1 ? ' packet needs' : ' packets need') + ' you. Earnings accrue while this is '
+        + 'outstanding \\u2014 nothing is lost \\u2014 but nobody can be PAID until both documents are accepted.'
+      : 'Nothing is waiting. Earnings become payable as soon as both documents are accepted.';
+
+    if (!q.people.length) { $('list').innerHTML = '<p class="msg">Nobody has started their paperwork yet.</p>'; return; }
+
+    $('list').innerHTML = q.people.map(function (p) {
+      var need = p.nda_state === 'signed' || p.w9_state === 'uploaded';
+      var signed = p.signed_name
+        ? '<div class="why">signed &ldquo;' + H(p.signed_name) + '&rdquo; \\u00b7 ' + H(String(p.signed_at || '').slice(0, 16)) + '</div>' : '';
+      return '<div class="' + (need ? 'card need' : 'card') + '">'
+        + '<div class="who"><b>' + H(p.name) + '</b><span class="code">' + H(p.code) + '</span>'
+        + '<div class="meta">' + H(p.email) + ' \\u00b7 ' + H(p.country || '\\u2014') + ' \\u00b7 ' + p.introduced + ' introduced</div></div>'
+        + docBlock(p, 'nda', p.nda_state, p.nda_reason, signed)
+        + docBlock(p, 'w9', p.w9_state, p.w9_reason, '')
+        + '</div>';
+    }).join('');
+    wire();
+  }
+
+  function load() {
+    fetch('/api/expert-docs/queue', { headers: auth() })
+      .then(function (r) {
+        if (r.status === 403) { fail('That session is not an admin one. Sign in again at /ops/.'); return null; }
+        return r.json();
       })
-      .catch(function () { b.disabled = false; });
-  });
-});
+      .then(function (q) { if (q && q.ok) render(q); })
+      .catch(function () { fail('Could not read the queue.'); });
+  }
+
+  function wire() {
+    // The form: fetched with the header, shown from a blob that belongs to
+    // this tab and dies with it. An <img src> could not have sent the header,
+    // and a signed URL would have been a link to a tax form.
+    document.querySelectorAll('[data-open]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        b.disabled = true;
+        fetch('/api/expert-docs/file?scout=' + encodeURIComponent(b.dataset.open), { headers: auth() })
+          .then(function (r) { if (!r.ok) throw new Error('no'); return r.blob(); })
+          .then(function (blob) {
+            var u = URL.createObjectURL(blob);
+            window.open(u, '_blank', 'noopener');
+            // Revoked once the new tab has taken it, so the handle does not
+            // outlive the look.
+            setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+            b.disabled = false;
+          })
+          .catch(function () { b.disabled = false; fail('Could not open that form.'); });
+      });
+    });
+
+    document.querySelectorAll('[data-act]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var accept = b.dataset.ok === '1';
+        var reason = null;
+        if (!accept) {
+          // A rejection with no reason is a person told "no" and left guessing.
+          reason = window.prompt('Why is it being rejected? They will see this.');
+          if (!reason) return;
+        }
+        b.disabled = true;
+        fetch('/api/expert-docs/review', {
+          method: 'POST',
+          headers: auth({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ scout_id: b.dataset.scout, kind: b.dataset.kind, accept: accept, reason: reason })
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (!res.ok || !res.j.ok) { b.disabled = false; fail((res.j && (res.j.why || res.j.error)) || 'That did not go through.'); return; }
+            load();
+          })
+          .catch(function () { b.disabled = false; });
+      });
+    });
+  }
+
+  load();
+})();
 </script>
 </body></html>`;
 }
 
-/** Routes `/queue`, `/file` and `/desk`. Every one of them admin-only. */
+/**
+ * Routes `/desk`, `/queue` and `/file`.
+ *
+ * The shell is open because it holds nothing. The two that carry data are
+ * admin-only, and they are what the shell calls with the header.
+ */
 export async function handleDesk(request, env, p) {
+  if (p === '/desk') {
+    return new Response(deskShell(), {
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
+
   // (env, request). See worker/adminargs.test.mjs for why that order is
   // written out rather than left to memory.
-  if (!await isAdmin(env, request)) {
-    return p === '/desk'
-      ? new Response('<p style="font:15px system-ui;padding:24px">Sign in to the ops console first.</p>', {
-        status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-      })
-      : json({ error: 'not allowed' }, 403);
-  }
+  if (!await isAdmin(env, request)) return json({ error: 'not allowed' }, 403);
 
   if (p === '/queue') return json(await queue(env));
 
-  if (p === '/file') {
-    const scoutId = new URL(request.url).searchParams.get('scout');
-    if (!scoutId) return json({ error: 'which Expert?' }, 400);
-    return serveW9(env, scoutId);
-  }
-
-  return new Response(deskPage(await queue(env)), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
+  const scoutId = new URL(request.url).searchParams.get('scout');
+  if (!scoutId) return json({ error: 'which Expert?' }, 400);
+  return serveW9(env, scoutId);
 }

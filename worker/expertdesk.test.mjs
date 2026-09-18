@@ -11,7 +11,7 @@
 // that quietly.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { queue, serveW9, deskPage, handleDesk } from './expertdesk.mjs';
+import { queue, serveW9, deskShell, handleDesk } from './expertdesk.mjs';
 
 const KEY = 'expert-tax/sc_1/2f9c-not-guessable';
 
@@ -47,8 +47,33 @@ function makeEnv({ admin = false, object = true } = {}) {
 const req = (path, headers = {}) =>
   new Request(`https://app.itsnum.com/api/expert-docs${path}`, { headers });
 
-describe('shut to everybody but an admin', () => {
-  for (const p of ['/desk', '/queue', '/file']) {
+describe('reachable by a person, shut to everybody else', () => {
+  // The bug this replaces: the shell was admin-gated and the ops console
+  // authenticates with a HEADER, not a cookie. A browser navigation sends
+  // neither, so every attempt to open the desk was a 403 — a review page
+  // nobody could reach. The shell is now public because it holds no data.
+  test('the shell opens without a session, because it carries nothing', async () => {
+    const res = await handleDesk(req('/desk'), makeEnv({ admin: false }), '/desk');
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(!html.includes('Isaiah'), 'and still no name in it');
+    assert.ok(!html.includes('z@num.test'), 'and no email');
+    assert.ok(!html.includes(KEY), 'and no object key');
+  });
+
+  test('the shell sends the header the ops console actually uses', () => {
+    const html = deskShell();
+    assert.match(html, /sessionStorage\.getItem\('num_ops'\)/,
+      'same origin as /ops/, so its session is already here');
+    assert.match(html, /X-Admin-Session/,
+      'a cookie would not be sent by /ops/ — that was the bug');
+  });
+
+  test('with no session it says where to sign in rather than failing blankly', () => {
+    assert.match(deskShell(), /Sign in at <a href="\/ops\/">/);
+  });
+
+  for (const p of ['/queue', '/file']) {
     test(`${p} refuses a caller with no session`, async () => {
       const res = await handleDesk(req(`${p}?scout=sc_1`), makeEnv({ admin: false }), p);
       assert.equal(res.status, 403);
@@ -66,11 +91,13 @@ describe('shut to everybody but an admin', () => {
 
 describe('the form is streamed, never linked', () => {
   test('the object key never reaches the browser', async () => {
-    const html = deskPage(await queue(makeEnv({ admin: true })));
+    const html = deskShell();
     assert.ok(!html.includes(KEY), 'the key stays in the worker');
     assert.ok(!html.includes('expert-tax/'), 'not even its namespace');
-    assert.match(html, /\/api\/expert-docs\/file\?scout=sc_1/,
-      'the page holds a scout id, which is not a handle on a document');
+    assert.match(html, /\/api\/expert-docs\/file\?scout=' \+ encodeURIComponent/,
+      'the page asks for a document by scout id, which is not a handle on one');
+    assert.match(html, /createObjectURL/,
+      'and shows it from a blob that dies with the tab, not a shareable link');
   });
 
   test('the bytes come back with no-store and an inline disposition', async () => {
@@ -105,7 +132,7 @@ describe('the queue', () => {
   });
 
   test('the page says money accrues but cannot be paid, rather than implying it is lost', async () => {
-    const html = deskPage(await queue(makeEnv({ admin: true })));
+    const html = deskShell();
     assert.match(html, /nothing is lost/i);
     assert.match(html, /cannot be PAID|nobody can be PAID/i);
   });
@@ -118,12 +145,12 @@ describe('the queue', () => {
       w9_state: null, introduced: 0,
     }];
     env.DB.prepare = () => ({ bind: () => ({ all: async () => ({ results: rows }) }), all: async () => ({ results: rows }) });
-    const html = deskPage(await queue(env));
+    const html = deskShell();
     assert.ok(!html.includes('<script>alert(1)</script>'), 'escaped, not executed');
   });
 
   test('rejecting asks for a reason — the page refuses to send one without it', () => {
-    const html = deskPage({ ok: true, waiting: 0, people: [] });
+    const html = deskShell();
     assert.match(html, /if \(!reason\) return;/,
       'a rejection with no reason leaves somebody guessing what to fix');
   });
