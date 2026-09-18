@@ -107,9 +107,25 @@ export function shape(e) {
     from: pr?.min ?? null,
     currency: pr?.currency ?? null,
     url: e?.url ?? null,
-    // The poster, 16:9, the smallest that is still sharp on a phone. Shown
-    // with Ticketmaster's credit — it is their image.
-    image: (Array.isArray(e?.images) ? e.images.filter((i) => i?.ratio === '16_9' && (i?.width ?? 0) >= 640 && !i?.fallback).sort((a, b) => a.width - b.width)[0]?.url : null) ?? null,
+    // THE POSTER, BIG ENOUGH TO BE CROPPED (18 Sep 2026).
+    //
+    // This took the smallest 16:9 image of at least 640px, which was the right
+    // call when a rail card was 108px wide. The rails are two across now and
+    // each card crops the poster to a SQUARE, so a 640×360 source gives 360px
+    // of usable height stretched over 513 device pixels on a 3× phone — the
+    // blur you can see on the TONIGHT shelf. Ticketmaster publishes up to
+    // 2048×1152 for the same event, so: the smallest that is at least 1024
+    // wide, and the largest available when none reaches that.
+    //
+    // Shown with Ticketmaster's credit — it is their image.
+    image: (() => {
+      const wide = Array.isArray(e?.images)
+        ? e.images.filter((i) => i?.ratio === '16_9' && !i?.fallback && Number.isFinite(Number(i?.width)))
+        : [];
+      if (!wide.length) return null;
+      const big = wide.filter((i) => Number(i.width) >= 1024).sort((a, b) => a.width - b.width);
+      return (big[0] ?? wide.sort((a, b) => b.width - a.width)[0])?.url ?? null;
+    })(),
   };
 }
 

@@ -9,6 +9,7 @@
 import { FEATURES, openFeature } from '../../lib/features';
 import { pressable } from '../../lib/a11y';
 import { t } from '../../lib/i18n';
+import { tileCover } from '../../lib/features';
 
 export default function FeatureGrid() {
   return (
@@ -29,8 +30,18 @@ export default function FeatureGrid() {
               display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
             }}
           >
+            {/* THE TILE GETS THE TILE-SIZED FILE (18 Sep 2026).
+                The covers were 900px wide and the page cover is full width, so
+                on a 3× phone they were being upscaled — soft tiles, and the
+                worst of them looked broken. They are 1600px now, with a 640px
+                cut beside each one for the grid: sharp at both sizes, and the
+                twelve tiles on this screen weigh 428 KB between them instead
+                of 2 MB. srcSet lets a 2× phone take the small one and a 3×
+                phone the large, which is the whole point of having both. */}
             <img
-              src={f.cover}
+              src={tileCover(f.cover)}
+              srcSet={`${tileCover(f.cover)} 640w, ${f.cover} 1600w`}
+              sizes="(max-width: 480px) 50vw, 240px"
               alt=""
               loading="lazy"
               decoding="async"

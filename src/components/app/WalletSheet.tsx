@@ -12,6 +12,7 @@ import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
 import MembershipCard from './MembershipCard';
 import { apiUrl } from '../../lib/apibase';
+import { loadMemberWallet, createMemberWallet, shortAddress, type MemberWallet } from '../../lib/memberwallet';
 import { t } from '../../lib/i18n';
 
 // No PACKS constant here on purpose. The wallet used to carry its own copy of
@@ -23,6 +24,13 @@ export default function WalletSheet() {
   const stars = useApp((s) => s.stars);
   const bought = useApp((s) => s.bought);
   const txns = useApp((s) => s.txns);
+  const account = useApp((s) => s.me);
+  // The member's own wallet, if they have one. Its own state and its own
+  // strip: Stars and USDC are different assets, and the moment they share a
+  // total nobody can check the number.
+  const [coin, setCoin] = useState<MemberWallet | null>(null);
+  const [coinBusy, setCoinBusy] = useState(false);
+  const [coinErr, setCoinErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
 
@@ -36,6 +44,7 @@ export default function WalletSheet() {
   useEffect(() => {
     if (!open) return;
     void fetch(apiUrl('/api/pay/status')).then((r) => r.json()).then(setPay).catch(() => setPay(null));
+    if (account?.id) void loadMemberWallet(account.id).then(setCoin);
     // Pulled on every open. A wallet is read precisely when someone doubts
     // what it says, so a cached one is worth very little.
     void refreshActivity();
@@ -49,8 +58,24 @@ export default function WalletSheet() {
   }, [open]);
 
   const close = () => store.set({ walletOpen: false });
+  // IT HAS TO SCROLL (18 Sep 2026). The balance, the top-up packs, the two
+  // plans, split-a-tab, errands and the receipts ledger do not fit on a phone,
+  // and without this the bottom half simply could not be reached — the plans
+  // went in and pushed everything below them off the sheet.
+  // `overscrollBehavior: contain` keeps a flick at the end of the list from
+  // dragging the page behind it.
   return (
-    <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div
+      ref={ref}
+      className="glass-strong no-scrollbar"
+      style={{
+        ...sheetBase,
+        visibility: open ? 'visible' : 'hidden',
+        transform: open ? 'translateY(0)' : 'translateY(105%)',
+        overflowY: 'auto',
+        overscrollBehavior: 'contain',
+      }}
+    >
       <div style={grabberStyle} />
       <div
         {...pressable(close)}
@@ -166,6 +191,61 @@ export default function WalletSheet() {
             >
               CASH OUT
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── USDC, kept apart from Stars on purpose ──────────────────────────
+          Shown only when the member could actually use it: a wallet they have,
+          or an offer to make one when wallets are switched on. No balance is
+          invented — an unreadable chain says so rather than showing 0. */}
+      {account && coin && (coin.wallet || coin.available) && (
+        <div style={{ padding: '0 16px 14px' }}>
+          <div className="glass" style={{ borderRadius: 14, padding: '12px 13px' }}>
+            <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('YOUR WALLET')}</div>
+            {coin.wallet ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 3 }}>
+                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18 }}>
+                    {coin.balance ? `${coin.balance.display} ${coin.balance.symbol}` : t('Balance unavailable')}
+                  </span>
+                  <span style={{ fontSize: 10.5, color: 'var(--ink-40)' }}>{t('on Base')}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>
+                  {shortAddress(coin.wallet.address)}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.45 }}>
+                  {coin.balance
+                    ? t('Yours, not NUM\'s — NUM never holds the key and never adds this to your Stars.')
+                    : t('We could not reach the chain just now. Your money is where it was; only this number is missing.')}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
+                  {t('A wallet of your own on Base, made from the number you already verified. NUM never holds the key, never funds it, and never counts it as Stars.')}
+                </div>
+                {coinErr && <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 6 }}>{coinErr}</div>}
+                <div
+                  {...pressable(() => {
+                    if (!account?.id || coinBusy) return;
+                    setCoinBusy(true); setCoinErr(null);
+                    void createMemberWallet(account.id).then(async (r) => {
+                      if (r.ok) setCoin(await loadMemberWallet(account.id));
+                      else setCoinErr(r.error);
+                      setCoinBusy(false);
+                    });
+                  })}
+                  role="button"
+                  style={{
+                    cursor: 'pointer', marginTop: 10, minHeight: 44, boxSizing: 'border-box', borderRadius: 999,
+                    background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11,
+                    letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center', opacity: coinBusy ? 0.6 : 1,
+                  }}
+                >
+                  {coinBusy ? t('MAKING IT…') : t('GIVE ME A WALLET')}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

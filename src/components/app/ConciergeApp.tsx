@@ -125,6 +125,20 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   // silently so the next back-press behaves normally.
   useEffect(() => {
     if (!overlayOpen) return;
+    // LET GO OF THE FIELD FIRST (18 Sep 2026).
+    //
+    // App.tsx publishes the keyboard height as --kb and the shell absorbs it,
+    // so a sheet's maxHeight is a percentage of what is left ABOVE the
+    // keyboard. Open a sheet while a text field still holds focus and that
+    // ceiling is computed against a shrunken shell: the sheet arrives with no
+    // visible height and the tap looks like it did nothing. It was reported
+    // twice in one morning — Enter in the composer, then "Surprise me" — and
+    // both were the same arithmetic, so the blur belongs here, once, for
+    // every sheet rather than on each door that remembers.
+    try {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) el.blur();
+    } catch { /* no document: tests */ }
     let popped = false;
     const pushedAt = Date.now();
     history.pushState({ numOverlay: true }, '');

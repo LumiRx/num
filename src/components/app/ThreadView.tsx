@@ -781,7 +781,7 @@ export default function ThreadView() {
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 8px' }}
           >
             <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-60)' }}>
-              {t('Verify a number or an email to send — NUM has to be able to answer you back.')}
+              {t('NUM has to be able to answer you back.')}
             </div>
             <span style={{ flex: 'none', fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent)' }}>{t('VERIFY')}</span>
           </div>

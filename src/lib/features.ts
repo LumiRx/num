@@ -69,9 +69,19 @@ const when = (v: string) => {
 };
 const on = (v: string) => (v ? ` on ${v}` : '');
 
+/**
+ * The 640px cut of a cover, for a grid tile.
+ *
+ * Every cover ships twice — `x.webp` at 1600px for the feature page's
+ * full-width header and `x-sm.webp` at 640px for the tile. One file for both
+ * meant either soft tiles (the 900px original upscaled on a 3× screen) or two
+ * megabytes of photographs on the first screen of the app.
+ */
+export const tileCover = (cover: string): string => cover.replace(/\.webp$/, '-sm.webp');
+
 export const FEATURES: readonly Feature[] = [
   {
-    id: 'flights', kicker: 'FLIGHTS', title: 'Find a flight', cover: '/covers/flights.jpg', cta: 'Search fares',
+    id: 'flights', kicker: 'FLIGHTS', title: 'Find a flight', cover: '/covers/flights.webp', cta: 'Search fares',
     promise: 'Live fares, the hidden stops said out loud, and the one to book. Save any fare to check it again later.',
     fields: [
       { id: 'from', label: 'From', placeholder: 'BKK', type: 'text', half: true },
@@ -82,7 +92,7 @@ export const FEATURES: readonly Feature[] = [
     compose: (v) => `Find me flights from ${v.from} to ${v.to}${on(v.date)}${v.ret ? `, returning ${v.ret}` : ''}. Live fares, and tell me which one you'd take.`,
   },
   {
-    id: 'stays', kicker: 'STAYS', title: 'Somewhere to sleep', cover: '/covers/stays.jpg', cta: 'Find a place',
+    id: 'stays', kicker: 'STAYS', title: 'Somewhere to sleep', cover: '/covers/stays.webp', cta: 'Find a place',
     promise: 'Three real places with the trade-offs said plainly, and the one NUM would pick for you.',
     fields: [
       { id: 'where', label: 'Where', placeholder: 'Sukhumvit, Bangkok', fromPlace: true },
@@ -92,7 +102,7 @@ export const FEATURES: readonly Feature[] = [
     compose: (v) => `Find me somewhere to stay in ${v.where}${v.checkin ? ` from ${v.checkin}` : ''}${v.nights ? ` for ${v.nights} night${v.nights === '1' ? '' : 's'}` : ''}. Three options with the trade-offs, and the one you'd pick.`,
   },
   {
-    id: 'tables', kicker: 'TABLES', title: 'Book a table', cover: '/covers/tables.jpg', cta: 'Get a table',
+    id: 'tables', kicker: 'TABLES', title: 'Book a table', cover: '/covers/tables.webp', cta: 'Get a table',
     promise: 'Say the mood, the time and how many. NUM finds the room and holds it.',
     fields: [
       { id: 'what', label: 'What are you in the mood for', placeholder: 'quiet, Thai, near the river' },
@@ -102,12 +112,12 @@ export const FEATURES: readonly Feature[] = [
     compose: (v) => `Book me a table${v.people ? ` for ${v.people}` : ''}${v.when ? ` ${v.when}` : ''}: ${v.what || 'something good nearby'}. Hold it if you can.`,
   },
   {
-    id: 'tonight', kicker: 'TONIGHT', title: 'What’s on tonight', cover: '/covers/tonight.jpg', cta: 'Show me',
+    id: 'tonight', kicker: 'TONIGHT', title: 'What’s on tonight', cover: '/covers/tonight.webp', cta: 'Show me',
     promise: 'Events, restaurants and bars near you right now — ranked, not listed.',
     compose: () => 'What’s on tonight near me? Events, food and bars — rank them and tell me where you’d start.',
   },
   {
-    id: 'charter', kicker: 'PRIVATE', title: 'Plane, car or boat', cover: '/covers/charter.jpg', cta: 'Ask a host',
+    id: 'charter', kicker: 'PRIVATE', title: 'Plane, car or boat', cover: '/covers/charter.webp', cta: 'Ask a host',
     promise: 'Tell NUM what you need and it goes to the host network. Nothing is priced or held until a host comes back.',
     lanes: [{ id: 'plane', label: 'Plane' }, { id: 'car', label: 'Car' }, { id: 'boat', label: 'Boat' }],
     fields: [
@@ -119,7 +129,7 @@ export const FEATURES: readonly Feature[] = [
     honest: 'No host has listed a plane, car or boat yet. NUM takes the request, puts it to the network, and comes back — it will not quote a price it cannot stand behind.',
   },
   {
-    id: 'rides', kicker: 'RIDES', title: 'Get a car', cover: '/covers/rides.jpg', cta: 'Get a car',
+    id: 'rides', kicker: 'RIDES', title: 'Get a car', cover: '/covers/rides.webp', cta: 'Get a car',
     promise: 'Airport, hotel, across town. NUM picks the right app for this country and opens it filled in.',
     fields: [
       { id: 'to', label: 'Where to', placeholder: 'Suvarnabhumi Airport' },
@@ -129,7 +139,7 @@ export const FEATURES: readonly Feature[] = [
     honest: 'NUM has no account with Uber or Grab yet — it opens the right one prefilled, and says so.',
   },
   {
-    id: 'pickup', kicker: 'PICK UP', title: 'Order for pickup', cover: '/covers/pickup.jpg', cta: 'Order it',
+    id: 'pickup', kicker: 'PICK UP', title: 'Order for pickup', cover: '/covers/pickup.webp', cta: 'Order it',
     promise: 'Food, coffee, a pharmacy run. NUM finds the place, orders where it can, and tells you when to walk over.',
     fields: [
       { id: 'what', label: 'What', placeholder: 'two iced lattes and a croissant' },
@@ -140,7 +150,7 @@ export const FEATURES: readonly Feature[] = [
     honest: 'Where a partner delivers to you, NUM orders it directly. Otherwise it opens the delivery app prefilled.',
   },
   {
-    id: 'hire', kicker: 'HIRE SOMEONE', title: 'Someone to run this', cover: '/covers/hire.jpg', cta: 'Hire someone',
+    id: 'hire', kicker: 'HIRE SOMEONE', title: 'Someone to run this', cover: '/covers/hire.webp', cta: 'Hire someone',
     promise: 'An errand, a queue, a pickup across town, a pair of hands for an afternoon. Say what, where and by when.',
     fields: [
       { id: 'what', label: 'What needs doing', placeholder: 'collect a package from the post office on Sathorn' },
@@ -152,7 +162,7 @@ export const FEATURES: readonly Feature[] = [
     honest: 'Stars are held until the job is done, and the runner sees exactly what you see.',
   },
   {
-    id: 'wellness', kicker: 'WELLNESS', title: 'Massage, spa, an assistant', cover: '/covers/wellness.jpg', cta: 'Find one',
+    id: 'wellness', kicker: 'WELLNESS', title: 'Massage, spa, an assistant', cover: '/covers/wellness.webp', cta: 'Find one',
     promise: 'Real places with real ratings, or a PA for the day. NUM matches the register you write in.',
     lanes: [{ id: 'massage', label: 'Massage' }, { id: 'spa', label: 'Spa' }, { id: 'personal assistant', label: 'PA' }],
     fields: [
@@ -168,7 +178,7 @@ export const FEATURES: readonly Feature[] = [
     // tile promising concerts and matches got a form asking what they were
     // hosting. Tickets live in the thread (Ticketmaster, worker/events.tm.mjs),
     // so the ask goes there and hosting keeps its own door below.
-    id: 'events', kicker: 'EVENTS', title: 'Tickets & events', cover: '/covers/events.jpg', cta: 'See what’s on',
+    id: 'events', kicker: 'EVENTS', title: 'Tickets & events', cover: '/covers/events.webp', cta: 'See what’s on',
     promise: 'Concerts, matches, club nights — what’s on while you’re here, with a real way to get in.',
     fields: [
       { id: 'when', label: 'When', placeholder: 'this weekend', half: true },
@@ -178,12 +188,12 @@ export const FEATURES: readonly Feature[] = [
     secondary: { label: 'Host your own event', open: () => store.set({ featureOpen: null, eventOpen: true }) },
   },
   {
-    id: 'plans', kicker: 'PLANS', title: 'Plan with friends', cover: '/covers/plans.jpg', cta: 'Open plans',
+    id: 'plans', kicker: 'PLANS', title: 'Plan with friends', cover: '/covers/plans.webp', cta: 'Open plans',
     promise: 'One plan the whole group can see; everyone’s NUM hears about what gets booked.',
     opens: () => store.set({ featureOpen: null, partyOpen: true }),
   },
   {
-    id: 'wallet', kicker: 'WALLET', title: 'Stars & tabs', cover: '/covers/wallet.jpg', cta: 'Open wallet',
+    id: 'wallet', kicker: 'WALLET', title: 'Stars & tabs', cover: '/covers/wallet.webp', cta: 'Open wallet',
     promise: 'What you’ve paid, what’s held, what’s open — in your currency.',
     opens: () => store.set({ featureOpen: null, walletOpen: true }),
   },

@@ -320,3 +320,41 @@ html.num-standalone body {
   .aurora-layer::before,
   .aurora-layer::after { animation: none !important; }
 }
+
+/* SHEEN — the top membership tier catches the light.
+
+   A single band of light crossing the card every five seconds. It exists for
+   one reason: Pro should read as the special one before anybody has read a
+   word of it, and a border alone does not do that.
+
+   Slow on purpose. An animation beside prices and bullet points competes with
+   them for attention, so this is long (5s), low contrast (14% white at the
+   peak) and travels once per cycle rather than pulsing. It is drawn on a
+   ::after layer with pointer-events:none, so it never sits between a thumb
+   and the button underneath.
+
+   `background-position` is animated rather than `transform`, so the band
+   moves inside the card's own box and cannot bleed past a rounded corner on
+   a browser that rasterises overflow late. */
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .14) 50%, transparent 62%);
+  background-size: 260% 100%;
+  background-repeat: no-repeat;
+  animation: num-sheen 5s linear infinite;
+}
+
+@keyframes num-sheen {
+  0%   { background-position: 140% 0; }
+  55%  { background-position: -40% 0; }
+  100% { background-position: -40% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The card keeps its warmer border; the light stops moving. */
+  .sheen::after { animation: none; background: none; }
+}

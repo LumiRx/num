@@ -83,11 +83,11 @@ function highlights(t: Tier, free: Tier | undefined): string[] {
  * tier is the one with no ceilings — so adding a middle tier tomorrow needs
  * no new copy here.
  */
-function badgeOf(tr: Tier): { label: string; bg: string; fg: string } {
+function badgeOf(tr: Tier): { label: string; bg: string; fg: string; top: boolean } {
   const top = tr.entitlements?.plans_max === null || tr.entitlements?.deep_research_monthly === null;
   return top
-    ? { label: 'NO CEILINGS', bg: 'var(--grad-accent)', fg: '#fff' }
-    : { label: 'MORE ROOM', bg: 'var(--field-bg)', fg: 'var(--color-accent-700)' };
+    ? { label: 'NO CEILINGS', bg: 'var(--grad-accent)', fg: '#fff', top }
+    : { label: 'MORE ROOM', bg: 'var(--field-bg)', fg: 'var(--color-accent-700)', top };
 }
 
 export default function MembershipCard() {
@@ -185,15 +185,17 @@ export default function MembershipCard() {
       </div>
 
       {current === 'free' && canOfferSubscription() && (
-        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 17, lineHeight: 1.2, marginTop: 7 }}>
-          {t('More room, whenever you want it')}
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 20, lineHeight: 1.15, marginTop: 7, letterSpacing: '-.01em' }}>
+          {t('Travel in style')}
         </div>
       )}
 
-      <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
-        {current === 'free'
-          ? t('Everything you use today stays free. A plan lifts the ceilings — more plans at once, more deep research, and new things before anyone else.')
-          : currentTier?.blurb}
+      {/* ONE LINE. The old one ran to three, opening with what stays free —
+          which is true, belongs here, and was arguing people out of the
+          upgrade before they had seen a price. It is in the small print under
+          the plans now, where it reassures instead. */}
+      <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
+        {current === 'free' ? t('More plans, deeper research, new things first.') : currentTier?.blurb}
       </div>
 
       {/* What you've actually used. Shown before any upsell so the number is
@@ -231,9 +233,16 @@ export default function MembershipCard() {
             return (
               <div
                 key={tr.id}
+                // THE TOP TIER CATCHES THE LIGHT. A slow sheen across the card
+                // and a warmer border — enough that Pro reads as the special
+                // one at a glance, and slow enough (5s, once every 5s) that it
+                // never becomes a flicker beside the text. Reduced-motion
+                // readers get the border and no movement: see .sheen in
+                // styles/glass.css.
+                className={badgeOf(tr).top ? 'sheen' : undefined}
                 style={{
-                  borderRadius: 14, padding: 12,
-                  border: '1.5px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-08)'),
+                  borderRadius: 14, padding: 12, position: 'relative', overflow: 'hidden',
+                  border: '1.5px solid ' + (on ? 'var(--color-accent)' : badgeOf(tr).top ? 'var(--color-accent-300, #9fe3cf)' : 'var(--ink-08)'),
                   background: 'var(--field-bg)',
                 }}
               >
@@ -302,7 +311,7 @@ export default function MembershipCard() {
               </div>
             );
           })}
-          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>{t('Cancel any time. If a payment lapses you drop back to the free plan — you never lose the app, only the extra room.')}</div>
+          <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>{t('Everything you use today stays free — a plan only lifts the ceilings. Cancel any time; if a payment lapses you drop back to the free plan and never lose the app.')}</div>
           {(wallet?.promo_locked ?? 0) > 0 && (
             <div style={{ fontSize: 10, color: 'var(--ink-40)', lineHeight: 1.5 }}>
               ★{wallet?.promo_locked} of your balance is the welcome gift — that one spends on plans, tabs and errands rather than on a membership.

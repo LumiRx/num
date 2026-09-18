@@ -57,8 +57,19 @@ describe('the registry', () => {
       assert.ok(existsSync(new URL(file, COVERS)), `${f.id}: ${f.cover} is missing from app-public/covers`);
       assert.ok(credits.includes(file), `${f.id}: ${file} is not in CREDITS.md — every photograph names its licence`);
     }
-    // And nothing sits in the folder uncredited.
-    for (const file of readdirSync(COVERS).filter((n) => n.endsWith('.jpg'))) assert.ok(credits.includes(file), `${file} is uncredited`);
+    // And nothing sits in the folder uncredited. A `-sm` file is the 640px
+    // cut of the credited photograph beside it (lib/features.ts tileCover),
+    // so its credit is its parent's.
+    for (const file of readdirSync(COVERS).filter((n) => /\.(jpg|webp)$/.test(n))) {
+      const parent = file.replace(/-sm\.webp$/, '.webp');
+      assert.ok(credits.includes(parent), `${file} is uncredited`);
+      if (file !== parent) assert.ok(existsSync(new URL(parent, COVERS)), `${file} has no full-size parent`);
+    }
+    // Every tile has its small cut, or the grid falls back to a 1600px file.
+    for (const f of FEATURES) {
+      const small = f.cover.replace('/covers/', '').replace(/\.webp$/, '-sm.webp');
+      assert.ok(existsSync(new URL(small, COVERS)), `${f.id}: ${small} is missing — the tile would load the full-size cover`);
+    }
   });
 
   test('no tile claims what NUM cannot stand behind', () => {
