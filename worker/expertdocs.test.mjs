@@ -17,10 +17,12 @@ import {
 
 const read = (f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8');
 const SCHEMA = read('./migrations/0006_scouts.sql') + '\n' + read('./migrations/0030_expert_docs.sql');
+const SCHEMA_REF = read('./migrations/0032_scout_referrals.sql') + '\n' + read('./migrations/0030_expert_docs.sql');
 
 function makeEnv({ bucket = true } = {}) {
   const d = new DatabaseSync(':memory:');
   d.exec(SCHEMA);
+  d.exec(SCHEMA_REF);
   d.exec(`INSERT INTO num_scout_terms (version, body, effective_at) VALUES ('v1','T','2026-08-01')`);
   d.exec(`INSERT INTO num_scouts (id,name,email,email_lc,code,country,terms_version,agreed_at)
           VALUES ('sc1','Isaiah Farmer','z@n.test','z@n.test','FARMER','US','v1','2026-09-15')`);

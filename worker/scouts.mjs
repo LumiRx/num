@@ -47,6 +47,10 @@
  * num_scout_earnings rather than computed from anything hopeful.
  */
 import { isAdmin } from './console.mjs';
+// The same phone reader the claim flow uses, region-aware and already carrying
+// the trunk-zero rule that cost a real member a working number in August.
+// Reused rather than rewritten: two phone parsers disagree eventually.
+import { normalisePhone } from '../claim/verify.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -70,6 +74,36 @@ export const MONTHLY_CLAIM_CAP = 60;
 
 /** The terms version a new scout agrees to. Bumping this does not move anybody. */
 export const TERMS_VERSION = 'v1';
+
+/**
+ * What an expert earns when somebody they referred earns.
+ *
+ * 1000 bps = 10% OF THE RECRUIT'S OWN EARNINGS — not of NUM's gross, and not
+ * taken off the recruit. If the recruit's finder fee is $5.00, the referrer
+ * accrues $0.50 and the recruit still gets $5.00.
+ *
+ * ONE LEVEL. The referrer's own referrer earns nothing on this. Nothing in
+ * this file walks referred_by_scout_id more than once, and a test asserts it,
+ * because the distance between a two-level override and the schemes the FTC
+ * prosecutes is exactly one recursive query somebody adds in a hurry.
+ *
+ * Locked onto the recruit's row at sign-up and onto each place at
+ * introduction, like every other rate here. Changing this number moves nobody
+ * who has already signed up — which is also why it must be right BEFORE the
+ * first expert enrols, not after.
+ */
+export const REFERRER_SHARE_BPS = 1000;
+
+/**
+ * How long the override runs, from the recruit's sign-up.
+ *
+ * It applies to places the recruit INTRODUCES inside this window; one of
+ * those places activating later still pays, because the introduction is the
+ * thing that was referred. Shorter than the recruit's own 24-month term on
+ * purpose: a trailing liability that outlives the relationship it came from
+ * is how a referral programme quietly becomes an annuity.
+ */
+export const REFERRER_TERM_MONTHS = 12;
 
 /**
  * Code alphabet, chosen for a card someone reads aloud in a noisy bar.
@@ -119,6 +153,94 @@ export const STATE_MEANING = Object.freeze({
   void: 'Reversed after the fact.',
 });
 
+/* ── the fields, cleaned once, on the server ───────────────────────────────
+ *
+ * The page does the same tidying as you type, because a field that fixes
+ * itself feels better than one that scolds you. None of that is trusted here:
+ * the browser is a convenience and this is the record.
+ */
+
+/**
+ * A typed name, tidied — never "corrected".
+ *
+ * Case is fixed only when somebody clearly did not choose it: all-lower or
+ * all-upper. "mcdonald" is left as typed rather than guessed into McDonald or
+ * Mcdonald, and "van der Berg", "O'Neill" and "bell hooks" survive untouched,
+ * because a programme that renames people is worse than one with a lowercase
+ * row in it.
+ */
+export function tidyName(raw) {
+  const s = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const chosen = s !== s.toLowerCase() && s !== s.toUpperCase();
+  if (chosen) return s;
+  // All-caps is lowered first, or the title-case pass below has nothing to
+  // match and CAPS LOCK survives into the row.
+  return s.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, pre, ch) => pre + ch.toUpperCase());
+}
+
+/** Domains people mean when they typo. Suggested, never silently applied. */
+const MAIL_TYPOS = Object.freeze({
+  'gmial.com': 'gmail.com', 'gmai.com': 'gmail.com', 'gmail.co': 'gmail.com',
+  'gmail.con': 'gmail.com', 'gnail.com': 'gmail.com', 'gmail.cm': 'gmail.com',
+  'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'hotmail.co': 'hotmail.com',
+  'yahoo.co': 'yahoo.com', 'yaho.com': 'yahoo.com', 'yahooo.com': 'yahoo.com',
+  'outlok.com': 'outlook.com', 'outloo.com': 'outlook.com', 'iclod.com': 'icloud.com',
+  'icloud.co': 'icloud.com', 'protonmai.com': 'protonmail.com',
+});
+
+export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * Lower-cased and trimmed, with a SUGGESTION when the domain looks mistyped.
+ *
+ * The suggestion is returned, never substituted. Silently rewriting somebody's
+ * email address sends their code, their NDA and eventually their money to an
+ * address they never typed, and they find out by never hearing from us.
+ */
+export function tidyEmail(raw) {
+  const email = String(raw || '').trim().toLowerCase().replace(/^mailto:/, '');
+  const valid = EMAIL_RE.test(email);
+  const domain = valid ? email.slice(email.lastIndexOf('@') + 1) : null;
+  const fixed = domain && MAIL_TYPOS[domain];
+  return {
+    email,
+    valid,
+    suggestion: fixed ? `${email.slice(0, email.lastIndexOf('@') + 1)}${fixed}` : null,
+  };
+}
+
+/**
+ * Who referred this person, split into what can carry money and what cannot.
+ *
+ * A valid, active expert code resolves to that expert and is the only thing
+ * an override may ever attach to. Anything else — "Dre", "instagram", a code
+ * for somebody paused — is kept verbatim as a note so the attribution is not
+ * lost, and is explicitly NOT a payable relationship. `why` explains a code
+ * that did not resolve, so the page can say so instead of dropping it.
+ */
+export async function resolveReferrer(env, raw, { selfEmailLc = null } = {}) {
+  const typed = clip(String(raw || '').trim(), 120);
+  if (!typed) return { scoutId: null, note: null, why: null };
+
+  const code = normaliseCode(typed);
+  if (!code) return { scoutId: null, note: typed, why: null };
+
+  const ref = await env.DB.prepare(
+    'SELECT id, name, code, status, email_lc FROM num_scouts WHERE code=?1',
+  ).bind(code).first();
+
+  if (!ref) return { scoutId: null, note: typed, why: 'that code is not one of ours' };
+  if (ref.status !== 'active') {
+    return { scoutId: null, note: typed, why: `that expert is ${ref.status}` };
+  }
+  // Referring yourself is the first thing anybody tries.
+  if (selfEmailLc && ref.email_lc === selfEmailLc) {
+    return { scoutId: null, note: null, why: 'you cannot refer yourself' };
+  }
+  return { scoutId: ref.id, note: null, why: null, name: ref.name, code: ref.code };
+}
+
 export async function scoutByCode(env, code) {
   const c = normaliseCode(code);
   if (!c || !env?.DB) return null;
@@ -141,13 +263,24 @@ export async function scoutForMember(env, memberId) {
  */
 export async function enrol(env, {
   name, email, phone = null, country = null, memberId = null, ip = null,
-  termsVersion = TERMS_VERSION, now = new Date(),
+  referredBy = null, termsVersion = TERMS_VERSION, now = new Date(),
 } = {}) {
   if (!env?.DB) return { ok: false, why: 'no database' };
-  const nm = clip(String(name || '').trim(), 80);
-  const em = clip(String(email || '').trim().toLowerCase(), 160);
+  const nm = clip(tidyName(name), 80);
+  const mail = tidyEmail(email);
+  const em = clip(mail.email, 160);
   if (!nm) return { ok: false, why: 'name required' };
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return { ok: false, why: 'a real email is required' };
+  if (!mail.valid) return { ok: false, why: 'a real email is required' };
+
+  // A phone that was typed but could not be read is refused rather than
+  // dropped. Storing null here means "they gave us no number", and the day
+  // somebody needs to reach an expert about money is the wrong day to find
+  // out that is not what it meant.
+  let tel = null;
+  if (phone != null && String(phone).trim() !== '') {
+    tel = normalisePhone(phone, country);
+    if (!tel) return { ok: false, why: 'that phone number did not look right — add the country code, or leave it blank' };
+  }
 
   const existing = await env.DB.prepare('SELECT id, code, status FROM num_scouts WHERE email_lc=?1').bind(em).first();
   // Returning the existing code rather than erroring: somebody who fills the
@@ -163,6 +296,15 @@ export async function enrol(env, {
   const terms = await env.DB.prepare('SELECT version FROM num_scout_terms WHERE version=?1').bind(termsVersion).first();
   if (!terms) return { ok: false, why: 'terms are not published yet' };
 
+  // Who sent them. A resolved expert is the only form an override may attach
+  // to; anything else is kept as a note and carries no money. Resolved BEFORE
+  // the insert so the rate and the end date are written in the same row as
+  // the relationship they describe — there is no second write that could fail
+  // and leave an expert referred by nobody.
+  const ref = await resolveReferrer(env, referredBy, { selfEmailLc: em });
+  const ends = new Date(now.getTime());
+  ends.setUTCMonth(ends.getUTCMonth() + REFERRER_TERM_MONTHS);
+
   // Retry on collision rather than trusting 31^6 — a duplicate code would hand
   // one scout another scout's businesses, which is the worst bug this file
   // could have.
@@ -172,11 +314,22 @@ export async function enrol(env, {
     try {
       await env.DB.prepare(
         `INSERT INTO num_scouts (id, member_id, name, email, email_lc, phone, country, code,
-           terms_version, agreed_at, agreed_ip, monthly_claim_cap)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)`,
-      ).bind(id, memberId, nm, em, em, clip(phone, 32), clip(country, 2), code,
-        termsVersion, now.toISOString(), clip(ip, 64), MONTHLY_CLAIM_CAP).run();
-      return { ok: true, id, code, termsVersion };
+           terms_version, agreed_at, agreed_ip, monthly_claim_cap,
+           referred_by_scout_id, referred_by_note, referrer_share_bps, referrer_ends_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)`,
+      ).bind(id, memberId, nm, em, em, tel, clip(country, 2), code,
+        termsVersion, now.toISOString(), clip(ip, 64), MONTHLY_CLAIM_CAP,
+        ref.scoutId, ref.note,
+        ref.scoutId ? REFERRER_SHARE_BPS : 0,
+        ref.scoutId ? ends.toISOString() : null).run();
+      return {
+        ok: true, id, code, termsVersion,
+        phone: tel,
+        emailSuggestion: mail.suggestion,
+        referredBy: ref.scoutId ? { name: ref.name, code: ref.code } : null,
+        referrerNote: ref.note,
+        referrerWhy: ref.why,
+      };
     } catch (err) {
       if (!/UNIQUE/i.test(String(err?.message))) return { ok: false, why: 'could not enrol' };
       // a code collision — go round again
@@ -234,17 +387,32 @@ export async function introduce(env, {
   const used = await claimsThisMonth(env, scoutId, now);
   if (used >= cap) return { ok: false, why: `you have hit this month's cap of ${cap}`, cap, used };
 
+  // The override, stamped onto the place or not at all.
+  //
+  // Read straight off this scout's row — ONE hop, never walked further. The
+  // referrer's own referrer is not consulted here or anywhere else, which is
+  // what keeps this a referral bonus rather than a chain.
+  //
+  // Outside the term, the place is simply introduced with no referrer: what a
+  // place owes is then readable off the place forever, with no date arithmetic
+  // at payout time and no way for a row to start owing somebody years later.
+  const inTerm = scout.referred_by_scout_id
+    && (!scout.referrer_ends_at || now.toISOString() <= scout.referrer_ends_at);
+  const refScout = inTerm ? scout.referred_by_scout_id : null;
+  const refBps = inTerm ? Number(scout.referrer_share_bps ?? 0) : 0;
+
   const id = uid('sp');
   try {
     await env.DB.prepare(
       `INSERT INTO num_scout_places
          (id, scout_id, place_id, biz_name, dest, country, lat, lng, state,
-          finder_gate_minor, finder_cents, share_bps, sub_share_bps, introduced_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'introduced',?9,?10,?11,?12,?13)`,
+          finder_gate_minor, finder_cents, share_bps, sub_share_bps, introduced_at,
+          referrer_scout_id, referrer_share_bps)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'introduced',?9,?10,?11,?12,?13,?14,?15)`,
     ).bind(id, scoutId, pid, nm, clip(dest, 60), clip(country, 2),
       lat == null ? null : Number(lat), lng == null ? null : Number(lng),
       scout.finder_gate_minor, scout.finder_cents, scout.share_bps, scout.sub_share_bps,
-      now.toISOString()).run();
+      now.toISOString(), refScout, refBps).run();
     return { ok: true, id, state: 'introduced', owed: 0, note: STATE_MEANING.introduced };
   } catch (err) {
     if (/UNIQUE/i.test(String(err?.message))) {
@@ -301,10 +469,34 @@ export async function recordRevenue(env, { placeId, amountMinor, now = new Date(
     writes.push(env.DB.prepare(
       "UPDATE num_scout_places SET state='activated', activated_at=?2, term_ends_at=?3 WHERE id=?1",
     ).bind(row.id, now.toISOString(), ends.toISOString()));
+    const finder = Number(row.finder_cents ?? 0);
     writes.push(env.DB.prepare(
       `INSERT INTO num_scout_earnings (id, scout_id, scout_place_id, kind, gross_minor, amount_minor, state, accrued_at)
        VALUES (?1,?2,?3,'finder',?4,?5,'accrued',?6)`,
-    ).bind(uid('se'), row.scout_id, row.id, after, Number(row.finder_cents ?? 0), now.toISOString()));
+    ).bind(uid('se'), row.scout_id, row.id, after, finder, now.toISOString()));
+
+    // And the override to whoever referred this expert, if the place carries
+    // one. A SHARE OF THE RECRUIT'S FEE, ADDED — never deducted: the person
+    // who did the walking is paid in full, and the override is NUM's cost of
+    // having been introduced to them.
+    //
+    // scout_id here is the REFERRER and scout_place_id is the recruit's place,
+    // so UNIQUE (scout_place_id, kind, period) still means one override per
+    // place and the whole thing stays safe to run twice.
+    //
+    // The row is written in the same batch as the finder fee. Two writes that
+    // can succeed separately are two numbers that can disagree, and the one
+    // people check is the one about money.
+    const refBps = Number(row.referrer_share_bps ?? 0);
+    if (row.referrer_scout_id && refBps > 0 && finder > 0) {
+      const override = Math.floor((finder * refBps) / 10000);
+      if (override > 0) {
+        writes.push(env.DB.prepare(
+          `INSERT INTO num_scout_earnings (id, scout_id, scout_place_id, kind, gross_minor, amount_minor, state, accrued_at)
+           VALUES (?1,?2,?3,'referrer_override',?4,?5,'accrued',?6)`,
+        ).bind(uid('se'), row.referrer_scout_id, row.id, after, override, now.toISOString()));
+      }
+    }
   }
 
   await env.DB.batch(writes);
@@ -361,6 +553,36 @@ export async function dashboard(env, scoutId, { now = new Date() } = {}) {
     }
   }
 
+  // The people they brought in, and what that has actually paid.
+  //
+  // Counted and named separately from their own businesses on purpose. A
+  // dashboard that adds "3 experts you referred" into the same number as "12
+  // businesses you signed up" is describing two different kinds of work with
+  // one figure, and the override is the smaller, slower one — showing it
+  // merged would flatter it.
+  const { results: recruits = [] } = await env.DB.prepare(
+    `SELECT name, code, created_at FROM num_scouts
+      WHERE referred_by_scout_id=?1 ORDER BY created_at DESC LIMIT 100`,
+  ).bind(scoutId).all().catch(() => ({ results: [] }));
+
+  const overrideRow = await env.DB.prepare(
+    `SELECT COALESCE(SUM(amount_minor), 0) AS total FROM num_scout_earnings
+      WHERE scout_id=?1 AND kind='referrer_override' AND state <> 'void'`,
+  ).bind(scoutId).first().catch(() => null);
+
+  const referrals = {
+    count: recruits.length,
+    people: recruits.map((r) => ({
+      name: String(r.name || '').split(/\s+/)[0],
+      code: r.code,
+      joined: r.created_at,
+    })),
+    earned_minor: Number(overrideRow?.total ?? 0),
+    note: recruits.length
+      ? 'A share of what they earn, on top of what they are paid — never taken out of it.'
+      : 'Nobody yet. Anyone who puts your code on the sign-up form shows up here.',
+  };
+
   const cap = Number(scout.monthly_claim_cap ?? MONTHLY_CLAIM_CAP);
   const used = await claimsThisMonth(env, scoutId, now);
 
@@ -405,10 +627,13 @@ export async function dashboard(env, scoutId, { now = new Date() } = {}) {
       share_bps: scout.share_bps,
       sub_share_bps: scout.sub_share_bps,
       term_months: scout.term_months,
+      referrer_share_bps: scout.referrer_share_bps ?? 0,
+      referrer_ends_at: scout.referrer_ends_at ?? null,
       // Said in the response, not left to the page to remember.
       note: 'These are the terms you agreed to and they do not change for you if the programme changes.',
     },
     businesses: { total: places.length, byState, meaning: STATE_MEANING, list: places },
+    referrals,
     friends,
     money: {
       ...money,
@@ -448,7 +673,20 @@ export async function handleScouts(request, env, path, origin) {
   if (p === '/enrol' && request.method === 'POST') {
     const body = await request.json().catch(() => ({}));
     const ip = request.headers.get('cf-connecting-ip');
-    const r = await enrol(env, { ...body, ip });
+    // The referrer can arrive three ways and they are tried in the order of
+    // how deliberate each one is: what they typed on the form, the ?ref= on a
+    // link somebody sent them, then the num_scout cookie a card dropped. An
+    // explicit answer always beats one we inferred.
+    const url = new URL(request.url);
+    const referredBy = body.referredBy
+      ?? body.referred_by
+      ?? url.searchParams.get('ref')
+      ?? scoutCodeFrom(request, body)
+      ?? null;
+    // Country is only guessed when they left it blank. A person signing up in
+    // an airport is not necessarily paid in the country they are standing in.
+    const country = body.country || request.cf?.country || request.headers.get('cf-ipcountry') || null;
+    const r = await enrol(env, { ...body, country, referredBy, ip });
     return json(r, r.ok ? 200 : 400);
   }
 
@@ -470,6 +708,30 @@ export async function handleScouts(request, env, path, origin) {
     return json(r, r.ok ? 200 : 400);
   }
 
+  // Who does this code belong to? Called as somebody types a referrer code on
+  // the sign-up page, so they see "Referred by Isaiah" BEFORE they submit
+  // rather than discovering months later that a typo lost the attribution.
+  //
+  // Returns a first name only. A code is semi-public — it is printed on a
+  // card and read aloud — so this endpoint must confirm a code without
+  // becoming a way to enumerate the programme's full names and emails.
+  if (p === '/who') {
+    const url = new URL(request.url);
+    const code = normaliseCode(url.searchParams.get('code'));
+    if (!code) return json({ ok: false, why: 'not a code' }, 404);
+    const ref = await env.DB.prepare(
+      'SELECT name, code, status FROM num_scouts WHERE code=?1',
+    ).bind(code).first();
+    if (!ref || ref.status !== 'active') return json({ ok: false, why: 'not one of ours' }, 404);
+    return json({ ok: true, code: ref.code, name: String(ref.name || '').split(/\s+/)[0] });
+  }
+
+  // What the edge already knows, so the country field arrives filled in
+  // instead of asking somebody standing in Bangkok to type TH.
+  if (p === '/hello') {
+    return json({ ok: true, country: request.cf?.country ?? request.headers.get('cf-ipcountry') ?? null });
+  }
+
   if (p === '/terms') {
     const row = await env.DB.prepare(
       'SELECT version, body, effective_at FROM num_scout_terms ORDER BY effective_at DESC LIMIT 1',
@@ -479,10 +741,15 @@ export async function handleScouts(request, env, path, origin) {
 
   if (p === '/admin' && await isAdmin(request, env)) {
     const { results = [] } = await env.DB.prepare(
-      `SELECT s.id, s.name, s.code, s.status, s.country, s.created_at,
+      `SELECT s.id, s.name, s.email, s.phone, s.code, s.status, s.country, s.created_at,
+              s.referred_by_note, s.referrer_share_bps, s.referrer_ends_at,
+              r.name AS referred_by_name, r.code AS referred_by_code,
               (SELECT COUNT(*) FROM num_scout_places sp WHERE sp.scout_id=s.id) AS introductions,
-              (SELECT COUNT(*) FROM num_scout_places sp WHERE sp.scout_id=s.id AND sp.state='activated') AS activated
-         FROM num_scouts s ORDER BY s.created_at DESC LIMIT 200`,
+              (SELECT COUNT(*) FROM num_scout_places sp WHERE sp.scout_id=s.id AND sp.state='activated') AS activated,
+              (SELECT COUNT(*) FROM num_scouts k WHERE k.referred_by_scout_id=s.id) AS referred_in
+         FROM num_scouts s
+         LEFT JOIN num_scouts r ON r.id = s.referred_by_scout_id
+        ORDER BY s.created_at DESC LIMIT 200`,
     ).all();
     return json({ ok: true, scouts: results });
   }

@@ -34,7 +34,7 @@
 -- a row that predates this migration cannot silently start owing anybody.
 --
 -- referrer_ends_at bounds the liability. The override applies to places the
--- recruit INTRODUCES before that date; a place introduced inside the term
+-- recruit INTRODUCES before that date. A place introduced inside the term
 -- still pays out whenever it later activates, because the introduction is the
 -- thing that was referred. Stamped at introduction, so what a place owes is
 -- readable off the place and never recomputed from today's date.

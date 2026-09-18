@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 03:46 UTC from 9 entries._
+_Built 2026-09-18 04:06 UTC from 10 entries._
 
 ## Deployed right now
 
@@ -17,7 +17,7 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | ⚪ never recorded from this machine |
-| num-app | 🟢 up to date (2026-09-18 03:27) |
+| num-app | 🔴 **STALE** — 4 files changed since it shipped |
 | num-growth | ⚪ never recorded from this machine |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
@@ -30,6 +30,11 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - 🔴 **expert docs migration 0030** — num_expert_docs does not exist in production. Unblocked by: npx wrangler d1 execute num-db --remote --file=worker/migrations/0030_expert_docs.sql
   _claude, 2026-09-15 16:32_
+
+## In flight
+
+- 🟡 **num-expert-referrals** — 0032: referred_by_scout_id + referred_by_note on num_scouts, referrer stamped on each place, num_scout_earnings kind widened for referrer_override (safe: 0 rows today). One level only, asserted by test. Smart fields: server tidies name/email/phone (reuses claim/verify normalisePhone), /who confirms a referrer code live, /hello prefills country. 204 scout tests pass. NOT SHIPPED — another session has uncommitted work in this worktree.
+  _claude, 2026-09-18 04:06_
 
 ## Live
 

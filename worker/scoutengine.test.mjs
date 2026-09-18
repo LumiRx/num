@@ -17,11 +17,16 @@ import {
 } from './scouts.mjs';
 
 const SCHEMA = readFileSync(fileURLToPath(new URL('./migrations/0006_scouts.sql', import.meta.url)), 'utf8');
+// 0032 adds referral attribution and the one-level override, and widens the
+// earnings `kind` list. Loaded here so these tests run against the schema
+// production actually has rather than the one it had in August.
+const SCHEMA_REFERRALS = readFileSync(fileURLToPath(new URL('./migrations/0032_scout_referrals.sql', import.meta.url)), 'utf8');
 
 /** A D1-shaped wrapper over node:sqlite, enough for this module. */
 function makeEnv() {
   const d = new DatabaseSync(':memory:');
   d.exec(SCHEMA);
+  d.exec(SCHEMA_REFERRALS);
   d.exec(`CREATE TABLE IF NOT EXISTS num_place_owners (
     place_id TEXT PRIMARY KEY, business_id TEXT, claim_id TEXT, method TEXT,
     phone TEXT, member_ref TEXT, verified_at TEXT, revoked_at TEXT)`);

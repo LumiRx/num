@@ -12,7 +12,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { handleScoutUsage, MEANING } from './scoutusage.mjs';
 
-const SCHEMA = readFileSync(new URL('./migrations/0006_scouts.sql', import.meta.url), 'utf8');
+const SCHEMA = readFileSync(new URL('./migrations/0006_scouts.sql', import.meta.url), 'utf8')
+  // 0032: referral attribution and the one-level override.
+  + '\n' + readFileSync(new URL('./migrations/0032_scout_referrals.sql', import.meta.url), 'utf8');
 
 function d1(db) {
   const shape = (sql, args) => ({

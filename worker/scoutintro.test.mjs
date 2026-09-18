@@ -17,11 +17,13 @@ import {
 
 const read = (f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8');
 const SCOUTS = read('./migrations/0006_scouts.sql');
+const SCOUTS_REF = read('./migrations/0032_scout_referrals.sql');
 
 function makeEnv() {
   __resetSchema();
   const d = new DatabaseSync(':memory:');
   d.exec(SCOUTS);
+  d.exec(SCOUTS_REF);
   // The two columns the real tables have, minus everything this module never
   // touches. Deliberately WITHOUT scout_code: ensureScoutColumns must add it,
   // which is the thing production will have to do too.

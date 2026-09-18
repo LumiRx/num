@@ -100,6 +100,15 @@ const FILES = [
   // How guests rate the answers: the emoji ledger. One CREATE TABLE and
   // three indexes, all IF NOT EXISTS, so a second pass is a clean no-op.
   'worker/migrations/0031_reactions.sql',
+  // Who referred an expert, and the one-level override that pays for it.
+  // Six ALTERs, each its own statement, plus a rebuild of num_scout_earnings
+  // to widen its `kind` CHECK — safe only because that table holds zero rows
+  // today, which is why it is happening now rather than later.
+  //
+  // NOT re-runnable: ALTER TABLE ADD COLUMN and the rebuild both fail on a
+  // second pass. It is sealed after its first successful apply, which is what
+  // stops that from ever being tried.
+  'worker/migrations/0032_scout_referrals.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

@@ -15,12 +15,14 @@ import {
 
 const read = (f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8');
 const SCOUTS = read('./migrations/0006_scouts.sql');
+const SCOUTS_REF = read('./migrations/0032_scout_referrals.sql');
 const BIZREF_SCHEMA = /const SCHEMA = `(.*?)`;/s.exec(read('./bizreferral.mjs'))[1];
 
 function makeEnv() {
   _resetEnsured();
   const d = new DatabaseSync(':memory:');
   d.exec(SCOUTS);
+  d.exec(SCOUTS_REF);
   d.exec(SCHEMA);
   d.exec(`CREATE TABLE num_place_owners (place_id TEXT PRIMARY KEY, business_id TEXT, revoked_at TEXT)`);
   // The REAL bizreferral schema, lifted out of the module rather than

@@ -18,6 +18,10 @@ import { fileURLToPath } from 'node:url';
 const SQL = readFileSync(
   fileURLToPath(new URL('./migrations/0006_scouts.sql', import.meta.url)),
   'utf8',
+) + '\n' + readFileSync(
+  // 0032: referral attribution and the one-level override.
+  fileURLToPath(new URL('./migrations/0032_scout_referrals.sql', import.meta.url)),
+  'utf8',
 );
 
 function db() {

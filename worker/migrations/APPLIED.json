@@ -20,5 +20,7 @@
     "0031_reactions.sql": "4f4ee9d69894baeca02fee4c09d3876aa87e0b3318bc39bf4b6edc345300c7d7"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0032_scout_referrals.sql"
+  ]
 }

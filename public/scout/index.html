@@ -102,6 +102,10 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
       <input id="phone" name="phone" type="tel" autocomplete="tel">
       <label for="country">Country</label>
       <input id="country" name="country" maxlength="2" placeholder="US" autocomplete="country">
+      <label for="ref">Who sent you? <span class="note" style="font-weight:400">(optional)</span></label>
+      <input id="ref" name="ref" placeholder="Their NUM Expert code, or a name" autocomplete="off"
+             spellcheck="false" aria-describedby="refState">
+      <div id="refState" class="note" style="margin-top:6px" aria-live="polite"></div>
       <p class="note" style="margin-top:14px">
         By continuing you agree to the NUM Expert terms, which are recorded against your account with
         the version and date. The rates you get today stay yours even if the programme changes.
@@ -176,6 +180,19 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     <p class="note" id="capline"></p>
   </section>
 
+  <!-- ── experts you brought in ────────────────────────────────── -->
+  <section id="refs" hidden>
+    <h2>Experts you brought in</h2>
+    <div class="card">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline">
+        <div><strong id="refsCount"></strong></div>
+        <div>Earned from them: <strong id="refsEarned"></strong></div>
+      </div>
+      <p class="note" id="refsNames" style="margin-top:8px"></p>
+      <p class="note" id="refsNote" style="margin-top:6px"></p>
+    </div>
+  </section>
+
   <h2>Already signed up?</h2>
   <p class="note">
     Already a NUM Expert? <a href="#" id="lookupLink" style="color:var(--accent)">See your dashboard</a>.
@@ -221,6 +238,19 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     });
     show('empty', !(d.businesses.list || []).length);
     $('capline').textContent = d.cap.left + ' of this month’s ' + d.cap.monthly + ' introductions left.';
+
+    // The people they brought in — named and counted apart from their own
+    // businesses, because they are a different kind of work and a slower kind
+    // of money. Merging the two numbers would flatter the smaller one.
+    var r = d.referrals;
+    if (r) {
+      show('refs', true);
+      $('refsCount').textContent = r.count === 1 ? '1 Expert' : r.count + ' Experts';
+      $('refsEarned').textContent = money(r.earned_minor);
+      $('refsNote').textContent = r.note || '';
+      var names = $('refsNames');
+      names.textContent = (r.people || []).map(function (p) { return p.name; }).join(', ');
+    }
   }
 
   var CODE = null;
@@ -309,13 +339,106 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
       .catch(function () { /* the page still works as a signup form */ });
   }
 
+  /* ── the fields, while you type ──────────────────────────────────────────
+   *
+   * Every one of these is a convenience. The server tidies the same things
+   * again and its answer is the record — none of this is a check, and a
+   * browser with JavaScript off still signs somebody up correctly.
+   */
+
+  // Country, from wherever the edge says the request came from. Only ever
+  // fills a BLANK field: somebody who typed their own answer is not overruled
+  // by an IP, least of all in an airport.
+  fetch(API + '/api/scouts/hello')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (b) {
+      if (b && b.ok && b.country && !$('country').value) $('country').value = b.country;
+    })
+    .catch(function () { /* the field still works, they just type it */ });
+
+  // The referrer code, confirmed out loud before they submit.
+  //
+  // This is the whole point of the field: a mistyped code that silently
+  // resolves to nobody is attribution lost for good, and nobody finds out
+  // until somebody asks why a payment is missing.
+  var refTimer = null;
+  var refState = $('refState');
+  function sayRef(msg, good) {
+    refState.textContent = msg || '';
+    refState.style.color = good ? 'var(--accent,#ec3013)' : 'var(--ink-60,#667)';
+  }
+  function checkRef() {
+    var raw = ($('ref').value || '').trim();
+    if (!raw) return sayRef('');
+    // A code is the only thing worth asking the server about. Anything with a
+    // space or punctuation is a name, and a name is kept as a plain note.
+    if (!/^[0-9a-zA-Z]{4,12}$/.test(raw)) {
+      return sayRef('Saved as a note. Only an Expert code earns them a share.', false);
+    }
+    fetch(API + '/api/scouts/who?code=' + encodeURIComponent(raw))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (b) {
+        if (b && b.ok) sayRef('✓ ' + b.name + ' — they will be credited.', true);
+        else sayRef('No Expert has that code. Check it, or leave a name instead.', false);
+      })
+      .catch(function () { sayRef(''); });
+  }
+  $('ref').addEventListener('input', function () {
+    // Uppercased as they type, because the code is printed in caps and gets
+    // read aloud across a counter.
+    var v = $('ref').value;
+    if (/^[0-9a-zA-Z]{0,12}$/.test(v)) $('ref').value = v.toUpperCase();
+    clearTimeout(refTimer);
+    refTimer = setTimeout(checkRef, 350);
+  });
+
+  // A link or a card can carry the referrer. Prefilled, and still editable —
+  // shown rather than hidden, so nobody is credited behind the person's back.
+  var refFromUrl = new URLSearchParams(location.search).get('ref')
+    || new URLSearchParams(location.search).get('scout');
+  if (refFromUrl) { $('ref').value = refFromUrl.toUpperCase(); checkRef(); }
+
+  // An email typo, offered as a one-tap fix and never applied for them.
+  var TYPOS = {
+    'gmial.com': 'gmail.com', 'gmai.com': 'gmail.com', 'gmail.co': 'gmail.com',
+    'gmail.con': 'gmail.com', 'gnail.com': 'gmail.com', 'gmail.cm': 'gmail.com',
+    'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'hotmail.co': 'hotmail.com',
+    'yahoo.co': 'yahoo.com', 'yaho.com': 'yahoo.com', 'outlok.com': 'outlook.com',
+    'iclod.com': 'icloud.com', 'icloud.co': 'icloud.com'
+  };
+  $('email').addEventListener('blur', function () {
+    var v = ($('email').value || '').trim().toLowerCase();
+    $('email').value = v;
+    var at = v.lastIndexOf('@');
+    var fix = at > 0 && TYPOS[v.slice(at + 1)];
+    if (!fix) { show('err', false); return; }
+    var fixed = v.slice(0, at + 1) + fix;
+    $('err').textContent = 'Did you mean ' + fixed + '? Tap to use it.';
+    $('err').style.cursor = 'pointer';
+    $('err').onclick = function () { $('email').value = fixed; show('err', false); };
+    show('err', true);
+  });
+
+  // Digits, spaces, and a leading +. Nothing else can be part of a number, and
+  // stripping it as they type is quieter than refusing it afterwards.
+  $('phone').addEventListener('input', function () {
+    var v = $('phone').value;
+    var cleaned = v.replace(/[^\d+\s()-]/g, '').replace(/(?!^)\+/g, '');
+    if (cleaned !== v) $('phone').value = cleaned;
+  });
+
+  $('country').addEventListener('input', function () {
+    $('country').value = ($('country').value || '').toUpperCase().replace(/[^A-Z]/g, '');
+  });
+
   $('form').addEventListener('submit', function (e) {
     e.preventDefault();
     show('err', false);
     $('go').disabled = true;
     var body = {
       name: $('name').value, email: $('email').value,
-      phone: $('phone').value || null, country: ($('country').value || '').toUpperCase() || null
+      phone: $('phone').value || null, country: ($('country').value || '').toUpperCase() || null,
+      referredBy: ($('ref').value || '').trim() || null
     };
     fetch(API + '/api/scouts/enrol', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
