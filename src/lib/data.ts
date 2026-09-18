@@ -71,6 +71,8 @@ function baseState() {
     view: 'dash' as const,
     typing: false,
     thinkingLine: null,
+    featureOpen: null,
+    savedFlights: [],
     notifOn: false,
     disr: 'none' as const,
     laLine: '',
@@ -219,6 +221,9 @@ const STORAGE_KEY = 'num-trip-v1';
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
     inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, flightWatchPrefill, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    // The turn in flight and the page that is open are this launch's business only.
+    // savedFlights is NOT here: a fare somebody kept must survive closing the app.
+    thinkingLine, featureOpen,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.
@@ -339,6 +344,8 @@ export const REPAIRED_ARRAYS = [
   'chips', 'bookings',
   // written by older builds, still out there on somebody's phone
   'errands', 'myErrands', 'bookRequests', 'travelReferrals', 'flightOffers',
+  // 18 Sep 2026: fares the guest chose to keep.
+  'savedFlights',
 ] as const;
 
 export function repairShapes(saved: Record<string, unknown>): Record<string, unknown> {

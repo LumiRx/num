@@ -16,12 +16,20 @@ import { openPlan } from '../../lib/social';
 import { openDiscover } from '../../lib/discover';
 import FlightCard from './FlightCard';
 import { refreshFlights } from '../../lib/flightwatch';
+import { isSaved, saveOffer } from '../../lib/savedflights';
 import { MicIcon, SendIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { Scene } from '../../lib/scenes';
 import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 import { T, t, currentLang } from '../../lib/i18n';
+
+/** A fare card action: tall enough for a thumb, calm enough to sit three abreast. */
+const fareBtn: React.CSSProperties = {
+  cursor: 'pointer', minHeight: 38, borderRadius: 999, padding: '0 10px', display: 'grid', placeItems: 'center',
+  fontSize: 11.5, fontWeight: 700, letterSpacing: '.02em',
+  background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
+};
 
 /** One starter chip, shared by the fixed pair and the destination's own. */
 const starterChip: React.CSSProperties = {
@@ -81,6 +89,8 @@ function Reactions({ index, subject }: { index: number; subject: string }) {
  */
 function FlightTray() {
   const state = useApp((s) => s.flightOffers);
+  // Subscribed so a Save repaints the button it was pressed on.
+  useApp((s) => s.savedFlights.length);
   const busy = useApp((s) => s.flightSearching);
   const error = useApp((s) => s.flightError);
   const [checking, setChecking] = useState<string | null>(null);
@@ -175,10 +185,24 @@ function FlightTray() {
         overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
       }}
     >
-      <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
-        LIVE FARES · {state.query.fromCode} → {state.query.toCode}
+      {/* 18 Sep 2026: this tray had no way to close. A guest who had seen
+          the fares kept them pinned above the keyboard until they searched
+          something else. The X clears the tray; anything they wanted to
+          keep is a Save away and lives on the Flights page. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>
+          {t('LIVE FARES')} · {state.query.fromCode} → {state.query.toCode}
+        </div>
+        <div
+          {...pressable(() => store.set({ flightOffers: null }))}
+          aria-label={t('Close fares')}
+          className="press tap"
+          style={{ cursor: 'pointer', width: 30, height: 30, borderRadius: 999, display: 'grid', placeItems: 'center', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', flex: 'none' }}
+        >
+          <XIcon size={12} />
+        </div>
       </div>
-      <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
+      <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
         {state.offers.map((o) => {
           const leg = o.legs[0];
           const hops = leg ? [leg.segments[0]?.from, ...leg.segments.map((sg) => sg.to)].filter(Boolean).join(' → ') : '';
@@ -188,12 +212,12 @@ function FlightTray() {
           const window = legWindow(leg);
           const hop = handoff[o.id];
           return (
-            <div key={o.id} style={{ borderRadius: 12, border: '1px solid var(--ink-08)', padding: '9px 11px', opacity: dead ? 0.5 : 1 }}>
+            <div key={o.id} style={{ borderRadius: 14, border: '1px solid var(--ink-08)', padding: '12px 13px', opacity: dead ? 0.5 : 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                 {/* THE NUMBER THEY PAY, in the money colour. On a fare list
                     this is the only thing anyone is comparing, and until now
                     it was the same ink as the aircraft type. */}
-                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--money)', letterSpacing: '-.01em' }}>
+                <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--money)', letterSpacing: '-.01em' }}>
                   {o.currency} {o.price}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--ink-40)' }}>
@@ -252,30 +276,33 @@ function FlightTray() {
                 <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.5 }}>{hop.why}</div>
               )}
 
-              <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
+              {/* Three equal buttons with room to be tapped. 18 Sep 2026:
+                  these were 10.5px capitals in pills with no height of their
+                  own — "squished" was the word. Save is new: the fare goes to
+                  the Flights page so it never has to be searched for twice. */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 10 }}>
                 <div
                   {...pressable(() => void recheck(o))}
                   className="press tap"
-                  style={{
-                    cursor: 'pointer', flex: 1, borderRadius: 999, padding: '0 10px', textAlign: 'center',
-                    fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
-                    background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
-                    opacity: checking === o.id ? 0.55 : 1,
-                  }}
+                  style={{ ...fareBtn, opacity: checking === o.id ? 0.55 : 1 }}
                 >
-                  {checking === o.id ? 'CHECKING…' : 'STILL LIVE?'}
+                  {checking === o.id ? t('Checking…') : t('Still live?')}
+                </div>
+                <div
+                  {...pressable(() => (isSaved(o, state.query) ? null : saveOffer(o, state.query)))}
+                  className="press tap"
+                  aria-pressed={isSaved(o, state.query)}
+                  style={{ ...fareBtn, ...(isSaved(o, state.query) ? { background: 'var(--grad-accent)', color: '#fff', border: '1px solid transparent' } : {}) }}
+                >
+                  {isSaved(o, state.query) ? t('Saved ✓') : t('Save')}
                 </div>
                 <div
                   {...pressable(() => shareOffer(o))}
                   className="press tap"
                   aria-label={t('Send this fare to someone')}
-                  style={{
-                    cursor: 'pointer', borderRadius: 999, padding: '0 14px', textAlign: 'center',
-                    fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
-                    background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
-                  }}
+                  style={fareBtn}
                 >
-                  SHARE
+                  {t('Share')}
                 </div>
               </div>
 
@@ -291,8 +318,8 @@ function FlightTray() {
                     rel="noreferrer"
                     className="press tap"
                     style={{
-                      display: 'flex', marginTop: 6, borderRadius: 999, padding: '0 12px', textDecoration: 'none',
-                      fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
+                      display: 'grid', placeItems: 'center', minHeight: 40, marginTop: 8, borderRadius: 999, padding: '0 12px', textDecoration: 'none',
+                      fontSize: 11.5, fontWeight: 800, letterSpacing: '.04em',
                       background: 'var(--grad-accent)', color: '#fff',
                     }}
                   >
@@ -303,8 +330,8 @@ function FlightTray() {
                     {...pressable(() => void startBooking(o))}
                     className="press tap"
                     style={{
-                      cursor: 'pointer', marginTop: 6, borderRadius: 999, padding: '0 12px', textAlign: 'center',
-                      fontSize: 10.5, fontWeight: 800, letterSpacing: '.05em',
+                      cursor: 'pointer', minHeight: 40, display: 'grid', placeItems: 'center', marginTop: 8, borderRadius: 999, padding: '0 12px', textAlign: 'center',
+                      fontSize: 11.5, fontWeight: 800, letterSpacing: '.04em',
                       background: 'var(--money)', color: '#fff',
                       opacity: opening === o.id ? 0.55 : 1,
                     }}

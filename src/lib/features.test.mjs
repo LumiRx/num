@@ -1,0 +1,170 @@
+// Every feature has a door on TODAY, every door opens onto something real,
+// and nothing on a tile says more than NUM can stand behind.
+import { test, describe, before } from 'node:test';
+import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, resolve as resolvePath } from 'node:path';
+
+registerHooks({
+  resolve(spec, ctx, next) {
+    if (spec.startsWith('.') && !/\.[mc]?[jt]sx?$/.test(spec)) {
+      const base = ctx.parentURL ? dirname(fileURLToPath(ctx.parentURL)) : process.cwd();
+      for (const ext of ['.ts', '.tsx', '.mjs', '.js']) {
+        const p = resolvePath(base, spec + ext);
+        if (existsSync(p)) return next(pathToFileURL(p).href, ctx);
+      }
+    }
+    return next(spec, ctx);
+  },
+});
+
+// The smallest browser the module graph will accept (same shim as signup.test.mjs).
+globalThis.window = globalThis;
+globalThis.localStorage = { _m: new Map(), getItem(k) { return this._m.has(k) ? this._m.get(k) : null; }, setItem(k, v) { this._m.set(k, String(v)); }, removeItem(k) { this._m.delete(k); }, clear() { this._m.clear(); } };
+globalThis.location = { search: '', pathname: '/', href: 'https://app.itsnum.com/', protocol: 'https:', hostname: 'app.itsnum.com', origin: 'https://app.itsnum.com' };
+globalThis.history = { replaceState() {} };
+globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+globalThis.addEventListener = () => {};
+globalThis.document = { addEventListener() {}, createElement: () => ({ style: {}, setAttribute() {}, appendChild() {} }), body: { appendChild() {}, dataset: {} }, documentElement: { style: { setProperty() {} } } };
+try { Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node', onLine: true }, configurable: true }); } catch { /* fine */ }
+
+let FEATURES, featureById, openFeature, store, saveOffer, forgetSaved, isSaved, researchAsk;
+before(async () => {
+  ({ FEATURES, featureById, openFeature } = await import('./features.ts'));
+  ({ store } = await import('./store.ts'));
+  ({ saveOffer, forgetSaved, isSaved, researchAsk } = await import('./savedflights.ts'));
+});
+
+const COVERS = new URL('../../app-public/covers/', import.meta.url);
+
+describe('the registry', () => {
+  test('ids are unique and every feature has a kicker, title, promise, cover and button', () => {
+    const ids = new Set();
+    for (const f of FEATURES) {
+      assert.ok(!ids.has(f.id), `${f.id} twice`); ids.add(f.id);
+      for (const k of ['kicker', 'title', 'promise', 'cover', 'cta']) assert.ok(f[k]?.length > 1, `${f.id}.${k}`);
+      assert.ok(f.compose || f.opens, `${f.id}: a tile must lead somewhere — a page that asks NUM, or a sheet`);
+    }
+    assert.ok(FEATURES.length >= 12);
+  });
+
+  test('every cover exists on disk and is credited', () => {
+    const credits = readFileSync(new URL('CREDITS.md', COVERS), 'utf8');
+    for (const f of FEATURES) {
+      const file = f.cover.replace('/covers/', '');
+      assert.ok(existsSync(new URL(file, COVERS)), `${f.id}: ${f.cover} is missing from app-public/covers`);
+      assert.ok(credits.includes(file), `${f.id}: ${file} is not in CREDITS.md — every photograph names its licence`);
+    }
+    // And nothing sits in the folder uncredited.
+    for (const file of readdirSync(COVERS).filter((n) => n.endsWith('.jpg'))) assert.ok(credits.includes(file), `${file} is uncredited`);
+  });
+
+  test('no tile claims what NUM cannot stand behind', () => {
+    const banned = /cheapest|guarantee|best price|vetted|checked by a person|no commission|free flights|lowest/i;
+    for (const f of FEATURES) {
+      for (const s of [f.promise, f.honest ?? '', f.title]) assert.doesNotMatch(s, banned, `${f.id}: "${s}"`);
+    }
+  });
+
+  test('a page composes the guest’s words into the ask, and the lane when there is one', () => {
+    const charter = featureById('charter');
+    const ask = charter.compose({ route: 'Phuket → Bangkok', when: 'Saturday 10am', people: '4' }, 'plane');
+    assert.match(ask, /private plane/);
+    assert.match(ask, /Phuket → Bangkok/);
+    assert.match(ask, /Saturday 10am/);
+    assert.match(ask, /for 4/);
+    const hire = featureById('hire');
+    assert.match(hire.compose({ what: 'collect a parcel', where: 'Sathorn', when: 'by 5pm' }, null), /collect a parcel in Sathorn, by 5pm/);
+    const pickup = featureById('pickup');
+    assert.match(pickup.compose({ what: 'two lattes', from: '', when: '20 minutes' }, null), /somewhere good nearby/);
+    assert.match(pickup.compose({ what: 'two lattes', from: 'the café on Soi 11', when: '' }, null), /from the café on Soi 11/);
+  });
+
+  test('required fields are the ones a person would have to say anyway; the rest are marked optional', () => {
+    for (const f of FEATURES) {
+      const req = (f.fields ?? []).filter((x) => !x.optional);
+      if (f.fields) assert.ok(req.length >= 1 && req.length <= 3, `${f.id}: ${req.length} required fields — two or three is the promise`);
+    }
+  });
+
+  test('a feature with its own sheet opens that sheet; the rest open their page', () => {
+    openFeature('wallet');
+    assert.equal(store.get().walletOpen, true);
+    assert.equal(store.get().featureOpen, null);
+    openFeature('charter');
+    assert.equal(store.get().featureOpen, 'charter');
+    store.set({ featureOpen: null, walletOpen: false });
+  });
+});
+
+describe('saved flights', () => {
+  const q = { fromCode: 'BKK', toCode: 'NRT', depart: '2026-10-03', adults: 2 };
+  const offer = (id, price) => ({
+    id, price, currency: 'THB', tax: null, validatingCarrier: 'TG', validUntil: null, totalDurationInMinutes: 370,
+    legs: [{ stops: 0, segments: [{ from: 'BKK', to: 'NRT', departs: '2026-10-03T07:35:00', arrives: '2026-10-03T15:45:00', marketing: 'TG640', operating: 'TG640', codeshare: false }] }],
+  });
+
+  test('save, see it saved, forget it', () => {
+    store.set({ savedFlights: [] });
+    assert.equal(isSaved(offer('o1', '12900'), q), false);
+    saveOffer(offer('o1', '12900'), q);
+    assert.equal(isSaved(offer('o1', '12900'), q), true);
+    const s = store.get().savedFlights[0];
+    assert.equal(s.route, 'BKK → NRT');
+    assert.equal(s.day, '2026-10-03');
+    assert.equal(s.price, '12900');
+    forgetSaved(s.id);
+    assert.equal(store.get().savedFlights.length, 0);
+  });
+
+  test('the same flight seen again at a new price replaces the old row — one flight, one card', () => {
+    store.set({ savedFlights: [] });
+    saveOffer(offer('o1', '12900'), q);
+    saveOffer(offer('o2', '11400'), q);
+    assert.equal(store.get().savedFlights.length, 1);
+    assert.equal(store.get().savedFlights[0].price, '11400');
+  });
+
+  test('"check price again" is an ask NUM can act on, with the route, the day and what was saved', () => {
+    store.set({ savedFlights: [] });
+    saveOffer(offer('o1', '12900'), q);
+    const ask = researchAsk(store.get().savedFlights[0]);
+    assert.match(ask, /BKK → NRT on 2026-10-03/);
+    assert.match(ask, /for 2 people/);
+    assert.match(ask, /TG at THB 12900/);
+    assert.match(ask, /still the one/);
+  });
+
+  test('saved fares survive the app closing; the open page and the first line do not', async () => {
+    const { persistable } = await import('./data.ts');
+    store.set({ savedFlights: [], featureOpen: 'flights', thinkingLine: 'On it…' });
+    saveOffer(offer('o1', '12900'), q);
+    const kept = persistable(store.get());
+    assert.equal(kept.savedFlights.length, 1);
+    assert.equal('featureOpen' in kept, false);
+    assert.equal('thinkingLine' in kept, false);
+    store.set({ savedFlights: [], featureOpen: null, thinkingLine: null });
+  });
+});
+
+describe('wired, not just written', () => {
+  const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+  test('TODAY renders the grid between the day and the rest', () => {
+    const dash = read('../components/app/DashView.tsx');
+    assert.match(dash, /<FeatureGrid \/>/);
+    const now = dash.indexOf("const NOW: WidgetId[] = ['next', 'tonight'");
+    assert.ok(now > 0, 'the Now strip is gone');
+  });
+  test('the page is a sheet the shell knows how to close', () => {
+    const app = read('../components/app/ConciergeApp.tsx');
+    assert.match(app, /<FeaturePage \/>/);
+    assert.equal((app.match(/featureOpen/g) ?? []).length >= 5, true, 'featureOpen must be in sheetOpen, closeSheets (twice), overlayOpen and the back handler');
+  });
+  test('the fare tray can be closed, and a fare can be saved', () => {
+    const thread = read('../components/app/ThreadView.tsx');
+    assert.match(thread, /store\.set\(\{ flightOffers: null \}\)/);
+    assert.match(thread, /saveOffer\(o, state\.query\)/);
+  });
+});

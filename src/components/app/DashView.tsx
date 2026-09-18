@@ -3,6 +3,7 @@
 // trip check, and the switches for the outside data the user chooses to plug
 // in. Everything here is one tap from the thing itself.
 import { useEffect, useState } from 'react';
+import FeatureGrid from './FeatureGrid';
 import { store, useApp } from '../../lib/store';
 import FlightCard from './FlightCard';
 import TonightStrip from './TonightStrip';
@@ -473,9 +474,26 @@ export default function DashView() {
     connections: () => <ConnectionsCard />,
   };
 
+  // ── NOW, THEN EVERYTHING ────────────────────────────────────────────────
+  //
+  // 18 Sep 2026. The list above is what NUM knows about THIS day, and it
+  // stays on top — but it was also the only way onto the screen, so flights,
+  // charter, a runner or a massage were reachable only by knowing to type
+  // the words. Below the day sits every feature as a cover with a button
+  // (FeatureGrid). Group, events and wallet moved off the list and into the
+  // grid — the same door, no longer shown twice.
+  const NOW: WidgetId[] = ['next', 'tonight', 'requests', 'directions', 'tripcheck'];
+  const AFTER: WidgetId[] = ['calendar', 'connections'];
+  const now = widgets.filter((id) => NOW.includes(id));
+  const after = widgets.filter((id) => AFTER.includes(id));
+
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
-      {widgets.map((id) => (
+      {now.map((id) => (
+        <div key={id}>{RENDER[id]?.() ?? null}</div>
+      ))}
+      <FeatureGrid />
+      {after.map((id) => (
         <div key={id}>{RENDER[id]?.() ?? null}</div>
       ))}
     </div>
