@@ -215,9 +215,16 @@ describe('wired, not just written', () => {
   test('the day starts with what is already booked in', () => {
     // The calendar answers "what am I committed to", which is the question
     // NEXT UP is read against; it spent a week two screens below the grid.
+    //
+    // The list is NOT what orders the screen — `widgets` is, and the first
+    // attempt at this only reordered the list, which changed nothing. So the
+    // hoist itself is what gets pinned.
     const dash = read('../components/app/DashView.tsx');
-    const now = /const NOW: WidgetId\[\] = \[([^\]]*)\]/.exec(dash)[1];
-    assert.match(now.trim(), /^'calendar'/, 'the calendar must come first on TODAY');
+    assert.match(
+      dash,
+      /above\.includes\('calendar'\) \? \['calendar' as WidgetId, \.\.\.above\.filter/,
+      'the calendar must be hoisted, not merely listed first',
+    );
   });
 
   test('CONNECT YOUR WORLD is in Settings, and only there', () => {

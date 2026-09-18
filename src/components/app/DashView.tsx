@@ -396,9 +396,16 @@ export default function DashView() {
   // screens from the top, which is the wrong place for the one widget that
   // answers "what am I already committed to today" — the question NEXT UP is
   // read against. Now the day's shape comes first and NEXT UP sits inside it.
+  //
+  // ORDER COMES FROM THE SERVER, WITH ONE PIN. `widgets` is NUM's own running
+  // order and it earns that — a delayed flight climbs it. Listing ids here
+  // only says which of them belong above the grid, so putting 'calendar'
+  // first in this array changed nothing on screen. The calendar is therefore
+  // hoisted explicitly, and everything else keeps the order NUM chose.
   const NOW: WidgetId[] = ['calendar', 'next', 'tonight', 'requests', 'directions', 'tripcheck'];
   const AFTER: WidgetId[] = [];
-  const now = widgets.filter((id) => NOW.includes(id));
+  const above = widgets.filter((id) => NOW.includes(id));
+  const now = above.includes('calendar') ? ['calendar' as WidgetId, ...above.filter((id) => id !== 'calendar')] : above;
   const after = widgets.filter((id) => AFTER.includes(id));
 
   return (
