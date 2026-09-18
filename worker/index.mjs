@@ -3224,6 +3224,26 @@ export default {
         })
         .catch((e) => console.error('[table]', e?.message ?? e)),
     );
+    // THIS WEEK IN <CITY>. Headlines from the independents that publish an
+    // RSS feed — title, link, date, credit; nothing else — one fetch per
+    // source per six hours. Fever's, Time Out's and RA's terms keep them out
+    // by design. See worker/whatson.mjs.
+    //
+    // Its own waitUntil (18 Sep 2026). It first shipped as the fifth step of
+    // the business chain below, behind forty homepage fetches, and in its
+    // first eleven minutes live never ran once: num_whatson_fetch stayed
+    // empty. A step that waits its turn behind other people's network is a
+    // step that does not run; the six-hour cadence is enforced inside.
+    ctx.waitUntil(
+      import('./whatson.mjs')
+        .then((m) => m.refreshWhatsOn(env))
+        .then((w) => {
+          const got = w.filter((x) => x.stored).reduce((n, x) => n + x.stored, 0);
+          if (got) console.log(`[whatson] ${got} new headline(s) from ${w.filter((x) => x.stored).length} source(s)`);
+          for (const x of w) if (x.ok === false) console.warn(`[whatson] ${x.source}: ${x.note}`);
+        })
+        .catch((e) => console.warn('[cron] whatson', e?.message ?? e)),
+    );
     // A BUSINESS SIGNUP MUST NOT BE LOST TO ONE DROPPED TEXT.
     //
     // claimSweep already alerts on every new claim, once, deduped forever.
@@ -3282,18 +3302,6 @@ export default {
           const b = await backfillBookings(env);
           if (b.looked) console.log(`[bookingbackfill] ${b.found} found of ${b.looked} looked at`);
         } catch (e) { console.warn('[cron] booking backfill', e?.message ?? e); }
-
-        // THIS WEEK IN <CITY>. Headlines from the independents that publish
-        // an RSS feed — title, link, date, credit; nothing else — one fetch
-        // per source per six hours. Fever's, Time Out's and RA's terms keep
-        // them out of here by design. See worker/whatson.mjs.
-        try {
-          const { refreshWhatsOn } = await import('./whatson.mjs');
-          const w = await refreshWhatsOn(env);
-          const got = w.filter((x) => x.stored).reduce((n, x) => n + x.stored, 0);
-          if (got) console.log(`[whatson] ${got} new headline(s) from ${w.filter((x) => x.stored).length} source(s)`);
-          for (const x of w) if (x.ok === false) console.warn(`[whatson] ${x.source}: ${x.note}`);
-        } catch (e) { console.warn('[cron] whatson', e?.message ?? e); }
 
         // CROSS-ANALYSIS. Replays a few real questions past the cheap brains
         // and banks where they independently converge. Runs here, on the
