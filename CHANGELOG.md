@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.342 — 2026-09-18 05:16 UTC
+
+Sign in, in those words, where a stranger looks for it — the answer to App Review 2.1 on build 1.0(8)
+
+- commit `13fd72b`
+
 ## 0.8.341 — 2026-09-18 05:11 UTC
 
 Deep research answers from a brain that can actually answer; the plan ceiling and the research allowance are the first two limits NUM enforces
