@@ -335,6 +335,8 @@ export interface AppState {
   thinkingLine: string | null;
   /** Which feature's own page is open from TODAY's grid (src/lib/features.ts). */
   featureOpen: import('./features').FeatureId | null;
+  /** The event being looked at, carried whole from the rail that was tapped. */
+  eventView: import('./eventview').EventCard | null;
   /** Fares the guest kept, so a search is never done twice (src/lib/savedflights.ts). Persisted. */
   savedFlights: import('./savedflights').SavedFlight[];
   notifOn: boolean;

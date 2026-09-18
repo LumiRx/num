@@ -14,6 +14,7 @@
 // two and a half.
 import { pressable } from '../../lib/a11y';
 import { t } from '../../lib/i18n';
+import { near } from '../../lib/near';
 
 export interface RailItem {
   id: string;
@@ -32,9 +33,10 @@ export interface RailItem {
   price?: string | null;
 }
 
-/** 400 m / 1.2 km — the unit a person would say out loud. */
-export const near = (km: number | null | undefined): string | null =>
-  km == null ? null : km < 1 ? `${Math.round(km * 1000)} m` : `${Math.round(km * 10) / 10} km`;
+/** 400 m / 1.2 km — the unit a person would say out loud. Defined in
+ *  lib/near.ts so plain modules can use it; re-exported here because this is
+ *  where every caller already imports it from. */
+export { near };
 
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 };
 

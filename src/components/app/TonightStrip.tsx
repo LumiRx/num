@@ -9,9 +9,11 @@
 // and each drawn by the same rail (NearbyRail).
 //
 // Every listing says where it came from: Checked by NUM, or Listed on
-// Ticketmaster with the poster credited. Tickets open on Ticketmaster — NUM
-// never says booked for a ticket it cannot sell. Tapping anything else asks
-// NUM, which is how a listing becomes a night: a table before, a car home.
+// Ticketmaster with the poster credited. Tapping an event opens it INSIDE
+// NUM (EventDetailSheet), where tickets are a labelled second tap on the
+// seller's own page — NUM never says booked for a ticket it cannot sell.
+// Tapping a place asks NUM, which is how a listing becomes a night: a table
+// before, a car home.
 import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
@@ -20,6 +22,7 @@ import { askNum } from '../../lib/concierge';
 import { openShareCard } from '../../lib/sharecard';
 import { fixPosition } from '../../lib/whereami';
 import { t } from '../../lib/i18n';
+import { openEventCard } from '../../lib/eventview';
 import NearbyRail, { near, type RailItem } from './NearbyRail';
 
 interface Event {
@@ -114,11 +117,23 @@ export default function TonightStrip() {
     distance_km: p.distance_km ?? null, rating: p.rating ?? null,
   });
 
+  // TAPPING AN EVENT OPENS THE EVENT, INSIDE NUM.
+  //
+  // It used to do one of two things and both were wrong. A listing with a
+  // ticket URL opened a Ticketmaster tab immediately — you had not asked to
+  // leave, and getting back was the same trap the flights tab was. A listing
+  // without one put a question in the thread, so you read NUM's answer
+  // instead of looking at the event. Now the card you tapped becomes a sheet
+  // built from the listing already in hand: no fetch, no wait. Tickets, the
+  // evening around it, keeping it and sending it are all one tap from there.
   const openEvent = (i: RailItem) => {
     const e = events.find((x) => x.id === i.id);
-    if (e?.url) { window.open(e.url, '_blank', 'noopener,noreferrer'); return; }
-    store.set({ threadOpen: true });
-    void askNum(`Tell me about ${i.title}${i.sub ? ` at ${i.sub}` : ''} tonight and plan the evening around it.`);
+    if (!e) return;
+    openEventCard({
+      source: e.source, id: e.id, title: e.title, sub: e.sub || null, image: e.image, label: e.label,
+      when: countdown(e, now), starts_on: e.starts_on, venue: e.venue, distance_km: e.distance_km ?? null,
+      cost: money(e), why: e.why ?? null, url: e.url,
+    });
   };
   const openPlace = (i: RailItem) => {
     store.set({ threadOpen: true });
