@@ -53,3 +53,33 @@ test('the card refuses to render where nothing can be installed', () => {
   assert.match(PROMPT, /if \(!canOfferInstall\(\)\) return;/);
   assert.match(PROMPT, /if \(isStandalone\(\)\) return;/);
 });
+
+/**
+ * ── WHEN the card appears, which is a different bug from WHERE ────────────
+ *
+ * The comment in InstallPrompt.tsx has said since 17 Sep that the offer makes
+ * sense "AFTER they have asked something and got a real answer back — at which
+ * point it is an upgrade rather than a toll gate". The code said
+ * `msgs.some(m => m.who === 'u')`, which is true the instant the guest hits
+ * send. Watched on a live phone-sized session on 18 Sep: message sent, card
+ * up, answer arriving underneath it, composer covered.
+ *
+ * A toll gate before the answer and a card on top of the answer are the same
+ * mistake, and the second is worse — the guest saw the value arrive and then
+ * saw it covered. These pin the condition to what the comment always claimed.
+ */
+test('the card waits for an ANSWER, not for the guest pressing send', () => {
+  const gate = PROMPT.slice(PROMPT.indexOf('const answered'), PROMPT.indexOf('eslint-disable-next-line react-hooks'));
+  assert.ok(gate.length > 40, 'the gate is named `answered` — if it is renamed, re-read this test');
+  assert.match(gate, /findIndex\(\(m\) => m\.who === 'u'\)/, 'it locates the first thing the guest said');
+  assert.match(gate, /slice\(firstAsk \+ 1\)\.some\(\(m\) => m\.who === 'c'\)/,
+    'and requires a reply from NUM AFTER it — not merely any reply, and not the send');
+  assert.doesNotMatch(gate, /msgs\.some\(\(m\) => m\.who === 'u'\)/,
+    'the old condition fired on send and covered the answer it was meant to follow');
+});
+
+test('and gives the guest a beat to read the answer first', () => {
+  const gate = PROMPT.slice(PROMPT.indexOf('const answered'), PROMPT.indexOf('eslint-disable-next-line react-hooks'));
+  assert.match(gate, /setTimeout\(\(\) => setShow\(true\), \d{4}\)/,
+    'the card is armed on a delay — landing on the same frame as the answer is landing on top of it');
+});

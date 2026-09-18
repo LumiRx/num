@@ -37,13 +37,25 @@ test('the escape card no longer shows on arrival', () => {
 test('it waits for a message the GUEST sent, not any message', () => {
   // Num speaks first. Keying off msgs.length would fire on the greeting,
   // which is the same interruption with extra steps.
-  const gate = prompt.slice(prompt.indexOf('const asked = ()'));
-  assert.match(gate, /msgs\.some\(\(m\) => m\.who === 'u'\)/,
+  //
+  // 18 Sep 2026: the gate was `msgs.some(m => m.who === 'u')` and was renamed
+  // from `asked` to `answered` when it got stricter. It now needs a reply from
+  // NUM that came AFTER the guest's first message, because firing on send put
+  // the card on top of the answer while it was still arriving — watched on a
+  // live phone-sized session. This test's original concern is unchanged and
+  // better served: a gate that requires a guest message and then a reply
+  // cannot fire on the greeting.
+  const gate = prompt.slice(prompt.indexOf('const answered = ()'));
+  assert.ok(gate.length > 40, 'the gate has been renamed again — find it before editing this');
+  assert.match(gate, /findIndex\(\(m\) => m\.who === 'u'\)/,
     'the gate does not require a message from the guest');
+  assert.match(gate, /slice\(firstAsk \+ 1\)\.some\(\(m\) => m\.who === 'c'\)/,
+    'and it must require Num to have answered that message, not merely received it');
 });
 
 test('it subscribes, so the card appears on the first ask and not a reload later', () => {
-  const gate = prompt.slice(prompt.indexOf('const asked = ()'), prompt.indexOf('const asked = ()') + 600);
+  const at = prompt.indexOf('const answered = ()');
+  const gate = prompt.slice(at, at + 800);
   assert.match(gate, /store\.subscribe\(/, 'nothing watches for the first message');
   assert.match(gate, /stop\(\)/, 'the subscription is never unsubscribed');
 });

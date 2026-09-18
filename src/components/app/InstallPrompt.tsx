@@ -132,10 +132,27 @@ export default function InstallPrompt({
     // first open the card sat on top of the starter chips, so the first
     // tappable things in the app were hidden behind an offer to install it
     // (audit B7). After the first real answer it is an upgrade; before, a toll.
+    // 18 Sep 2026: the comment above said "after they have asked something AND
+    // GOT A REAL ANSWER BACK". The code said `msgs.some(m => m.who === 'u')`,
+    // which fires the instant the guest hits send — so the card slid up over
+    // the answer while it was still arriving, covering both the reply and the
+    // composer. Watched it happen on a live iPhone-sized session: message
+    // sent, card up, answer underneath it.
+    //
+    // A toll gate before the answer and a card ON TOP of the answer are the
+    // same mistake; the second is worse, because the guest saw the value
+    // arrive and then saw it covered. So the condition is what the comment
+    // always said: an answer from NUM that came after something the guest
+    // said, plus a beat to read the first line of it.
     {
-      const asked = () => store.get().msgs.some((m) => m.who === 'u');
-      if (asked()) { setShow(true); return; }
-      const stop = store.subscribe(() => { if (asked()) { setShow(true); stop(); } });
+      const answered = () => {
+        const { msgs } = store.get();
+        const firstAsk = msgs.findIndex((m) => m.who === 'u');
+        return firstAsk >= 0 && msgs.slice(firstAsk + 1).some((m) => m.who === 'c');
+      };
+      const arm = () => { setTimeout(() => setShow(true), 2500); };
+      if (answered()) { arm(); return; }
+      const stop = store.subscribe(() => { if (answered()) { arm(); stop(); } });
       return () => { stop(); };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

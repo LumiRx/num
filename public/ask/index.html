@@ -86,7 +86,9 @@
   color:var(--pri-d);background:var(--pri-xl);border:1px solid var(--pri-l);padding:6px 12px;border-radius:999px}
 .askhero h1{font-family:var(--disp);font-size:clamp(28px,7vw,42px);line-height:1.1;letter-spacing:-.03em;
   margin:16px 0 10px;text-wrap:balance}
-.askhero .sub{color:var(--ink2);font-size:16.5px;line-height:1.6;max-width:46ch;margin:0 auto}
+/* `.sub` is a sibling of `.askhero`, not a child of it — see the note in the
+   markup. The selector keeps both spellings so nothing depends on which. */
+.askhero .sub,.col>.sub{color:var(--ink2);font-size:16.5px;line-height:1.6;max-width:46ch;margin:0 auto}
 
 /* the box */
 .box{margin:22px 0 0;background:var(--card,#fff);border:1px solid var(--line);border-radius:20px;
@@ -244,6 +246,46 @@
   text-transform:uppercase;color:var(--slate);margin-top:auto}
 
 @media(max-width:520px){.askhero{padding-top:22px}.bub{max-width:94%}.shot{aspect-ratio:5/3}}
+
+/* ── GET THE PRODUCT ABOVE THE FOLD ───────────────────────────────────────
+   Measured on the live page, 18 Sep 2026, with the ad campaign's own traffic
+   in mind (82% Thailand mobile, 2,764 visitors in the second Reddit week):
+
+     iPhone 13, 664px fold — composer top at 647px. Four pixels of it.
+     iPhone SE, 553px fold — composer top at 647px. NINETY-FOUR BELOW.
+
+   A visitor on the smaller phone saw the headline and part of one chip. Of
+   2,764 who landed, 66 scrolled halfway and 24 typed anything at all — 0.9%.
+   The page was not failing to persuade them; it was not showing them the
+   thing the ad had promised.
+
+   Nothing here is deleted. The sub-headline MOVES below the box on a phone
+   (flex order), the concierge's "● online now" strip is decoration and goes,
+   and the vertical padding comes down. On a laptop the page is unchanged. */
+@media(max-width:700px){
+  /* EVERY child gets an explicit order. A flex child with none defaults to 0
+     and sorts ahead of order:1 — so leaving one out would fling it to the top
+     of the column, which is a worse bug than the one being fixed. */
+  .col{display:flex;flex-direction:column}
+  .askhero{padding:14px 0 4px;order:1}
+  .askhero h1{margin:12px 0 0;font-size:clamp(26px,6.4vw,34px)}
+  .box{order:2;margin-top:16px}
+  .col>.under{order:3}
+  /* Still on the page, still doing its job — just after the thing it
+     describes rather than in front of it. */
+  .col>.sub{order:4;margin-top:14px;font-size:15.5px}
+  .col>#ways{order:5}
+  .thread{padding:13px 16px 4px}
+  .chips{padding:0 16px 11px}
+}
+@media(max-width:600px){
+  /* "N · NUM concierge · online now" is 60px telling a visitor something the
+     rest of the card already shows. On a 553px screen that 60px is the
+     difference between seeing the Ask box and not. */
+  .boxtop{display:none}
+  .askhero .pill{font-size:11.5px;padding:5px 10px}
+  .bub{font-size:14.6px;padding:10px 13px}
+}
 </style>
 <!-- Meta Pixel Code -->
 <script>
@@ -282,9 +324,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <header class="askhero">
       <span class="pill">✦ Live in 39 countries</span>
       <h1>Ask for anything.<br>Anywhere you land.</h1>
-      <p class="sub">Dinner, a driver, a table for six, somewhere quiet at 6am. Real places, real answers —
-        right here, right now.</p>
     </header>
+    <!-- Out of <header> so a phone can put it AFTER the concierge box. It is
+         supporting copy either way; on a 553px screen it was 79px of it sitting
+         between the ad's promise and the box that keeps it. See the fold block
+         in the stylesheet. -->
+    <p class="sub">Dinner, a driver, a table for six, somewhere quiet at 6am. Real places, real answers —
+      right here, right now.</p>
 
   <!-- The product, not a picture of it. -->
   <div class="box">
