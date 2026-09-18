@@ -10,7 +10,7 @@ I need to know before I touch anything*, and humans write it.
 
 Do not re-read the codebase to learn what these two already say.
 
-_Last updated: 2026-09-18 04:15 UTC · **0.8.339 live on num-app** — two-line answer (first line ~0.2 s) and the reactions ledger + admin panel · 0.8.337 was the first ship since 0.8.333 (0.8.334–0.8.336 were uploaded but traffic was never moved) · `/api/health` 503 loop since 3 Sep root-caused and fixed (held alerts are not blind) · repo moved to `~/NUM/code/num-site-fixes`, branch on GitHub_
+_Last updated: 2026-09-18 05:20 UTC · **0.8.343 live on num-app** — TODAY feature grid + pages, flights Save, runner skips sealed migrations · 0.8.339: two-line answer — two-line answer (first line ~0.2 s) and the reactions ledger + admin panel · 0.8.337 was the first ship since 0.8.333 (0.8.334–0.8.336 were uploaded but traffic was never moved) · `/api/health` 503 loop since 3 Sep root-caused and fixed (held alerts are not blind) · repo moved to `~/NUM/code/num-site-fixes`, branch on GitHub_
 
 ---
 

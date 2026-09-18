@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 05:07 UTC from 15 entries._
+_Built 2026-09-18 05:26 UTC from 16 entries._
 
 ## Deployed right now
 
@@ -17,7 +17,7 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | ⚪ never recorded from this machine |
-| num-app | 🔴 **STALE** — 8 files changed since it shipped |
+| num-app | 🟢 up to date (2026-09-18 05:25) |
 | num-growth | ⚪ never recorded from this machine |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
@@ -56,6 +56,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:17_
 - 🟢 **social inbox** — /api/social/requests 500'd for every real member on a database where the events routes had never run — not the quote character STATUS blamed for two weeks; events.mjs now exports ensureEvents() and the inbox calls it. 16 tests in worker/socialrequests.test.mjs
   _claude, 2026-09-18 04:20_
+- 🟢 **TODAY grid** — 0.8.343: every feature a photo-cover tile with its own page; flights tray closes, Save + Flights page; migration runner skips sealed files
+  _claude, 2026-09-18 05:26_
 
 ## Built, not deployed
 
