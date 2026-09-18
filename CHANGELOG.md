@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.350 — 2026-09-18 06:52 UTC
+
+A research run that stops is closed by the cron, not left spinning for ever
+
+- commit `ef916e8`
+
 ## 0.8.349 — 2026-09-18 06:45 UTC
 
 Deep research gets a slow-path timeout, because the briefs it exists for are the ones that were timing out
