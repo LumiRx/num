@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.337 — 2026-09-18 03:26 UTC
+
+Health: an alert triage HELD for the digest is deferred, not blind — ends the 503 / DOWN / recovery loop that ran sixteen laps since 3 Sep. Also carries 0.8.334–0.8.336, which were uploaded but never shipped.
+
+- commit `daf2690`
+
 ## 0.8.336 — 2026-09-18 02:58 UTC
 
 Tonight only puts forward places it can stand behind: the neighbourhood is rated before it is ranked
