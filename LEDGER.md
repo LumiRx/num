@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-15 16:33 UTC from 7 entries._
+_Built 2026-09-18 03:28 UTC from 8 entries._
 
 ## Deployed right now
 
@@ -16,13 +16,14 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-app | 🟢 up to date (2026-09-15 16:27) |
+| num-console | ⚪ never recorded from this machine |
+| num-app | 🟢 up to date (2026-09-18 03:27) |
 | num-growth | ⚪ never recorded from this machine |
-| num-ai | 🟢 up to date (2026-09-15 08:19) |
-| num-accounts | ⚪ never recorded from this machine |
+| num-ai | ⚪ never recorded from this machine |
+| num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
 | num-claim | ⚪ never recorded from this machine |
-| num-agents | ⚪ never recorded from this machine |
+| num-agents | 🟢 up to date (2026-09-17 19:40) |
 | num-scout | ⚪ never recorded from this machine |
 
 ## Blocked
@@ -34,6 +35,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - 🟢 **deploy drift guard** — npm run deploy:check. Hashes what each worker bundles against what it last shipped.
   _claude, 2026-09-15 16:32_
+- 🟢 **health** — 0.8.337: held alerts are deferred, not blind — the 503/DOWN loop since 3 Sep is closed; 0.8.334-336 finally live
+  _claude, 2026-09-18 03:28_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).
   _claude, 2026-09-15 16:32_
 

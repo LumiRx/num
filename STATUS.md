@@ -10,7 +10,7 @@ I need to know before I touch anything*, and humans write it.
 
 Do not re-read the codebase to learn what these two already say.
 
-_Last updated: 2026-09-15 · **Hollywood fix live on num-ai, NOT YET on num-app** · deploy-drift guard added (`npm run deploy:check`) · Num Expert card page `/s/CODE` built, not deployed_
+_Last updated: 2026-09-18 03:30 UTC · **0.8.337 live on num-app** — the first ship since 0.8.333 (0.8.334–0.8.336 were uploaded but traffic was never moved) · `/api/health` 503 loop since 3 Sep root-caused and fixed (held alerts are not blind) · repo moved to `~/NUM/code/num-site-fixes`, branch pushed to GitHub for the first time (184 commits)_
 
 ---
 
@@ -18,7 +18,7 @@ _Last updated: 2026-09-15 · **Hollywood fix live on num-ai, NOT YET on num-app*
 
 | Area | State |
 |---|---|
-| App (num-app) | **0.8.275 live**, shipped 18:45 UTC 12 Sep. `/api/health` ok, 0 failing. `verify_5arz` now true from `FIVEARZ_API_KEY`, `google_auth` reported separately. |
+| App (num-app) | **0.8.337 live**, shipped 03:27 UTC 18 Sep. Carries everything staged since 0.8.333 (Haiku-led everyday turns, feature registry + `GET /api/features`, Tonight rails) plus the health fix below. **`stage` uploads a version; only `ship` moves traffic** — three versions in a row were staged and never shipped on 17 Sep, and CHANGELOG called them live. Check `curl -s https://app.itsnum.com/api/version`, not the changelog. |
 | Growth (num-growth) | Deployed 12 Sep — host client book live. |
 | Tests | 4,801 green, 0 lint errors, tsc clean (travel-speak + voice lints both wired into `npm test`) |
 | Release | `stage` then `ship`. Ship alone refuses; that guard is correct. **`ship` now also records the deploy and warns which other workers are behind** — see `scripts/deploydrift.mjs`. |
@@ -75,6 +75,27 @@ _Last updated: 2026-09-15 · **Hollywood fix live on num-ai, NOT YET on num-app*
   point, but there is nothing they can open).
 
 - **Host job board** — `growth/hostjobs.mjs` shaping layer built and tested (30 tests). Routes, `num_host_jobs` table, member-facing section and console card still to build. Three product questions open, below.
+
+## Health said DOWN for two weeks and nothing was wrong — 3–17 Sep
+
+`/api/health` returned 503 `down, failing 1` from 3 Sep to 18 Sep 03:27 UTC while
+site, D1 writes, brain and attribution were green on every run. The one "failure"
+was NUM's own `✅ Num is healthy again.` alert: triage correctly HELD it (not worth a
+text), a held alert is untold by design, and `summary()` read untold-and-settled as
+`blind` → `failures` on the DOWN list → DOWN alert → recovery → another held
+"healthy again". Sixteen laps.
+
+Fix (0.8.337): `failures.held()` stamps a held row `told_via = 'held:<judge>'`
+(still `told = 0`, still open so the digest carries it); `summary()` skips held rows
+when computing `blind`. An alert NOTHING carried is unchanged — still open, still
+blind, and `alert_undelivered` (critical) still forces the verdict. Pinned in
+`falsedown.test.mjs` and `failurecount.test.mjs`. The stuck production row was
+stamped by hand (`told_via = 'held:backfill-2026-09-17'`) because the new code can
+only stamp on the next hold, and no hold can happen while the verdict is pinned.
+
+Watch for: `told_via` doubles as the held marker. `record()`'s reopen path resets
+`told` but keeps `told_via`, so a reopened row that was once delivered reads
+`told 0 / told_via sms` until the next `alert()` call stamps it one way or the other.
 
 ## Notifications could not reach an iPhone at all — 13 Sep
 
