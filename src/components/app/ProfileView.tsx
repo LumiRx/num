@@ -259,6 +259,20 @@ export default function ProfileView() {
     }
   };
 
+  // ── THE REMODEL (18 Sep 2026) ────────────────────────────────────────────
+  //
+  // Dre: "so many boxes and text fields, it's so ugly, we need a full remodel
+  // of the profile page. Click it and upgrade, that simple." The page was
+  // eleven open cards and twenty text fields in one column. It is now six
+  // groups in the order a person needs them: who you are (with the plan one
+  // tap away), the plan itself, your Stars and codes, what NUM knows about
+  // you (one collapsed card with a count instead of three open ones), your
+  // NUM (people, hosting, business, expert), and settings. Nothing was
+  // removed — every card that existed still exists — the difference is what
+  // is open, and where.
+  const ALL_FIELDS = [...QUICK_FIELDS, ...TRAVEL_FIELDS, ...TASTE_FIELDS];
+  const filled = ALL_FIELDS.filter(([k]) => values[k]?.trim()).length;
+
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 110 }}>
       {/* identity */}
@@ -334,111 +348,73 @@ export default function ProfileView() {
             )}
           </div>
         </div>
+        {/* CLICK IT AND UPGRADE. One chip, top right of who you are, that
+            lands on the plans card directly below — the shortest path from
+            "this is me" to "give me more room". */}
+        <div
+          {...pressable(() => document.getElementById('your-plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+          aria-label={t('Your plan')}
+          className="press"
+          style={{ cursor: 'pointer', flex: 'none', alignSelf: 'flex-start', fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', padding: '6px 10px', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff' }}
+        >
+          {t('PLAN')}
+        </div>
       </div>
+
       {/* Its own block UNDER the identity row. As a third flex child it was
           being squeezed into the name column and printing over "Dre". */}
       <AppleSignIn />
-
-      {/* FINDING IT IS THE FEATURE.
-          Account deletion has worked since August and sits at the very bottom
-          of a long profile, so in practice nobody reached it — Apple's
-          reviewer reported it missing (5.1.1(v), 30 Aug 2026) and on 9 Sep
-          Dre could not find it either, in his own app.
-          A destructive action should be quiet, not hidden. The button stays
-          exactly where it is, with all three of its frictions; this is a
-          signpost to it, near the top, where someone looking for it looks.
-          Apple's rule is that deletion must be discoverable in-app — a
-          feature nobody can navigate to does not satisfy it. */}
-      <div
-        {...pressable(() => {
-          // OPEN IT, then scroll to it. Scrolling alone was the bug: the page
-          // moved, the control at the bottom was still shut, and from the
-          // member's side absolutely nothing had happened. Dre, 10 Sep 2026:
-          // "it scrolls to the bottom of the page and still does nothing".
-          // One tap must produce the question.
-          store.set({ deleteOpen: true });
-          requestAnimationFrame(() => {
-            document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          });
-        })}
-        role="button"
-        aria-label={t('Delete my account')}
-        className="glass lift"
-        style={{
-          margin: '2px 12px 0', padding: '11px 14px', borderRadius: 'var(--r-md, 12px)',
-          cursor: 'pointer', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', gap: 10, minHeight: 44,
-          background: 'transparent', border: '1px solid var(--line, rgba(0,0,0,.08))',
-        }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-60)' }}>
-          Account &amp; data · delete my account
-        </div>
-        <ChevronRightIcon size={16} />
-      </div>
       <Verify5arz />
       {/* Finish a connection that opened in the browser instead of the app. */}
       <PairBridge installed />
 
-      <Collapsible title={t('NAME ON THE ACCOUNT')} summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
-        <input
-          style={{ ...field, opacity: me.name_locked ? 0.6 : 1 }}
-          value={name}
-          disabled={me.name_locked}
-          onChange={(e) => { setName(e.target.value); setSaved(false); }}
-          placeholder={t('Your name')}
-        />
-        <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
-          {me.name_locked
-            ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.'
-            : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
-        </div>
-      </Collapsible>
+      {/* THE PLAN, RIGHT UNDER WHO YOU ARE. It is the thing the page sells,
+          and the chip above lands here. On iOS the card shows the tier and
+          no prices — canOfferSubscription() inside it, unchanged. */}
+      <div id="your-plan">
+        <MembershipCard />
+      </div>
 
+      <Group>{t('STARS & CODES')}</Group>
+      <div
+        {...pressable(() => store.set({ walletOpen: true }))}
+        className="glass lift"
+        style={{ ...card, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={kicker}>{t('YOUR STARS')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Balance, top-ups, tabs and receipts')}</div>
+        </div>
+        <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
+      </div>
       <Collapsible title={t('YOUR CODES')} summary={t('Scan to connect, or to pay you in Stars')}>
         <QrCard />
       </Collapsible>
 
-      <MembershipCard />
-
-      <PeopleCard />
-
-      <HostCard />
-
-      <ThemePicker />
-
-      <NotificationsCard />
-
-      {/* CONNECT YOUR WORLD, moved off TODAY on 18 Sep 2026. What NUM may
-          reach — contacts, photos, calendar, wallet, mail, texts — belongs
-          beside notifications, with the other things you set once. */}
-      <ConnectionsCard />
-
-      <Group>{t('ORDER FASTER')}</Group>
-      <Section title={t('THE THINGS NUM WOULD OTHERWISE ASK')} summary={t('Where you stay, how many, when you eat, how you move and pay — two minutes, then every ask is one message')} fields={QUICK_FIELDS} values={values} onChange={change} defaultOpen />
-
-      <Group>{t('TRAVEL')}</Group>
-      <Section title={t('HOW YOU TRAVEL')} summary={t('Status, seat, home airport — so a fare search already fits you')} fields={TRAVEL_FIELDS} values={values} onChange={change} />
-
-      {/* Passenger details live behind their own sheet rather than inline with
-          the preference fields above, because they are a different KIND of
-          thing: everything in HOW YOU TRAVEL is a hint that makes an answer
-          better, and this is the legal identity an airline checks at the gate.
-          Mixing them would imply the same casualness applies to both. */}
-      <div
-        {...pressable(() => store.set({ passengerOpen: true }))}
-        className="glass"
-        style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+      <Group>{t('WHAT NUM KNOWS ABOUT YOU')}</Group>
+      {/* ONE CARD, NOT THREE. The quick fields, how you travel and your taste
+          were three open cards under three headers — most of the page. They
+          are one collapsed card now, with the count on the front so somebody
+          can see at a glance whether it is worth opening. */}
+      <Collapsible
+        title={t('TELL NUM ABOUT YOU')}
+        summary={filled ? t('{n} of {total} filled in — every answer saves a question later', { n: filled, total: ALL_FIELDS.length }) : t('Two minutes, then every ask is one message')}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{t('PASSENGER DETAILS')}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('The passport name and date of birth an airline needs before it will issue a ticket. Only used for booking, never shown to the concierge.')}</div>
+        <div style={{ margin: '0 -14px' }}>
+          <Section title={t('THE THINGS NUM WOULD OTHERWISE ASK')} summary={t('Where you stay, how many, when you eat, how you move and pay')} fields={QUICK_FIELDS} values={values} onChange={change} defaultOpen />
+          <Section title={t('HOW YOU TRAVEL')} summary={t('Status, seat, home airport — so a fare search already fits you')} fields={TRAVEL_FIELDS} values={values} onChange={change} />
+          <Section title={t('SO NUM GETS YOU RIGHT')} summary={t('Diet, budget, the kind of night you actually want')} fields={TASTE_FIELDS} values={values} onChange={change} />
         </div>
-        <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
-      </div>
-      <Group>{t('TASTE')}</Group>
-      <Section title={t('SO NUM GETS YOU RIGHT')} summary={t('Diet, budget, the kind of night you actually want')} fields={TASTE_FIELDS} values={values} onChange={change} />
-
+        <div style={{ padding: '6px 0 0' }}>
+          <div
+            {...pressable(save)}
+            style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
+          >
+            {saved ? t('SAVED — NUM KNOWS') : t('SAVE')}
+          </div>
+          {note && <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', marginTop: 8, textAlign: 'center' }}>{note}</div>}
+        </div>
+      </Collapsible>
       {/* what NUM has worked out on its own */}
       <Collapsible
         title={t('WHAT NUM HAS PICKED UP')}
@@ -467,9 +443,9 @@ export default function ProfileView() {
         )}
       </Collapsible>
 
-      <Group>{t('ACCOUNT')}</Group>
-      <ContactCard />
-      <IdentityCard />
+      <Group>{t('YOUR NUM')}</Group>
+      <PeopleCard />
+      <HostCard />
       {/* business tools, only if they have one */}
       <div
         {...pressable(() => store.set({ businessOpen: true }))}
@@ -506,21 +482,74 @@ export default function ProfileView() {
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
       </div>
 
-      <DangerZone />
 
-      <VersionLine />
-
-      <SourcesLine />
-
-      <div style={{ padding: '4px 12px 0' }}>
-        <div
-          {...pressable(save)}
-          style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)' }}
-        >
-          {saved ? 'SAVED — NUM KNOWS' : 'SAVE MY PROFILE'}
+      <Group>{t('SETTINGS')}</Group>
+      <Collapsible title={t('NAME ON THE ACCOUNT')} summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
+        <input
+          style={{ ...field, opacity: me.name_locked ? 0.6 : 1 }}
+          value={name}
+          disabled={me.name_locked}
+          onChange={(e) => { setName(e.target.value); setSaved(false); }}
+          placeholder={t('Your name')}
+        />
+        <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
+          {me.name_locked
+            ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.'
+            : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
         </div>
-        {note && <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', marginTop: 8, textAlign: 'center' }}>{note}</div>}
+      </Collapsible>
+      <ThemePicker />
+      <NotificationsCard />
+      {/* CONNECT YOUR WORLD, moved off TODAY on 18 Sep 2026. What NUM may
+          reach — contacts, photos, calendar, wallet, mail, texts — belongs
+          beside notifications, with the other things you set once. */}
+      <ConnectionsCard />
+      {/* Passenger details live behind their own sheet rather than inline with
+          the preference fields above, because they are a different KIND of
+          thing: everything in HOW YOU TRAVEL is a hint that makes an answer
+          better, and this is the legal identity an airline checks at the gate.
+          Mixing them would imply the same casualness applies to both. */}
+      <div
+        {...pressable(() => store.set({ passengerOpen: true }))}
+        className="glass"
+        style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={kicker}>{t('PASSENGER DETAILS')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('The passport name and date of birth an airline needs before it will issue a ticket. Only used for booking, never shown to the concierge.')}</div>
+        </div>
+        <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
       </div>
+
+      <Group>{t('ACCOUNT & DATA')}</Group>
+      <ContactCard />
+      <IdentityCard />
+      {/* FINDING IT IS THE FEATURE. Deletion has to be discoverable in-app
+          (5.1.1(v)); it lives under its own group header now, which is where
+          a person looking for it looks. One tap opens the question. */}
+      <div
+        {...pressable(() => {
+          store.set({ deleteOpen: true });
+          requestAnimationFrame(() => {
+            document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+        })}
+        role="button"
+        aria-label={t('Delete my account')}
+        className="glass lift"
+        style={{
+          margin: '10px 12px 0', padding: '11px 14px', borderRadius: 'var(--r-md, 12px)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: 10, minHeight: 44,
+          background: 'transparent', border: '1px solid var(--line, rgba(0,0,0,.08))',
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-60)' }}>{t('Delete my account')}</div>
+        <ChevronRightIcon size={16} />
+      </div>
+      <DangerZone />
+      <VersionLine />
+      <SourcesLine />
     </div>
   );
 }

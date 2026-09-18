@@ -110,9 +110,26 @@ describe('the profile reads as a page, not a stack of squares', () => {
   test('the sections are labelled', () => {
     // Eleven identical glass cards in one column, nothing more important than
     // anything else. The cards are fine; the rhythm was missing.
-    for (const g of ['TRAVEL', 'TASTE', 'ACCOUNT']) {
-      assert.ok(PROFILE.includes(`<Group>${g}</Group>`) || PROFILE.includes(`<Group>{t('${g}')}</Group>`), `${g} group heading is missing`);
+    //
+    // 18 Sep 2026: the remodel regrouped the page — the three preference
+    // sections (quick, travel, taste) became ONE collapsed card with a count
+    // on the front, so TRAVEL and TASTE are no longer group headings. The
+    // rhythm the test guards is still there, under the new names.
+    for (const g of ['STARS & CODES', 'WHAT NUM KNOWS ABOUT YOU', 'YOUR NUM', 'SETTINGS', 'ACCOUNT & DATA']) {
+      assert.ok(PROFILE.includes(`<Group>{t('${g}')}</Group>`), `${g} group heading is missing`);
     }
+  });
+
+  test('the preference fields are one collapsed card with a count, not three open ones', () => {
+    assert.match(PROFILE, /title=\{t\('TELL NUM ABOUT YOU'\)\}/);
+    assert.match(PROFILE, /const filled = ALL_FIELDS\.filter/);
+    // All three field sets still render, inside it.
+    for (const f of ['QUICK_FIELDS', 'TRAVEL_FIELDS', 'TASTE_FIELDS']) assert.match(PROFILE, new RegExp(`fields=\\{${f}\\}`));
+  });
+
+  test('the plan is one tap from who you are', () => {
+    assert.match(PROFILE, /getElementById\('your-plan'\)/, 'the PLAN chip must land on the plans card');
+    assert.match(PROFILE, /<div id="your-plan">\s*<MembershipCard \/>/);
   });
 
   test('the delete row is a line, not another big card', () => {
