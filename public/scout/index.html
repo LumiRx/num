@@ -105,7 +105,7 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
       <p class="note" style="margin-top:14px">
         By continuing you agree to the NUM Expert terms, which are recorded against your account with
         the version and date. The rates you get today stay yours even if the programme changes.
-        <a href="/api/scouts/terms" style="color:var(--accent)">Read the terms</a>.
+        <a href="https://app.itsnum.com/api/scouts/terms" style="color:var(--accent)">Read the terms</a>.
       </p>
       <button type="submit" id="go">Agree and get my code</button>
       <div class="err" id="err" hidden></div>
@@ -185,7 +185,12 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
 
 <script>
 (function () {
-  var API = '';
+  // The scout API (/api/scouts, /api/expert-docs) lives on num-app at
+  // app.itsnum.com. This page is served by num-console on itsnum.com, which
+  // has no route for either path, so a same-origin fetch 404s and the enrol
+  // form silently never worked (18 Sep 2026). CORS on num-app already allows
+  // itsnum.com, so the fix is to name the origin.
+  var API = /^app\./.test(location.hostname) ? '' : 'https://app.itsnum.com';
   var $ = function (id) { return document.getElementById(id); };
   var money = function (m) { return '$' + (Math.floor(Number(m) || 0) / 100).toFixed(2); };
 

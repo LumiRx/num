@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 03:28 UTC from 8 entries._
+_Built 2026-09-18 03:46 UTC from 9 entries._
 
 ## Deployed right now
 
@@ -39,6 +39,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 03:28_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).
   _claude, 2026-09-15 16:32_
+- 🟢 **num-expert-signup** — itsnum.com/scout/ enrol form and dashboard were 404ing: page fetched /api/scouts on itsnum.com, which only num-app serves. Now points at app.itsnum.com (CORS already allowed). num-console redeployed 18 Sep. Zero self-enrolled scouts existed before this; Isaiah and Adam were inserted by hand.
+  _claude, 2026-09-18 03:46_
 
 ## Built, not deployed
 
