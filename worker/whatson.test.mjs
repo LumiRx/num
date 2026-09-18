@@ -42,10 +42,12 @@ function fakeDb() {
   const rows = new Map(); const fetches = new Map(); const log = [];
   return {
     rows, fetches, log,
-    prepare(sql) {
-      const b = [];
+    // Like D1, bind() returns a NEW statement: one prepared INSERT is bound
+    // once per headline and batched, so the bindings must not accumulate.
+    prepare(sql, b = []) {
+      const self = this;
       const st = {
-        bind(...a) { b.push(...a); return st; },
+        bind(...a) { return self.prepare(sql, a); },
         async first() { log.push(sql); if (/FROM num_whatson_fetch/.test(sql)) return fetches.get(b[0]) ?? null; return null; },
         async all() {
           log.push(sql);
@@ -113,4 +115,34 @@ test('the request names NUM in its User-Agent', () => {
   const src = readFileSync(new URL('./whatson.mjs', import.meta.url), 'utf8');
   assert.match(src, /'User-Agent': UA/);
   assert.match(src, /const UA = 'NUM\/1\.0 \(\+https:\/\/itsnum\.com/);
+});
+
+test('every source is fetched at once — the sixth feed is not waiting on the first five', async () => {
+  // Each fetch parks until ALL sources have started; sequential code would
+  // deadlock here (the first fetch never resolves), so a result at all is
+  // proof of concurrency, and `peak` says how many were in flight together.
+  const db = fakeDb();
+  let inFlight = 0, peak = 0, started = 0;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const f = async () => {
+    inFlight++; peak = Math.max(peak, inFlight); started++;
+    if (started === SOURCES.length) release();
+    await gate;
+    inFlight--;
+    return new Response(RSS, { status: 200 });
+  };
+  const out = await refreshWhatsOn({ DB: db }, { fetchImpl: f, now: new Date('2026-09-18T12:00:00Z') });
+  assert.equal(peak, SOURCES.length);
+  assert.equal(out.filter((o) => o.ok).length, SOURCES.length);
+  assert.ok(SOURCES.every((s) => db.fetches.has(s.id)), 'every source, Bali included, has a fetch record');
+});
+
+test('headlines land in one batch per source, not one round trip each', async () => {
+  const db = fakeDb();
+  let batches = 0;
+  db.batch = async (stmts) => { batches++; return Promise.all(stmts.map((s) => s.run())); };
+  const out = await refreshSource({ DB: db }, londonist, { fetchImpl: okFetch, now: new Date('2026-09-18T12:00:00Z') });
+  assert.equal(batches, 1);
+  assert.equal(out.stored, 2);
 });

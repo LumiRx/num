@@ -95,11 +95,14 @@ export async function refreshSource(env, src, { fetchImpl = fetch, now = new Dat
     'INSERT INTO num_whatson_fetch (source, fetched_at, ok, note) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(source) DO UPDATE SET fetched_at = excluded.fetched_at, ok = excluded.ok, note = excluded.note',
   ).bind(src.id, now.toISOString(), ok, note).run();
   let stored = 0;
-  for (const it of items) {
-    const r = await env.DB.prepare(
+  if (items.length) {
+    // One round trip per source, not one per headline (thirty for Paris).
+    const ins = env.DB.prepare(
       'INSERT OR IGNORE INTO num_whatson (id, dest, source, title, url, published_at, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)',
-    ).bind(hid(it.url), src.dest, src.id, it.title, it.url, it.published, now.toISOString()).run();
-    stored += Number(r?.meta?.changes ?? 0);
+    );
+    const stmts = items.map((it) => ins.bind(hid(it.url), src.dest, src.id, it.title, it.url, it.published, now.toISOString()));
+    const rs = typeof env.DB.batch === 'function' ? await env.DB.batch(stmts) : await Promise.all(stmts.map((s) => s.run()));
+    for (const r of rs) stored += Number(r?.meta?.changes ?? 0);
   }
   await env.DB.prepare("DELETE FROM num_whatson WHERE source = ?1 AND fetched_at < datetime('now', ?2)").bind(src.id, `-${KEEP_DAYS} days`).run();
   return { source: src.id, ok: !!ok, note, fetched: items.length, stored };
@@ -108,12 +111,14 @@ export async function refreshSource(env, src, { fetchImpl = fetch, now = new Dat
 /** The cron entry: every source that is due and not switched off. */
 export async function refreshWhatsOn(env, opts = {}) {
   const skip = off(env);
-  const out = [];
-  for (const src of SOURCES) {
-    if (skip.has(src.id)) { out.push({ source: src.id, skipped: 'WHATSON_OFF' }); continue; }
-    out.push(await refreshSource(env, src, opts));
-  }
-  return out;
+  // All sources at once, not one after another. The first production tick
+  // (18 Sep 2026) took 26 s for five publishers in sequence and the sixth,
+  // Bali, never got a turn before the isolate went. Six feeds side by side
+  // finish in the time of the slowest one; refreshSource never throws, so
+  // one slow publisher cannot hold the rest hostage either.
+  return Promise.all(SOURCES.map((src) => (
+    skip.has(src.id) ? { source: src.id, skipped: 'WHATSON_OFF' } : refreshSource(env, src, opts)
+  )));
 }
 
 /** What TONIGHT shows for a destination: the freshest headlines, credited. Throws on a failed read. */
