@@ -58,7 +58,15 @@ export interface Feature {
   honest?: string;
 }
 
-const when = (v: string) => (v ? ` at ${v}` : '');
+// "at 8pm" and "at 6:30am tomorrow" read right; "at this afternoon" does not,
+// and the audit on 18 Sep 2026 sent exactly that to the model. Only a value
+// that STARTS with a clock time takes "at"; everything else is already a
+// phrase ("this afternoon", "Saturday 10am", "tonight").
+const when = (v: string) => {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  return /^\d{1,2}(:\d{2})?\s*(am|pm)?\b/i.test(s) ? ` at ${s}` : ` ${s}`;
+};
 const on = (v: string) => (v ? ` on ${v}` : '');
 
 export const FEATURES: readonly Feature[] = [
@@ -99,16 +107,16 @@ export const FEATURES: readonly Feature[] = [
     compose: () => 'What’s on tonight near me? Events, food and bars — rank them and tell me where you’d start.',
   },
   {
-    id: 'charter', kicker: 'PRIVATE', title: 'Plane, car or boat', cover: '/covers/charter.jpg', cta: 'Charter it',
-    promise: 'Private jets, chauffeured cars and boats through NUM’s host network. You see the price before anything is held.',
+    id: 'charter', kicker: 'PRIVATE', title: 'Plane, car or boat', cover: '/covers/charter.jpg', cta: 'Ask a host',
+    promise: 'Tell NUM what you need and it goes to the host network. Nothing is priced or held until a host comes back.',
     lanes: [{ id: 'plane', label: 'Plane' }, { id: 'car', label: 'Car' }, { id: 'boat', label: 'Boat' }],
     fields: [
       { id: 'route', label: 'Where to', placeholder: 'Phuket → Bangkok, or a day out of Phuket' },
       { id: 'when', label: 'When', placeholder: 'Saturday 10am' },
       { id: 'people', label: 'How many', placeholder: '4', type: 'number' },
     ],
-    compose: (v, lane) => `I’d like to charter a private ${lane ?? 'plane, car or boat'}${v.people ? ` for ${v.people}` : ''}: ${v.route}${when(v.when)}. What can you arrange, and what would it cost?`,
-    honest: 'Charters go through NUM’s host network. NUM tells you the price before anything is held.',
+    compose: (v, lane) => `I’d like to charter a private ${lane ?? 'plane, car or boat'}${v.people ? ` for ${v.people}` : ''}: ${v.route}${when(v.when)}. Can a host do this, and what would you need from me?`,
+    honest: 'No host has listed a plane, car or boat yet. NUM takes the request, puts it to the network, and comes back — it will not quote a price it cannot stand behind.',
   },
   {
     id: 'rides', kicker: 'RIDES', title: 'Get a car', cover: '/covers/rides.jpg', cta: 'Get a car',
@@ -155,9 +163,19 @@ export const FEATURES: readonly Feature[] = [
     compose: (v, lane) => `Find me a ${lane ?? 'massage'}${v.where ? ` near ${v.where}` : ' nearby'}${when(v.when)}.${v.notes ? ` ${v.notes}.` : ''} Real places only.`,
   },
   {
-    id: 'events', kicker: 'EVENTS', title: 'Tickets & events', cover: '/covers/events.jpg', cta: 'See events',
-    promise: 'Concerts, matches, club nights — what’s on while you’re here, and tickets that are real.',
-    opens: () => store.set({ featureOpen: null, eventOpen: true }),
+    // 18 Sep 2026: this tile used to open EventSheet, which is the HOST's side
+    // — "host one, invite by text, watch the RSVPs land". A guest who tapped a
+    // tile promising concerts and matches got a form asking what they were
+    // hosting. Tickets live in the thread (Ticketmaster, worker/events.tm.mjs),
+    // so the ask goes there and hosting keeps its own door below.
+    id: 'events', kicker: 'EVENTS', title: 'Tickets & events', cover: '/covers/events.jpg', cta: 'See what’s on',
+    promise: 'Concerts, matches, club nights — what’s on while you’re here, with a real way to get in.',
+    fields: [
+      { id: 'when', label: 'When', placeholder: 'this weekend', half: true },
+      { id: 'what', label: 'What sort (optional)', placeholder: 'live music, football, a club night', optional: true, half: true },
+    ],
+    compose: (v) => `What’s on ${v.when || 'while I’m here'}${v.what ? ` — ${v.what}` : ''}? Real events with a way to get tickets, and which one you’d go to.`,
+    secondary: { label: 'Host your own event', open: () => store.set({ featureOpen: null, eventOpen: true }) },
   },
   {
     id: 'plans', kicker: 'PLANS', title: 'Plan with friends', cover: '/covers/plans.jpg', cta: 'Open plans',

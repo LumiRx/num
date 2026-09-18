@@ -89,6 +89,55 @@ describe('the registry', () => {
     }
   });
 
+  // 18 Sep 2026: the audit sent "Find me a massage near Sukhumvit at this
+  // afternoon" to the model. It answered anyway, which is how a sentence like
+  // that survives — a person reading it would have caught it at once.
+  test('every composed ask is a sentence a person would have written', () => {
+    const FILL = {
+      flights: { from: 'BKK', to: 'NRT', date: '2026-10-03', ret: '' },
+      stays: { where: 'Sukhumvit', checkin: '2026-10-03', nights: '3' },
+      tables: { what: 'quiet Thai', when: 'tomorrow 8pm', people: '2' },
+      charter: { route: 'Bangkok to Phuket', when: 'Saturday 10am', people: '4' },
+      rides: { to: 'the airport', when: '6:30am tomorrow' },
+      pickup: { what: 'two coffees', from: '', when: '20 minutes' },
+      hire: { what: 'collect a parcel', where: 'Sathorn', when: 'before 5pm' },
+      wellness: { where: 'Sukhumvit', when: 'this afternoon', notes: '' },
+    };
+    for (const f of FEATURES.filter((x) => x.compose)) {
+      for (const lane of f.lanes ? f.lanes.map((l) => l.id) : [null]) {
+        const ask = f.compose(FILL[f.id] ?? {}, lane);
+        assert.doesNotMatch(ask, / at (this|that|tomorrow|tonight|today|next|Saturday|Sunday|Monday)\b/i,
+          `${f.id}: "${ask}" — "at" belongs before a clock time, not before a phrase`);
+        assert.doesNotMatch(ask, /  |\s[.,]|\.\./, `${f.id}: "${ask}" — spacing or punctuation`);
+        assert.doesNotMatch(ask, /undefined|null|NaN/, `${f.id}: "${ask}" — a missing value reached the ask`);
+        assert.match(ask, /[.?]$/, `${f.id}: "${ask}" — asks end in a full stop or a question mark`);
+      }
+    }
+  });
+
+  // Checked live 18 Sep 2026: /api/host/offerable answers, num_assets is empty,
+  // and the concierge says charter "is outside what I can touch right now" —
+  // correctly. So the tile may promise a RELAY, never inventory or a price.
+  test('charter promises a relay, not a plane and not a price', () => {
+    const f = featureById('charter');
+    const words = `${f.promise} ${f.honest ?? ''} ${f.compose({ route: 'A to B', when: '', people: '' }, 'plane')}`;
+    assert.match(f.promise + ' ' + f.honest, /host network/i, 'say where the request goes');
+    assert.doesNotMatch(words, /you see the price|we'll price|price before/i, 'no price is promised');
+    assert.doesNotMatch(words, /\bour (fleet|jets|boats|cars)\b|available now|in stock/i, 'no inventory is implied');
+    assert.doesNotMatch(f.compose({ route: 'A to B', when: '', people: '' }, 'plane'), /what would it cost/i,
+      'asking the model for a cost invites a number nothing backs');
+  });
+
+  // 18 Sep 2026: the EVENTS tile promised concerts and matches and opened the
+  // host-an-event form. A tile's words and its door have to agree.
+  test('events asks what is on, and keeps hosting as its own door', () => {
+    const f = featureById('events');
+    assert.ok(f.compose, 'tapping Events must ask NUM what is on, not open the host form');
+    assert.equal(f.opens, undefined, 'the tile itself must not open EventSheet');
+    assert.match(f.compose({ when: 'this weekend', what: 'live music' }, null), /what\u2019s on this weekend/i);
+    assert.match(f.secondary?.label ?? '', /host/i, 'hosting keeps a door on the page');
+  });
+
   test('a feature with its own sheet opens that sheet; the rest open their page', () => {
     openFeature('wallet');
     assert.equal(store.get().walletOpen, true);
