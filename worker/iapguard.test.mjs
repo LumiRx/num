@@ -35,12 +35,19 @@ test('the gate is one function, not a second opinion', () => {
     'the platform gate changed shape — re-check both the wallet and the membership card');
   const card = src('components/app/MembershipCard.tsx');
   assert.match(card, /canOfferSubscription/, 'the membership card lost its gate');
-  // Both sale surfaces in the card — the teaser and the paid rows — must be
-  // behind it. Gating only one leaves a live "SEE WHAT MORE ROOM COSTS" on iOS.
+  // Every sale surface in the card must be behind it. On 18 Sep 2026 the
+  // folded teaser ("SEE WHAT MORE ROOM COSTS") was removed and the ladder put
+  // on screen, so there is now ONE block rather than a teaser plus rows —
+  // which is a stronger shape, not a weaker one: there is only one condition
+  // left to get wrong. The headline that names the upgrade is gated too,
+  // because on iOS there is nothing to upgrade to.
   assert.match(card, /current === 'free' && canOfferSubscription\(\)/,
-    'the upgrade teaser renders on iOS');
-  assert.match(card, /\(open \|\| current !== 'free'\) && canOfferSubscription\(\)/,
-    'the priced tier rows render on iOS');
+    'the upgrade headline renders on iOS');
+  const gate = card.indexOf('{canOfferSubscription() && (');
+  assert.ok(gate > 0, 'the priced tier rows lost their gate');
+  for (const sale of ['subscribe(tr.id)', 'payWithStars(tr.id)', 'money(tr.price_cents)']) {
+    assert.ok(card.indexOf(sale) > gate, `${sale} renders outside the iOS gate`);
+  }
 });
 
 test('what we told App Review is what the code does', () => {

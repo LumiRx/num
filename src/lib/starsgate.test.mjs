@@ -17,7 +17,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const SRC = readFileSync(new URL('../components/app/MembershipCard.tsx', import.meta.url), 'utf8');
-const code = SRC.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l)).join('\n');
+// Comments come out WHOLE, not line by line: this file explains its own
+// history in prose — the link that used to hide the ladder, the badge wording
+// we refuse to use — and a per-line filter keeps the middle lines of a block,
+// so a test for "that string is gone" would match the note saying it is gone.
+const code = SRC
+  .replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '')
+  .split('\n')
+  .filter((l) => !/^\s*\/\//.test(l))
+  .join('\n');
 
 describe('the iOS gate', () => {
   test('the Star price is never even FETCHED unless selling is allowed here', () => {
@@ -26,9 +34,27 @@ describe('the iOS gate', () => {
   });
 
   test('the Stars button lives inside the same block as the card button', () => {
-    const gate = code.indexOf('(open || current !== \'free\') && canOfferSubscription()');
+    // 18 Sep 2026: the ladder stopped being folded behind "SEE WHAT MORE ROOM
+    // COSTS" — nobody buys what they cannot see — so the gate is now the
+    // whole block's only condition rather than `open || not free`. The
+    // promise being kept is unchanged: both sale buttons sit inside it.
+    const gate = code.indexOf('{canOfferSubscription() && (');
     assert.ok(gate > 0, 'the pricing ladder gate is still there');
+    assert.ok(code.indexOf('subscribe(tr.id)') > gate, 'the card button is inside it');
     assert.ok(code.search(/payWithStars\((?:t|tr)\.id\)/) > gate, 'the Stars button is inside it');
+  });
+
+  test('the ladder is on screen, not folded behind a link', () => {
+    // The regression this guards is a product one: a pricing wall that opens
+    // as a grey link reading "see what more room costs" sells nothing.
+    assert.doesNotMatch(code, /SEE WHAT MORE ROOM COSTS/);
+    assert.match(code, /badgeOf\(tr\)/, 'each tier carries its badge');
+  });
+
+  test('no invented social proof on a badge', () => {
+    // "Most popular" on a plan that has barely sold is a small lie, and this
+    // product does not print one.
+    assert.doesNotMatch(code, /most popular|most picked|recommended|best value/i);
   });
 
   test('every purchase path in this file is gated — no unguarded sale exists', () => {

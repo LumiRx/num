@@ -59,7 +59,30 @@ export const mayAsk = (): boolean => canSend(store.get().me);
  */
 export function holdAndAsk(text: string): void {
   const held = String(text ?? '').trim();
+  dropKeyboard();
   store.set({ pendingAsk: held || null, inviteOpen: {}, threadOpen: true });
+}
+
+/**
+ * Let go of the focused field before a sheet opens over it.
+ *
+ * Not politeness — arithmetic. App.tsx publishes the keyboard height as
+ * `--kb` and the shell absorbs it, so every sheet's maxHeight is a percentage
+ * of what is left ABOVE the keyboard (see sheetBase in lib/derive.ts). Open a
+ * sheet while a text field still holds focus and that ceiling is computed
+ * against a shrunken shell: on 18 Sep 2026 the sign-in sheet opened from the
+ * composer and rendered with no visible height at all, so pressing Enter
+ * looked like nothing happening while TAPPING send — which blurs the field on
+ * its way down — worked every time.
+ *
+ * Nobody can type in the composer while a sheet covers it, so there is
+ * nothing to lose by dropping focus first.
+ */
+export function dropKeyboard(): void {
+  try {
+    const el = document.activeElement as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) el.blur();
+  } catch { /* no document: tests, SSR */ }
 }
 
 /** Whatever was held, once. Returns null when there is nothing waiting. */

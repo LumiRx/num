@@ -73,13 +73,29 @@ function highlights(t: Tier, free: Tier | undefined): string[] {
   return out;
 }
 
+/**
+ * The badge on a tier card.
+ *
+ * It names what the tier IS. It is deliberately not "Most popular" or
+ * "Recommended": we would be inventing social proof for plans that have
+ * barely been sold, and an invented number is the one thing this product
+ * cannot afford to print. Derived from the ladder's own shape — the top paid
+ * tier is the one with no ceilings — so adding a middle tier tomorrow needs
+ * no new copy here.
+ */
+function badgeOf(tr: Tier): { label: string; bg: string; fg: string } {
+  const top = tr.entitlements?.plans_max === null || tr.entitlements?.deep_research_monthly === null;
+  return top
+    ? { label: 'NO CEILINGS', bg: 'var(--grad-accent)', fg: '#fff' }
+    : { label: 'MORE ROOM', bg: 'var(--field-bg)', fg: 'var(--color-accent-700)' };
+}
+
 export default function MembershipCard() {
   const me = useApp((s) => s.me);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
   const [mine, setMine] = useState<{ tier: string; used?: Record<string, number> } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
   const [wallet, setWallet] = useState<StarWallet | null>(null);
 
   useEffect(() => {
@@ -154,16 +170,29 @@ export default function MembershipCard() {
 
   return (
     <div className="glass" style={card}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div style={kicker}>{t('YOUR PLAN')}</div>
-        <div style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: current === 'free' ? 'var(--ink-60)' : 'var(--color-accent)' }}>
-          {currentTier?.name ?? 'NUM'}
+      {/* A SELL, NOT A FILING CABINET (18 Sep 2026).
+          This opened as "YOUR PLAN · Num" over a paragraph, with the prices
+          folded behind a grey link reading SEE WHAT MORE ROOM COSTS. Nobody
+          buys what they cannot see: the two plans and their prices are on
+          screen now, each with its own badge, and the line about the free
+          tier being real sits under them where it reassures instead of
+          arguing you out of upgrading. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={kicker}>{current === 'free' ? t('UPGRADE') : t('YOUR PLAN')}</div>
+        <div style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '3px 8px', borderRadius: 999, background: current === 'free' ? 'var(--field-bg)' : 'var(--grad-accent)', color: current === 'free' ? 'var(--ink-60)' : '#fff', border: current === 'free' ? '1px solid var(--ink-12)' : 'none' }}>
+          {(currentTier?.name ?? 'Num').toUpperCase()}
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>
+      {current === 'free' && canOfferSubscription() && (
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 17, lineHeight: 1.2, marginTop: 7 }}>
+          {t('More room, whenever you want it')}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
         {current === 'free'
-          ? 'The concierge, your plans, your people and live fare search are yours — free, no trial, no countdown. Paying only lifts the ceilings.'
+          ? t('Everything you use today stays free. A plan lifts the ceilings — more plans at once, more deep research, and new things before anyone else.')
           : currentTier?.blurb}
       </div>
 
@@ -194,16 +223,7 @@ export default function MembershipCard() {
           A member who already subscribed on the web still sees their tier —
           `current` is read from the account, and the paid rows below are the
           only part that is a SALE. */}
-      {!open && current === 'free' && canOfferSubscription() && (
-        <div
-          {...pressable(() => setOpen(true))}
-          style={{ cursor: 'pointer', marginTop: 12, fontSize: 11, fontWeight: 800, letterSpacing: '.07em', color: 'var(--color-accent-700)' }}
-        >
-          SEE WHAT MORE ROOM COSTS
-        </div>
-      )}
-
-      {(open || current !== 'free') && canOfferSubscription() && (
+      {canOfferSubscription() && (
         <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
           {paid.map((tr) => {
             const on = tr.id === current;
@@ -217,9 +237,20 @@ export default function MembershipCard() {
                   background: 'var(--field-bg)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15 }}>{tr.name}</div>
-                  <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800 }}>{money(tr.price_cents)}<span style={{ fontSize: 10, color: 'var(--ink-40)', fontWeight: 600 }}>/mo</span></div>
+                {/* THE BADGE. A word for what the tier IS — never a claim
+                    about how many people chose it. "Most popular" on a plan
+                    nobody has bought yet is the kind of small lie that costs
+                    more than it earns, and NUM does not print one. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '.1em', padding: '3px 8px', borderRadius: 999,
+                    background: badgeOf(tr).bg, color: badgeOf(tr).fg, flex: 'none',
+                  }}>{t(badgeOf(tr).label)}</span>
+                  {on && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', color: 'var(--color-accent)' }}>{t('ACTIVE')}</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 7 }}>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 16 }}>{tr.name}</div>
+                  <div style={{ marginLeft: 'auto', fontFamily: 'var(--font-heading)', fontSize: 18, fontWeight: 800 }}>{money(tr.price_cents)}<span style={{ fontSize: 10, color: 'var(--ink-40)', fontWeight: 600 }}>/mo</span></div>
                 </div>
                 <div style={{ marginTop: 7, display: 'grid', gap: 4 }}>
                   {lines.map((l) => (

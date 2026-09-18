@@ -484,7 +484,7 @@ export default function InviteSheet() {
           <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 5, lineHeight: 1.55 }}>
             {sending
               ? 'Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.'
-              : 'So I know what to call you. Your mobile is how friends find you here, and how I reach you if a booking moves — never shown to anyone you haven’t connected with.'}
+              : 'So I know what to call you, and can reach you when a booking moves. Never shown to anyone you haven’t connected with.'}
           </div>
           {/* SIGN IN WITH APPLE, ON THE FIRST SCREEN — not buried in Profile.
 

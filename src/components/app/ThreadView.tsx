@@ -23,7 +23,7 @@ import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 import { T, t, currentLang } from '../../lib/i18n';
-import { canSend } from '../../lib/gate';
+import { canSend, dropKeyboard } from '../../lib/gate';
 
 /** A fare card action: tall enough for a thumb, calm enough to sit three abreast. */
 const fareBtn: React.CSSProperties = {
@@ -619,7 +619,7 @@ export default function ThreadView() {
     // came back. Leaving it in the box, behind the sheet they are about to
     // fill in, is the version that needs no trust — and one more tap sends
     // exactly what they can still see.
-    if (!canSend(store.get().me)) { store.set({ inviteOpen: {} }); return; }
+    if (!canSend(store.get().me)) { dropKeyboard(); store.set({ inviteOpen: {} }); return; }
     setDraft('');
     void askNum(text);
   };
