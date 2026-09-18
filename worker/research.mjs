@@ -549,3 +549,47 @@ export async function handleResearch(request, env, url, ctx) {
   if (request.method === 'POST') return await startResearch(request, env, ctx);
   return await readResearch(env, url);
 }
+
+/**
+ * ORPHANED RUNS, SWEPT.
+ *
+ * 18 Sep 2026, first hour in production: a run sat at `running` for four
+ * minutes and then for ever. The work happens under `ctx.waitUntil`, and
+ * waitUntil is a request to finish, not a promise — the isolate can be
+ * recycled first, and when it is, nothing is left to write a result or an
+ * error. The row simply stops.
+ *
+ * Nobody was charged (countUse is the last thing a successful run does), so
+ * the money is right. But a guest watching a spinner that will never stop is
+ * a worse failure than an honest no, and there was no path by which that row
+ * could ever change state again.
+ *
+ * So the five-minute cron closes them. The cutoff is deliberately well past
+ * the slowest real run: the writing pass alone may take 55s (WRITE_TIMEOUT_MS)
+ * and the whole pipeline has been measured at 14–17s, so ten minutes is
+ * roughly ten times the worst case — long enough that this can never kill
+ * work still in flight, short enough that nobody waits for a lost cause.
+ *
+ * The message says what happened and what it cost, because "failed" on its
+ * own invites the guess that the allowance is gone.
+ */
+export const ORPHAN_AFTER_MINUTES = 10;
+
+export async function sweepStuck(env) {
+  if (!env?.DB) return { swept: 0 };
+  await ensure(env);
+  const r = await env.DB.prepare(
+    `UPDATE num_research
+        SET state = 'failed',
+            error = 'the run stopped before it finished — nothing was charged',
+            finished_at = datetime('now')
+      WHERE state IN ('queued','running')
+        AND created_at < datetime('now', ?1)`,
+  ).bind(`-${ORPHAN_AFTER_MINUTES} minutes`).run().catch((e) => {
+    console.warn('[research] sweep failed', e?.message ?? e);
+    return null;
+  });
+  const swept = Number(r?.meta?.changes ?? 0);
+  if (swept) console.log(`[research] swept ${swept} orphaned run(s)`);
+  return { swept };
+}

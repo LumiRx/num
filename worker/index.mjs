@@ -3052,6 +3052,17 @@ export default {
   // record the verdict, and shout ONLY when the state changes.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
+    // Deep research runs under waitUntil, which is a request to finish rather
+    // than a promise: if the isolate is recycled first, the row stops at
+    // `running` and nothing is left alive to write a result. Seen in the first
+    // hour in production. Nobody is charged for one — countUse is the last
+    // step of a successful run — but a spinner that never stops is worse than
+    // an honest no, so the ten-minute-old ones are closed here.
+    ctx.waitUntil(
+      import('./research.mjs')
+        .then((m) => m.sweepStuck(env))
+        .catch((e) => console.error('[research-sweep]', e?.message ?? e)),
+    );
     // Watched flights whose next look is due. One AeroDataBox call per flight
     // per window, shared by every watcher; pushes only what changed.
     ctx.waitUntil(

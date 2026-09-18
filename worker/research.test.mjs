@@ -9,7 +9,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { verify, evidenceBlock, assertFreeFloor, LIMITS, brainFor, proseBrains, PROSE_KINDS } from './research.mjs';
+import { verify, evidenceBlock, assertFreeFloor, LIMITS, brainFor, proseBrains, PROSE_KINDS, ORPHAN_AFTER_MINUTES } from './research.mjs';
 import { tiers } from './membership.mjs';
 
 const SRC = readFileSync(new URL('./research.mjs', import.meta.url), 'utf8');
@@ -202,5 +202,31 @@ describe('the shape of a run', () => {
   test('every bound is a number in one place, not scattered through the prompts', () => {
     assert.equal(LIMITS.maxQuestions, 4);
     assert.ok(LIMITS.candidatesEach >= 10 && LIMITS.briefChars >= 300);
+  });
+});
+
+describe('a run that stops is closed, not left spinning', () => {
+  test('the sweeper only touches runs that are unfinished AND old', () => {
+    assert.match(SRC, /state IN \('queued','running'\)/, 'only unfinished runs');
+    assert.match(SRC, /created_at < datetime\('now', \?1\)/, 'and only old ones');
+    assert.equal(ORPHAN_AFTER_MINUTES, 10);
+    // The slowest thing a live run does is the writing pass, and that is
+    // capped at 55s. Ten minutes is an order of magnitude past it, so the
+    // sweeper can never kill work that is still in flight.
+    assert.ok(ORPHAN_AFTER_MINUTES * 60_000 > 55_000 * 8, 'the cutoff is far past the slowest real run');
+  });
+
+  test('it says nothing was charged, because nothing was', () => {
+    // "failed" alone invites the guess that the allowance is gone. countUse is
+    // the last step of a successful run, so an orphan never reached it.
+    const fn = SRC.slice(SRC.indexOf('export async function sweepStuck'));
+    assert.match(fn, /nothing was charged/);
+    assert.ok(!/countUse/.test(fn), 'and the sweeper itself never touches the counter');
+  });
+
+  test('the cron actually calls it — a sweeper nothing runs is a comment', () => {
+    const INDEX = readFileSync(new URL('./index.mjs', import.meta.url), 'utf8');
+    const sched = INDEX.slice(INDEX.indexOf('async scheduled(event, env, ctx)'), INDEX.indexOf('async scheduled(event, env, ctx)') + 2000);
+    assert.match(sched, /m\.sweepStuck\(env\)/, 'the 5-minute cron sweeps stuck research runs');
   });
 });

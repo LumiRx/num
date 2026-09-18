@@ -10,6 +10,7 @@ import { canOfferSubscription } from '../../lib/native';
 import { TabStarter } from './TabSheet';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
+import MembershipCard from './MembershipCard';
 import { apiUrl } from '../../lib/apibase';
 import { t } from '../../lib/i18n';
 
@@ -111,6 +112,32 @@ export default function WalletSheet() {
         {/* Said plainly, where the money decision happens. */}
         <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--color-neutral-500)', lineHeight: 1.5 }}>{t('Stars you buy spend inside NUM — errands, tabs, bookings. Stars you')}{' '}<strong>{t('earn')}</strong>{' '}{t('can be cashed out to 5arz.')}</div>
       </div>
+      )}
+      {/* THE PLANS, beside the packs.
+          A wallet is the one screen somebody opens having already decided to
+          spend, and until 18 Sep 2026 the only pricing ladder lived in
+          Profile — two taps away from here.
+
+          RENDERED, NOT REBUILT. MembershipCard owns the tiers, the
+          upgrade-with-Stars path and, most importantly, the
+          canOfferSubscription() gate. Rebuilding the ladder here would have
+          been a second notion of "may we sell on this platform", which is
+          exactly the mistake the packs comment above warns about: on 15 Aug
+          the gate existed and nothing called it, and the whole ladder
+          rendered on iOS after we had told App Review it could not. Reuse
+          keeps that promise for free — the card shows the member's current
+          tier everywhere, and the paid rows only where selling is allowed.
+
+          MOUNTED ONLY WHILE OPEN. This sheet never unmounts — it hides with
+          `visibility: hidden` and a transform (see the root above), so an
+          unguarded MembershipCard would fetch tiers, the member's plan and
+          the Stars wallet on EVERY app load for the nine in ten launches
+          where nobody opens the wallet. Three requests against a rate
+          limiter that already answers 429 under light load. */}
+      {open && (
+        <div style={{ padding: '2px 16px 12px', borderBottom: '1px solid var(--ink-08)' }}>
+          <MembershipCard />
+        </div>
       )}
       {/* EARNED — the money side. Shown only when there is something to show,
           so it never nags a traveller who has never run an errand. */}
