@@ -25,6 +25,7 @@ import MembershipCard from './MembershipCard';
 import DangerZone from './DangerZone';
 import IdentityCard from './IdentityCard';
 import ContactCard from './ContactCard';
+import ConnectionsCard from './ConnectionsCard';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
@@ -407,6 +408,11 @@ export default function ProfileView() {
       <ThemePicker />
 
       <NotificationsCard />
+
+      {/* CONNECT YOUR WORLD, moved off TODAY on 18 Sep 2026. What NUM may
+          reach — contacts, photos, calendar, wallet, mail, texts — belongs
+          beside notifications, with the other things you set once. */}
+      <ConnectionsCard />
 
       <Group>{t('ORDER FASTER')}</Group>
       <Section title={t('THE THINGS NUM WOULD OTHERWISE ASK')} summary={t('Where you stay, how many, when you eat, how you move and pay — two minutes, then every ask is one message')} fields={QUICK_FIELDS} values={values} onChange={change} defaultOpen />

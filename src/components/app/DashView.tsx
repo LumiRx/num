@@ -1,7 +1,12 @@
 // DASH — the one screen that answers "what's happening, and what needs me?"
-// without opening anything. Next up, the week at a glance, the group, the
-// trip check, and the switches for the outside data the user chooses to plug
-// in. Everything here is one tap from the thing itself.
+// without opening anything. The week at a glance first, then what is next,
+// what is on tonight, who is waiting on you and the trip check. Everything
+// here is one tap from the thing itself.
+//
+// What NUM may reach — contacts, photos, calendar, wallet, mail, texts — used
+// to sit at the bottom of this screen. Nobody grants those twice, so from
+// 18 Sep 2026 they live in Settings (ConnectionsCard.tsx) and this screen is
+// only ever about today.
 import { useEffect, useState } from 'react';
 import FeatureGrid from './FeatureGrid';
 import { store, useApp } from '../../lib/store';
@@ -13,14 +18,13 @@ import { tripCheck } from '../../lib/prefs';
 import { askNum } from '../../lib/concierge';
 import { listEvents } from '../../lib/events';
 import { refreshRequests, respond } from '../../lib/requests';
-import { toggleConnection, contactsSupported, sendAndShare } from '../../lib/connect';
 import { directionsUrl, nextWithPlace, preferredMaps, trafficUrl } from '../../lib/maps';
 import { Scene } from '../../lib/scenes';
 import {
-  BellIcon, CalendarIcon, CameraIcon, CheckIcon, ChevronRightIcon, MessageIcon,
-  SparklesIcon, StarIcon, UsersIcon, WalletIcon,
+  BellIcon, CalendarIcon, CheckIcon, ChevronRightIcon,
+  SparklesIcon, StarIcon, UsersIcon,
 } from '../../lib/icons';
-import type { Booking, Connections, WidgetId } from '../../lib/types';
+import type { Booking, WidgetId } from '../../lib/types';
 import { guestMessage } from '../../lib/saferr';
 import { T, t } from '../../lib/i18n';
 
@@ -31,23 +35,6 @@ const h: React.CSSProperties = { fontFamily: 'var(--font-heading)', fontWeight: 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
 
 /** Shared collapsible shell — the dash is long, and a long dash is a scroll. */
-function Collapsible({ title, summary, defaultOpen = false, children }: {
-  title: string; summary?: string; defaultOpen?: boolean; children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="glass" style={card}>
-      <div {...pressable(() => setOpen((v) => !v))} aria-expanded={open} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{title}</div>
-          {summary && <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 3, lineHeight: 1.45 }}>{summary}</div>}
-        </div>
-        <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)', flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} />
-      </div>
-      {open && <div style={{ marginTop: 12 }}>{children}</div>}
-    </div>
-  );
-}
 
 /**
  * REQUESTS — what friends are waiting on. A connection request, a plan that
@@ -367,87 +354,6 @@ function TripCheck() {
   );
 }
 
-const CONNECTIONS: Array<{ key: keyof Connections; label: string; why: string; icon: JSX.Element }> = [
-  { key: 'contacts', label: T('Contacts'), why: T('so “invite Sam” finds the right Sam'), icon: <UsersIcon size={14} /> },
-  { key: 'photos', label: T('Photos'), why: T('files your trip shots to the right night'), icon: <CameraIcon size={14} /> },
-  { key: 'calendar', label: T('Calendar'), why: T('NUM books around what’s already there'), icon: <CalendarIcon size={14} /> },
-  { key: 'crypto', label: T('Crypto wallet'), why: T('balances on this screen, settle bills in USDC'), icon: <WalletIcon size={14} /> },
-  { key: 'email', label: T('Email'), why: T('pulls confirmations in so you never forward one'), icon: <MessageIcon size={14} /> },
-  { key: 'texts', label: T('Texts'), why: T('the venue’s “running late?” reaches NUM too'), icon: <BellIcon size={14} /> },
-];
-
-/**
- * Connections. Each one is off, named, and says what it buys — a permission
- * screen that explains itself is the difference between a grant and a decline.
- * Flipping a switch performs the REAL connection right then (src/lib/connect):
- * pickers open as sheets over the app, addresses are minted, numbers fetched —
- * the user never leaves. iOS has no contacts API at all, so there the contacts
- * row becomes Send & Share, which is the honest version of the same promise.
- */
-function ConnectionsCard() {
-  const conn = useApp((s) => s.connections);
-  const detail = useApp((s) => s.connDetail);
-  const on = Object.values(conn).filter(Boolean).length;
-  return (
-    <Collapsible
-      title={t('CONNECT YOUR WORLD')}
-      summary={on ? `${on} of ${CONNECTIONS.length} connected` : 'All off — NUM asks only when it needs one'}
-    >
-      <div>
-        {CONNECTIONS.map((c) => {
-          // No picker on this platform → the row keeps its promise another way.
-          if (c.key === 'contacts' && !contactsSupported()) {
-            return (
-              <div
-                key="share"
-                {...pressable(() => { void sendAndShare(); })}
-                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}
-              >
-                <span style={{ width: 26, height: 26, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--grad-accent)', color: '#fff' }}>
-                  {c.icon}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>Send &amp; Share</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>{t('invite anyone from the share sheet — you stay right here')}</div>
-                </div>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-60)' }}>{t('OPEN')}</span>
-              </div>
-            );
-          }
-          const on = conn[c.key];
-          return (
-            <div
-              key={c.key}
-              {...pressable(() => toggleConnection(c.key), 'switch')}
-              aria-checked={on}
-              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}
-            >
-              <span style={{ width: 26, height: 26, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: on ? 'var(--grad-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink-60)', border: on ? 'none' : '1px solid var(--ink-08)' }}>
-                {c.icon}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t(c.label)}</div>
-                <div style={{ fontSize: 10.5, color: on && detail[c.key] ? 'var(--ink-80, var(--ink-60))' : 'var(--ink-60)', overflowWrap: 'anywhere' }}>
-                  {(on && detail[c.key]) || t(c.why)}
-                </div>
-              </div>
-              <span
-                style={{
-                  width: 38, height: 22, borderRadius: 999, flex: 'none', padding: 2,
-                  background: on ? 'var(--grad-accent)' : 'var(--ink-12)', transition: 'background .2s',
-                  display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </Collapsible>
-  );
-}
-
 export default function DashView() {
   const me = useApp((s) => s.me);
   const widgets = useApp((s) => s.widgets);
@@ -471,7 +377,10 @@ export default function DashView() {
     group: () => <GroupCard />,
     events: () => <EventsCard />,
     wallet: () => <WalletCard />,
-    connections: () => <ConnectionsCard />,
+    // CONNECT YOUR WORLD lives in Settings now (ConnectionsCard.tsx). The id
+    // stays in the map because the server still sends `widgets` and an
+    // unknown key would be a crash; here it simply costs nothing.
+    connections: () => null,
   };
 
   // ── NOW, THEN EVERYTHING ────────────────────────────────────────────────
@@ -482,8 +391,13 @@ export default function DashView() {
   // the words. Below the day sits every feature as a cover with a button
   // (FeatureGrid). Group, events and wallet moved off the list and into the
   // grid — the same door, no longer shown twice.
-  const NOW: WidgetId[] = ['next', 'tonight', 'requests', 'directions', 'tripcheck'];
-  const AFTER: WidgetId[] = ['calendar', 'connections'];
+  //
+  // THE CALENDAR GOES FIRST (18 Sep 2026). It was below the feature grid, two
+  // screens from the top, which is the wrong place for the one widget that
+  // answers "what am I already committed to today" — the question NEXT UP is
+  // read against. Now the day's shape comes first and NEXT UP sits inside it.
+  const NOW: WidgetId[] = ['calendar', 'next', 'tonight', 'requests', 'directions', 'tripcheck'];
+  const AFTER: WidgetId[] = [];
   const now = widgets.filter((id) => NOW.includes(id));
   const after = widgets.filter((id) => AFTER.includes(id));
 

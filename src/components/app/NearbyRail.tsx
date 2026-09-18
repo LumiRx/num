@@ -5,16 +5,19 @@
 // fourth rail — experiences, markets, whatever /api/discover grows next — is
 // a line in a list rather than another component to keep in step.
 //
-// THREE AT A TIME, AND NOTHING WRITTEN ON THE PICTURE (18 Sep 2026).
+// TWO AT A TIME, AND NOTHING WRITTEN ON THE PICTURE (18 Sep 2026).
 // The first version showed 2.2 cards of 172px with the countdown and the
 // distance floated over the poster, and both were unreadable against a busy
-// photo. Now the row is exactly three cards wide, whatever the phone, and
-// every fact sits under the image in plain text where it can be read. The
-// row snaps by the page, so sliding left brings the next three, not the next
-// two and a half.
+// photo. Facts moved under the image; the row then went to three across,
+// which made every card 108px wide — a poster too small to recognise and a
+// title clipped at two lines. Now it is two across, the same width as the
+// feature tiles above it, so the whole screen reads in one column rhythm
+// instead of three sizes of card. The row snaps by the page, so sliding left
+// brings the next two.
 import { pressable } from '../../lib/a11y';
 import { t } from '../../lib/i18n';
 import { near } from '../../lib/near';
+import { kindOf } from '../../lib/railkind';
 
 export interface RailItem {
   id: string;
@@ -39,6 +42,9 @@ export interface RailItem {
 export { near };
 
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 };
+
+/** The kind line on a photoless cover, from lib/railkind.ts. */
+export { kindOf };
 
 /**
  * Where it came from. Ticketmaster asks for attribution on every listing, and
@@ -89,9 +95,9 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
         {trailing ?? (count ? <span style={{ color: 'var(--color-accent)', flex: 'none' }}>{count}</span> : null)}
       </div>
-      {/* Three across, page by page. `basis` is a third of the row minus the
-          gaps, so the third card ends exactly at the edge and the fourth is
-          the first thing a slide brings in. */}
+      {/* Two across, page by page. `basis` is half the row minus the one gap
+          between them, so the second card ends exactly at the edge and the
+          third is the first thing a slide brings in. */}
       <div
         className="no-scrollbar"
         style={{
@@ -106,7 +112,7 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
               key={i.id}
               className="glass lift rise-in"
               style={{
-                flex: '0 0 calc((100% - 16px) / 3)', minWidth: 0, scrollSnapAlign: 'start',
+                flex: '0 0 calc((100% - 8px) / 2)', minWidth: 0, scrollSnapAlign: 'start',
                 borderRadius: 16, overflow: 'hidden', animationDelay: `${Math.min(n, 5) * 50}ms`,
                 display: 'flex', flexDirection: 'column',
               }}
@@ -116,23 +122,52 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
                 className="tap"
                 style={{
                   cursor: 'pointer', aspectRatio: '1 / 1', width: '100%',
-                  background: i.image
-                    ? `url(${i.image}) center/cover`
-                    : 'linear-gradient(135deg, var(--color-accent-300, #9fe3cf), var(--field-bg))',
+                  ...(i.image
+                    ? { background: `url(${i.image}) center/cover` }
+                    : {
+                      // NOT THE ACCENT GRADIENT. A photoless card used to fill
+                      // this square with the same green gradient as the button
+                      // underneath it, so the card read as two stacked buttons
+                      // and people could not tell what they were looking at
+                      // ("the buttons are so big... I'm confused what it's
+                      // for", 18 Sep). A place with no picture should look
+                      // like a place with no picture: quiet panel, its
+                      // initial, and what kind of thing it is.
+                      background: 'var(--field-bg)',
+                      borderBottom: '1px solid var(--ink-08)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7,
+                    }),
                 }}
                 aria-label={i.title}
-              />
-              <div style={{ padding: '7px 8px 8px', display: 'grid', gap: 3, minWidth: 0 }}>
+              >
+                {!i.image && (
+                  <>
+                    <span style={{
+                      width: 42, height: 42, borderRadius: 999, border: '1px solid var(--ink-12)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, color: 'var(--ink-40)',
+                    }}>
+                      {(i.title.trim()[0] ?? '·').toUpperCase()}
+                    </span>
+                    {kindOf(i) && (
+                      <span style={{ fontSize: 9.5, letterSpacing: '.12em', fontWeight: 800, color: 'var(--ink-40)', textAlign: 'center', padding: '0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                        {kindOf(i)!.toUpperCase()}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              <div style={{ padding: '9px 10px 10px', display: 'grid', gap: 4, minWidth: 0 }}>
                 <div style={{
-                  fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 11.5, lineHeight: 1.2,
+                  fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 13.5, lineHeight: 1.2,
                   overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                 }}>{i.title}</div>
                 {meta && (
-                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-accent)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--color-accent)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {meta}
                   </div>
                 )}
-                <div style={{ fontSize: 9.5, color: 'var(--ink-40)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-40)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {i.sub}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -145,7 +180,7 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
                   <div
                     {...pressable(() => onOpen(i))}
                     className="tap press glow"
-                    style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 10, padding: '6px 2px' }}
+                    style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11.5, padding: '9px 2px' }}
                   >
                     {i.url ? t('Tickets') : t(action)}
                   </div>
@@ -154,7 +189,7 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
                       {...pressable(() => onSend(i))}
                       aria-label={t('Send')}
                       className="tap glass press"
-                      style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, fontWeight: 700, fontSize: 10, padding: '6px 7px' }}
+                      style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 9, fontWeight: 700, fontSize: 11.5, padding: '9px 9px' }}
                     >
                       <svg width="11" height="11" viewBox="0 0 20 20" aria-hidden="true" style={{ display: 'block' }}>
                         <path d="M18 2 9 11M18 2l-6 16-3-7-7-3Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />

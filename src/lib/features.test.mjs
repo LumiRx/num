@@ -203,8 +203,34 @@ describe('wired, not just written', () => {
   test('TODAY renders the grid between the day and the rest', () => {
     const dash = read('../components/app/DashView.tsx');
     assert.match(dash, /<FeatureGrid \/>/);
-    const now = dash.indexOf("const NOW: WidgetId[] = ['next', 'tonight'");
-    assert.ok(now > 0, 'the Now strip is gone');
+    // Anchored on the CONTENT of the strip, not its exact order: the order is
+    // a product decision that has already changed once (the calendar moved to
+    // the front on 18 Sep) and pinning the literal made a deliberate change
+    // read as a regression.
+    const now = /const NOW: WidgetId\[\] = \[([^\]]*)\]/.exec(dash);
+    assert.ok(now, 'the Now strip is gone');
+    for (const id of ["'next'", "'tonight'", "'tripcheck'"]) assert.ok(now[1].includes(id), `${id} left the day strip`);
+  });
+
+  test('the day starts with what is already booked in', () => {
+    // The calendar answers "what am I committed to", which is the question
+    // NEXT UP is read against; it spent a week two screens below the grid.
+    const dash = read('../components/app/DashView.tsx');
+    const now = /const NOW: WidgetId\[\] = \[([^\]]*)\]/.exec(dash)[1];
+    assert.match(now.trim(), /^'calendar'/, 'the calendar must come first on TODAY');
+  });
+
+  test('CONNECT YOUR WORLD is in Settings, and only there', () => {
+    // Six permission switches are a set-once screen, not a daily one. The
+    // widget id stays mapped in DashView because the server still sends it.
+    const dash = read('../components/app/DashView.tsx');
+    const profile = read('../components/app/ProfileView.tsx');
+    // The rendered string, not the file text — DashView still NAMES the card
+    // in a comment saying where it went, which is the point of the comment.
+    assert.doesNotMatch(dash, /t\('CONNECT YOUR WORLD'\)/);
+    assert.match(dash, /connections: \(\) => null/);
+    assert.match(profile, /<ConnectionsCard \/>/);
+    assert.match(read('../components/app/ConnectionsCard.tsx'), /CONNECT YOUR WORLD/);
   });
   test('the page is a sheet the shell knows how to close', () => {
     const app = read('../components/app/ConciergeApp.tsx');
