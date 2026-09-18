@@ -18,8 +18,21 @@
 /** Where the app really lives. Everything shareable is built from this. */
 export const APP_ORIGIN = 'https://app.itsnum.com';
 
-/** Localhost is the one place a canonical link is useless — nothing to test. */
-const isLocal = /^(localhost|127\.|\[::1\])/.test(window.location.hostname);
+/**
+ * Localhost is the one place a canonical link is useless — nothing to test.
+ *
+ * BUT THE INSTALLED APP IS ALSO "LOCALHOST" (18 Sep 2026). A bundled
+ * Capacitor build serves itself from capacitor://localhost on iOS and
+ * http://localhost on Android, so this test read the phone as a developer's
+ * laptop and every QR, connect and referral link in the app said
+ * `capacitor://localhost/c/…` — a link nobody can open, and the one Dre
+ * tried to send. A dev server always runs on a PORT (5173, 8787…); the
+ * app's own origin never has one, and its scheme is not http(s) on iOS.
+ * Both have to look like a laptop before a link is allowed to.
+ */
+const isLocal = /^(localhost|127\.|\[::1\])/.test(window.location.hostname)
+  && /^https?:$/.test(window.location.protocol)
+  && window.location.port !== '';
 const origin = isLocal ? window.location.origin : APP_ORIGIN;
 
 /**

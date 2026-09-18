@@ -217,7 +217,7 @@ export function TabStarter() {
   const [err, setErr] = useState<string | null>(null);
 
   const go = async (fn: () => Promise<unknown>) => {
-    if (!me) return store.set({ walletOpen: false, inviteOpen: {} });
+    if (!me) return store.set({ walletOpen: false, inviteOpen: { intent: 'account', returnTo: { walletOpen: true } } });
     setBusy(true);
     setErr(null);
     try {

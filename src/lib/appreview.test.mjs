@@ -77,14 +77,14 @@ describe('5.1.1(v) — deletion has to be findable, not merely present', () => {
     // should be quiet, not hidden.
     // The label is the action itself, not a direction to it: one tap now
     // opens the confirmation rather than scrolling to a shut control.
-    assert.match(PROFILE, /aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/);
+    assert.match(PROFILE, /ariaLabel=\{t\('Delete my account'\)\}/, 'the delete row carries its label for a screen reader');
     assert.match(PROFILE, /store\.set\(\{ deleteOpen: true \}\)/, 'the row must open the flow');
     assert.match(PROFILE, /getElementById\('delete-account'\)/);
     assert.match(DANGER, /id="delete-account"/, 'the signpost needs something to point at');
   });
 
   test('the signpost sits above the danger zone it points to', () => {
-    assert.ok(PROFILE.indexOf('aria-label="Delete my account"') < PROFILE.indexOf('<DangerZone />'));
+    assert.ok(PROFILE.indexOf("ariaLabel={t('Delete my account')}") < PROFILE.indexOf('<DangerZone />'));
   });
 });
 
@@ -115,28 +115,41 @@ describe('the profile reads as a page, not a stack of squares', () => {
     // sections (quick, travel, taste) became ONE collapsed card with a count
     // on the front, so TRAVEL and TASTE are no longer group headings. The
     // rhythm the test guards is still there, under the new names.
-    for (const g of ['STARS & CODES', 'WHAT NUM KNOWS ABOUT YOU', 'YOUR NUM', 'SETTINGS', 'ACCOUNT & DATA']) {
-      assert.ok(PROFILE.includes(`<Group>{t('${g}')}</Group>`), `${g} group heading is missing`);
+    // 18 Sep 2026, second redesign: the labels are the titles of four LISTS —
+    // one card each with hairline rows — not headings between loose cards.
+    for (const g of ['YOU', 'YOUR NUM', 'SETTINGS', 'ACCOUNT & DATA']) {
+      assert.ok(PROFILE.includes(`<List title={t('${g}')}>`), `${g} list is missing`);
     }
+    // And the page is no longer a column of cards: nothing outside the
+    // identity card, the hub tiles and the lists uses the card style.
+    const body = PROFILE.slice(PROFILE.indexOf('export default function ProfileView'), PROFILE.indexOf('function QrGlyph'));
+    const signedIn = body.slice(body.indexOf('1 · WHO YOU ARE'));
+    assert.equal((signedIn.match(/\.\.\.card/g) ?? []).length, 1, 'in the signed-in page the card style is the identity row only; everything else is a tile or a list row');
   });
 
   test('the preference fields are one collapsed card with a count, not three open ones', () => {
-    assert.match(PROFILE, /title=\{t\('TELL NUM ABOUT YOU'\)\}/);
+    assert.match(PROFILE, /title=\{t\('Tell NUM about you'\)\}/);
     assert.match(PROFILE, /const filled = ALL_FIELDS\.filter/);
     // All three field sets still render, inside it.
     for (const f of ['QUICK_FIELDS', 'TRAVEL_FIELDS', 'TASTE_FIELDS']) assert.match(PROFILE, new RegExp(`fields=\\{${f}\\}`));
   });
 
   test('the plan is one tap from who you are', () => {
-    assert.match(PROFILE, /getElementById\('your-plan'\)/, 'the PLAN chip must land on the plans card');
-    assert.match(PROFILE, /<div id="your-plan">\s*<MembershipCard \/>/);
+    // The plans live on the wallet sheet (the full sell, badges and all);
+    // the UPGRADE chip beside the name opens it directly.
+    const chip = PROFILE.indexOf("aria-label={t('Your plan')}");
+    assert.ok(chip > 0, 'the chip exists');
+    assert.match(PROFILE.slice(chip - 200, chip), /walletOpen: true/, 'the chip opens the wallet, where the plans are');
+    assert.match(PROFILE, /\{t\('UPGRADE'\)\}/);
   });
 
   test('the delete row is a line, not another big card', () => {
-    const i = PROFILE.search(/aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/);
-    const el = PROFILE.slice(i, i + 900);
+    const i = PROFILE.indexOf("ariaLabel={t('Delete my account')}");
+    const el = PROFILE.slice(i - 80, i + 400);
+    assert.match(el, /<Row/, 'it is a Row in the last list');
     assert.ok(!/\.\.\.card,/.test(el), 'it should not reuse the full card style');
-    assert.match(el, /minHeight: 44/, 'still a full-size tap target');
+    const row = PROFILE.slice(PROFILE.indexOf('function Row('), PROFILE.indexOf('function Row(') + 900);
+    assert.match(row, /minHeight: 56/, 'a Row is a full-size tap target');
   });
 });
 

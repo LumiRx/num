@@ -535,7 +535,7 @@ export const FEATURES = Object.freeze([
     sop: {
       on: 'Set STRIPE_SECRET_KEY. Packs are pegged 1:1 to USD, so a Star is a dollar.',
       check: 'GET /api/balances?me=<id>; buying a pack should move the balance and leave a row in the ledger.',
-      broken: 'Two rules hold whatever else breaks: the ★100 welcome grant can never buy a membership (origin-checked in starmembership.mjs), and paying in Stars is never cheaper than paying cash.',
+      broken: 'Two rules hold whatever else breaks: the ★5 welcome grant can never buy a membership (origin-checked in starmembership.mjs), and paying in Stars is never cheaper than paying cash.',
     },
   },
   {

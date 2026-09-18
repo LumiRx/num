@@ -181,7 +181,7 @@ export default function EventSheet() {
           <div style={label}>{t('EVENTS')}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('Host something')}</div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('Your guests RSVP from one text — no app, no account on their side. You just need your own name and number first.')}</div>
-          <div {...pressable(() => store.set({ eventOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
+          <div {...pressable(() => store.set({ eventOpen: false, inviteOpen: { intent: 'account', returnTo: { eventOpen: true } } }))} style={{ ...primary, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
         </div>
       ) : !eventId ? (
         <div style={{ padding: 16 }}>

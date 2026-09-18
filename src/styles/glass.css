@@ -369,3 +369,24 @@ html.num-standalone body {
 .num-root { zoom: 1.07; }
 html[data-text="large"] .num-root { zoom: 1.18; }
 html[data-text="xl"] .num-root { zoom: 1.3; }
+
+/* THE PROFILE LISTS (18 Sep 2026). A List is one glass card; the components
+   inside it — PeopleCard, HostCard, Notifications, Connections, Contact,
+   Identity, PairBridge, Verify5arz — each still render their own `.glass`
+   box with the page's card margin. Inside a list that box becomes a ROW:
+   no background, no border, no radius, a hairline on top, the row padding.
+   One rule, nine components, none of them edited. */
+.profile-list > .glass,
+.profile-list > div > .glass {
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 1px solid var(--ink-08) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 13px 16px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* A component that renders nothing leaves no hairline behind. */
+.profile-list > .glass:empty { display: none; }

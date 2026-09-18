@@ -19,6 +19,7 @@
 // a rail card, the event sheet and a deep link all reach askNum(), and a gate
 // that lives on one of six doors is a gate on none of them.
 import { store } from './store';
+import type { InviteDraft } from './types';
 import type { Member } from './types';
 
 /**
@@ -166,3 +167,29 @@ store.subscribe(() => {
   }
   wasSendable = now;
 });
+
+
+/**
+ * Open the account sheet BECAUSE something needed it, remembering where the
+ * person was. `returnTo` is the sheet to put back when the account sheet
+ * closes — signed in or not — so a tap on "set up my account" in the middle
+ * of a plan lands back in that plan. Never in the thread, unless that is
+ * where they were.
+ */
+export function needAccount(returnTo: InviteDraft['returnTo'] = {}, intent: InviteDraft['intent'] = 'account'): void {
+  dropKeyboard();
+  store.set({ inviteOpen: { intent, returnTo } });
+}
+
+/**
+ * Close the invite/account sheet and put back whatever it interrupted.
+ * A held ask outranks the return: the person asked NUM for something, and
+ * gate.ts is about to send it, so the thread is where they need to be.
+ */
+export function closeInvite(): void {
+  store.set((s) => {
+    const back = s.inviteOpen?.returnTo ?? {};
+    const held = !!s.pendingAsk;
+    return { inviteOpen: null, ...(held ? {} : back) };
+  });
+}

@@ -462,9 +462,11 @@ function adoptMember(m: Member): void {
     me: m,
     chips: s.chips.filter((c) => c.id !== 'signup'),
     // The sheet has done its job. Leaving it up after a successful sign-in
-    // reads as if the code was not accepted.
+    // reads as if the code was not accepted. Where the person goes next is
+    // where they came FROM when a sheet sent them here (draft.returnTo) —
+    // the plan, the business form — and the thread only otherwise.
     inviteOpen: null,
-    threadOpen: true,
+    ...(s.inviteOpen?.returnTo && Object.keys(s.inviteOpen.returnTo).length ? s.inviteOpen.returnTo : { threadOpen: true }),
     msgs: [
       ...s.msgs,
       {
@@ -1148,12 +1150,17 @@ export function matchPeople(name: string): Array<{ name: string; phone?: string;
 /** Open the invite sheet for a named person, pre-resolved where we can. */
 export function startInvite(draft: InviteDraft): void {
   const candidates = draft.name ? matchPeople(draft.name) : [];
+  const planId = draft.planId ?? store.get().planId;
   store.set({
     inviteOpen: {
       ...draft,
       candidates,
       phone: draft.phone ?? (candidates.length === 1 ? candidates[0].phone : undefined),
-      planId: draft.planId ?? store.get().planId,
+      planId,
+      // An invite from inside a plan is FOR the plan, and the plan is where
+      // the person goes back to when the sheet closes (18 Sep 2026).
+      intent: draft.intent ?? (planId ? 'plan' : 'friend'),
+      returnTo: draft.returnTo ?? (planId ? { partyOpen: true } : {}),
     },
   });
 }

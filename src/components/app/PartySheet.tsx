@@ -184,7 +184,7 @@ export default function PartySheet() {
           <div style={label}>{t('GROUP PLANS')}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('Plan it with your friends')}</div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('A plan doesn’t need a single reservation to start — drop in ideas, pull friends in, book it when you’ve agreed. You just need an account first so the group knows who’s who.')}</div>
-          <div {...pressable(() => store.set({ partyOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>{t('SET UP MY ACCOUNT')}</div>
+          <div {...pressable(() => store.set({ partyOpen: false, inviteOpen: { intent: 'plan', returnTo: { partyOpen: true } } }))} style={{ ...primary, marginTop: 14 }}>{t('SET UP MY ACCOUNT')}</div>
         </div>
       ) : !plan ? (
         <div style={{ padding: 16 }}>

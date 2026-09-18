@@ -235,7 +235,7 @@ function NewErrand({ balance, hasAccount, draft, onDone }: {
     return (
       <div style={{ marginTop: 14 }}>
         <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>{t('Add your name and number first — errands move real Stars between people, so we need to know whose they are.')}</div>
-        <div {...pressable(() => store.set({ errandsOpen: false, inviteOpen: {} }))} style={{ ...button, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
+        <div {...pressable(() => store.set({ errandsOpen: false, inviteOpen: { intent: 'account', returnTo: { errandsOpen: true } } }))} style={{ ...button, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
       </div>
     );
   }

@@ -124,7 +124,7 @@ export default function BookSheet() {
             {!me ? (
               <>
                 <div style={{ ...help, marginTop: 14, color: 'var(--ink-60)' }}>{t('Tell me your name first — a restaurant holding a table needs to know whose it is.')}</div>
-                <div {...pressable(() => store.set({ bookDraft: null, inviteOpen: {} }))} style={{ ...button, marginTop: 12 }}>{t('INTRODUCE YOURSELF')}</div>
+                <div {...pressable(() => store.set((s) => ({ bookDraft: null, inviteOpen: { intent: 'account', returnTo: { bookDraft: s.bookDraft } } })))} style={{ ...button, marginTop: 12 }}>{t('INTRODUCE YOURSELF')}</div>
               </>
             ) : (
               <>

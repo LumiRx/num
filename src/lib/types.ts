@@ -349,6 +349,27 @@ export interface InviteDraft {
   name?: string;
   phone?: string;
   planId?: string | null;
+  /**
+   * WHY the sheet opened (18 Sep 2026: "the connection needs to point with
+   * the action"). 'account' is a sign-in the app needed before something
+   * else; 'friend' / 'plan' / 'business' are invites with a destination. The
+   * heading and the words on the button follow it.
+   */
+  intent?: 'account' | 'friend' | 'plan' | 'business';
+  /**
+   * The sheet to put back when this one closes — the plan, the business
+   * form, the event — so signing in never costs the person their place.
+   * Applied by closeInvite() in lib/gate.ts; a held ask (gate.ts) wins over
+   * it, because then the person asked for something and the thread is where
+   * the answer lands.
+   */
+  // (`Pick` is a NUM type in this file — a concierge suggestion — so the
+  // TypeScript utility is spelled out by hand.)
+  returnTo?: {
+    partyOpen?: boolean; eventOpen?: boolean; businessOpen?: boolean; errandsOpen?: boolean; shareOpen?: boolean;
+    walletOpen?: boolean; payOpen?: AppState['payOpen']; bookDraft?: AppState['bookDraft']; travelDraft?: AppState['travelDraft'];
+    featureOpen?: AppState['featureOpen']; nightlifeOpen?: boolean; placeOpen?: boolean; profileOpen?: boolean; threadOpen?: boolean; view?: View;
+  };
   /** Candidates to disambiguate "send invite to sam" before anything is sent. */
   candidates?: Array<{ name: string; phone?: string }>;
   minted?: {

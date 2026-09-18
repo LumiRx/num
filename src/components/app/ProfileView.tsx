@@ -22,7 +22,6 @@ import Verify5arz from './Verify5arz';
 import AppleSignIn from './AppleSignIn';
 import PairBridge from './PairBridge';
 import PeopleCard from './PeopleCard';
-import MembershipCard from './MembershipCard';
 import DangerZone from './DangerZone';
 import IdentityCard from './IdentityCard';
 import ContactCard from './ContactCard';
@@ -35,28 +34,6 @@ import { T, t, LANGS, isLang, phoneLang, setLang, type Lang } from '../../lib/i1
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
-/**
- * ELEVEN IDENTICAL SQUARES IS NOT A PAGE.
- *
- * Dre, 10 Sep 2026: "lets organize the home profile page its a bunch of ugly
- * squares." He was right — every block used the same glass card, the same
- * margin and the same radius, in one unbroken column, so nothing looked more
- * or less important than anything else and the eye had nowhere to rest.
- *
- * The cards are unchanged. What was missing was RHYTHM: a quiet label every
- * few blocks that says what the next group is for. Grouping is cheaper than
- * redesigning and it is what actually makes a long settings page readable.
- */
-const Group = ({ children }: { children: React.ReactNode }) => (
-  <div
-    style={{
-      margin: '26px 22px 6px', fontSize: 10, letterSpacing: '.16em',
-      fontWeight: 800, color: 'var(--ink-40)',
-    }}
-  >
-    {children}
-  </div>
-);
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
 const field: React.CSSProperties = {
   width: '100%', height: 42, borderRadius: 12, border: '1px solid var(--ink-12)', padding: '0 13px',
@@ -112,6 +89,70 @@ const TASTE_FIELDS: Field[] = [
  * open at once is a wall, and a wall is a screen people close — so each block
  * states what it is, how much is in it, and opens only when asked for.
  */
+/**
+ * THE REDESIGN (18 Sep 2026, second time): "the profile page is still a
+ * disaster and a bunch of blocks."
+ *
+ * The first remodel kept eleven glass cards and put labels between them. The
+ * eye still saw eleven boxes. This one changes the shape of the page:
+ *
+ *   1. WHO YOU ARE — one card: avatar, name, verified mark, the plan chip.
+ *   2. THE HUB — three tiles: Stars, your code, your plan. Big number, one
+ *      line, one tap. This is where "click it and upgrade" lives.
+ *   3. LISTS — four grouped lists (You · Your NUM · Settings · Account), each
+ *      ONE card with hairline rows inside, the way a phone's own Settings
+ *      app is built. A row expands in place when it has something to show
+ *      and opens a sheet when it is a door.
+ *
+ * The sub-cards this page composes (PeopleCard, HostCard, Notifications,
+ * Connections, Contact, Identity, PairBridge, Verify5arz…) still render their
+ * own `.glass` box; inside a List the `profile-list` CSS strips that box and
+ * draws them as rows, so one rule restyles nine components and none of them
+ * had to change.
+ */
+function List({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="glass profile-list" style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ ...kicker, padding: '14px 16px 4px' }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+/** A door: title, one line, chevron. 56px, the row height a thumb expects. */
+function Row({ title, sub, onTap, icon, tone, ariaLabel }: { title: string; sub?: string | null; onTap: () => void; icon?: React.ReactNode; tone?: 'danger'; ariaLabel?: string }) {
+  return (
+    <div
+      {...pressable(onTap)}
+      aria-label={ariaLabel}
+      className="tap"
+      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', minHeight: 56, borderTop: '1px solid var(--ink-08)' }}
+    >
+      {icon && <span style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-accent)' }}>{icon}</span>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: tone === 'danger' ? 'var(--ink-60)' : 'var(--color-text)', lineHeight: 1.3 }}>{title}</div>
+        {sub && <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 2, lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
+      </div>
+      <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
+    </div>
+  );
+}
+
+/** A hub tile: the number or the word, then what it is. One tap. */
+function Tile({ big, label, sub, onTap }: { big: React.ReactNode; label: string; sub?: string; onTap: () => void }) {
+  return (
+    <div
+      {...pressable(onTap)}
+      className="glass lift tap"
+      style={{ cursor: 'pointer', borderRadius: 'var(--r-lg)', padding: '14px 12px 12px', display: 'grid', gap: 4, minHeight: 92, alignContent: 'start' }}
+    >
+      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22, lineHeight: 1, letterSpacing: '-.01em' }}>{big}</div>
+      <div style={{ ...kicker, marginTop: 6 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.35 }}>{sub}</div>}
+    </div>
+  );
+}
+
 function Collapsible({ title, summary, defaultOpen = false, children }: {
   title: string;
   summary?: string;
@@ -120,22 +161,23 @@ function Collapsible({ title, summary, defaultOpen = false, children }: {
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="glass" style={card}>
+    <div className="profile-row" style={{ borderTop: '1px solid var(--ink-08)' }}>
       <div
         {...pressable(() => setOpen((v) => !v))}
         aria-expanded={open}
-        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+        className="tap"
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', minHeight: 56 }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{title}</div>
-          {summary && <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 3, lineHeight: 1.45 }}>{summary}</div>}
+          <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{title}</div>
+          {summary && <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 2, lineHeight: 1.45 }}>{summary}</div>}
         </div>
         <ChevronRightIcon
-          size={15}
+          size={16}
           style={{ color: 'var(--ink-40)', flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }}
         />
       </div>
-      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+      {open && <div style={{ padding: '0 16px 16px' }}>{children}</div>}
     </div>
   );
 }
@@ -186,6 +228,7 @@ export default function ProfileView() {
   const profile = useApp((s) => s.profile);
   const style = useApp((s) => s.style);
   const friends = useApp((s) => s.friends.filter((f) => f.state === 'active').length);
+  const stars = useApp((s) => s.stars);
   // A member is verified if EITHER channel is proved. Since 12 Sep 2026 an
   // email address is a first-class way to sign up, so it has to be a
   // first-class way to be verified.
@@ -277,7 +320,7 @@ export default function ProfileView() {
 
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 110 }}>
-      {/* identity */}
+      {/* 1 · WHO YOU ARE */}
       <div className="glass" style={{ ...card, display: 'flex', gap: 13, alignItems: 'center' }}>
         <div
           {...pressable(() => fileRef.current?.click())}
@@ -325,10 +368,9 @@ export default function ProfileView() {
           />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{t('YOU')}</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 2 }}>{me.name ?? 'Traveller'}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            {me.phone ?? me.email ?? 'no number'}
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 20, lineHeight: 1.15 }}>{me.name ?? 'Traveller'}</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{me.phone ?? me.email ?? 'no number'}</span>
             <span
               style={{
                 fontSize: 9, fontWeight: 800, letterSpacing: '.08em', padding: '3px 7px', borderRadius: 999,
@@ -343,221 +385,164 @@ export default function ProfileView() {
               {contactVerified && <CheckIcon size={9} />}
               {contactVerified ? 'VERIFIED' : 'UNVERIFIED'}
             </span>
-            {friends > 0 && (
-              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                <UsersIcon size={11} /> {friends} connected
-              </span>
-            )}
           </div>
+          {friends > 0 && (
+            <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 3, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <UsersIcon size={11} /> {t('{n} connected', { n: friends })}
+            </div>
+          )}
         </div>
-        {/* CLICK IT AND UPGRADE. One chip, top right of who you are, that
-            lands on the plans card directly below — the shortest path from
-            "this is me" to "give me more room". */}
+        {/* CLICK IT AND UPGRADE. The plans live on the wallet sheet — the
+            full sell, with badges — so the chip opens that, not a scroll. */}
         <div
-          {...pressable(() => document.getElementById('your-plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+          {...pressable(() => store.set({ walletOpen: true }))}
           aria-label={t('Your plan')}
-          className="press"
-          style={{ cursor: 'pointer', flex: 'none', alignSelf: 'flex-start', fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', padding: '6px 10px', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff' }}
+          className="press tap"
+          style={{ cursor: 'pointer', flex: 'none', alignSelf: 'flex-start', fontSize: 10, fontWeight: 800, letterSpacing: '.1em', padding: '0 12px', minHeight: 32, display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff' }}
         >
-          {t('PLAN')}
+          {t('UPGRADE')}
         </div>
       </div>
 
       {/* Its own block UNDER the identity row. As a third flex child it was
           being squeezed into the name column and printing over "Dre". */}
       <AppleSignIn />
-      <Verify5arz />
-      {/* Finish a connection that opened in the browser instead of the app. */}
-      <PairBridge installed />
 
-      {/* THE PLAN, RIGHT UNDER WHO YOU ARE. It is the thing the page sells,
-          and the chip above lands here. On iOS the card shows the tier and
-          no prices — canOfferSubscription() inside it, unchanged. */}
-      <div id="your-plan">
-        <MembershipCard />
+      {/* 2 · THE HUB. Three tiles, one tap each. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, margin: '10px 12px 0' }}>
+        <Tile big={`★${stars.toLocaleString()}`} label={t('STARS')} sub={t('Top up, tabs')} onTap={() => store.set({ walletOpen: true })} />
+        <Tile big={<QrGlyph />} label={t('MY CODE')} sub={t('Share, connect')} onTap={() => store.set({ shareOpen: true })} />
+        <Tile big={friends > 0 ? String(friends) : '+'} label={t('PEOPLE')} sub={friends > 0 ? t('connected') : t('Invite a friend')} onTap={() => (friends > 0 ? document.getElementById('your-people')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : store.set({ shareOpen: true }))} />
       </div>
-
-      <Group>{t('STARS & CODES')}</Group>
-      <div
-        {...pressable(() => store.set({ walletOpen: true }))}
-        className="glass lift"
-        style={{ ...card, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{t('YOUR STARS')}</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Balance, top-ups, tabs and receipts')}</div>
-        </div>
-        <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
-      </div>
-      <Collapsible title={t('YOUR CODES')} summary={t('Scan to connect, or to pay you in Stars')}>
-        <QrCard />
-      </Collapsible>
-
-      <Group>{t('WHAT NUM KNOWS ABOUT YOU')}</Group>
-      {/* ONE CARD, NOT THREE. The quick fields, how you travel and your taste
-          were three open cards under three headers — most of the page. They
-          are one collapsed card now, with the count on the front so somebody
-          can see at a glance whether it is worth opening. */}
-      <Collapsible
-        title={t('TELL NUM ABOUT YOU')}
-        summary={filled ? t('{n} of {total} filled in — every answer saves a question later', { n: filled, total: ALL_FIELDS.length }) : t('Two minutes, then every ask is one message')}
-      >
-        <div style={{ margin: '0 -14px' }}>
-          <Section title={t('THE THINGS NUM WOULD OTHERWISE ASK')} summary={t('Where you stay, how many, when you eat, how you move and pay')} fields={QUICK_FIELDS} values={values} onChange={change} defaultOpen />
-          <Section title={t('HOW YOU TRAVEL')} summary={t('Status, seat, home airport — so a fare search already fits you')} fields={TRAVEL_FIELDS} values={values} onChange={change} />
-          <Section title={t('SO NUM GETS YOU RIGHT')} summary={t('Diet, budget, the kind of night you actually want')} fields={TASTE_FIELDS} values={values} onChange={change} />
-        </div>
-        <div style={{ padding: '6px 0 0' }}>
-          <div
-            {...pressable(save)}
-            style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
-          >
-            {saved ? t('SAVED — NUM KNOWS') : t('SAVE')}
-          </div>
-          {note && <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', marginTop: 8, textAlign: 'center' }}>{note}</div>}
-        </div>
-      </Collapsible>
-      {/* what NUM has worked out on its own */}
-      <Collapsible
-        title={t('WHAT NUM HAS PICKED UP')}
-        summary={reactionCount ? `${reactionCount} reaction${reactionCount === 1 ? '' : 's'} so far` : 'Nothing learned yet'}
-      >
-        {reactionCount === 0 && !Object.keys(style).length ? (
-          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.55 }}>
-            Nothing yet. React to NUM’s suggestions with {REACTIONS.map((r) => r.emoji).join(' ')} and it learns what to send you and what to drop.
-          </div>
-        ) : (
-          <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-            {style.length === 'short' && <Line>{t('Keeps replies short for you.')}</Line>}
-            {style.length === 'long' && <Line>{t('Gives you the reasoning, not just the answer.')}</Line>}
-            {style.decisiveness === 'one' && <Line>{t('One pick, no menus.')}</Line>}
-            {style.decisiveness === 'options' && <Line>{t('Offers a couple of options with a house pick.')}</Line>}
-            {style.emoji === 'no' && <Line>{t('No emoji in replies.')}</Line>}
-            {!!style.loved?.length && <Line>More like: {style.loved.slice(-3).join(', ')}</Line>}
-            {!!style.rejected?.length && <Line>Never again: {style.rejected.slice(-3).join(', ')}</Line>}
-            <div
-              {...pressable(() => store.set({ style: {}, reactions: {} }))}
-              style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent-700)', marginTop: 4 }}
-            >
-              RESET WHAT NUM LEARNED
-            </div>
-          </div>
-        )}
-      </Collapsible>
 
       {/* Giveaways — the Friday pack draw today, whatever is live tomorrow.
           The card lists from the server, so a new giveaway needs no app
           release; it renders nothing when nothing is running. */}
-      <GiveawaysCard heading={<Group>{t('GIVEAWAYS')}</Group>} />
+      <GiveawaysCard />
 
-      <Group>{t('YOUR NUM')}</Group>
-      <PeopleCard />
-      <HostCard />
-      {/* business tools, only if they have one */}
-      <div
-        {...pressable(() => store.set({ businessOpen: true }))}
-        className="glass lift"
-        style={{ ...card, cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
-      >
-        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{t('BUSINESS')}</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Own a place on NUM?')}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>{t('Claim your listing and get the owner tools')}</div>
-        </div>
-        <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
-      </div>
+      {/* 3 · LISTS */}
+      <List title={t('YOU')}>
+        {/* ONE ROW, NOT THREE. The quick fields, how you travel and your taste
+            were three open cards under three headers — most of the page. */}
+        <Collapsible
+          title={t('Tell NUM about you')}
+          summary={filled ? t('{n} of {total} filled in — every answer saves a question later', { n: filled, total: ALL_FIELDS.length }) : t('Two minutes, then every ask is one message')}
+        >
+          <div style={{ margin: '0 -16px' }}>
+            <Section title={t('The things NUM would otherwise ask')} summary={t('Where you stay, how many, when you eat, how you move and pay')} fields={QUICK_FIELDS} values={values} onChange={change} defaultOpen />
+            <Section title={t('How you travel')} summary={t('Status, seat, home airport — so a fare search already fits you')} fields={TRAVEL_FIELDS} values={values} onChange={change} />
+            <Section title={t('So NUM gets you right')} summary={t('Diet, budget, the kind of night you actually want')} fields={TASTE_FIELDS} values={values} onChange={change} />
+          </div>
+          <div style={{ padding: '12px 0 0' }}>
+            <div
+              {...pressable(save)}
+              className="tap press"
+              style={{ cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center' }}
+            >
+              {saved ? t('SAVED — NUM KNOWS') : t('SAVE')}
+            </div>
+            {note && <div style={{ fontSize: 11, color: 'var(--color-accent-700)', marginTop: 8, textAlign: 'center' }}>{note}</div>}
+          </div>
+        </Collapsible>
+        <Collapsible
+          title={t('What NUM has picked up')}
+          summary={reactionCount ? `${reactionCount} reaction${reactionCount === 1 ? '' : 's'} so far` : t('Nothing learned yet')}
+        >
+          {reactionCount === 0 && !Object.keys(style).length ? (
+            <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>
+              Nothing yet. React to NUM’s suggestions with {REACTIONS.map((r) => r.emoji).join(' ')} and it learns what to send you and what to drop.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {style.length === 'short' && <Line>{t('Keeps replies short for you.')}</Line>}
+              {style.length === 'long' && <Line>{t('Gives you the reasoning, not just the answer.')}</Line>}
+              {style.decisiveness === 'one' && <Line>{t('One pick, no menus.')}</Line>}
+              {style.decisiveness === 'options' && <Line>{t('Offers a couple of options with a house pick.')}</Line>}
+              {style.emoji === 'no' && <Line>{t('No emoji in replies.')}</Line>}
+              {!!style.loved?.length && <Line>More like: {style.loved.slice(-3).join(', ')}</Line>}
+              {!!style.rejected?.length && <Line>Never again: {style.rejected.slice(-3).join(', ')}</Line>}
+              <div
+                {...pressable(() => store.set({ style: {}, reactions: {} }))}
+                className="tap"
+                style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent-700)', marginTop: 4, minHeight: 44, display: 'flex', alignItems: 'center' }}
+              >
+                RESET WHAT NUM LEARNED
+              </div>
+            </div>
+          )}
+        </Collapsible>
+        {/* Passenger details live behind their own sheet rather than inline
+            with the preference fields, because they are a different KIND of
+            thing: a hint that makes an answer better versus the legal identity
+            an airline checks at the gate. */}
+        <Row title={t('Passenger details')} sub={t('Passport name and date of birth, for tickets only')} onTap={() => store.set({ passengerOpen: true })} />
+        <Verify5arz />
+      </List>
 
-      {/* Scout tools. Shown to everyone, because sign-up is open — the sheet
-          itself explains the programme to somebody who is not one yet rather
-          than hiding a door they are allowed to walk through. */}
-      <div
-        {...pressable(() => store.set({ scoutOpen: true }))}
-        className="glass lift"
-        style={{ ...card, cursor: 'pointer', display: 'flex', gap: 11, alignItems: 'center' }}
-      >
-        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <SparklesIcon size={15} style={{ color: 'var(--color-accent)' }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{t('NUM EXPERT')}</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3 }}>{t('Sign businesses up')}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>{t('Your code, your businesses, what you have earned')}</div>
-        </div>
-        <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
-      </div>
+      <List title={t('YOUR NUM')}>
+        <div id="your-people"><PeopleCard /></div>
+        <HostCard />
+        <Row icon={<SparklesIcon size={15} />} title={t('Own a place on NUM?')} sub={t('Claim your listing and get the owner tools')} onTap={() => store.set({ businessOpen: true })} />
+        {/* Scout tools. Shown to everyone, because sign-up is open — the sheet
+            itself explains the programme to somebody who is not one yet. */}
+        <Row icon={<SparklesIcon size={15} />} title={t('NUM Expert')} sub={t('Sign businesses up — your code, your businesses, what you have earned')} onTap={() => store.set({ scoutOpen: true })} ariaLabel={t('NUM EXPERT')} />
+        {/* Finish a connection that opened in the browser instead of the app. */}
+        <PairBridge installed />
+      </List>
 
+      <List title={t('SETTINGS')}>
+        <ThemePicker />
+        <NotificationsCard />
+        {/* CONNECT YOUR WORLD, moved off TODAY on 18 Sep 2026. */}
+        <ConnectionsCard />
+        <Collapsible title={t('Name on the account')} summary={me.name_locked ? t('Locked to your verified number') : t('What friends see when you connect')}>
+          <input
+            style={{ ...field, opacity: me.name_locked ? 0.6 : 1 }}
+            value={name}
+            disabled={me.name_locked}
+            onChange={(e) => { setName(e.target.value); setSaved(false); }}
+            placeholder={t('Your name')}
+          />
+          <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
+            {me.name_locked
+              ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.'
+              : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
+          </div>
+        </Collapsible>
+      </List>
 
-      <Group>{t('SETTINGS')}</Group>
-      <Collapsible title={t('NAME ON THE ACCOUNT')} summary={me.name_locked ? 'Locked to your verified number' : 'What friends see when you connect'}>
-        <input
-          style={{ ...field, opacity: me.name_locked ? 0.6 : 1 }}
-          value={name}
-          disabled={me.name_locked}
-          onChange={(e) => { setName(e.target.value); setSaved(false); }}
-          placeholder={t('Your name')}
+      <List title={t('ACCOUNT & DATA')}>
+        <ContactCard />
+        <IdentityCard />
+        {/* FINDING IT IS THE FEATURE. Deletion has to be discoverable in-app
+            (5.1.1(v)); it is the last row of the last list, which is where a
+            person looking for it looks. One tap opens the question. */}
+        <Row
+          tone="danger"
+          ariaLabel={t('Delete my account')}
+          title={t('Delete my account')}
+          onTap={() => {
+            store.set({ deleteOpen: true });
+            requestAnimationFrame(() => {
+              document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+          }}
         />
-        <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
-          {me.name_locked
-            ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.'
-            : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
-        </div>
-      </Collapsible>
-      <ThemePicker />
-      <NotificationsCard />
-      {/* CONNECT YOUR WORLD, moved off TODAY on 18 Sep 2026. What NUM may
-          reach — contacts, photos, calendar, wallet, mail, texts — belongs
-          beside notifications, with the other things you set once. */}
-      <ConnectionsCard />
-      {/* Passenger details live behind their own sheet rather than inline with
-          the preference fields above, because they are a different KIND of
-          thing: everything in HOW YOU TRAVEL is a hint that makes an answer
-          better, and this is the legal identity an airline checks at the gate.
-          Mixing them would imply the same casualness applies to both. */}
-      <div
-        {...pressable(() => store.set({ passengerOpen: true }))}
-        className="glass"
-        style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={kicker}>{t('PASSENGER DETAILS')}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('The passport name and date of birth an airline needs before it will issue a ticket. Only used for booking, never shown to the concierge.')}</div>
-        </div>
-        <ChevronRightIcon size={16} style={{ color: 'var(--ink-40)', flex: 'none' }} />
-      </div>
-
-      <Group>{t('ACCOUNT & DATA')}</Group>
-      <ContactCard />
-      <IdentityCard />
-      {/* FINDING IT IS THE FEATURE. Deletion has to be discoverable in-app
-          (5.1.1(v)); it lives under its own group header now, which is where
-          a person looking for it looks. One tap opens the question. */}
-      <div
-        {...pressable(() => {
-          store.set({ deleteOpen: true });
-          requestAnimationFrame(() => {
-            document.getElementById('delete-account')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          });
-        })}
-        role="button"
-        aria-label={t('Delete my account')}
-        className="glass lift"
-        style={{
-          margin: '10px 12px 0', padding: '11px 14px', borderRadius: 'var(--r-md, 12px)',
-          cursor: 'pointer', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', gap: 10, minHeight: 44,
-          background: 'transparent', border: '1px solid var(--line, rgba(0,0,0,.08))',
-        }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-60)' }}>{t('Delete my account')}</div>
-        <ChevronRightIcon size={16} />
-      </div>
+      </List>
       <DangerZone />
       <VersionLine />
       <SourcesLine />
     </div>
+  );
+}
+
+/** A small QR glyph for the hub tile — a picture of the thing it opens. */
+function QrGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+      <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M5.5 5.5h2v2h-2zM16.5 5.5h2v2h-2zM5.5 16.5h2v2h-2zM14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM18 18h3v3h-3z" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -707,7 +692,7 @@ function ThemePicker() {
   const name = THEMES.find((th) => th.id === current)?.name ?? 'Auto';
   const tile: React.CSSProperties = { cursor: 'pointer', borderRadius: 14, padding: '10px 10px', background: 'var(--field-bg)', display: 'grid', gap: 6 };
   return (
-    <Collapsible title={t('LOOK, TEXT & LANGUAGE')} summary={`${t(name)} · ${t(TEXT_SIZES.find((x) => x.id === textSize)?.name ?? 'Standard')} · ${LANGS[chosen].name}`}>
+    <Collapsible title={t('Look, text & language')} summary={`${t(name)} · ${t(TEXT_SIZES.find((x) => x.id === textSize)?.name ?? 'Standard')} · ${LANGS[chosen].name}`}>
       <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--ink-40)', margin: '2px 0 8px' }}>{t('LOOK')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         {THEMES.map((th) => {

@@ -8,6 +8,7 @@ import { normalisePhone, describePhone } from '../../lib/phone';
 import { looksLikeEmail, normaliseEmail } from '../../lib/contact';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, CopyIcon, ShareIcon, XIcon } from '../../lib/icons';
+import { closeInvite } from '../../lib/gate';
 import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, signUp, textInviteFromNum, verifyCode, whoIsOnNum } from '../../lib/social';
 import { canOfferInstall } from '../../lib/native';
 import AppleSignIn from './AppleSignIn';
@@ -209,7 +210,10 @@ export default function InviteSheet() {
   }, [cooling]);
 
   if (!draft) return null;
-  const close = () => store.set({ inviteOpen: null });
+  // Closing puts back whatever this sheet interrupted (draft.returnTo) —
+  // the plan, the business form, the wallet — unless an ask is held, in
+  // which case gate.ts is about to send it and the thread is the place.
+  const close = () => closeInvite();
 
   // The button says what is missing rather than sitting dim and silent, so
   // nobody has to guess which field is the problem.
@@ -313,7 +317,10 @@ export default function InviteSheet() {
       // Cold first run: they came to try the app, not to invite someone. Get
       // out of the way — NUM picks the conversation up in the thread. When an
       // invite IS in flight, stay put and carry straight on to it.
-      if (!sending) store.set({ inviteOpen: null, threadOpen: true });
+      if (!sending) {
+        if (draft.returnTo && Object.keys(draft.returnTo).length) closeInvite();
+        else store.set({ inviteOpen: null, threadOpen: true });
+      }
     } catch (err) {
       setAccountNote(guestMessage(err, 'That didn’t go through.'));
     } finally {
@@ -495,14 +502,24 @@ export default function InviteSheet() {
           {/* This is the first thing anyone is ASKED, and a form that reads
               like a signup form gets closed. Warm heading, one line of why,
               and a button that sounds like a person. */}
-          <div style={label}>{sending ? 'YOUR NUM ACCOUNT' : 'HELLO'}</div>
+          {/* THE HEADING SAYS WHY (18 Sep 2026: "it needs direction to not
+              lose the user's progress"). A person who tapped "invite friends"
+              inside a plan is told the account is for THAT, and that they go
+              straight back to it. draft.intent / draft.returnTo. */}
+          <div style={label}>{sending ? 'YOUR NUM ACCOUNT' : draft.intent === 'plan' ? t('FOR YOUR PLAN') : draft.intent === 'business' ? t('FOR YOUR BUSINESS') : draft.intent === 'friend' ? t('TO ADD A FRIEND') : 'HELLO'}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
             {sending ? 'Who am I sending this as?' : 'Let’s start with your name'}
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 5, lineHeight: 1.55 }}>
             {sending
               ? 'Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.'
-              : 'So I know what to call you, and can reach you when a booking moves. Never shown to anyone you haven’t connected with.'}
+              : draft.intent === 'plan'
+                ? t('A plan needs to know who’s who. One minute, then you’re straight back in it.')
+                : draft.intent === 'business'
+                  ? t('Your listing needs an owner NUM can reach. One minute, then straight back to it.')
+                  : draft.intent === 'friend'
+                    ? t('An invite has to come from someone. One minute, then you’re back to sending it.')
+                    : 'So I know what to call you, and can reach you when a booking moves. Never shown to anyone you haven’t connected with.'}
           </div>
           {/* SIGN IN WITH APPLE, ON THE FIRST SCREEN — not buried in Profile.
 
@@ -772,7 +789,7 @@ export default function InviteSheet() {
                 They’re already on NUM, so your NUM told theirs directly: the {draft.planId ? 'plan is in their PLAN tab' : 'connection is live'} and their phone just buzzed. Nothing to text, nothing to tap.
               </div>
               <div
-                {...pressable(() => store.set({ inviteOpen: null }))}
+                {...pressable(close)}
                 style={{ marginTop: 14, cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center' }}
               >
                 DONE

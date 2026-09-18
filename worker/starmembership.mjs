@@ -31,7 +31,7 @@
  *
  * 2. THE WELCOME GRANT CANNOT BUY A MEMBERSHIP.
  *
- *    Every new member is handed ★100 the moment they sign up, before anything
+ *    Every new member is handed ★5 (★100 before 18 Sep 2026) the moment they sign up, before anything
  *    is verified. At ★32 a month that grant is three free months of Plus per
  *    signup, and to anyone with a script it is unlimited free months. This is
  *    not a hypothetical: it is the same shape as the $1-for-★5,000 bug, with

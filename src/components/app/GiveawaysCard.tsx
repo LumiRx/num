@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { apiUrl } from '../../lib/apibase';
-import { canSend, dropKeyboard } from '../../lib/gate';
+import { canSend, needAccount } from '../../lib/gate';
 import { t } from '../../lib/i18n';
 
 export interface Giveaway {
@@ -55,7 +55,7 @@ export default function GiveawaysCard({ heading }: { heading?: React.ReactNode }
   const enter = async (g: Giveaway) => {
     if (busy) return;
     // Same line as sending a message: a prize needs somewhere to go.
-    if (!me?.id || !canSend(me)) { dropKeyboard(); store.set({ inviteOpen: {} }); return; }
+    if (!me?.id || !canSend(me)) { needAccount({ profileOpen: true }); return; }
     setBusy(g.id); setErr(null);
     try {
       const r = await fetch(apiUrl('/api/giveaways/enter'), {

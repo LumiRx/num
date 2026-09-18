@@ -406,6 +406,18 @@ export function repairShapes(saved: Record<string, unknown>): Record<string, unk
   // (ember, midnight, bloom…) becomes Auto — the one look, light or dark.
   if ('theme' in out && !['auto', 'verified', 'verified-dark'].includes(String(out.theme))) out.theme = 'auto';
   if ('textSize' in out && !['standard', 'large', 'xl'].includes(String(out.textSize))) out.textSize = 'standard';
+  // ★100 → ★5 (18 Sep 2026). A phone that opened NUM before today saved the
+  // old signed-out seed — 100 Stars and a "Welcome stars ★100" line — and
+  // restored it on every launch, so "the stars should be at 5" looked
+  // unfixed on exactly the devices Dre tests on. Only the seed is corrected:
+  // a signed-in member's balance comes from the server and is left alone.
+  if (!out.me && Number(out.stars) === 100) {
+    const t = Array.isArray(out.txns) ? out.txns : [];
+    if (t.length <= 1 && (!t[0] || /Welcome stars/.test(String(t[0].t ?? '')))) {
+      out.stars = 5;
+      out.txns = [{ id: 't0', t: 'Welcome stars ★5', meta: 'on the house', amt: '+★5', dir: 1 }];
+    }
+  }
 
   // A widget added after a phone first saved its list would otherwise never
   // appear there. Tonight slots in right under NEXT UP, where it was designed

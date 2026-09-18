@@ -70,7 +70,7 @@ export default function BusinessSheet() {
         {!me && (
           <>
             <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('Add your name and number first — a claim has to belong to someone.')}</div>
-            <div {...pressable(() => store.set({ businessOpen: false, inviteOpen: {} }))} style={{ ...primary, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
+            <div {...pressable(() => store.set({ businessOpen: false, inviteOpen: { intent: 'business', returnTo: { businessOpen: true } } }))} style={{ ...primary, marginTop: 14 }}>{t('INTRODUCE YOURSELF')}</div>
           </>
         )}
 

@@ -39,9 +39,9 @@ globalThis.addEventListener = () => {};
 globalThis.document = { addEventListener() {}, createElement: () => ({ style: {}, setAttribute() {}, appendChild() {} }), body: { appendChild() {}, dataset: {} }, documentElement: { style: { setProperty() {} } } };
 try { Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node', onLine: true }, configurable: true }); } catch { /* fine */ }
 
-let canSend, mayAsk, holdAndAsk, takeHeldAsk, store, gateOpen, asksSpent, FREE_ANSWERS;
+let canSend, mayAsk, holdAndAsk, takeHeldAsk, store, gateOpen, asksSpent, FREE_ANSWERS, needAccount, closeInvite;
 before(async () => {
-  ({ canSend, mayAsk, holdAndAsk, takeHeldAsk, gateOpen, asksSpent, FREE_ANSWERS } = await import('./gate.ts'));
+  ({ canSend, mayAsk, holdAndAsk, takeHeldAsk, gateOpen, asksSpent, FREE_ANSWERS, needAccount, closeInvite } = await import('./gate.ts'));
   ({ store } = await import('./store.ts'));
 });
 beforeEach(() => store.set({ me: null, pendingAsk: null, inviteOpen: null }));
@@ -223,5 +223,41 @@ describe('one answer, then the gate', () => {
     assert.equal(asksSpent(null), 0);
     assert.equal(asksSpent([null, undefined, {}, { who: 7 }]), 0);
     assert.equal(gateOpen(null, [null, undefined]), true);
+  });
+});
+
+
+// ── THE WAY BACK (18 Sep 2026) ────────────────────────────────────────────
+//
+// "the connection needs to point with the action … it needs direction to not
+// lose the user's progress." A sheet that sends someone to sign in says why
+// (intent) and where to put them back (returnTo); closing the account sheet
+// restores that, unless an ask is held — then the thread is where the answer
+// is about to land.
+describe('the account sheet remembers where it came from', () => {
+  test('needAccount opens the sheet with the intent and the way back', () => {
+    store.set({ partyOpen: false });
+    needAccount({ partyOpen: true }, 'plan');
+    assert.deepEqual(store.get().inviteOpen, { intent: 'plan', returnTo: { partyOpen: true } });
+  });
+
+  test('closeInvite puts the interrupted sheet back', () => {
+    store.set({ partyOpen: false, inviteOpen: { intent: 'plan', returnTo: { partyOpen: true } } });
+    closeInvite();
+    assert.equal(store.get().inviteOpen, null);
+    assert.equal(store.get().partyOpen, true);
+  });
+
+  test('a held ask outranks the return — the thread is where the answer lands', () => {
+    store.set({ partyOpen: false, pendingAsk: 'a table for two', inviteOpen: { intent: 'plan', returnTo: { partyOpen: true } } });
+    closeInvite();
+    assert.equal(store.get().inviteOpen, null);
+    assert.equal(store.get().partyOpen, false, 'the plan does not reopen over an answer in flight');
+  });
+
+  test('a plain sign-in with nothing to return to just closes', () => {
+    store.set({ inviteOpen: {} });
+    closeInvite();
+    assert.equal(store.get().inviteOpen, null);
   });
 });

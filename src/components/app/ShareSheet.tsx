@@ -114,7 +114,7 @@ export default function ShareSheet() {
         {!me ? (
           <>
             <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.55 }}>{t('Add your name first so the invite comes from someone — an anonymous link is one nobody taps.')}</div>
-            <div {...pressable(() => store.set({ shareOpen: false, inviteOpen: {} }))} className="press" style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center' }}>
+            <div {...pressable(() => store.set({ shareOpen: false, inviteOpen: { intent: 'friend', returnTo: { shareOpen: true } } }))} className="press" style={{ cursor: 'pointer', marginTop: 14, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center' }}>
               {t('SIGN IN')}
             </div>
           </>

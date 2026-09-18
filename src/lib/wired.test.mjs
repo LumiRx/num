@@ -90,9 +90,11 @@ describe('one tap on the profile row produces the question', () => {
   test('the row opens the panel, it does not merely scroll', () => {
     // The bug: it scrolled to a control that stayed shut, so the page moved
     // and nothing else happened. Scrolling without opening is not an action.
-    const i = PROFILE.search(/aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/);
+    // 18 Sep 2026: the row is a <Row> in the ACCOUNT & DATA list; its label
+    // is the ariaLabel prop and its onTap follows it.
+    const i = PROFILE.indexOf("ariaLabel={t('Delete my account')}");
     assert.ok(i > 0, 'the profile row is missing');
-    const el = PROFILE.slice(Math.max(0, i - 900), i);
+    const el = PROFILE.slice(i, i + 600);
     assert.match(el, /store\.set\(\{ deleteOpen: true \}\)/, 'the row must open the flow');
     assert.match(el, /scrollIntoView/, 'and then bring it into view');
   });

@@ -138,7 +138,7 @@ export default function TravelSheet() {
             {!me ? (
               <>
                 <div style={{ ...help, marginTop: 14, color: 'var(--ink-60)' }}>{t('Tell me your name first — an agency quoting a trip needs to know whose it is.')}</div>
-                <div {...pressable(() => store.set({ travelDraft: null, inviteOpen: {} }))} style={{ ...button, marginTop: 12 }}>{t('INTRODUCE YOURSELF')}</div>
+                <div {...pressable(() => store.set((s) => ({ travelDraft: null, inviteOpen: { intent: 'account', returnTo: { travelDraft: s.travelDraft } } })))} style={{ ...button, marginTop: 12 }}>{t('INTRODUCE YOURSELF')}</div>
               </>
             ) : (
               <>
