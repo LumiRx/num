@@ -118,6 +118,12 @@ const FILES = [
   // earnings `kind` list ('milestone'). Verified zero rows in
   // num_scout_earnings immediately before writing it; NOT re-runnable.
   'worker/migrations/0034_scout_milestones.sql',
+  // Pay rails: num_business_rails (a venue's connected Stripe account and its
+  // rail opt-outs) plus four ALTERs on num_paylinks for the Stripe references
+  // on a paid bill. The table is IF NOT EXISTS; the ALTERs are NOT
+  // re-runnable. Code reads the table behind a fallback, so shipping the code
+  // before running this is safe — see the file header.
+  'worker/migrations/0035_pay_rails.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

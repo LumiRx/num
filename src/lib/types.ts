@@ -410,6 +410,12 @@ export interface AppState {
   starMoves: Array<{ id: string; delta: number; kind: string; note: string | null; other_name: string | null; created_at: string }>;
   /** A scanned pay request waiting for confirmation. */
   payOpen: { to: string; toName?: string; amount?: number; note?: string } | null;
+  /**
+   * A venue BILL code (itsnum.com/p/<token>) opened in the app — the rails a
+   * guest may pay it by come from the server (worker/payrails.mjs) and are
+   * never decided here. The token alone; everything else is fetched.
+   */
+  billOpen: string | null;
 
   /**
    * The passenger-details sheet. A boolean and nothing else — the records

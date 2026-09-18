@@ -233,7 +233,7 @@ function form(obj, prefix = '') {
  */
 export { stripe as stripeCall, form as stripeForm };
 
-async function stripe(env, path, body, idem, method = 'POST') {
+async function stripe(env, path, body, idem, method = 'POST', { account = null } = {}) {
   const res = await fetch(`${STRIPE}${path}`, {
     method,
     headers: {
@@ -242,6 +242,10 @@ async function stripe(env, path, body, idem, method = 'POST') {
       // Stripe's own idempotency, not ours. A retried checkout creation must
       // not leave two sessions for one booking.
       ...(idem ? { 'Idempotency-Key': idem } : {}),
+      // A DIRECT CHARGE on a venue's connected account (billpay.mjs). The
+      // header is the whole difference between "NUM took the money" and "the
+      // venue took the money with NUM's fee on top" — see payrails.mjs.
+      ...(account ? { 'Stripe-Account': account } : {}),
     },
     body: form(body),
     signal: AbortSignal.timeout(20_000),
@@ -791,15 +795,17 @@ export async function cancelSubscription(env, subId) {
 // `t.payload` with the endpoint secret (HMAC-SHA256, hex, in the
 // Stripe-Signature header). No secret configured means no webhook — we would
 // rather not know than believe a forgery.
-async function verifyStripeSig(env, payload, header) {
-  if (!env.STRIPE_WEBHOOK_SECRET || !header) return false;
+// Exported for billpay.mjs, whose Connect endpoint carries its own signing
+// secret (Stripe signs "events on connected accounts" with a separate key).
+export async function verifyStripeSig(env, payload, header, secret = env.STRIPE_WEBHOOK_SECRET) {
+  if (!secret || !header) return false;
   const parts = header.split(',').map((p) => p.split('='));
   const t = parts.find(([k]) => k === 't')?.[1];
   const sigs = parts.filter(([k]) => k === 'v1').map(([, v]) => v);
   if (!t || !sigs.length) return false;
   if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false; // replay window
   const enc = (s) => new TextEncoder().encode(s);
-  const key = await crypto.subtle.importKey('raw', enc(env.STRIPE_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const key = await crypto.subtle.importKey('raw', enc(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = await crypto.subtle.sign('HMAC', key, enc(`${t}.${payload}`));
   const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
   return sigs.includes(hex);

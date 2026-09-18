@@ -368,6 +368,8 @@ import * as MONEY from './money.mjs';
 import * as CRYPTO from './crypto.mjs';
 import * as RPC from './rpc.mjs';
 import * as QRCHECK from './qrcheck.mjs';
+import * as PAYRAILS from '../worker/payrails.mjs';
+import * as CONNECT from './connect.mjs';
 // sendBatch lives in its own module now — see resend.mjs — so the invite
 // drain (invitecron.mjs) makes the exact same Resend call this worker
 // already made for host invites, rather than a second copy that could drift.
@@ -1284,10 +1286,19 @@ const WORKER = {
       if (p.startsWith("/api/after/") && req.method === "GET")
         return afterStateRoute(req, env, p.slice(11));
       if (p.startsWith("/p/")) {
+        // /p/<token>            the chooser (or the single rail when there is only one)
+        // /p/<token>/go         the tracked hop to the venue's own payment page
+        // /p/<token>/promptpay  the venue's PromptPay sticker view
+        // /p/<token>/crypto     the venue's USDC address view
         const rest = p.slice(3);
-        return rest.endsWith("/go") ? payGo(req, env, rest.slice(0, -3))
-                                    : payLanding(req, env, rest);
+        const m = rest.match(/^([^/]+)(?:\/(go|promptpay|crypto))?\/?$/);
+        if (!m) return payLanding(req, env, rest);
+        if (m[2] === "go") return payGo(req, env, m[1]);
+        return payLanding(req, env, m[1], m[2] || "auto");
       }
+      if (p === "/biz/connect/start") return connectStart(req, env, url);
+      if (p === "/biz/connect/callback") return connectCallback(req, env, url);
+      if (p === "/api/venue/rails") return venueRailsApi(req, env, url);
       if (p === "/tonight" || p.startsWith("/tonight/")) return tonightPage(req, env, url);
       if (p.startsWith("/v/")) return venueLanding(req, env, p.slice(3));
       // /s/CODE — a Num Expert's NFC card. THIS is the hostname the cards are
@@ -8296,10 +8307,10 @@ function hostOf(u) {
 }
 
 /* ── GET /p/<token> — what the guest's camera opens ─────────────────────── */
-async function payLanding(req, env, tok) {
+async function payLanding(req, env, tok, view = "auto") {
   const ptok = clean(tok, 40).toUpperCase();
   const link = await env.DB.prepare(
-    `SELECT l.token, l.business_id, l.label, l.kind, l.target, l.amount, l.currency,
+    `SELECT l.token, l.business_id, l.label, l.kind, l.target, l.amount, l.amount_mode, l.currency,
             l.state, l.crypto_asset, l.crypto_base_units, l.crypto_quote, l.settled_at,
             b.name AS business_name
        FROM num_paylinks l JOIN businesses b ON b.id = l.business_id
@@ -8327,31 +8338,93 @@ async function payLanding(req, env, tok) {
   }
 
   await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "scan", active: true });
-  let cryptoInfo = null;
-  let walletUri = null;
-  if (link.kind === "crypto") {
-    // The quote was stamped when the code was minted. An open sticker has no
-    // quote at all — it names the asset and the guest sends what the bill says.
-    try { cryptoInfo = link.crypto_quote ? JSON.parse(link.crypto_quote) : null; } catch (e) { cryptoInfo = null; }
-    const a = CRYPTO.ASSETS[link.crypto_asset || "usdc-base"];
-    cryptoInfo = Object.assign({ asset: a?.asset || "USDC", chain: a?.label || "Base" }, cryptoInfo || {});
-    // The deep link carries what the QR cannot: the exact amount, so the
-    // guest never types a figure. Only for a bill — an open sticker has no
-    // amount to fill in.
-    walletUri = link.crypto_base_units
-      ? CRYPTO.paymentUri(link.crypto_asset || "usdc-base", link.target, BigInt(link.crypto_base_units))
-      : null;
+
+  /* ── WHICH RAILS, AND WHICH VIEW ─────────────────────────────────────────
+   *
+   * Until 17 Sep 2026 this page rendered the link's ONE kind. Now the list
+   * comes from worker/payrails.mjs — the same list the app and the console
+   * read — decided by where the table is and ordered by who is holding the
+   * phone. Three outcomes:
+   *
+   *   several rails  → the chooser (one card per rail, each wired to its start)
+   *   exactly one    → that rail's page, as before — a venue that has only its
+   *                    PromptPay sticker sees no chooser and nothing changes
+   *   none           → the code is on hold (a Thai venue's USDC sticker, say):
+   *                    say so and name whoever can help, never a dead end
+   *
+   * A failed read of the venue is a 503, not a guess: a chooser built from a
+   * half-read venue would show rails the venue cannot take. */
+  let venue;
+  try { venue = await PAYRAILS.venueRails(env, link.business_id); } catch (e) {
+    console.warn("[pay] venue read failed", e && e.message);
+    return HTML(payPage({ state: "later", venue: link.business_name }), 503);
   }
+  const guest = PAYRAILS.guestFromRequest(req);
+  const rails = PAYRAILS.railsFor(Object.assign({}, venue, { currency: link.currency || venue.currency }), guest)
+    .map((r) => Object.assign({}, r, { action: PAYRAILS.actionFor(env, r, ptok) }));
+  // Stripe rails need a figure; an open sticker has none. Hide them rather
+  // than open a Checkout that would have to ask the guest to type the bill.
+  const fixed = link.amount_mode === "fixed" && !!link.amount;
+  const usable = rails.filter((r) => fixed || r.source !== "stripe");
+  const real = usable.filter((r) => r.source !== "app");
+  const back = real.length > 1 ? "/p/" + encodeURIComponent(ptok) : null;
+
+  const single = (r) => {
+    if (r.id === "usdc_direct") return cryptoView(link, ptok, back);
+    if (r.id === "promptpay_sticker") return HTML(payPage(baseView(link, ptok, { promptpayId: link.target })));
+    return HTML(payPage(baseView(link, ptok, { payHost: hostOf(link.target) })));
+  };
+
+  if (view === "promptpay" || view === "crypto") {
+    const want = view === "promptpay" ? "promptpay_sticker" : "usdc_direct";
+    const r = real.find((x) => x.id === want);
+    if (!r) return HTML(payPage({ state: "held", token: ptok, venue: link.business_name, label: link.label,
+      amount: link.amount, currency: link.currency, rails: real, why: view === "crypto" && venue.country === "TH"
+        ? "Crypto payments are on hold at venues in Thailand." : "That way to pay is not available for this bill." }), 409);
+    return single(r);
+  }
+
+  if (real.length === 0) {
+    return HTML(payPage({ state: "held", token: ptok, venue: link.business_name, label: link.label,
+      amount: link.amount, currency: link.currency, rails: [],
+      why: link.kind === "crypto" && venue.country === "TH"
+        ? "Crypto payments are on hold at venues in Thailand, so this code cannot be paid. Ask staff for another way to pay."
+        : "This code has no way to be paid right now. Ask staff." }), 409);
+  }
+  if (real.length === 1) return single(real[0]);
+
+  const q = new URL(req.url).searchParams;
+  return HTML(payPage({
+    state: "choose", token: ptok, venue: link.business_name, label: link.label,
+    amount: link.amount, currency: link.currency, rails: usable,
+    why: q.get("why") ? clean(q.get("why"), 200) : null,
+    confirming: q.get("paid") === "1",
+  }));
+
+  function baseView(l, t, extra) {
+    return Object.assign({
+      state: "pay", token: t, venue: l.business_name, label: l.label,
+      kind: l.kind, amount: l.amount, currency: l.currency,
+      promptpayId: null, payHost: null, target: l.target, crypto: null, walletUri: null,
+      // Back to the chooser, when there was one to come from.
+      back,
+    }, extra);
+  }
+}
+
+/** The venue's own USDC address, quoted at mint. Only reached when the rail is live for this venue. */
+function cryptoView(link, ptok, back = null) {
+  let cryptoInfo = null;
+  try { cryptoInfo = link.crypto_quote ? JSON.parse(link.crypto_quote) : null; } catch (e) { cryptoInfo = null; }
+  const a = CRYPTO.ASSETS[link.crypto_asset || "usdc-base"];
+  cryptoInfo = Object.assign({ asset: a?.asset || "USDC", chain: a?.label || "Base" }, cryptoInfo || {});
+  const walletUri = link.crypto_base_units
+    ? CRYPTO.paymentUri(link.crypto_asset || "usdc-base", link.target, BigInt(link.crypto_base_units))
+    : null;
   return HTML(payPage({
     state: "pay", token: ptok, venue: link.business_name, label: link.label,
-    kind: link.kind, amount: link.amount, currency: link.currency,
-    promptpayId: link.kind === "promptpay" ? link.target : null,
-    // The host we are about to hand the guest to. A stranger scanned a sticker
-    // on a table and is one tap from a third-party domain, which is the exact
-    // shape of a quishing attack — and this rail was the only one giving them
-    // nothing to check. The other two name the bank and the chain.
-    payHost: link.kind === "url" ? hostOf(link.target) : null,
-    target: link.target, crypto: cryptoInfo, walletUri,
+    kind: "crypto", amount: link.amount, currency: link.currency,
+    promptpayId: null, payHost: null, target: link.target, crypto: cryptoInfo, walletUri, back,
   }));
 }
 
@@ -8673,6 +8746,22 @@ async function payFindings(env) {
 }
 
 /* ── pages ─────────────────────────────────────────────────────────────── */
+/** Short badge per rail — text, so nothing is fetched and every language can read the name beside it. */
+const RAIL_BADGE = Object.freeze({
+  apple_pay: "\uF8FF Pay", google_pay: "G Pay", card: "CARD", link: "Link", cashapp: "$", amazon_pay: "a",
+  alipay: "\u652F", wechat_pay: "\u5FAE", pay_by_bank: "BANK", revolut_pay: "R", paypal: "PayPal",
+  promptpay_stripe: "PP", promptpay_sticker: "PP", venue_link: "\u2197", usdc_stripe: "USDC", usdc_direct: "USDC", num_app: "NUM",
+});
+
+function railCards(rails) {
+  return `<div class="rails">${(rails || []).map((r, i) => `
+    <a class="rail${i === 0 ? " first" : ""}${r.source === "app" ? " app" : ""}" href="${esc(r.action)}"${r.source === "stripe" ? "" : ""}>
+      <span class="ic" aria-hidden="true">${esc(RAIL_BADGE[r.id] || "")}</span>
+      <span class="tx"><span class="nm">${esc(r.label)}</span><br><span class="hw">${esc(r.how)}</span></span>
+      <span class="ch" aria-hidden="true">&rsaquo;</span>
+    </a>`).join("")}</div>`;
+}
+
 function payShell(inner, title) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8701,6 +8790,19 @@ h1{font-size:20px;margin:14px 0 6px}
 .warn{font-size:14px;background:#fff;border:1px solid #e0ddd4;border-left:4px solid #b4552d;
   border-radius:8px;padding:10px 12px;margin-top:16px;color:#4a5450}
 .foot{font-size:13px;color:#7a827e;margin-top:26px}
+.rails{display:grid;gap:10px;margin:14px 0}
+.rail{display:flex;align-items:center;gap:14px;background:#fff;border:1.5px solid #e0ddd4;border-radius:14px;
+  padding:14px 16px;text-decoration:none;color:inherit;min-height:64px;box-sizing:border-box}
+.rail:active{background:#eef2f0}
+.rail.first{border-color:#1f3a34;box-shadow:0 2px 10px rgba(31,58,52,.12)}
+.rail.app{border-style:dashed}
+.rail .ic{width:44px;height:44px;border-radius:10px;background:#eef2f0;display:flex;align-items:center;
+  justify-content:center;font-weight:800;font-size:13px;color:#1f3a34;flex:none;letter-spacing:.02em}
+.rail .tx{flex:1;min-width:0}
+.rail .nm{font-weight:700;font-size:17px}
+.rail .hw{font-size:13px;color:#4a5450;line-height:1.4}
+.rail .ch{color:#7a827e;font-size:26px;line-height:1}
+.back{display:inline-block;font-size:14px;color:#1f3a34;text-decoration:none;margin-bottom:6px}
 </style></head><body><main>${inner}</main>
 <script>
 // Copy buttons on the ID, the amount and the crypto address.
@@ -8753,6 +8855,52 @@ function payPage(o) {
     old codes stop working the moment they're replaced, which is the point.</p>
     <a class="btn ghost" href="https://itsnum.com/">Go to NUM</a>`, "Retired code — NUM");
 
+  if (o.state === "later") return payShell(`
+    <div class="venue">${esc(o.venue)}</div>
+    <h1>One moment</h1>
+    <p class="lede">We couldn't read this venue's payment details just now. Nothing was
+    charged. Pull down to try again, or ask staff to take payment their usual way.</p>
+    <a class="btn ghost" href="javascript:location.reload()">Try again</a>`, "One moment — NUM");
+
+  // A code with no live way to pay it. Most often a Thai venue's USDC sticker
+  // while crypto is held there. Never a dead end: name the reason and every
+  // rail that IS live.
+  if (o.state === "held") return payShell(`
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>Not this way</h1>
+    ${o.amount ? `<div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>` : ""}
+    <p class="lede">${esc(o.why || "That way to pay is not available for this bill.")}</p>
+    ${o.rails && o.rails.length ? `<p class="lede">You can still pay:</p>${railCards(o.rails)}` : ""}
+    <div class="warn">Nothing was charged. If nothing here works for you, staff can take payment
+    their usual way.</div>
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`,
+    "Pay " + o.venue + " — NUM");
+
+  /*
+   * The chooser — one card per rail, in the order payrails.mjs decided.
+   *
+   * Every card is a plain link to the URL that starts that rail, so it works
+   * with no JavaScript at all and back-button behaviour is the browser's own.
+   * The first card is emphasised because the order carries the venue's
+   * preference (Pay by Bank in the UK, the free sticker in Thailand) and the
+   * guest's signals (their phone, their language). The app door is last and
+   * dashed: it is "more ways", not a rail.
+   */
+  if (o.state === "choose") return payShell(`
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>${o.confirming ? "Payment received" : "How would you like to pay?"}</h1>
+    ${o.amount ? `<div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>` : ""}
+    ${o.confirming ? `<p class="lede">Confirming with ${esc(o.venue)}&hellip; this page will update itself.
+      Keep it open to show staff.</p><meta http-equiv="refresh" content="3">` : ""}
+    ${o.why ? `<div class="warn">${esc(o.why)}</div>` : ""}
+    ${o.confirming ? "" : railCards(o.rails)}
+    <p class="note">Whichever you choose, the money goes to ${esc(o.venue)} &mdash; NUM never holds it
+    and never sees your card. Card payments are taken by ${esc(o.venue)}'s own Stripe account.</p>
+    <div class="warn">Not at ${esc(o.venue)} right now? Then this code isn't for your table &mdash;
+    don't pay, and tell staff.</div>
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`,
+    "Pay " + o.venue + " — NUM");
+
   /*
    * The receipt.
    *
@@ -8783,9 +8931,11 @@ function payPage(o) {
 
   const amt = o.amount ? `${esc(o.currency)} ${esc(o.amount)}` : null;
 
+  const backLink = o.back ? `<a class="back" href="${esc(o.back)}">&larr; Other ways to pay</a>` : "";
+
   if (o.kind === "crypto") {
     const a = o.crypto || {};
-    return payShell(`
+    return payShell(`${backLink}
     <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
     <h1>Pay in ${esc(a.asset || "USDC")}</h1>
     ${a.display ? `<div class="amount">${esc(a.display)} ${esc(a.asset || "USDC")}</div>` : ""}
@@ -8808,7 +8958,7 @@ function payPage(o) {
       "Pay " + o.venue + " — NUM");
   }
 
-  const inner = o.kind === "url" ? `
+  const inner = o.kind === "url" ? `${backLink}
     <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
     <h1>Pay ${esc(o.venue)}</h1>
     ${amt ? `<div class="amount">${amt}</div>`
@@ -8822,7 +8972,7 @@ function payPage(o) {
     holds your money and never sees your card.</p>
     <div class="warn">Not at ${esc(o.venue)} right now? Then this code isn't for
     your table — don't pay, and tell staff.</div>
-    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>` : `
+    <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>` : `${backLink}
     <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
     <h1>Pay by PromptPay</h1>
     ${amt ? `<div class="amount">${amt}</div>` : ""}
@@ -8891,6 +9041,55 @@ async function venuePayPage(req, env, url) {
 
   const active = (links || []).filter((l) => l.state === "active");
   const retired = (links || []).filter((l) => l.state !== "active");
+
+  /* ── HOW GUESTS CAN PAY — the rails tile ──────────────────────────────────
+   * The same list the pay page renders, with the unready rails included and
+   * the reason each one is missing, so a venue asking "why can't guests pay
+   * by card?" reads the answer here instead of ringing us. */
+  let railsTile = "";
+  try {
+    const venue = await PAYRAILS.venueRails(env, biz.id);
+    const full = PAYRAILS.railsFor(venue, {}, { includeUnready: true }).filter((r) => r.source !== "app");
+    const live = full.filter((r) => r.ready);
+    const off = full.filter((r) => !r.ready && r.reason === "switched off by the venue");
+    const needConnect = full.filter((r) => !r.ready && r.needs === "stripe_connect");
+    const held = full.filter((r) => r.held);
+    const rest = full.filter((r) => !r.ready && !r.held && r.needs !== "stripe_connect" && r.reason !== "switched off by the venue");
+    const connected = !!venue.stripe_account_id;
+    const cr = CONNECT.connectReady(env);
+    const row = (r, on) => `<label class="railrow"><input type="checkbox" data-rail="${esc(r.id)}" ${on ? "checked" : ""}
+        ${r.ready || r.reason === "switched off by the venue" ? "" : "disabled"}>
+      <span><b>${esc(r.label)}</b> <span class="mut">${esc(r.ready ? r.how : r.reason)}</span></span></label>`;
+    railsTile = `
+<div class="tile noprint" id="rails">
+  <b>How guests can pay you</b>
+  <p class="sub" style="margin-top:4px">Decided by where you are (${esc(venue.country || "country not set")}, ${esc(venue.currency)}).
+  Guests see these in this order on every bill code. Untick a way to hide it. Every payment goes to
+  <i>you</i> &mdash; NUM never holds the money.</p>
+  ${live.length || off.length ? live.concat(off).map((r) => row(r, r.ready)).join("") : `<p class="sub">No live way to pay yet.</p>`}
+  ${held.length ? `<div class="held">${held.map((r) => `<b>${esc(r.label)}</b> &mdash; ${esc(r.reason)}`).join("<br>")}</div>` : ""}
+  ${needConnect.length ? `<div class="connect">
+    <b>Cards, wallets and more through your own Stripe account</b>
+    <p class="sub" style="margin:4px 0 8px">${connected
+      ? "Connected, but Stripe has not enabled charges on your account yet. Finish Stripe's checks, then refresh here."
+      : `Connect the Stripe account you already have, or open one in your country in about ten minutes. Guests then pay by
+         ${esc(needConnect.slice(0, 5).map((r) => r.label).join(", "))}${needConnect.length > 5 ? " and more" : ""}. The money
+         lands in <i>your</i> Stripe balance and your bank; NUM takes its fee at the same moment, so there is no invoice to chase.`}</p>
+    ${cr
+      ? (connected
+        ? `<button class="mini" onclick="railsRefresh()">Refresh Stripe status</button> <button class="mini" onclick="railsDisconnect()">Disconnect</button>`
+        : `<a class="btn" style="display:inline-block;text-decoration:none" href="/biz/connect/start?k=${k}">Connect with Stripe</a>`)
+      : `<p class="sub" style="color:var(--warn)">Stripe Connect is not switched on for NUM yet (${esc(CONNECT.connectNeeds(env).join("; "))}).</p>`}
+  </div>` : (connected ? `<p class="sub">Stripe: connected (${esc(venue.stripe_account_id)}). <button class="mini" onclick="railsRefresh()">Refresh</button> <button class="mini" onclick="railsDisconnect()">Disconnect</button></p>` : "")}
+  ${rest.length ? `<details><summary class="mut">${rest.length} more ways NUM knows that don't apply here</summary>
+    ${rest.map((r) => `<div class="mut"><b>${esc(r.label)}</b> — ${esc(r.reason)}</div>`).join("")}</details>` : ""}
+  <div id="railsout" class="sub"></div>
+</div>`;
+  } catch (e) {
+    console.warn("[biz/pay] rails tile", e && e.message);
+    railsTile = `<div class="tile noprint"><b>How guests can pay you</b><p class="sub">Couldn't read this just now — reload.</p></div>`;
+  }
+
   const card = (l) => `
     <div class="card" data-tok="${esc(l.token)}">
       ${l.kind === "promptpay"
@@ -8946,6 +9145,11 @@ td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}
 .cardlabel{font-weight:800;margin-top:8px}
 .cardamt{font-weight:700;font-size:15px}
 .meter{font-size:14px;color:#4a5450}
+.railrow{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font-size:14px;font-weight:400}
+.railrow input{margin-top:4px;flex:none}
+.held{margin-top:10px;padding:10px 12px;border-left:4px solid var(--warn);background:#fff;border-radius:8px;font-size:13px;color:#4a5450}
+.connect{margin-top:12px;padding:12px;border:1px dashed var(--pine);border-radius:10px;font-size:14px}
+details summary{cursor:pointer;margin-top:10px;font-size:13px}
 @media print{body{padding:0;background:#fff}
   .tile,.nav,h1,.sub,#out,table,.noprint{display:none!important}
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10mm;padding:8mm}}
@@ -8961,6 +9165,7 @@ td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}
   <a href="/biz/settings?k=${k}">Settings</a>
 </div>
 
+${railsTile}
 <div class="tile noprint">
   <b>Add a payment QR</b>
   <p class="sub" style="margin-top:4px">Guests scan it, see <i>${esc(biz.name)} · the table's name</i>,
@@ -9026,10 +9231,93 @@ function bulk(){
 }
 function setState(t,s){ post('/api/venue/pay/state',{token:t,state:s})
   .then(function(r){ if(r.ok) location.reload(); else say(r.error||'failed') }) }
+function railsSay(m){document.getElementById('railsout').textContent=m}
+function railsSave(){
+  var off=[];document.querySelectorAll('#rails input[data-rail]').forEach(function(c){ if(!c.checked) off.push(c.getAttribute('data-rail')) });
+  post('/api/venue/rails',{rails_off:off}).then(function(r){ railsSay(r.ok?'Saved — guests see the change on their next scan.':(r.error||'Could not save')) })
+}
+document.querySelectorAll('#rails input[data-rail]').forEach(function(c){ c.addEventListener('change', railsSave) });
+function railsRefresh(){ post('/api/venue/rails',{refresh:true}).then(function(r){ if(r.ok) location.reload(); else railsSay(r.error||'Could not refresh') }) }
+function railsDisconnect(){ if(!confirm('Disconnect your Stripe account from NUM? Guests will no longer be able to pay by card through NUM bill codes.')) return;
+  post('/api/venue/rails',{disconnect:true}).then(function(r){ if(r.ok) location.reload(); else railsSay(r.error||'Could not disconnect') }) }
 </script>
 </body></html>`);
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STRIPE CONNECT + RAIL SWITCHES — growth/connect.mjs is the door's lock.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── GET /biz/connect/start?k= — send the owner to Stripe ────────────────── */
+async function connectStart(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return HTML(payShell(`<h1>That link isn't valid</h1>
+    <p class="lede">Open the Pay page from your console and press Connect with Stripe there.</p>`, "NUM"), 401);
+  const to = await CONNECT.startUrl(env, biz.id, { origin: url.origin });
+  if (!to) return HTML(payShell(`<h1>Not switched on yet</h1>
+    <p class="lede">Stripe Connect is not configured for NUM (${esc(CONNECT.connectNeeds(env).join("; "))}).
+    Nothing was changed.</p>`, "NUM"), 503);
+  return new Response(null, { status: 302, headers: { location: to, "cache-control": "no-store" } });
+}
+
+/* ── GET /biz/connect/callback — Stripe sends the owner back here ────────── */
+async function connectCallback(req, env, url) {
+  const q = url.searchParams;
+  const out = await CONNECT.finishConnect(env, {
+    code: q.get("code"), state: q.get("state"), error: q.get("error"), error_description: q.get("error_description"),
+  }).catch((e) => ({ ok: false, reason: (e && e.message) || "connect failed" }));
+  if (!out.ok) {
+    return HTML(payShell(`<h1>Stripe wasn't connected</h1>
+      <p class="lede">${esc(out.reason)}</p>
+      <p class="note">Nothing was changed. Go back to your console's Pay page and try again.</p>`, "NUM"), 400);
+  }
+  // Back to the console. The console key is the venue's own credential and the
+  // state we just verified was signed for exactly this business.
+  const biz = await env.DB.prepare("SELECT console_key FROM businesses WHERE id = ?").bind(out.business_id).first();
+  const k = biz && biz.console_key ? "?k=" + encodeURIComponent(biz.console_key) : "";
+  const a = out.account || {};
+  return HTML(payShell(`<h1>Stripe connected</h1>
+    <div class="ppbox">${esc(a.business_name || a.id)}<br><span class="note">${esc(a.country || "")} · ${esc(a.default_currency || "")} ·
+    ${a.charges_enabled ? "ready to take payments" : "Stripe still has checks to finish before charges are enabled — guests see the card rails the moment it does"}</span></div>
+    <p class="lede">Guests can now pay your NUM bill codes by card and the wallets available in your country.
+    The money settles to your Stripe balance and your bank as usual; NUM's fee is taken at the same moment.</p>
+    <a class="btn" href="/biz/pay${k}#rails">Back to your Pay page</a>`, "Stripe connected — NUM"));
+}
+
+/* ── GET/POST /api/venue/rails — the switches ─────────────────────────────── */
+async function venueRailsApi(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
+  if (req.method === "GET") {
+    const venue = await PAYRAILS.venueRails(env, biz.id);
+    return J({ ok: true, venue: { country: venue.country, currency: venue.currency, stripe_account_id: venue.stripe_account_id,
+      stripe_charges_enabled: venue.stripe_charges_enabled, rails_off: [...venue.rails_off] },
+      rails: PAYRAILS.railsFor(venue, {}, { includeUnready: true }) });
+  }
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  let body = {};
+  try { body = await req.json(); } catch (e) { body = {}; }
+  try {
+    if (body.refresh) {
+      const acct = await CONNECT.refreshConnection(env, biz.id);
+      return J({ ok: true, account: acct });
+    }
+    if (body.disconnect) {
+      await CONNECT.disconnect(env, biz.id);
+      return J({ ok: true });
+    }
+    if (Array.isArray(body.rails_off)) {
+      const saved = await CONNECT.setRailsOff(env, biz.id, body.rails_off, Object.keys(PAYRAILS.RAILS));
+      return J({ ok: true, rails_off: saved });
+    }
+  } catch (e) {
+    // Most likely: migration 0035 has not run, so num_business_rails is missing.
+    console.warn("[venue/rails]", e && e.message);
+    return J({ ok: false, error: "Could not save — payment rails storage is not ready on this deployment yet." }, 503);
+  }
+  return J({ ok: false, error: "nothing to do" }, 400);
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    VENUE SETTINGS — the three switches that were never writable.

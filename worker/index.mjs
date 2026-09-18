@@ -61,6 +61,7 @@ import { handlePassengersSafe, assertNoPassengerData } from './passengers.mjs';
 import { handleErrands } from './errands.mjs';
 import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
+import { handleBill, handleConnectWebhook } from './billpay.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleSmsStatus, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
@@ -1779,7 +1780,8 @@ export default {
       // two: Twilio retries on any non-2xx, so rate-limiting a status callback
       // would turn a busy minute into a retry storm — and would drop exactly
       // the delivery failures we most need to see.
-      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/sms/inbound'
+      const isWebhook = url.pathname === '/api/pay/webhook' || url.pathname === '/api/pay/webhook/connect'
+        || url.pathname === '/api/sms/inbound'
         || url.pathname === '/api/sms/status' || url.pathname === '/api/whatsapp/inbound'
         // Resend delivery events, for the same reason: it retries on a non-2xx,
         // and the events a throttle would drop are precisely the bounces and
@@ -2919,6 +2921,21 @@ export default {
 
     if (url.pathname.startsWith('/api/cashout')) {
       const res = await handleCashout(request, env, url.pathname.slice('/api/cashout'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Stripe events for the VENUES' connected accounts (a bill paid through
+    // NUM on the venue's own Stripe account — billpay.mjs). Its own endpoint
+    // and its own signing secret; checked before the platform handler so the
+    // two never read each other's events.
+    if (url.pathname === '/api/pay/webhook/connect' && request.method === 'POST') {
+      return handleConnectWebhook(request, env);
+    }
+    // A bill code's rails and its Stripe Checkout hop. Anonymous by design:
+    // the guest's camera opened /p/<token> and the token is the credential.
+    if (url.pathname.startsWith('/api/bill/')) {
+      const res = await handleBill(request, env, url.pathname.slice('/api/bill'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
