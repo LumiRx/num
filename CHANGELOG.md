@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.345 — 2026-09-18 06:31 UTC
+
+Every door on TODAY audited against the live product. CHARTER stops promising inventory and a price it has none of (num_assets is empty; the concierge correctly says it cannot charter yet) and promises the relay it performs. EVENTS asked NUM nothing and opened the host-an-event form; it now asks what is on, and hosting keeps its own door. Composed asks no longer say 'at this afternoon'. scripts/featureaudit.mjs is the repeatable check. Carries the other session's install-prompt, bill-pay and connect work.
+
+- commit `9e23056`
+
 ## 0.8.344 — 2026-09-18 05:19 UTC
 
 Sign in is visible on the screen the app actually opens on — the cause behind three App Store rejections
