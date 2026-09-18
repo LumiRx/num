@@ -2,6 +2,48 @@
 
 Every version that has been live, newest first.
 
+## 0.8.360 — 2026-09-18 15:58 UTC
+
+Held ask fires from any door, grid above rails, cache headers, NIGHTLIFE, profile remodel, speed pass
+
+- commit `53f5b9a`
+
+## 0.8.359 — 2026-09-18 15:54 UTC
+
+Speed pass: lazy rail images, lighter posters, non-blocking ratings crawl, lazy chunks; NIGHTLIFE rated-only
+
+- commit `53e95ed`
+
+## 0.8.358 — 2026-09-18 15:46 UTC
+
+Profile remodel, NIGHTLIFE screen nearest first
+
+- commit `6691551`
+
+## 0.8.357 — 2026-09-18 08:16 UTC
+
+Sharp covers and posters, every sheet drops the keyboard, Travel in style
+
+- commit `10d447b`
+
+## 0.8.356 — 2026-09-18 07:57 UTC
+
+Plans on screen with badges, sheets drop the keyboard first, shorter sign-in copy
+
+- commit `fc6b274`
+
+## 0.8.355 — 2026-09-18 07:49 UTC
+
+Send gate, the diary on PLAN, and Enter in a field no longer activates the card around it
+
+- commit `96d4ae8`
+
+## 0.8.354 — 2026-09-18 07:43 UTC
+
+Sending needs a verified number or email; the calendar, next up and the trip check move to PLAN
+
+- commit `50a6620`
+
 ## 0.8.353 — 2026-09-18 07:26 UTC
 
 Calendar first (hoisted), two across, covers that are not buttons, one chip row
