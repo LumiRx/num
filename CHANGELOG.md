@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.344 — 2026-09-18 05:19 UTC
+
+Sign in is visible on the screen the app actually opens on — the cause behind three App Store rejections
+
+- commit `5d8b95c`
+
 ## 0.8.343 — 2026-09-18 05:17 UTC
 
 Every feature has a door on TODAY: photo-cover grid under the day, each opening its own page (cover, promise, 2–3 fields, NUM takes it) — Flights, Stays, Tables, Tonight, Private plane/car/boat, Rides, Pick up, Hire someone, Wellness, Events, Plans, Wallet. Fare tray can be closed, gets thumb-height actions and Save; saved fares live on the Flights page with 'check price again'. Migration runner now skips sealed files (a sealed rebuild was being re-run on production). Carries the other session's deep research, plan ceiling, scout milestones and the Sign in header.
