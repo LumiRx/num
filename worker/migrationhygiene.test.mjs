@@ -99,6 +99,16 @@ test('every registered migration is either sealed or explicitly pending', () => 
     `these migrations are neither sealed nor listed as pending, so whether production has them is a guess: ${unaccounted.join(', ')}`);
 });
 
+test('a sealed migration is never run again on production', () => {
+  // 18 Sep 2026: a stage died re-running 0032's table rebuild on a database
+  // that already had it. The seal means "production has this exact content";
+  // the runner must act on that, not just record it.
+  const src = read('scripts/apply-host-migrations.mjs');
+  assert.match(src, /const TODO = LOCAL \? FILES : FILES\.filter\(\(f\) => !isSealed\(f\)\);/,
+    'the remote run must skip sealed files whose hash still matches');
+  assert.match(src, /for \(const file of TODO\)/, 'the apply loop must walk TODO, not FILES');
+});
+
 test('nothing is claimed as both applied and pending', () => {
   const both = (manifest.pending || []).filter((f) => f in manifest.sealed);
   assert.deepEqual(both, [], `${both.join(', ')} is listed as pending AND sealed — one of the two is a lie`);

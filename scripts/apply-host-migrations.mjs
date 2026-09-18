@@ -195,7 +195,30 @@ const ALREADY = [
 
 let applied = 0, skipped = 0;
 
-for (const file of FILES) {
+// ── A SEALED MIGRATION IS NEVER RUN AGAIN ──────────────────────────────────
+//
+// 18 Sep 2026, 05:11 UTC: a stage died inside 0032_scout_referrals.sql — a
+// table rebuild that production already had (its comment above even says the
+// seal "stops that from ever being tried"). It did not: this loop walked every
+// registered file on every pass, trusting IF NOT EXISTS and the ALREADY list
+// to make that harmless. A rebuild (CREATE _new → INSERT → DROP → RENAME) is
+// not harmless twice, and neither is any migration whose author wrote "NOT
+// re-runnable". The seal means "production has this exact content" — so on a
+// remote run, a sealed file with a matching hash is done, and is skipped.
+// --local still runs everything: a fresh local database has nothing yet.
+const sealed = (() => {
+  try { return JSON.parse(readFileSync(MANIFEST, 'utf8')).sealed ?? {}; } catch { return {}; }
+})();
+const isSealed = (file) => {
+  const name = file.replace('worker/migrations/', '');
+  return name in sealed && sealed[name] === createHash('sha256').update(readFileSync(file)).digest('hex');
+};
+const TODO = LOCAL ? FILES : FILES.filter((f) => !isSealed(f));
+if (!LOCAL && TODO.length < FILES.length) {
+  console.log(`\n── schema: ${FILES.length - TODO.length} sealed migration(s) skipped — production has them`);
+}
+
+for (const file of TODO) {
   const stmts = statements(readFileSync(file, 'utf8'));
   console.log(`\n── ${file} — ${stmts.length} statements`);
 

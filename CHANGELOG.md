@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.341 — 2026-09-18 05:11 UTC
+
+Deep research answers from a brain that can actually answer; the plan ceiling and the research allowance are the first two limits NUM enforces
+
+- commit `440f3e8`
+
 ## 0.8.340 — 2026-09-18 04:30 UTC
 
 Deep research, which was sold and never built; and the plan ceiling, which was priced and never enforced

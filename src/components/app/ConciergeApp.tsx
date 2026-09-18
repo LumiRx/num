@@ -220,9 +220,49 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
                 )}
               </div>
             )}
+            {/* ── THE WORD "SIGN IN", WHERE A STRANGER LOOKS FOR IT ──────────
+                App Review rejected build 1.0(8) on Guideline 2.1 with one
+                question: "Where is the sign-in page?" They reviewed on an
+                iPad Air and they were right to ask. A search of the whole
+                rendered app for "sign in", "log in", "sign up" or "account"
+                returned exactly one match — "SET UP MY ACCOUNT" — inside a
+                sheet that was closed. Nothing on screen used the words.
+
+                Ask-first is still the product: 0.8.323 deliberately stopped
+                forcing the account sheet on launch, and the concierge is
+                fully usable without an account. But "don't force it" was
+                turned into "don't mention it", and every door we did have was
+                labelled in our own voice — INTRODUCE YOURSELF, SET UP MY
+                ACCOUNT, Tell NUM who I am — none of which is the phrase a
+                person scanning for a way in is looking for.
+
+                So when there is no account, the header says Sign in, in those
+                words, and goes straight to the sheet that carries Sign in
+                with Apple and the phone code. It replaces the anonymous
+                avatar circle rather than sitting beside it, because two ways
+                in is the same problem wearing a hat. */}
+            {!me && (
+              <div
+                {...pressable(() => store.set({ inviteOpen: {} }))}
+                aria-label={t('Sign in')}
+                className="glass press"
+                style={{
+                  // 44px, not the 30px this first shipped as — caught by
+                  // taptargets.test.mjs. Apple's own HIG puts the floor at
+                  // 44pt, and the one control App Review is looking for is a
+                  // poor place to be under it.
+                  cursor: 'pointer', borderRadius: 999, padding: '0 16px', minHeight: 44,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', whiteSpace: 'nowrap',
+                }}
+                title={t('Sign in')}
+              >
+                {t('Sign in')}
+              </div>
+            )}
             {/* YOU sits here rather than in the tab bar: it is a place you visit
                 occasionally, not one of the three things the app is for. */}
-            <div
+            {me && <div
               {...pressable(() => store.set({ profileOpen: true }))}
               aria-label={t('Your profile')}
               className="glass press"
@@ -243,7 +283,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
                   {party}
                 </span>
               )}
-            </div>
+            </div>}
             {planId && <div
               {...pressable(() => store.set({ shareOpen: true, copied: false }))}
               aria-label={t('Share plan')}
