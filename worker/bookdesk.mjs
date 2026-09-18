@@ -379,6 +379,17 @@ export async function handleBooking(request, env, path) {
     // next time they open Num — which is true, and is what the page says now.
     let reached = 0;
     if (flip.meta.changes > 0) {
+      // THE EMAIL (18 Sep 2026). The artefact that survives a reinstall and
+      // gets forwarded to whoever is coming. Only inside the flip — the same
+      // guard that keeps the merchant from being billed three times keeps
+      // the guest from being emailed three times. Awaited for the same
+      // reason the ledger write is; never throws (bookingmail.mjs).
+      const { sendBookingMail } = await import('./bookingmail.mjs');
+      const addr = row.place_id
+        ? await env.DB.prepare('SELECT address FROM places WHERE id=?1').bind(row.place_id).first().catch(() => null)
+        : null;
+      await sendBookingMail(env, { row, verdict, place: addr });
+
       const { notify } = await import('./push.mjs');
       reached = await notify(env, {
         memberId: row.member_id,
