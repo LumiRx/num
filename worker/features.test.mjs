@@ -2,6 +2,7 @@
 // ways it could.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { FEATURES, statusOf, isOff, handleFeatures, auditFeatures } from './features.mjs';
 import { tiers, UNGATED } from './membership.mjs';
 
@@ -77,13 +78,29 @@ test('an entitlement a feature names must exist in the tier table', () => {
 });
 
 test('the registry never claims a limit is enforced when it is not', () => {
-  // 18 Sep 2026: may() had zero callers in the whole product, so every paid
-  // limit was decorative. `enforced` stays false until a call site exists, and
-  // this test is the thing that must be edited — deliberately — when one does.
+  // 18 Sep 2026, morning: may() had zero callers in the whole product, so
+  // every paid limit was decorative and this test asserted an empty list.
+  // 18 Sep 2026, later: two real gates went in, so the list is exactly those
+  // two. It is still a list nobody may lengthen by accident — adding an id
+  // here without a may() call in the named file is the lie this guards.
   const body = FEATURES.map((f) => statusOf({}, f));
-  assert.deepEqual(body.filter((f) => f.enforced).map((f) => f.id), [],
-    'if you enforced a limit, set enforced on that feature and update this test');
+  assert.deepEqual(body.filter((f) => f.enforced).map((f) => f.id).sort(), ['plans', 'research'],
+    'if you enforced a limit, add it to ENFORCED in features.mjs and name the call site here');
+  // And an enforced feature must be metered by something, or there is nothing
+  // for the call site to have asked about.
+  for (const f of body.filter((x) => x.enforced)) {
+    assert.ok(f.entitlement, `${f.id} is enforced but names no entitlement`);
+  }
   assert.ok(body.filter((f) => f.entitlement).length >= 5, 'and the metered list is not empty');
+});
+
+test('the two enforced gates have a real may() call where they claim to', () => {
+  // The registry says where each gate lives. If the file stops calling may(),
+  // the claim on /api/features becomes false and the pricing page becomes a
+  // lie — so the claim is checked against the source, not taken on trust.
+  const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+  assert.match(read('./social.mjs'), /may\(env, meId, 'plans_max'/, 'plans_max gate is in social.mjs');
+  assert.match(read('./research.mjs'), /may\(env, me, 'deep_research_monthly'\)/, 'research gate is in research.mjs');
 });
 
 test('every surface a guest can meet is named, so nothing ships invisible', async () => {

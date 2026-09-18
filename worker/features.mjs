@@ -453,7 +453,7 @@ export const FEATURES = Object.freeze([
     sop: {
       on: 'Always on. `plans_max` meters how many run at once: 3 free, 25 on Plus, unlimited on Pro.',
       check: 'GET /api/social/plans?me=<id>',
-      broken: 'THE LIMIT IS NOT ENFORCED. As of 18 Sep 2026 nothing calls may(env, member, "plans_max"), so every member has unlimited plans whatever they pay. The gate belongs at the create path in social.mjs and nowhere else.',
+      broken: 'The ceiling counts plans IN FLIGHT — owned, not finished, date not yet passed — so it releases itself and a free member can never be walled out permanently. If that count ever becomes a plain COUNT(*), three plans becomes a life sentence, because there is no archive button in the app.',
     },
   },
   {
@@ -567,7 +567,24 @@ export const FEATURES = Object.freeze([
     sop: {
       on: 'Set STRIPE_SECRET_KEY. Prices live in membership.mjs; MEMBERSHIP_TIERS overrides them without a deploy and can never re-gate travel.',
       check: 'GET /api/membership — the tier table the client renders.',
-      broken: 'NOTHING IS GATED. may() has no callers, so Plus and Pro currently sell a promise the code does not keep. And `deep_research_monthly` — the headline difference between the three plans — has no implementation anywhere in this repo. Both are fixed before this is advertised again.',
+      broken: 'Two limits are real as of 18 Sep 2026 — plans_max and deep_research_monthly — and everything else in the tier table is still decorative. Check `plans.enforced` on this endpoint before believing any claim on the pricing page: a limit not listed there is not being applied to anybody.',
+    },
+  },
+
+  {
+    id: 'research',
+    plan: 'free',
+    entitlement: 'deep_research_monthly',
+    name: 'Deep research',
+    does: 'The long answer — several questions at once, checked against real places, with what it could not confirm said out loud.',
+    needs: ['ANTHROPIC_API_KEY'],
+    ready: (env) => has(env, 'ANTHROPIC_API_KEY') || has(env, 'NUM_OPENAI_KEY') || has(env, 'NUM_LLM_KEY'),
+    surface: 'thread — starts a run, pings when it is ready',
+    code: ['worker/research.mjs', 'worker/migrations/0033_deep_research.sql'],
+    sop: {
+      on: 'Any brain key. Metered by deep_research_monthly: 3 a month free, 40 on Plus, unlimited on Pro.',
+      check: 'POST /api/research {me, brief, dest}, then GET /api/research?id= until state is done.',
+      broken: 'Runs sit at queued. THE FREE ALLOWANCE MUST STAY ABOVE ZERO — at zero this stops being a metered feature and becomes a travel benefit sold only to subscribers, which is the §17550.27 problem membership.mjs exists to avoid; assertFreeFloor() refuses to run without it. A failed run never charges the allowance.',
     },
   },
 
@@ -719,6 +736,19 @@ export const FEATURES = Object.freeze([
   },
 ]);
 
+/**
+ * Features whose limit is actually enforced by a `may()` call in the product.
+ *
+ * This set is edited BY HAND, deliberately, at the same moment the call site
+ * is written — never derived, never inferred. A registry that guessed would
+ * eventually guess wrong in the direction that flatters us, and the whole
+ * point of `enforced` is to be the one field nobody can fudge.
+ *
+ *   plans    → worker/social.mjs, planWrite(), the create branch
+ *   research → worker/research.mjs, startResearch()
+ */
+const ENFORCED = new Set(['plans', 'research']);
+
 /** What a feature is doing right now, and why. */
 export function statusOf(env, f) {
   const off = isOff(env, f.id);
@@ -739,10 +769,13 @@ export function statusOf(env, f) {
     entitlement: f.entitlement ?? null,
     ungated: !!f.ungated,
     // The honest bit. A feature can NAME an entitlement and still not be
-    // metered by it, because naming is not calling. `enforced` is false until
-    // someone puts a may() call in the code path, and the pricing page has no
-    // business claiming a limit this says is not real.
-    enforced: false,
+    // metered by it, because naming is not calling. `enforced` is true only
+    // where a may() call actually stands in the code path, and the pricing
+    // page has no business claiming a limit this says is not real.
+    //
+    // 18 Sep 2026: this was `false` for everything, because may() had no
+    // callers at all. The two below are the first real gates NUM has.
+    enforced: ENFORCED.has(f.id),
   };
 }
 

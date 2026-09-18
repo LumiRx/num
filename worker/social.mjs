@@ -26,7 +26,7 @@ import {
 import { notify } from './push.mjs';
 import { addedToPlan } from './notifycopy.mjs';
 import { isBlocked } from './account.mjs';
-import { answerEventInvite } from './events.mjs';
+import { answerEventInvite, ensureEvents } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
 import { markReferralEarned } from './referral.mjs';
 import { logSignin } from './signinlog.mjs';
@@ -2327,6 +2327,14 @@ async function requests(env, url) {
       WHERE pm.member_id=?1 ORDER BY p.updated_at DESC LIMIT 10`,
   ).bind(meId).all();
 
+  // The events tables belong to events.mjs, and a member who only ever opens
+  // the app has never called a route that builds them. Reading them first and
+  // hoping is how this endpoint came to 500 for every real member on a
+  // database where events had not been used — which the app saw as a dropped
+  // connection, and STATUS.md recorded as a quote-character bug for two weeks.
+  // Guaranteed here rather than caught: a read that fails must still fail.
+  await ensureEvents(env);
+
   const { results: events } = await env.DB.prepare(
     `SELECT g.token, g.rsvp, g.via, e.id AS event_id, e.title, e.day, e.time, e.place, e.slug, m.name AS host_name
        FROM num_event_guests g JOIN num_events e ON e.id=g.event_id
@@ -2457,6 +2465,71 @@ async function planWrite(env, req) {
         `${self.name || 'Someone'} set the plan for ${plan.starts_on ?? 'a date TBC'}${plan.starts_time ? ` at ${plan.starts_time}` : ''} — it's on everyone's calendar.`);
     }
     return json({ plan });
+  }
+
+  // ── THE ONE CEILING NUM ENFORCES ────────────────────────────────────────
+  //
+  // 18 Sep 2026. Until today `may()` had no callers anywhere in the product:
+  // membership.mjs held tiers, limits, usage counters and a Stripe grant path,
+  // all tested, and nothing ever asked it a question. A member paying $28.98
+  // for Num Pro got byte-identical behaviour to a member paying nothing. This
+  // is the first gate, and for now the only one.
+  //
+  // WHY THIS ONE. The design rule in membership.mjs is gate the ceiling, never
+  // the core, and the law (B&P §17550.27, same file) says a travel benefit can
+  // never sit behind a price at all. A plan is not a travel benefit — it is a
+  // shared list with people on it — so a ceiling here is both lawful and
+  // honest. It also bites at the right moment: the person creating a fourth
+  // simultaneous plan is organising other people's lives, which is exactly
+  // when Num is worth paying for.
+  //
+  // WHAT "IN FLIGHT" MEANS, and why it is not simply COUNT(*):
+  //
+  //   · OWNED, not joined. Counting plans a member was added to would let a
+  //     popular friend spend someone else's ceiling for them.
+  //   · NOT YET HAPPENED. A plan whose date has passed occupies nothing. This
+  //     matters more than it looks: there is no "archive plan" action in the
+  //     app today, so a ceiling counting every plan ever made would be a
+  //     permanent wall, and a free member who hit it could never make another
+  //     plan for the rest of their life. Ageing out makes the limit release
+  //     itself with no UI and no support ticket.
+  //   · UNDATED STILL COUNTS. A plan with no date is genuinely open, so it
+  //     holds a slot until it is given one or it is finished.
+  //
+  // One day of grace on the date, because a plan for tonight is still in
+  // flight at 1am when the person making it is the last one still awake.
+  const { may } = await import('./membership.mjs');
+  const flight = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM num_plans
+      WHERE owner_id = ?1 AND state <> 'done'
+        AND (starts_on IS NULL OR starts_on >= date('now','-1 day'))`,
+  ).bind(meId).first().catch(() => null);
+  const inFlight = Number(flight?.n ?? 0);
+  // `count` is passed explicitly: plans_max is a CONCURRENT ceiling, not a
+  // monthly allowance, so it must never read the usage counter — a member who
+  // finishes a plan gets the slot back the same minute.
+  const gate = await may(env, meId, 'plans_max', { count: inFlight });
+  if (!gate.ok) {
+    const { tiers: tierTable } = await import('./membership.mjs');
+    const better = gate.upgrade_to ? tierTable(env)[gate.upgrade_to] : null;
+    const lifts = gate.upgrade_gives == null
+      ? 'as many as you like'
+      : `${gate.upgrade_gives}`;
+    // Said the way a concierge would say it: what the limit is, how it frees
+    // itself, and the paid way out — in that order. The upgrade is mentioned
+    // last and once, because a limit that reads as a sales pitch is a limit
+    // people resent rather than understand.
+    return json({
+      error: `You've got ${inFlight} plans on the go, which is the limit on ${tierTable(env)[gate.tier]?.name ?? 'your plan'}. `
+        + `Finish one or let its date pass and this opens up again`
+        + (better ? ` — or ${better.name} takes it to ${lifts}.` : '.'),
+      reason: 'plans_max',
+      limit: gate.limit,
+      used: inFlight,
+      tier: gate.tier,
+      upgrade_to: gate.upgrade_to ?? null,
+      upgrade_gives: gate.upgrade_gives ?? null,
+    }, 402);
   }
 
   const id = uid('pln');

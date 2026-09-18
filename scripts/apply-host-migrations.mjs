@@ -109,6 +109,11 @@ const FILES = [
   // second pass. It is sealed after its first successful apply, which is what
   // stops that from ever being tried.
   'worker/migrations/0032_scout_referrals.sql',
+  // Deep research: one table and two indexes, all IF NOT EXISTS, so a second
+  // pass is a clean no-op. The feature this backs had been sold on the pricing
+  // card since memberships shipped and had never been built — see the header
+  // of worker/research.mjs.
+  'worker/migrations/0033_deep_research.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

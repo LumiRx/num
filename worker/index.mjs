@@ -2326,6 +2326,14 @@ export default {
       return await handleI18n(request, env, ctx);
     }
 
+    // Deep research: the long answer, metered by deep_research_monthly. POST
+    // starts a run and returns an id in milliseconds; the work carries on in
+    // waitUntil for up to a minute or so. See worker/research.mjs.
+    if (url.pathname === '/api/research') {
+      const { handleResearch } = await import('./research.mjs');
+      return await handleResearch(request, env, url, ctx);
+    }
+
     if (url.pathname === '/api/discover' || url.pathname === '/api/discover/dislike') {
       const { handleDiscover } = await import('./discover.mjs');
       return await handleDiscover(request, env);
