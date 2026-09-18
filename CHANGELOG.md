@@ -2,6 +2,66 @@
 
 Every version that has been live, newest first.
 
+## 0.8.370 — 2026-09-18 17:23 UTC
+
+hosted events on TONIGHT
+
+- commit `79706a0`
+
+## 0.8.369 — 2026-09-18 17:17 UTC
+
+plan drafts, invite your people
+
+- commit `baeca82`
+
+## 0.8.368 — 2026-09-18 17:08 UTC
+
+booking confirmation email
+
+- commit `43f949b`
+
+## 0.8.367 — 2026-09-18 17:00 UTC
+
+seven everyday doors
+
+- commit `e6ffb6c`
+
+## 0.8.366 — 2026-09-18 16:47 UTC
+
+giveaways in profile
+
+- commit `462a1a7`
+
+## 0.8.365 — 2026-09-18 16:39 UTC
+
+member photos (0040), welcome grant ★5
+
+- commit `5528220`
+
+## 0.8.364 — 2026-09-18 16:16 UTC
+
+Share sheet: QR + every platform; OG cards on event pages
+
+- commit `840e037`
+
+## 0.8.363 — 2026-09-18 16:07 UTC
+
+NIGHTLIFE never-list widened
+
+- commit `dcc4112`
+
+## 0.8.362 — 2026-09-18 16:06 UTC
+
+NIGHTLIFE category phrases + never-list
+
+- commit `c64463b`
+
+## 0.8.361 — 2026-09-18 16:04 UTC
+
+NIGHTLIFE shelves filter by category, rated first then nearest
+
+- commit `c93aa81`
+
 ## 0.8.360 — 2026-09-18 15:58 UTC
 
 Held ask fires from any door, grid above rails, cache headers, NIGHTLIFE, profile remodel, speed pass
