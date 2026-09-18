@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.338 — 2026-09-18 03:58 UTC
+
+Reactions reach the team: every 😍👍😐👎🥱 under an answer now lands in num_reactions (migration 0031) with the lane, brain and place that produced it; POST /api/react; HOW THEY RATE THE ANSWERS panel on the admin dashboard (ACTIVITY tab), with approval by lane/brain/place and the rejected answers to read first. Answers carry a small turn{lane,brain,model} so the app can file the tap.
+
+- commit `78e746a`
+
 ## 0.8.337 — 2026-09-18 03:26 UTC
 
 Health: an alert triage HELD for the digest is deferred, not blind — ends the 503 / DOWN / recovery loop that ran sixteen laps since 3 Sep. Also carries 0.8.334–0.8.336, which were uploaded but never shipped.
