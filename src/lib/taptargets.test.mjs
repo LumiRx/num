@@ -105,7 +105,9 @@ describe('tap targets only get better', () => {
     const expected = {
       'app/DashView.tsx': 3,
       'app/InviteSheet.tsx': 2,
-      'app/ShareSheet.tsx': 1,
+      // 18 Sep 2026: the share sheet became a QR plus a row of destination
+      // tiles; the close X and both tile shapes (link, button) carry the class.
+      'app/ShareSheet.tsx': 3,
     };
     for (const [rel, count] of Object.entries(expected)) {
       const src = readFileSync(join(COMPONENTS, rel), 'utf8');

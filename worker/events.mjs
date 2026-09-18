@@ -755,6 +755,21 @@ async function eventPage(env, slug, url, origin) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>${esc(e.title)}</title>
+<!-- A LINK PREVIEW, SO A SHARED INVITE LOOKS LIKE SOMETHING (18 Sep 2026).
+     Pasted into WhatsApp or iMessage this page used to unfurl as a bare
+     URL with no picture and no words — the one moment a stranger decides
+     whether to tap. The description is the host's own facts, never a
+     promise; the image is NUM's card until events carry their own. -->
+<meta property="og:type" content="event">
+<meta property="og:site_name" content="NUM">
+<meta property="og:title" content="${esc(e.title)}">
+<meta property="og:description" content="${esc([host?.name ? `${host.name} is hosting.` : null, when(e), e.place].filter(Boolean).join(' · '))}">
+<meta property="og:url" content="${esc(`${origin}/e/${e.slug}`)}">
+<meta property="og:image" content="https://itsnum.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(e.title)}">
+<meta name="twitter:description" content="${esc([when(e), e.place].filter(Boolean).join(' · '))}">
+<meta name="twitter:image" content="https://itsnum.com/assets/og.jpg">
 <style>
 :root{--ink:#201e1d;--accent:#ec3013;--paper:#faf7f4}
 *{box-sizing:border-box}

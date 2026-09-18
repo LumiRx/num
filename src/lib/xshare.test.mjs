@@ -139,23 +139,32 @@ test('via drops a leading @, which X rejects', () => {
 
 const SHEET = readFileSync(join(HERE, '../components/app/ShareSheet.tsx'), 'utf8');
 
-test('the sheet posts a referral link, not the connect link it shows', () => {
-  assert.match(SHEET, /shareNumOnX\(referralLink\(me\.ref\)\)/,
-    'the post must be built from a referral link');
-  assert.doesNotMatch(SHEET, /shareNumOnX\(\s*link\s*\)/,
-    'the connect link — which auto-connects whoever opens it — reached a public post');
+test('a public post carries the referral link, never the connect link', async () => {
+  // 18 Sep 2026: the X button moved into src/lib/socialshare.ts with every
+  // other destination. The promise is unchanged and now holds for Instagram
+  // and Facebook too: a public channel gets the referral link (credits the
+  // member, connects nobody); a private one gets the connect link.
+  const { DESTINATIONS, linkFor } = await import('./socialshare.ts');
+  const l = { connect: 'https://app.itsnum.com/c/mem_1?ref=ABC', referral: 'https://app.itsnum.com/r/ABC', line: 'Join me.' };
+  for (const d of DESTINATIONS) {
+    if (!d.href) continue;
+    const href = d.href(l);
+    if (d.public) {
+      assert.ok(!href.includes(encodeURIComponent(l.connect)) && !href.includes(l.connect), `${d.id}: the connect link reached a public post`);
+      assert.equal(linkFor(d, l), l.referral);
+    } else {
+      assert.equal(linkFor(d, l), l.connect);
+    }
+  }
+  assert.ok(DESTINATIONS.some((d) => d.id === 'x' && d.public), 'X is still a public destination');
 });
 
-test('the button is an anchor, because an installed PWA blocks window.open', () => {
+test('every destination is an anchor, because an installed PWA blocks window.open', () => {
   // A share button that silently does nothing is worse than no share button.
-  // Bounded by the element itself rather than a character count, so the test
-  // does not start reading a neighbouring button when a comment grows.
-  const block = SHEET.slice(SHEET.indexOf('{xUrl ? ('), SHEET.indexOf('POST ON X'));
-  assert.ok(block.length > 40, 'the xUrl block was not found — the button has moved or gone');
-  assert.match(block, /<a\s/, 'the X button is no longer a link');
-  assert.match(block, /rel="noopener noreferrer"/, 'a new tab without noopener can reach back');
-  assert.match(block, /target="_blank"/);
-  assert.doesNotMatch(block, /window\.open/);
+  const block = SHEET.slice(SHEET.indexOf('offered(links!).map'), SHEET.indexOf('pretty(links!.connect)'));
+  assert.ok(block.length > 40, 'the destination row was not found');
+  assert.match(block, /<a key=\{d\.id\} href=\{href\} target="_blank" rel="noopener noreferrer"/);
+  assert.doesNotMatch(SHEET, /window\.open/);
 });
 
 test('nothing is posted without the member — no key, no auto-post', () => {
@@ -163,7 +172,10 @@ test('nothing is posted without the member — no key, no auto-post', () => {
     'the sheet is calling an API; this feature is a compose link the member sends');
 });
 
-test('a member with no referral code gets no broken button', () => {
-  assert.match(SHEET, /me\?\.ref \? shareNumOnX/, 'xUrl must be null without a ref code');
-  assert.match(SHEET, /xUrl \? \(/, 'the button must not render with nothing to post');
+test('a member with no referral code is offered no public tile at all', async () => {
+  const { offered } = await import('./socialshare.ts');
+  const none = offered({ connect: 'https://app.itsnum.com/c/mem_1', referral: null, line: 'Join me.' });
+  assert.ok(none.every((d) => !d.public), 'a public tile with nothing but a connect link would auto-connect strangers');
+  assert.ok(none.some((d) => d.id === 'whatsapp') && none.some((d) => d.id === 'copy'), 'the private tiles stay');
+  assert.match(SHEET, /referral: me\.ref \? referralLink\(me\.ref\) : null/);
 });
