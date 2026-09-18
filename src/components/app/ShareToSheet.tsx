@@ -89,6 +89,7 @@ export default function ShareToSheet() {
       aria-modal="true"
       aria-label={t('Send this to')}
       ref={ref}
+      className="glass-strong sheet-in"
       style={{ ...sheetBase, maxHeight: 'min(78%, 620px)', display: 'flex', flexDirection: 'column' }}
     >
       <div style={grabberStyle} />

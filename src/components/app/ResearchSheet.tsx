@@ -66,7 +66,18 @@ export default function ResearchSheet() {
   };
 
   return (
-    <div role="dialog" aria-label={t('Look into it')} ref={ref} style={{ ...sheetBase, zIndex: 60 }}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('Look into it')}
+      ref={ref}
+      // Without this class the sheet gets position and z-index from sheetBase
+      // and NOTHING else — no background. It shipped transparent in 0.8.353:
+      // the thread's messages read straight through the brief field. The glass
+      // IS the background in this app; every other dialog sheet carries it.
+      className="glass-strong sheet-in"
+      style={{ ...sheetBase, zIndex: 60 }}
+    >
       <div style={grabberStyle} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 16px 10px' }}>
         <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>
