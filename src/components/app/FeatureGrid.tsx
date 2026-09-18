@@ -57,7 +57,11 @@ export default function FeatureGrid() {
             <div style={{ position: 'relative', padding: '0 12px 12px', color: '#fff', display: 'grid', gap: 6 }}>
               <div style={{ fontSize: 9.5, letterSpacing: '.14em', fontWeight: 800, opacity: 0.85 }}>{t(f.kicker)}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 16, lineHeight: 1.15, letterSpacing: '-.01em' }}>{t(f.title)}</div>
-              <div style={{ fontSize: 11, lineHeight: 1.4, opacity: 0.85, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t(f.promise)}</div>
+              {/* The BLURB, not the promise (18 Sep 2026: "each one doesn't
+                  finish the sentence, it goes to ..."). Under 50 characters,
+                  so two lines at this width hold the whole thought; the
+                  clamp stays only as a guard for a long translation. */}
+              <div style={{ fontSize: 11.5, lineHeight: 1.4, opacity: 0.88, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t(f.blurb)}</div>
               <div
                 style={{
                   marginTop: 4, alignSelf: 'start', borderRadius: 999, padding: '8px 12px',

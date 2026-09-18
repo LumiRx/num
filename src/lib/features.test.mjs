@@ -44,7 +44,11 @@ describe('the registry', () => {
     const ids = new Set();
     for (const f of FEATURES) {
       assert.ok(!ids.has(f.id), `${f.id} twice`); ids.add(f.id);
-      for (const k of ['kicker', 'title', 'promise', 'cover', 'cta']) assert.ok(f[k]?.length > 1, `${f.id}.${k}`);
+      for (const k of ['kicker', 'title', 'blurb', 'promise', 'cover', 'cta']) assert.ok(f[k]?.length > 1, `${f.id}.${k}`);
+      // The tile is ~150px of 11.5px type, two lines: about 50 characters
+      // before the clamp turns the end of the sentence into "…".
+      assert.ok(f.blurb.length <= 50, `${f.id}.blurb is ${f.blurb.length} chars — it would end in an ellipsis on the tile`);
+      assert.match(f.blurb, /[.!?]$/, `${f.id}.blurb should be a finished sentence`);
       assert.ok(f.compose || f.opens, `${f.id}: a tile must lead somewhere — a page that asks NUM, or a sheet`);
     }
     assert.ok(FEATURES.length >= 12);
@@ -75,7 +79,7 @@ describe('the registry', () => {
   test('no tile claims what NUM cannot stand behind', () => {
     const banned = /cheapest|guarantee|best price|vetted|checked by a person|no commission|free flights|lowest/i;
     for (const f of FEATURES) {
-      for (const s of [f.promise, f.honest ?? '', f.title]) assert.doesNotMatch(s, banned, `${f.id}: "${s}"`);
+      for (const s of [f.promise, f.blurb, f.honest ?? '', f.title]) assert.doesNotMatch(s, banned, `${f.id}: "${s}"`);
     }
   });
 

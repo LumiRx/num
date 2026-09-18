@@ -92,7 +92,11 @@ export function CalendarStrip() {
   const bookings = useApp((s) => s.bookings);
   const meetings = useApp((s) => s.meetings);
   const today = new Date();
-  const days = Array.from({ length: 14 }, (_, i) => {
+  // THE NEXT WEEK, 18 Sep 2026: seven days (Dre: "it shows 8 days lets just
+  // say the next week and have 7 days listed. lets have 5 days and slide for
+  // the other two"). Five fill the row — the width is a fifth of the strip
+  // less the gaps — and the last two are a slide away, by the page.
+  const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     return d;
@@ -104,14 +108,14 @@ export function CalendarStrip() {
   return (
     <div className="glass" style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={kicker}>{t('NEXT TWO WEEKS')}</div>
+        <div style={kicker}>{t('THE NEXT WEEK')}</div>
         <span
           {...pressable(() => store.set((s) => ({ calOpen: true, selDay: s.selDay ?? `${today.getMonth() + 1}-${today.getDate()}` })))}
           style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent)', display: 'flex', gap: 4, alignItems: 'center' }}
         >
           <CalendarIcon size={12} />{' '}{t('FULL CALENDAR')}</span>
       </div>
-      <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 10, paddingBottom: 2 }}>
+      <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 10, paddingBottom: 2, scrollSnapType: 'x mandatory' }}>
         {days.map((d, i) => {
           const n = busy(d);
           return (
@@ -119,14 +123,14 @@ export function CalendarStrip() {
               key={i}
               {...pressable(() => store.set({ calOpen: true, selDay: `${d.getMonth() + 1}-${d.getDate()}` }))}
               style={{
-                cursor: 'pointer', flex: 'none', width: 38, textAlign: 'center', padding: '7px 0', borderRadius: 12,
+                cursor: 'pointer', flex: '0 0 calc((100% - 24px) / 5)', scrollSnapAlign: 'start', textAlign: 'center', padding: '8px 0', borderRadius: 12,
                 background: n ? 'var(--grad-accent)' : 'var(--field-bg)',
                 color: n ? '#fff' : 'var(--ink-60)',
                 border: '1px solid ' + (n ? 'transparent' : 'var(--ink-08)'),
               }}
             >
-              <div style={{ fontSize: 9, letterSpacing: '.06em', opacity: 0.8 }}>{d.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase()}</div>
-              <div style={{ fontSize: 15, fontWeight: 800, lineHeight: 1.2 }}>{d.getDate()}</div>
+              <div style={{ fontSize: 10, letterSpacing: '.06em', opacity: 0.8 }}>{d.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase()}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.2 }}>{d.getDate()}</div>
               <div style={{ height: 4, marginTop: 2, display: 'flex', gap: 2, justifyContent: 'center' }}>
                 {Array.from({ length: Math.min(n, 3) }).map((_, k) => (
                   <span key={k} style={{ width: 3, height: 3, borderRadius: 999, background: n ? 'rgba(255,255,255,.9)' : 'transparent' }} />

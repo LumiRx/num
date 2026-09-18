@@ -426,6 +426,8 @@ export interface AppState {
 
   /** Chosen colour layout — just a data-theme attribute on <html>. */
   theme: ThemeId;
+  /** Text size for people who cannot see as well — a data-text attribute on <html> (lib/textsize.ts). */
+  textSize: 'standard' | 'large' | 'xl';
   /** Language chosen in Profile; null means the phone's. */
   lang: string | null;
   /** Bumps when the translation map changes; the root remounts on it. Not saved. */

@@ -358,3 +358,14 @@ html.num-standalone body {
   /* The card keeps its warmer border; the light stops moving. */
   .sheen::after { animation: none; background: none; }
 }
+
+/* TEXT SIZE (18 Sep 2026, lib/textsize.ts). One zoom on the app root reaches
+   every inline fontSize at once — text, icons, tap targets and spacing grow
+   together, percentages keep their shape. STANDARD is already one step up
+   from what shipped before today ("just make the font 1 size bigger"); the
+   other two are for people who cannot see as well. `zoom` is standard CSS
+   now (WebKit and Chromium always; Firefox 126+); a browser without it simply
+   shows the old size, which is the right fallback. */
+.num-root { zoom: 1.07; }
+html[data-text="large"] .num-root { zoom: 1.18; }
+html[data-text="xl"] .num-root { zoom: 1.3; }

@@ -15,6 +15,7 @@ import { saveProfile, uploadAvatar } from '../../lib/profile';
 import { REACTIONS } from '../../lib/prefs';
 import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from '../../lib/icons';
 import { THEMES, setTheme } from '../../lib/themes';
+import { TEXT_SIZES, setTextSize } from '../../lib/textsize';
 import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
 import Verify5arz from './Verify5arz';
@@ -700,12 +701,13 @@ function HostCard() {
  */
 function ThemePicker() {
   const current = useApp((s) => s.theme);
+  const textSize = useApp((s) => s.textSize);
   const lang = useApp((s) => s.lang);
   const chosen = isLang(lang) ? lang : phoneLang();
   const name = THEMES.find((th) => th.id === current)?.name ?? 'Auto';
   const tile: React.CSSProperties = { cursor: 'pointer', borderRadius: 14, padding: '10px 10px', background: 'var(--field-bg)', display: 'grid', gap: 6 };
   return (
-    <Collapsible title={t('LOOK & LANGUAGE')} summary={`${t(name)} · ${LANGS[chosen].name}`}>
+    <Collapsible title={t('LOOK, TEXT & LANGUAGE')} summary={`${t(name)} · ${t(TEXT_SIZES.find((x) => x.id === textSize)?.name ?? 'Standard')} · ${LANGS[chosen].name}`}>
       <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--ink-40)', margin: '2px 0 8px' }}>{t('LOOK')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         {THEMES.map((th) => {
@@ -721,6 +723,22 @@ function ThemePicker() {
           );
         })}
       </div>
+      {/* TEXT SIZE (18 Sep 2026): for people who cannot see as well. Each
+          tile is drawn at its own size so the choice is visible before it is
+          made. lib/textsize.ts. */}
+      <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--ink-40)', margin: '14px 0 8px' }}>{t('TEXT SIZE')}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        {TEXT_SIZES.map((ts) => {
+          const on = textSize === ts.id;
+          return (
+            <div key={ts.id} {...pressable(() => setTextSize(ts.id))} aria-pressed={on} className="tap" style={{ ...tile, border: '1.5px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-08)'), textAlign: 'center', alignContent: 'center', minHeight: 64 }}>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15 * ts.zoom / 1.07, lineHeight: 1.1 }}>Aa</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700 }}>{t(ts.name)}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-40)', lineHeight: 1.5, marginTop: 8 }}>{t('Everything grows together — text, buttons, spacing. Pick what reads best.')}</div>
       <div style={{ fontSize: 10, letterSpacing: '.12em', fontWeight: 700, color: 'var(--ink-40)', margin: '14px 0 8px' }}>{t('LANGUAGE')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         {(Object.keys(LANGS) as Lang[]).map((code) => {

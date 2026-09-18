@@ -123,6 +123,7 @@ function baseState() {
     widgets: ['next', 'tonight', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     pushOn: false,
     theme: 'auto' as const,
+    textSize: 'standard' as const,
     lang: null,
     i18nTick: 0,
     businessOpen: false,
@@ -397,6 +398,7 @@ export function repairShapes(saved: Record<string, unknown>): Record<string, unk
   // The colour themes of the summer are gone; whatever a phone saved
   // (ember, midnight, bloom…) becomes Auto — the one look, light or dark.
   if ('theme' in out && !['auto', 'verified', 'verified-dark'].includes(String(out.theme))) out.theme = 'auto';
+  if ('textSize' in out && !['standard', 'large', 'xl'].includes(String(out.textSize))) out.textSize = 'standard';
 
   // A widget added after a phone first saved its list would otherwise never
   // appear there. Tonight slots in right under NEXT UP, where it was designed

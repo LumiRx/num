@@ -12,6 +12,7 @@ import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
 import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon, UsersIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
+import { applyTextSize } from '../../lib/textsize';
 import ThreadView from './ThreadView';
 import DashView from './DashView';
 import ProfileView from './ProfileView';
@@ -112,6 +113,12 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+  // Same again for text size (lib/textsize.ts): a data-text attribute that
+  // glass.css turns into a zoom on .num-root below.
+  const textSize = useApp((s) => s.textSize);
+  useEffect(() => {
+    applyTextSize(textSize);
+  }, [textSize]);
 
   // The reader's language: chosen in Profile, else the phone's. The map
   // arrives (from cache, then the network) and the tree below re-keys, so
@@ -194,7 +201,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   };
 
   return (
-    <div key={i18nTick} onKeyDown={onEscape} onScroll={holdFrame} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
+    <div key={i18nTick} className="num-root" onKeyDown={onEscape} onScroll={holdFrame} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
       {/* living ground — aurora blobs drift behind all content */}
       <div className="aurora-layer" aria-hidden="true" />
       {/* header — floating glass panel */}

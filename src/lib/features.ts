@@ -44,6 +44,9 @@ export interface Feature {
   id: FeatureId;
   kicker: string;
   title: string;
+  /** One line under the title ON THE TILE — under 50 characters, so it never
+   *  ends in an ellipsis two cards across. The promise is the page's. */
+  blurb: string;
   promise: string;
   cover: string;
   cta: string;
@@ -84,6 +87,7 @@ export const tileCover = (cover: string): string => cover.replace(/\.webp$/, '-s
 export const FEATURES: readonly Feature[] = [
   {
     id: 'flights', kicker: 'FLIGHTS', title: 'Find a flight', cover: '/covers/flights.webp', cta: 'Search fares',
+    blurb: 'Real fares for your dates, booked with you.',
     promise: 'Live fares, the hidden stops said out loud, and the one to book. Save any fare to check it again later.',
     fields: [
       { id: 'from', label: 'From', placeholder: 'BKK', type: 'text', half: true },
@@ -95,6 +99,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'stays', kicker: 'STAYS', title: 'Somewhere to sleep', cover: '/covers/stays.webp', cta: 'Find a place',
+    blurb: 'Hotels and villas that fit how you travel.',
     promise: 'Three real places with the trade-offs said plainly, and the one NUM would pick for you.',
     fields: [
       { id: 'where', label: 'Where', placeholder: 'Sukhumvit, Bangkok', fromPlace: true },
@@ -105,6 +110,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'tables', kicker: 'TABLES', title: 'Book a table', cover: '/covers/tables.webp', cta: 'Get a table',
+    blurb: 'NUM asks the restaurant and holds it for you.',
     promise: 'Say the mood, the time and how many. NUM finds the room and holds it.',
     fields: [
       { id: 'what', label: 'What are you in the mood for', placeholder: 'quiet, Thai, near the river' },
@@ -115,6 +121,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'tonight', kicker: 'TONIGHT', title: 'What’s on tonight', cover: '/covers/tonight.webp', cta: 'Show me',
+    blurb: 'Events, dinner and drinks near you, right now.',
     promise: 'Events, restaurants and bars near you right now — ranked, not listed.',
     compose: () => 'What’s on tonight near me? Events, food and bars — rank them and tell me where you’d start.',
   },
@@ -124,12 +131,14 @@ export const FEATURES: readonly Feature[] = [
     // distance printed on every card. Opens a screen, not a question — the
     // list IS the answer, and a tap on any card asks NUM about that one place.
     id: 'nightlife', kicker: 'NIGHTLIFE', title: 'Out tonight', cover: '/covers/nightlife.webp', cta: 'Nearest first',
+    blurb: 'Clubs, late bars and live music, nearest first.',
     promise: 'Clubs, late bars, live music and tonight’s ticketed nights — the closest to you at the top.',
     opens: () => store.set({ featureOpen: null, nightlifeOpen: true }),
     honest: 'Door policy, covers and dress codes are the venue’s. NUM asks; it never promises entry.',
   },
   {
     id: 'charter', kicker: 'PRIVATE', title: 'Plane, car or boat', cover: '/covers/charter.webp', cta: 'Ask a host',
+    blurb: 'A private request, passed to a real host.',
     promise: 'Tell NUM what you need and it goes to the host network. Nothing is priced or held until a host comes back.',
     lanes: [{ id: 'plane', label: 'Plane' }, { id: 'car', label: 'Car' }, { id: 'boat', label: 'Boat' }],
     fields: [
@@ -142,6 +151,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'rides', kicker: 'RIDES', title: 'Get a car', cover: '/covers/rides.webp', cta: 'Get a car',
+    blurb: 'A driver now, or booked for the morning.',
     promise: 'Airport, hotel, across town. NUM picks the right app for this country and opens it filled in.',
     fields: [
       { id: 'to', label: 'Where to', placeholder: 'Suvarnabhumi Airport' },
@@ -152,6 +162,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'pickup', kicker: 'PICK UP', title: 'Order for pickup', cover: '/covers/pickup.webp', cta: 'Order it',
+    blurb: 'Coffee, food, anything — ready when you are.',
     promise: 'Food, coffee, a pharmacy run. NUM finds the place, orders where it can, and tells you when to walk over.',
     fields: [
       { id: 'what', label: 'What', placeholder: 'two iced lattes and a croissant' },
@@ -163,6 +174,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'hire', kicker: 'HIRE SOMEONE', title: 'Someone to run this', cover: '/covers/hire.webp', cta: 'Hire someone',
+    blurb: 'An errand, a queue, a pair of hands for a day.',
     promise: 'An errand, a queue, a pickup across town, a pair of hands for an afternoon. Say what, where and by when.',
     fields: [
       { id: 'what', label: 'What needs doing', placeholder: 'collect a package from the post office on Sathorn' },
@@ -175,6 +187,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'wellness', kicker: 'WELLNESS', title: 'Massage, spa, an assistant', cover: '/covers/wellness.webp', cta: 'Find one',
+    blurb: 'Real places with real ratings, near you.',
     promise: 'Real places with real ratings, or a PA for the day. NUM matches the register you write in.',
     lanes: [{ id: 'massage', label: 'Massage' }, { id: 'spa', label: 'Spa' }, { id: 'personal assistant', label: 'PA' }],
     fields: [
@@ -201,6 +214,7 @@ export const FEATURES: readonly Feature[] = [
   // tile that promises what NUM cannot do.
   {
     id: 'errands', kicker: 'ERRANDS', title: 'Dry cleaning, post, pharmacy, groceries', cover: '/covers/errands.webp', cta: 'Find it',
+    blurb: 'The nearest one that’s open, found for you.',
     promise: 'The everyday things a trip still needs. NUM finds the nearest one that’s open, and where a runner exists, can send someone.',
     lanes: [
       { id: 'dry cleaner', label: 'Dry cleaning' }, { id: 'grocery store', label: 'Groceries' }, { id: 'post office', label: 'Post' },
@@ -216,6 +230,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'lookgood', kicker: 'LOOK GOOD', title: 'Haircut, lashes, nails', cover: '/covers/lookgood.webp', cta: 'Find one',
+    blurb: 'A barber, a salon, a lash or nail bar near you.',
     promise: 'A barber, a salon, a lash or nail bar — real places with ratings, and whether they take walk-ins.',
     lanes: [
       { id: 'a haircut', label: 'Haircut' }, { id: 'a barber', label: 'Barber' }, { id: 'lashes', label: 'Lashes' },
@@ -231,6 +246,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'transit', kicker: 'GETTING AROUND', title: 'Trains, metro, buses, scooters', cover: '/covers/transit.webp', cta: 'Route me',
+    blurb: 'Which line, which station, how long it takes.',
     promise: 'Which line, which station, how long — and where the ticket is actually bought.',
     lanes: [{ id: 'train', label: 'Train' }, { id: 'metro', label: 'Metro' }, { id: 'bus', label: 'Bus' }, { id: 'scooter', label: 'Scooter' }],
     fields: [
@@ -245,6 +261,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'pets', kicker: 'PETS', title: 'A vet, a groomer, a sitter', cover: '/covers/pets.webp', cta: 'Find one',
+    blurb: 'A vet, a groomer, a sitter. Emergencies first.',
     promise: 'For the animal travelling with you. An emergency goes to the nearest 24-hour vet first, always.',
     lanes: [{ id: 'vet', label: 'Vet' }, { id: 'emergency vet', label: 'Emergency' }, { id: 'pet groomer', label: 'Groomer' }, { id: 'pet sitter', label: 'Sitter' }],
     fields: [
@@ -259,6 +276,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'move', kicker: 'MOVE', title: 'A gym, a class, a swim', cover: '/covers/move.webp', cta: 'Find one',
+    blurb: 'A day pass, a class, a pool. Nearest first.',
     promise: 'A day pass where they do them, a class you can drop into, a pool. Nearest first.',
     lanes: [{ id: 'gym', label: 'Gym' }, { id: 'yoga', label: 'Yoga' }, { id: 'muay thai', label: 'Muay Thai' }, { id: 'swimming pool', label: 'Swim' }],
     fields: [
@@ -270,6 +288,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'kids', kicker: 'KIDS', title: 'Things to do with children', cover: '/covers/kids.webp', cta: 'Show me',
+    blurb: 'What suits their ages, and how long to allow.',
     promise: 'Playgrounds, zoos, aquariums, a rainy-day indoor option — what suits their ages and how long to allow.',
     fields: [
       { id: 'ages', label: 'Their ages', placeholder: '4 and 7', half: true },
@@ -281,6 +300,7 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'work', kicker: 'WORK', title: 'A desk for the day', cover: '/covers/work.webp', cta: 'Find a desk',
+    blurb: 'A day desk with good wifi and a quiet corner.',
     promise: 'A coworking space or a day desk with reliable wifi and somewhere quiet to take a call.',
     fields: [
       { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
@@ -297,6 +317,7 @@ export const FEATURES: readonly Feature[] = [
     // hosting. Tickets live in the thread (Ticketmaster, worker/events.tm.mjs),
     // so the ask goes there and hosting keeps its own door below.
     id: 'events', kicker: 'EVENTS', title: 'Tickets & events', cover: '/covers/events.webp', cta: 'See what’s on',
+    blurb: 'What’s on while you’re here, with tickets.',
     promise: 'Concerts, matches, club nights — what’s on while you’re here, with a real way to get in.',
     fields: [
       { id: 'when', label: 'When', placeholder: 'this weekend', half: true },
@@ -307,11 +328,13 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     id: 'plans', kicker: 'PLANS', title: 'Plan with friends', cover: '/covers/plans.webp', cta: 'Open plans',
+    blurb: 'One plan the whole group can see and shape.',
     promise: 'One plan the whole group can see; everyone’s NUM hears about what gets booked.',
     opens: () => store.set({ featureOpen: null, partyOpen: true }),
   },
   {
     id: 'wallet', kicker: 'WALLET', title: 'Stars & tabs', cover: '/covers/wallet.webp', cta: 'Open wallet',
+    blurb: 'What you’ve paid, what’s held, what’s open.',
     promise: 'What you’ve paid, what’s held, what’s open — in your currency.',
     opens: () => store.set({ featureOpen: null, walletOpen: true }),
   },

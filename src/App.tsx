@@ -112,12 +112,28 @@ export default function App() {
       // app twitch while somebody scrolls.
       const gap = Math.round(window.innerHeight) - Math.round(vv.height);
       if (gap > KEYBOARD_MIN) {
+        // THE WHITE BAND (18 Sep 2026, "a giant white gap again above the
+        // keyboard"). iOS decides whether the focused field is hidden BEFORE
+        // the resize event reaches us, and if it thinks so it scrolls the
+        // visible viewport up by some offset to reveal it. Then we pad the
+        // shell by the whole keyboard, so the field is above the keyboard
+        // twice over — once by the scroll, once by the pad — and the strip
+        // between the shell's content box and the keyboard is the page
+        // ground, painted in the theme colour. The visible bottom edge is
+        // offset + vv.height, so the pad that puts the content box exactly
+        // there is gap − offset; and the offset itself is put back to zero
+        // where the platform lets us, which is the state the CSS was written
+        // for. vv.offsetTop is pinch/scroll of the visual viewport within the
+        // layout one; pageTop is the document scroll; either can carry it.
+        const offset = Math.max(0, Math.round(vv.offsetTop) + Math.round(vv.pageTop));
+        const pad = Math.max(0, gap - offset);
         // Only write when the pinned height actually changes, so an animating
         // keyboard doesn't produce a style write (and a relayout) per frame.
-        if (Math.abs(gap - pinned) > 2) {
-          pinned = gap;
-          root.style.setProperty('--kb', `${gap}px`);
+        if (Math.abs(pad - pinned) > 2) {
+          pinned = pad;
+          root.style.setProperty('--kb', `${pad}px`);
         }
+        if (offset > 0 && window.scrollY > 0) window.scrollTo(0, 0);
       } else if (pinned !== -1) {
         pinned = -1;
         // 0px, not removeProperty: the CSS fallback is 0px either way, and
@@ -132,9 +148,14 @@ export default function App() {
 
     root.style.setProperty('--kb', '0px');
     vv.addEventListener('resize', onResize);
+    // The offset above arrives as a visualViewport SCROLL, not a resize, so
+    // that event is listened to as well — coalesced through the same frame,
+    // and a no-op unless the pad actually changes.
+    vv.addEventListener('scroll', onResize);
     return () => {
       cancelAnimationFrame(raf);
       vv.removeEventListener('resize', onResize);
+      vv.removeEventListener('scroll', onResize);
       root.style.removeProperty('--kb');
       root.classList.remove('num-standalone');
       root.classList.remove('num-native');

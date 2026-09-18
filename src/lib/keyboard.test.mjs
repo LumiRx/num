@@ -69,10 +69,16 @@ describe('the shell never shrinks away from the bottom of the screen', () => {
 describe('what App.tsx publishes', () => {
   const boot = code(APP);
 
-  test('it measures the keyboard, not the leftovers', () => {
-    assert.match(boot, /setProperty\('--kb', `\$\{gap\}px`\)/);
+  test('it measures the keyboard, not the leftovers — and takes off any scroll iOS already made', () => {
     assert.match(boot, /const gap = Math\.round\(window\.innerHeight\) - Math\.round\(vv\.height\)/,
       'the gap between the layout viewport and the visible one IS the keyboard');
+    // 18 Sep 2026: the white band above the keyboard was the pad and an iOS
+    // reveal-scroll both moving the field up. The pad is the keyboard minus
+    // whatever the platform already scrolled, and the scroll is put back.
+    assert.match(boot, /const offset = Math\.max\(0, Math\.round\(vv\.offsetTop\) \+ Math\.round\(vv\.pageTop\)\)/);
+    assert.match(boot, /const pad = Math\.max\(0, gap - offset\)/);
+    assert.match(boot, /setProperty\('--kb', `\$\{pad\}px`\)/);
+    assert.match(boot, /window\.scrollTo\(0, 0\)/);
   });
 
   test('nothing still writes the old variable', () => {
@@ -87,10 +93,12 @@ describe('what App.tsx publishes', () => {
   });
 
   test('it still writes only on a real change, not once per animation frame', () => {
-    assert.match(boot, /Math\.abs\(gap - pinned\) > 2/);
+    assert.match(boot, /Math\.abs\(pad - pinned\) > 2/);
     assert.match(boot, /requestAnimationFrame/);
-    assert.doesNotMatch(boot, /addEventListener\('scroll'/,
-      "scroll fires constantly while the keyboard animates and carries no size information");
+    // visualViewport scroll IS listened to now (it carries the reveal offset),
+    // but through the same rAF coalescer as resize, never a raw handler.
+    assert.match(boot, /vv\.addEventListener\('scroll', onResize\)/);
+    assert.doesNotMatch(boot, /addEventListener\('scroll', apply\)/);
   });
 
   test('closing the keyboard returns to zero rather than deleting the property', () => {
