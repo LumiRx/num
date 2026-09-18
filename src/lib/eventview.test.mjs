@@ -174,3 +174,31 @@ describe('the sheet and the rail, as source', () => {
     assert.doesNotMatch(s, /['"]Free['"]|from \$|Price:/);
   });
 });
+
+describe('the day is said, not printed', () => {
+  test('an ISO day becomes the sentence a person would say', async () => {
+    const { dayLine } = await import('./eventview.ts');
+    assert.equal(dayLine(tm({ starts_on: '2026-09-18' })), 'Friday 18 September');
+  });
+
+  test('midday, so a timezone behind UTC cannot move it to the day before', async () => {
+    const { dayLine } = await import('./eventview.ts');
+    const was = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      assert.match(dayLine(tm({ starts_on: '2026-09-18' })), /18 September/);
+    } finally { process.env.TZ = was; }
+  });
+
+  test('a day the feed mangled is left out rather than shown as Invalid Date', async () => {
+    const { dayLine } = await import('./eventview.ts');
+    assert.equal(dayLine(tm({ starts_on: 'soon' })), null);
+    assert.equal(dayLine(tm({ starts_on: null })), null);
+  });
+
+  test('the sheet prints no raw ISO date of its own', () => {
+    const src = readFileSync(new URL('../components/app/EventDetailSheet.tsx', import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /\{e\.starts_on\}/);
+    assert.match(src, /dayLine\(e\)/);
+  });
+});

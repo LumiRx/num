@@ -24,7 +24,7 @@ import { askNum } from '../../lib/concierge';
 import { openShareCard } from '../../lib/sharecard';
 import { t } from '../../lib/i18n';
 import {
-  closeEventCard, costOf, factsOf, getInAsk, keepEvent, planAsk, sellerNote, shareOf, ticketLabel,
+  closeEventCard, costOf, dayLine, factsOf, getInAsk, keepEvent, planAsk, sellerNote, shareOf, ticketLabel,
 } from '../../lib/eventview';
 
 const primary: React.CSSProperties = {
@@ -49,6 +49,7 @@ export default function EventDetailSheet() {
   const cost = costOf(e);
   const tickets = ticketLabel(e);
   const seller = sellerNote(e);
+  const day = dayLine(e);
 
   const ask = (line: string) => {
     closeEventCard();
@@ -83,8 +84,8 @@ export default function EventDetailSheet() {
           <img src={e.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.30) 55%, rgba(0,0,0,.82) 100%)' }} />
           <div style={{ position: 'absolute', left: 16, right: 56, bottom: 13, color: '#fff' }}>
-            <div style={{ fontSize: 9.5, letterSpacing: '.14em', fontWeight: 800, opacity: 0.85 }}>{t(e.label)}</div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22, lineHeight: 1.12, marginTop: 4, letterSpacing: '-.01em' }}>{e.title}</div>
+            <div style={{ fontSize: 9.5, letterSpacing: '.14em', fontWeight: 800, opacity: 0.85, lineHeight: 1.4 }}>{t(e.label)}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22, lineHeight: 1.12, marginTop: 6, letterSpacing: '-.01em' }}>{e.title}</div>
           </div>
         </div>
       )}
@@ -132,7 +133,7 @@ export default function EventDetailSheet() {
         {!planId && !kept && <div style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>{t('“Keep it” puts it in an open plan.')}</div>}
 
         {/* MORE — folded away until asked for. */}
-        {(e.why || seller || e.starts_on) && (
+        {(e.why || seller || day) && (
           <div>
             <div {...pressable(() => setMore((v) => !v))} className="tap" style={{ fontSize: 10.5, letterSpacing: '.12em', fontWeight: 800, color: 'var(--color-accent)', cursor: 'pointer', padding: '2px 0' }}>
               {more ? t('LESS') : t('MORE ABOUT THIS')}
@@ -140,7 +141,7 @@ export default function EventDetailSheet() {
             {more && (
               <div style={{ marginTop: 10, display: 'grid', gap: 9, fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.55 }}>
                 {e.why && <div>{e.why}</div>}
-                {e.starts_on && <div>{t('Date')}: {e.starts_on}</div>}
+                {day && <div>{day}</div>}
                 {seller && <div style={{ color: 'var(--color-neutral-500)', fontSize: 11 }}>{t(seller)}</div>}
               </div>
             )}

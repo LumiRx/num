@@ -17,6 +17,7 @@
 // to test.
 import { store } from './store';
 import { near } from './near';
+import { fmtDate } from './i18n';
 import type { SharePayload } from './sharecard';
 
 export interface EventCard {
@@ -78,6 +79,21 @@ export function sellerNote(e: EventCard): string | null {
   if (e.source === 'ticketmaster') return 'Tickets are sold by Ticketmaster. NUM holds nothing and charges nothing for them.';
   if (e.url) return 'Tickets are sold on the event’s own page.';
   return null;
+}
+
+/**
+ * The day, said the way a person says it: "Friday 18 September".
+ *
+ * The feeds carry an ISO day, and "Date: 2026-09-18" is a database talking.
+ * Through fmtDate so it is the reader's own language and month order, and
+ * null rather than "Invalid Date" when the feed sends something unparseable.
+ */
+export function dayLine(e: EventCard): string | null {
+  if (!e.starts_on) return null;
+  // Midday, so a timezone behind UTC cannot roll the date back a day.
+  const d = new Date(`${e.starts_on}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 /** "Plan the evening around it" — the ask, with only what is known. */
