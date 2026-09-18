@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 04:19 UTC from 13 entries._
+_Built 2026-09-18 04:20 UTC from 14 entries._
 
 ## Deployed right now
 
@@ -52,6 +52,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 03:46_
 - 🟢 **reactions** — 0.8.338: emoji reactions land in num_reactions with lane/brain/place; HOW THEY RATE THE ANSWERS panel on admin ACTIVITY tab
   _claude, 2026-09-18 04:17_
+- 🟢 **social inbox** — /api/social/requests 500'd for every real member on a database where the events routes had never run — not the quote character STATUS blamed for two weeks; events.mjs now exports ensureEvents() and the inbox calls it. 16 tests in worker/socialrequests.test.mjs
+  _claude, 2026-09-18 04:20_
 
 ## Built, not deployed
 

@@ -80,6 +80,23 @@ const MIGRATIONS = [
 ];
 
 let ensured = false;
+
+/**
+ * Build the two tables this module owns.
+ *
+ * Exported because social.mjs reads them: GET /api/social/requests joins
+ * num_event_guests to num_events to show the invites waiting on somebody, and
+ * on a database where nothing has called an events route yet those tables do
+ * not exist — so the inbox threw for every real member, which the app saw as
+ * a dropped connection. The alternative was a second copy of this schema in
+ * social.mjs, and two copies of a CREATE TABLE diverge on the first ALTER
+ * (`via` already proves it: added here, invisible to any copy).
+ *
+ * Exporting the builder rather than the SQL keeps the MIGRATIONS below part
+ * of the guarantee. Idempotent, and after the first call per isolate free.
+ */
+export async function ensureEvents(env) { return ensure(env); }
+
 async function ensure(env) {
   if (ensured) return;
   await env.DB.batch(SCHEMA.split(';').map((s) => s.trim()).filter(Boolean).map((s) => env.DB.prepare(s)));
