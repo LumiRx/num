@@ -255,9 +255,15 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
 
     // Their kit, pointed at their own code. Always on the API origin: the
     // sheets are rendered by num-app, and itsnum.com has no route for them.
-    show('kit', true);
-    $('kitLink').href = (API || 'https://app.itsnum.com')
+    //
+    // Shown only once that endpoint actually answers. The site and num-app
+    // ship separately, so for a window one is live and the other is not, and
+    // a button that opens a 404 is worse than a section that is not there yet.
+    var kitUrl = (API || 'https://app.itsnum.com')
       + '/api/scouts/kit?code=' + encodeURIComponent(d.scout.code);
+    fetch(kitUrl, { method: 'HEAD' })
+      .then(function (r) { if (r.ok) { $('kitLink').href = kitUrl; show('kit', true); } })
+      .catch(function () { /* no kit yet; the rest of the dashboard is unaffected */ });
 
     // The people they brought in — named and counted apart from their own
     // businesses, because they are a different kind of work and a slower kind
