@@ -10,6 +10,7 @@ import { PLAN_GROUPS } from '../../lib/data';
 import { Scene } from '../../lib/scenes';
 import { BookedCheck, ChevronRightIcon, UsersIcon } from '../../lib/icons';
 import FlightCard from './FlightCard';
+import { CalendarStrip, NextUp, TripCheck } from './DayWidgets';
 import type { Booking } from '../../lib/types';
 import { t } from '../../lib/i18n';
 
@@ -284,6 +285,18 @@ export default function PlanView() {
   return (
     <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
       {!demo && <PartyStrip />}
+      {/* YOUR DAY, at the top of your plan (18 Sep 2026). These three came off
+          TODAY, which had become the concierge's screen and your diary at the
+          same time. The fortnight leads, because it is the shape of the week
+          that everything below is read against; then the next thing that
+          actually happens; then whether anything needs you.
+
+          NextUp is told the flights are already on this screen — the FLIGHTS
+          section is directly below, and its watching branch would otherwise
+          draw the same flight card twice. */}
+      <CalendarStrip />
+      <NextUp withWatchedFlights={false} />
+      <TripCheck />
       {flights.length > 0 && (
         <div>
           <div style={{ padding: '18px 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

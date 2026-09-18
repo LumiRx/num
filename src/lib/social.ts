@@ -11,6 +11,7 @@ import { refreshStars } from './stars';
 import { resumeDm } from './dm';
 import { askNum } from './concierge';
 import { track } from './track';
+import { takeHeldAsk } from './gate';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
 import { apiUrl } from '../lib/apibase';
 import { isNativeApp } from './native';
@@ -722,6 +723,21 @@ export async function verifyCode(code: string, phone?: string, email?: string): 
   // about a number we never texted).
   if (out.phone_verified) track('verified_signup', { method: 'sms' });
   if (out.email_verified) track('verified_signup', { method: 'email' });
+
+  // THE REVIEW GRANT, WRITTEN DOWN ON THE CLIENT (18 Sep 2026). The server
+  // hands the reviewer a member id without setting `phone_verified`, because
+  // no SMS was ever sent and the flag would be a lie. Since sending now needs
+  // a proved channel (lib/gate.ts), that honesty would leave Apple holding an
+  // app whose concierge refuses to answer, so the grant is recorded as what
+  // it is: reachable, unproved.
+  if (out.review_access) store.set((s) => ({ me: s.me ? { ...s.me, review_access: true } : s.me }));
+
+  // THE QUESTION THEY ALREADY TYPED. Somebody who asked for a table, met the
+  // sign-in sheet and proved a number has now said what they want once — so
+  // it goes now, rather than being typed again. The sheet closes with it, so
+  // the first thing they see after verifying is NUM answering.
+  const held = takeHeldAsk();
+  if (held) { store.set({ inviteOpen: null, threadOpen: true }); void askNum(held); }
   return true;
 }
 

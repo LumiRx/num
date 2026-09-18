@@ -17,6 +17,7 @@ import type { ServiceHandoff, AppState } from './types';
 import type { Booking, Chip, Meeting, Msg, Pick } from './types';
 import { apiUrl } from '../lib/apibase';
 import { readNumReply } from './numreply';
+import { holdAndAsk, mayAsk } from './gate';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
 let voiceT1: ReturnType<typeof setTimeout> | undefined;
@@ -170,6 +171,10 @@ let recCap: ReturnType<typeof setTimeout> | null = null;
 
 export async function openVoice() {
   if (rec) return closeVoice(); // second tap while recording = stop & send
+  // Talking is sending. Asked BEFORE the microphone prompt, not after: there
+  // is no sense in taking a permission, recording 45 seconds and paying for a
+  // transcription only to stop at the same gate askNum would apply.
+  if (!mayAsk()) { holdAndAsk(''); return; }
   try {
     recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch {
@@ -625,6 +630,24 @@ export async function askNum(text: string) {
   // A reply is already in flight — a double-tap must not double-send.
   if (store.get().typing) return;
 
+  // ── REACHABLE SENDERS ONLY (18 Sep 2026) ──────────────────────────────
+  //
+  // Before the question is echoed, before typing is set, before anything
+  // reaches the server: can NUM reach this person back? An answer to someone
+  // with no proved number and no proved address cannot become a booking, a
+  // held table or a notification — it is work that can never be finished,
+  // and at any volume it is most of the work.
+  //
+  // THE GATE IS HERE AND NOWHERE ELSE. The composer, the starter chips, the
+  // feature pages, the rails, the event sheet and the deep links all arrive
+  // at this function; a check in the composer would be a check on one of six
+  // doors. lib/gate.ts holds the rule and the reason, including why the App
+  // Review grant counts.
+  //
+  // The question is not thrown away. It is held and sent the moment the
+  // number or address is proved, so nobody types it twice.
+  if (!mayAsk()) { holdAndAsk(text); return; }
+
   // ── WHAT THE GUEST SAID GOES ON SCREEN FIRST. ALWAYS. ─────────────────
   //
   // This used to sit BELOW the location prompt, and that ordering was the bug.
@@ -737,6 +760,20 @@ export async function askNum(text: string) {
         messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs), lang: currentLang(),
       }),
     });
+    // The server's own send gate (worker/sendgate.mjs). The app checks first,
+    // so this is the path for a bundle older than the gate, a second tab that
+    // signed out, or an account whose verification was withdrawn — all of
+    // which used to surface as "the backend hiccuped". Say the real reason and
+    // open the door.
+    if (res.status === 403) {
+      const why = await res.clone().json().catch(() => null);
+      if (why?.error === 'verify_to_send') {
+        store.set({ typing: false, thinkingLine: null });
+        push({ who: 'c', text: String(why.message ?? 'Verify a number or an email and I can answer you.') });
+        store.set({ inviteOpen: {} });
+        return;
+      }
+    }
     if (!res.ok) throw new Error('backend ' + res.status);
     const out: NumReply = await readNumReply(res, (ack) => store.set({ thinkingLine: ack }));
     out.actions?.forEach(applyAction);

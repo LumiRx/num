@@ -263,6 +263,20 @@ export interface Member {
    */
   email?: string | null;
   email_verified?: boolean;
+  /**
+   * The SERVER's answer to "can NUM reach this person" — phone, address, or
+   * an Apple/Google identity (worker/membercontact.hasVerifiedContact). The
+   * send gate reads this first, because an Apple sign-in is reachable while
+   * carrying neither flag above.
+   */
+  verified?: boolean;
+  /**
+   * Let in by the App Store Connect review grant (worker/social.mjs). NOT a
+   * claim that any number was proved — that is why `phone_verified` stays
+   * false — only that this member reached us through the one code Apple
+   * holds. lib/gate.ts reads it so a reviewer can use the concierge.
+   */
+  review_access?: boolean;
   /** True once the number is proved — the name is then part of the identity. */
   name_locked?: boolean;
   /** Small square data URL, resized on-device before it ever leaves. */
@@ -358,6 +372,8 @@ export interface AppState {
   thinkingLine: string | null;
   /** Which feature's own page is open from TODAY's grid (src/lib/features.ts). */
   featureOpen: import('./features').FeatureId | null;
+  /** A question typed before the sender was reachable, held across the sign-in sheet (lib/gate.ts). */
+  pendingAsk: string | null;
   /** The event being looked at, carried whole from the rail that was tapped. */
   eventView: import('./eventview').EventCard | null;
   /** Fares the guest kept, so a search is never done twice (src/lib/savedflights.ts). Persisted. */

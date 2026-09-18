@@ -23,6 +23,7 @@ import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 import { T, t, currentLang } from '../../lib/i18n';
+import { canSend } from '../../lib/gate';
 
 /** A fare card action: tall enough for a thumb, calm enough to sit three abreast. */
 const fareBtn: React.CSSProperties = {
@@ -609,6 +610,16 @@ export default function ThreadView() {
     // the composer for a send that askNum will then refuse destroys the
     // guest's words with nothing on screen to show for it.
     if (!text || store.get().typing) return;
+    // NOT REACHABLE YET → the words stay in the box (18 Sep 2026).
+    //
+    // askNum would hold this text and replay it after verifying, which is
+    // right for a starter chip or a feature page, where there is nothing on
+    // screen to keep. Here there IS: clearing the composer and popping a
+    // sheet takes a person's sentence away and asks them to trust that it
+    // came back. Leaving it in the box, behind the sheet they are about to
+    // fill in, is the version that needs no trust — and one more tap sends
+    // exactly what they can still see.
+    if (!canSend(store.get().me)) { store.set({ inviteOpen: {} }); return; }
     setDraft('');
     void askNum(text);
   };
@@ -757,6 +768,24 @@ export default function ThreadView() {
             </>
           )}
         </div>
+        {/* SAID BEFORE IT IS FELT (18 Sep 2026). Sending needs a number or an
+            address NUM can answer to — see lib/gate.ts for why. A person who
+            learns that from a sheet appearing after they pressed send has
+            been interrupted; a person who reads it above an empty box is
+            being told the rules of the place. The box still takes their
+            words, and the words survive the sheet. */}
+        {!canSend(me) && (
+          <div
+            {...pressable(() => store.set({ inviteOpen: {} }))}
+            className="tap"
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 8px' }}
+          >
+            <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-60)' }}>
+              {t('Verify a number or an email to send — NUM has to be able to answer you back.')}
+            </div>
+            <span style={{ flex: 'none', fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: 'var(--color-accent)' }}>{t('VERIFY')}</span>
+          </div>
+        )}
         {/* Fixed 44px row: the send/mic swap and the input's own growth can
             never change the composer's height. */}
         <div style={{ display: 'flex', gap: 8, height: 44, alignItems: 'center' }}>

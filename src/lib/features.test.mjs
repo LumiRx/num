@@ -209,22 +209,27 @@ describe('wired, not just written', () => {
     // read as a regression.
     const now = /const NOW: WidgetId\[\] = \[([^\]]*)\]/.exec(dash);
     assert.ok(now, 'the Now strip is gone');
-    for (const id of ["'next'", "'tonight'", "'tripcheck'"]) assert.ok(now[1].includes(id), `${id} left the day strip`);
+    for (const id of ["'tonight'", "'requests'"]) assert.ok(now[1].includes(id), `${id} left the day strip`);
   });
 
-  test('the day starts with what is already booked in', () => {
-    // The calendar answers "what am I committed to", which is the question
-    // NEXT UP is read against; it spent a week two screens below the grid.
-    //
-    // The list is NOT what orders the screen — `widgets` is, and the first
-    // attempt at this only reordered the list, which changed nothing. So the
-    // hoist itself is what gets pinned.
+  test('your diary is on PLAN, and TODAY is what is around you', () => {
+    // 18 Sep 2026: the calendar, NEXT UP and the trip check moved to PLAN —
+    // "take the next up and add it to the plans page. and the calendar. and
+    // the trip check". Moved, not copied: the same card on two tabs is the
+    // "same door shown twice" this codebase already argues against.
     const dash = read('../components/app/DashView.tsx');
-    assert.match(
-      dash,
-      /above\.includes\('calendar'\) \? \['calendar' as WidgetId, \.\.\.above\.filter/,
-      'the calendar must be hoisted, not merely listed first',
-    );
+    const plan = read('../components/app/PlanView.tsx');
+    const widgets = read('../components/app/DayWidgets.tsx');
+    for (const tag of ['<CalendarStrip />', '<NextUp withWatchedFlights={false} />', '<TripCheck />']) {
+      assert.ok(plan.includes(tag), `${tag} must render on PLAN`);
+    }
+    for (const id of ['next', 'calendar', 'tripcheck']) {
+      assert.match(dash, new RegExp(`${id}: \\(\\) => null`), `${id} must no longer draw on TODAY`);
+    }
+    // And the flight card is not drawn twice on one screen: PLAN has its own
+    // FLIGHTS section directly below NextUp.
+    assert.match(widgets, /withWatchedFlights && flights\.length/);
+    assert.match(plan, /\{flights\.length > 0 && \(/);
   });
 
   test('CONNECT YOUR WORLD is in Settings, and only there', () => {

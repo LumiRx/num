@@ -21,7 +21,7 @@ import { generateCode, hashCode, safeEqual, normalisePhone, normaliseMobile, uid
 // for the number that forced it (107 of 147 members unreachable) and for why
 // this is not simply the old wall put back.
 import {
-  normaliseEmail, ensureContact, issueEmailCode, NEED_CONTACT, BAD_EMAIL,
+  normaliseEmail, ensureContact, issueEmailCode, NEED_CONTACT, BAD_EMAIL, hasVerifiedContact,
 } from './membercontact.mjs';
 import { notify } from './push.mjs';
 import { addedToPlan } from './notifycopy.mjs';
@@ -717,6 +717,13 @@ async function me(env, req) {
       phone_verified: !!existing?.phone_verified,
       email: email ?? existing?.email ?? null,
       email_verified: !!existing?.email_verified,
+      // CAN NUM REACH THEM — the server's own answer, not the client's guess.
+      // The app gates sending on this (src/lib/gate.ts), and a member who
+      // signed in with Apple carries neither flag above while being perfectly
+      // reachable. One field, computed by the one function that knows
+      // (membercontact.hasVerifiedContact), so there is no second rule to
+      // drift.
+      verified: hasVerifiedContact(existing),
       name_locked: !!(existing?.phone_verified || existing?.name_locked),
       avatar: avatar ?? existing?.avatar ?? null,
       bio: safeParse(bio ?? existing?.bio),
@@ -1044,6 +1051,9 @@ async function verifyMe(env, req) {
         name: row.name,
         phone: row.phone,
         phone_verified: !!row.phone_verified,
+        // Not claimed as verified: no SMS was ever sent. `review_access`
+        // above is what lets the reviewer send — see src/lib/gate.ts.
+        verified: hasVerifiedContact(row),
         name_locked: !!row.name_locked,
         avatar: row.avatar ?? null,
         bio: safeParse(row.bio),
@@ -1178,6 +1188,7 @@ async function verifyMe(env, req) {
       email: back.email ?? null,
       phone_verified: !!back.phone_verified,
       email_verified: !!back.email_verified,
+      verified: hasVerifiedContact(back),
       name_locked: !!back.name_locked,
       avatar: back.avatar ?? null,
       bio: safeParse(back.bio),
@@ -1559,6 +1570,11 @@ async function appleSignIn(env, req) {
       name: me.name,
       phone: me.phone,
       phone_verified: !!me.phone_verified,
+      // THE CASE THE TWO FLAGS ABOVE CANNOT EXPRESS. Apple holds a verified
+      // address and the account is keyed on their subject id, so this member
+      // is reachable with neither a phone nor an email of ours proved. Without
+      // this field the app's send gate would refuse every Apple sign-in.
+      verified: hasVerifiedContact(me),
       avatar: me.avatar ?? null,
       bio: safeParse(me.bio),
       ref: me.ref_code,

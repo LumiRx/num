@@ -62,6 +62,7 @@ import { handleErrands } from './errands.mjs';
 import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleBill, handleConnectWebhook } from './billpay.mjs';
+import { handleWallet } from './privy.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleSmsStatus, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
@@ -2934,6 +2935,14 @@ export default {
     }
     // A bill code's rails and its Stripe Checkout hop. Anonymous by design:
     // the guest's camera opened /p/<token> and the token is the credential.
+    // A member's own Privy wallet. Read is public-to-the-member; creating one
+    // is a POST and is gated on a verified phone inside privy.mjs, never here.
+    if (url.pathname.startsWith('/api/wallet')) {
+      const res = await handleWallet(request, env, url.pathname.slice('/api/wallet'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/bill/')) {
       const res = await handleBill(request, env, url.pathname.slice('/api/bill'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
@@ -3032,6 +3041,25 @@ export default {
     // synthetic Request that never passed through this dispatcher at all.
     if (request.method !== 'POST' || url.pathname !== '/api/num') {
       return new Response('not found', { status: 404 });
+    }
+    // ── A SENDER NUM CAN ANSWER BACK (18 Sep 2026) ────────────────────────
+    //
+    // Both answer shapes go through this, and it sits HERE rather than inside
+    // handleNum() because handleNum is also the WhatsApp channel, the hosted
+    // MCP server and concierge_answer, each with its own authorisation. The
+    // marketing page at itsnum.com/ask/ and the health probe pass — see
+    // worker/sendgate.mjs for both allowances and why the spoofable one costs
+    // us nothing. The body is read from a clone so handleNum still gets its
+    // stream intact.
+    {
+      const { maySend, VERIFY_TO_SEND } = await import('./sendgate.mjs');
+      const peek = await request.clone().json().catch(() => null);
+      const verdict = await maySend(env, request, peek).catch(() => ({ ok: false, reason: 'gate_error' }));
+      if (!verdict.ok) {
+        // 403, not 401: there is nothing to authenticate with yet, and the
+        // app branches on the `error` word rather than the status.
+        return json(403, VERIFY_TO_SEND, { 'X-Num-Gate': String(verdict.reason ?? 'refused') });
+      }
     }
     // The app asks for the two-line answer (Accept: application/x-ndjson);
     // everything else gets the single JSON it always got. worker/ack.mjs.
