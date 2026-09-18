@@ -354,13 +354,50 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 12px) 16px 6px' }}>
           <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>{t('THREAD')}{' '}<span style={{ fontWeight: 400, opacity: 0.5 }}>· ASK NUM ANYTHING</span>
           </div>
-          <div
-            {...pressable(() => store.set({ threadOpen: false }))}
-            aria-label={t('Close thread')}
-            className="glass press"
-            style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <XIcon size={15} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* ── AND HERE, BECAUSE THIS IS THE SCREEN THE APP OPENS ON ─────
+                The app's own header carries a Sign in button, and for three
+                App Store reviews running it may as well not have existed: the
+                default state of this app is `threadOpen: true`, and this
+                panel is position:absolute at z-index 45 directly over that
+                header. Measured on the iPad Air App Review used,
+                document.elementFromPoint on the centre of the Sign in button
+                returned this panel, in both orientations.
+
+                That is the whole of it. Build 2 was rejected for Sign in with
+                Apple and Delete My Account being unreachable — both live on
+                Profile, which is reached from the header. Build 8 was
+                rejected with "Where is the sign-in page?". Three findings,
+                one cause: nobody could see the top of the app, because the
+                product opens on top of it.
+
+                Fixing the default would be the other repair, and it is the
+                wrong one — opening on the thread is deliberate and correct,
+                the thread IS the product. So the door appears on whichever
+                surface is in front. */}
+            {!me && (
+              <div
+                {...pressable(() => store.set({ inviteOpen: {} }))}
+                aria-label={t('Sign in')}
+                className="glass press"
+                style={{
+                  cursor: 'pointer', borderRadius: 999, padding: '0 16px', minHeight: 44,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', whiteSpace: 'nowrap',
+                }}
+                title={t('Sign in')}
+              >
+                {t('Sign in')}
+              </div>
+            )}
+            <div
+              {...pressable(() => store.set({ threadOpen: false }))}
+              aria-label={t('Close thread')}
+              className="glass press"
+              style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <XIcon size={15} />
+            </div>
           </div>
         </div>
         {/* Mounted only while open: the thread auto-scrolls on every state
