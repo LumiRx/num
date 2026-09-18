@@ -93,6 +93,16 @@ async function ensure(env) {
     await db.prepare(
       "UPDATE num_failures SET resolved_at = unixepoch() WHERE kind = 'alert' AND told = 1 AND resolved_at IS NULL",
     ).run().catch(() => {});
+    // 3. A BOUNCE CLOSES ITSELF (18 Sep 2026). maildelivery.mjs suppresses
+    //    the address in the same breath as it records the bounce, so the
+    //    remedy is applied before the row exists: there is nothing for a
+    //    person to do and nothing to keep open. 381 of them had piled up
+    //    since 12 Sep and padded the "open failures" count to its own query
+    //    limit. The row is still WRITTEN — the history is how we know an
+    //    outreach list is rotten — it is just not pending work.
+    await db.prepare(
+      "UPDATE num_failures SET resolved_at = unixepoch() WHERE kind = 'mail_bounced' AND resolved_at IS NULL",
+    ).run().catch(() => {});
     built.add(db);
   } catch (e) {
     console.warn('[failures] schema', e?.message ?? e);
@@ -192,18 +202,44 @@ export async function summary(env) {
   const now = Math.floor(Date.now() / 1000);
   const critical = rows.filter((r) => r.severity === 'critical');
   const high = rows.filter((r) => r.severity === 'high');
+  // ── WHAT "OPEN" MEANS, AND WHY IT IS NOT rows.length ──────────────────
+  //
+  // 18 Sep 2026, 00:10: "🔴 NUM IS DOWN — 200 open failure(s)" while every
+  // real check was green and the concierge was answering in six seconds.
+  // The 200 was 199 bounced outreach emails (low, already suppressed, no
+  // human action left) plus one alert of our own — and 200 exactly because
+  // that is the query's LIMIT. A number that says two hundred when one
+  // thing is wrong is not an alarm; it is the reason people stop reading
+  // alarms.
+  //
+  // So `open` counts what somebody would actually be asked to DO. Chores —
+  // low-severity rows that carry their own remedy — are counted beside it,
+  // honestly, under their own name.
+  const chores = rows.filter((r) => r.severity === 'low');
+  const actionable = rows.filter((r) => r.severity !== 'low' && r.kind !== 'alert');
   // Ten minutes of grace: a failure recorded seconds ago may already be
   // resolving itself, and a monitor that fires on every transient is a
   // monitor people learn to close.
   const settled = (r) => now - r.first_seen > 600;
+  // An undelivered ALERT is a broken alarm channel, which is exactly what
+  // `blind` is for — but it is not itself an open product failure, or the
+  // ledger spends forever declaring the product down because it could not
+  // send a text about the product being down. That loop ran all night.
   const blind = rows.some((r) => !r.told && settled(r) && r.severity !== 'low');
   return {
+    // The honest total. Nothing is swept under the rug — falsedown.test.mjs
+    // holds this line, and it is the right one.
     open: rows.length,
+    // What somebody would actually be asked to DO. health.mjs judges on this
+    // and says this, because "200 open failures" when 199 are finished chores
+    // is not an alarm, it is the reason people stop reading alarms.
+    actionable: actionable.length,
+    chores: chores.length,
     critical: critical.length,
     high: high.length,
     blind,
     oldest: rows.length ? rows[0].first_seen : null,
-    worst: rows.slice(0, 5).map((r) => ({
+    worst: actionable.slice(0, 5).map((r) => ({
       kind: r.kind, subject: r.subject, severity: r.severity, seen: r.seen, told: !!r.told,
     })),
   };

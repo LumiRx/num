@@ -2277,6 +2277,13 @@ export default {
       return await handleFlightWatch(request, env, url.pathname);
     }
 
+    // Every feature, what it needs, whether it is on, and how to switch it
+    // off without a deploy. The operator's one screen — see features.mjs.
+    if (url.pathname === '/api/features') {
+      const { handleFeatures } = await import('./features.mjs');
+      return handleFeatures(env);
+    }
+
     // The app in the reader's language: machine once, stored, human-editable. See i18n.mjs.
     if (url.pathname === '/api/i18n') {
       const { handleI18n } = await import('./i18n.mjs');

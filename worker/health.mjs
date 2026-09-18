@@ -237,13 +237,26 @@ async function checkFailures(env) {
     if (!s.open) return { ok: true, open: 0 };
     if (!s.blind && !s.critical) {
       // Known about, being handled. Reported, not alarming.
-      return { ok: true, open: s.open, high: s.high, worst: s.worst };
+      return { ok: true, open: s.open, actionable: s.actionable, chores: s.chores, high: s.high, worst: s.worst };
     }
+    // ── THE NUMBER A PERSON READS ────────────────────────────────────────
+    //
+    // 18 Sep 2026, 00:10: "🔴 NUM IS DOWN — 200 open failure(s)" fired every
+    // cron tick all night. The 200 was 199 bounced outreach addresses, each
+    // already suppressed with nothing left to do, plus NUM's own alert text —
+    // and it was 200 exactly because that is the LIMIT on the query. The
+    // concierge was answering in six seconds throughout.
+    //
+    // So the page counts what somebody is being asked to DO, and mentions the
+    // chores separately, in their own words. An alarm that overstates itself
+    // by two hundred times is an alarm that gets muted, and then the real one
+    // arrives into a muted channel.
     return {
       ok: false,
       ...s,
       remedy: s.blind
-        ? `${s.open} open failure(s) and at least one that nobody was successfully told about. `
+        ? `${s.actionable} open failure(s)${s.chores ? ` (plus ${s.chores} low-severity chore(s), e.g. bounced outreach mail — no action needed)` : ''} `
+          + 'and at least one that nobody was successfully told about. '
           + 'Read GET /api/admin/failures. While this is true, every other check on this page is '
           + 'unverified — the alarm channel is the thing to fix first, before the failures themselves.'
         : `${s.critical} critical failure(s) open: ${s.worst.map((w) => `${w.kind} ${w.subject}`).join('; ')}. `

@@ -315,7 +315,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     if (near) { dest = near.slug; row = near; }
   }
   if (!dest) return json({ ok: false, error: 'no_place', hint: 'Tell NUM where you are first.' }, 400);
-  if (!row) { try { row = await env.DB.prepare('SELECT country, lat, lng FROM destinations WHERE slug = ?1').bind(dest).first(); } catch { /* fall back to the query */ } }
+  if (!row) { try { row = await env.DB.prepare('SELECT slug, name, country, lat, lng, tz FROM destinations WHERE slug = ?1').bind(dest).first(); } catch { /* fall back to the query */ } }
   const country = String(g('country') || row?.country || '').toUpperCase().slice(0, 2);
   const lat = g('lat') != null ? Number(g('lat')) : (row?.lat ?? null);
   const lng = g('lng') != null ? Number(g('lng')) : (row?.lng ?? null);
@@ -336,7 +336,29 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
       starts_on: r.starts_on ?? null, ends_on: r.ends_on ?? null, starts_at: null, venue: r.venue ?? null, label: 'Checked by NUM', why: r.why ?? null,
     }));
     const items = tonightPick(curated, tm, g('day'));
-    return json({ ok: true, mode, dest, items, sources: { num: curated.length, ticketmaster: tm.length } });
+    // Restaurants and bars near the person, through the same ranking the
+    // concierge uses (ai/places.js: real ratings first, open now first,
+    // not the same three as last time). Both rails are always there, so
+    // the strip never disappears for a city with no events.
+    const mine = g('lat') != null && g('lng') != null;
+    const loc = { dest: { slug: dest, name: row?.name ?? dest, tz: row?.tz ?? null, lat: row?.lat ?? null, lng: row?.lng ?? null }, lat, lng, precise: mine, source: mine ? 'shared_location' : 'named' };
+    const memberId = g('me') || null;
+    const asPlace = (r) => ({
+      source: 'num', id: `pl_${r.id}`, title: r.name, sub: [r.cuisine || (r.category ? String(r.category).replace(/ location$/i, '') : null), r.area].filter(Boolean).join(' · '),
+      image: r.photo_url ?? null, rating: r.rating ?? null, reviews: r.reviews ?? null, price: null, currency: null, url: null,
+      open_now: r.open_now ?? null, distance_km: mine && r.km != null ? Math.round(r.km * 10) / 10 : null, label: 'Checked by NUM',
+    });
+    let restaurants = [], bars = [];
+    try {
+      const { nearbyPlaces } = await import('../ai/places.js');
+      const [r1, r2] = await Promise.all([
+        withTimeout(nearbyPlaces(env, loc, 'restaurant dinner', 9, null, { memberId }), 2500, { rows: [] }),
+        withTimeout(nearbyPlaces(env, loc, 'bar cocktails', 9, null, { memberId }), 2500, { rows: [] }),
+      ]);
+      restaurants = (r1?.rows ?? []).map(asPlace);
+      bars = (r2?.rows ?? []).map(asPlace);
+    } catch (err) { console.warn('[discover] tonight places', err?.message ?? err); }
+    return json({ ok: true, mode, dest, items, restaurants, bars, sources: { num: curated.length, ticketmaster: tm.length, restaurants: restaurants.length, bars: bars.length } });
   }
 
   const [places, events, exps, history] = await Promise.all([
