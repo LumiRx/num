@@ -2112,6 +2112,12 @@ export async function handleConsole(request, env, path) {
         return await renewAdminSession(env, request, await adminOverview(env, url, request));
       }
       if (path === '/admin/draw') return await adminDraw(env, request, url);
+      // How guests rate the answers — the emoji ledger, folded by lane, brain
+      // and place, with the rejected answers to read first. worker/reactions.mjs.
+      if (path === '/admin/reactions' && !post) {
+        const { summary } = await import('./reactions.mjs');
+        return json(await summary(env, { days: Number(url.searchParams.get('days')) || 7 }));
+      }
 
       // The two consoles /ops could not open. See worker/adminconsoles.mjs for
       // why this mints a single-use token instead of handing the browser a

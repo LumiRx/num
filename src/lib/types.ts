@@ -103,6 +103,8 @@ export interface Msg {
   card?: CardRef;
   /** Recommended places, rendered as cards under the message. */
   picks?: Pick[];
+  /** Which lane and brain produced this answer — filed with a reaction so the team can read ratings by lane. */
+  turn?: { lane?: string | null; brain?: string | null; model?: string | null };
 }
 
 export interface Chip {

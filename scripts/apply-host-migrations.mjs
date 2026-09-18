@@ -97,6 +97,9 @@ const FILES = [
   // index, both IF NOT EXISTS, so a second pass is a clean no-op.
   'worker/migrations/0029_products.sql',
   'worker/migrations/0030_expert_docs.sql',
+  // How guests rate the answers: the emoji ledger. One CREATE TABLE and
+  // three indexes, all IF NOT EXISTS, so a second pass is a clean no-op.
+  'worker/migrations/0031_reactions.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

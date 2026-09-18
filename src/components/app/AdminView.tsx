@@ -340,6 +340,93 @@ function PayoutPanel() {
   );
 }
 
+interface ReactionsSummary {
+  days: number;
+  totals: { n: number; positive: number; negative: number; long: number; approval: number | null; long_pct: number; people: number };
+  by_reaction: Record<string, number>;
+  by_lane: Array<{ lane: string; n: number; approval: number | null; long_pct: number }>;
+  by_brain: Array<{ brain: string; n: number; approval: number | null; long_pct: number }>;
+  by_place: Array<{ place: string; n: number; approval: number | null; long_pct: number }>;
+  worst: Array<{ ts: string; reaction: string; subject: string | null; asked: string | null; reply: string | null; place: string | null; lane: string | null; brain: string | null }>;
+  error?: string;
+}
+
+const EMOJI: Record<string, string> = { love: '😍', like: '👍', meh: '😐', no: '👎', long: '🥱' };
+const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
+
+/**
+ * How guests rate the answers. The five emoji under every reply used to stop
+ * on the phone; since 18 Sep 2026 they land in num_reactions, and this is the
+ * first place a person can read them. Approval is 😍👍 against 😐👎; 🥱 is
+ * its own line because "right answer, too long" is a different fix.
+ */
+function ReactionsPanel({ token, days }: { token: string | null; days: number }) {
+  const [data, setData] = useState<ReactionsSummary | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    void fetch(apiUrl(`/api/admin/reactions?days=${days}`), { headers: { 'X-Admin-Session': token } })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`reactions ${r.status}`);
+        setData((await r.json()) as ReactionsSummary);
+        setErr(null);
+      })
+      .catch((e) => setErr(guestMessage(e, 'unavailable')));
+  }, [token, days]);
+
+  const scoreRows = (rows: Array<{ n: number; approval: number | null; long_pct: number } & Record<string, unknown>>, key: string) =>
+    rows.slice(0, 8).map((r) => (
+      <Row
+        key={String(r[key])}
+        left={String(r[key])}
+        right={`${r.n} · ${pct(r.approval)} liked · ${r.long_pct}% too long`}
+      />
+    ));
+
+  const tot = data?.totals;
+  return (
+    <Panel
+      title={t('HOW THEY RATE THE ANSWERS')}
+      summary={tot ? (tot.n ? `${tot.n} reactions from ${tot.people} people · ${pct(tot.approval)} liked · ${tot.long_pct}% too long` : t('No reactions yet — the emoji under each answer now land here.')) : (err ?? 'loading…')}
+      defaultOpen
+    >
+      {err && <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.5 }}>{err}</div>}
+      {data && tot && tot.n > 0 && (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, margin: '4px 0 12px' }}>
+            <Stat n={pct(tot.approval)} label="LIKED" accent />
+            <Stat n={`${tot.long_pct}%`} label="TOO LONG" />
+            <Stat n={tot.n} label={`REACTIONS · ${data.days}D`} />
+            <Stat n={tot.people} label="PEOPLE" />
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--ink-60)', marginBottom: 10 }}>
+            {Object.entries(data.by_reaction).map(([k, n]) => <span key={k}>{EMOJI[k] ?? k} {n}</span>)}
+          </div>
+
+          {!!data.by_lane.length && <><div style={kicker}>{t('BY LANE')}</div>{scoreRows(data.by_lane, 'lane')}</>}
+          {!!data.by_brain.length && <><div style={{ ...kicker, marginTop: 12 }}>{t('BY BRAIN')}</div>{scoreRows(data.by_brain, 'brain')}</>}
+          {!!data.by_place.length && <><div style={{ ...kicker, marginTop: 12 }}>{t('BY PLACE')}</div>{scoreRows(data.by_place, 'place')}</>}
+
+          {!!data.worst.length && (
+            <>
+              <div style={{ ...kicker, marginTop: 14 }}>{t('READ THESE FIRST')}</div>
+              {data.worst.map((w, i) => (
+                <div key={i} style={{ padding: '9px 0', borderBottom: '1px solid var(--ink-08)' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.45 }}>{EMOJI[w.reaction] ?? w.reaction} {w.subject || w.reply || '—'}</div>
+                  {w.asked && <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>“{w.asked}”</div>}
+                  {w.reply && w.subject && <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>→ {w.reply}</div>}
+                  <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 4 }}>{w.place ?? 'no place'} · {w.lane ?? '—'} · {w.brain ?? '—'} · {w.ts.slice(0, 16)}</div>
+                </div>
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
 export default function AdminView() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [key, setKey] = useState('');
@@ -628,6 +715,7 @@ export default function AdminView() {
                 </Panel>
 
                 {tab === 'money' && <PayoutPanel />}
+                {tab === 'activity' && <ReactionsPanel token={token} days={days} />}
 
                 {/* The escrow invariant is the single most important number
                     on this page: held must equal committed, or Stars have

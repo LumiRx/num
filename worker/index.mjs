@@ -1632,7 +1632,11 @@ export async function handleNum(request, env, ctx) {
     const timing = { ...marks, brain: result._brain ?? null, model: result._model ?? null, tried: (result._tried ?? []).map((x) => x.brain), lane: answeredLane };
     console.log(`[num-ai] timing ${JSON.stringify(timing)}`);
     const wantsDebug = request.headers.get('x-num-debug') === '1';
-    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, ...(_degraded ? { degraded: true, brain: _brain } : {}), ...(wantsDebug ? { _timing: timing } : {}) });
+    // `turn` is the little the app needs to file a reaction against THIS
+    // answer without ever seeing num_asks.id: which lane and brain produced
+    // it. Three short strings; no cost, no secret. worker/reactions.mjs.
+    const turn = { lane: answeredLane, brain: result._brain ?? null, model: result._model ?? null };
+    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, turn, ...(_degraded ? { degraded: true, brain: _brain } : {}), ...(wantsDebug ? { _timing: timing } : {}) });
   } catch (err) {
     console.error('[num-ai]', err);
     // A ReferenceError or TypeError is OUR bug, not an outage. The two look
@@ -2223,6 +2227,18 @@ export default {
     if (url.pathname === '/api/webhooks/resend') {
       const { handleResendWebhook } = await import('./maildelivery.mjs');
       return await handleResendWebhook(request, env);
+    }
+
+    // ── HOW THEY LIKED IT ───────────────────────────────────────────────
+    //
+    // The emoji under an answer. Public on purpose — a guest with no account
+    // can still say "too long" — and identity is what the app already asserts
+    // on /api/num (member id or the device's anon id). See worker/reactions.mjs.
+    if (url.pathname === '/api/react' && request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const { record } = await import('./reactions.mjs');
+      const out = await record(env, body);
+      return json(out.ok ? 200 : 400, out, cors);
     }
 
     if (url.pathname === '/api/admin/failures') {

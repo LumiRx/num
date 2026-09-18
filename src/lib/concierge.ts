@@ -508,6 +508,8 @@ interface NumReply {
   actions: NumAction[];
   /** Where the server resolved the user to be (drives the header). */
   place?: string | null;
+  /** Which lane and brain answered — filed with a reaction (lib/reactions.ts). */
+  turn?: Msg['turn'];
 }
 
 function applyAction(a: NumAction) {
@@ -750,7 +752,7 @@ export async function askNum(text: string) {
       typing: false,
       // Unread only counts while the thread is closed — the dot carries it.
       unread: prev.threadOpen ? 0 : prev.unread + 1,
-      msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}), ...(out.picks?.length ? { picks: out.picks } : {}) }],
+      msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}), ...(out.picks?.length ? { picks: out.picks } : {}), ...(out.turn ? { turn: out.turn } : {}) }],
       // A flight number in the ask gets one extra chip: Watch it. The card
       // then lives at the top of the thread and on TODAY (flightwatch.ts).
       chips: (() => { const no = spotFlight(text); const base = out.chips ?? defChips(); return no && !base.some((c) => c.id === `watch:${no}`) ? [{ id: `watch:${no}`, label: `Watch ${no}` }, ...base] : base; })(),

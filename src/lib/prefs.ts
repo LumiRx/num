@@ -15,6 +15,7 @@
 // Deliberately small — it rides in every request, and a style guide longer
 // than the reply is a tax on every message.
 import { store } from './store';
+import { sendReaction } from './reactions';
 import type { AppState, Reaction, StyleProfile } from './types';
 
 /** The five reactions, in the order they're shown. */
@@ -60,6 +61,9 @@ export function react(index: number, reaction: Reaction, subject: string): void 
 
     return { reactions, style };
   });
+  // And tell the team. Until 18 Sep 2026 the tap stopped here, on the phone,
+  // and "are the answers getting better" was answered from anecdote.
+  sendReaction(index, reaction, subject);
 }
 
 const dedupe = (a: string[]) => [...new Set(a.filter(Boolean))];
