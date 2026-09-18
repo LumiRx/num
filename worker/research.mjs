@@ -317,8 +317,30 @@ export function verify(answer, rows) {
   // exact test of a claim the model made on purpose. If the model ignores the
   // instruction there is nothing to check, and `unmarked` says so rather than
   // reporting a clean bill of health it has not earned.
+  // ── A HEADING IS NOT A VENUE ───────────────────────────────────────────
+  //
+  // First live run, 18 Sep 2026: a good answer, 24 real places, and this
+  // reported "3 names are not in NUM's checked list and may not exist:
+  // Quiet Work Spot with Good Coffee, Dinner Nearby within Walking Distance,
+  // Couldn't confirm:". All three were the model's own section headings. It
+  // was told to bold venue names and it also bolded its headings, which is
+  // what any writer would do.
+  //
+  // The tell is the line, not the words. A heading is bold that IS the whole
+  // line; a venue is bold inside a line that goes on to say something about
+  // it ("- **CupC Coffee** – 0.3km away, this café…"). So a bolded run only
+  // counts as a claim when its line carries other prose, once the list marker
+  // is stripped. Same principle as bold-only itself: check what the model
+  // deliberately said, and do not invent accusations out of formatting.
   const named = new Set();
-  for (const m of String(answer).matchAll(/\*\*([^*\n]{2,60})\*\*/g)) named.add(m[1].trim());
+  for (const line of String(answer).split('\n')) {
+    const bare = line.replace(/^\s*(?:[-*+]|\d+[.)])\s*/, '').trim();
+    const bolds = [...bare.matchAll(/\*\*([^*]{2,60})\*\*/g)];
+    if (!bolds.length) continue;
+    // The whole line is one bold run and nothing else — a heading.
+    if (bolds.length === 1 && bare.replace(/\*\*/g, '').trim() === bolds[0][1].trim()) continue;
+    for (const m of bolds) named.add(m[1].trim());
+  }
 
   const invented = [];
   for (const n of named) {

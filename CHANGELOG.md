@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.347 — 2026-09-18 06:38 UTC
+
+Deep research tries every brain, the way the rest of NUM always has
+
+- commit `a0b9021`
+
 ## 0.8.346 — 2026-09-18 06:35 UTC
 
 The ad page shows the product without scrolling, the install card waits for the answer, and the registry carries bill pay

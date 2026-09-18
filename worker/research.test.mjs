@@ -65,6 +65,30 @@ describe('the answer may only name places Num actually holds', () => {
     assert.equal(verify('A long answer '.repeat(30), []).unmarked, false, 'no evidence, nothing to verify against');
   });
 
+
+  test('a section heading is not reported as an invented venue', () => {
+    // First live run: a good answer with 24 real places reported "3 names are
+    // not in NUM's checked list" — and all three were the model's own bolded
+    // headings. It was told to bold venues and it bolded its headings too,
+    // which is what any writer does. The tell is the line, not the words.
+    const answer = [
+      '**Quiet Work Spot with Good Coffee**',
+      '',
+      '- **Nahm** \u2013 0.3km away, quiet enough to work in.',
+      '',
+      "**Couldn't confirm:**",
+      '- No evidence confirms opening hours.',
+    ].join('\n');
+    const out = verify(answer, rows);
+    assert.deepEqual(out.invented, [], 'headings stand alone on their line; venues do not');
+    assert.equal(out.unmarked, false, 'and the real venue mention still counts as a mark');
+  });
+
+  test('an invented venue inside a sentence is still caught', () => {
+    const out = verify('- **Gaggan Anand** \u2013 2km away, tasting menus.', rows);
+    assert.deepEqual(out.invented, ['Gaggan Anand']);
+  });
+
   test('what is flagged is reported, never silently deleted', () => {
     const out = verify('Try **Somewhere Invented Entirely**.', rows);
     assert.ok(out.answer.includes('Somewhere Invented Entirely'), 'the text is returned whole');
