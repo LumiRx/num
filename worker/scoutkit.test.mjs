@@ -54,6 +54,52 @@ describe('every sheet is that Expert’s own', () => {
   });
 });
 
+describe('the price, which was wrong once and must not go back', () => {
+  // The flyer this file originally copied said "$2 flat per confirmed table,
+  // flat not a percentage". The $2 is the SETTLE FEE for a guest who was
+  // already the venue's own, paying through their NUM code. A guest NUM SENDS
+  // is 10% of the bill. On a $100 table that is $2 promised against $10
+  // charged, and the owner finds out from the website the same evening.
+  test('the sheet says exactly what the ledger bills', async () => {
+    const { feeSentence } = await import('./commission.mjs');
+    const html = onePager(SCOUT, LINK);
+    assert.ok(html.includes(feeSentence({ category: 'Restaurant', country: 'US' })),
+      'rendered from commission.mjs, not retyped — that is the whole fix');
+  });
+
+  test('the percentage is never denied', () => {
+    const html = onePager(SCOUT, LINK);
+    assert.match(html, /10%/, 'a table NUM sent is 10% when the bill is visible');
+    assert.ok(!/flat, not a percentage/i.test(html),
+      'that phrase is what made the old sheet wrong');
+  });
+
+  test('the $2 is shown as a floor, never as the whole price', () => {
+    const html = onePager(SCOUT, LINK);
+    const i = html.indexOf('$2');
+    assert.ok(i > -1, 'it is a real part of the model and belongs on the sheet');
+    const around = html.slice(Math.max(0, i - 260), i + 260);
+    assert.match(around, /floor|cannot see|did not refer|settling through/i,
+      'shown beside the condition that triggers it, never on its own');
+  });
+
+  test('the pitch card tells a rep not to say two dollars a table', () => {
+    const html = pitchCard(SCOUT, LINK);
+    assert.match(html, /Never say: two dollars a table/i);
+    assert.match(html, /10% of the bill/i, 'and it gives them the right sentence to say instead');
+    assert.match(html, /FLOOR/, 'naming why the $2 exists, so they can answer the follow-up');
+  });
+
+  test('no sheet offers a promotion credit nothing implements', () => {
+    // "$100 free promotion credit when you claim" came off the flyer and
+    // exists nowhere in the product. A promise on paper with no mechanism is
+    // the one kind of wrong number a rep cannot talk their way out of.
+    for (const make of Object.values(SHEETS)) {
+      assert.ok(!/\$100/.test(make(SCOUT, LINK)), 'no unbacked credit offer');
+    }
+  });
+});
+
 describe('what the sheets refuse to promise', () => {
   const all = () => Object.values(SHEETS).map((m) => m(SCOUT, LINK)).join('\n');
 

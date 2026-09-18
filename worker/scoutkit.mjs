@@ -15,13 +15,32 @@
  * so the thing on the paper cannot drift from the thing in the database, and
  * it needs no image request, no third party, and works once printed.
  *
- * ── WHAT IS COPIED, NOT INVENTED ──────────────────────────────────────────
+ * ── THE PRICES ARE NOT WRITTEN HERE, AND MUST NOT BE ──────────────────────
  *
- * Every price and every claim below is lifted verbatim from the live flyer
- * (public/flyers/business/index.html) and from public/business/. Nothing here
- * is a new number. A rep who quotes a figure off our own paper and is
- * contradicted by the website has lost the room, and a figure invented to
- * make a sheet look finished is how that happens.
+ * They come from worker/commission.mjs — the module the ledger itself bills
+ * from — through feeSentence() and paymentOnlySentence(), which is exactly how
+ * the merchant invite email renders them. Paper and email now say the same
+ * words because they ask the same function.
+ *
+ * This file used to copy public/flyers/business/index.html instead, reasoning
+ * that copying beats inventing. It does, but only if the thing copied is
+ * right. That flyer said "$2 flat per confirmed table. Flat, not a
+ * percentage." A table is priced two ways:
+ *
+ *     10% of the bill      when NUM can see what the guest spent
+ *     $2 per table         when it cannot — a FLOOR, not an alternative
+ *
+ * So the flyer quoted the floor as if it were the whole price and then
+ * explicitly denied the percentage. A venue on a POS that reads "$2, not a
+ * percentage" and is invoiced 10% of a $100 bill has been told one price and
+ * charged another — the precise failure commission.mjs says feeSentence()
+ * exists to prevent. It had been fixed there on 26 Aug and the flyer never
+ * caught up.
+ *
+ * commission.mjs also says why a price typed into merchant copy by hand is
+ * wrong on principle: it drifts the day the number changes, silently, in an
+ * artefact nobody re-reads. A rep's leave-behind is the worst possible such
+ * artefact, because it is already in somebody's hand.
  *
  * The one deliberate difference: the sample answer names no real venues. The
  * live flyer names three. Naming a business in a mocked-up recommendation
@@ -29,6 +48,42 @@
  * to video, and paper handed to a rival venue owner is no safer than video.
  */
 import { qrSvg } from './qr.mjs';
+// The ledger's own words for what a venue pays. Never retyped here.
+import { feeSentence, paymentOnlySentence, RATES } from './commission.mjs';
+
+/**
+ * The rate card, rendered from RATES rather than typed.
+ *
+ * `country` is the venue's, because the flat floor is quoted in the currency
+ * the venue will actually be invoiced in — a US sheet says $2.00, a Thai one
+ * ฿70. A rep in Honolulu and a rep in Phuket get different paper from the
+ * same function, which is the point.
+ */
+function rateRows(country = 'US') {
+  const row = (label, sentence) =>
+    `<tr><td class="n">${label}</td><td class="p">${H(sentence)}</td></tr>`;
+  return [
+    row('Free listing &mdash; claimed, verified, bookable', '$0'),
+    row('A table NUM sent you', feeSentence({ category: 'Restaurant', country })),
+    row('A room', feeSentence({ category: 'Hotel', country })),
+    row('An appointment', feeSentence({ category: 'Spa', country })),
+    row('An activity or tour', feeSentence({ category: 'Tour', country })),
+    row('Your own guest, settling through NUM', paymentOnlySentence({ country })),
+    row('No-shows, declines, walk-ins who do not pay through NUM', '$0'),
+  ].join('\n  ');
+}
+
+/** The four numbers across the top, also from RATES. */
+function headlineStats(country = 'US') {
+  const table = RATES.reservation;
+  const pct = `${(table.bp / 100).toFixed(0)}%`;
+  return `<div class="stats">
+  <div><b>$0</b><span>To list. Forever. No setup fee.</span></div>
+  <div><b>${pct}</b><span>Of the bill on a table NUM sent you, when we can see what they spent.</span></div>
+  <div><b>$2</b><span>Per table instead, if we cannot see the bill. A floor, not an alternative.</span></div>
+  <div><b>$0</b><span>On no-shows, declines and anyone who just walks in.</span></div>
+</div>`;
+}
 
 const H = (v) => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -174,13 +229,8 @@ export function onePager(scout, link) {
   return `<div class="sheet">
 ${MAST('For Business')}
 <h1>More covers.<br>No monthly fee.</h1>
-<p class="sub">NUM sends you verified, real guests who asked for a place like yours &mdash; and you pay $2 when a table actually shows up.</p>
-<div class="stats">
-  <div><b>$0</b><span>To list. Forever.</span></div>
-  <div><b>$2</b><span>Per confirmed table. Flat, not a percentage.</span></div>
-  <div><b>0%</b><span>On walk-ins, no-shows and your own regulars.</span></div>
-  <div><b>$100</b><span>Free promotion credit when you claim.</span></div>
-</div>
+<p class="sub">NUM sends you real guests who asked for a place like yours &mdash; and you pay nothing until one of them actually turns up.</p>
+${headlineStats(scout.country)}
 <h2>What you get</h2>
 <div class="bens">
   <div class="ben"><h3>Fill slow nights</h3><p>Buy an hour of promotion for $20. Your offer reaches guests nearby who are asking right now.</p></div>
@@ -195,17 +245,13 @@ ${MAST('For Business')}
 </div>
 <h2>What it costs</h2>
 <table class="price">
-  <tr><td class="n">Free listing &mdash; claimed, verified, bookable</td><td class="p">$0</td></tr>
-  <tr><td class="n">Confirmed table</td><td class="p">$2 flat</td></tr>
-  <tr><td class="n">Stays &middot; appointments</td><td class="p">15%</td></tr>
-  <tr><td class="n">Activities</td><td class="p">20%</td></tr>
-  <tr><td class="n">Promotion boost</td><td class="p">$20 / hour</td></tr>
+  ${rateRows(scout.country)}
   <tr><td class="n">Dashboard &mdash; optional, cancel anytime</td><td class="p">from $9.99/mo</td></tr>
 </table>
 <div class="cta">
   <div class="qr">${qr}</div>
   <div>
-    <h3>Claim your listing. Get $100 free.</h3>
+    <h3>Claim your listing. It is free.</h3>
     <p>You are probably already in the directory. Claiming takes two minutes.</p>
   </div>
   <div class="go">itsnum.com/s/${H(scout.code)}<small>Scan the code, or type the address</small></div>
@@ -230,7 +276,7 @@ export function counterCard(scout, link) {
     <div class="qr">${qr}</div>
     <div class="code">${H(scout.code)}</div>
     <div class="url">itsnum.com/s/${H(scout.code)}</div>
-    <p>Scan to claim it free. Two minutes, no monthly fee, $2 only when a table shows up.</p>
+    <p>Scan to claim it free. Two minutes, no monthly fee, and nothing at all until a guest NUM sent you turns up.</p>
     <p class="url">${H(who)} &middot; NUM Expert</p>
   </div>`;
   return `<div class="sheet">
@@ -256,7 +302,7 @@ ${MAST('Sixty seconds at the counter')}
 <p class="sub">Yours, ${H(who)} &mdash; not for the owner. Your code is <b>${H(scout.code)}</b>.</p>
 
 <h2>Open with the ask, not the product</h2>
-<div class="say"><em>Say this</em>&ldquo;Someone staying nearby tonight is going to ask their phone where to eat. Right now it answers with ads. Num answers with three real places that are open, and I can put you in that answer. It is free to be in it, and you pay two dollars only when a table actually turns up.&rdquo;</div>
+<div class="say"><em>Say this</em>&ldquo;Someone staying nearby tonight is going to ask their phone where to eat. Right now it answers with ads. Num answers with three real places that are open, and I can put you in that answer. It is free to be in it, and you pay nothing at all until one of those guests actually turns up.&rdquo;</div>
 
 <h2>Then hand over the sheet and stop talking</h2>
 <ul class="steps">
@@ -269,7 +315,8 @@ ${MAST('Sixty seconds at the counter')}
 <h2>The three that come back every time</h2>
 <div class="obj">
   <h3>&ldquo;What does it cost me?&rdquo;</h3>
-  <p>Nothing to list, ever. $2 flat when a table is confirmed and shows &mdash; not a percentage, and nothing on walk-ins, no-shows or your own regulars. Stays and appointments are 15%, activities 20%. A boost is $20 an hour if they ever want one.</p>
+  <p>Nothing to list, ever. Then, word for word off the rate card: <b>${H(feeSentence({ category: 'Restaurant', country: scout.country }))}</b> A room or an appointment is 15%, an activity 20%. Nothing on a no-show, a decline, or anyone who just walks in. And ${H(paymentOnlySentence({ country: scout.country }))}</p>
+  <p class="never">Never say: two dollars a table, full stop. The $2 is the FLOOR, for when Num cannot see what the guest spent. A venue on a till that reports the bill pays ten percent, will read that on the website the same evening, and will remember who told them otherwise.</p>
 </div>
 <div class="obj">
   <h3>&ldquo;Who actually sees it?&rdquo;</h3>
