@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.371 — 2026-09-18 18:39 UTC
+
+keyboard band fix, 7-day strip, text size, tile blurbs
+
+- commit `1704c8c`
+
 ## 0.8.370 — 2026-09-18 17:23 UTC
 
 hosted events on TONIGHT
