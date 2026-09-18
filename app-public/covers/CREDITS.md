@@ -27,3 +27,20 @@ Rejected on the way: a McDonald's / McCafé bag (brand), a VULKIT wallet (brand)
 a Chinese restaurant's neon sign (a real business name), a Yemeksepeti courier
 (brand) and a courier whose face was visible.
 | nightlife.webp | 5143166 | anonymous dancers in neon light (silhouettes only) |
+
+Added 18 Sep 2026 for the everyday doors (same rule: no face, no brand, no
+business name in frame; each checked by eye before it went in):
+
+| file | Pexels id | scene |
+|---|---|---|
+| errands.webp | 9669475 | row of washing machines in an empty laundromat |
+| lookgood.webp | 9146943 | empty barber chairs and mirrors |
+| transit.webp | 16452322 | empty underground metro platform |
+| pets.webp | 5993646 | a dog's paw, close up |
+| move.webp | 6550849 | black hex dumbbells on a rack |
+| kids.webp | 133458 | empty colourful playground in a park |
+| work.webp | 4829065 | empty shared office with a red wall |
+
+Rejected on the way: a dumbbell rack with a maker's red logo on every weight,
+a barbershop mirror with the shop's name etched across it, and a metro
+platform with a readable station sign.

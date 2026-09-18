@@ -22,7 +22,28 @@ export const CATS = {
   dessert:    ['dessert','sweets','ice cream','cake','ของหวาน','ไอศกรีม','десерт','сладк','甜品','冰淇淋','デザート'],
   jetski:     ['jet ski','jetski','เจ็ตสกี','гидроцикл','水上摩托','ジェットスキー'],
   watersports:['parasail','banana boat','kayak','canoe','paddle','sup board','surf','windsurf','kitesurf','snorkeling gear','เซิร์ฟ','พายเรือ','серф','каяк','параплан','冲浪','皮划艇','香蕉船'],
+  // Grooming sits ABOVE restaurant and spa: "a haircut before dinner" is a
+  // haircut ask, and a nail bar is the answer to a nails ask. 'facial' stays
+  // with spa.
+  grooming:   ['haircut','hair cut','barber','hair salon','hairdresser','hairdressing','blow dry','blow-dry','blowout','lashes','eyelash','lash extension','lash lift','nails','manicure','pedicure','nail salon','nail bar','brows','eyebrow','waxing','ตัดผม','ร้านทำผม','ต่อขนตา','ทำเล็บ','парикмахер','барбер','ресниц','маникюр','理发','美甲','美睫','美容室','ネイル'],
+  // EVERYDAY DOORS (18 Sep 2026): dry cleaning, grocery, post, luggage,
+  // haircuts and lashes, vets, coworking, kids, stations. Each was answerable
+  // only by a brain guessing before; now the ask reaches the places table.
+  // Substring matching, so every word here was checked against the ones
+  // above and below it: 'vet' alone would match "velvet", 'train' alone
+  // matches "training", 'pet' matches "carpet" — hence the longer forms.
+  laundry:    ['laundry','launderette','laundromat','dry clean','dry-clean','wash my clothes','ironing','ซักรีด','ซักผ้า','прачечн','химчистк','洗衣','干洗','クリーニング'],
+  grocery:    ['grocery','groceries','supermarket','convenience store','7-eleven','7 eleven','minimart','mini mart','buy snacks','buy water','food shop','ซุปเปอร์','ร้านสะดวกซื้อ','เซเว่น','супермаркет','продукт','超市','便利店','スーパー','コンビニ'],
+  postoffice: ['post office','send a parcel','send a package','post a parcel','mail a','postage','stamps','ไปรษณีย์','почта','посылк','邮局','寄包裹','郵便局'],
+  luggage:    ['luggage','suitcase','left luggage','store my bags','store our bags','bag storage','baggage storage','กระเป๋าเดินทาง','ฝากกระเป๋า','чемодан','багаж','行李','スーツケース'],
+  vet:        ['veterinar','animal hospital','pet hospital','pet clinic','a vet','the vet','vet near','vet for','emergency vet','pet groomer','dog groomer','pet sitter','dog sitter','pet boarding','kennel','my dog','my cat','my puppy','สัตวแพทย์','โรงพยาบาลสัตว์','ветеринар','兽医','宠物医院','動物病院'],
+  cowork:     ['cowork','co-work','wework','hot desk','day desk','shared office','desk for the day','place to work from','somewhere to work','quiet place to work','โคเวิร์ค','коворкинг','联合办公','コワーキング'],
+  // Not bare 'kids' or 'children': "a kid-friendly restaurant" is a restaurant
+  // ask, and the patterns under this intent are playgrounds and zoos.
+  kids:       ['with kids','with the kids','for the kids','for kids','kids activities','things to do with children','for children','with children','toddler','playground','with my son','with my daughter','family day out','เด็ก','สนามเด็กเล่น','дети','детск','儿童','亲子','子供','キッズ'],
   transport:  ['tuk tuk','tuktuk','taxi','transfer','airport pickup','airport transfer','driver for','private driver','shuttle','แท็กซี่','ตุ๊กตุ๊ก','รถรับส่ง','такси','трансфер','аэропорт','打车','接送','的士','包车'],
+  // After transport on purpose: "a taxi to the train station" is a taxi ask.
+  transit:    ['train station','metro station','subway','the train','by train','train to','skytrain','bts','mrt','bus station','public transport','public transit','light rail','tram','by metro','by bus','the metro','the subway','รถไฟ','รถไฟฟ้า','สถานี','метро','вокзал','электричк','地铁','火车站','捷运','電車','駅'],
   restaurant: ['restaurant','eat','food','dinner','lunch','hungry','กิน','อาหาร','ร้านอาหาร','หิว','ресторан','еда','поесть','ужин','吃','餐厅','美食','ご飯','レストラン'],
   cafe:       ['cafe','café','coffee','brunch','กาแฟ','คาเฟ่','кофе','咖啡','カフェ'],
   spa:        ['massage','spa','นวด','สปา','массаж','спа','按摩','マッサージ','deep tissue','deep-tissue','swedish','shiatsu','reflexolog','sports massage','thai massage','hot stone','aromatherapy','facial','manicure','pedicure','sauna','hammam','onsen'],
@@ -43,7 +64,7 @@ export const CATS = {
   diving:     ['dive','diving','scuba','snorkel','ดำน้ำ','дайвинг','снорк','潜水','浮潜'],
   boat:       ['boat','yacht','charter','island','phi phi','similan','เรือ','เกาะ','лодка','яхта','остров','游艇','出海','离岛'],
   tour:       ['tour','trip','excursion','guide','ทัวร์','ไกด์','тур','экскурс','旅游','跟团','ツアー'],
-  gym:        ['gym','muay thai','fitness','boxing','yoga','ยิม','มวยไทย','фитнес','муай','тренаж','健身','泰拳'],
+  gym:        ['gym','muay thai','fitness','boxing','yoga','swimming pool','lap pool','go for a swim','ยิม','มวยไทย','фитнес','муай','тренаж','健身','泰拳'],
   attraction: ['attraction','see','visit','temple','viewpoint','big buddha','museum','gallery','cathedral','castle','วัด','ที่เที่ยว','จุดชมวิว','достопримеч','храм','музей','景点','寺庙','观景','博物馆'],
   rental:     ['rent','scooter','motorbike','car rental','bike','เช่ารถ','มอเตอร์ไซค์','аренда','байк','租车','租摩托'],
   tailor:     ['tailor','suit','ตัดสูท','ร้านตัดเสื้อ','костюм','пошив','定制','西装'],
@@ -63,6 +84,23 @@ const CATSQL = {
   jetski:     ['%water%','%marina%','%boat%','%sports activity%','%tour%'],
   watersports:['%water%','%marina%','%boat%','%diving%','%dive%','%sports activity%','%tour%'],
   transport:  ['%transport%','%taxi%','%shuttle%','%vehicle rental%','%travel agency%','%tour%'],
+  // Live categories, 18 Sep 2026: Laundry 1,585 · Dry Cleaning 93 ·
+  // Supermarket 54,569 · Convenience 72,647 · Post Office 1,671 · Luggage
+  // Store 2,397 + Luggage Storage 1,892 · Train Station 5,351 · Metro 831 ·
+  // Veterinary 394 + Pet Services 2,627 · Coworking 48 · Playground 2,142 ·
+  // Theme park 1,901 · Zoo 628. The near-misses that forced the exact
+  // patterns: 'Carpet Store' for %pet%, 'Bagel Shop' for %bag%, 'Boat Rental
+  // And Training' for %train%, 'Ev Charging Station' for %station%,
+  // 'Childrens Clothing Store' for %children%.
+  laundry:    ['%laundry%','%dry clean%','%launderette%','%laundromat%'],
+  grocery:    ['%supermarket%','%grocer%','%convenience%','%minimart%','%mini mart%','%hypermarket%'],
+  postoffice: ['%post office%','%postal%','%courier%','%parcel%'],
+  luggage:    ['%luggage%','%handbag%','bag','bags','%suitcase%'],
+  transit:    ['%train station%','trains','%metro%','%subway%','%bus station%','%light rail%','%railway%','tram','%tram stop%','%ferry%'],
+  vet:        ['%veterinar%','pet','pets','%pet services%','%pet groom%','%pet store%','%pet shop%','%animal hospital%','%pet clinic%','%pet boarding%','%pet sitting%'],
+  cowork:     ['%cowork%','%co-work%','%shared office%','%business center%','%business centre%'],
+  kids:       ['%playground%','%childrens museum%','%kids%','%amusement%','%theme park%','%water park%','zoo','%petting zoo%','%aquarium%','%trampoline%','%indoor play%','%family entertainment%','%gymnastics%'],
+  grooming:   ['%beauty%','%hair%','%barber%','%nail%','%lash%','%brow%','%salon%'],
   restaurant: ['%restaurant%','%street food%','%steak%','%grill%','%dining%','%deli%','%food court%'],
   cafe:       ['%caf%','%coffee%','%bakery%'],
   spa:        ['%spa%','%massage%','%beauty%'],
@@ -74,7 +112,7 @@ const CATSQL = {
   diving:     ['%diving%','%dive%','%water%'],
   boat:       ['%boat%','%marina%','%charter%','%tour%'],
   tour:       ['%tour%','%travel%','%attraction%'],
-  gym:        ['%gym%','%fitness%','%sport%','%dojo%','%training%'],
+  gym:        ['%gym%','%fitness%','%sport%','%dojo%','%training%','%swimming%','%yoga%'],
   attraction: ['%attraction%','%museum%','%gallery%','%viewpoint%','%zoo%','%aquarium%','%theme park%','%water park%','%theatre%','%place of worship%','%amusement%','%arts centre%','%beach%','%temple%','%waterfall%','%landmark%'],
   rental:     ['%rental%','%rent%'],
   tailor:     ['%tailor%'],
@@ -111,7 +149,11 @@ const GROOMING = ['%barber%', '%barbershop%', '%nail%', '%braid%', '%lash%', '%b
  *
  * Null means exclude nothing.
  */
+const BODYWORK = ['%massage%', '%sauna%', '%onsen%', '%hammam%', '%foot reflex%'];
 function exclusionsFor(cat, prefer) {
+  // The mirror of the spa rule: a haircut ask shares "Beauty & spa" with every
+  // massage parlour in the city, and the parlour is never the answer.
+  if (cat === 'grooming') return BODYWORK;
   if (cat !== 'spa') return null;
   // They asked for beauty work — the grooming places ARE the answer.
   if (prefer === '%beauty%') return null;
@@ -133,6 +175,33 @@ const SUBINTENT = {
     [/\b(deep.?tissue|sports massage|swedish|shiatsu|reflexolog|thai massage|hot stone|aromatherap|massage|นวด|массаж|按摩)\b/i, '%massage%'],
     [/\b(facial|manicure|pedicure|nails?)\b/i, '%beauty%'],
     [/\b(sauna|hammam|onsen|steam room)\b/i, '%spa%'],
+  ],
+  // One pattern per ask, matched against name OR category (queryRing). A
+  // barber is usually named "…Barbershop" and a salon "…Hair Studio", so the
+  // two asks earn different bonuses rather than one that misses half.
+  grooming: [
+    [/\bbarber/i, '%barber%'],
+    [/\b(lash|lashes|eyelash)/i, '%lash%'],
+    [/\b(nails?|manicure|pedicure)\b/i, '%nail%'],
+    [/\b(brows?|eyebrow)/i, '%brow%'],
+    [/\bwax/i, '%wax%'],
+    [/\b(hair|blow.?dry|blowout|trim)/i, '%hair%'],
+  ],
+  kids: [
+    [/\b(playground|park)\b/i, '%playground%'],
+    [/\b(zoo|animals?)\b/i, 'zoo'],
+    [/\b(aquarium|fish)\b/i, '%aquarium%'],
+    [/\b(rides?|theme park|roller ?coaster)\b/i, '%theme park%'],
+  ],
+  transit: [
+    [/\b(metro|subway|underground|tube|bts|mrt|skytrain)\b/i, '%metro%'],
+    [/\b(bus)\b/i, '%bus station%'],
+    [/\b(ferry|boat)\b/i, '%ferry%'],
+  ],
+  vet: [
+    [/\b(emergency|24|urgent|sick|hurt|injur)/i, '%veterinar%'],
+    [/\b(groom|bath|wash)/i, '%pet groom%'],
+    [/\b(board|kennel|sit|sitting|daycare)/i, '%pet boarding%'],
   ],
 };
 

@@ -23,7 +23,8 @@ import { store } from './store';
 
 export type FeatureId =
   | 'flights' | 'stays' | 'tables' | 'tonight' | 'nightlife' | 'charter' | 'rides'
-  | 'pickup' | 'hire' | 'wellness' | 'events' | 'plans' | 'wallet';
+  | 'pickup' | 'hire' | 'wellness' | 'events' | 'plans' | 'wallet'
+  | 'errands' | 'lookgood' | 'transit' | 'pets' | 'move' | 'kids' | 'work';
 
 export interface FeatureField {
   id: string;
@@ -68,6 +69,7 @@ const when = (v: string) => {
   return /^\d{1,2}(:\d{2})?\s*(am|pm)?\b/i.test(s) ? ` at ${s}` : ` ${s}`;
 };
 const on = (v: string) => (v ? ` on ${v}` : '');
+const near = (v: string) => (v ? ` near ${v}` : ' nearby');
 
 /**
  * The 640px cut of a cover, for a grid tile.
@@ -181,6 +183,112 @@ export const FEATURES: readonly Feature[] = [
       { id: 'notes', label: 'Anything else (optional)', placeholder: 'deep tissue, 90 minutes', optional: true },
     ],
     compose: (v, lane) => `Find me a ${lane ?? 'massage'}${v.where ? ` near ${v.where}` : ' nearby'}${when(v.when)}.${v.notes ? ` ${v.notes}.` : ''} Real places only.`,
+  },
+  // ── THE EVERYDAY DOORS (18 Sep 2026) ────────────────────────────────────
+  //
+  // Dre's list: dry cleaning, grocery, haircuts, eyelashes, post offices,
+  // luggage, pharmacies, taxis, trains, public transport, scooters, vets, pet
+  // insurance, pet travel insurance, medical travel insurance, gyms, kids,
+  // WeWork. Grouped into seven doors, because a thirty-tile grid is a menu
+  // nobody reads. Each composed ask is worded to land on its own intent in
+  // ai/places.js (laundry, grocery, postoffice, luggage, grooming, transit,
+  // vet, gym, kids, cowork) — features.test.mjs runs every one through
+  // detectCat — so the door reaches the places table, not a brain's guess.
+  //
+  // Not here, on purpose: the three insurances. Selling, quoting or advising
+  // on a policy is regulated, and NUM holds no licence. When there is a named
+  // insurer to pass a person to, that is a door; until then it would be a
+  // tile that promises what NUM cannot do.
+  {
+    id: 'errands', kicker: 'ERRANDS', title: 'Dry cleaning, post, pharmacy, groceries', cover: '/covers/errands.webp', cta: 'Find it',
+    promise: 'The everyday things a trip still needs. NUM finds the nearest one that’s open, and where a runner exists, can send someone.',
+    lanes: [
+      { id: 'dry cleaner', label: 'Dry cleaning' }, { id: 'grocery store', label: 'Groceries' }, { id: 'post office', label: 'Post' },
+      { id: 'pharmacy', label: 'Pharmacy' }, { id: 'luggage store', label: 'Luggage' },
+    ],
+    fields: [
+      { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
+      { id: 'what', label: 'What for (optional)', placeholder: 'three shirts pressed by Friday', optional: true },
+    ],
+    compose: (v, lane) => `Where’s the nearest ${lane ?? 'dry cleaner'}${near(v.where)}?${v.what ? ` ${v.what}.` : ''} Open now if you can tell, and whether someone can run it for me.`,
+    secondary: { label: 'Hire someone to run it', open: () => store.set({ featureOpen: 'hire' }) },
+    honest: 'For a pharmacy NUM finds the counter — it never advises on medicine.',
+  },
+  {
+    id: 'lookgood', kicker: 'LOOK GOOD', title: 'Haircut, lashes, nails', cover: '/covers/lookgood.webp', cta: 'Find one',
+    promise: 'A barber, a salon, a lash or nail bar — real places with ratings, and whether they take walk-ins.',
+    lanes: [
+      { id: 'a haircut', label: 'Haircut' }, { id: 'a barber', label: 'Barber' }, { id: 'lashes', label: 'Lashes' },
+      { id: 'nails', label: 'Nails' }, { id: 'brows', label: 'Brows' },
+    ],
+    fields: [
+      { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
+      { id: 'when', label: 'When', placeholder: 'tomorrow morning' },
+      { id: 'notes', label: 'Anything else (optional)', placeholder: 'a fade, or lash extensions', optional: true },
+    ],
+    compose: (v, lane) => `Find me somewhere for ${lane ?? 'a haircut'}${near(v.where)}${when(v.when)}.${v.notes ? ` ${v.notes}.` : ''} Real places with ratings, and whether they take walk-ins.`,
+    honest: 'Booked with the salon directly; prices are the salon’s.',
+  },
+  {
+    id: 'transit', kicker: 'GETTING AROUND', title: 'Trains, metro, buses, scooters', cover: '/covers/transit.webp', cta: 'Route me',
+    promise: 'Which line, which station, how long — and where the ticket is actually bought.',
+    lanes: [{ id: 'train', label: 'Train' }, { id: 'metro', label: 'Metro' }, { id: 'bus', label: 'Bus' }, { id: 'scooter', label: 'Scooter' }],
+    fields: [
+      { id: 'from', label: 'From', placeholder: 'my hotel', fromPlace: true },
+      { id: 'to', label: 'To', placeholder: 'the old town' },
+      { id: 'when', label: 'When (optional)', placeholder: 'tomorrow 9am', optional: true },
+    ],
+    compose: (v, lane) => lane === 'scooter'
+      ? `Where can I rent a scooter${near(v.from)}${when(v.when)}, and what do they need from me — licence, deposit, helmet?`
+      : `How do I get from ${v.from || 'here'} to ${v.to || 'the centre'} by ${lane ?? 'train'}${when(v.when)}? Which line and which station, how long it takes, and where I buy the ticket.`,
+    honest: 'Trains and transit are routed, not sold — tickets are bought at the station or on the operator’s page.',
+  },
+  {
+    id: 'pets', kicker: 'PETS', title: 'A vet, a groomer, a sitter', cover: '/covers/pets.webp', cta: 'Find one',
+    promise: 'For the animal travelling with you. An emergency goes to the nearest 24-hour vet first, always.',
+    lanes: [{ id: 'vet', label: 'Vet' }, { id: 'emergency vet', label: 'Emergency' }, { id: 'pet groomer', label: 'Groomer' }, { id: 'pet sitter', label: 'Sitter' }],
+    fields: [
+      { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
+      { id: 'when', label: 'When', placeholder: 'this afternoon' },
+      { id: 'notes', label: 'About them (optional)', placeholder: 'a 6 kg cat, anxious in cars', optional: true },
+    ],
+    compose: (v, lane) => lane === 'emergency vet'
+      ? `I need the nearest emergency vet open now${near(v.where)}.${v.notes ? ` ${v.notes}.` : ''} Address, phone, and whether I should call ahead.`
+      : `Find me a ${lane ?? 'vet'}${near(v.where)}${when(v.when)}.${v.notes ? ` ${v.notes}.` : ''} Real places with ratings, and their hours.`,
+    honest: 'NUM finds the clinic; it never gives medical advice about your animal.',
+  },
+  {
+    id: 'move', kicker: 'MOVE', title: 'A gym, a class, a swim', cover: '/covers/move.webp', cta: 'Find one',
+    promise: 'A day pass where they do them, a class you can drop into, a pool. Nearest first.',
+    lanes: [{ id: 'gym', label: 'Gym' }, { id: 'yoga', label: 'Yoga' }, { id: 'muay thai', label: 'Muay Thai' }, { id: 'swimming pool', label: 'Swim' }],
+    fields: [
+      { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
+      { id: 'when', label: 'When', placeholder: 'tomorrow 7am' },
+    ],
+    compose: (v, lane) => `Find me a ${lane ?? 'gym'}${near(v.where)}${when(v.when)}. Day passes if they do them, and opening hours.`,
+    honest: 'Day-pass prices are the gym’s.',
+  },
+  {
+    id: 'kids', kicker: 'KIDS', title: 'Things to do with children', cover: '/covers/kids.webp', cta: 'Show me',
+    promise: 'Playgrounds, zoos, aquariums, a rainy-day indoor option — what suits their ages and how long to allow.',
+    fields: [
+      { id: 'ages', label: 'Their ages', placeholder: '4 and 7', half: true },
+      { id: 'when', label: 'When', placeholder: 'this afternoon', half: true },
+      { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
+    ],
+    compose: (v) => `Things to do with kids${v.ages ? ` aged ${v.ages}` : ''}${near(v.where)}${when(v.when)}. Real places, what suits their ages, and how long to allow.`,
+    honest: 'Age-appropriate is the venue’s claim, not NUM’s — NUM tells you what the place says.',
+  },
+  {
+    id: 'work', kicker: 'WORK', title: 'A desk for the day', cover: '/covers/work.webp', cta: 'Find a desk',
+    promise: 'A coworking space or a day desk with reliable wifi and somewhere quiet to take a call.',
+    fields: [
+      { id: 'where', label: 'Where', placeholder: 'near my hotel', fromPlace: true },
+      { id: 'when', label: 'When', placeholder: 'tomorrow, all day' },
+      { id: 'people', label: 'How many', placeholder: '1', type: 'number', half: true },
+    ],
+    compose: (v) => `Somewhere to work from${near(v.where)}${when(v.when)}${v.people && v.people !== '1' ? ` for ${v.people} of us` : ''}: a coworking space or a day desk, with reliable wifi and somewhere quiet to take a call. Where do I book the day pass?`,
+    honest: 'Day passes are bought on the space’s own page.',
   },
   {
     // 18 Sep 2026: this tile used to open EventSheet, which is the HOST's side

@@ -272,3 +272,48 @@ describe('wired, not just written', () => {
     assert.match(thread, /saveOffer\(o, state\.query\)/);
   });
 });
+
+// ── THE EVERYDAY DOORS (18 Sep 2026) ────────────────────────────────────────
+//
+// A door is only a door if the ask it composes lands on the intent that
+// searches the places table for that thing. Otherwise the tile says "vet"
+// and a brain answers from memory. Every lane of every everyday door is
+// pushed through detectCat here, with the fields filled the way a person
+// fills them (a real place name, never the placeholder "my hotel" — which
+// would be a HOTEL ask).
+describe('the everyday doors reach their own intent', () => {
+  let detectCat;
+  before(async () => { ({ detectCat } = await import('../../ai/places.js')); });
+
+  const FILL = { where: 'Sukhumvit', from: 'Sukhumvit', to: 'the old town', when: 'tomorrow 9am', what: '', notes: '', ages: '4 and 7', people: '2' };
+  const WANT = {
+    errands: { 'dry cleaner': 'laundry', 'grocery store': 'grocery', 'post office': 'postoffice', pharmacy: 'pharmacy', 'luggage store': 'luggage' },
+    lookgood: { 'a haircut': 'grooming', 'a barber': 'grooming', lashes: 'grooming', nails: 'grooming', brows: 'grooming' },
+    transit: { train: 'transit', metro: 'transit', bus: 'transit', scooter: 'rental' },
+    pets: { vet: 'vet', 'emergency vet': 'vet', 'pet groomer': 'vet', 'pet sitter': 'vet' },
+    move: { gym: 'gym', yoga: 'gym', 'muay thai': 'gym', 'swimming pool': 'gym' },
+    kids: { [null]: 'kids' },
+    work: { [null]: 'cowork' },
+  };
+
+  test('every lane of every everyday door detects as its intent', () => {
+    for (const [id, lanes] of Object.entries(WANT)) {
+      const f = featureById(id);
+      assert.ok(f, `${id} is a door`);
+      const laneIds = f.lanes ? f.lanes.map((l) => l.id) : [null];
+      assert.deepEqual(laneIds.map(String).sort(), Object.keys(lanes).sort(), `${id}: the lanes tested are the lanes shipped`);
+      for (const lane of laneIds) {
+        const ask = f.compose(FILL, lane);
+        assert.equal(detectCat(ask), lanes[String(lane)], `${id}/${lane}: "${ask}"`);
+      }
+    }
+  });
+
+  test('the seven doors have covers, honest lines, and none sells insurance', () => {
+    for (const id of Object.keys(WANT)) {
+      const f = featureById(id);
+      assert.ok(f.honest, `${id}: an honest line under the button`);
+      assert.doesNotMatch(`${f.title} ${f.promise} ${f.honest}`, /insur/i, `${id}: insurance is regulated and unlicensed here`);
+    }
+  });
+});
