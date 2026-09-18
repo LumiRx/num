@@ -289,7 +289,7 @@ export function tonightPick(curated, tm, day = null, { limit = 6 } = {}) {
     .slice(0, limit);
 }
 
-export async function handleDiscover(request, env, fetchImpl = fetch) {
+export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null) {
   const url = new URL(request.url);
   // 👎 from a Suggest card. Stored as a member fact so the same rule that
   // keeps a disliked place out of the concierge keeps it out of the deck.
@@ -342,24 +342,34 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
       image: r.photo_url ?? null, rating: r.rating ?? null, reviews: r.reviews ?? null, price: null, currency: null, url: null,
       open_now: r.open_now ?? null, distance_km: mine && r.km != null ? Math.round(r.km * 10) / 10 : null, label: 'Checked by NUM',
     });
-    // Nearest first is the ranking, and rated-first is the filter: a shelf
-    // NUM puts forward only carries what it can stand behind (see TONIGHT).
-    const shelf = (rows) => {
-      const rated = rows.filter((r) => r.rating != null);
-      const kept = rated.length >= 3 ? rated : rows;
-      return kept.slice().sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9)).slice(0, 10).map(asPlace);
-    };
+    // Nearest first is the ranking, and RATED ONLY is the filter — stricter
+    // than TONIGHT, which falls back to unrated rows when a neighbourhood has
+    // fewer than three rated ones. The first London run of this shelf, with
+    // that fallback, put a travel agency under CLUBS and an occupational-
+    // health clinic under LIVE MUSIC, both labelled "Checked by NUM". An
+    // empty shelf says so (the sheet has the sentence); a wrong one lies.
+    // Ratings fill in per ~1 km cell as enrichCell runs, so the shelves grow
+    // in the places people actually open this.
+    const shelf = (rows) => rows
+      .filter((r) => r.rating != null)
+      .slice().sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9)).slice(0, 10).map(asPlace);
     let clubs = [], bars = [], live = [], tm = [];
     try {
       const { enrichCell } = await import('./placeratings.mjs');
+      // FIRE, DON'T WAIT. enrichCell is a Google search per ~1 km cell per
+      // category per 30 days; this used to sit inside a 3.5 s race that the
+      // whole response waited on, so the first person to open a fresh cell
+      // stared at a spinner for the crawl's benefit. Now the crawl runs
+      // beside the answer: this response uses whatever is rated already, the
+      // next one is better. `ctx.waitUntil` keeps it alive past the response
+      // when the caller passed one.
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        await Promise.race([
-          Promise.all([
-            enrichCell(env, { lat, lng, cat: 'night_club' }).catch(() => null),
-            enrichCell(env, { lat, lng, cat: 'bar' }).catch(() => null),
-          ]),
-          new Promise((r) => setTimeout(r, 3500)),
+        const crawl = Promise.all([
+          enrichCell(env, { lat, lng, cat: 'night_club' }).catch(() => null),
+          enrichCell(env, { lat, lng, cat: 'bar' }).catch(() => null),
+          enrichCell(env, { lat, lng, cat: 'live_music' }).catch(() => null),
         ]);
+        if (ctx?.waitUntil) ctx.waitUntil(crawl); else void crawl;
       }
       const { nearbyPlaces } = await import('../ai/places.js');
       const [r1, r2, r3, ev] = await Promise.all([
@@ -426,14 +436,14 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
       // cell per category per 30 days, then everyone who asks afterwards
       // gets the benefit.
       const { enrichCell } = await import('./placeratings.mjs');
+      // Same rule as NIGHTLIFE above: the crawl runs beside the answer, never
+      // in front of it. TONIGHT used to wait up to 3.5 s here.
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        await Promise.race([
-          Promise.all([
-            enrichCell(env, { lat, lng, cat: 'restaurant' }).catch(() => null),
-            enrichCell(env, { lat, lng, cat: 'bar' }).catch(() => null),
-          ]),
-          new Promise((r) => setTimeout(r, 3500)),
+        const crawl = Promise.all([
+          enrichCell(env, { lat, lng, cat: 'restaurant' }).catch(() => null),
+          enrichCell(env, { lat, lng, cat: 'bar' }).catch(() => null),
         ]);
+        if (ctx?.waitUntil) ctx.waitUntil(crawl); else void crawl;
       }
       const { nearbyPlaces } = await import('../ai/places.js');
       const [r1, r2] = await Promise.all([

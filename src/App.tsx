@@ -3,11 +3,16 @@
 //   desktop                        → the app in a phone frame on the launch stage
 //   ?canvas                        → the internal prototype canvas (pitch artifact:
 //                                    poster, demo script, v0.8 release notes)
-import { useEffect, useState } from 'react';
-import PrototypeCanvas from './components/canvas/PrototypeCanvas';
-import LaunchStage from './components/canvas/LaunchStage';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import ConciergeApp from './components/app/ConciergeApp';
-import AdminView from './components/app/AdminView';
+// THREE SCREENS MOST VISITORS NEVER SEE, LOADED ONLY WHEN REACHED (18 Sep
+// 2026). The admin console, the pitch canvas and the desktop launch stage
+// were compiled into the one bundle every phone downloaded before it could
+// draw TODAY. A phone never renders any of them. React.lazy puts each in
+// its own chunk; the app itself stays eager because it IS the first paint.
+const PrototypeCanvas = lazy(() => import('./components/canvas/PrototypeCanvas'));
+const LaunchStage = lazy(() => import('./components/canvas/LaunchStage'));
+const AdminView = lazy(() => import('./components/app/AdminView'));
 import { isNativeApp } from './lib/native';
 
 function useStandalone(): boolean {
@@ -17,7 +22,7 @@ function useStandalone(): boolean {
   // On a phone that is true and everything worked, which is why it survived.
   // On an iPad it is FALSE — and the bundled app has no `?app` in its URL
   // (the origin is capacitor://localhost/), so `forced` is false too. The app
-  // fell through to `<LaunchStage />`: a reviewer installing NUM on an iPad
+  // fell through to `<Suspense fallback={null}><LaunchStage /></Suspense>`: a reviewer installing NUM on an iPad
   // got the marketing pitch page and no product at all.
   //
   // The target declares iPad, Mac (Designed for iPad) and Apple Vision as
@@ -144,10 +149,10 @@ export default function App() {
     // A key left in an old bookmark is scrubbed from the address bar on sight
     // rather than being honoured.
     if (q.get('admin')) history.replaceState(null, '', window.location.pathname);
-    return <AdminView />;
+    return <Suspense fallback={null}><AdminView /></Suspense>;
   }
 
-  if (showCanvas) return <PrototypeCanvas />;
+  if (showCanvas) return <Suspense fallback={null}><PrototypeCanvas /></Suspense>;
   if (standalone) {
     // The shell auto-sizes: full screen on a phone, a framed phone-width
     // column on anything wider — the app never sprawls past its borders.
@@ -159,5 +164,5 @@ export default function App() {
       </div>
     );
   }
-  return <LaunchStage />;
+  return <Suspense fallback={null}><LaunchStage /></Suspense>;
 }

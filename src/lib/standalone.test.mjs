@@ -57,7 +57,10 @@ test('App.tsx imports the native helper it depends on', () => {
 test('the launch stage is still reachable for real browsers', () => {
   // The fix must not delete the marketing page: a desktop browser at
   // itsnum.com should still get the pitch, not a phone-shaped app.
-  assert.match(src, /return <LaunchStage \/>/,
+  // Since 18 Sep 2026 the stage is a lazy chunk (a phone never renders it),
+  // so it arrives wrapped in Suspense — the branch is the promise, not the
+  // exact JSX.
+  assert.match(src, /return <Suspense fallback=\{null\}><LaunchStage \/><\/Suspense>/,
     'the launch stage branch was removed — desktop web now renders the app shell');
   assert.match(code, /innerWidth < 720/,
     'the width heuristic was deleted entirely — desktop browsers lose the launch stage');

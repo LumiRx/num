@@ -119,12 +119,20 @@ export function shape(e) {
     //
     // Shown with Ticketmaster's credit — it is their image.
     image: (() => {
-      const wide = Array.isArray(e?.images)
-        ? e.images.filter((i) => i?.ratio === '16_9' && !i?.fallback && Number.isFinite(Number(i?.width)))
+      const all = Array.isArray(e?.images)
+        ? e.images.filter((i) => i?.url && !i?.fallback && Number.isFinite(Number(i?.width)))
         : [];
-      if (!wide.length) return null;
-      const big = wide.filter((i) => Number(i.width) >= 1024).sort((a, b) => a.width - b.width);
-      return (big[0] ?? wide.sort((a, b) => b.width - a.width)[0])?.url ?? null;
+      if (!all.length) return null;
+      const smallestAtLeast = (list, w) => list.filter((i) => Number(i.width) >= w).sort((a, b) => a.width - b.width)[0];
+      // A rail card crops to a SQUARE, so height is what matters. A 4:3 or
+      // 3:2 at 640 wide gives 480 / 427 usable pixels for ~100 KB; the 16:9
+      // that used to be first choice needs 1024 wide (576 tall) to look the
+      // same, at three times the bytes — and "the app is slowed down" was
+      // the day after that change. Tall first, then wide, then whatever
+      // is largest.
+      const tall = all.filter((i) => i.ratio === '4_3' || i.ratio === '3_2');
+      const wide = all.filter((i) => i.ratio === '16_9');
+      return (smallestAtLeast(tall, 640) ?? smallestAtLeast(wide, 1024) ?? all.sort((a, b) => b.width - a.width)[0])?.url ?? null;
     })(),
   };
 }

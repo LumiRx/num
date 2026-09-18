@@ -26,6 +26,15 @@ export const CATS = {
   restaurant: ['restaurant','eat','food','dinner','lunch','hungry','กิน','อาหาร','ร้านอาหาร','หิว','ресторан','еда','поесть','ужин','吃','餐厅','美食','ご飯','レストラン'],
   cafe:       ['cafe','café','coffee','brunch','กาแฟ','คาเฟ่','кофе','咖啡','カフェ'],
   spa:        ['massage','spa','นวด','สปา','массаж','спа','按摩','マッサージ','deep tissue','deep-tissue','swedish','shiatsu','reflexolog','sports massage','thai massage','hot stone','aromatherapy','facial','manicure','pedicure','sauna','hammam','onsen'],
+  // NIGHTLIFE (18 Sep 2026). Two intents that used to fall into `bar` or into
+  // nothing at all: "nightclub club dancing" matched bar's 'club' and then
+  // bar's '%lounge%' pattern, which is how a travel agency called "SN Travel
+  // Lounge" ended up on the CLUBS shelf; "live music venue jazz" matched no
+  // category and came back as an unrestricted list ordered by "has a
+  // website", which is how an occupational-health clinic did. Both sit
+  // ABOVE `bar` because detectCat returns the first match.
+  nightclub:  ['nightclub','night club','clubbing','dancing','dance floor','disco','dj set',' dj ','ไนท์คลับ','ночной клуб','夜店','クラブ'],
+  livemusic:  ['live music','jazz','concert','gig','live band','open mic','ดนตรีสด','живая музыка','现场音乐','ライブ'],
   bar:        ['bar','pub','drink','beer','cocktail','nightlife','club','party','บาร์','เบียร์','บันเทิง','бар','пиво','клуб','酒吧','夜生活'],
   hotel:      ['hotel','stay','room','resort','hostel','โรงแรม','ที่พัก','отель','номер','酒店','住宿','ホテル'],
   // 'sand' is deliberately absent: detectCat matches by substring, and every
@@ -57,6 +66,8 @@ const CATSQL = {
   restaurant: ['%restaurant%','%street food%','%steak%','%grill%','%dining%','%deli%','%food court%'],
   cafe:       ['%caf%','%coffee%','%bakery%'],
   spa:        ['%spa%','%massage%','%beauty%'],
+  nightclub:  ['%night club%','%nightclub%','%disco%','%dance club%','%nightlife%'],
+  livemusic:  ['%music venue%','%live music%','%jazz%','%concert%','%music club%'],
   bar:        ['%bar%','%pub%','%nightlife%','%night club%','%lounge%','%brewery%'],
   hotel:      ['%hotel%','%hostel%','%guesthouse%','%guest house%','%apartment%','%resort%'],
   beach:      ['%beach%'],

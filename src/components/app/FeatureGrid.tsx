@@ -40,7 +40,7 @@ export default function FeatureGrid() {
                 phone the large, which is the whole point of having both. */}
             <img
               src={tileCover(f.cover)}
-              srcSet={`${tileCover(f.cover)} 640w, ${f.cover} 1600w`}
+              srcSet={`${tileCover(f.cover)} 640w, ${f.cover} 1280w`}
               sizes="(max-width: 480px) 50vw, 240px"
               alt=""
               loading="lazy"

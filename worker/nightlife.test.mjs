@@ -33,9 +33,19 @@ describe('the mode', () => {
     assert.match(block, /bars = shelf\(r2\?\.rows \?\? \[\]\)\.filter\(\(b\) => !clubIds\.has\(b\.id\)\)/);
   });
 
-  test('the shelf only carries what NUM can stand behind — rated first, like TONIGHT', () => {
+  test('the shelf only carries what NUM can stand behind — rated ONLY, stricter than TONIGHT', () => {
+    // The first London run, with TONIGHT's unrated fallback, put a travel
+    // agency under CLUBS and an occupational-health clinic under LIVE MUSIC.
     const block = bare(DISCOVER).slice(bare(DISCOVER).indexOf("if (mode === 'nightlife')"), bare(DISCOVER).indexOf("if (mode === 'tonight')"));
-    assert.match(block, /rated\.length >= 3 \? rated : rows/);
+    assert.match(block, /\.filter\(\(r\) => r\.rating != null\)/);
+    assert.doesNotMatch(block, /rated\.length >= 3 \? rated : rows/, 'no unrated fallback on this shelf');
+  });
+
+  test('a nightclub is its own intent, above bar, and a travel lounge is not one', async () => {
+    const { detectCat } = await import('../ai/places.js');
+    assert.equal(detectCat('nightclub club dancing'), 'nightclub');
+    assert.equal(detectCat('live music venue jazz'), 'livemusic');
+    assert.equal(detectCat('bar cocktails late night'), 'bar');
   });
 
   test('the genre travels from Ticketmaster so the matinee can be left behind', () => {

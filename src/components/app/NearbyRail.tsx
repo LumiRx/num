@@ -121,9 +121,9 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
                 {...pressable(() => onOpen(i))}
                 className="tap"
                 style={{
-                  cursor: 'pointer', aspectRatio: '1 / 1', width: '100%',
+                  cursor: 'pointer', aspectRatio: '1 / 1', width: '100%', position: 'relative', overflow: 'hidden',
                   ...(i.image
-                    ? { background: `url(${i.image}) center/cover` }
+                    ? { background: 'var(--field-bg)' }
                     : {
                       // NOT THE ACCENT GRADIENT. A photoless card used to fill
                       // this square with the same green gradient as the button
@@ -140,6 +140,21 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
                 }}
                 aria-label={i.title}
               >
+                {/* AN <img>, NOT A CSS BACKGROUND (18 Sep 2026). A background
+                    image loads the moment the card exists, and a rail has ten
+                    cards of which two are on screen — so TONIGHT was pulling
+                    thirty posters before anyone had scrolled. loading="lazy"
+                    on a real image element waits until the card is near the
+                    viewport, which the horizontal scroller reports correctly. */}
+                {i.image && (
+                  <img
+                    src={i.image}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                )}
                 {!i.image && (
                   <>
                     <span style={{

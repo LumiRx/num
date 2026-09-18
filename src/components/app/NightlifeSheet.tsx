@@ -130,7 +130,7 @@ export default function NightlifeSheet() {
           {t('Out tonight, nearest first')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 11.5, color: 'var(--ink-60)' }}>
-          <span style={{ flex: 1, minWidth: 0 }}>{here ? t('Ranked by distance from where you are.') : t('Ranked from {place}. Tap NEAR ME to rank from your phone.', { place: place ?? '—' })}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>{here ? t('Ranked by distance from where you are.') : place ? t('Ranked from {place}. Tap NEAR ME to rank from your phone.', { place }) : t('Tap NEAR ME to rank from your phone.')}</span>
           {!here && (
             <span {...pressable(() => void nearMe())} className="tap press" style={{ cursor: 'pointer', flex: 'none', color: 'var(--color-accent)', fontWeight: 800, fontSize: 10.5, letterSpacing: '.08em', opacity: locating ? 0.6 : 1 }}>
               {locating ? t('FINDING YOU…') : t('NEAR ME')}

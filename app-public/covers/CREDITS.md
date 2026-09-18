@@ -2,7 +2,7 @@
 
 Photographs for TODAY's feature grid and pages. All from Pexels under the Pexels
 licence (free for commercial use, no attribution required, no faces or brands in
-frame — the same rule the NUM videos hold to). Re-fetched 18 Sep 2026 at **1600×1000** and encoded as WebP, because 900px
+frame — the same rule the NUM videos hold to). Re-fetched 18 Sep 2026 at 1600×1000 and encoded as WebP at **1280px** (full, for the feature page) and **640px** (`-sm`, for the tile), because 900px
 was under 3× for a full-width cover on a phone and the tiles went soft the day
 the shelves went from three cards across to two. The blurry ones were the
 worst of it: jet.jpg was 14 KB of a 900px frame.

@@ -2339,7 +2339,7 @@ export default {
 
     if (url.pathname === '/api/discover' || url.pathname === '/api/discover/dislike') {
       const { handleDiscover } = await import('./discover.mjs');
-      return await handleDiscover(request, env);
+      return await handleDiscover(request, env, fetch, ctx);
     }
 
     if (url.pathname === '/api/version') {
