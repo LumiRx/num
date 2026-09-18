@@ -213,7 +213,7 @@ export const FEATURES: readonly Feature[] = [
   // insurer to pass a person to, that is a door; until then it would be a
   // tile that promises what NUM cannot do.
   {
-    id: 'errands', kicker: 'ERRANDS', title: 'Dry cleaning, post, pharmacy, groceries', cover: '/covers/errands.webp', cta: 'Find it',
+    id: 'errands', kicker: 'ERRANDS', title: 'Dry cleaning, post, pharmacy', cover: '/covers/errands.webp', cta: 'Find it',
     blurb: 'The nearest one that’s open, found for you.',
     promise: 'The everyday things a trip still needs. NUM finds the nearest one that’s open, and where a runner exists, can send someone.',
     lanes: [

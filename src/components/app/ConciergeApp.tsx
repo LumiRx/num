@@ -75,7 +75,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     ? `SE ASIA LOOP · 3 CITIES · ${nBookings} BOOKINGS`
     : place
       ? `${nBookings === 1 ? t('1 BOOKING') : t('{n} BOOKINGS', { n: nBookings })} · ${t('NUM IS ON IT')}`
-      : t('TELL NUM WHERE YOU ARE & WHERE YOU’RE HEADED');
+      : t('TELL NUM WHERE YOU ARE');
 
   const closeSheets = () => store.set({ calOpen: false, shareOpen: false, walletOpen: false, partyOpen: false, eventOpen: false, businessOpen: false, inviteOpen: null, payOpen: null, passengerOpen: false, tabOpen: null, errandsOpen: false, discoverOpen: null, placeOpen: false, flightWatchOpen: false, featureOpen: null, eventView: null, nightlifeOpen: false });
 
@@ -219,7 +219,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       >
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700 }}>NUM{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>NUM{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {me && <div
@@ -384,7 +384,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             Every full-screen overlay in this file must use the same padding
             expression. If you add another, copy this line. */}
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top), 12px) 16px 6px' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800 }}>{t('THREAD')}{' '}<span style={{ fontWeight: 400, opacity: 0.5 }}>· ASK NUM ANYTHING</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 800, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('THREAD')}{' '}<span style={{ fontWeight: 400, opacity: 0.5 }}>· {t('ASK ANYTHING')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {/* ── AND HERE, BECAUSE THIS IS THE SCREEN THE APP OPENS ON ─────

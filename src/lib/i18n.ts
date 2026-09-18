@@ -105,5 +105,10 @@ export const useI18nTick = () => useApp((s) => s.i18nTick);
 
 /** Dates in the reader's language: "Thu 17 Sept" / "พฤ. 17 ก.ย." */
 export function fmtDate(d: Date, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }): string {
-  try { return d.toLocaleDateString(current === 'en' ? 'en-GB' : current, opts); } catch { return d.toDateString(); }
+  try {
+    // ICU's en-GB abbreviates September as "Sept" (the only four-letter
+    // month), which sits oddly beside "Fri 18" in a header. Every phone's
+    // own calendar says Sep; so does NUM.
+    return d.toLocaleDateString(current === 'en' ? 'en-GB' : current, opts).replace(/\bSept\b/, 'Sep');
+  } catch { return d.toDateString(); }
 }

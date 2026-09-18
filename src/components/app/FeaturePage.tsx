@@ -51,7 +51,14 @@ export default function FeaturePage() {
   const ready = required.every((fl) => (values[fl.id] ?? '').trim().length > 0);
 
   const go = () => {
-    if (!f.compose || !ready) return;
+    if (!f.compose) return;
+    if (!ready) {
+      // A tap on a not-yet-ready button does something visible: the first
+      // field still needed gets the cursor. Silence is what reads as broken.
+      const missing = (f.fields ?? []).find((fl) => !fl.optional && !(values[fl.id] ?? '').trim());
+      if (missing) document.getElementById(`feat-${f.id}-${missing.id}`)?.focus();
+      return;
+    }
     const clean: Record<string, string> = {};
     for (const [k, v] of Object.entries(values)) clean[k] = v.trim();
     const ask = f.compose(clean, lane);
@@ -85,24 +92,39 @@ export default function FeaturePage() {
       <div style={{ padding: 16, display: 'grid', gap: 14 }}>
         <div style={{ fontSize: 13, color: 'var(--ink-60)', lineHeight: 1.55 }}>{t(f.promise)}</div>
 
-        {f.lanes && (
-          <div role="tablist" className="glass" style={{ display: 'flex', borderRadius: 999, padding: 4 }}>
-            {f.lanes.map((l) => (
-              <div
-                key={l.id}
-                {...pressable(() => setLane(l.id), 'tab')}
-                aria-selected={lane === l.id}
-                style={{
-                  flex: 1, textAlign: 'center', cursor: 'pointer', borderRadius: 999, padding: '9px 0',
-                  fontSize: 11.5, fontWeight: 800, letterSpacing: '.05em',
-                  background: lane === l.id ? 'var(--grad-accent)' : 'transparent', color: lane === l.id ? '#fff' : 'var(--ink)',
-                }}
-              >
-                {t(l.label)}
-              </div>
-            ))}
-          </div>
-        )}
+        {/* LANES. Up to three share the row as a segmented control. Four or
+            more — ERRANDS has five — become a scrolling chip row, because a
+            fifth of a phone is 60px and "Groceries" does not fit in 60px
+            (18 Sep 2026 audit: it read "Grocerie / s"). Words never wrap;
+            the row slides. 44px tall either way. */}
+        {f.lanes && (() => {
+          const many = f.lanes.length > 3;
+          return (
+            <div role="tablist" className={many ? 'no-scrollbar' : 'glass'} style={many
+              ? { display: 'flex', gap: 6, overflowX: 'auto', margin: '0 -16px', padding: '0 16px 2px', scrollSnapType: 'x proximity' }
+              : { display: 'flex', borderRadius: 999, padding: 4 }}
+            >
+              {f.lanes.map((l) => (
+                <div
+                  key={l.id}
+                  {...pressable(() => setLane(l.id), 'tab')}
+                  aria-selected={lane === l.id}
+                  className={many ? 'glass' : undefined}
+                  style={{
+                    flex: many ? 'none' : 1, textAlign: 'center', cursor: 'pointer', borderRadius: 999,
+                    minHeight: many ? 44 : 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: many ? '0 16px' : '0 4px', whiteSpace: 'nowrap', scrollSnapAlign: 'start',
+                    fontSize: 12, fontWeight: 800, letterSpacing: '.04em',
+                    background: lane === l.id ? 'var(--grad-accent)' : many ? undefined : 'transparent', color: lane === l.id ? '#fff' : 'var(--ink)',
+                    border: many && lane !== l.id ? '1px solid var(--ink-08)' : '1px solid transparent',
+                  }}
+                >
+                  {t(l.label)}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {f.fields && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -110,6 +132,7 @@ export default function FeaturePage() {
               <div key={fl.id} style={{ gridColumn: fl.half ? 'span 1' : '1 / -1' }}>
                 <div style={label}>{t(fl.label)}</div>
                 <input
+                  id={`feat-${f.id}-${fl.id}`}
                   type={fl.type ?? 'text'}
                   inputMode={fl.type === 'number' ? 'numeric' : undefined}
                   value={values[fl.id] ?? ''}
@@ -125,7 +148,7 @@ export default function FeaturePage() {
         )}
 
         {f.compose && (
-          <div {...pressable(go)} className="press" role="button" aria-disabled={!ready} style={{ ...primary, opacity: ready ? 1 : 0.55 }}>
+          <div {...pressable(go)} className="press" role="button" aria-disabled={!ready} style={{ ...primary, opacity: ready ? 1 : 0.8 }}>
             {t(f.cta)} · {t('NUM takes it')}
           </div>
         )}

@@ -180,7 +180,7 @@ describe('2.1 (1.0(8)) — a stranger can find the way in', () => {
     // Moving the default away from the thread would be the other repair, and
     // it is the wrong one: opening on the thread is deliberate, the thread is
     // the product. So the door appears on whichever surface is in front.
-    const threadHeader = APP.slice(APP.indexOf('· ASK NUM ANYTHING'), APP.indexOf('Close thread') + 240);
+    const threadHeader = APP.slice(APP.indexOf("· {t('ASK ANYTHING')}"), APP.indexOf('Close thread') + 240);
     assert.match(threadHeader, /\{t\('Sign in'\)\}/,
       'the thread header must carry Sign in: it renders OVER the app header on launch');
     assert.match(threadHeader, /inviteOpen: \{\}/,
@@ -205,7 +205,7 @@ describe('2.1 (1.0(8)) — a stranger can find the way in', () => {
   test('the X is not alone in the thread\'s corner any more', () => {
     // A reviewer who does not think to close the product in order to find the
     // account will not close the product.
-    const corner = APP.slice(APP.indexOf('· ASK NUM ANYTHING'), APP.indexOf('Close thread'));
+    const corner = APP.slice(APP.indexOf("· {t('ASK ANYTHING')}"), APP.indexOf('Close thread'));
     assert.match(corner, /Sign in/, 'Sign in sits beside the close button, not behind it');
   });
 });

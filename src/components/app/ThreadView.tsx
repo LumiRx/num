@@ -23,18 +23,19 @@ import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 import { T, t, currentLang } from '../../lib/i18n';
-import { canSend, dropKeyboard } from '../../lib/gate';
+import { dropKeyboard, gateOpen, mayAsk } from '../../lib/gate';
 
 /** A fare card action: tall enough for a thumb, calm enough to sit three abreast. */
 const fareBtn: React.CSSProperties = {
-  cursor: 'pointer', minHeight: 38, borderRadius: 999, padding: '0 10px', display: 'grid', placeItems: 'center',
-  fontSize: 11.5, fontWeight: 700, letterSpacing: '.02em',
+  cursor: 'pointer', minHeight: 40, borderRadius: 999, padding: '0 10px', display: 'grid', placeItems: 'center',
+  fontSize: 12, fontWeight: 700, letterSpacing: '.02em',
   background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
 };
 
 /** One starter chip, shared by the fixed pair and the destination's own. */
 const starterChip: React.CSSProperties = {
-  cursor: 'pointer', borderRadius: 999, padding: '8px 14px', fontSize: 11.5, fontWeight: 600, flex: 'none',
+  // 40px in a 44px row: a thumb-sized chip that still reads as a chip.
+  cursor: 'pointer', borderRadius: 999, padding: '0 14px', minHeight: 40, fontSize: 12, fontWeight: 600, flex: 'none',
   display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
 };
 
@@ -619,7 +620,9 @@ export default function ThreadView() {
     // came back. Leaving it in the box, behind the sheet they are about to
     // fill in, is the version that needs no trust — and one more tap sends
     // exactly what they can still see.
-    if (!canSend(store.get().me)) { dropKeyboard(); store.set({ inviteOpen: {} }); return; }
+    // mayAsk, not canSend: the first answer is free, so an unproved stranger
+    // with a question still unspent goes straight through to NUM.
+    if (!mayAsk()) { dropKeyboard(); store.set({ inviteOpen: {} }); return; }
     setDraft('');
     void askNum(text);
   };
@@ -774,7 +777,10 @@ export default function ThreadView() {
             been interrupted; a person who reads it above an empty box is
             being told the rules of the place. The box still takes their
             words, and the words survive the sheet. */}
-        {!canSend(me) && (
+        {/* Shown once the free answer is spent, not before: telling somebody
+            the rules of the place before they have asked anything is the toll
+            that emptied the funnel. */}
+        {!gateOpen(me, msgs) && (
           <div
             {...pressable(() => store.set({ inviteOpen: {} }))}
             className="tap"

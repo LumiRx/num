@@ -340,8 +340,11 @@ export const segStyle = (on: boolean): CSSProperties => ({
   alignItems: 'center',
   justifyContent: 'center',
   gap: 6,
-  padding: '8px 0',
-  fontSize: 10.5,
+  // 44px — Apple's floor for a tap target, and the bar is the most-tapped
+  // thing on the screen (18 Sep 2026 audit: it measured 35px).
+  minHeight: 44,
+  padding: '0 4px',
+  fontSize: 11,
   letterSpacing: '.1em',
   fontWeight: 700,
   cursor: 'pointer',
