@@ -135,12 +135,26 @@ export function assertFreeFloor(env) {
   return false;
 }
 
-/** The first brain that can actually answer. Anthropic first here — unlike
- *  consensus.mjs, this is a guest-facing answer they have paid for, so it
- *  gets the best available rather than the cheapest. */
-function brainFor(env) {
-  const usable = BRAINS.filter((b) => typeof b.ready === 'function' && b.ready(env));
-  return usable.find((b) => b.kind === 'anthropic') ?? usable[0] ?? null;
+/**
+ * The best brain that `callProse` can actually reach.
+ *
+ * The kind filter is not a preference, it is the only thing that works.
+ * `callProse` handles workers-ai and openai-compatible and then throws
+ * `has no prose path` — it has no Anthropic branch at all, by design, so that
+ * background work can never quietly spend the Claude balance the product
+ * needs to serve guests (see the header of consensus.mjs).
+ *
+ * The first version of this function preferred Anthropic, on the reasoning
+ * that research is a paid, guest-facing answer and should get the best brain
+ * available. Every run failed in 286ms with that exact error. Preference
+ * cannot beat a code path that does not exist; BRAINS is already in priority
+ * order, so taking the first reachable one gives the strongest brain that can
+ * genuinely answer.
+ */
+export const PROSE_KINDS = Object.freeze(['openai-compatible', 'workers-ai']);
+export function brainFor(env) {
+  return BRAINS.find((b) => PROSE_KINDS.includes(b.kind)
+    && typeof b.ready === 'function' && b.ready(env)) ?? null;
 }
 
 const readJson = (text) => {

@@ -9,7 +9,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { verify, evidenceBlock, assertFreeFloor, LIMITS } from './research.mjs';
+import { verify, evidenceBlock, assertFreeFloor, LIMITS, brainFor, PROSE_KINDS } from './research.mjs';
 import { tiers } from './membership.mjs';
 
 const SRC = readFileSync(new URL('./research.mjs', import.meta.url), 'utf8');
@@ -131,6 +131,19 @@ describe('the shape of a run', () => {
 
   test('one run belongs to the member who paid for it', () => {
     assert.match(SRC, /row\.member_id !== me\) return json\(\{ error: 'not yours' \}, 403\)/);
+  });
+
+  test('the brain it picks is one callProse can actually reach', () => {
+    // Every run failed in 286ms with "claude has no prose path" because the
+    // first version preferred Anthropic. callProse handles workers-ai and
+    // openai-compatible and then throws — there is no Anthropic branch, on
+    // purpose, so background work can never spend the Claude balance guests
+    // depend on. This is the test that stops that being re-learned.
+    assert.ok(!PROSE_KINDS.includes('anthropic'), 'callProse has no Anthropic path');
+    const picked = brainFor({ NUM_LLM_KEY: 'k', NUM_LLM_URL: 'https://example.invalid/v1', AI: {} });
+    assert.ok(picked, 'something answers when a key is present');
+    assert.ok(PROSE_KINDS.includes(picked.kind), `picked ${picked.id} (${picked.kind}), which callProse would throw on`);
+    assert.equal(brainFor({}), null, 'and no key means no brain, not a brain that throws');
   });
 
   test('every bound is a number in one place, not scattered through the prompts', () => {
