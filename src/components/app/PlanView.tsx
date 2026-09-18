@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 // PLAN tab — bookings grouped by city, expandable rows with note, cost,
 // receipt, and the ASK TO CHANGE / SHARE actions.
 import { store, useApp } from '../../lib/store';
@@ -13,6 +13,7 @@ import FlightCard from './FlightCard';
 import { CalendarStrip, NextUp, TripCheck } from './DayWidgets';
 import type { Booking } from '../../lib/types';
 import { t } from '../../lib/i18n';
+import { loadDraft, draftLine, NEW } from '../../lib/plandraft';
 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
 
@@ -234,8 +235,27 @@ function groupsFor(demo: boolean, bookings: Booking[]) {
  */
 function PartyStrip() {
   const plans = useApp((s) => s.plans);
+  const partyOpen = useApp((s) => s.partyOpen);
+  // A plan you started naming and never created. Read each time the sheet
+  // closes, because that is the moment it can have changed.
+  const [unfinished, setUnfinished] = useState<string | null>(null);
+  useEffect(() => { if (!partyOpen) setUnfinished(draftLine(loadDraft(NEW))); }, [partyOpen]);
   return (
     <div style={{ margin: '12px 12px 4px' }}>
+      {unfinished && (
+        <div
+          {...pressable(() => store.set({ planId: null, partyOpen: true }))}
+          className="glass lift"
+          style={{ cursor: 'pointer', marginBottom: 8, borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>{t('PICK UP WHERE YOU LEFT OFF')}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{unfinished}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>{t('A plan you started naming. Tap to finish it.')}</div>
+          </div>
+          <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
+        </div>
+      )}
       {/* NEW PLAN stands alone at the top; the plans themselves are listed
           below it as their own tappable rows — a button that also pretends to
           be the current plan was doing two jobs badly. */}

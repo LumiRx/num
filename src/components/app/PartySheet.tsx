@@ -10,6 +10,7 @@ import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, sche
 import { askNum } from '../../lib/concierge';
 import { calendarUrl } from '../../lib/calendar';
 import { t } from '../../lib/i18n';
+import { loadDraft, saveDraft, clearDraft, NEW } from '../../lib/plandraft';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const field: React.CSSProperties = {
@@ -46,6 +47,25 @@ export default function PartySheet() {
   const [idea, setIdea] = useState('');
   const [say, setSay] = useState('');
   const [busy, setBusy] = useState(false);
+  const [restored, setRestored] = useState(false);
+
+  // DRAFTS (18 Sep 2026). Whatever was typed and not sent comes back when
+  // the sheet reopens on the same plan — a new plan's title under NEW, an
+  // existing plan's unsent idea and comment under its id. Saved on every
+  // keystroke (it is one small localStorage write), cleared the moment the
+  // thing is actually created, added or sent. lib/plandraft.ts.
+  const draftKey = planId ?? NEW;
+  useEffect(() => {
+    if (!open) return;
+    const d = loadDraft(draftKey);
+    setTitle(d?.title ?? '');
+    setIdea(d?.idea ?? '');
+    setSay(d?.say ?? '');
+    setRestored(!!(d?.title || d?.idea || d?.say));
+  }, [open, draftKey]);
+  const typeTitle = (v: string) => { setTitle(v); saveDraft(NEW, { title: v }); };
+  const typeIdea = (v: string) => { setIdea(v); saveDraft(draftKey, { idea: v }); };
+  const typeSay = (v: string) => { setSay(v); saveDraft(draftKey, { say: v }); };
 
   const plan = plans.find((p) => p.id === planId) ?? null;
   const [killing, setKilling] = useState(false);
@@ -98,6 +118,7 @@ export default function PartySheet() {
     try {
       await createPlan(title.trim(), place);
       setTitle('');
+      clearDraft(NEW, 'title');
     } finally {
       setBusy(false);
     }
@@ -110,6 +131,7 @@ export default function PartySheet() {
       // status stays 'idea' — nothing is reserved, and that is allowed.
       await addPlanItem({ title: idea.trim(), kind: 'idea', status: 'idea' });
       setIdea('');
+      clearDraft(draftKey, 'idea');
       await syncPlan();
     } finally {
       setBusy(false);
@@ -120,7 +142,7 @@ export default function PartySheet() {
     if (!say.trim()) return;
     setBusy(true);
     try {
-      if (await commentOnPlan(say)) setSay('');
+      if (await commentOnPlan(say)) { setSay(''); clearDraft(draftKey, 'say'); }
     } finally {
       setBusy(false);
     }
@@ -170,7 +192,10 @@ export default function PartySheet() {
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>{t('What are we planning?')}</div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 6, lineHeight: 1.55 }}>{t('No dates or bookings needed. Name it, add whoever’s coming, and we’ll firm it up together.')}</div>
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder={t('e.g. Sam’s birthday weekend')} value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input style={field} placeholder={t('e.g. Sam’s birthday weekend')} value={title} onChange={(e) => typeTitle(e.target.value)} />
+            {restored && title.trim() && (
+              <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: -4 }}>{t('Picked up where you left off — this is kept on your phone until you start the plan.')}</div>
+            )}
             <div {...pressable(newPlan)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
               {busy ? 'ONE SEC…' : 'START THE PLAN'}
             </div>
@@ -425,7 +450,7 @@ export default function PartySheet() {
                 style={{ ...field, flex: 1 }}
                 placeholder={t('Add an idea…')}
                 value={idea}
-                onChange={(e) => setIdea(e.target.value)}
+                onChange={(e) => typeIdea(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void addIdea(); }}
               />
               <div {...pressable(addIdea)} style={{ ...primary, padding: '12px 18px', opacity: busy || !idea.trim() ? 0.6 : 1 }}>{t('ADD')}</div>
@@ -469,7 +494,7 @@ export default function PartySheet() {
                   style={{ ...field, flex: 1 }}
                   placeholder={t('Say it to the group…')}
                   value={say}
-                  onChange={(e) => setSay(e.target.value)}
+                  onChange={(e) => typeSay(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void sendComment(); }}
                 />
                 <div {...pressable(sendComment)} style={{ ...primary, padding: '12px 18px', opacity: busy || !say.trim() ? 0.6 : 1 }}>{t('SEND')}</div>
