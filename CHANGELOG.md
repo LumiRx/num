@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.379 — 2026-09-18 23:51 UTC
+
+what's-on feeds fetched side by side
+
+- commit `1f3a1b2`
+
 ## 0.8.378 — 2026-09-18 23:37 UTC
 
 what's-on refresh in its own cron lane
