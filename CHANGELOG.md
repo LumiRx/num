@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.374 — 2026-09-18 22:38 UTC
+
+localhost links fixed, sign-in returns you, profile redesign
+
+- commit `2b7d534`
+
 ## 0.8.373 — 2026-09-18 21:44 UTC
 
 44px closes and links
