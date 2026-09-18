@@ -35,6 +35,7 @@ import { useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { CheckIcon } from '../../lib/icons';
 import { canOfferSubscription } from '../../lib/native';
+import { forgetTier } from '../../lib/tier';
 import { apiUrl } from '../../lib/apibase';
 import { t } from '../../lib/i18n';
 
@@ -155,6 +156,9 @@ export default function MembershipCard() {
       }).then((r) => r.json()) as { ok?: boolean; error?: string; note?: string };
       if (out.ok) {
         setNote(out.note ?? 'Done.');
+        // The tier changed in place (no Stripe redirect to reload the page),
+        // so the cached tier behind the booking-card nudge must go now.
+        forgetTier();
         void fetch(apiUrl(`/api/membership/me?me=${encodeURIComponent(me.id)}`))
           .then((r) => r.json()).then(setMine).catch(() => {});
         void fetch(apiUrl(`/api/membership/stars?me=${encodeURIComponent(me.id)}`))

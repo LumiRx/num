@@ -24,6 +24,8 @@ import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 import { T, t, currentLang } from '../../lib/i18n';
 import { dropKeyboard, gateOpen, mayAsk } from '../../lib/gate';
+import { canOfferSubscription } from '../../lib/native';
+import { openPlans, shouldNudge, useTier } from '../../lib/tier';
 
 /** A fare card action: tall enough for a thumb, calm enough to sit three abreast. */
 const fareBtn: React.CSSProperties = {
@@ -403,6 +405,35 @@ function ServiceTray() {
   );
 }
 
+/**
+ * One quiet line under a landed booking. Renders nothing until the tier is
+ * known (so a Plus member never sees it flash), nothing on a paid tier, and
+ * nothing at all on iOS. Tapping opens the wallet, where the plan ladder lives.
+ */
+function UpgradeNudge() {
+  const tier = useTier();
+  if (!shouldNudge(tier, canOfferSubscription())) return null;
+  return (
+    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.35 }}>
+      {/* Literals, not the constants: the i18n catalogue scanner only sees
+          t('…'). tier.test.mjs pins these to NUDGE / NUDGE_CTA in tier.ts. */}
+      <span style={{ flex: 1, minWidth: 0 }}>{t('Want more room? Plus and Pro lift the ceilings.')}</span>
+      <button
+        type="button"
+        {...pressable(openPlans)}
+        aria-label={t('See plans')}
+        style={{
+          cursor: 'pointer', flex: '0 0 auto', minHeight: 32, padding: '0 12px', borderRadius: 999,
+          background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)',
+          fontSize: 11.5, fontWeight: 700, letterSpacing: '.02em', fontFamily: 'inherit',
+        }}
+      >
+        {t('See plans')}
+      </button>
+    </div>
+  );
+}
+
 function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: boolean }) {
   const u = m.who === 'u';
   const ct = m.card ? tagOf(m.card.tag) : null;
@@ -455,6 +486,14 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
               <span style={{ ...ct.st, display: 'inline-flex', marginTop: 7 }}>{ct.label}</span>
             </div>
           </div>
+        )}
+        {/* The moment after a booking lands is the one honest place to mention
+            the paid plans: the member just saw NUM do the thing. It is one
+            line, free tier only, and never on iOS (canOfferSubscription is the
+            single gate — see native.ts). It promises nothing about fees or
+            travel perks; the plan sheet states what the tiers actually are. */}
+        {!u && m.card && (m.card.tag === 'confirmed' || m.card.tag === 'hold' || m.card.tag === 'deposit') && (
+          <UpgradeNudge />
         )}
         {/* Only NUM's own suggestions are rateable. Rating your own message is
             nonsense; rating an acknowledgement is noise; and rating the
