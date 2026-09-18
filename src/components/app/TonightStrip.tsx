@@ -23,6 +23,7 @@ import { openShareCard } from '../../lib/sharecard';
 import { fixPosition } from '../../lib/whereami';
 import { t } from '../../lib/i18n';
 import { openEventCard } from '../../lib/eventview';
+import { addPhoto, atThePlace, SMALL_PRINT } from '../../lib/placephoto';
 import NearbyRail, { near, type RailItem } from './NearbyRail';
 
 interface Event {
@@ -183,14 +184,21 @@ export default function TonightStrip() {
         items={restaurants.map(asPlace)}
         onOpen={openPlace}
         onSend={send}
+        onPhoto={addPhoto}
         action="Get a table"
       />
+      {/* THE SMALL PRINT, once, and only when a camera is actually showing.
+          The offer is a cent per approved photo; it says exactly that. */}
+      {[...restaurants, ...bars].some((p) => atThePlace(p.distance_km)) && (
+        <div style={{ fontSize: 10, lineHeight: 1.5, color: 'var(--ink-40)', padding: '0 14px 6px' }}>{t(SMALL_PRINT)}</div>
+      )}
       <NearbyRail
         title={t('DRINKS NEARBY')}
         count={t('{n} CHECKED', { n: bars.length })}
         items={bars.map(asPlace)}
         onOpen={openPlace}
         onSend={send}
+        onPhoto={addPhoto}
         action="Ask NUM"
         // Clubs and the late shift live on their own screen (NightlifeSheet),
         // nearest first; this rail is the drink before, and it says where the

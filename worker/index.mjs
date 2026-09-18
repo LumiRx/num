@@ -63,6 +63,7 @@ import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleBill, handleConnectWebhook } from './billpay.mjs';
 import { handleWallet } from './privy.mjs';
+import { handlePlacePhotos } from './placephotos.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleSmsStatus, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
@@ -2939,6 +2940,14 @@ export default {
     // is a POST and is gated on a verified phone inside privy.mjs, never here.
     if (url.pathname.startsWith('/api/wallet')) {
       const res = await handleWallet(request, env, url.pathname.slice('/api/wallet'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // Members' own photos of places (placephotos.mjs). Upload needs a
+    // verified contact, checked inside; review routes need X-Admin-Key.
+    if (url.pathname.startsWith('/api/photos')) {
+      const res = await handlePlacePhotos(request, env, url.pathname.slice('/api/photos'.length) || '/', url);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

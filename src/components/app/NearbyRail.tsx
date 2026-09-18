@@ -18,6 +18,7 @@ import { pressable } from '../../lib/a11y';
 import { t } from '../../lib/i18n';
 import { near } from '../../lib/near';
 import { kindOf } from '../../lib/railkind';
+import { atThePlace } from '../../lib/placephoto';
 
 export interface RailItem {
   id: string;
@@ -76,7 +77,7 @@ function SourceMark({ source }: { source: RailItem['source'] }) {
   );
 }
 
-export default function NearbyRail({ title, count, items, onOpen, onSend, action = 'Ask NUM', trailing }: {
+export default function NearbyRail({ title, count, items, onOpen, onSend, onPhoto, action = 'Ask NUM', trailing }: {
   /** Already translated — the caller knows whether the place name belongs in it. */
   title: string;
   count?: string | null;
@@ -84,6 +85,8 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
   /** Tapping the card: the caller decides whether that asks NUM or opens tickets. */
   onOpen: (item: RailItem) => void;
   onSend?: (item: RailItem) => void;
+  /** "Add a photo" — shown on a card only when the member is standing at that place (lib/placephoto.ts). */
+  onPhoto?: (item: RailItem) => void;
   action?: string;
   /** A control on the heading row — "NEAR ME", a filter, nothing. */
   trailing?: React.ReactNode;
@@ -170,6 +173,30 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, action
                       </span>
                     )}
                   </>
+                )}
+                {/* YOU'RE HERE — ADD A PHOTO. Only when the fix says so: a
+                    camera on every card would be noise; on the one place you
+                    are standing in it is the whole point. 44px tap target;
+                    stops the press so it does not also open the card. */}
+                {onPhoto && i.source === 'num' && atThePlace(i.distance_km) && (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('Add a photo of {place}', { place: i.title })}
+                    className="tap glass press"
+                    onClick={(e) => { e.stopPropagation(); onPhoto(i); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPhoto(i); } }}
+                    style={{
+                      position: 'absolute', top: 6, right: 6, width: 44, height: 44, borderRadius: 999,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                      color: i.image ? '#fff' : 'var(--ink-60)', background: i.image ? 'rgba(0,0,0,.35)' : undefined,
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.7l1.3-2h5l1.3 2h1.7A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                      <circle cx="12" cy="12.5" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                    </svg>
+                  </div>
                 )}
               </div>
               <div style={{ padding: '9px 10px 10px', display: 'grid', gap: 4, minWidth: 0 }}>

@@ -81,11 +81,26 @@ test('the boundary is declared one-way', () => {
  *                 WELCOME_STARS constant, never a client value; and it reaches
  *                 nothing outside Num — no 5arz table, no fetch.
  *
+ *   placephotos.mjs — (added 2026-09-18) the PHOTO reward. A member's photo
+ *                 of a place, approved by a human in the console, earns one
+ *                 cent (REWARD_CENTS) when the row's proof is scan/fix and the
+ *                 member is 5arz-verified; cents accrue in num_photo_credit
+ *                 and every hundred becomes ★1. Reviewed against the three
+ *                 things that matter: it cannot mint (the amount is whole
+ *                 hundreds of cents this module itself accrued, one cent per
+ *                 approval, never a client value; the approval UPDATE is
+ *                 guarded on state='pending' and pays only when it changed a
+ *                 row); it is idempotent (the move `photo:<id>` is inserted
+ *                 OR IGNORE first and the credit runs only when that insert
+ *                 changed a row); and it reaches nothing outside Num — 5arz
+ *                 is read as a flag already on num_members, never fetched.
+ *
  * Note what is NOT here and never should be: anything sourced from 5arz.
  */
 const CREDIT_SITES = {
   'errands.mjs': 2, 'social.mjs': 5, 'pay.mjs': 1, 'cashout.mjs': 1,
   'bizreferral.mjs': 1, 'starmembership.mjs': 1, 'memberreferral.mjs': 1,
+  'placephotos.mjs': 1,
 };
 
 test('the set of places a Num balance can grow is exactly the reviewed set', () => {

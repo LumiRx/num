@@ -28,5 +28,7 @@
     "0039_wallets_and_pos.sql": "b6a1a1b35022d9f0b5e36ee4edc80ba1881790fc3f4c63bc890348d88b82a587"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0040_place_photos.sql"
+  ]
 }

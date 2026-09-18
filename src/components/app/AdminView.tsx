@@ -427,6 +427,100 @@ function ReactionsPanel({ token, days }: { token: string | null; days: number })
   );
 }
 
+interface PendingPhoto {
+  id: string; place_id: string; place: string | null; member_id: string; member: string | null;
+  proof: 'scan' | 'fix' | 'none'; proof_km: number | null; identity_verified: number; bytes: number; created_at: string;
+  url: string; would_earn: boolean;
+}
+
+/**
+ * MEMBER PHOTOS — the human check. Nothing a member sends reaches a card until
+ * someone here has looked at it; approving pays the cent when the row says it
+ * should (proof + 5arz), and the panel says which before you tap. The picture
+ * itself is fetched with the session, because pending images are not public.
+ */
+function PhotosPanel({ token }: { token: string | null }) {
+  const [rows, setRows] = useState<PendingPhoto[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [imgs, setImgs] = useState<Record<string, string>>({});
+  const hdr: Record<string, string> = token ? { 'X-Admin-Session': token } : {};
+
+  const load = useCallback(() => {
+    if (!token) return;
+    void fetch(apiUrl('/api/photos/pending'), { headers: hdr })
+      .then(async (r) => { if (!r.ok) throw new Error(`photos ${r.status}`); return (await r.json()) as { pending: PendingPhoto[] }; })
+      .then((d) => setRows(d.pending))
+      .catch((e) => setErr(guestMessage(e, 'unavailable')));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+  useEffect(load, [load]);
+
+  // Pending images are served only to a reviewer, so <img src> cannot carry
+  // the header; fetch each as a blob once the row is on screen.
+  useEffect(() => {
+    if (!rows) return;
+    for (const r of rows.slice(0, 12)) {
+      if (imgs[r.id]) continue;
+      void fetch(r.url, { headers: hdr }).then(async (res) => {
+        if (!res.ok) return;
+        const u = URL.createObjectURL(await res.blob());
+        setImgs((m) => ({ ...m, [r.id]: u }));
+      }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
+  const decide = async (id: string, state: 'approved' | 'rejected', reason?: string) => {
+    if (!token || busy) return;
+    setBusy(id);
+    try {
+      const r = await fetch(apiUrl('/api/photos/review'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...hdr },
+        body: JSON.stringify({ id, state, reason: reason ?? null, by: 'console' }),
+      });
+      if (!r.ok) throw new Error(`review ${r.status}`);
+      setRows((rs) => (rs ?? []).filter((x) => x.id !== id));
+    } catch (e) {
+      setErr(guestMessage(e, 'unavailable'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const proofLine = (r: PendingPhoto) =>
+    r.proof === 'scan' ? t('Scanned the venue code') : r.proof === 'fix' ? t('{m} m from the place', { m: Math.round((r.proof_km ?? 0) * 1000) }) : t('No proof they were there');
+
+  return (
+    <Panel
+      title={t('MEMBER PHOTOS')}
+      summary={rows ? (rows.length ? t('{n} waiting for a look', { n: rows.length }) : t('Nothing waiting')) : (err ?? 'loading…')}
+      defaultOpen={!!rows?.length}
+    >
+      {err && <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.5 }}>{err}</div>}
+      {rows && !rows.length && <div style={{ fontSize: 12, color: 'var(--ink-60)' }}>{t('Every photo members have sent has been looked at.')}</div>}
+      {rows?.map((r) => (
+        <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--ink-08)' }}>
+          <div style={{ width: 96, height: 96, borderRadius: 10, background: 'var(--field-bg)', overflow: 'hidden' }}>
+            {imgs[r.id] && <img src={imgs[r.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+          </div>
+          <div style={{ minWidth: 0, fontSize: 12, lineHeight: 1.45 }}>
+            <div style={{ fontWeight: 700 }}>{r.place ?? r.place_id}</div>
+            <div style={{ color: 'var(--ink-60)' }}>{r.member ?? r.member_id} · {r.created_at.slice(0, 16)} · {Math.round(r.bytes / 1024)} KB</div>
+            <div style={{ color: r.would_earn ? 'var(--color-accent)' : 'var(--ink-60)', marginTop: 2 }}>
+              {proofLine(r)} · {r.identity_verified ? t('5arz verified') : t('not 5arz verified')} · {r.would_earn ? t('approving pays 1¢') : t('approving pays nothing')}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <button type="button" disabled={busy === r.id} onClick={() => decide(r.id, 'approved')} className="tap press" style={{ borderRadius: 9, border: 0, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, padding: '9px 14px', cursor: 'pointer' }}>{t('Approve')}</button>
+              <button type="button" disabled={busy === r.id} onClick={() => decide(r.id, 'rejected', 'not usable')} className="tap press glass" style={{ borderRadius: 9, border: 0, fontWeight: 700, fontSize: 12, padding: '9px 14px', cursor: 'pointer' }}>{t('Reject')}</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
 export default function AdminView() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [key, setKey] = useState('');
@@ -716,6 +810,7 @@ export default function AdminView() {
 
                 {tab === 'money' && <PayoutPanel />}
                 {tab === 'activity' && <ReactionsPanel token={token} days={days} />}
+                {tab === 'activity' && <PhotosPanel token={token} />}
 
                 {/* The escrow invariant is the single most important number
                     on this page: held must equal committed, or Stars have

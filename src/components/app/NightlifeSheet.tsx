@@ -25,6 +25,7 @@ import { askNum } from '../../lib/concierge';
 import { openShareCard } from '../../lib/sharecard';
 import { fixPosition } from '../../lib/whereami';
 import { openEventCard } from '../../lib/eventview';
+import { addPhoto } from '../../lib/placephoto';
 import { t } from '../../lib/i18n';
 import NearbyRail, { near, type RailItem } from './NearbyRail';
 import { countdown } from './TonightStrip';
@@ -152,13 +153,13 @@ export default function NightlifeSheet() {
         <NearbyRail title={t('TONIGHT’S NIGHTS NEAR {place}', { place: where })} count={t('{n} ON', { n: data.nights.length })} items={data.nights.map(asNight)} onOpen={openNight} onSend={send} />
       )}
       {!!data?.clubs?.length && (
-        <NearbyRail title={t('CLUBS')} count={t('{n} CHECKED', { n: data.clubs.length })} items={data.clubs.map(asPlace)} onOpen={askAbout(t('tonight — door policy, what time it gets going, and whether you can get us in.'))} onSend={send} action="Get us in" />
+        <NearbyRail title={t('CLUBS')} count={t('{n} CHECKED', { n: data.clubs.length })} items={data.clubs.map(asPlace)} onPhoto={addPhoto} onOpen={askAbout(t('tonight — door policy, what time it gets going, and whether you can get us in.'))} onSend={send} action="Get us in" />
       )}
       {!!data?.bars?.length && (
-        <NearbyRail title={t('LATE BARS')} count={t('{n} CHECKED', { n: data.bars.length })} items={data.bars.map(asPlace)} onOpen={askAbout(t('tonight, and hold us a table if they take them.'))} onSend={send} action="Ask NUM" />
+        <NearbyRail title={t('LATE BARS')} count={t('{n} CHECKED', { n: data.bars.length })} items={data.bars.map(asPlace)} onPhoto={addPhoto} onOpen={askAbout(t('tonight, and hold us a table if they take them.'))} onSend={send} action="Ask NUM" />
       )}
       {!!data?.live?.length && (
-        <NearbyRail title={t('LIVE MUSIC')} count={t('{n} CHECKED', { n: data.live.length })} items={data.live.map(asPlace)} onOpen={askAbout(t('— who is playing tonight and how we get in.'))} onSend={send} action="Ask NUM" />
+        <NearbyRail title={t('LIVE MUSIC')} count={t('{n} CHECKED', { n: data.live.length })} items={data.live.map(asPlace)} onPhoto={addPhoto} onOpen={askAbout(t('— who is playing tonight and how we get in.'))} onSend={send} action="Ask NUM" />
       )}
 
       {/* Said once, at the bottom, where the money decision happens. */}

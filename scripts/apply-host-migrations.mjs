@@ -145,6 +145,10 @@ const FILES = [
   // Table creates are IF NOT EXISTS; the three paylink ALTERs are NOT
   // re-runnable.
   'worker/migrations/0039_wallets_and_pos.sql',
+  // NUM's own photos of places, taken by members who were there, with the
+  // proof (venue-code scan or a fix within 150 m) and the reward in cents on
+  // every row. Two new tables, all IF NOT EXISTS, no ALTER — re-runnable.
+  'worker/migrations/0040_place_photos.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
