@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.376 — 2026-09-18 23:25 UTC
+
+upgrade nudge under landed bookings
+
+- commit `874942b`
+
 ## 0.8.375 — 2026-09-18 23:16 UTC
 
 keep it lands in a plan; this week in <city> (0044)
