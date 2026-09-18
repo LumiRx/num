@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.373 — 2026-09-18 21:44 UTC
+
+44px closes and links
+
+- commit `b1bb405`
+
+## 0.8.372 — 2026-09-18 21:39 UTC
+
+mobile polish from the iPhone audit
+
+- commit `f70414a`
+
 ## 0.8.371 — 2026-09-18 18:39 UTC
 
 keyboard band fix, 7-day strip, text size, tile blurbs
