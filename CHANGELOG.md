@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.339 — 2026-09-18 04:14 UTC
+
+The first line lands inside a second: /api/num answers in two lines (NDJSON, opt-in) — an ack in the guest's language from the place already resolved, then the answer exactly as before; the app shows it under the typing dots. Also carries the in-flight features.mjs plan/entitlement declarations from the other session (tests green).
+
+- commit `08685fc`
+
 ## 0.8.338 — 2026-09-18 03:58 UTC
 
 Reactions reach the team: every 😍👍😐👎🥱 under an answer now lands in num_reactions (migration 0031) with the lane, brain and place that produced it; POST /api/react; HOW THEY RATE THE ANSWERS panel on the admin dashboard (ACTIVITY tab), with approval by lane/brain/place and the rejected answers to read first. Answers carry a small turn{lane,brain,model} so the app can file the tap.
