@@ -1,6 +1,15 @@
 # App Review Information — paste-ready
 **Build 1.0 (5) · prepared 12 Sep 2026**
 
+> **SUPERSEDED — DO NOT SUBMIT FROM THIS FILE. See `APP-REVIEW-INFORMATION.md`.**
+>
+> The "WHAT THE REVIEWER SHOULD TRY" section below says a sheet appears about a
+> second after the app opens. Version 0.8.323 removed that sheet (ask-first
+> sign-up). The reviewer of build 1.0(8) followed these notes, waited for a
+> sheet that no longer exists, and rejected on Guideline 2.1 — "Where is the
+> sign-in page?". Kept for history only.
+
+
 Everything below goes into **App Store Connect → your app → the 1.0 version
 page → App Review Information**.
 

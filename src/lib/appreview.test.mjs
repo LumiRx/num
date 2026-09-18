@@ -122,3 +122,73 @@ describe('the profile reads as a page, not a stack of squares', () => {
     assert.match(el, /minHeight: 44/, 'still a full-size tap target');
   });
 });
+
+/**
+ * ── 1.0(8), 17 Sep 2026: "Where is the sign-in page?" (Guideline 2.1) ─────
+ *
+ * Third rejection, iPad Air 11-inch again. And the tests above were all
+ * passing — because they pinned the CONTENTS of Profile, and the finding was
+ * never really about Profile's contents. It was about getting there.
+ *
+ * Measured on the review device: the app's initial state is `threadOpen:
+ * true`, and the thread panel is position:absolute at z-index 45 directly
+ * over the app header. document.elementFromPoint at the centre of the header
+ * returned the thread panel, in portrait and in landscape. The header — the
+ * only route to Profile — was behind the product on launch, for everybody.
+ *
+ * So build 2's "the app crashed on the way to Profile" and build 8's "where
+ * is sign-in" are the same finding twice. The crash was real and is fixed;
+ * the covered header was never diagnosed, and outlived it.
+ *
+ * Two repairs, pinned below: the words "Sign in" now exist in the rendered
+ * app, and they exist on the screen the app actually opens on.
+ */
+describe('2.1 (1.0(8)) — a stranger can find the way in', () => {
+  // The RENDERED label only — `{t('Sign in')}` also appears as aria-label and
+  // title on each control, and counting those would let a button with no
+  // visible text satisfy a test about visible text.
+  const signIns = [...APP.matchAll(/\{t\('Sign in'\)\}\s*\n\s*<\/div>/g)];
+
+  test('the words "Sign in" are rendered, not merely implied', () => {
+    // Before this, a search of the whole rendered app for "sign in", "log in",
+    // "sign up" or "account" found one match — "SET UP MY ACCOUNT" — inside a
+    // closed sheet. Every real door was labelled in our own voice: INTRODUCE
+    // YOURSELF, SET UP MY ACCOUNT, "Tell NUM who I am". Good product voice,
+    // and not the phrase a person scanning for a way in is looking for.
+    assert.ok(signIns.length >= 2,
+      'Sign in belongs in BOTH the app header and the thread header — see the next test');
+  });
+
+  test('it is on the screen the app opens on, not just the one behind it', () => {
+    // Moving the default away from the thread would be the other repair, and
+    // it is the wrong one: opening on the thread is deliberate, the thread is
+    // the product. So the door appears on whichever surface is in front.
+    const threadHeader = APP.slice(APP.indexOf('· ASK NUM ANYTHING'), APP.indexOf('Close thread') + 240);
+    assert.match(threadHeader, /\{t\('Sign in'\)\}/,
+      'the thread header must carry Sign in: it renders OVER the app header on launch');
+    assert.match(threadHeader, /inviteOpen: \{\}/,
+      'and it opens the account sheet directly — not Profile, not a menu');
+  });
+
+  test('every Sign in control clears the 44pt floor', () => {
+    // It first shipped at 30px and taptargets.test.mjs refused it. Recorded
+    // here too, because this is the one control App Review goes looking for.
+    assert.ok(signIns.length >= 2, 'nothing to measure');
+    for (const m of signIns) {
+      assert.match(APP.slice(Math.max(0, m.index - 900), m.index), /minHeight: 44/,
+        'a Sign in control shipped under 44pt');
+    }
+  });
+
+  test('a signed-in member is never offered a way to sign in', () => {
+    assert.equal([...APP.matchAll(/\{!me && \(\s*<div[\s\S]{0,900}?\{t\('Sign in'\)\}/g)].length, 2,
+      'each Sign in control is guarded by {!me && …}');
+  });
+
+  test('the X is not alone in the thread\'s corner any more', () => {
+    // A reviewer who does not think to close the product in order to find the
+    // account will not close the product.
+    const corner = APP.slice(APP.indexOf('· ASK NUM ANYTHING'), APP.indexOf('Close thread'));
+    assert.match(corner, /Sign in/, 'Sign in sits beside the close button, not behind it');
+  });
+});
