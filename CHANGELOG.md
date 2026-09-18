@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.349 — 2026-09-18 06:45 UTC
+
+Deep research gets a slow-path timeout, because the briefs it exists for are the ones that were timing out
+
+- commit `d52d946`
+
 ## 0.8.348 — 2026-09-18 06:41 UTC
 
 Deep research tries every brain, and stops calling its own headings invented venues
