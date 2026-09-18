@@ -114,6 +114,10 @@ const FILES = [
   // card since memberships shipped and had never been built — see the header
   // of worker/research.mjs.
   'worker/migrations/0033_deep_research.sql',
+  // Milestones an Expert reaches, plus the last free widening of the
+  // earnings `kind` list ('milestone'). Verified zero rows in
+  // num_scout_earnings immediately before writing it; NOT re-runnable.
+  'worker/migrations/0034_scout_milestones.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

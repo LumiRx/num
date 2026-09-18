@@ -35,7 +35,32 @@ export type ScoutDashboard = {
     list: ScoutPlace[];
   };
   friends: { count: number; note: string | null };
-  money: { accrued_minor: number; payable_minor: number; paid_minor: number; note: string };
+  referrals?: {
+    count: number;
+    people: { name: string; code: string; joined: string }[];
+    earned_minor: number;
+    note: string | null;
+  };
+  /**
+   * Null when the milestone tables could not be read. The sheet must render
+   * the money either way — an Expert who cannot see their earnings because a
+   * badge query failed is the worse outcome by a distance.
+   */
+  milestones?: {
+    counts: { introduced: number; activated: number; experts: number };
+    reached: { key: string; label: string; threshold: number; reached_at: string; bonus_cents: number }[];
+    next: { key: string; label: string; note: string; have: number; need: number; bonus_cents: number } | null;
+    gate: { biz_name: string; dest: string | null; needs_minor: number; releases_minor: number; note: string } | null;
+    note: string;
+  } | null;
+  money: {
+    accrued_minor: number; payable_minor: number; paid_minor: number;
+    total_minor?: number;
+    /** Why nothing can move yet, said beside the number rather than in a FAQ. */
+    blocked?: string | null;
+    meaning?: Record<string, string>;
+    note: string;
+  };
   cap: { monthly: number; used: number; left: number };
 };
 

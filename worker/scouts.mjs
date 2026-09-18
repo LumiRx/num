@@ -413,6 +413,14 @@ export async function introduce(env, {
       lat == null ? null : Number(lat), lng == null ? null : Number(lng),
       scout.finder_gate_minor, scout.finder_cents, scout.share_bps, scout.sub_share_bps,
       now.toISOString(), refScout, refBps).run();
+    // 'First business signed up' is reached here — the only milestone that
+    // counts an introduction, and it is deliberately the smallest one.
+    try {
+      const { award } = await import('./scoutmilestones.mjs');
+      await award(env, scoutId, { now });
+    } catch (e) {
+      console.log('milestones', String(e?.message ?? e).slice(0, 200));
+    }
     return { ok: true, id, state: 'introduced', owed: 0, note: STATE_MEANING.introduced };
   } catch (err) {
     if (/UNIQUE/i.test(String(err?.message))) {
@@ -500,6 +508,21 @@ export async function recordRevenue(env, { placeId, amountMinor, now = new Date(
   }
 
   await env.DB.batch(writes);
+
+  // Milestones are checked AFTER the batch, never inside it. An award that
+  // failed must not roll back money that was correctly earned, and the
+  // checker is safe to run again — so the worst case here is a badge that
+  // appears on the next activation instead of this one.
+  if (crossing) {
+    try {
+      const { award } = await import('./scoutmilestones.mjs');
+      await award(env, row.scout_id, { now });
+      if (row.referrer_scout_id) await award(env, row.referrer_scout_id, { now });
+    } catch (e) {
+      console.log('milestones', String(e?.message ?? e).slice(0, 200));
+    }
+  }
+
   return {
     ok: true, state: crossing ? 'activated' : row.state, revenue_minor: after,
     activated: crossing, note: crossing ? STATE_MEANING.activated : null,
@@ -583,6 +606,15 @@ export async function dashboard(env, scoutId, { now = new Date() } = {}) {
       : 'Nobody yet. Anyone who puts your code on the sign-up form shows up here.',
   };
 
+  // What they have reached and what is next. Never worth failing a dashboard
+  // over — an Expert who cannot see their money because a badge query broke
+  // is a worse outcome than an Expert who cannot see a badge.
+  let milestones = null;
+  try {
+    const { progressFor } = await import('./scoutmilestones.mjs');
+    milestones = await progressFor(env, scoutId);
+  } catch { /* the rest of the dashboard is unaffected */ }
+
   const cap = Number(scout.monthly_claim_cap ?? MONTHLY_CLAIM_CAP);
   const used = await claimsThisMonth(env, scoutId, now);
 
@@ -634,9 +666,26 @@ export async function dashboard(env, scoutId, { now = new Date() } = {}) {
     },
     businesses: { total: places.length, byState, meaning: STATE_MEANING, list: places },
     referrals,
+    milestones,
     friends,
+    // The wallet, in the three states money actually moves through, each named
+    // for what it means rather than left to the page to interpret.
+    //
+    // `blocked` is the honest part: earnings accrue while the paperwork is
+    // outstanding — the work was done — but nothing becomes payable until the
+    // NDA and tax form are accepted. Saying so beside the number is what stops
+    // "accrued" reading as "coming on Friday".
     money: {
       ...money,
+      total_minor: money.accrued_minor + money.payable_minor + money.paid_minor,
+      blocked: !paperwork.complete && (money.accrued_minor + money.payable_minor) > 0
+        ? 'Your NDA and tax form are not finished, so nothing can be paid out yet. Nothing is lost — it waits for you.'
+        : null,
+      meaning: {
+        accrued: 'Earned and recorded. Waiting on your paperwork, or on the next payout run.',
+        payable: 'Cleared to be paid.',
+        paid: 'Already sent.',
+      },
       note: 'Earned from businesses that have actually produced revenue. An introduction on its own is not money.',
     },
     cap: { monthly: cap, used, left: Math.max(0, cap - used) },

@@ -109,7 +109,71 @@ export default function ScoutSheet() {
               {data.money.paid_minor > 0 && (
                 <div style={{ ...muted, marginTop: 4 }}>{money(data.money.paid_minor)} already paid out.</div>
               )}
+              {/* Why it cannot move yet, beside the number rather than in a
+                  FAQ. Without this line "earned so far" quietly reads as
+                  "arriving Friday", and the week it does not arrive is the
+                  week somebody stops walking. */}
+              {data.money.blocked && (
+                <div style={{ ...muted, marginTop: 6, color: 'var(--color-accent)' }}>{data.money.blocked}</div>
+              )}
             </div>
+
+            {/* What is next. The gate comes first because it is the only thing
+                on this sheet that names something to go and do today — and it
+                counts revenue a venue actually produced, not signatures. */}
+            {data.milestones && (
+              <div className="glass" style={card}>
+                {data.milestones.gate && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={muted}>{t('Closest to paying you')}</div>
+                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, marginTop: 2 }}>
+                      {data.milestones.gate.biz_name}
+                    </div>
+                    <div style={{ ...muted, marginTop: 2 }}>
+                      {money(data.milestones.gate.needs_minor)}{' '}{t('more from them releases your')}{' '}
+                      {money(data.milestones.gate.releases_minor)}.
+                    </div>
+                  </div>
+                )}
+
+                {data.milestones.next && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{data.milestones.next.label}</div>
+                      <div style={muted}>
+                        {data.milestones.next.have} / {data.milestones.next.need}
+                      </div>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 999, background: 'var(--ink-08)', marginTop: 8, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.round((data.milestones.next.have / data.milestones.next.need) * 100)}%`,
+                        background: 'var(--color-accent)', borderRadius: 999,
+                      }}
+                      />
+                    </div>
+                    <div style={{ ...muted, marginTop: 8 }}>
+                      {data.milestones.next.note}
+                      {/* A bonus is named only when there is one. "$0.00"
+                          beside a milestone reads as a broken promise. */}
+                      {data.milestones.next.bonus_cents > 0
+                        && ` Worth ${money(data.milestones.next.bonus_cents)}.`}
+                    </div>
+                  </>
+                )}
+
+                {data.milestones.reached.length > 0 && (
+                  <div style={{ marginTop: 12, borderTop: '1px solid var(--ink-08)', paddingTop: 10 }}>
+                    {data.milestones.reached.map((m) => (
+                      <div key={m.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0' }}>
+                        <span style={{ fontSize: 12.5 }}>✓ {m.label}</span>
+                        {m.bonus_cents > 0 && <span style={muted}>{money(m.bonus_cents)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="glass" style={card}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>{t('Your businesses')}</div>

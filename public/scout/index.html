@@ -180,6 +180,31 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     <p class="note" id="capline"></p>
   </section>
 
+  <!-- ── what is next ──────────────────────────────────────────── -->
+  <section id="next" hidden>
+    <h2>What is next</h2>
+    <div class="card" id="gateCard" hidden>
+      <div class="note">Closest to paying you</div>
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:17px;margin-top:3px" id="gateName"></div>
+      <p class="note" id="gateNeed" style="margin-top:4px"></p>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <div style="font-weight:700" id="nextLabel"></div>
+        <div class="note" id="nextCount"></div>
+      </div>
+      <div style="height:7px;border-radius:999px;background:var(--ink-08,#e8e8e8);margin-top:9px;overflow:hidden">
+        <div id="nextBar" style="height:100%;width:0;background:var(--accent,#ec3013);border-radius:999px"></div>
+      </div>
+      <p class="note" id="nextNote" style="margin-top:8px"></p>
+    </div>
+    <div class="card" id="reachedCard" style="margin-top:10px" hidden>
+      <div class="note">Reached</div>
+      <div id="reachedList" style="margin-top:6px"></div>
+    </div>
+    <p class="note" id="msNote" style="margin-top:8px"></p>
+  </section>
+
   <!-- ── what you carry ────────────────────────────────────────── -->
   <section id="kit" hidden>
     <h2>Your kit</h2>
@@ -252,6 +277,53 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     });
     show('empty', !(d.businesses.list || []).length);
     $('capline').textContent = d.cap.left + ' of this month’s ' + d.cap.monthly + ' introductions left.';
+
+    // What is next. The gate goes first because it is the only thing here
+    // that names something to go and do today.
+    var ms = d.milestones;
+    if (ms) {
+      show('next', true);
+      if (ms.gate) {
+        show('gateCard', true);
+        $('gateName').textContent = ms.gate.biz_name + (ms.gate.dest ? ' · ' + ms.gate.dest : '');
+        $('gateNeed').textContent = ms.gate.needs_minor > 0
+          ? money(ms.gate.needs_minor) + ' more from them releases your ' + money(ms.gate.releases_minor) + '.'
+          : ms.gate.note;
+      }
+      if (ms.next) {
+        $('nextLabel').textContent = ms.next.label;
+        $('nextCount').textContent = ms.next.have + ' of ' + ms.next.need;
+        $('nextBar').style.width = Math.round((ms.next.have / ms.next.need) * 100) + '%';
+        // The bonus is named only when there is one. A "0" beside a milestone
+        // reads as a broken promise; silence reads as recognition, which is
+        // what it is.
+        $('nextNote').textContent = ms.next.note
+          + (ms.next.bonus_cents > 0 ? ' Worth ' + money(ms.next.bonus_cents) + '.' : '');
+      } else {
+        $('nextLabel').textContent = 'Every milestone reached.';
+        $('nextCount').textContent = '';
+        $('nextBar').style.width = '100%';
+        $('nextNote').textContent = '';
+      }
+      if ((ms.reached || []).length) {
+        show('reachedCard', true);
+        var rl = $('reachedList');
+        rl.textContent = '';
+        ms.reached.forEach(function (m) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;justify-content:space-between;gap:10px;padding:4px 0';
+          var a = document.createElement('span'); a.textContent = '✓ ' + m.label;
+          var b = document.createElement('span'); b.className = 'note';
+          b.textContent = m.bonus_cents > 0 ? money(m.bonus_cents) : '';
+          row.appendChild(a); row.appendChild(b);
+          rl.appendChild(row);
+        });
+      }
+      $('msNote').textContent = ms.note || '';
+    }
+
+    // The wallet's own caveat, said where the number is rather than in a FAQ.
+    if (d.money && d.money.blocked) $('moneyNote').textContent = d.money.blocked;
 
     // Their kit, pointed at their own code. Always on the API origin: the
     // sheets are rendered by num-app, and itsnum.com has no route for them.

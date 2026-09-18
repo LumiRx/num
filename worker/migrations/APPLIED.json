@@ -22,5 +22,7 @@
     "0033_deep_research.sql": "096716122688321e539f1d8dee711125999943a8c0d668676f9bbc1b5ca06cac"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0034_scout_milestones.sql"
+  ]
 }
