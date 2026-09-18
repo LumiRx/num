@@ -23,21 +23,25 @@ describe('the mode', () => {
 
   test('every shelf is nearest first', () => {
     const block = bare(DISCOVER).slice(bare(DISCOVER).indexOf("if (mode === 'nightlife')"), bare(DISCOVER).indexOf("if (mode === 'tonight')"));
-    assert.match(block, /sort\(\(a, b\) => \(a\.km \?\? 1e9\) - \(b\.km \?\? 1e9\)\)/, 'places are ordered by distance');
+    assert.match(block, /\(a\.km \?\? 1e9\) - \(b\.km \?\? 1e9\)/, 'places are ordered by distance');
     assert.match(block, /sort\(\(a, b\) => \(a\.distance_km \?\? 1e9\) - \(b\.distance_km \?\? 1e9\)\)/, 'nights are ordered by distance');
   });
 
   test('a club is not also a bar', () => {
     const block = bare(DISCOVER).slice(bare(DISCOVER).indexOf("if (mode === 'nightlife')"), bare(DISCOVER).indexOf("if (mode === 'tonight')"));
     assert.match(block, /const clubIds = new Set\(clubs\.map/);
-    assert.match(block, /bars = shelf\(r2\?\.rows \?\? \[\]\)\.filter\(\(b\) => !clubIds\.has\(b\.id\)\)/);
+    assert.match(block, /bars = shelf\(r2\?\.rows \?\? \[\], KIND\.bar\)\.filter\(\(b\) => !clubIds\.has\(b\.id\)\)/);
   });
 
   test('the shelf only carries what NUM can stand behind — rated ONLY, stricter than TONIGHT', () => {
     // The first London run, with TONIGHT's unrated fallback, put a travel
     // agency under CLUBS and an occupational-health clinic under LIVE MUSIC.
     const block = bare(DISCOVER).slice(bare(DISCOVER).indexOf("if (mode === 'nightlife')"), bare(DISCOVER).indexOf("if (mode === 'tonight')"));
-    assert.match(block, /\.filter\(\(r\) => r\.rating != null\)/);
+    // …and then rated-only emptied every shelf in London, where thousands of
+    // bars sit unrated. The rule is the row's own CATEGORY: a clinic is never
+    // a club whatever the widening returned; an unrated pub is still a pub.
+    assert.match(block, /kind\.test\(String\(r\.category \?\? ''\)\)/);
+    assert.match(block, /\(b\.rating != null\) - \(a\.rating != null\) \|\| \(a\.km \?\? 1e9\) - \(b\.km \?\? 1e9\)/, 'rated first, then nearest');
     assert.doesNotMatch(block, /rated\.length >= 3 \? rated : rows/, 'no unrated fallback on this shelf');
   });
 

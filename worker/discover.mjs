@@ -342,17 +342,28 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
       image: r.photo_url ?? null, rating: r.rating ?? null, reviews: r.reviews ?? null, price: null, currency: null, url: null,
       open_now: r.open_now ?? null, distance_km: mine && r.km != null ? Math.round(r.km * 10) / 10 : null, label: 'Checked by NUM',
     });
-    // Nearest first is the ranking, and RATED ONLY is the filter — stricter
-    // than TONIGHT, which falls back to unrated rows when a neighbourhood has
-    // fewer than three rated ones. The first London run of this shelf, with
-    // that fallback, put a travel agency under CLUBS and an occupational-
-    // health clinic under LIVE MUSIC, both labelled "Checked by NUM". An
-    // empty shelf says so (the sheet has the sentence); a wrong one lies.
-    // Ratings fill in per ~1 km cell as enrichCell runs, so the shelves grow
-    // in the places people actually open this.
-    const shelf = (rows) => rows
-      .filter((r) => r.rating != null)
-      .slice().sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9)).slice(0, 10).map(asPlace);
+    // WHAT A SHELF MAY CARRY. nearbyPlaces widens to "the best of anything
+    // nearby" when a category is thin, and that widening is how the first
+    // London run put a travel agency under CLUBS and an occupational-health
+    // clinic under LIVE MUSIC, both labelled "Checked by NUM". Rated-only
+    // fixed that and emptied every shelf in London — central London has
+    // thousands of bars in the table and almost none rated yet.
+    //
+    // So the rule is the CATEGORY, not the rating: a row stays if its own
+    // category says it is the kind of place the shelf is for. A rated row
+    // whose NAME says so also stays ("Ronnie Scott's Jazz Club" is filed as
+    // a bar). Rated first, then nearest. Ratings fill in per ~1 km cell as
+    // the crawl runs, so the order improves in the places people open this.
+    const shelf = (rows, kind) => rows
+      .filter((r) => kind.test(String(r.category ?? '')) || (r.rating != null && kind.test(String(r.name ?? ''))))
+      .slice()
+      .sort((a, b) => (b.rating != null) - (a.rating != null) || (a.km ?? 1e9) - (b.km ?? 1e9))
+      .slice(0, 10).map(asPlace);
+    const KIND = {
+      club: /club|disco|nightlife|dance/i,
+      bar: /\bbar|pub|lounge|brewery|cocktail|wine|taproom|beer/i,
+      live: /music|jazz|concert|live|venue|theatre|theater/i,
+    };
     let clubs = [], bars = [], live = [], tm = [];
     try {
       const { enrichCell } = await import('./placeratings.mjs');
@@ -378,22 +389,22 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
         withTimeout(nearbyPlaces(env, loc, 'live music venue jazz', 12, null, { memberId }), 2500, { rows: [] }),
         eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true }),
       ]);
-      clubs = shelf(r1?.rows ?? []);
+      clubs = shelf(r1?.rows ?? [], KIND.club);
       // A club is not a bar: whatever the bar search returned that is already
       // on the club shelf stays off the bar shelf.
       const clubIds = new Set(clubs.map((c) => c.id));
-      bars = shelf(r2?.rows ?? []).filter((b) => !clubIds.has(b.id));
-      live = shelf(r3?.rows ?? []).filter((b) => !clubIds.has(b.id));
+      bars = shelf(r2?.rows ?? [], KIND.bar).filter((b) => !clubIds.has(b.id));
+      live = shelf(r3?.rows ?? [], KIND.live).filter((b) => !clubIds.has(b.id));
       tm = ev ?? [];
     } catch (err) { console.warn('[discover] nightlife', err?.message ?? err); }
     // Tonight's nights: music and party listings for the day asked for, the
     // matinees and the theatre left to TONIGHT. Nearest first when we have a fix.
-    const NIGHT = /music|dance|electronic|dj|house|techno|hip.?hop|r&b|club|party|night|festival|concert|rock|pop|latin|reggae/i;
-    const day = g('day') || null;
-    const nights = tm
-      .filter((e) => (!e.genre || NIGHT.test(e.genre)) && (!day || !e.starts_on || e.starts_on === day))
-      .sort((a, b) => (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9))
-      .slice(0, 8);
+    // The date rules are tonightPick's (a festival that opened Monday is still
+    // on tonight); this only decides WHICH listings are nights. Family shows,
+    // museums and the view from a tower go to TONIGHT.
+    const NIGHT = /music|dance|electronic|dj|house|techno|hip.?hop|r&b|club|party|night|festival|concert|rock|pop|latin|reggae|jazz|soul|comedy/i;
+    const nights = tonightPick([], tm.filter((e) => e.genre && NIGHT.test(e.genre)), g('day'), { limit: 8 })
+      .slice().sort((a, b) => (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9));
     return json({ ok: true, mode, dest, clubs, bars, live, nights, near: mine, sources: { clubs: clubs.length, bars: bars.length, live: live.length, ticketmaster: nights.length } });
   }
 
