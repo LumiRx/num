@@ -120,6 +120,24 @@ export default function InviteSheet() {
   const [toPhone, setToPhone] = useState('');
   /** null = unknown / no number yet; true = they're already a member. */
   const [onNum, setOnNum] = useState<boolean | null>(null);
+  // YOUR PEOPLE (18 Sep 2026): "once we have contacts connected we can
+  // easily just invite our friends." Friends already on NUM first (an invite
+  // to them lands app to app, instantly), then contacts picked before. One
+  // tap fills the form; nothing is sent until CREATE THE INVITE.
+  const friends = useApp((s) => s.friends);
+  const contacts = useApp((s) => s.contacts);
+  const people = [
+    ...friends.filter((f) => f.name).map((f) => ({ name: f.name, phone: undefined as string | undefined, onNum: true })),
+    ...contacts.filter((c) => c.name && !friends.some((f) => f.name === c.name)).map((c) => ({ name: c.name, phone: c.phone, onNum: false })),
+  ].slice(0, 12);
+  const pickPerson = (p: { name: string; phone?: string; onNum: boolean }) => {
+    setToName(p.name);
+    setToPhone(p.phone ?? '');
+    if (p.onNum) { setOnNum(true); return; }
+    const d = (p.phone ?? '').replace(/[^0-9+]/g, '');
+    if (d.length >= 7) void whoIsOnNum([d]).then((m) => setOnNum(m.get(d) ?? null));
+    else setOnNum(null);
+  };
   const [code, setCode] = useState('');
   /**
    * The number a sign-in code was just sent to, or null.
@@ -662,7 +680,28 @@ export default function InviteSheet() {
                 </>
               )}
 
-              <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+              {people.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)', marginBottom: 6 }}>{t('YOUR PEOPLE')}</div>
+                  <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                    {people.map((p) => (
+                      <div
+                        key={`${p.name}-${p.phone ?? ''}`}
+                        {...pressable(() => pickPerson(p))}
+                        className="glass press"
+                        style={{
+                          cursor: 'pointer', flex: 'none', minHeight: 44, borderRadius: 999, padding: '0 14px', fontSize: 12, fontWeight: 700,
+                          border: toName === p.name ? '1px solid var(--color-accent)' : '1px solid transparent', display: 'flex', gap: 6, alignItems: 'center',
+                        }}
+                      >
+                        {p.name}
+                        {p.onNum && <span style={{ fontSize: 9, letterSpacing: '.08em', color: 'var(--color-accent)' }}>ON NUM</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'grid', gap: 10, marginTop: people.length ? 10 : 14 }}>
                 <input style={field} placeholder={t('Their name')} value={toName} onChange={(e) => setToName(e.target.value)} />
                 <input
                   style={field}
