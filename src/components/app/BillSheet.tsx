@@ -1,0 +1,139 @@
+// The bill at your table, and every way you may pay it.
+//
+// One card per rail, in the order the server chose for THIS venue and THIS
+// phone. Tapping a card leaves the app for the thing that takes the money —
+// Stripe's page on the venue's account, the venue's own payment page, a
+// wallet — and the pay page brings the guest back with a receipt. The app
+// adds what a browser tab cannot: your saved details via Link and the
+// wallets your phone has, and a shared tab to split it with friends.
+import { useEffect, useRef, useState } from 'react';
+import { store, useApp } from '../../lib/store';
+import { pressable, useDialogFocus } from '../../lib/a11y';
+import { sheetBase, grabberStyle } from '../../lib/derive';
+import { XIcon } from '../../lib/icons';
+import { t } from '../../lib/i18n';
+import { loadBill, startRail, type BillView, type BillRail } from '../../lib/bill';
+import { openTab } from '../../lib/tabs';
+
+const BADGE: Record<string, string> = {
+  apple_pay: ' Pay', google_pay: 'G Pay', card: 'CARD', link: 'Link', cashapp: '$', amazon_pay: 'a',
+  alipay: '支', wechat_pay: '微', pay_by_bank: 'BANK', revolut_pay: 'R', paypal: 'PayPal',
+  promptpay_stripe: 'PP', promptpay_sticker: 'PP', venue_link: '↗', usdc_stripe: 'USDC', usdc_direct: 'USDC',
+};
+
+export default function BillSheet() {
+  const token = useApp((s) => s.billOpen);
+  const me = useApp((s) => s.me);
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(!!token, ref);
+  const [view, setView] = useState<BillView | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    setView(null); setErr(null); setBusy(null);
+    let alive = true;
+    void loadBill(token).then((r) => {
+      if (!alive) return;
+      if (r.ok) setView(r.view); else setErr(r.status === 404 ? t('This code is not one of ours. Nothing was charged.') : r.error);
+    });
+    return () => { alive = false; };
+  }, [token]);
+
+  if (!token) return null;
+  const close = () => store.set({ billOpen: null });
+  const bill = view?.bill;
+  const rails = (view?.rails ?? []).filter((r) => r.ready && r.source !== 'app');
+  const amount = bill?.amount ? `${bill.currency} ${bill.amount}` : null;
+
+  const go = (r: BillRail) => { setBusy(r.id); startRail(r); };
+  const split = async () => {
+    if (!bill) return;
+    setBusy('tab');
+    const st = await openTab(bill.label ? `${bill.venue} · ${bill.label}` : bill.venue, bill.venue);
+    setBusy(null);
+    if (st) store.set({ billOpen: null });
+  };
+
+  return (
+    <div ref={ref} className="glass-strong" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
+      <div style={grabberStyle} />
+      <div {...pressable(close)} aria-label={t('Close')} className="glass press" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+        <XIcon size={15} />
+      </div>
+      <div style={{ padding: 16 }}>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('YOUR BILL')}</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
+          {bill ? bill.venue : err ? t('Something is off') : t('One moment…')}
+        </div>
+        {bill?.label && <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 2 }}>{bill.label}</div>}
+        {amount && <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 32, marginTop: 10 }}>{amount}</div>}
+
+        {err && <div style={{ fontSize: 13, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.55 }}>{err}</div>}
+
+        {bill && bill.state === 'paid' && (
+          <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink-60)' }}>
+            {t('Paid — thank you.')} {t('Show this to staff if asked. Nothing further is owed on this code.')}
+            <div style={{ marginTop: 6, fontWeight: 700, letterSpacing: '.06em' }}>{bill.token}</div>
+          </div>
+        )}
+
+        {bill && bill.state === 'open' && !bill.fixed && (
+          <div style={{ fontSize: 13, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.55 }}>
+            {t('This code has no amount on it yet. Ask staff for the bill — they put the figure on and a fresh code appears here.')}
+          </div>
+        )}
+
+        {bill && bill.state === 'open' && bill.fixed && (
+          <>
+            <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 12 }}>{t('How would you like to pay?')}</div>
+            <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+              {rails.length === 0 && (
+                <div style={{ fontSize: 13, color: 'var(--ink-60)', lineHeight: 1.55 }}>
+                  {t('No way to pay this through NUM right now — staff can take payment their usual way. Nothing was charged.')}
+                </div>
+              )}
+              {rails.map((r, i) => (
+                <div
+                  key={r.id}
+                  {...pressable(() => go(r))}
+                  role="button"
+                  aria-label={`${r.label}. ${r.how}`}
+                  className="glass press"
+                  style={{
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 66, borderRadius: 16,
+                    border: i === 0 ? '1.5px solid var(--color-accent)' : '1px solid var(--ink-12)', opacity: busy && busy !== r.id ? 0.6 : 1,
+                  }}
+                >
+                  <div aria-hidden style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--field-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flex: 'none' }}>
+                    {BADGE[r.id] ?? ''}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{r.label}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.4 }}>{busy === r.id ? t('Opening…') : r.how}</div>
+                  </div>
+                  <div aria-hidden style={{ color: 'var(--ink-40)', fontSize: 22, lineHeight: 1 }}>›</div>
+                </div>
+              ))}
+            </div>
+
+            {me && (
+              <div
+                {...pressable(split)}
+                role="button"
+                style={{ cursor: 'pointer', marginTop: 12, minHeight: 44, boxSizing: 'border-box', borderRadius: 999, border: '1px dashed var(--ink-12)', padding: '13px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, letterSpacing: '.06em', opacity: busy === 'tab' ? 0.6 : 1 }}
+              >
+                {busy === 'tab' ? t('OPENING A TAB…') : t('SPLIT IT WITH FRIENDS ON A TAB')}
+              </div>
+            )}
+
+            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
+              {t('Whichever you choose, the money goes to the venue — NUM never holds it and never sees your card. Card payments are taken by the venue\'s own Stripe account. Stars never pay a venue bill; a tab settles the split between friends.')}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

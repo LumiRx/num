@@ -25,6 +25,8 @@ import BusinessSheet from './BusinessSheet';
 import ScoutSheet from './ScoutSheet';
 import EventSheet from './EventSheet';
 import PaySheet from './PaySheet';
+import BillSheet from './BillSheet';
+import { bootBill } from '../../lib/bill';
 import PassengerSheet from './PassengerSheet';
 import TabSheet from './TabSheet';
 import ErrandSheet from './ErrandSheet';
@@ -81,6 +83,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     // Before bootSocial: it strips the query string once it has read its own
     // params, so a `?dm=` arriving alongside a referral would be lost.
     bootDm();
+    bootBill();
     bootSocial();
     void restoreTab();
     void refreshDmInbox();
@@ -506,6 +509,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <BusinessSheet />
       <ScoutSheet />
       <PaySheet />
+      <BillSheet />
       <PassengerSheet />
       <TabSheet />
       <ErrandSheet />

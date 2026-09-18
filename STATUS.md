@@ -10,7 +10,7 @@ I need to know before I touch anything*, and humans write it.
 
 Do not re-read the codebase to learn what these two already say.
 
-_Last updated: 2026-09-18 05:20 UTC · **0.8.343 live on num-app** — TODAY feature grid + pages, flights Save, runner skips sealed migrations · 0.8.339: two-line answer — two-line answer (first line ~0.2 s) and the reactions ledger + admin panel · 0.8.337 was the first ship since 0.8.333 (0.8.334–0.8.336 were uploaded but traffic was never moved) · `/api/health` 503 loop since 3 Sep root-caused and fixed (held alerts are not blind) · repo moved to `~/NUM/code/num-site-fixes`, branch on GitHub_
+_Last updated: 2026-09-18 06:30 UTC · **0.8.345 live on num-app** — all 12 TODAY doors audited against production (`node scripts/featureaudit.mjs`); charter and events tiles now match what they do · 0.8.343: TODAY feature grid + pages, flights Save · 0.8.339: two-line answer (first line ~0.2 s)_
 
 ---
 
@@ -75,6 +75,32 @@ _Last updated: 2026-09-18 05:20 UTC · **0.8.343 live on num-app** — TODAY fea
   point, but there is nothing they can open).
 
 - **Host job board** — `growth/hostjobs.mjs` shaping layer built and tested (30 tests). Routes, `num_host_jobs` table, member-facing section and console card still to build. Three product questions open, below.
+
+## Every door on TODAY, audited against production — 18 Sep
+
+`node scripts/featureaudit.mjs [id]` takes the real `compose()` from each feature
+page, fills it like a guest, and asks PRODUCTION with `X-Num-Probe: 1` so the asks
+and usage tables stay clean. It paces one ask every 5 s: four at once, then two,
+both earned a 429 from our own `guard.mjs` limiter, and a throttled door reads
+exactly like a broken one in the output.
+
+Ten of twelve answered well first time. Two lied, and both were the tile, not the
+concierge:
+
+- **CHARTER** promised inventory and a price. `num_assets` is EMPTY (one host
+  signed up) so the concierge correctly refuses and files a `feature_request`.
+  `/api/host/offerable` answers 200 — the layer is built, the supply is not. The
+  tile now promises the relay it performs; no price, because charter settlement
+  is still awaiting legal review. If a host ever lists one, revisit the copy.
+- **EVENTS** opened `EventSheet`, which is the HOST's side. It now asks NUM what
+  is on (Ticketmaster, `worker/events.tm.mjs`) and hosting keeps a second door.
+
+Also: `when()` in `src/lib/features.ts` only prefixes "at" for a clock time —
+the asks were saying "at this afternoon".
+
+Watch for: a fresh load opens the THREAD over the grid, so a browser test must
+close it before clicking a tile, and ref coordinates go stale after a scroll.
+Both cost a false "this tile is dead" during this audit.
 
 ## The first line lands in a fifth of a second — 18 Sep
 

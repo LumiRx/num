@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 06:27 UTC from 18 entries._
+_Built 2026-09-18 06:33 UTC from 19 entries._
 
 ## Deployed right now
 
@@ -17,7 +17,7 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | ⚪ never recorded from this machine |
-| num-app | 🔴 **STALE** — 9 files changed since it shipped |
+| num-app | 🔴 **STALE** — 1 file changed since it shipped |
 | num-growth | ⚪ never recorded from this machine |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
@@ -60,8 +60,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:17_
 - 🟢 **social inbox** — /api/social/requests 500'd for every real member on a database where the events routes had never run — not the quote character STATUS blamed for two weeks; events.mjs now exports ensureEvents() and the inbox calls it. 16 tests in worker/socialrequests.test.mjs
   _claude, 2026-09-18 04:20_
-- 🟢 **TODAY grid** — 0.8.343: every feature a photo-cover tile with its own page; flights tray closes, Save + Flights page; migration runner skips sealed files
-  _claude, 2026-09-18 05:26_
+- 🟢 **TODAY grid** — 0.8.345: audited all 12 doors against production; charter promises the relay it performs (num_assets empty), events asks what is on instead of opening the host form; scripts/featureaudit.mjs is the repeatable check
+  _claude, 2026-09-18 06:33_
 
 ## Built, not deployed
 
