@@ -26,7 +26,7 @@ Voice and behavior:
 
 Location — never assume it:
 - If you do not yet know where the user IS and where they are GOING, that is your first job: ask warmly (both can be one question). Do not recommend, book, or guess a city until they tell you or the context below states it.
-- A "VERIFIED NEARBY PARTNERS" block below your context means real, currently-operating places from Num's own database, ranked by quality and distance — prefer them and use their details exactly. NEVER invent an address, phone number, price, or opening hours. With no partner data, recommend from general knowledge, name real well-known places only, and skip street-level specifics you cannot know.
+- A "VERIFIED NEARBY PARTNERS" block below your context means real, currently-operating places from Num's own database — prefer them and use their details exactly. The block itself says whether it is ranked by quality; when it says NO QUALITY SIGNAL, it is not, and you must not speak as though it were. NEVER invent an address, phone number, price, or opening hours. With no partner data, recommend from general knowledge, name real well-known places only, and skip street-level specifics you cannot know.
 - Movies: the partners block will contain the actual nearest cinemas — list 2–3 by name and distance so the group can pick a theater. If a "LIVE SHOWTIMES TODAY" block is present, those are real fetched times — offer them exactly as written and lock the plan item on the one the group picks. Without that block you CANNOT see showtimes: never state, pencil, or estimate one — a made-up time is how a group misses a film. Name the theater, link its website from partner data so they pick the exact screening, offer to lock once they tell you the time, and if pushed for times say plainly they aren't wired up yet and emit ONE feature_request.
 
 You act on the plan through \`actions\`:
@@ -159,8 +159,39 @@ export function contextBlock({ now = new Date(), place = null, partners = [], wi
     );
   }
   if (partners.length) {
+    // ── DOES THIS BLOCK CARRY A QUALITY SIGNAL AT ALL? ──────────────────
+    //
+    // The line above the block used to promise the model these were "ranked
+    // by quality and distance". For 76 of Num's 77 destinations that was not
+    // true: on 18 Sep 2026 `top_places` held 18,843 rows outside Phuket and
+    // ZERO of them had a rating, so the score collapsed to "has a phone and a
+    // website" and thousands of places tied on the same number. discover.mjs
+    // then ordered by `rating DESC NULLS LAST`, which over an all-null column
+    // is no ordering whatsoever — whatever the database returned first.
+    //
+    // Told the list was quality-ranked, and separately instructed to always
+    // name the ONE it would pick, the concierge did what it was asked: it
+    // recommended a 2.5-star hotel, in its own voice, as the one it would
+    // choose. Nothing was broken. It was doing exactly what we told it.
+    //
+    // So the block now says which of the two it is. When ratings are present
+    // the promise stands. When they are not, the model is told plainly that
+    // it holds no quality signal and must not invent a favourite — the same
+    // restraint lastresort.mjs already applies to itself ("Never rank.").
+    // Distance and open-now are still real, so it can still be useful; it
+    // just cannot pretend to an opinion it has no basis for.
+    const rated = partners.filter((b) => b.rating != null).length;
+    const ranked = rated >= Math.min(3, partners.length);
     lines.push(
-      'VERIFIED NEARBY PARTNERS (real places from Num’s database — prefer these, details are exact):\n' +
+      (ranked
+        ? 'VERIFIED NEARBY PARTNERS (real places from Num’s database — prefer these, details are exact):\n'
+        : 'VERIFIED NEARBY PARTNERS (real places from Num’s database — prefer these, details are exact).\n'
+          + 'NO QUALITY SIGNAL: we hold no customer ratings for these, so this list is NOT ranked by how '
+          + 'good they are — it is what is nearby and open. Offer them as options and say honestly that you '
+          + 'cannot tell which is best here. Do NOT name one as the one you would pick, do NOT call any of '
+          + 'them best, top, favourite or a gem, and do NOT invent a reason to prefer one. Distance, opening '
+          + 'hours and category are real and may be used. If the guest wants a recommendation you cannot '
+          + 'honestly make, say so and offer to ask around or to look one up properly.\n') +
         partners
           .map(
             (b) =>
