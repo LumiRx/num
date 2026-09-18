@@ -560,14 +560,15 @@ export const FEATURES = Object.freeze([
     entitlement: null,
     name: 'Pay the bill through NUM',
     does: 'Scan the code on the table, see every way to pay decided by where the table is, pay on the venue\'s own Stripe account with NUM\'s fee taken at source.',
-    needs: ['STRIPE_SECRET_KEY', 'STRIPE_CONNECT_WEBHOOK_SECRET', 'a venue with a connected Stripe account (num_business_rails)'],
+    needs: ['STRIPE_SECRET_KEY', 'STRIPE_CONNECT_WEBHOOK_SECRET', 'a venue with a connected Stripe account (num_business_rails)',
+      'a Connect webhook endpoint that EXISTS at Stripe — this registry cannot see one, only /api/health can'],
     ready: (env) => has(env, 'STRIPE_SECRET_KEY', 'STRIPE_CONNECT_WEBHOOK_SECRET'),
     surface: 'itsnum.com/p/<token> chooser · app BillSheet · console Pay page',
     code: ['worker/payrails.mjs', 'worker/billpay.mjs', 'growth/connect.mjs', 'src/components/app/BillSheet.tsx', 'worker/migrations/0035_pay_rails.sql'],
     sop: {
       on: 'Run migration 0035. Set STRIPE_CLIENT_ID + STRIPE_SECRET_KEY on num-growth (the Connect button) and STRIPE_CONNECT_WEBHOOK_SECRET on num-app (a Stripe webhook endpoint for "events on connected accounts" pointed at app.itsnum.com/api/pay/webhook/connect, listening to checkout.session.completed, charge.refunded, charge.dispute.created). A venue connects from Pay in its console; the card rails appear on its bill codes the moment Stripe enables charges.',
       check: 'In Stripe test mode: connect a test venue, mint a bill code from the console, open /p/<token> — the chooser lists the rails for that country; pay by card — the webhook flips settled_at and num_commissions.paid_cs equals the application fee.',
-      broken: 'The rails list is decided ONLY by worker/payrails.mjs. Crypto is HELD for TH venues (CRYPTO_HELD) until Thai counsel clears it — do not remove TH to make a demo work. Never add on_behalf_of, transfer_data or destination charges: the venue is merchant of record and NUM never holds the money. If the Connect webhook secret is missing, bills pay but never settle — take the Stripe rails offline (venue toggles or NUM_OFF) rather than leave bills open.',
+      broken: 'The rails list is decided ONLY by worker/payrails.mjs. Crypto is HELD for TH venues (CRYPTO_HELD) until Thai counsel clears it — do not remove TH to make a demo work. Never add on_behalf_of, transfer_data or destination charges: the venue is merchant of record and NUM never holds the money. If the Connect webhook secret is missing, bills pay but never settle — take the Stripe rails offline (venue toggles or NUM_OFF) rather than leave bills open. On 18 Sep 2026 this entry read `ready` for a day while NO Connect endpoint existed at Stripe at all: the secret was set, so `ready` was satisfied, and a paid bill would have left the check open in the venue till. `ready` here means the secrets are present and nothing more — it cannot reach Stripe. The endpoint itself is checked by /api/health → bill_pay (worker/health.mjs checkBillPay). Trust that, not this line.',
     },
   },
   {

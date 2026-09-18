@@ -80,6 +80,117 @@ function checkPay(env) {
 }
 
 /**
+ * Bill pay, and the failure that made this check exist.
+ *
+ * ── 18 Sep 2026 ──────────────────────────────────────────────────────────
+ *
+ * STRIPE_CONNECT_WEBHOOK_SECRET was set. The feature registry read `billpay:
+ * on`. The route was deployed and listening. Everything that could be checked
+ * from inside this Worker said ready — and the webhook endpoint did not exist
+ * at Stripe at all. Nobody had ever created it.
+ *
+ * What that would have done to the first real guest: a bill under this design
+ * is a DIRECT CHARGE on the venue own Stripe account, so the event fires on
+ * THEIR account, not ours. The platform endpoint never sees it. The card is
+ * charged, the guest gets a Stripe receipt and walks out — and on our side
+ * handleConnectWebhook never runs, so settleBillCode never marks the bill
+ * paid, num_commissions never records what NUM earned, and worst of all
+ * recordExternalPayment never fires, which means THE CHECK IS STILL OPEN IN
+ * THE VENUE TILL. A guest who genuinely paid, standing accused at the door.
+ *
+ * A secret existing does not prove an endpoint exists. That is the whole
+ * lesson, and it is the same shape as checkCashout above: a switch saying
+ * "open" over a road that does not arrive.
+ *
+ * WHAT THIS CAN AND CANNOT PROVE — stated plainly, because a monitor that
+ * overclaims is worse than none. Stripe endpoint list does not reliably
+ * expose the connected-accounts flag: on an endpoint created through the
+ * platform OAuth application it comes back as `application`, but one created
+ * by hand in the Dashboard may show neither. So this check proves an enabled
+ * endpoint exists at our URL and is subscribed to the event we need. It
+ * CANNOT prove someone ticked "events on connected accounts" rather than
+ * "events on your account". It reports what it saw of that flag and leaves
+ * the judgement to a human.
+ *
+ * And a Stripe hiccup is not a misconfiguration. If the list cannot be read —
+ * network, 5xx, rate limit — this returns ok with a note rather than paging
+ * someone to fix a thing that was never broken. Same reasoning as `blocked`
+ * in brainstate.mjs: the shape of the answer decides, not the absence of one.
+ */
+const CONNECT_HOOK_PATH = '/api/pay/webhook/connect';
+
+async function checkBillPay(env) {
+  if (!env.STRIPE_SECRET_KEY) return { ok: true, note: 'bill pay not configured' };
+
+  // Does any venue actually take bill payments yet? A missing table means no
+  // venue has ever connected — the honest reading, and the reason this is a
+  // single-row read with a defined fallback rather than a banned list read.
+  const live = await env.DB.prepare(
+    'SELECT COUNT(*) n FROM num_business_rails WHERE stripe_account_id IS NOT NULL AND stripe_charges_enabled = 1',
+  ).first().catch(() => null);
+  const venues = Number(live?.n ?? 0);
+  if (!venues) return { ok: true, note: 'no venue has connected its till yet — nothing to settle' };
+
+  if (!env.STRIPE_CONNECT_WEBHOOK_SECRET) {
+    return {
+      ok: false,
+      venues,
+      remedy:
+        `${venues} venue(s) can take bill payments but STRIPE_CONNECT_WEBHOOK_SECRET is unset, so every Connect event ` +
+        'is rejected unsigned. Guests will pay and their checks will stay open in the till. Set it or turn NUM_OFF_BILLPAY on.',
+    };
+  }
+
+  let endpoints = null;
+  try {
+    const res = await fetch('https://api.stripe.com/v1/webhook_endpoints?limit=100', {
+      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { ok: true, venues, note: `Stripe answered ${res.status} for the endpoint list — not read as a misconfiguration` };
+    const body = await res.json();
+    if (Array.isArray(body?.data)) endpoints = body.data;
+  } catch (e) {
+    return { ok: true, venues, note: `could not reach Stripe to check the endpoint list (${e?.message ?? 'network'})` };
+  }
+  if (!endpoints) return { ok: true, venues, note: 'Stripe returned no endpoint list to check' };
+
+  const hook = endpoints.find((e) => String(e?.url ?? '').endsWith(CONNECT_HOOK_PATH) && e?.status === 'enabled');
+  if (!hook) {
+    return {
+      ok: false,
+      venues,
+      remedy:
+        `${venues} venue(s) are connected, but Stripe has no enabled webhook endpoint at ${CONNECT_HOOK_PATH}. Bills will be ` +
+        'paid on the venue account and nothing on our side will ever hear: the bill stays unsettled, the commission is never ' +
+        'recorded, and the check stays OPEN IN THE TILL after the guest has paid and left. Add an endpoint in the Stripe ' +
+        'Dashboard with destination "events on connected accounts", URL ' + CONNECT_HOOK_PATH + ', events ' +
+        'checkout.session.completed, charge.refunded, charge.dispute.created — then set STRIPE_CONNECT_WEBHOOK_SECRET to its ' +
+        'signing secret.',
+    };
+  }
+
+  const events = Array.isArray(hook.enabled_events) ? hook.enabled_events : [];
+  if (!events.includes('checkout.session.completed') && !events.includes('*')) {
+    return {
+      ok: false,
+      venues,
+      endpoint: hook.id,
+      remedy:
+        `The Connect endpoint ${hook.id} exists but is not subscribed to checkout.session.completed, which is the only event ` +
+        'that settles a bill. Every guest payment will leave the check open in the till. Add the event to that endpoint.',
+    };
+  }
+
+  // Reported, never judged: see the header. `connect` is what the API gives on
+  // some accounts, `application` on others, and neither on a hand-made one.
+  const flag = hook.connect === true ? 'connect'
+    : hook.application ? 'application'
+    : 'unconfirmed';
+  return { ok: true, venues, endpoint: hook.id, connected_accounts: flag };
+}
+
+/**
  * Push, the most silent failure of all. Nothing else notices it: every send is
  * fire-and-forget, wake() swallows rejections into a `fails` counter nobody
  * reads, and notify() reports how many it TRIED, not how many landed. A member
@@ -488,6 +599,7 @@ export async function runHealth(env) {
     attribution: await checkAttribution(env),
     failures: await checkFailures(env),
     payments: checkPay(env),
+    bill_pay: await checkBillPay(env),
     sms: checkSms(env),
     push: await checkPush(env),
     cashout: checkCashout(env),
