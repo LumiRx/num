@@ -67,7 +67,7 @@ export default function WalletSheet() {
   return (
     <div
       ref={ref}
-      className="glass-strong no-scrollbar"
+      className="glass-strong sheet-in no-scrollbar"
       style={{
         ...sheetBase,
         visibility: open ? 'visible' : 'hidden',

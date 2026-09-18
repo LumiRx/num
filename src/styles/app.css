@@ -39,7 +39,12 @@
 }
 .check-draw { animation: draw-check .32s cubic-bezier(.3,1,.4,1) .08s forwards; stroke-dasharray: 24; stroke-dashoffset: 24; }
 .check-pop { animation: pop-in .36s cubic-bezier(.3,1.4,.5,1) both; }
-.rise-in { animation: rise-in .32s cubic-bezier(.3,1,.4,1) both; }
+/* `backwards`, not `both` (18 Sep 2026): the end state IS the natural state,
+   and a `both`/`forwards` fill kept `transform: none` pinned on the element
+   forever — which silently disabled .lift:hover and .press:active on every
+   card that had ever risen in. With `backwards` the element is hidden through
+   its stagger delay and then hands its transform back to the stylesheet. */
+.rise-in { animation: rise-in .32s cubic-bezier(.3,1,.4,1) backwards; }
 .sheet-in { animation: sheet-in .32s cubic-bezier(.3,1,.4,1) both; }
 /* ── Glow (17 Sep 2026). A soft ring of the accent around the edge of what
    can be pressed — the tokens live on the theme so light and dark each get

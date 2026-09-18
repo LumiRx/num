@@ -99,7 +99,7 @@ export default function ShareSheet() {
       role="dialog"
       aria-modal="true"
       aria-label={t('Share NUM')}
-      className="glass-strong no-scrollbar"
+      className="glass-strong sheet-in no-scrollbar"
       style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />

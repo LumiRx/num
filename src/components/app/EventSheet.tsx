@@ -163,7 +163,7 @@ export default function EventSheet() {
   return (
     <div
       ref={ref}
-      className="glass-strong"
+      className="glass-strong sheet-in"
       style={{ ...sheetBase, visibility: open ? 'visible' : 'hidden', transform: open ? 'translateY(0)' : 'translateY(105%)', maxHeight: 'min(88%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />

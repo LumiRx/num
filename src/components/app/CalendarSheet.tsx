@@ -58,7 +58,10 @@ export default function CalendarSheet() {
   const close = () => store.set({ calOpen: false });
 
   return (
-    <div ref={ref} className="glass-strong" style={{ ...sheetBase, height: '80%', display: 'flex', flexDirection: 'column', visibility: s.calOpen ? 'visible' : 'hidden', transform: s.calOpen ? 'translateY(0)' : 'translateY(105%)' }}>
+    <div ref={ref} className="glass-strong" style={{ ...sheetBase, height: '80%', display: 'flex', flexDirection: 'column', visibility: s.calOpen ? 'visible' : 'hidden', transform: s.calOpen ? 'translateY(0)' : 'translateY(105%)',
+      // This sheet stays mounted and toggles, so it cannot use the sheet-in
+      // keyframe the others do; the same 320ms clock as a transition instead.
+      transition: 'transform .32s cubic-bezier(.3,1,.4,1), visibility .32s' }}>
       <div style={grabberStyle} />
       <div
         {...pressable(close)}

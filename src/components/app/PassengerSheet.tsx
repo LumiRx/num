@@ -146,7 +146,7 @@ export default function PassengerSheet() {
   };
 
   return (
-    <div ref={ref} role="dialog" aria-modal="true" aria-label={t('Passenger details')} className="glass-strong"
+    <div ref={ref} role="dialog" aria-modal="true" aria-label={t('Passenger details')} className="glass-strong sheet-in"
       style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
       <div {...pressable(close)} aria-label={t('Close')} className="glass press"

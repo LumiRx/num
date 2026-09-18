@@ -352,9 +352,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
 
       {/* views float above the aurora ground; wrapper mirrors the root's flex column */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
-        {view === 'dash' && <DashView />}
-        {view === 'plan' && <PlanView />}
-        {view === 'mem' && <MemoryView />}
+        {/* Keyed on the view so a tab change remounts this wrapper and the new
+            screen rises in (320ms, 12px) instead of blinking into place. The
+            wrapper mirrors the flex column above so nothing inside reflows. */}
+        <div key={view} className="rise-in" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {view === 'dash' && <DashView />}
+          {view === 'plan' && <PlanView />}
+          {view === 'mem' && <MemoryView />}
+        </div>
       </div>
 
       {/* The thread, as a sheet over whatever you were looking at. It keeps the

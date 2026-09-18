@@ -23,8 +23,11 @@ export default function FeatureGrid() {
             key={f.id}
             {...pressable(() => openFeature(f.id))}
             aria-label={`${t(f.title)} — ${t(f.cta)}`}
-            className="press tap"
+            className="press tap rise-in"
             style={{
+              // The doors arrive one after another, top-left to bottom-right,
+              // 30ms apart — the whole grid is in under half a second.
+              animationDelay: `${Math.min(n, 15) * 30}ms`,
               position: 'relative', cursor: 'pointer', borderRadius: 'var(--r-md)', overflow: 'hidden',
               aspectRatio: '4 / 5', background: 'var(--field-bg)', border: '1px solid var(--ink-08)',
               display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',

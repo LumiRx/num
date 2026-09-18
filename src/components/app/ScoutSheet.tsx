@@ -57,7 +57,7 @@ export default function ScoutSheet() {
   return (
     <div
       ref={ref}
-      className="glass-strong"
+      className="glass-strong sheet-in"
       style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(88%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />

@@ -68,6 +68,24 @@ export function countdown(i: Event, now = Date.now()): string {
 
 const money = (i: Event) => (i.price != null && i.currency ? `${i.currency} ${i.price}` : i.price_note ?? null);
 
+/** The shape of one rail — kicker line and two square cards — in shimmer. */
+function RailSkeleton() {
+  return (
+    <div aria-hidden="true" style={{ margin: '12px 0 2px' }}>
+      <div style={{ padding: '0 14px 8px' }}><div className="skel" style={{ height: 10, width: 140 }} /></div>
+      <div style={{ display: 'flex', gap: 8, padding: '0 12px 8px' }}>
+        {[0, 1].map((n) => (
+          <div key={n} style={{ flex: '0 0 calc((100% - 8px) / 2)', minWidth: 0, borderRadius: 16, overflow: 'hidden' }}>
+            <div className="skel" style={{ aspectRatio: '1 / 1', borderRadius: 16 }} />
+            <div className="skel" style={{ height: 12, width: '80%', margin: '10px 10px 0' }} />
+            <div className="skel" style={{ height: 10, width: '55%', margin: '6px 10px 10px' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TonightStrip() {
   const place = useApp((s) => s.place);
   const here = useApp((s) => s.here);
@@ -79,10 +97,12 @@ export default function TonightStrip() {
   const [week, setWeek] = useState<Headline[]>([]);
   const [now, setNow] = useState(Date.now());
   const [locating, setLocating] = useState(false);
+  const [loading, setLoading] = useState(false);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(id); }, []);
 
   useEffect(() => {
-    if (demo || (!place && !here)) { setEvents([]); setRestaurants([]); setBars([]); setWeek([]); return; }
+    if (demo || (!place && !here)) { setEvents([]); setRestaurants([]); setBars([]); setWeek([]); setLoading(false); return; }
+    setLoading(true);
     const qs = new URLSearchParams({ mode: 'tonight', day: localDay() });
     if (place) qs.set('place', place);
     if (here) { qs.set('lat', String(here.lat)); qs.set('lng', String(here.lng)); }
@@ -96,8 +116,9 @@ export default function TonightStrip() {
         setRestaurants(b.ok ? (b.restaurants ?? []) : []);
         setBars(b.ok ? (b.bars ?? []) : []);
         setWeek(b.ok ? (b.week ?? []) : []);
+        setLoading(false);
       })
-      .catch(() => { if (!dead) { setEvents([]); setRestaurants([]); setBars([]); } });
+      .catch(() => { if (!dead) { setEvents([]); setRestaurants([]); setBars([]); setLoading(false); } });
     return () => { dead = true; };
   }, [place, here?.lat, here?.lng, me?.id, demo]);
 
@@ -154,7 +175,13 @@ export default function TonightStrip() {
     link: i.url ?? null,
   });
 
-  if (!events.length && !restaurants.length && !bars.length && !week.length) return null;
+  if (!events.length && !restaurants.length && !bars.length && !week.length) {
+    // Nothing in hand yet. While the first fetch for this place is out, hold
+    // the room the rail will take with two shimmering cards, so the screen
+    // does not jump when they arrive. Once the answer is back and empty, the
+    // strip steps aside entirely — an empty rail is not a thing to show.
+    return loading ? <RailSkeleton /> : null;
+  }
 
   const where = String(here ? t('YOU') : (place ?? t('YOU'))).toUpperCase();
   const nearMeChip = here ? null : (

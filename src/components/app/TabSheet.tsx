@@ -75,7 +75,7 @@ export default function TabSheet() {
   };
 
   return (
-    <div ref={ref} role="dialog" aria-modal="true" className="glass-strong" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(90%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
+    <div ref={ref} role="dialog" aria-modal="true" className="glass-strong sheet-in" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(90%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
       <div style={grabberStyle} />
       <div {...pressable(close)} aria-label={t('Close')} className="glass press" style={{ position: 'absolute', top: 6, right: 6, width: 44, height: 44, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
         <XIcon size={15} />

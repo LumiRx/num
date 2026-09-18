@@ -483,7 +483,9 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{m.card.title}</div>
               <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>{m.card.meta}</div>
               {/* The status pill sits under the text so it never squeezes the title. */}
-              <span style={{ ...ct.st, display: 'inline-flex', marginTop: 7 }}>{ct.label}</span>
+              {/* A landed booking's pill pops once — the one moment in the
+                  thread that deserves a flourish. Every other status sits still. */}
+              <span className={m.card.tag === 'confirmed' ? 'check-pop' : undefined} style={{ ...ct.st, display: 'inline-flex', marginTop: 7 }}>{ct.label}</span>
             </div>
           </div>
         )}
