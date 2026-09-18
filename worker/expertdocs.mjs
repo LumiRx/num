@@ -326,9 +326,20 @@ export async function handleExpertDocs(request, env, path) {
     return json(r, r.ok ? 200 : 400);
   }
 
+  // The desk a person at NUM actually works: the queue, the form viewer and
+  // the page. All admin-only, all in worker/expertdesk.mjs.
+  if (p === '/desk' || p === '/queue' || p === '/file') {
+    const { handleDesk } = await import('./expertdesk.mjs');
+    return await handleDesk(request, env, p);
+  }
+
   if (p === '/review' && request.method === 'POST') {
     const { isAdmin } = await import('./console.mjs');
-    if (!await isAdmin(request, env)) return json({ error: 'not allowed' }, 403);
+    // (env, request) — NOT (request, env). Reversed, this read env.ADMIN_KEY
+    // off a Request, got undefined, and returned false for everybody: from
+    // the day it shipped nobody could accept an NDA or a W-9, so no Expert
+    // could ever become payable. Found 18 Sep 2026 with two packets waiting.
+    if (!await isAdmin(env, request)) return json({ error: 'not allowed' }, 403);
     const body = await request.json().catch(() => ({}));
     const r = await review(env, {
       scoutId: body.scout_id, kind: body.kind, accept: !!body.accept, reason: body.reason, by: body.by,

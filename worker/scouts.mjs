@@ -795,7 +795,10 @@ export async function handleScouts(request, env, path, origin) {
     return row ? json({ ok: true, ...row }) : json({ ok: false, why: 'no terms published' }, 404);
   }
 
-  if (p === '/admin' && await isAdmin(request, env)) {
+  // (env, request), not (request, env) — see the note in expertdocs.mjs. This
+  // one hid better: a false isAdmin falls through to the 404 at the bottom, so
+  // the admin list answered "not found" rather than "not allowed".
+  if (p === '/admin' && await isAdmin(env, request)) {
     const { results = [] } = await env.DB.prepare(
       `SELECT s.id, s.name, s.email, s.phone, s.code, s.status, s.country, s.created_at,
               s.referred_by_note, s.referrer_share_bps, s.referrer_ends_at,
