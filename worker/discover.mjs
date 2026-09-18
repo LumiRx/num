@@ -360,7 +360,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
     // and a short list of things that are never a night out is refused
     // outright whatever else matched. (Second London run: CLUBS had
     // Ladbrokes and two casinos; LIVE had a pipe shop and a museum.)
-    const NEVER = /casino|betting|gambling|bookmaker|slots|museum|gallery|shop|store|school|church|travel agency|airport/i;
+    const NEVER = /casino|betting|gambling|bookmaker|slots|museum|gallery|shop|store|school|church|travel agency|airport|juice|smoothie|coffee|caf[eé]|musical group|instrument|library|hospital|clinic/i;
     const shelf = (rows, kind) => rows
       .filter((r) => {
         const cat = String(r.category ?? ''), name = String(r.name ?? '');
