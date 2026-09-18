@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.340 — 2026-09-18 04:30 UTC
+
+Deep research, which was sold and never built; and the plan ceiling, which was priced and never enforced
+
+- commit `043dcc9`
+
 ## 0.8.339 — 2026-09-18 04:14 UTC
 
 The first line lands inside a second: /api/num answers in two lines (NDJSON, opt-in) — an ack in the guest's language from the place already resolved, then the answer exactly as before; the app shows it under the typing dots. Also carries the in-flight features.mjs plan/entitlement declarations from the other session (tests green).
