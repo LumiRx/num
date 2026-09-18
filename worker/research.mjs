@@ -79,7 +79,7 @@
  *     the work succeeded, never before it started.
  */
 import { may, countUse, tiers } from './membership.mjs';
-import { callProse, BRAINS } from './brains.mjs';
+import { callProse, chain } from './brains.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -152,9 +152,38 @@ export function assertFreeFloor(env) {
  * genuinely answer.
  */
 export const PROSE_KINDS = Object.freeze(['openai-compatible', 'workers-ai']);
+
+/**
+ * Every brain that could serve prose, in the product's own priority order —
+ * not one brain, a LIST.
+ *
+ * This returned a single brain until 18 Sep 2026 and deep research failed on
+ * two consecutive releases for two different reasons, both of which a list
+ * would have survived:
+ *
+ *   · it preferred Anthropic, and callProse has no Anthropic path — it
+ *     handles workers-ai and openai-compatible and then throws, deliberately,
+ *     so background work cannot spend the Claude balance guests need;
+ *   · it then took the first reachable brain, which is `openai`, and
+ *     callProse sends `reasoning: {enabled: false}` to every
+ *     openai-compatible vendor. That flag exists because reasoning models
+ *     hang mid-thought, and the real OpenAI API rejects it outright:
+ *     HTTP 400, "Unknown parameter: 'reasoning'". That brain cannot answer
+ *     a prose call at all today. ← worth fixing in brains.mjs on its own
+ *     merits; nothing else calls it this way, so nothing else noticed.
+ *
+ * The rest of this product has always answered that question the same way:
+ * `chain()` returns the configured order and callers try each until one
+ * answers. A feature that picks one brain and dies with it is the only part
+ * of NUM that does not survive a vendor having a bad afternoon.
+ */
+export function proseBrains(env) {
+  return chain(env).filter((b) => PROSE_KINDS.includes(b.kind));
+}
+
+/** Kept for callers that want the first candidate; prefer proseBrains(). */
 export function brainFor(env) {
-  return BRAINS.find((b) => PROSE_KINDS.includes(b.kind)
-    && typeof b.ready === 'function' && b.ready(env)) ?? null;
+  return proseBrains(env)[0] ?? null;
 }
 
 const readJson = (text) => {
@@ -344,12 +373,27 @@ export async function runResearch(env, id) {
       .bind(id, clip(msg, 300), Date.now() - t0).run().catch(() => {});
     return { ok: false, error: msg };
   };
-  const brain = brainFor(env);
-  if (!brain) return fail('no brain available');
-  await env.DB.prepare("UPDATE num_research SET state='running', brain=?2 WHERE id=?1").bind(id, brain.id).run().catch(() => {});
+  const candidates = proseBrains(env);
+  if (!candidates.length) return fail('no brain available');
 
   try {
-    const plan = await decompose(env, brain, { brief: row.brief, dest: row.dest });
+    // Try each brain until one decomposes the brief. A vendor that 400s on
+    // the first call is a vendor this run should walk past, not die on — see
+    // proseBrains() for the two different ways dying on the first one has
+    // already broken this feature in production.
+    let brain = null; let plan = null; const tried = [];
+    for (const b of candidates) {
+      try {
+        plan = await decompose(env, b, { brief: row.brief, dest: row.dest });
+        brain = b;
+        break;
+      } catch (err) {
+        tried.push(`${b.id}: ${String(err?.message ?? err).slice(0, 80)}`);
+        console.warn('[research] brain declined', b.id, err?.message ?? err);
+      }
+    }
+    if (!brain) return fail(`every brain declined — ${tried.join(' | ')}`);
+    await env.DB.prepare("UPDATE num_research SET state='running', brain=?2 WHERE id=?1").bind(id, brain.id).run().catch(() => {});
     let lat = null; let lng = null;
     if (row.dest) {
       const d = await env.DB.prepare('SELECT lat, lng FROM destinations WHERE slug=?1').bind(row.dest).first().catch(() => null);

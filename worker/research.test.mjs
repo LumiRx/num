@@ -9,7 +9,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { verify, evidenceBlock, assertFreeFloor, LIMITS, brainFor, PROSE_KINDS } from './research.mjs';
+import { verify, evidenceBlock, assertFreeFloor, LIMITS, brainFor, proseBrains, PROSE_KINDS } from './research.mjs';
 import { tiers } from './membership.mjs';
 
 const SRC = readFileSync(new URL('./research.mjs', import.meta.url), 'utf8');
@@ -131,6 +131,21 @@ describe('the shape of a run', () => {
 
   test('one run belongs to the member who paid for it', () => {
     assert.match(SRC, /row\.member_id !== me\) return json\(\{ error: 'not yours' \}, 403\)/);
+  });
+
+  test('it tries every prose brain, not just the first', () => {
+    // Deep research failed on two consecutive releases for two different
+    // reasons — Anthropic has no prose path, and the real OpenAI API rejects
+    // the `reasoning` flag callProse sends — and a LIST would have survived
+    // both. The rest of NUM has always tried brains in order until one
+    // answers; this is the only part that used to pick one and die with it.
+    const env = { NUM_LLM_KEY: 'k', NUM_LLM_URL: 'https://example.invalid/v1', NUM_OPENAI_BASE_URL: 'https://api.openai.com/v1', AI: {} };
+    const list = proseBrains(env);
+    assert.ok(list.length >= 2, 'more than one candidate when more than one is configured');
+    assert.ok(list.every((b) => PROSE_KINDS.includes(b.kind)), 'and every one of them is reachable by callProse');
+    assert.match(SRC, /for \(const b of candidates\)/, 'and the runner walks the list');
+    assert.match(SRC, /every brain declined/, 'and says which ones refused when they all do');
+    assert.deepEqual(proseBrains({}), [], 'no keys, no candidates');
   });
 
   test('the brain it picks is one callProse can actually reach', () => {
