@@ -1,7 +1,7 @@
 # Handoff → Duke
 
 **From:** Dre's Claude Code session, 2026-07-31
-**Repo:** `~/num-concierge` @ v0.8.76 (`git@github.com:LumiRx/num.git`)
+**Repo:** `~/NUM/code/num-concierge` @ v0.8.76 (`git@github.com:LumiRx/num.git`)
 **UPDATE 2026-08-01 00:5x UTC — the link fix is LIVE.** v0.8.78
 (`4c137fb2-afe2-4cb5-9aae-eb65bfb4d410`) deployed to 100%. Verified in
 production: `/c/<id>?ref=<code>` → `302 /?ref=<code>&c=<id>`, and the deployed

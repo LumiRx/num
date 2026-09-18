@@ -121,8 +121,8 @@ token must not open the earnings endpoint.
 
 ```
 /Users/rick/.num-growth-admin-key      (0600, 65 bytes)
-/Users/rick/num-concierge/.claim_admin_key  (0600, 32 bytes)
-/Users/rick/num-concierge/.scout_key        (0600, 32 bytes)
+/Users/rick/NUM/code/num-concierge/.claim_admin_key  (0600, 32 bytes)
+/Users/rick/NUM/code/num-concierge/.scout_key        (0600, 32 bytes)
 ```
 
 `.gitignore` covers all three, so they are not in git — that part is handled.

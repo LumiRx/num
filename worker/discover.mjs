@@ -350,13 +350,43 @@ export async function handleDiscover(request, env, fetchImpl = fetch) {
     });
     let restaurants = [], bars = [];
     try {
+      // ── RATE THE NEIGHBOURHOOD BEFORE RANKING IT ──────────────────────
+      //
+      // 18 Sep 2026: London had 23,561 restaurants mapped within 5 km of the
+      // centre and NOT ONE carried a rating, so this shelf was ordered by
+      // "has a website" and distance — which is how Pret A Manger and a
+      // place in Reading ended up being what NUM suggested for dinner. The
+      // enrichment already existed for the concierge (worker/placeratings.mjs)
+      // and simply was not on this path. One Google Maps search per ~1 km
+      // cell per category per 30 days, then everyone who asks afterwards
+      // gets the benefit.
+      const { enrichCell } = await import('./placeratings.mjs');
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        await Promise.race([
+          Promise.all([
+            enrichCell(env, { lat, lng, cat: 'restaurant' }).catch(() => null),
+            enrichCell(env, { lat, lng, cat: 'bar' }).catch(() => null),
+          ]),
+          new Promise((r) => setTimeout(r, 3500)),
+        ]);
+      }
       const { nearbyPlaces } = await import('../ai/places.js');
       const [r1, r2] = await Promise.all([
-        withTimeout(nearbyPlaces(env, loc, 'restaurant dinner', 9, null, { memberId }), 2500, { rows: [] }),
-        withTimeout(nearbyPlaces(env, loc, 'bar cocktails', 9, null, { memberId }), 2500, { rows: [] }),
+        withTimeout(nearbyPlaces(env, loc, 'restaurant dinner', 14, null, { memberId }), 2500, { rows: [] }),
+        withTimeout(nearbyPlaces(env, loc, 'bar cocktails', 14, null, { memberId }), 2500, { rows: [] }),
       ]);
-      restaurants = (r1?.rows ?? []).map(asPlace);
-      bars = (r2?.rows ?? []).map(asPlace);
+      // A SHELF IS NOT A SEARCH RESULT. Nobody asked for these — NUM is
+      // putting them forward — so it only puts forward what it can stand
+      // behind. Where the neighbourhood has rated places, unrated ones are
+      // dropped rather than padded in; where it has none yet (a city nobody
+      // has asked about since the ratings went in) the rail shows the best
+      // of what there is, because an empty shelf teaches people NUM is empty.
+      const standBehind = (rows) => {
+        const rated = rows.filter((r) => r.rating != null);
+        return (rated.length >= 3 ? rated : rows).slice(0, 9);
+      };
+      restaurants = standBehind(r1?.rows ?? []).map(asPlace);
+      bars = standBehind(r2?.rows ?? []).map(asPlace);
     } catch (err) { console.warn('[discover] tonight places', err?.message ?? err); }
     return json({ ok: true, mode, dest, items, restaurants, bars, sources: { num: curated.length, ticketmaster: tm.length, restaurants: restaurants.length, bars: bars.length } });
   }

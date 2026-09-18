@@ -1,4 +1,4 @@
-import { verticalFor, toE164, VERTICALS } from '/Users/rick/num-concierge/claim/onboard.mjs';
+import { verticalFor, toE164, VERTICALS } from '/Users/rick/NUM/code/num-concierge/claim/onboard.mjs';
 
 // The measured GB/IE head of distribution, with the accented cafe as stored.
 const CATS = [

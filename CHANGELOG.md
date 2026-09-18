@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.335 — 2026-09-18 01:53 UTC
+
+Tonight rails, feature registry, and the false NUM IS DOWN alarm
+
+- commit `d274148`
+
+## 0.8.334 — 2026-09-17 22:36 UTC
+
+Answers in a third of the time; real ratings; not the same three; ORDER FASTER; nine languages; one look
+
+- commit `cddc8d2`
+
 ## 0.8.333 — 2026-09-17 22:31 UTC
 
 Mongolian answered by /api/i18n too — the app list and the worker list now agree

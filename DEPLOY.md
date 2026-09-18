@@ -24,7 +24,7 @@ Worker code — every other path is served as a static asset.
 ## Step 1 — build
 
 ```bash
-cd ~/num-concierge
+cd ~/NUM/code/num-concierge
 npm run build      # tsc -b && vite build → dist/
 ```
 
@@ -147,7 +147,7 @@ Before opening it to real traffic, add one hard control:
 ## Go-live checklist
 
 ```bash
-cd ~/num-concierge
+cd ~/NUM/code/num-concierge
 npm run design:check                                            # design snapshots intact
 npm run build                                                   # tsc + vite must pass
 npx wrangler@latest deploy --dry-run --config wrangler.app.jsonc
