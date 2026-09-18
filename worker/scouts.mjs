@@ -708,6 +708,13 @@ export async function handleScouts(request, env, path, origin) {
     return json(r, r.ok ? 200 : 400);
   }
 
+  // The paper an Expert carries. A full printable page rather than JSON,
+  // because the thing being asked for IS a page — see worker/scoutkit.mjs.
+  if (p === '/kit') {
+    const { handleScoutKit } = await import('./scoutkit.mjs');
+    return await handleScoutKit(request, env, origin);
+  }
+
   // Who does this code belong to? Called as somebody types a referrer code on
   // the sign-up page, so they see "Referred by Isaiah" BEFORE they submit
   // rather than discovering months later that a typo lost the attribution.

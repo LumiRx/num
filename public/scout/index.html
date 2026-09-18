@@ -180,6 +180,20 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     <p class="note" id="capline"></p>
   </section>
 
+  <!-- ── what you carry ────────────────────────────────────────── -->
+  <section id="kit" hidden>
+    <h2>Your kit</h2>
+    <div class="card">
+      <p class="note">The one-pager you leave with an owner, counter cards to cut up, and what to
+      say in sixty seconds. Every sheet already has your code and your QR on it, so a business
+      that scans one is credited to you.</p>
+      <p style="margin-top:12px">
+        <a id="kitLink" class="glass lift" href="#" target="_blank" rel="noopener"
+           style="color:var(--accent);font-weight:700">Open your kit &rarr;</a>
+      </p>
+    </div>
+  </section>
+
   <!-- ── experts you brought in ────────────────────────────────── -->
   <section id="refs" hidden>
     <h2>Experts you brought in</h2>
@@ -238,6 +252,12 @@ th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
     });
     show('empty', !(d.businesses.list || []).length);
     $('capline').textContent = d.cap.left + ' of this month’s ' + d.cap.monthly + ' introductions left.';
+
+    // Their kit, pointed at their own code. Always on the API origin: the
+    // sheets are rendered by num-app, and itsnum.com has no route for them.
+    show('kit', true);
+    $('kitLink').href = (API || 'https://app.itsnum.com')
+      + '/api/scouts/kit?code=' + encodeURIComponent(d.scout.code);
 
     // The people they brought in — named and counted apart from their own
     // businesses, because they are a different kind of work and a slower kind

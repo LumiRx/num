@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 04:06 UTC from 10 entries._
+_Built 2026-09-18 04:17 UTC from 12 entries._
 
 ## Deployed right now
 
@@ -17,7 +17,7 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | ⚪ never recorded from this machine |
-| num-app | 🔴 **STALE** — 4 files changed since it shipped |
+| num-app | 🔴 **STALE** — 2 files changed since it shipped |
 | num-growth | ⚪ never recorded from this machine |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
@@ -40,12 +40,16 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - 🟢 **deploy drift guard** — npm run deploy:check. Hashes what each worker bundles against what it last shipped.
   _claude, 2026-09-15 16:32_
+- 🟢 **first line** — 0.8.339: /api/num answers in two lines when asked; first line ~0.2s, answer unchanged; app shows it under the dots
+  _claude, 2026-09-18 04:17_
 - 🟢 **health** — 0.8.337: held alerts are deferred, not blind — the 503/DOWN loop since 3 Sep is closed; 0.8.334-336 finally live
   _claude, 2026-09-18 03:28_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).
   _claude, 2026-09-15 16:32_
 - 🟢 **num-expert-signup** — itsnum.com/scout/ enrol form and dashboard were 404ing: page fetched /api/scouts on itsnum.com, which only num-app serves. Now points at app.itsnum.com (CORS already allowed). num-console redeployed 18 Sep. Zero self-enrolled scouts existed before this; Isaiah and Adam were inserted by hand.
   _claude, 2026-09-18 03:46_
+- 🟢 **reactions** — 0.8.338: emoji reactions land in num_reactions with lane/brain/place; HOW THEY RATE THE ANSWERS panel on admin ACTIVITY tab
+  _claude, 2026-09-18 04:17_
 
 ## Built, not deployed
 
