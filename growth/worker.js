@@ -9246,18 +9246,17 @@ async function venuePayPage(req, env, url) {
   let posTile = "";
   try {
     const conn = await POS.connectionFor(env, biz.id);
-    const canSquare = POS.posReady(env, "square");
     posTile = `
 <div class="tile noprint" id="pos">
   <b>Your till</b>
   ${!conn ? `
     <p class="sub" style="margin-top:4px">Connect your point of sale and NUM can pull an open check
     instead of a member of staff typing the figure. Optional &mdash; typing it works exactly as it does now.</p>
-    ${canSquare
-      ? `<a class="btn" style="display:inline-block;text-decoration:none" href="/biz/pos/start?vendor=square&k=${k}">Connect Square</a>
-         <p class="sub" style="margin-top:8px">${esc(POS.adapterFor("square").SELLER_NOTE)}</p>`
-      : `<p class="sub" style="color:var(--warn)">Not switched on for NUM yet (${esc(POS.posNeeds(env, "square").join("; "))}).</p>`}
-    <p class="sub">Square today. Clover and Lightspeed next; Toast needs a partner agreement.</p>`
+    ${POS.vendors().map((v) => (POS.posReady(env, v)
+      ? `<a class="btn" style="display:inline-block;text-decoration:none;margin-right:8px" href="/biz/pos/start?vendor=${esc(v)}&k=${k}">Connect ${esc(POS.adapterFor(v).label)}</a>`
+      : `<p class="sub" style="color:var(--warn)">${esc(POS.adapterFor(v).label)} is not switched on for NUM yet (${esc(POS.posNeeds(env, v).join("; "))}).</p>`)).join("")}
+    <p class="sub" style="margin-top:8px">${esc(POS.adapterFor("square").SELLER_NOTE)}</p>
+    <p class="sub">Lightspeed next; Toast needs a partner agreement.</p>`
   : `
     <p class="sub" style="margin-top:4px">${esc(conn.vendor)} &middot;
       ${conn.usable ? "connected" : esc(conn.state === "needs_reauth" ? "needs reconnecting" : conn.state)}
@@ -9543,8 +9542,10 @@ async function posStart(req, env, url) {
       Nothing was changed &mdash; staff can keep typing the bill into the console as they do now.</p>`, "NUM"), 503);
   }
   // The same signed, 30-minute state as the Stripe connect flow: without it
-  // anyone could attach THEIR till to SOMEBODY ELSE'S venue.
-  const state = await CONNECT.signState(env, `${biz.id}:pos`);
+  // anyone could attach THEIR till to SOMEBODY ELSE'S venue. The vendor rides
+  // in the state because Clover's callback does not tell us which app it came
+  // from, and guessing "square" would send a Clover code to Square's endpoint.
+  const state = await CONNECT.signState(env, `${biz.id}:pos:${vendor}`);
   const to = POS.adapterFor(vendor).authorizeUrl(env, { state, origin: url.origin });
   return new Response(null, { status: 302, headers: { location: to, "cache-control": "no-store" } });
 }
@@ -9558,15 +9559,24 @@ async function posCallback(req, env, url) {
       <p class="note">Nothing was changed.</p>`, "NUM"), 400);
   }
   const signed = await CONNECT.verifyState(env, q.get("state"));
-  const businessId = signed && signed.endsWith(":pos") ? signed.slice(0, -4) : null;
-  if (!businessId || !q.get("code")) {
+  const parts = String(signed || "").split(":");
+  // <businessId>:pos:<vendor> — anything else was not issued by us.
+  const businessId = parts.length === 3 && parts[1] === "pos" ? parts[0] : null;
+  const vendor = businessId ? parts[2] : null;
+  if (!businessId || !POS.adapterFor(vendor) || !q.get("code")) {
     return HTML(payShell(`<h1>That connect link has expired</h1>
       <p class="lede">Start again from your console's Pay page. Nothing was changed.</p>`, "NUM"), 400);
   }
   try {
-    const t = await POS.adapterFor("square").exchangeCode(env, { code: q.get("code"), origin: url.origin });
+    const t = await POS.adapterFor(vendor).exchangeCode(env, {
+      code: q.get("code"),
+      origin: url.origin,
+      // Clover hands the merchant back on the callback; Square does not, and
+      // reports it on the token instead. Passing both costs nothing.
+      merchantId: q.get("merchant_id") || null,
+    });
     await POS.saveConnection(env, businessId, {
-      vendor: "square", merchantId: t.merchant_id, token: t.access_token,
+      vendor, merchantId: t.merchant_id, token: t.access_token,
       refresh: t.refresh_token, expiresAt: t.expires_at,
     });
   } catch (e) {

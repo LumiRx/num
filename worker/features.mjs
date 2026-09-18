@@ -620,6 +620,22 @@ export const FEATURES = Object.freeze([
     },
   },
   {
+    id: 'autopay',
+    plan: 'free',
+    entitlement: null,
+    name: 'NUM just pays',
+    does: 'Bills under a limit the member set are paid without a tap — on the venue\'s own Stripe account, like every other NUM bill.',
+    needs: ['STRIPE_SECRET_KEY', 'a member who opted in', 'a venue with a connected Stripe account'],
+    ready: (env) => has(env, 'STRIPE_SECRET_KEY'),
+    surface: 'WALLET → auto-pay · BillSheet',
+    code: ['worker/autopay.mjs', 'worker/billpay.mjs', 'worker/migrations/0042_autopay.sql'],
+    sop: {
+      on: 'Run 0042. Nothing else: it rides on the Stripe key that is already there. A member saves a card once (SetupIntent, 3DS at save time), sets a limit, and agrees to the mandate — which is stored with the row, because a mandate you cannot produce afterwards is a mandate you did not take.',
+      check: 'Turn it on with a low cap, open a bill under it, and it should pay without a tap; raise the bill above the cap and the buttons should come back. num_autopay_attempts should have a row either way.',
+      broken: 'This is the most dangerous thing in the product and it is built to fail towards the tap. It is opt-in, capped (HARD_CAP_MINOR, clamped server-side), limited per day, and every attempt is logged for the person whose money it is. The card is CLONED onto the venue\'s account for one charge — never a destination charge, because that would put the money through NUM. An issuer asking for the cardholder is the ordinary case, not an outage: it hands back to the tap and NEVER retries. If in doubt, switch it off — a guest tapping to pay is what happens today.',
+    },
+  },
+  {
     id: 'membership',
     plan: 'free',
     entitlement: null,

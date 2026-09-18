@@ -41,8 +41,9 @@
  */
 
 import * as square from './square.mjs';
+import * as clover from './clover.mjs';
 
-export const ADAPTERS = Object.freeze({ square });
+export const ADAPTERS = Object.freeze({ square, clover });
 
 export const vendors = () => Object.keys(ADAPTERS);
 export const adapterFor = (vendor) => ADAPTERS[String(vendor ?? '').toLowerCase()] ?? null;

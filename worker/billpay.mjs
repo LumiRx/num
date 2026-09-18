@@ -45,6 +45,7 @@ import { RAILS, railsFor, venueRails, checkoutTypesFor, guestFromRequest, action
 // close the check. One module, bundled into both, rather than a second copy
 // that can disagree about what "closed" means.
 import { recordExternalPayment } from '../growth/pos/index.mjs';
+import { attemptAutoPay } from './autopay.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -289,7 +290,7 @@ export async function refundBill(env, tokenValue, { amountMinor = null, reason =
 /* ── routes: /api/bill/… ──────────────────────────────────────────────────── */
 
 export async function handleBill(request, env, path) {
-  const m = path.match(/^\/([A-Z0-9]{4,40})(?:\/(checkout|rails))?\/?$/i);
+  const m = path.match(/^\/([A-Z0-9]{4,40})(?:\/(checkout|rails|autopay))?\/?$/i);
   if (!m) return json({ error: 'not found' }, 404);
   const token = m[1].toUpperCase();
   const sub = m[2] || 'rails';
@@ -303,6 +304,38 @@ export async function handleBill(request, env, path) {
       return json({ error: 'could not read this bill right now' }, 503);
     }
     if (!out) return json({ error: 'unknown bill code' }, 404);
+    return json(out);
+  }
+
+  /* ── POST /api/bill/<token>/autopay ────────────────────────────────────
+   *
+   * The app asks; the server decides. Every guard lives in autopay.mjs — opted
+   * in, under the member's own cap, same currency, under the daily ceiling,
+   * venue connected — and a no is always a specific no so the sheet can say
+   * which one. A refusal is a 200: "we did not pay this" is an answer, not an
+   * error, and the guest is simply back at the buttons.
+   *
+   * A POST, not a side effect on the GET that renders the sheet. A screen
+   * being drawn must never move somebody's money. */
+  if (sub === 'autopay' && request.method === 'POST') {
+    const me = String(url.searchParams.get('me') ?? '').slice(0, 64);
+    if (!me) return json({ error: 'who?' }, 401);
+    const bill = await billFor(env, token);
+    if (!bill) return json({ error: 'unknown bill code' }, 404);
+    if (bill.state !== 'open') return json({ ok: false, tap: true, why: 'not_open' });
+    if (!bill.fixed || !bill.amount_minor) return json({ ok: false, tap: true, why: 'no_amount' });
+    let venue;
+    try { venue = await venueRails(env, bill.business_id); } catch (e) {
+      console.warn('[billpay] autopay venue read', e?.message);
+      return json({ ok: false, tap: true, why: 'venue_unreadable' });
+    }
+    const fee = await feeForBill(env, bill);
+    const out = await attemptAutoPay(env, { memberId: me, bill, venue, feeMinor: fee.minor });
+    if (out.ok) {
+      await env.DB.prepare(
+        'UPDATE num_paylinks SET charged_via = COALESCE(charged_via, ?2), application_fee_minor = COALESCE(application_fee_minor, ?3) WHERE token = ?1',
+      ).bind(bill.token, 'autopay', fee.minor).run().catch(() => null);
+    }
     return json(out);
   }
 

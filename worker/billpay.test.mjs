@@ -256,3 +256,46 @@ test('a till that will not close the check never turns a paid bill into a failed
     assert.equal(d.prepare("SELECT pos_closed_at FROM num_paylinks WHERE token='WALKIN'").get().pos_closed_at, null);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('POST /api/bill/<token>/autopay pays on the venue account, and a refusal is a 200 that says why', async () => {
+  const { d, env } = realDb();
+  d.exec(`CREATE TABLE num_member_autopay (member_id TEXT PRIMARY KEY, stripe_customer_id TEXT,
+    payment_method_id TEXT, cap_minor INTEGER, currency TEXT, state TEXT, mandate_text TEXT,
+    mandate_at TEXT, last_used_at TEXT, created_at TEXT, updated_at TEXT);
+    CREATE TABLE num_autopay_attempts (id TEXT PRIMARY KEY, member_id TEXT, token TEXT, business_id TEXT,
+      amount_minor INTEGER, currency TEXT, state TEXT, reason TEXT, payment_intent_id TEXT,
+      created_at TEXT DEFAULT (datetime('now')));
+    INSERT INTO num_member_autopay (member_id,stripe_customer_id,payment_method_id,cap_minor,currency,state)
+      VALUES ('m1','cus_1','pm_1',10000,'USD','on');`);
+
+  // Anonymous callers get nothing, and a GET can never move money.
+  assert.equal((await handleBill(req('https://app.itsnum.com/api/bill/BILL1/autopay', { method: 'POST' }), env, '/BILL1/autopay')).status, 401);
+  assert.equal((await handleBill(req('https://app.itsnum.com/api/bill/BILL1/autopay?me=m1'), env, '/BILL1/autopay')).status, 404,
+    'a GET on this path is not a route — drawing a screen must not pay a bill');
+
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), headers: init.headers, body: String(init.body ?? '') });
+    if (String(url).endsWith('/payment_methods')) return new Response(JSON.stringify({ id: 'pm_clone' }), { status: 200 });
+    return new Response(JSON.stringify({ id: 'pi_a', status: 'succeeded' }), { status: 200 });
+  };
+  try {
+    const r = await handleBill(req('https://app.itsnum.com/api/bill/BILL1/autopay?me=m1', { method: 'POST' }), env, '/BILL1/autopay');
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).ok, true);
+    assert.equal(calls[0].headers['Stripe-Account'], 'acct_venue');
+    // The fee mirrors the ledger: 10% of 84.50 on a verified booking.
+    assert.match(decodeURIComponent(calls[1].body), /application_fee_amount=845/);
+    assert.equal(d.prepare("SELECT charged_via FROM num_paylinks WHERE token='BILL1'").get().charged_via, 'autopay');
+
+    // Over the cap: a 200 that says which no it is.
+    const over = await handleBill(req('https://app.itsnum.com/api/bill/WALKIN/autopay?me=m1', { method: 'POST' }), env, '/WALKIN/autopay');
+    d.prepare("UPDATE num_member_autopay SET cap_minor=100 WHERE member_id='m1'").run();
+    const body = await (await handleBill(req('https://app.itsnum.com/api/bill/WALKIN/autopay?me=m1', { method: 'POST' }), env, '/WALKIN/autopay')).json();
+    assert.equal(body.ok, false);
+    assert.equal(body.tap, true);
+    assert.equal(body.why, 'over_cap');
+    assert.equal(over.status, 200);
+  } finally { globalThis.fetch = realFetch; }
+});

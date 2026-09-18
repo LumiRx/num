@@ -63,6 +63,7 @@ import { handleEmail } from './email.mjs';
 import { handlePay, payMode } from './pay.mjs';
 import { handleBill, handleConnectWebhook } from './billpay.mjs';
 import { handleWallet } from './privy.mjs';
+import { handleAutopay } from './autopay.mjs';
 import { handlePlacePhotos } from './placephotos.mjs';
 import { handleGiveaways } from './giveaways.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
@@ -2937,6 +2938,14 @@ export default {
     }
     // A bill code's rails and its Stripe Checkout hop. Anonymous by design:
     // the guest's camera opened /p/<token> and the token is the credential.
+    // A member's capped standing permission for NUM to pay a bill without a
+    // tap. Opt-in, and the one-tap path never goes away — see autopay.mjs.
+    if (url.pathname.startsWith('/api/autopay')) {
+      const res = await handleAutopay(request, env, url.pathname.slice('/api/autopay'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     // A member's own Privy wallet. Read is public-to-the-member; creating one
     // is a POST and is gated on a verified phone inside privy.mjs, never here.
     if (url.pathname.startsWith('/api/wallet')) {

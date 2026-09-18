@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 18:29 UTC from 29 entries._
+_Built 2026-09-18 18:39 UTC from 30 entries._
 
 ## Deployed right now
 
@@ -17,8 +17,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | 🟢 up to date (2026-09-18 07:42) |
-| num-app | 🔴 **STALE** — 1 file changed since it shipped |
-| num-growth | 🔴 **STALE** — 2 files changed since it shipped |
+| num-app | 🔴 **STALE** — 6 files changed since it shipped |
+| num-growth | 🔴 **STALE** — 4 files changed since it shipped |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -35,6 +35,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - 🟡 **bill photo** — worker/billphoto.mjs - staff photograph the paper bill and the total fills the Amount box. The Thailand path: Ocha/FoodStory/StoreHub have no public API and a large share of Thai restaurants run on a paper slip, so growth/pos can never help them. THE MODEL PROPOSES, STAFF CONFIRM, THE GUEST NEVER SETS THE AMOUNT - nothing here mints a code; that is still the button a human presses, because billqr.mjs's case that a venue cannot under-report rests on a person being accountable for the figure. A read below MIN_CONFIDENCE (0.75) is refused rather than shown, because staff typing four digits is never wrong. Currency comes from num_business_profiles, never the photograph (a slip reading 2,400 in Phuket is baht; a model calling it dollars multiplies the bill by 35). The photograph is NEVER stored - only the raw answer, confidence and a SHA-256, because a restaurant bill can carry a guest's name and a card's last four. Staff's typed figure wins over the model's and the difference is recorded in the corrected column, which over a few hundred bills is the only honest measure of whether this beats typing. Anthropic vision via the same pattern as growth/fleetvision.mjs. Console: 'Photograph the bill instead' on the tables page, back camera via capture=environment, downscaled to 1600px in the browser before upload (restaurant wifi). Routes /api/venue/bill/photo + /confirm, bill permission. Migration 0041 (num_bill_proposals) PENDING. features.mjs: billphoto. 6,252 tests green. NOT SHIPPED. Needs 0041 run and ANTHROPIC_API_KEY on num-growth.
   _claude, 2026-09-18 18:29_
+- 🟡 **clover and autopay** — Clover adapter + capped auto-pay. growth/pos/clover.mjs: the second till, and the one that proves the registry earns its keep - Clover disagrees with Square about everything (GET+query vs POST+filter, an external tender id you must look up per merchant vs a first-class EXTERNAL source, total-minus-payments vs net_amount_due_money) and none of it escapes the adapter. v2 OAuth with expiring access AND refresh tokens, unix expiries converted to ISO. pickTender NEVER falls back to cash - a NUM payme
+  _claude, 2026-09-18 18:39_
 - 🟡 **num-expert-kit** — worker/scoutkit.mjs: three print-ready sheets per Expert at /api/scouts/kit?code=CODE — business one-pager, counter cards 4-up, pitch+objections card. Personalised: every sheet carries the Expert's code and a QR of itsnum.com/s/CODE drawn by worker/qr.mjs. Verified by decoding a render: 28.7mm on A4, resolves correctly. Prices copied verbatim from public/flyers/business; sample answer names no real venue (the live flyer names three — flagged to Dre). Linked from the dashboard. 15 tests.
   _claude, 2026-09-18 04:19_
 - 🟡 **num-expert-leads** — 0036 num_scout_leads: an Expert can add a shop they found themselves and work it. A lead earns nothing, spends no cap and reserves nothing — promoteLead() calls the same introduce() so the cap and first-come still apply, asserted by test. Dashboard counts leads beside businesses, never inside them. Add form and state list on /scout/. 19 lead tests, 5915 suite green.

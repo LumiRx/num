@@ -62,3 +62,45 @@ export async function loadBill(token: string): Promise<{ ok: true; view: BillVie
 export function startRail(rail: BillRail): void {
   window.location.assign(rail.action);
 }
+
+/**
+ * Ask the server to pay this bill without a tap.
+ *
+ * The app only ASKS. Every guard — opted in, under the member's own cap, same
+ * currency, under the daily ceiling, venue connected — lives in
+ * worker/autopay.mjs, because a limit the client enforces is not a limit.
+ *
+ * A refusal is not an error: `tap` means "show them the buttons", which is
+ * where a guest already was before any of this existed.
+ */
+export interface AutoPayResult {
+  ok: boolean;
+  tap?: boolean;
+  why?: 'off' | 'no_card' | 'no_amount' | 'other_currency' | 'over_cap' | 'too_many_today'
+    | 'venue_not_connected' | 'needs_authentication' | 'declined' | 'card_unavailable'
+    | 'not_completed' | 'not_open' | 'venue_unreadable';
+  cap_minor?: number;
+}
+
+export async function tryAutoPay(token: string, meId: string): Promise<AutoPayResult> {
+  try {
+    const r = await fetch(apiUrl(`/api/bill/${encodeURIComponent(token)}/autopay?me=${encodeURIComponent(meId)}`), { method: 'POST' });
+    if (!r.ok) return { ok: false, tap: true };
+    return (await r.json()) as AutoPayResult;
+  } catch {
+    return { ok: false, tap: true };
+  }
+}
+
+/** Why it did not pay, in a sentence rather than a code. */
+export function autoPayNote(r: AutoPayResult): string | null {
+  switch (r.why) {
+    case 'over_cap': return 'Over your auto-pay limit — pay it below.';
+    case 'needs_authentication': return 'Your bank wants to check this one.';
+    case 'declined': case 'card_unavailable': return 'Your saved card did not go through.';
+    case 'other_currency': return 'This bill is in another currency, so it needs a tap.';
+    case 'too_many_today': return 'That is your auto-pay limit for today.';
+    case 'venue_not_connected': case 'venue_unreadable': return null;
+    default: return null;
+  }
+}

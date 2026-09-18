@@ -26,10 +26,10 @@
     "0037_fleet_intake.sql": "8babc65605dd1b26d4bc3d973e19fca3773feb81bc295472806287aa3c044be2",
     "0038_client_file.sql": "a9d525b09219b5a139be444296621c9bbf3e1654844867aa0d24f4a0a5f1b8fc",
     "0039_wallets_and_pos.sql": "b6a1a1b35022d9f0b5e36ee4edc80ba1881790fc3f4c63bc890348d88b82a587",
-    "0040_place_photos.sql": "38048f9f773487154333134d583b068ef12c91cf4ee23dad2ca6d71ee7a547a9"
+    "0040_place_photos.sql": "38048f9f773487154333134d583b068ef12c91cf4ee23dad2ca6d71ee7a547a9",
+    "0041_bill_proposals.sql": "500ac161b2446051686a46fb27980ca9c598e2046f9fe5f8608be91023ffccf7",
+    "0042_autopay.sql": "94787fcc654a4cdf17f01552dfa7040637f6b0422cf09c3be4a4e10fee463db8"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": [
-    "0041_bill_proposals.sql"
-  ]
+  "pending": []
 }

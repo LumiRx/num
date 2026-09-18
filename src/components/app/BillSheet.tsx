@@ -12,7 +12,7 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { XIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
-import { loadBill, startRail, type BillView, type BillRail } from '../../lib/bill';
+import { loadBill, startRail, tryAutoPay, autoPayNote, type BillView, type BillRail } from '../../lib/bill';
 import { openTab } from '../../lib/tabs';
 
 const BADGE: Record<string, string> = {
@@ -29,14 +29,32 @@ export default function BillSheet() {
   const [view, setView] = useState<BillView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Auto-pay, if this member turned it on. The server decides; this only asks
+  // once per opened bill and shows whichever answer comes back.
+  const [auto, setAuto] = useState<'trying' | 'paid' | null>(null);
+  const [autoNote, setAutoNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
-    setView(null); setErr(null); setBusy(null);
+    setView(null); setErr(null); setBusy(null); setAuto(null); setAutoNote(null);
     let alive = true;
-    void loadBill(token).then((r) => {
+    void loadBill(token).then(async (r) => {
       if (!alive) return;
-      if (r.ok) setView(r.view); else setErr(r.status === 404 ? t('This code is not one of ours. Nothing was charged.') : r.error);
+      if (!r.ok) { setErr(r.status === 404 ? t('This code is not one of ours. Nothing was charged.') : r.error); return; }
+      setView(r.view);
+      // Only for a real, unpaid, fixed-amount bill, and only for a signed-in
+      // member. Everything else is a tap, exactly as it was before.
+      const b = r.view.bill;
+      if (!me?.id || b.state !== 'open' || !b.fixed) return;
+      setAuto('trying');
+      const out = await tryAutoPay(token, me.id);
+      if (!alive) return;
+      if (!out.ok) { setAuto(null); setAutoNote(autoPayNote(out)); return; }
+      setAuto('paid');
+      // Re-read rather than assuming: the receipt a guest shows staff should be
+      // the server's word that this is settled, not this screen's optimism.
+      const again = await loadBill(token);
+      if (alive && again?.ok) setView(again.view);
     });
     return () => { alive = false; };
   }, [token]);
@@ -85,8 +103,15 @@ export default function BillSheet() {
           </div>
         )}
 
-        {bill && bill.state === 'open' && bill.fixed && (
+        {auto === 'trying' && (
+          <div style={{ fontSize: 13, color: 'var(--ink-60)', marginTop: 12, lineHeight: 1.55 }}>{t('Paying this for you…')}</div>
+        )}
+
+        {bill && bill.state === 'open' && bill.fixed && auto !== 'trying' && (
           <>
+            {autoNote && (
+              <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 12, lineHeight: 1.5 }}>{autoNote}</div>
+            )}
             <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 12 }}>{t('How would you like to pay?')}</div>
             <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
               {rails.length === 0 && (

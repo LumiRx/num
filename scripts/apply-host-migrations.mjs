@@ -152,6 +152,10 @@ const FILES = [
   // A figure read off a photo of a paper bill, waiting for staff to confirm.
   // One table and one index, both IF NOT EXISTS, so a second pass is a no-op.
   'worker/migrations/0041_bill_proposals.sql',
+  // A member's capped standing permission for NUM to pay a bill without a tap,
+  // plus the attempt log that enforces the per-day ceiling. Two tables and one
+  // index, all IF NOT EXISTS.
+  'worker/migrations/0042_autopay.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
