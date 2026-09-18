@@ -1911,7 +1911,13 @@ async function prefsWrite(env, req) {
 // double-entered into num_star_moves so a balance can always be reconstructed
 // from the log rather than trusted on its own.
 
-const WELCOME_STARS = 100;
+// ★5, NOT ★100 (18 Sep 2026). At the 1:1 peg a hundred Stars is a hundred
+// dollars of in-app credit minted for anyone who types in a phone number —
+// "the stars should be at 5" was Dre reading the wallet and doing the sum. The
+// grant is still unspendable on a membership and never cashable (PROMO_KINDS),
+// so it was never money out of the door; it was a number that made the wallet
+// lie about what a new person had.
+const WELCOME_STARS = 5;
 
 /**
  * Credit a new member their welcome balance exactly once.

@@ -202,10 +202,10 @@ export function freshState(): AppState {
     here: null,
     onboarded: false,
     profile: {},
-    stars: 100, // welcome stars — enough to feel the payrail, not enough to matter
+    stars: 5, // welcome stars — enough to feel the payrail, not enough to matter (★5 since 18 Sep 2026; the server is the truth)
     photosOn: false,
     billPaid: false,
-    txns: [{ id: 't0', t: 'Welcome stars ★100', meta: 'on the house', amt: '+★100', dir: 1 }],
+    txns: [{ id: 't0', t: 'Welcome stars ★5', meta: 'on the house', amt: '+★5', dir: 1 }],
     activity: [],
     meetings: [],
     memories: [],
@@ -235,6 +235,13 @@ export function persistable(s: AppState) {
     // The turn in flight and the page that is open are this launch's business only.
     // savedFlights is NOT here: a fare somebody kept must survive closing the app.
     thinkingLine, featureOpen, eventView, pendingAsk, nightlifeOpen,
+    // Three that were missed, found by a sheet reopening itself hours later.
+    // deleteOpen is the worst of them: a guest who opened "Delete my account",
+    // thought better of it and closed the app came back INTO the confirmation.
+    // researchBusy and researchError are this launch's business for the same
+    // reason a spinner restored from yesterday spins forever. The RUN itself
+    // (research) is deliberately kept — see resumeResearch().
+    researchOpen, researchBusy, researchError, contactOpen, deleteOpen,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.

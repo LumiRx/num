@@ -50,35 +50,39 @@ beforeEach(() => {
   env = { DB: d1(db) };
 });
 
+// ★5 since 18 Sep 2026 — see WELCOME_STARS in social.mjs for why not 100.
+const WELCOME = 5;
+
 describe('the welcome grant', () => {
+
   test('a brand-new member is credited', async () => {
     await ensureBalance(env, 'mem_new');
-    assert.equal(balance('mem_new'), 100);
-    assert.equal(moves('mem_new'), 100);
+    assert.equal(balance('mem_new'), WELCOME);
+    assert.equal(moves('mem_new'), WELCOME);
   });
 
   test('THE BUG: a member who paid first is still credited', async () => {
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_paid', 500)`);
     db.exec(`INSERT INTO num_star_moves (id, member_id, delta, kind) VALUES ('buy','mem_paid',500,'purchase')`);
     await ensureBalance(env, 'mem_paid');
-    assert.equal(moves('mem_paid'), 600, 'the ledger records the grant');
-    assert.equal(balance('mem_paid'), 600, 'and the balance actually moved — this is what regressed');
+    assert.equal(moves('mem_paid'), 500 + WELCOME, 'the ledger records the grant');
+    assert.equal(balance('mem_paid'), 500 + WELCOME, 'and the balance actually moved — this is what regressed');
   });
 
   test('calling it twice never grants twice', async () => {
     await ensureBalance(env, 'mem_new');
     await ensureBalance(env, 'mem_new');
     await ensureBalance(env, 'mem_new');
-    assert.equal(balance('mem_new'), 100);
-    assert.equal(moves('mem_new'), 100);
+    assert.equal(balance('mem_new'), WELCOME);
+    assert.equal(moves('mem_new'), WELCOME);
   });
 
   test('a member who received a transfer before signing in is still credited', async () => {
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_got', 25)`);
     db.exec(`INSERT INTO num_star_moves (id, member_id, delta, kind) VALUES ('in','mem_got',25,'receive')`);
     await ensureBalance(env, 'mem_got');
-    assert.equal(balance('mem_got'), 125);
-    assert.equal(moves('mem_got'), 125);
+    assert.equal(balance('mem_got'), 25 + WELCOME);
+    assert.equal(moves('mem_got'), 25 + WELCOME);
   });
 
   test('the invariant, stated once: balance equals the sum of the moves', async () => {
@@ -136,15 +140,15 @@ describe('the rule for when Stars pay a venue', () => {
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_g', 0)`);
     await ensureBalance(env, 'mem_g');
     const gift = await spendable(env, 'mem_g');
-    assert.equal(gift.balance, 100);
+    assert.equal(gift.balance, WELCOME);
     assert.equal(gift.spendable, 0, 'a pure welcome balance can spend nothing outward');
-    assert.equal(gift.promo_locked, 100);
+    assert.equal(gift.promo_locked, WELCOME);
 
     db.exec(`INSERT INTO num_star_moves (id, member_id, delta, kind) VALUES ('buy','mem_g',500,'purchase')`);
-    db.exec(`UPDATE num_star_balances SET stars = 600 WHERE member_id='mem_g'`);
+    db.exec(`UPDATE num_star_balances SET stars = ${500 + WELCOME} WHERE member_id='mem_g'`);
     const bought = await spendable(env, 'mem_g');
     assert.equal(bought.spendable, 500, 'bought Stars spend; the gift still does not');
-    assert.equal(bought.promo_locked, 100);
+    assert.equal(bought.promo_locked, WELCOME);
   });
 
   test('every place Stars are DEBITED is on the reviewed list', async () => {
