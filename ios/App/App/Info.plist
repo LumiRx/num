@@ -81,9 +81,9 @@
 	     Any new media input needs its matching usage description added here
 	     BEFORE it ships. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Num uses the camera so you can take a profile picture.</string>
+	<string>Num uses the camera for your profile picture and for photos of places you visit, which are reviewed before they appear.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Num uses your photo library so you can choose a profile picture.</string>
+	<string>Num uses your photo library so you can choose a profile picture or a photo of a place you visited.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>
