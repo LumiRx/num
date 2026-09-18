@@ -64,6 +64,7 @@ import { handlePay, payMode } from './pay.mjs';
 import { handleBill, handleConnectWebhook } from './billpay.mjs';
 import { handleWallet } from './privy.mjs';
 import { handlePlacePhotos } from './placephotos.mjs';
+import { handleGiveaways } from './giveaways.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
 import { handleSmsInbound, handleSmsStatus, handleInboxRead, handleEmailIn } from './sms.mjs';
 import { handleCashout } from './cashout.mjs';
@@ -2948,6 +2949,14 @@ export default {
     // verified contact, checked inside; review routes need X-Admin-Key.
     if (url.pathname.startsWith('/api/photos')) {
       const res = await handlePlacePhotos(request, env, url.pathname.slice('/api/photos'.length) || '/', url);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // What giveaways are live and whether this member is in (giveaways.mjs).
+    // Entering goes through the same recordEntry the PACKS code uses.
+    if (url.pathname.startsWith('/api/giveaways')) {
+      const res = await handleGiveaways(request, env, url.pathname.slice('/api/giveaways'.length) || '/', url);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

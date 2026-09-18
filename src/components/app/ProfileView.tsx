@@ -26,6 +26,7 @@ import DangerZone from './DangerZone';
 import IdentityCard from './IdentityCard';
 import ContactCard from './ContactCard';
 import ConnectionsCard from './ConnectionsCard';
+import GiveawaysCard from './GiveawaysCard';
 import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
@@ -442,6 +443,11 @@ export default function ProfileView() {
           </div>
         )}
       </Collapsible>
+
+      {/* Giveaways — the Friday pack draw today, whatever is live tomorrow.
+          The card lists from the server, so a new giveaway needs no app
+          release; it renders nothing when nothing is running. */}
+      <GiveawaysCard heading={<Group>{t('GIVEAWAYS')}</Group>} />
 
       <Group>{t('YOUR NUM')}</Group>
       <PeopleCard />
