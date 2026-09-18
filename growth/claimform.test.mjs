@@ -34,9 +34,25 @@ test('an absent phone is stored as NULL, never as an empty string', () => {
 });
 
 test('the form no longer demands a mobile number', () => {
+  // THIS TEST WAS CHECKING THE WRONG LOCK, AND PASSED FOR ELEVEN DAYS.
+  //
+  // It asserted that the phone input carries no `required` attribute and that
+  // the label says "(optional)". Both were true. The form is `novalidate`, so
+  // the attribute was never what stopped anybody — the submit handler was, and
+  // it went on refusing every claim with fewer than seven digits in the phone
+  // box the entire time. On 18 Sep 2026 Hugo's Restaurant hit exactly that and
+  // wrote in to ask whether they could claim without text bookings.
+  //
+  // The label and attribute checks stay because they are still true and still
+  // worth keeping true. The line that actually gates a submission is asserted
+  // in worker/businessonboarding.test.mjs, against the handler itself.
   const phoneField = form.slice(form.indexOf('id="phone"'), form.indexOf('id="phone"') + 200);
   assert.ok(!/\brequired\b/.test(phoneField), 'the phone input is still required in the browser');
   assert.match(form, /id="l-phone">Mobile number <span class="opt">/, 'the label does not say it is optional');
+  assert.ok(
+    !/if \(payload\.phone\.replace\(\/\[\^\\d\]\/g, ""\)\.length < 7\) return showError/.test(form),
+    'the submit handler still refuses every claim that has no phone number',
+  );
 });
 
 test('business name and contact name are still required', () => {

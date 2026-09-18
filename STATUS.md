@@ -29,6 +29,66 @@ _Last updated: 2026-09-18 06:30 UTC · **0.8.345 live on num-app** — all 12 TO
 - **Host side** — clients, requests (7 statuses), `.ics` calendar feed, products, host network, intros, messages, plan/billing, close account, integrity checker.
 - **Host client book** (12 Sep) — `GET /api/host/book`: every client with their work folded in, whose move it is, days waiting, quiet clients, plus the next 30 days. Console shows "Your week" above the book.
 
+## Business onboarding — 18 Sep 2026
+
+Hugo's Restaurant (West Hollywood, four LA sites) answered an invitation and
+named four things that were wrong. All four are fixed in the tree and **none of
+it is shipped**: migration `0043_business_onboarding.sql` is PENDING.
+
+- **The claim form was refusing the people it invited, again.** The mobile
+  requirement was removed on 15 Sep in the label and in the server, and never
+  in the browser: the submit handler still rejected any claim with fewer than
+  seven digits in the phone box, under a label reading "(optional)". The test
+  called `the form no longer demands a mobile number` passed the whole time —
+  it asserted the `required` ATTRIBUTE on a form that carries `novalidate`, so
+  it was checking a lock that was never holding the door. The form now asks how
+  bookings should arrive (**text / email / their own system / listed only**) and
+  validates only what the chosen answer needs.
+
+- **Why our mail lands in spam: it is the list, not the DNS.** SPF, DKIM and
+  DMARC are all published and verified on itsnum.com. September to the 18th:
+  **1,821 sent, 1,440 delivered, 381 bounced (20.9%), 207 of them permanent,
+  1,392 delayed.** Anything over ~2% hard bounces reads as a scraped list to
+  every large provider, and the 1,392 deferrals are them throttling us. A
+  bounce suppressed nothing and was never written back to `num_invites`, so the
+  bounce rate was not computable from our own database. `worker/bouncepolicy
+  .mjs` classifies (a full mailbox is not a dead address), suppresses
+  permanents, marks the lead `dead` — not `opted_out`, they did not refuse us —
+  and the invite drain now refuses to run above a 5% hard-bounce ceiling.
+  **Still Dre's to do: send bulk invites from a subdomain** (`MAIL_FROM_BULK`),
+  so outreach reputation and sign-in/booking reputation stop sharing a domain.
+
+- **Bookings by email, with one-tap accept/decline.** `worker/venuebookmail.mjs`
+  sends the venue the SAME signed links the SMS carries — `signBookingAnswer` is
+  imported, not reimplemented — landing on the same `/api/book/answer` handler.
+  Worth knowing: `partnerMayBeTexted` has never let a single partner text
+  through, because no venue has opted into `num_sms_consent` and it fails
+  closed. **Email is the first partner channel that works at all**; every
+  booking to date has been worked by hand.
+
+- **One company, several addresses.** `/v1/locations` read `num_place_owners`,
+  which CAN hold many places per business — but every claim door (`bizapi`
+  verifyClaim, `claim/worker.js` verify and its manual path) mints a fresh
+  `businesses` row with `uid('biz')`, unconditionally. **Nothing has ever
+  written a second location**, so the endpoint has answered "1" to everyone.
+  Locations cannot simply be merged: one profile row holds one address, phone
+  and timezone. `worker/bizgroup.mjs` is the layer above — each site keeps its
+  own claim, profile, settings and billing, and the group says which sites are
+  one company. Adding a sibling is proven by **that listing's own `numbiz_`
+  key**, so "add a location" cannot become a way to take one.
+
+- **Their system, read rather than asked about.** `worker/ressystem.mjs` detects
+  OpenTable, Resy, SevenRooms, Tock, Mews, Cloudbeds, Square and a dozen more
+  from a venue's own homepage, builds a prefilled handoff link, and queues what
+  we cannot yet integrate. `worker/integrationagent.mjs` works that queue hourly
+  and emails Dre **once a day and only** for blockers no agent can clear — a
+  partner agreement, a credential, a signature. OpenTable is the one real door:
+  it publishes a partner **Booking API** with a sandbox, docs at
+  docs.opentable.com, applications at
+  opentable.com/restaurant-solutions/api-partners/become-a-partner/, contact
+  API@opentable.com. That is Dre's, and it is where the venues that turn us
+  down for texting actually are.
+
 ## In flight
 
 - **Luxury asset layer** (12 Sep) — WIRED END TO END, awaiting Dre's deploy. Migration `0021`

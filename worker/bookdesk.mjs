@@ -91,7 +91,16 @@ CREATE INDEX IF NOT EXISTS idx_bookreq_member ON num_booking_requests(member_id,
 // Separate from SCHEMA because CREATE TABLE IF NOT EXISTS will not add a
 // column to a table that already exists — the reason a migration that looks
 // applied can silently do nothing.
-const MIGRATIONS = ['ALTER TABLE num_booking_requests ADD COLUMN place_id TEXT'];
+const MIGRATIONS = [
+  'ALTER TABLE num_booking_requests ADD COLUMN place_id TEXT',
+  // Which door this request actually went out of (18 Sep 2026). Before this
+  // the row recorded that a request existed and the response claimed whether
+  // a text was sent, and nothing durable said which — so "did the venue ever
+  // hear about this" was unanswerable a day later, for every booking ever
+  // taken. 'desk' is the honest value for the ones a human works.
+  'ALTER TABLE num_booking_requests ADD COLUMN sent_via TEXT',
+  'ALTER TABLE num_booking_requests ADD COLUMN handoff_url TEXT',
+];
 let ready = false;
 async function ensure(env) {
   if (ready || !env.DB) return;
@@ -290,11 +299,63 @@ export async function handleBooking(request, env, path) {
       clip(b.place_id, 120),
     ).run();
 
-    // Text the venue, if we have a number for it. If we don't, the request
-    // still exists — the concierge (or Dre, in the pilot) works the phone and
-    // answers through the same link a partner would have tapped.
+    /* ── THE DOOR THIS VENUE ASKED FOR ─────────────────────────
+     *
+     * Until 18 Sep 2026 there was one door — text the number — and a venue
+     * that does not take bookings by text never heard from us at all, while
+     * the guest was told the desk was "on it". Hugo's Restaurant in West
+     * Hollywood said so plainly: four sites, an established reservation
+     * system, no reservations by text message.
+     *
+     * So the channel is read before anything is sent, and each branch reports
+     * what actually happened rather than what we hoped. A venue with no row
+     * resolves to `sms`, which is exactly the behaviour that existed before
+     * this block — including, because of the consent gate above, sending
+     * nothing and leaving it to the desk.
+     */
+    const { channelFor, deliverable } = await import('./bookingchannel.mjs');
+    // MOST BOOKINGS CARRY NO place_id, and that is normal rather than an edge
+    // case: the concierge books by venue NAME whenever it is recommending
+    // somewhere the directory holds loosely or not at all, and `place_id` is
+    // documented above as optional and best-effort. channelFor answers null
+    // when it has nothing to look a venue up by — "we do not know who this is"
+    // is a real answer and should not be dressed up as a preference — so the
+    // caller supplies the historical default here, explicitly.
+    //
+    // Reaching straight for `channel.via` on that null threw a 500 on every
+    // booking without a place, which is the majority of them.
+    const channel = (await channelFor(env, { placeId: clip(b.place_id, 120) || null }))
+      ?? { via: 'sms', sms_to: null, email_to: null, booking_url: null, system_key: null, asked: false };
+    const route = deliverable(channel);
+
     let texted = false;
-    if (venuePhone) {
+    let emailed = false;
+    let handoff = null;
+    let via = 'desk';
+
+    if (route.via === 'email' && route.send) {
+      const { mailVenueBooking } = await import('./venuebookmail.mjs');
+      const sent = await mailVenueBooking(env, {
+        row: {
+          id, party_size: partySize, venue_name: venue,
+          on_date: clip(b.on_date, 20), at_time: clip(b.at_time, 8), note: clip(b.note, 200),
+        },
+        to: route.to, venueName: venue, guestName: member.name,
+      });
+      emailed = !!sent?.ok;
+      if (emailed) via = 'email';
+      else console.warn('[bookdesk] venue email not sent', id, sent?.reason);
+    } else if (route.via === 'handoff') {
+      // We are not taking this booking and we do not pretend to. The guest
+      // gets the venue's own page with what we already know filled in, and the
+      // row records that this is what we did. A handoff never reaches
+      // commission.mjs, because nothing was confirmed and nothing is owed.
+      const { handoffLink } = await import('./ressystem.mjs');
+      handoff = handoffLink(channel.system_key, channel.booking_url, {
+        party: partySize, date: b.on_date, time: b.at_time,
+      });
+      if (handoff) via = 'handoff';
+    } else if (channel.via === 'sms' && venuePhone) {
       const yes = await sign(env, id, 'confirmed');
       const no = await sign(env, id, 'declined');
       texted = await smsPartner(
@@ -305,13 +366,26 @@ export async function handleBooking(request, env, path) {
         `CONFIRM: ${origin}/api/book/answer?id=${id}&v=confirmed&t=${yes}\n` +
         `DECLINE: ${origin}/api/book/answer?id=${id}&v=declined&t=${no}`,
       );
+      if (texted) via = 'sms';
     }
-    return json({
-      ok: true, id, state: 'requested', texted,
-      note: texted
+
+    await env.DB.prepare('UPDATE num_booking_requests SET sent_via=?2, handoff_url=?3 WHERE id=?1')
+      .bind(id, via, handoff).run().catch(() => {});
+
+    // One sentence per outcome, and every one of them is true. The version
+    // this replaces had two, and the cheerful half told a guest the venue had
+    // their table on evenings when the consent gate had quietly sent nothing.
+    const note = emailed
+      ? 'The venue has it by email — you’ll hear the moment they answer.'
+      : texted
         ? 'The venue has it — you’ll hear the moment they answer.'
-        : 'Request logged — our desk is on it, you’ll hear as soon as it’s confirmed.',
-    });
+        : handoff
+          ? 'This one books on their own system — I’ve filled in what I know, tap through and it’s yours.'
+          : channel.via === 'none'
+            ? 'They don’t take bookings through me — worth calling them directly.'
+            : 'Request logged — our desk is on it, you’ll hear as soon as it’s confirmed.';
+
+    return json({ ok: true, id, state: 'requested', texted, emailed, via, handoff, note });
   }
 
   // ── Venue answers (the tapped link) ──────────────────────────────────

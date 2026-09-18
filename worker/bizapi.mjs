@@ -486,6 +486,30 @@ async function listLocations(env, businessId) {
   // that answers it — see its own note on why the limit has no gate yet.
   const { canAddLocation } = await import('./bizbilling.mjs');
   const room = await canAddLocation(env, businessId);
+  /* ── WHAT "LOCATIONS" ACTUALLY MEANT UNTIL 18 SEP 2026 ──────────────
+   *
+   * The query above reads num_place_owners, which CAN hold many places against
+   * one business_id. Nothing has ever written a second one. Every claim door
+   * in the codebase — bizapi verifyClaim, claim/worker.js's verify, and its
+   * manual-review path — mints a fresh `businesses` row with uid('biz') before
+   * inserting the owner row, unconditionally. So this endpoint was a read path
+   * over a write path that does not exist, and it has answered "1 location" to
+   * every business that ever called it.
+   *
+   * That is not an oversight to paper over. One profile row per business holds
+   * one address, one phone and one timezone, so four restaurants under one
+   * business id would share one profile and three of them would be described
+   * wrongly. The locations have to stay separate.
+   *
+   * What was missing is the layer above, and that is what `group` is. Each
+   * site keeps its own claim, profile, settings and billing; the group says
+   * which sites belong to the same company and who may manage them. A caller
+   * reading this endpoint now gets both facts without having to know that.
+   */
+  const { groupForBusiness, sitesFor } = await import('./bizgroup.mjs');
+  const group = await groupForBusiness(env, businessId);
+  const siblings = group ? await sitesFor(env, group.id) : [];
+
   return json({
     locations: results ?? [],
     count: (results ?? []).length,
@@ -493,7 +517,158 @@ async function listLocations(env, businessId) {
     plan: plan.tier,
     can_add: room.ok,
     at_limit_note: room.reason,
+    group: group
+      ? {
+        id: group.id,
+        name: group.name,
+        sites: siblings.map((x) => ({
+          business_id: x.business_id,
+          place_id: x.place_id,
+          name: x.display,
+          booking_via: x.booking_via ?? null,
+          is_this_one: x.business_id === businessId,
+        })),
+      }
+      : null,
+    group_note: group
+      ? null
+      : 'This listing is not part of a group. POST /v1/group with a name to start one, '
+        + 'then POST /v1/group/add with another listing\u2019s key to bring it in.',
   });
+}
+
+/* ── The group: one company, several addresses ────────────────────── */
+
+async function startGroup(env, auth, request) {
+  const b = await request.json().catch(() => ({}));
+  const name = String(b.name ?? '').trim().slice(0, 120);
+  if (!name) return err('no_name', 'Give the company a name — the one that covers all its locations.', 400);
+
+  const { groupForBusiness, createGroup, addSite } = await import('./bizgroup.mjs');
+  const already = await groupForBusiness(env, auth.businessId);
+  if (already) return err('already_grouped', `This listing is already part of “${already.name}”.`, 409);
+
+  const g = await createGroup(env, { name, by: auth.keyId });
+  if (!g.ok) return err('could_not_create', g.error, 400);
+  // `proven: true` is earned here and nowhere else in this file: the caller
+  // presented this listing's own key, which was issued only by a verified
+  // claim. That is the whole of the evidence, and it is enough for exactly
+  // this one site.
+  await addSite(env, g.id, {
+    businessId: auth.businessId, placeId: auth.placeId, by: auth.keyId, proven: true,
+  });
+  return json({ group: { id: g.id, name: g.name }, added: auth.businessId });
+}
+
+/**
+ * Bring a second listing into the group.
+ *
+ * THE PROOF IS THE OTHER LISTING'S OWN KEY. Not its id, not its name, not a
+ * checkbox saying "I own this too" — the key that only a verified claim on
+ * THAT listing can issue. So adding a location proves control of it exactly
+ * as claiming it did, and "add a location" cannot become a way to take one.
+ *
+ * It is also why this is genuinely easy for a real owner: they already have
+ * both keys, because they claimed both listings.
+ */
+async function addToGroup(env, auth, request) {
+  const b = await request.json().catch(() => ({}));
+  const otherKey = String(b.key ?? '').trim();
+  if (!otherKey) return err('no_key', 'Send the other listing\u2019s key as { "key": "numbiz_…" } — that is what proves you control it.', 400);
+
+  const other = await env.DB.prepare(
+    'SELECT id, business_id, revoked_at FROM num_biz_keys WHERE key_hash=?1',
+  ).bind(await sha256(otherKey)).first().catch(() => null);
+  if (!other || other.revoked_at) return err('bad_key', 'That key is not recognised, or it has been revoked.', 400);
+  if (other.business_id === auth.businessId) return err('same_listing', 'That is this listing\u2019s own key.', 400);
+
+  const { groupForBusiness, createGroup, addSite } = await import('./bizgroup.mjs');
+  let group = await groupForBusiness(env, auth.businessId);
+  if (!group) {
+    const name = String(b.name ?? '').trim().slice(0, 120);
+    if (!name) return err('no_group', 'Start the group first: POST /v1/group with a name.', 409);
+    const g = await createGroup(env, { name, by: auth.keyId });
+    await addSite(env, g.id, { businessId: auth.businessId, placeId: auth.placeId, by: auth.keyId, proven: true });
+    group = { id: g.id, name: g.name };
+  }
+
+  const owner = await env.DB.prepare(
+    `SELECT place_id FROM num_place_owners WHERE business_id=?1 AND revoked_at IS NULL
+      ORDER BY verified_at DESC LIMIT 1`,
+  ).bind(other.business_id).first().catch(() => null);
+
+  const out = await addSite(env, group.id, {
+    businessId: other.business_id, placeId: owner?.place_id ?? null,
+    label: String(b.label ?? '').trim().slice(0, 120) || null,
+    by: auth.keyId, proven: true,
+  });
+  if (!out.ok) {
+    return out.error === 'claimed_by_another_group'
+      ? err('claimed_by_another_group', 'That listing already belongs to a different company on NUM. A person has to sort that out — write to info@itsnum.com.', 409)
+      : err('could_not_add', out.error, 400);
+  }
+  const { sitesFor } = await import('./bizgroup.mjs');
+  return json({ group: { id: group.id, name: group.name }, sites: await sitesFor(env, group.id) });
+}
+
+/* ── How bookings reach this listing ─────────────────────────── */
+
+async function getBookingChannel(env, auth) {
+  if (!auth.placeId) return err('no_listing', 'This key is not bound to a listing yet.', 409);
+  const { channelFor } = await import('./bookingchannel.mjs');
+  const c = await channelFor(env, { placeId: auth.placeId, businessId: auth.businessId });
+  return json({
+    via: c.via,
+    // Straight from the column, so a caller can tell "they chose text" from
+    // "nobody ever asked them" — which is the difference between a preference
+    // and a default, and reporting one as the other is how a venue ends up
+    // described as having turned something down it was never offered.
+    asked: c.asked,
+    sms_to: c.sms_to, email_to: c.email_to,
+    system: c.system_name, booking_url: c.booking_url,
+    integration: c.integration,
+    options: {
+      sms: 'A text to a mobile. You tap accept or decline.',
+      email: 'An email to your reservations mailbox, with accept and decline in it. No login.',
+      own: 'We send the guest to your own booking page with the details filled in.',
+      none: 'Stay listed, and never be sent a booking.',
+    },
+  });
+}
+
+async function setBookingChannel(env, auth, request) {
+  if (!auth.placeId) return err('no_listing', 'This key is not bound to a listing yet.', 409);
+  const b = await request.json().catch(() => ({}));
+  const { recordClaimAnswer } = await import('./bookingchannel.mjs');
+  const out = await recordClaimAnswer(env, {
+    placeId: auth.placeId, businessId: auth.businessId,
+    via: String(b.via ?? ''),
+    systemName: b.system ? String(b.system).slice(0, 80) : null,
+    url: b.booking_url ? String(b.booking_url).slice(0, 400) : null,
+    smsTo: b.sms_to ? String(b.sms_to).slice(0, 32) : null,
+    emailTo: b.email_to ? String(b.email_to).slice(0, 160) : null,
+    by: auth.keyId,
+  });
+  if (!out.ok) {
+    const says = {
+      bad_channel: 'Choose one of: sms, email, own, none.',
+      email_required: 'Email bookings need an address to send them to.',
+      phone_required: 'Text bookings need a mobile number to send them to.',
+      bad_email: 'That address does not look like one we could deliver to.',
+      bad_url: 'That booking link does not look like a web address.',
+    };
+    return err(out.error, says[out.error] ?? 'That could not be saved.', 400);
+  }
+  // A venue that names a system it runs itself is a piece of work, not a
+  // dead end. The queue is what turns it into one.
+  if (out.channel?.via === 'own') {
+    const { requestIntegration } = await import('./ressystem.mjs');
+    await requestIntegration(env, {
+      systemKey: out.channel.system_key, systemName: out.channel.system_name || 'unnamed system',
+      placeId: auth.placeId, businessId: auth.businessId, bookingUrl: out.channel.booking_url,
+    }).catch(() => {});
+  }
+  return json({ ok: true, channel: out.channel });
 }
 
 /* ──────────────────────────────── router ───────────────────────────────── */
@@ -529,6 +704,10 @@ export async function handleBizApi(request, env, path) {
     return handleBizBilling(request, env, path.slice('/v1/billing'.length), auth);
   }
   if (path === '/v1/locations' && request.method === 'GET') return listLocations(env, auth.businessId);
+  if (path === '/v1/group' && post) return startGroup(env, auth, request);
+  if (path === '/v1/group/add' && post) return addToGroup(env, auth, request);
+  if (path === '/v1/booking-channel' && request.method === 'GET') return getBookingChannel(env, auth);
+  if (path === '/v1/booking-channel' && (post || request.method === 'PATCH')) return setBookingChannel(env, auth, request);
 
   // A key can be valid (the business is verified and onboarded) while still
   // having no place_id — num_place_owners rows are revocable, and a business
@@ -624,7 +803,11 @@ export function bizApiIndex() {
       { method: 'PATCH', path: '/v1/profile', auth: true, body: { hours: 'string', website: 'string', phone: 'string', cuisine: 'string', address: 'string', name: 'string', promo_text: 'string (paid plans only)' }, does: 'Change it.' },
       { method: 'GET', path: '/v1/insights?days=7', auth: true, does: 'How often Num surfaced you — lookback window depends on your plan.' },
       { method: 'GET', path: '/v1/insights?format=csv', auth: true, does: 'The same data as a CSV download. Paid plans only.' },
-      { method: 'GET', path: '/v1/locations', auth: true, does: 'Every listing this business owns.' },
+      { method: 'GET', path: '/v1/locations', auth: true, does: 'Every listing this business owns, and the other sites in its group.' },
+      { method: 'POST', path: '/v1/group', auth: true, body: { name: 'string \u2014 the company name that covers every location' }, does: 'Start a group and put this listing in it.' },
+      { method: 'POST', path: '/v1/group/add', auth: true, body: { key: 'string \u2014 the OTHER listing\u2019s numbiz_ key, which is what proves you control it', label: 'string, optional \u2014 what to call it in a list, e.g. "Studio City"' }, does: 'Bring another listing you have claimed into this group.' },
+      { method: 'GET', path: '/v1/booking-channel', auth: true, does: 'How NUM bookings reach you today, and whether anyone ever asked.' },
+      { method: 'POST', path: '/v1/booking-channel', auth: true, body: { via: 'sms | email | own | none', sms_to: 'string, when via=sms', email_to: 'string, when via=email', system: 'string, when via=own \u2014 e.g. OpenTable', booking_url: 'string, when via=own' }, does: 'Change it. "none" means listed but never sent a booking, and is honoured as an answer.' },
       { method: 'GET', path: '/v1/offerings', auth: true, does: 'What this business offers, with prices — the menu, treatments, rooms or tours.' },
       { method: 'POST', path: '/v1/offerings', auth: true, body: { id: 'string (omit to create)', name: 'string', description: 'string', section: 'string', price: 'string — omit or leave empty if it varies', price_note: 'string, e.g. "Market price", "From"', unit: 'item | person | night | hour | day | session | group', available: 'string, e.g. "Lunch only, 12-3"' }, does: 'Add or change one item. Currency comes from where the business is and cannot be set here.' },
       { method: 'POST', path: '/v1/offerings/hide', auth: true, body: { id: 'string' }, does: 'Stop Num mentioning it, without deleting it.' },

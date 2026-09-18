@@ -2190,6 +2190,49 @@ async function claims(req, env, ctx) {
 
   if (work.length) await env.DB.batch(work);
 
+  /* ── HOW THEY WANT BOOKINGS, RECORDED THE MOMENT THEY SAY IT ─────────
+   *
+   * The claim form asks (18 Sep 2026) and the answer has to land somewhere or
+   * asking was theatre. It is written onto the claim row always, and into the
+   * live channel table whenever a real listing is bound — so a venue that
+   * says "email us" is on email from that moment, not from whenever somebody
+   * gets round to approving the claim.
+   *
+   * A venue that names a booking system it runs itself also opens an
+   * integration request. That is the queue worked by worker/integrationagent
+   * .mjs, and it is the difference between knowing that four restaurants run
+   * SevenRooms and doing something about it.
+   *
+   * waitUntil, never awaited: a business must not wait on our bookkeeping, and
+   * none of this may fail their signup.
+   */
+  const bookingVia = String(b.booking_via || "").trim();
+  if (bookingVia) {
+    ctx.waitUntil((async () => {
+      const { recordClaimAnswer } = await import("../worker/bookingchannel.mjs");
+      const out = await recordClaimAnswer(env, {
+        claimId: ins?.meta?.last_row_id ?? null,
+        placeId: placeId || null,
+        via: bookingVia,
+        systemName: clean(b.booking_system, 80) || null,
+        url: cleanUrl(b.booking_url, 400) || null,
+        smsTo: hasPhone ? localE164(phone, req, b.country) : null,
+        emailTo: email || null,
+        by: email || contact || null,
+      });
+      if (bookingVia === "own" && out?.ok) {
+        const { requestIntegration } = await import("../worker/ressystem.mjs");
+        await requestIntegration(env, {
+          systemKey: out.channel?.system_key ?? null,
+          systemName: clean(b.booking_system, 80) || out.channel?.system_name || "unnamed system",
+          placeId: placeId || null,
+          venueName: business,
+          bookingUrl: out.channel?.booking_url ?? null,
+        });
+      }
+    })().catch((e) => console.log("booking channel", String(e).slice(0, 200))));
+  }
+
   // A business that claims its listing now hears back. Until 25 Aug 2026 it
   // got a green screen and silence — no record in its inbox that anything had
   // happened, nothing to forward to the owner, and no address to reply to.
@@ -10039,6 +10082,30 @@ WORKER.scheduled = async (event, env, ctx) => {
   const min = new Date(event.scheduledTime || Date.now()).getUTCMinutes();
   const hr  = new Date(event.scheduledTime || Date.now()).getUTCHours();
   if (min < 15 && hr % 6 === 0) ctx.waitUntil(securitySweep(env));
+
+  /* ── THE INTEGRATION QUEUE ───────────────────────────────────
+   *
+   * Two sweeps, deliberately on different clocks.
+   *
+   * The research pass runs hourly and moves rows the agent can move. It is
+   * cheap, it is idempotent, and nothing it does reaches a person.
+   *
+   * The alert pass runs ONCE A DAY, at 16:00 UTC (09:00 Los Angeles), and only
+   * ever mails about work no agent can do. Every escalation path in this
+   * codebase that ran on every tick has eventually woken somebody up over a
+   * dead mailbox — 12 Sep 2026, when one bounce declared the product down —
+   * and the fix each time was the same: record continuously, tell rarely, and
+   * never tell twice.
+   */
+  if (min < 15) ctx.waitUntil((async () => {
+    const { researchSweep } = await import('../worker/integrationagent.mjs');
+    await researchSweep(env).catch((e) => console.log('integration research', String(e).slice(0, 200)));
+  })());
+  if (hr === 16 && min < 15) ctx.waitUntil((async () => {
+    const { alertSweep } = await import('../worker/integrationagent.mjs');
+    const out = await alertSweep(env).catch((e) => ({ alerted: 0, reason: String(e).slice(0, 200) }));
+    if (out?.alerted) console.log('integration alert sent', out.alerted, 'via', out.via);
+  })());
 };
 export default WORKER;
 

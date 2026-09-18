@@ -156,6 +156,11 @@ const FILES = [
   // plus the attempt log that enforces the per-day ceiling. Two tables and one
   // index, all IF NOT EXISTS.
   'worker/migrations/0042_autopay.sql',
+  // How a venue takes a booking (sms, email, its own system, or not at all),
+  // which reservation system it already runs, and one account over several
+  // addresses. Five tables and their indexes, all IF NOT EXISTS, no ALTER,
+  // so a second pass is a no-op.
+  'worker/migrations/0043_business_onboarding.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

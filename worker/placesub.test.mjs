@@ -175,9 +175,16 @@ test('with no destination the fields are offered straight away', () => {
 });
 
 test('the page sends what the server reads', () => {
-  const submit = PAGE.slice(PAGE.indexOf('var payload = {'));
+  // Bounded by the object's own closing brace, not by a character count. It
+  // used to read `.slice(0, 1400)`, and on 18 Sep 2026 three new fields and a
+  // comment pushed `address:` past 1,400 characters — so a test about whether
+  // the page sends an address failed because of something else entirely. A
+  // window measured in characters is a window that moves when anyone edits
+  // above it.
+  const from = PAGE.indexOf('var payload = {');
+  const payload = PAGE.slice(from, PAGE.indexOf('\n    };', from));
   for (const f of ['address', 'website', 'category']) {
-    assert.match(submit.slice(0, 1400), new RegExp(`${f}:\\s+\\$\\("${f}"\\)\\.value`));
+    assert.match(payload, new RegExp(`${f}:\\s+\\$\\("${f}"\\)\\.value`));
   }
 });
 

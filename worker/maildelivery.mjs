@@ -195,11 +195,21 @@ export async function handleResendWebhook(request, env) {
               onboarded = 0
         WHERE onboard_ref = ?1`,
     ).bind(ref, Math.floor(Date.now() / 1000), why).run().catch(() => {});
-    if (to && type === 'email.complained') {
-      await env.DB?.prepare(
-        'INSERT OR IGNORE INTO num_suppressions (email, reason, note) VALUES (?1, ?2, ?3)',
-      ).bind(to, 'complaint', why).run().catch(() => {});
-    }
+    // EVERY bounce is recorded now, not only complaints (18 Sep 2026).
+    //
+    // What this branch used to do was suppress a complaint and forget a
+    // bounce. The consequence was measurable and was measured: 381 bounces in
+    // 1,821 sends on itsnum.com in a month, 207 of them permanent, none of
+    // them suppressed, none of them written back to `num_invites`. The
+    // database could not have told us our own bounce rate, and the reputation
+    // that pays for it also carries every sign-in code and every booking
+    // confirmation this product sends.
+    //
+    // recordBounce classifies first and suppresses only what can never work —
+    // a full mailbox is not a dead address — and marks the invite and the lead
+    // either way. See worker/bouncepolicy.mjs.
+    const { recordBounce } = await import('./bouncepolicy.mjs');
+    await recordBounce(env, { ref, to, type, data }).catch(() => {});
     // ── SEVERITY, AND WHY IT PAGED AS AN OUTAGE ─────────────────────────
     //
     // 12 Sep 2026, 18:45. One outreach address bounced —

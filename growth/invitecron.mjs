@@ -32,6 +32,7 @@
 import { generateInvite, riskOf, excludeReason, isFreemail } from '../scripts/invite_gen.mjs';
 import { INVITE_TEMPLATE } from './invitetemplate.mjs';
 import { sendBatch } from './resend.mjs';
+import { sendHealth } from '../worker/bouncepolicy.mjs';
 
 /* ── schema ──────────────────────────────────────────────────────────────── */
 
@@ -351,6 +352,27 @@ export async function drainInvites(env, event = {}) {
   const trip = await breakerState(env);
   if (trip && Date.now() - Date.parse(`${trip.tripped_at.replace(' ', 'T')}Z`) < BREAKER_COOLDOWN_MS) {
     return { sent: 0, reason: 'send path is broken — refusing to burn leads', error: String(trip.error).slice(0, 200) };
+  }
+
+  /* ── THE OTHER HALF OF THE BREAKER ──────────────────────────────
+   *
+   * The breaker above watches whether a send FAILS. A send into a mailbox
+   * that does not exist does not fail — it succeeds, and the damage arrives
+   * days later as a reputation nobody is watching. On 18 Sep 2026 that damage
+   * was 207 permanent bounces out of 1,821 sends, and the visible symptom was
+   * a restaurant owner having to press "trust sender" to read an invitation
+   * we had asked him to open.
+   *
+   * So the drain now also refuses to run when the recent HARD BOUNCE rate is
+   * over the ceiling. It is not silent: the reason names the number, because
+   * "paused" with no figure attached is a thing people override.
+   *
+   * It stays quiet while there is too little evidence to judge — a breaker
+   * that trips on three bounces in five sends stops a launch on noise.
+   */
+  const health = await sendHealth(env).catch(() => ({ ok: true, known: false }));
+  if (!health.ok) {
+    return { sent: 0, reason: 'bounce rate over ceiling — refusing to spend the domain', health };
   }
 
   const today = now.toISOString().slice(0, 10);
