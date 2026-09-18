@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 06:33 UTC from 19 entries._
+_Built 2026-09-18 06:34 UTC from 20 entries._
 
 ## Deployed right now
 
@@ -41,6 +41,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
+- 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
+  _claude, 2026-09-18 06:34_
 
 ## Live
 
