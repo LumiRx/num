@@ -39,6 +39,12 @@ import { stripeCall, verifyStripeSig } from './pay.mjs';
 import { settleBillCode, parseAmount } from './billqr.mjs';
 import { floorFor, markPaid } from './commission.mjs';
 import { RAILS, railsFor, venueRails, checkoutTypesFor, guestFromRequest, actionFor } from './payrails.mjs';
+// The till lives in growth/ because the venue console is served from
+// num-growth — but the Stripe webhook lands HERE, on num-app, so this is the
+// process that knows a bill was paid and therefore the only one that can
+// close the check. One module, bundled into both, rather than a second copy
+// that can disagree about what "closed" means.
+import { recordExternalPayment } from '../growth/pos/index.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -218,7 +224,37 @@ export async function handleConnectWebhook(request, env) {
         .bind(bill.token, String(s.payment_intent ?? ''), s.metadata?.num_rail ?? 'stripe').run()
         .catch((e) => console.warn('[billpay] could not stamp intent', e?.message));
     }
-    return json({ received: true, settled: !!settled?.ok, already: !!settled?.already });
+    // ── CLOSE THE CHECK IN THE VENUE'S OWN TILL ──────────────────────────
+    //
+    // Only after the ledger is written, and never in a way that can turn a
+    // successful payment into a failed one: the guest's money moved several
+    // seconds ago. A till that refuses is logged and left for the venue's POS
+    // panel to show — a member of staff clearing one check by hand is a small
+    // annoyance; a webhook that 500s and makes Stripe retry a settled bill is
+    // not.
+    let pos = null;
+    if (settled?.ok && !settled.already && bill) {
+      const link = await env.DB.prepare(
+        'SELECT pos_vendor, pos_order_id, pos_closed_at, application_fee_minor FROM num_paylinks WHERE token = ?1',
+      ).bind(bill.token).first().catch(() => null);
+      if (link?.pos_order_id && !link.pos_closed_at) {
+        pos = await recordExternalPayment(env, bill.business_id, {
+          orderId: link.pos_order_id,
+          amountMinor: bill.amount_minor,
+          currency: bill.currency,
+          reference: bill.token,
+          feeMinor: Number(link.application_fee_minor) || null,
+        }).catch((e) => ({ ok: false, reason: e?.message ?? 'till unreachable' }));
+        if (pos?.ok) {
+          await env.DB.prepare("UPDATE num_paylinks SET pos_closed_at = datetime('now') WHERE token = ?1")
+            .bind(bill.token).run().catch(() => null);
+        } else {
+          console.warn('[billpay] the bill is paid but the check is still open in the till:', bill.token, pos?.reason);
+        }
+      }
+    }
+
+    return json({ received: true, settled: !!settled?.ok, already: !!settled?.already, pos_closed: !!pos?.ok });
   }
 
   if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {

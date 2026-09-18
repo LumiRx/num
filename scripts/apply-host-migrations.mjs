@@ -127,6 +127,24 @@ const FILES = [
   // An Expert's own list of shops they found. One CREATE TABLE and two
   // indexes, all IF NOT EXISTS, so a second pass is a clean no-op.
   'worker/migrations/0036_scout_leads.sql',
+  // A fleet built from photographs: identified_json and draft on num_assets,
+  // batch_id on num_asset_photos, asset_id on num_host_products. Four ALTERs,
+  // so a second pass reports 'duplicate column name' and is tolerated below;
+  // the three indexes are IF NOT EXISTS. The code reads `draft` behind
+  // COALESCE-free queries that only run on the new endpoints, so shipping the
+  // worker before this is applied leaves the old fleet card working and the
+  // new one answering an error rather than lying.
+  'worker/migrations/0037_fleet_intake.sql',
+  // The client file: nine ALTERs on num_host_clients and num_host_requests
+  // plus num_client_events. The ALTERs are NOT re-runnable and report
+  // 'duplicate column name' on a second pass, which is tolerated below. The
+  // table and its indexes are IF NOT EXISTS.
+  'worker/migrations/0038_client_file.sql',
+  // A member's Privy wallet address and a venue's POS connection. The POS
+  // token column holds ciphertext, never a bearer token in the clear.
+  // Table creates are IF NOT EXISTS; the three paylink ALTERs are NOT
+  // re-runnable.
+  'worker/migrations/0039_wallets_and_pos.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

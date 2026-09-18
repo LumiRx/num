@@ -370,6 +370,7 @@ import * as RPC from './rpc.mjs';
 import * as QRCHECK from './qrcheck.mjs';
 import * as PAYRAILS from '../worker/payrails.mjs';
 import * as CONNECT from './connect.mjs';
+import * as POS from './pos/index.mjs';
 // sendBatch lives in its own module now — see resend.mjs — so the invite
 // drain (invitecron.mjs) makes the exact same Resend call this worker
 // already made for host invites, rather than a second copy that could drift.
@@ -394,6 +395,15 @@ import { geocode, geocodeReady } from '../worker/geocode.mjs';
 import {
   hostAssets, hostAssetPhoto, hostAssetHolds, assetImage, offerableAssets,
 } from './hostassets.mjs';
+// A fleet built from a camera roll rather than from eleven form fields.
+import {
+  fleetUpload, fleetIntake, fleetDraft, fleetDrafts,
+} from './fleetintake.mjs';
+// One search across hosts and the things they have listed.
+import { hostFind } from './hostfind.mjs';
+// One client's whole file: what they like, their calendar, their bookings and
+// what is owed.
+import { hostClient, hostClientWrite, hostClientImport } from './clientfile.mjs';
 import { hostSuppliers, supplierAssets } from './hostsuppliers.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
@@ -1166,6 +1176,24 @@ const WORKER = {
       if (p === "/api/host/products") return hostProducts(req, env, url);
       if (p === "/api/host/requests") return hostRequests(req, env, url, ctx);
       if (p === "/api/host/network") return hostNetwork(req, env, url);
+      // Read-only, and its own route for that reason: /api/host/network also
+      // carries this host's visibility switch, and a search must not be able
+      // to change anything.
+      if (p === "/api/host/find" && req.method === "GET")
+        return hostFind(req, env, url, ASSET_DEPS);
+
+      // One client, everything about them. The read and the write are the same
+      // path by method: a console that GETs a file and POSTs to a different
+      // URL to change it drifts, and the two ends stop describing one record.
+      if (p === "/api/host/client" && req.method === "GET")
+        return hostClient(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/client" && req.method === "POST")
+        return hostClientWrite(req, env, url, ASSET_DEPS);
+      // The .ics arrives as a raw body rather than JSON, for the same reason a
+      // photograph does: wrapping a file in JSON means base64 and a third more
+      // bytes for nothing.
+      if (p === "/api/host/client-import" && req.method === "POST")
+        return hostClientImport(req, env, url, ASSET_DEPS);
       if (p === "/api/host/intros") return hostIntros(req, env, url, ctx);
       if (p === "/api/host/nearby" && req.method === "GET") return hostNearby(req, env, url);
       if (p === "/api/host/intro" && req.method === "POST") return hostIntro(req, env, ctx);
@@ -1180,6 +1208,26 @@ const WORKER = {
       if (p === "/api/host/asset-photo" && req.method === "POST")
         return hostAssetPhoto(req, env, url, ASSET_DEPS);
       if (p === "/api/host/asset-holds") return hostAssetHolds(req, env, url, ASSET_DEPS);
+
+      /* PHOTOGRAPHS FIRST, FORM SECOND.
+       *
+       * fleet-upload takes ONE image as a raw body — not multipart, not a
+       * batch — because a Worker request has a body limit and a CPU budget and
+       * twelve 4MB photographs in one body is where this breaks on the first
+       * host with a decent camera. One per request also means a failed upload
+       * costs that photograph rather than the whole drag-and-drop.
+       *
+       * fleet-intake is the one that reads them, groups the ones showing the
+       * same vehicle, and writes a DRAFT per group. Nothing it writes is
+       * listable and nothing it writes has a price. */
+      if (p === "/api/host/fleet-upload" && req.method === "POST")
+        return fleetUpload(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/fleet-intake" && req.method === "POST")
+        return fleetIntake(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/fleet-draft" && req.method === "POST")
+        return fleetDraft(req, env, url, ASSET_DEPS);
+      if (p === "/api/host/fleet-drafts" && req.method === "GET")
+        return fleetDrafts(req, env, url, ASSET_DEPS);
       if (p === "/api/host/asset-image" && req.method === "GET")
         return assetImage(req, env, url, ASSET_DEPS);
       if (p === "/api/host/offerable" && req.method === "GET")
@@ -1297,6 +1345,9 @@ const WORKER = {
         return payLanding(req, env, m[1], m[2] || "auto");
       }
       if (p === "/biz/connect/start") return connectStart(req, env, url);
+      if (p === "/biz/pos/start") return posStart(req, env, url);
+      if (p === "/biz/pos/callback") return posCallback(req, env, url);
+      if (p === "/api/venue/pos") return venuePosApi(req, env, url);
       if (p === "/biz/connect/callback") return connectCallback(req, env, url);
       if (p === "/api/venue/rails") return venueRailsApi(req, env, url);
       if (p === "/tonight" || p.startsWith("/tonight/")) return tonightPage(req, env, url);
@@ -2545,7 +2596,8 @@ async function hostProfile(req, env, url, ctx) {
   const row = await env.DB.prepare(
     `SELECT services_json, pricing_json, areas_json, charge_mode, currency, tier,
             notify_phone, sms_opt_in, calendar_token, profile_updated_at,
-            accepts_intros, in_network, blurb
+            accepts_intros, in_network, blurb,
+            company, email, phone, country
        FROM num_hosts WHERE id = ?`
   ).bind(host.id).first();
 
@@ -2553,6 +2605,18 @@ async function hostProfile(req, env, url, ctx) {
     ok: true,
     name: host.name,
     status: host.status,
+    /* WHO THEY ARE.
+     *
+     * These four were collected once, on the join form, and then had nowhere
+     * to be corrected. A host who changed agency, moved country or wrote their
+     * mobile down wrong had exactly one route to fixing it: email us and wait.
+     * They are the fields most likely to be wrong — a name is typed in a hurry
+     * on a phone — and the ones a client sees. `email` is read here and
+     * changed through its own path below, not by this form. */
+    company: (row && row.company) || "",
+    email: (row && row.email) || "",
+    phone: (row && row.phone) || "",
+    country: (row && row.country) || "",
     services: JSON.parse((row && row.services_json) || "[]"),
     pricing: JSON.parse((row && row.pricing_json) || "[]"),
     areas: JSON.parse((row && row.areas_json) || "[]"),
@@ -2623,6 +2687,28 @@ async function hostProfile(req, env, url, ctx) {
    * unrecognised value falls back to 'own' for the same reason. */
   const chargeMode = b.charge_mode === "num" ? "num" : "own";
 
+  /* THEIR OWN DETAILS.
+   *
+   * Absent fields keep what is already stored rather than blanking it: this
+   * endpoint is also posted by older console builds that never send them, and
+   * a form that silently erases a host's company name because a newer field
+   * was missing from an older page is the worst kind of data loss — quiet,
+   * and discovered by the client.
+   *
+   * THE EMAIL IS NOT HERE, ON PURPOSE. The console key is the only credential
+   * this account has. If this form could move the address, anyone who came by
+   * a key could move the account somewhere the real host cannot read, and the
+   * host would learn about it from a bounce. Changing it is a conversation
+   * with a person, and the console says so. */
+  const identName = clean(b.name, 120) || host.name;
+  const identCompany = b.company === undefined ? (row && row.company) || null : (clean(b.company, 120) || null);
+  const identPhone = b.phone === undefined
+    ? (row && row.phone) || null
+    : (okPhone(b.phone) ? e164(b.phone) : null);
+  const identCountry = b.country === undefined
+    ? (row && row.country) || null
+    : (/^[A-Za-z]{2}$/.test(String(b.country || "")) ? String(b.country).toUpperCase() : (row && row.country) || null);
+
   const currency = /^[A-Za-z]{3}$/.test(String(b.currency || ""))
     ? String(b.currency).toUpperCase() : "GBP";
 
@@ -2663,12 +2749,15 @@ async function hostProfile(req, env, url, ctx) {
         SET services_json = ?, pricing_json = ?, areas_json = ?, charge_mode = ?,
             currency = ?, tier = ?, notify_phone = ?, sms_opt_in = ?,
             calendar_token = ?, accepts_intros = ?, in_network = ?, blurb = ?,
+            name = ?, company = ?, phone = ?, country = ?,
             profile_updated_at = ?, updated_at = ?
       WHERE id = ?`
   ).bind(
     JSON.stringify(services), JSON.stringify(pricing), JSON.stringify(areas),
     chargeMode, currency, tier, notifyPhone, smsOptIn, calendarToken,
-    acceptsIntros, inNetwork, blurb, now(), now(), host.id
+    acceptsIntros, inNetwork, blurb,
+    identName, identCompany, identPhone, identCountry,
+    now(), now(), host.id
   ).run();
 
   /* Ticking the box has to reach the consent register, or it is a switch
@@ -2706,7 +2795,8 @@ async function hostProfile(req, env, url, ctx) {
   const after = await env.DB.prepare(
     `SELECT services_json, pricing_json, areas_json, charge_mode, currency, tier,
             notify_phone, sms_opt_in, calendar_token, profile_updated_at,
-            accepts_intros, in_network, blurb
+            accepts_intros, in_network, blurb,
+            name, company, email, phone, country
        FROM num_hosts WHERE id = ?`
   ).bind(host.id).first();
 
@@ -2725,6 +2815,11 @@ async function hostProfile(req, env, url, ctx) {
     accepts_intros: !!after.accepts_intros,
     in_network: !!after.in_network,
     blurb: after.blurb || "",
+    name: after.name,
+    company: after.company || "",
+    email: after.email || "",
+    phone: after.phone || "",
+    country: after.country || "",
     profile_updated_at: after.profile_updated_at,
     // Said back plainly. A host who asked us to collect and a host who did not
     // are in materially different relationships with NUM, and the UI should
@@ -3085,6 +3180,18 @@ async function hostClients(req, env, url, ctx) {
     return list();
   }
 
+  /* THE OLDER OF TWO WRITERS FOR THIS ROW, AND THE THINNER ONE.
+   *
+   * growth/clientfile.mjs `save` is what the console calls: it writes the same
+   * columns as this does plus everything 0038 added — likes, dislikes,
+   * interests, dietary, access needs, birthday. Nothing calls this action
+   * today.
+   *
+   * It is left working because an endpoint that has shipped may have a caller
+   * we cannot see, and removing it is a product decision rather than a tidy-up.
+   * But it is NOT the place to add a field: a column added here and not there
+   * means two writers that disagree about what a client record is, and the one
+   * that wins is whichever the console happened to call last. */
   if (action === "update") {
     const id = clean(b.id, 40);
     if (!id) return J({ ok: false, error: "no_id" }, 400);
@@ -4144,12 +4251,34 @@ async function memberLink(req, env, url, ctx) {
   const hostRow = row;
 
   const bookings = async () => {
+    // The host's switch. Off, this page still says who holds their details and
+    // still lets them leave — those two are never switchable — and simply
+    // stops listing their trips.
+    if (row.portal_trips === 0) return [];
     const rows = await env.DB.prepare(
       `SELECT id,title,city,starts_at,status,price_minor,currency,quote_only
          FROM num_host_requests
         WHERE client_id = ? AND status IN ('confirmed','done')
         ORDER BY COALESCE(starts_at, created_at) DESC LIMIT 50`
     ).bind(row.id).all();
+    return (rows && rows.results) || [];
+  };
+
+  /* THEIR OWN DIARY, back to them.
+   *
+   * A client who sends their host a trip should be able to see that it landed.
+   * Only what is ahead — this page is for managing a trip, not for reading a
+   * year of somebody's past movements back to them — and it fails soft: a
+   * calendar that cannot be read must not take down the page whose real job is
+   * to let somebody leave. */
+  const diary = async () => {
+    if (row.portal_trips === 0) return [];
+    const rows = await env.DB.prepare(
+      `SELECT title, location, starts_at, ends_at, all_day, source
+         FROM num_client_events
+        WHERE client_id = ?1 AND date(starts_at) >= date('now', '-1 day')
+        ORDER BY starts_at ASC LIMIT 60`
+    ).bind(row.id).all().catch(function () { return null; });
     return (rows && rows.results) || [];
   };
 
@@ -4195,6 +4324,9 @@ async function memberLink(req, env, url, ctx) {
     // only: a client must never be shown a booking their host has not agreed
     // to, which is the same rule that governs the confirmation email.
     bookings: await bookings(),
+    // What is in their own calendar with this host, imported or added.
+    diary: await diary(),
+    trips_shown: row.portal_trips !== 0,
     host: {
       // The host's name and company, because that is who holds your details
       // and you are entitled to know. Not their email or number: this page
@@ -4214,6 +4346,20 @@ async function memberLink(req, env, url, ctx) {
       row.phone ? "Your phone number" : null,
       row.home_city ? "Where you are based" : null,
       row.notes ? "Notes they have written about how you like to travel" : null,
+      /* THE NEW COLUMNS ARE NAMED HERE, and this is not optional politeness.
+       *
+       * This list is the page's answer to "what does this person hold about
+       * me". 0038 gave a host somewhere to record what you like, what you will
+       * not have, an allergy, an access need and a birthday. A file that grew
+       * while the page that describes it did not would make this list a
+       * statement that is no longer true — and it is the statement a client
+       * decides whether to stay on. */
+      (row.likes || row.dislikes) ? "What you like, and what you would rather not have" : null,
+      row.interests && row.interests !== "[]" ? "The things you are interested in" : null,
+      row.dietary ? "Anything you cannot eat, and allergies" : null,
+      row.access_needs ? "What you need to get around comfortably" : null,
+      row.birthday ? "Your birthday" : null,
+      row.company ? "Where you work" : null,
     ].filter(Boolean),
     if_you_leave: [
       "They are told, and you are removed from their console.",
@@ -9090,6 +9236,43 @@ async function venuePayPage(req, env, url) {
     railsTile = `<div class="tile noprint"><b>How guests can pay you</b><p class="sub">Couldn't read this just now — reload.</p></div>`;
   }
 
+  /* ── THE VENUE'S TILL ──────────────────────────────────────────────────
+   * Deliberately below the rails tile and deliberately optional: a venue
+   * with no POS loses nothing, because staff typing the figure is still the
+   * path everything else is built on. */
+  let posTile = "";
+  try {
+    const conn = await POS.connectionFor(env, biz.id);
+    const canSquare = POS.posReady(env, "square");
+    posTile = `
+<div class="tile noprint" id="pos">
+  <b>Your till</b>
+  ${!conn ? `
+    <p class="sub" style="margin-top:4px">Connect your point of sale and NUM can pull an open check
+    instead of a member of staff typing the figure. Optional &mdash; typing it works exactly as it does now.</p>
+    ${canSquare
+      ? `<a class="btn" style="display:inline-block;text-decoration:none" href="/biz/pos/start?vendor=square&k=${k}">Connect Square</a>
+         <p class="sub" style="margin-top:8px">${esc(POS.adapterFor("square").SELLER_NOTE)}</p>`
+      : `<p class="sub" style="color:var(--warn)">Not switched on for NUM yet (${esc(POS.posNeeds(env, "square").join("; "))}).</p>`}
+    <p class="sub">Square today. Clover and Lightspeed next; Toast needs a partner agreement.</p>`
+  : `
+    <p class="sub" style="margin-top:4px">${esc(conn.vendor)} &middot;
+      ${conn.usable ? "connected" : esc(conn.state === "needs_reauth" ? "needs reconnecting" : conn.state)}
+      ${conn.location_id ? " &middot; location " + esc(conn.location_id) : ""}</p>
+    ${conn.last_error ? `<div class="held">${esc(conn.last_error)}</div>` : ""}
+    ${conn.usable && !conn.location_id ? `<p class="sub">Choose which location NUM reads:</p>
+      <select id="pos_loc"><option value="">Loading…</option></select>
+      <button class="mini" onclick="posSaveLoc()">Use this location</button>` : ""}
+    ${conn.usable && conn.location_id ? `<button class="mini" onclick="posChecks()">Show open checks</button>` : ""}
+    ${!conn.usable ? `<a class="mini" style="text-decoration:none;display:inline-block" href="/biz/pos/start?vendor=${esc(conn.vendor)}&k=${k}">Reconnect</a>` : ""}
+    <button class="mini" onclick="posDisconnect()">Disconnect</button>
+    <div id="posout" class="sub"></div>`}
+</div>`;
+  } catch (e) {
+    console.warn("[biz/pay] pos tile", e && e.message);
+    posTile = "";
+  }
+
   const card = (l) => `
     <div class="card" data-tok="${esc(l.token)}">
       ${l.kind === "promptpay"
@@ -9166,6 +9349,7 @@ details summary{cursor:pointer;margin-top:10px;font-size:13px}
 </div>
 
 ${railsTile}
+${posTile}
 <div class="tile noprint">
   <b>Add a payment QR</b>
   <p class="sub" style="margin-top:4px">Guests scan it, see <i>${esc(biz.name)} · the table's name</i>,
@@ -9240,6 +9424,27 @@ document.querySelectorAll('#rails input[data-rail]').forEach(function(c){ c.addE
 function railsRefresh(){ post('/api/venue/rails',{refresh:true}).then(function(r){ if(r.ok) location.reload(); else railsSay(r.error||'Could not refresh') }) }
 function railsDisconnect(){ if(!confirm('Disconnect your Stripe account from NUM? Guests will no longer be able to pay by card through NUM bill codes.')) return;
   post('/api/venue/rails',{disconnect:true}).then(function(r){ if(r.ok) location.reload(); else railsSay(r.error||'Could not disconnect') }) }
+function posSay(m){var el=document.getElementById('posout'); if(el) el.textContent=m}
+function getj(p){return fetch(p+(p.indexOf('?')<0?'?':'&')+'k='+encodeURIComponent(K)).then(function(r){return r.json()})}
+if (document.getElementById('pos_loc')) {
+  getj('/api/venue/pos?locations=1').then(function(r){
+    var sel=document.getElementById('pos_loc'); if(!sel) return;
+    var ls=(r&&r.locations)||[];
+    sel.innerHTML = ls.length ? ls.map(function(l){return '<option value="'+l.id+'">'+(l.name||l.id)+'</option>'}).join('')
+                              : '<option value="">No locations came back</option>';
+  });
+}
+function posSaveLoc(){ var v=(document.getElementById('pos_loc')||{}).value;
+  if(!v) return posSay('Pick a location first.');
+  post('/api/venue/pos',{location_id:v}).then(function(r){ if(r.ok) location.reload(); else posSay(r.error||'Could not save') }) }
+function posChecks(){ posSay('Reading your till…');
+  getj('/api/venue/pos?checks=1').then(function(r){
+    if(!r.ok||!r.checks) return posSay((r&&r.reason)||'Could not read the till.');
+    if(!r.checks.length) return posSay('Nothing open right now.');
+    posSay(r.checks.map(function(c){ return (c.name||'(no ticket name)')+' — '+c.currency+' '+(c.amount_minor/100).toFixed(2) }).join('\n'));
+  }) }
+function posDisconnect(){ if(!confirm('Disconnect your till from NUM? Staff can still type the bill into the console.')) return;
+  post('/api/venue/pos',{disconnect:true}).then(function(r){ if(r.ok) location.reload(); else posSay(r.error||'Could not disconnect') }) }
 </script>
 </body></html>`);
 }
@@ -9315,6 +9520,95 @@ async function venueRailsApi(req, env, url) {
     // Most likely: migration 0035 has not run, so num_business_rails is missing.
     console.warn("[venue/rails]", e && e.message);
     return J({ ok: false, error: "Could not save — payment rails storage is not ready on this deployment yet." }, 503);
+  }
+  return J({ ok: false, error: "nothing to do" }, 400);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE VENUE'S OWN TILL — growth/pos. Square first; the registry takes more.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── GET /biz/pos/start?k= — send the owner to their POS ─────────────────── */
+async function posStart(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return HTML(payShell(`<h1>That link isn't valid</h1>
+    <p class="lede">Open the Pay page from your console and press Connect there.</p>`, "NUM"), 401);
+  const vendor = clean(url.searchParams.get("vendor") || "square", 24).toLowerCase();
+  if (!POS.posReady(env, vendor)) {
+    return HTML(payShell(`<h1>Not switched on yet</h1>
+      <p class="lede">NUM cannot read a ${esc(vendor)} till yet (${esc(POS.posNeeds(env, vendor).join("; "))}).
+      Nothing was changed &mdash; staff can keep typing the bill into the console as they do now.</p>`, "NUM"), 503);
+  }
+  // The same signed, 30-minute state as the Stripe connect flow: without it
+  // anyone could attach THEIR till to SOMEBODY ELSE'S venue.
+  const state = await CONNECT.signState(env, `${biz.id}:pos`);
+  const to = POS.adapterFor(vendor).authorizeUrl(env, { state, origin: url.origin });
+  return new Response(null, { status: 302, headers: { location: to, "cache-control": "no-store" } });
+}
+
+/* ── GET /biz/pos/callback — the till sends the owner back ───────────────── */
+async function posCallback(req, env, url) {
+  const q = url.searchParams;
+  if (q.get("error")) {
+    return HTML(payShell(`<h1>Your till wasn't connected</h1>
+      <p class="lede">${esc(q.get("error_description") || q.get("error"))}</p>
+      <p class="note">Nothing was changed.</p>`, "NUM"), 400);
+  }
+  const signed = await CONNECT.verifyState(env, q.get("state"));
+  const businessId = signed && signed.endsWith(":pos") ? signed.slice(0, -4) : null;
+  if (!businessId || !q.get("code")) {
+    return HTML(payShell(`<h1>That connect link has expired</h1>
+      <p class="lede">Start again from your console's Pay page. Nothing was changed.</p>`, "NUM"), 400);
+  }
+  try {
+    const t = await POS.adapterFor("square").exchangeCode(env, { code: q.get("code"), origin: url.origin });
+    await POS.saveConnection(env, businessId, {
+      vendor: "square", merchantId: t.merchant_id, token: t.access_token,
+      refresh: t.refresh_token, expiresAt: t.expires_at,
+    });
+  } catch (e) {
+    return HTML(payShell(`<h1>Your till wasn't connected</h1>
+      <p class="lede">${esc((e && e.message) || "the till refused")}</p>
+      <p class="note">Nothing was changed.</p>`, "NUM"), 400);
+  }
+  const biz = await env.DB.prepare("SELECT console_key FROM businesses WHERE id = ?").bind(businessId).first();
+  const k = biz && biz.console_key ? "?k=" + encodeURIComponent(biz.console_key) : "";
+  return HTML(payShell(`<h1>Till connected</h1>
+    <p class="lede">Now choose which of your locations NUM should read, and NUM can pull an open
+    check instead of staff typing the figure. ${esc(POS.adapterFor("square").SELLER_NOTE || "")}</p>
+    <a class="btn" href="/biz/pay${k}#pos">Back to your Pay page</a>`, "Till connected — NUM"));
+}
+
+/* ── GET/POST /api/venue/pos ─────────────────────────────────────────────── */
+async function venuePosApi(req, env, url) {
+  const biz = await bizAuth(env, url, req);
+  if (!biz) return J({ ok: false, error: "unauthorised" }, 401);
+
+  if (req.method === "GET") {
+    const conn = await POS.connectionFor(env, biz.id);
+    if (!conn) return J({ ok: true, connected: false, vendors: POS.vendors() });
+    const out = { ok: true, connected: true, vendor: conn.vendor, location_id: conn.location_id,
+                  state: conn.state, usable: conn.usable, last_error: conn.last_error };
+    if (url.searchParams.get("checks") === "1") Object.assign(out, await POS.openChecks(env, biz.id));
+    if (url.searchParams.get("locations") === "1" && conn.usable) {
+      out.locations = await POS.adapterFor(conn.vendor).locations(env, conn).catch(() => []);
+    }
+    return J(out);
+  }
+  if (req.method !== "POST") return J({ ok: false, error: "method" }, 405);
+  let body = {};
+  try { body = await req.json(); } catch (e) { body = {}; }
+  try {
+    if (body.disconnect) { await POS.disconnect(env, biz.id); return J({ ok: true }); }
+    if (body.location_id) {
+      const conn = await POS.connectionFor(env, biz.id);
+      if (!conn) return J({ ok: false, error: "no till is connected" }, 409);
+      await POS.saveConnection(env, biz.id, { vendor: conn.vendor, locationId: clean(body.location_id, 64) });
+      return J({ ok: true, location_id: clean(body.location_id, 64) });
+    }
+  } catch (e) {
+    console.warn("[venue/pos]", e && e.message);
+    return J({ ok: false, error: "Could not save — till storage is not ready on this deployment yet." }, 503);
   }
   return J({ ok: false, error: "nothing to do" }, 400);
 }

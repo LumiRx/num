@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 07:04 UTC from 22 entries._
+_Built 2026-09-18 07:44 UTC from 28 entries._
 
 ## Deployed right now
 
@@ -16,9 +16,9 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-console | 🔴 **STALE** — 2 files changed since it shipped |
-| num-app | 🔴 **STALE** — 2 files changed since it shipped |
-| num-growth | 🟢 up to date (2026-09-18 07:04) |
+| num-console | 🟢 up to date (2026-09-18 07:42) |
+| num-app | 🔴 **STALE** — 10 files changed since it shipped |
+| num-growth | 🟢 up to date (2026-09-18 07:42) |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -45,17 +45,29 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 05:07_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
+- 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre
+  _claude, 2026-09-18 07:44_
 
 ## Live
 
+- 🟢 **client file** — 0038: likes, dislikes, interests, dietary, access_needs, company, birthday, portal_trips on num_host_clients; num_client_events; invoiced_at/paid_at/invoice_ref on num_host_requests (no invoices table - a confirmed request already is the line). GET+POST /api/host/client and /api/host/client-import (.ics, re-import updates on UID rather than doubling). Console: a file per client with its own tabs. /my-host/ now shows their diary and NAMES the new fields in 'what they can see'. 36 tests.
+  _claude, 2026-09-18 07:31_
 - 🟢 **deploy drift guard** — npm run deploy:check. Hashes what each worker bundles against what it last shipped.
   _claude, 2026-09-15 16:32_
 - 🟢 **first line** — 0.8.339: /api/num answers in two lines when asked; first line ~0.2s, answer unchanged; app shows it under the dots
   _claude, 2026-09-18 04:17_
+- 🟢 **fleet from photographs** — 0037: identified_json+draft on num_assets, batch_id on photos, asset_id on products. fleet-upload (one image, raw body, sha256 dedupe, R2) then fleet-intake (Haiku vision groups photos of the same vehicle into one DRAFT asset, listing text written, plate kept private and scrubbed from client copy) then fleet-draft confirm/discard/product. Degrades to one draft per photo with no ANTHROPIC_API_KEY on num-growth - Dre must set that secret. Verified end to end in production and the probe rows remove
+  _claude, 2026-09-18 07:31_
 - 🟢 **health** — 0.8.337: held alerts are deferred, not blind — the 503/DOWN loop since 3 Sep is closed; 0.8.334-336 finally live
   _claude, 2026-09-18 03:28_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).
   _claude, 2026-09-15 16:32_
+- 🟢 **host console** — Tabs (Today/Clients/Work/Fleet/Products/Network/Money/Settings) built additively over the existing 1,500-line console JS; host identity fields editable; client country+languages; fleet country+notes.
+  _claude, 2026-09-18 07:31_
+- 🟢 **host search** — GET /api/host/find: one question across hosts, their listable assets and their areas. Ranked connection > service > place > has-inventory. LIKE wildcards escaped. No email, no phone, no registration - assets go through clientView. 21 tests.
+  _claude, 2026-09-18 07:31_
+- 🟢 **host system audit** — Pre-launch double-check found four. TWO WERE HOLES I OPENED: a draft could be made listable (intake approves the host's own uploads, which satisfied the only gate - a model's guess would have reached a booker unread; now refused with still_a_draft) and every host saw every other host's unfiled uploads in their photo queue and could attach one to their own boat (the queue's 'supplier_id IS NULL' arm meant 'a text we could not place' until uploads also arrived with no supplier; now scoped to own u
+  _claude, 2026-09-18 07:43_
 - 🟢 **num-expert-programme** — 0.8.345 carried the isAdmin fix and the paperwork desk. Verified live: desk, queue and file all 403 unauthenticated and leak no name, email or object key. Also fixed the business leave-behind, which recommended Catch, Bimi and Siam Supper Club and advertised an offer at Bang Tao Bar — none of the four are in businesses, claims or num_place_owners, ie real venues that never signed up, on our own paper. Generic now and deployed. app-preview still names Catch Beach Club in three places; left for a 
   _claude, 2026-09-18 06:35_
 - 🟢 **num-expert-signup** — itsnum.com/scout/ enrol form and dashboard were 404ing: page fetched /api/scouts on itsnum.com, which only num-app serves. Now points at app.itsnum.com (CORS already allowed). num-console redeployed 18 Sep. Zero self-enrolled scouts existed before this; Isaiah and Adam were inserted by hand.

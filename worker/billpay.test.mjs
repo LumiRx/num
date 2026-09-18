@@ -18,8 +18,12 @@ function realDb() {
       target TEXT, promptpay_kind TEXT, amount_mode TEXT, amount TEXT, currency TEXT,
       state TEXT, created_at TEXT, booking_id TEXT, settled_at TEXT, one_time INTEGER DEFAULT 0,
       resource_id TEXT, issued_by TEXT, settled_by TEXT, crypto_asset TEXT, crypto_base_units TEXT, crypto_quote TEXT,
-      checkout_session_id TEXT, payment_intent_id TEXT, charged_via TEXT, application_fee_minor INTEGER);
+      checkout_session_id TEXT, payment_intent_id TEXT, charged_via TEXT, application_fee_minor INTEGER,
+      pos_vendor TEXT, pos_order_id TEXT, pos_closed_at TEXT);
     CREATE TABLE num_bookings (id TEXT PRIMARY KEY, business_id TEXT, status TEXT, value_cs INTEGER DEFAULT 0);
+    CREATE TABLE num_business_pos (business_id TEXT PRIMARY KEY, vendor TEXT, merchant_id TEXT, location_id TEXT,
+      token_enc TEXT, refresh_enc TEXT, expires_at TEXT, state TEXT DEFAULT 'active', last_error TEXT,
+      connected_at TEXT, updated_at TEXT);
     INSERT INTO businesses VALUES ('b1','Bar Nine','active');
     INSERT INTO num_business_profiles VALUES ('b1','US');
     INSERT INTO num_business_settings (business_id, commission_bp) VALUES ('b1', 1000);
@@ -186,4 +190,69 @@ test('GET /api/bill/<token> answers the pay page and the app; /checkout redirect
   assert.match(r.headers.get('location'), /^https:\/\/itsnum\.com\/p\/STICK\?why=/);
   r = await handleBill(req('https://app.itsnum.com/api/bill/STICK/checkout?rail=card'), env, '/STICK/checkout');
   assert.equal(r.status, 422);
+});
+
+test('a paid bill closes the check in the venue\'s own till, once', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect';
+  env.POS_TOKEN_KEY = 'test-pos-key';
+  env.SQUARE_APP_ID = 'sq0idp'; env.SQUARE_APP_SECRET = 'sq0csp';
+  const { saveConnection } = await import('../growth/pos/index.mjs');
+  await saveConnection(env, 'b1', { vendor: 'square', locationId: 'L1', token: 'tok', refresh: 'ref' });
+  d.prepare("UPDATE num_paylinks SET pos_vendor='square', pos_order_id='sq_o1', application_fee_minor=845 WHERE token='BILL1'").run();
+
+  const payload = JSON.stringify({
+    type: 'checkout.session.completed', account: 'acct_venue',
+    data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', metadata: { num_bill_token: 'BILL1', num_rail: 'card' } } },
+  });
+  const sq = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    sq.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null });
+    if (String(url).endsWith('/v2/payments')) return new Response(JSON.stringify({ payment: { id: 'pay_1' } }), { status: 200 });
+    return new Response(JSON.stringify({ order: { id: 'sq_o1', state: 'COMPLETED' } }), { status: 200 });
+  };
+  try {
+    const r = await handleConnectWebhook(req('https://x', { method: 'POST', body: payload, headers: { 'Stripe-Signature': await sign('whsec_connect', payload) } }), env);
+    const body = await r.json();
+    assert.equal(body.settled, true);
+    assert.equal(body.pos_closed, true);
+    assert.equal(sq.length, 2, 'CreatePayment then PayOrder');
+    assert.equal(sq[0].body.source_id, 'EXTERNAL');
+    assert.equal(sq[0].body.amount_money.amount, 8450);
+    assert.equal(sq[0].body.external_details.source_fee_money.amount, 845, 'the venue sees what it netted');
+    assert.ok(d.prepare("SELECT pos_closed_at FROM num_paylinks WHERE token='BILL1'").get().pos_closed_at);
+
+    // Stripe retries. The till is not touched a second time.
+    const again = await handleConnectWebhook(req('https://x', { method: 'POST', body: payload, headers: { 'Stripe-Signature': await sign('whsec_connect', payload) } }), env);
+    assert.equal((await again.json()).already, true);
+    assert.equal(sq.length, 2, 'a retried webhook must not create a second payment on the merchant account');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('a till that will not close the check never turns a paid bill into a failed one', async () => {
+  const { d, env } = realDb();
+  _resetSchemaCache();
+  env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect';
+  env.POS_TOKEN_KEY = 'test-pos-key';
+  env.SQUARE_APP_ID = 'sq0idp'; env.SQUARE_APP_SECRET = 'sq0csp';
+  const { saveConnection } = await import('../growth/pos/index.mjs');
+  await saveConnection(env, 'b1', { vendor: 'square', locationId: 'L1', token: 'tok', refresh: 'ref' });
+  d.prepare("UPDATE num_paylinks SET pos_vendor='square', pos_order_id='sq_gone' WHERE token='WALKIN'").run();
+
+  const payload = JSON.stringify({
+    type: 'checkout.session.completed', account: 'acct_venue',
+    data: { object: { id: 'cs_2', payment_status: 'paid', payment_intent: 'pi_2', metadata: { num_bill_token: 'WALKIN' } } },
+  });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ errors: [{ detail: 'order not found' }] }), { status: 404 });
+  try {
+    const r = await handleConnectWebhook(req('https://x', { method: 'POST', body: payload, headers: { 'Stripe-Signature': await sign('whsec_connect', payload) } }), env);
+    assert.equal(r.status, 200, 'a 500 here makes Stripe retry a bill that is already settled');
+    const body = await r.json();
+    assert.equal(body.settled, true, 'the guest paid; the ledger is written whatever the till says');
+    assert.equal(body.pos_closed, false);
+    assert.equal(d.prepare("SELECT pos_closed_at FROM num_paylinks WHERE token='WALKIN'").get().pos_closed_at, null);
+  } finally { globalThis.fetch = realFetch; }
 });

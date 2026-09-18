@@ -79,6 +79,11 @@ export function parseAmount(input, { max = 10_000_000 } = {}) {
 export async function mintBillCode(env, {
   businessId, bookingId = null, amount, currency = 'THB', label = null,
   resourceId = null, issuedBy = null,
+  // Where the figure came from, when it came from the venue's own till
+  // (growth/pos). Stored so that settling the bill can close that check in
+  // the till — a guest who has paid and a check still open on the venue's
+  // screen is the half-finished state the POS work exists to prevent.
+  posVendor = null, posOrderId = null,
 } = {}) {
   if (!env?.DB || !businessId) return { ok: false, reason: 'missing business' };
 
@@ -162,6 +167,17 @@ export async function mintBillCode(env, {
                           rate: cq.rate, rate_source: cq.rate_source, at: cq.quoted_at }) : null,
   ).run();
 
+  // Separate statement, deliberately: these columns arrive with migration 0039
+  // and a deployment that has the code but not the migration must still be
+  // able to mint a bill. A POS reference that fails to save costs an
+  // auto-closed check; folding it into the INSERT above would cost the bill.
+  if (posOrderId) {
+    await env.DB.prepare('UPDATE num_paylinks SET pos_vendor = ?2, pos_order_id = ?3 WHERE token = ?1')
+      .bind(t, posVendor ?? null, String(posOrderId))
+      .run()
+      .catch((e) => console.warn('[billqr] could not stamp the POS check', e?.message ?? e));
+  }
+
   return {
     ok: true,
     token: t,
@@ -169,6 +185,7 @@ export async function mintBillCode(env, {
     amount: amt.display,
     currency: src.currency || currency,
     resource_id: resourceId,
+    pos_order_id: posOrderId ?? null,
     crypto: cq || null,
     url: `${env.SITE || 'https://itsnum.com'}/p/${t}`,
   };
