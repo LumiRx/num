@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.375 — 2026-09-18 23:16 UTC
+
+keep it lands in a plan; this week in <city> (0044)
+
+- commit `f24d2ed`
+
 ## 0.8.374 — 2026-09-18 22:38 UTC
 
 localhost links fixed, sign-in returns you, profile redesign
