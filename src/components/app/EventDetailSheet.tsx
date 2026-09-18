@@ -21,10 +21,12 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { XIcon } from '../../lib/icons';
 import { askNum } from '../../lib/concierge';
+import { needAccount } from '../../lib/gate';
+import { openPlan, startInvite } from '../../lib/social';
 import { openShareCard } from '../../lib/sharecard';
 import { t } from '../../lib/i18n';
 import {
-  closeEventCard, costOf, dayLine, factsOf, getInAsk, keepEvent, planAsk, sellerNote, shareOf, ticketLabel,
+  closeEventCard, costOf, dayLine, factsOf, getInAsk, keepEvent, keepEventSomewhere, planAsk, planChoices, sellerNote, shareOf, ticketLabel,
 } from '../../lib/eventview';
 
 const primary: React.CSSProperties = {
@@ -42,6 +44,8 @@ export default function EventDetailSheet() {
   const ref = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
   const [kept, setKept] = useState<string | null>(null);
+  const [keptIn, setKeptIn] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   useDialogFocus(!!e, ref);
   if (!e) return null;
 
@@ -56,9 +60,29 @@ export default function EventDetailSheet() {
     store.set({ threadOpen: true, unread: 0 });
     void askNum(line);
   };
-  const keep = async () => {
-    const ok = await keepEvent(e);
-    setKept(ok ? t('In the plan.') : t('Open a plan first — then it can go in.'));
+  // KEEP IT lands somewhere every time: the open plan, the only plan, a new
+  // plan named after the event — or, with several, a one-tap picker. Once
+  // it is in, the next step is the crew: INVITE FRIENDS TO IT opens the
+  // invite for that plan and comes back here.
+  const keep = async (planIdChoice?: string) => {
+    setPicking(false);
+    const res = planIdChoice
+      ? ((await keepEvent(e, planIdChoice)) ? { planId: planIdChoice, created: false } : null)
+      : await keepEventSomewhere(e);
+    if (res) {
+      setKeptIn(res.planId);
+      setKept(res.created ? t('Kept — a new plan is open for it.') : t('In the plan.'));
+      return;
+    }
+    if (!store.get().me) { needAccount({ eventView: e }, 'plan'); return; }
+    if (planChoices().length > 1) { setPicking(true); return; }
+    setKept(t('That didn’t save — try again in a moment.'));
+  };
+  const inviteToIt = () => {
+    if (!keptIn) return;
+    closeEventCard();
+    startInvite({ planId: keptIn, intent: 'plan', returnTo: { partyOpen: true } });
+    void openPlan(keptIn);
   };
 
   return (
@@ -126,11 +150,21 @@ export default function EventDetailSheet() {
         <div {...pressable(() => ask(planAsk(e)))} className="press" style={secondary}>{t('PLAN THE EVENING AROUND IT')}</div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div {...pressable(() => void keep())} className="press" style={secondary}>{t('KEEP IT')}</div>
+          {keptIn
+            ? <div {...pressable(inviteToIt)} className="press glow" style={{ ...secondary, background: 'var(--grad-accent)', color: '#fff', border: 0 }}>{t('INVITE FRIENDS TO IT')}</div>
+            : <div {...pressable(() => void keep())} className="press" style={secondary}>{t('KEEP IT')}</div>}
           <div {...pressable(() => openShareCard(shareOf(e)))} className="press" style={secondary}>{t('SEND TO A FRIEND')}</div>
         </div>
+        {picking && (
+          <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0' }}>
+            <span style={{ fontSize: 11.5, color: 'var(--ink-60)', alignSelf: 'center', flex: 'none' }}>{t('Which plan?')}</span>
+            {planChoices().map((p) => (
+              <span key={p.id} {...pressable(() => void keep(p.id))} className="glass press tap" style={{ cursor: 'pointer', flex: 'none', minHeight: 40, display: 'inline-flex', alignItems: 'center', padding: '0 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{p.title}</span>
+            ))}
+          </div>
+        )}
         {kept && <div style={{ fontSize: 11.5, color: 'var(--color-accent-700)', fontWeight: 600 }}>{kept}</div>}
-        {!planId && !kept && <div style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>{t('“Keep it” puts it in an open plan.')}</div>}
+        {!planId && !kept && !picking && <div style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>{t('“Keep it” puts it in a plan — yours, or a new one for it.')}</div>}
 
         {/* MORE — folded away until asked for. */}
         {(e.why || seller || day) && (

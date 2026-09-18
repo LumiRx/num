@@ -426,10 +426,12 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
     // HOSTED ON NUM (18 Sep 2026): businesses' and hosts' public events, from
     // worker/events.mjs, ranked by tonightPick beside Ticketmaster's like any
     // other listing. Private events never reach here (public = 1 only).
-    const [tm, ours, hosted] = await Promise.all([
+    const [tm, ours, hosted, week] = await Promise.all([
       eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true }),
       withTimeout(cityEventsFor(env, dest, { limit: 4 }), 1500, []),
       withTimeout(import('./events.mjs').then((m) => m.publicEventsFor(env, { dest, lat, lng, day: g('day'), origin: url.origin })), 1500, []),
+      // The city's own publishers' headlines, credited and linked out (whatson.mjs).
+      withTimeout(import('./whatson.mjs').then((m) => m.whatsOnFor(env, dest, { limit: 5 })), 1200, []),
     ]);
     const curated = (ours ?? []).map((r) => ({
       source: 'num', id: `ce_${slug(r.title)}`, title: r.title, sub: [r.venue, r.area].filter(Boolean).join(' · '),
@@ -489,7 +491,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
       restaurants = standBehind(r1?.rows ?? []).map(asPlace);
       bars = standBehind(r2?.rows ?? []).map(asPlace);
     } catch (err) { console.warn('[discover] tonight places', err?.message ?? err); }
-    return json({ ok: true, mode, dest, items, restaurants, bars, sources: { num: curated.length, ticketmaster: tm.length, restaurants: restaurants.length, bars: bars.length } });
+    return json({ ok: true, mode, dest, items, week: week ?? [], restaurants, bars, sources: { num: curated.length, ticketmaster: tm.length, restaurants: restaurants.length, bars: bars.length } });
   }
 
   const [places, events, exps, history] = await Promise.all([

@@ -161,6 +161,7 @@ const FILES = [
   // addresses. Five tables and their indexes, all IF NOT EXISTS, no ALTER,
   // so a second pass is a no-op.
   'worker/migrations/0043_business_onboarding.sql',
+  'worker/migrations/0044_whatson.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

@@ -202,3 +202,24 @@ describe('the day is said, not printed', () => {
     assert.match(src, /dayLine\(e\)/);
   });
 });
+
+// ── KEEP IT ALWAYS LANDS SOMEWHERE (18 Sep 2026) ──────────────────────────
+describe('keeping an event finds a plan', () => {
+  let keepEventSomewhere, planChoices;
+  before(async () => { ({ keepEventSomewhere, planChoices } = await import('./eventview.ts')); });
+  const E = { source: 'ticketmaster', id: 'tm_1', title: 'Big Gig', sub: 'O2', venue: 'O2', image: null, starts_on: '2026-09-25', url: 'https://x', label: 'On Ticketmaster' };
+
+  test('with several plans and none open it returns null so the sheet can ask which', async () => {
+    store.set({ me: { id: 'm1', name: 'Dre' }, planId: null, plans: [{ id: 'a', title: 'Lisbon', owner_id: 'm1' }, { id: 'b', title: 'Sam’s birthday', owner_id: 'm1' }] });
+    assert.equal(await keepEventSomewhere(E), null);
+    assert.deepEqual(planChoices().map((p) => p.title), ['Lisbon', 'Sam’s birthday']);
+  });
+
+  test('the sheet wires the picker and the invite loop from the kept plan', () => {
+    const src = readFileSync(new URL('../components/app/EventDetailSheet.tsx', import.meta.url), 'utf8');
+    assert.match(src, /keepEventSomewhere\(e\)/);
+    assert.match(src, /planChoices\(\)\.map/, 'several plans → a picker');
+    assert.match(src, /startInvite\(\{ planId: keptIn, intent: 'plan', returnTo: \{ partyOpen: true \} \}\)/, 'INVITE FRIENDS TO IT invites into that plan and comes back to it');
+    assert.doesNotMatch(src, /Open a plan first/, 'the refusing button is gone');
+  });
+});

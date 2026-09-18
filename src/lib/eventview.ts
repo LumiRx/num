@@ -135,10 +135,11 @@ export function shareOf(e: EventCard): SharePayload {
  * Returns false when there is no plan open — the sheet then says so rather
  * than showing a button that quietly does nothing.
  */
-export async function keepEvent(e: EventCard): Promise<boolean> {
-  if (!store.get().planId) return false;
+export async function keepEvent(e: EventCard, planId: string | null = store.get().planId): Promise<boolean> {
+  if (!planId) return false;
   const { addPlanItem } = await import('./social');
   const item = await addPlanItem({
+    plan_id: planId,
     kind: 'idea',
     title: e.title,
     place: e.venue ?? e.sub,
@@ -149,3 +150,26 @@ export async function keepEvent(e: EventCard): Promise<boolean> {
   });
   return !!item;
 }
+
+/**
+ * KEEP IT ALWAYS LANDS SOMEWHERE (18 Sep 2026). "Open a plan first" was a
+ * button that refused. With no plan open: one plan → that one; none → a new
+ * plan named after the event, so the crew has somewhere to be invited to.
+ * Several → the caller shows the picker (planChoices) and calls keepEvent
+ * with the choice. Returns the plan the event went into, or null.
+ */
+export async function keepEventSomewhere(e: EventCard): Promise<{ planId: string; created: boolean } | null> {
+  const s = store.get();
+  if (s.planId) return (await keepEvent(e, s.planId)) ? { planId: s.planId, created: false } : null;
+  if (s.plans.length === 1) return (await keepEvent(e, s.plans[0].id)) ? { planId: s.plans[0].id, created: false } : null;
+  if (s.plans.length === 0) {
+    const { createPlan } = await import('./social');
+    const plan = await createPlan(e.title.slice(0, 60), s.place ?? null, e.starts_on ?? null);
+    if (!plan) return null;
+    return (await keepEvent(e, plan.id)) ? { planId: plan.id, created: true } : null;
+  }
+  return null; // several plans: the sheet asks which
+}
+
+/** The plans a kept event could go into, for the picker. */
+export const planChoices = (): Array<{ id: string; title: string }> => store.get().plans.map((p) => ({ id: p.id, title: p.title }));

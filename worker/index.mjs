@@ -3283,6 +3283,18 @@ export default {
           if (b.looked) console.log(`[bookingbackfill] ${b.found} found of ${b.looked} looked at`);
         } catch (e) { console.warn('[cron] booking backfill', e?.message ?? e); }
 
+        // THIS WEEK IN <CITY>. Headlines from the independents that publish
+        // an RSS feed — title, link, date, credit; nothing else — one fetch
+        // per source per six hours. Fever's, Time Out's and RA's terms keep
+        // them out of here by design. See worker/whatson.mjs.
+        try {
+          const { refreshWhatsOn } = await import('./whatson.mjs');
+          const w = await refreshWhatsOn(env);
+          const got = w.filter((x) => x.stored).reduce((n, x) => n + x.stored, 0);
+          if (got) console.log(`[whatson] ${got} new headline(s) from ${w.filter((x) => x.stored).length} source(s)`);
+          for (const x of w) if (x.ok === false) console.warn(`[whatson] ${x.source}: ${x.note}`);
+        } catch (e) { console.warn('[cron] whatson', e?.message ?? e); }
+
         // CROSS-ANALYSIS. Replays a few real questions past the cheap brains
         // and banks where they independently converge. Runs here, on the
         // cron, so it never sits between a guest and their answer — and it

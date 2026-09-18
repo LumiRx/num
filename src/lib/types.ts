@@ -368,7 +368,7 @@ export interface InviteDraft {
   returnTo?: {
     partyOpen?: boolean; eventOpen?: boolean; businessOpen?: boolean; errandsOpen?: boolean; shareOpen?: boolean;
     walletOpen?: boolean; payOpen?: AppState['payOpen']; bookDraft?: AppState['bookDraft']; travelDraft?: AppState['travelDraft'];
-    featureOpen?: AppState['featureOpen']; nightlifeOpen?: boolean; placeOpen?: boolean; profileOpen?: boolean; threadOpen?: boolean; view?: View;
+    featureOpen?: AppState['featureOpen']; eventView?: AppState['eventView']; nightlifeOpen?: boolean; placeOpen?: boolean; profileOpen?: boolean; threadOpen?: boolean; view?: View;
   };
   /** Candidates to disambiguate "send invite to sam" before anything is sent. */
   candidates?: Array<{ name: string; phone?: string }>;

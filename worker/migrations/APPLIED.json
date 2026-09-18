@@ -32,5 +32,5 @@
     "0043_business_onboarding.sql": "f56993f887fdee32efefdb942f335b204593d6ff1b7ba05e640361b3860c53dc"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": ["0044_whatson.sql"]
 }

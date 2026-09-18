@@ -35,6 +35,8 @@ interface Place {
   source: 'num'; id: string; title: string; sub: string; image: string | null;
   rating: number | null; reviews: number | null; open_now?: boolean | null; distance_km?: number | null;
 }
+/** A headline from the city's own what's-on publisher — title, link, credit. Nothing else is stored (worker/whatson.mjs). */
+interface Headline { title: string; url: string; published: string | null; source: string; source_url: string | null; lang: string }
 
 /** The phone's own date — the worker's clock is UTC, and Bangkok is already tomorrow at 17:00 UTC. */
 const localDay = (now = Date.now()) => {
@@ -74,12 +76,13 @@ export default function TonightStrip() {
   const [events, setEvents] = useState<Event[]>([]);
   const [restaurants, setRestaurants] = useState<Place[]>([]);
   const [bars, setBars] = useState<Place[]>([]);
+  const [week, setWeek] = useState<Headline[]>([]);
   const [now, setNow] = useState(Date.now());
   const [locating, setLocating] = useState(false);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(id); }, []);
 
   useEffect(() => {
-    if (demo || (!place && !here)) { setEvents([]); setRestaurants([]); setBars([]); return; }
+    if (demo || (!place && !here)) { setEvents([]); setRestaurants([]); setBars([]); setWeek([]); return; }
     const qs = new URLSearchParams({ mode: 'tonight', day: localDay() });
     if (place) qs.set('place', place);
     if (here) { qs.set('lat', String(here.lat)); qs.set('lng', String(here.lng)); }
@@ -87,11 +90,12 @@ export default function TonightStrip() {
     let dead = false;
     fetch(`${apiUrl('/api/discover')}?${qs}`)
       .then((r) => r.json())
-      .then((b: { ok: boolean; items?: Event[]; restaurants?: Place[]; bars?: Place[] }) => {
+      .then((b: { ok: boolean; items?: Event[]; restaurants?: Place[]; bars?: Place[]; week?: Headline[] }) => {
         if (dead) return;
         setEvents(b.ok ? (b.items ?? []) : []);
         setRestaurants(b.ok ? (b.restaurants ?? []) : []);
         setBars(b.ok ? (b.bars ?? []) : []);
+        setWeek(b.ok ? (b.week ?? []) : []);
       })
       .catch(() => { if (!dead) { setEvents([]); setRestaurants([]); setBars([]); } });
     return () => { dead = true; };
@@ -150,7 +154,7 @@ export default function TonightStrip() {
     link: i.url ?? null,
   });
 
-  if (!events.length && !restaurants.length && !bars.length) return null;
+  if (!events.length && !restaurants.length && !bars.length && !week.length) return null;
 
   const where = String(here ? t('YOU') : (place ?? t('YOU'))).toUpperCase();
   const nearMeChip = here ? null : (
@@ -178,6 +182,37 @@ export default function TonightStrip() {
         onSend={send}
         trailing={nearMeChip}
       />
+      {/* THIS WEEK IN <CITY> (18 Sep 2026). The city's own what's-on
+          publisher's headlines — the independents that publish an RSS feed —
+          each linking OUT to the publisher with their name on it. That is the
+          whole arrangement: their headline, their page, their credit; NUM
+          holds nothing else. The Secret pages, Time Out and RA are absent
+          because their terms say so (worker/whatson.mjs). */}
+      {week.length > 0 && (
+        <div style={{ margin: '12px 12px 2px' }}>
+          <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700, padding: '0 2px 8px', display: 'flex', justifyContent: 'space-between' }}>
+            <span>{t('THIS WEEK IN {place}', { place: where })}</span>
+            <span style={{ color: 'var(--color-accent)', flex: 'none' }}>{t('FROM {source}', { source: week[0].source })}</span>
+          </div>
+          <div className="glass" style={{ borderRadius: 16, padding: '4px 0', overflow: 'hidden' }}>
+            {week.slice(0, 5).map((h, i) => (
+              <a
+                key={h.url}
+                href={h.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tap"
+                lang={h.lang}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', minHeight: 48, textDecoration: 'none', color: 'var(--color-text)', borderTop: i ? '1px solid var(--ink-08)' : 0 }}
+              >
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{h.title}</span>
+                <span style={{ flex: 'none', fontSize: 10, fontWeight: 800, letterSpacing: '.08em', color: 'var(--ink-40)' }}>{h.source.toUpperCase()} ↗</span>
+              </a>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--ink-40)', padding: '6px 2px 0', lineHeight: 1.5 }}>{t('Headlines are the publisher’s, and open on their site.')}</div>
+        </div>
+      )}
       <NearbyRail
         title={t('EAT NEARBY')}
         count={t('{n} CHECKED', { n: restaurants.length })}
