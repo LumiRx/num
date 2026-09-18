@@ -215,7 +215,9 @@ test('concierge_answer calls handleNum directly, not a route that may not exist'
   assert.doesNotMatch(src, /fwd\('\/api\/num'/,
     'concierge_answer is fetch()-ing /api/num again — see the 18 Aug 2026 self-fetch/522 note below');
   const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
-  assert.match(index, /export async function handleNum\(request, env, ctx\)/,
+  // The optional fourth argument is the two-line answer's hook (worker/ack.mjs);
+  // concierge_answer passes three and sees no difference.
+  assert.match(index, /export async function handleNum\(request, env, ctx(?:, hooks = null)?\)/,
     'handleNum is no longer an importable export — concierge_answer has nothing to call directly');
 });
 

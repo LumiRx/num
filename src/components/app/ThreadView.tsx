@@ -519,9 +519,14 @@ function useSuggestions(dest: string | null, meId: string | null) {
 function Thinking() {
   const [since] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
+  // The server's own first line for this turn — "Looking at Sukhumvit for
+  // you…" — arrives inside a second (worker/ack.mjs) and outranks the timed
+  // lines until the wait is long enough that "still on it" matters more.
+  const ack = useApp((s) => s.thinkingLine);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
   const secs = (now - since) / 1000;
   const line = secs >= 12 ? t('Still on it — checking the real listings, not guessing.')
+    : ack ? ack
     : secs >= 4 ? t('Checking places that are actually open…')
     : null;
   return (

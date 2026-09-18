@@ -723,8 +723,14 @@ function jsonFactory(cors) {
  *
  * fetch()'s own POST /api/num branch is just `return await handleNum(request, env, ctx);`
  * below — same code, same behavior, zero duplication.
+ *
+ * `hooks` (optional) is how the two-line answer works: when the app asks for
+ * NDJSON, worker/ack.mjs wraps this call and passes `{ ack }`; the handler
+ * calls it once, right as the brain chain is asked, and the guest sees a
+ * first line inside a second. Every other caller passes nothing and sees no
+ * difference.
  */
-export async function handleNum(request, env, ctx) {
+export async function handleNum(request, env, ctx, hooks = null) {
   const url = new URL(request.url);
   const cors = corsHeaders(request, url.origin);
   const { json, setTravelContext } = jsonFactory(cors);
@@ -1259,6 +1265,20 @@ export async function handleNum(request, env, ctx) {
     // lane. See director.isContinuation.
     const prevUser = [...history].reverse().find((m) => m?.role === 'user' && m.content !== lastUser)?.content ?? null;
     const directive = direct(lastUser, { ...(parsed.state ?? {}), prevUser: typeof prevUser === 'string' ? prevUser : null }, env);
+    // ── THE FIRST LINE ────────────────────────────────────────────────
+    //
+    // Every early path above (known answer, cache, guard) has had its chance
+    // to answer whole. From here the brain chain takes seconds, so a client
+    // that asked for the two-line answer gets its first line NOW: a template
+    // in the guest's language, filled from the place we already resolved. No
+    // model, no lookup, nothing that could be wrong. worker/ack.mjs.
+    if (hooks?.ack) {
+      try {
+        const { ackLine } = await import('./ack.mjs');
+        const placeName = grounding.place?.name ?? null;
+        hooks.ack({ ack: ackLine({ lang: chosenLang, place: placeName }), place: placeName });
+      } catch (e) { console.warn('[num-ai] ack skipped —', e?.message ?? e); }
+    }
     // The chain, not one model. Claude first for the full concierge; if it
     // fails for any reason, an open model on Cloudflare's edge (or a
     // self-hosted one) answers in prose rather than the user hitting a wall.
@@ -2987,6 +3007,12 @@ export default {
     // synthetic Request that never passed through this dispatcher at all.
     if (request.method !== 'POST' || url.pathname !== '/api/num') {
       return new Response('not found', { status: 404 });
+    }
+    // The app asks for the two-line answer (Accept: application/x-ndjson);
+    // everything else gets the single JSON it always got. worker/ack.mjs.
+    {
+      const { wantsNdjson, streamNdjson } = await import('./ack.mjs');
+      if (wantsNdjson(request)) return streamNdjson(ctx, (hooks) => handleNum(request, env, ctx, hooks), { headers: cors });
     }
     return await handleNum(request, env, ctx);
   },

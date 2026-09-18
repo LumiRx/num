@@ -43,7 +43,9 @@ const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/
  * so that is what this must read.
  */
 function fetchHandler(src) {
-  const start = src.indexOf('export async function handleNum(request, env, ctx)');
+  // No closing paren: the signature grew an optional `hooks` argument on 18 Sep
+  // 2026 (worker/ack.mjs) and this anchor must keep finding the handler.
+  const start = src.indexOf('export async function handleNum(request, env, ctx');
   assert.ok(start > 0, 'the /api/num handler (handleNum) could not be located — this guard is not running');
   return code(src.slice(start));
 }

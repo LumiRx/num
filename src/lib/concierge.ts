@@ -16,6 +16,7 @@ import { trackOnce, webEventOnce } from './track';
 import type { ServiceHandoff, AppState } from './types';
 import type { Booking, Chip, Meeting, Msg, Pick } from './types';
 import { apiUrl } from '../lib/apibase';
+import { readNumReply } from './numreply';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
 let voiceT1: ReturnType<typeof setTimeout> | undefined;
@@ -645,7 +646,7 @@ export async function askNum(text: string) {
   observeUserMessage(text);
   push({ who: 'u', text });
   // A new question retires the last provider tray — it belonged to the old one.
-  store.set({ typing: true, chips: [], handoff: null });
+  store.set({ typing: true, thinkingLine: null, chips: [], handoff: null });
 
   // Somewhere-specific advice, and we still don't know where they are. This is
   // the honest moment to ask: they just asked for something local, so the
@@ -713,7 +714,11 @@ export async function askNum(text: string) {
   try {
     const res = await fetch(apiUrl('/api/num'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // The two-line answer: the server sends a first line inside a second
+      // ("Looking at Sukhumvit for you…") and the real answer when it has
+      // it. An older server that does not know the header answers in plain
+      // JSON, and readNumReply() handles both. worker/ack.mjs.
+      headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson, application/json' },
       // `here` is a REAL device fix and outranks anything inferred. Sending
       // it separately from `place` keeps the distinction the model needs:
       // what they told us, vs what their phone actually knows.
@@ -733,7 +738,7 @@ export async function askNum(text: string) {
       }),
     });
     if (!res.ok) throw new Error('backend ' + res.status);
-    const out: NumReply = await res.json();
+    const out: NumReply = await readNumReply(res, (ack) => store.set({ thinkingLine: ack }));
     out.actions?.forEach(applyAction);
     // The card's photo belongs to the booking it describes — match by title so
     // the PLAN shelf shows the same picture the chat card did.

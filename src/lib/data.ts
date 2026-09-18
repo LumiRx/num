@@ -70,6 +70,7 @@ function baseState() {
   return {
     view: 'dash' as const,
     typing: false,
+    thinkingLine: null,
     notifOn: false,
     disr: 'none' as const,
     laLine: '',

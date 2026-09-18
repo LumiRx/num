@@ -331,6 +331,8 @@ export interface InviteDraft {
 export interface AppState {
   view: View;
   typing: boolean;
+  /** The server's first line for the turn in flight ("Looking at Sukhumvit for you…"), shown under the typing dots. */
+  thinkingLine: string | null;
   notifOn: boolean;
   disr: Disruption;
   laLine: string;
