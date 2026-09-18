@@ -354,15 +354,26 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
     // whose NAME says so also stays ("Ronnie Scott's Jazz Club" is filed as
     // a bar). Rated first, then nearest. Ratings fill in per ~1 km cell as
     // the crawl runs, so the order improves in the places people open this.
+    // The category tags are OSM/Google's and they are loose: a betting shop
+    // is a "gambling club", an airport lounge is a "lounge", a bagpipe shop is
+    // a "music shop". So the patterns are whole phrases, never a bare word,
+    // and a short list of things that are never a night out is refused
+    // outright whatever else matched. (Second London run: CLUBS had
+    // Ladbrokes and two casinos; LIVE had a pipe shop and a museum.)
+    const NEVER = /casino|betting|gambling|bookmaker|slots|museum|gallery|shop|store|school|church|travel agency|airport/i;
     const shelf = (rows, kind) => rows
-      .filter((r) => kind.test(String(r.category ?? '')) || (r.rating != null && kind.test(String(r.name ?? ''))))
+      .filter((r) => {
+        const cat = String(r.category ?? ''), name = String(r.name ?? '');
+        if (NEVER.test(cat) || NEVER.test(name)) return false;
+        return kind.test(cat) || (r.rating != null && kind.test(name));
+      })
       .slice()
       .sort((a, b) => (b.rating != null) - (a.rating != null) || (a.km ?? 1e9) - (b.km ?? 1e9))
       .slice(0, 10).map(asPlace);
     const KIND = {
-      club: /club|disco|nightlife|dance/i,
-      bar: /\bbar|pub|lounge|brewery|cocktail|wine|taproom|beer/i,
-      live: /music|jazz|concert|live|venue|theatre|theater/i,
+      club: /night ?club|disco|dance club|nightlife/i,
+      bar: /\bbars?\b|\bpub\b|cocktail|wine bar|taproom|brewery|beer garden|sky ?bar|rooftop bar/i,
+      live: /live music|music venue|jazz club|jazz bar|concert hall|music hall|live venue/i,
     };
     let clubs = [], bars = [], live = [], tm = [];
     try {

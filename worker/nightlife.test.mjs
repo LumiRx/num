@@ -33,14 +33,19 @@ describe('the mode', () => {
     assert.match(block, /bars = shelf\(r2\?\.rows \?\? \[\], KIND\.bar\)\.filter\(\(b\) => !clubIds\.has\(b\.id\)\)/);
   });
 
-  test('the shelf only carries what NUM can stand behind — rated ONLY, stricter than TONIGHT', () => {
+  test('the shelf only carries what its category says it is — and never a casino, a shop or a museum', () => {
     // The first London run, with TONIGHT's unrated fallback, put a travel
     // agency under CLUBS and an occupational-health clinic under LIVE MUSIC.
     const block = bare(DISCOVER).slice(bare(DISCOVER).indexOf("if (mode === 'nightlife')"), bare(DISCOVER).indexOf("if (mode === 'tonight')"));
     // …and then rated-only emptied every shelf in London, where thousands of
     // bars sit unrated. The rule is the row's own CATEGORY: a clinic is never
     // a club whatever the widening returned; an unrated pub is still a pub.
-    assert.match(block, /kind\.test\(String\(r\.category \?\? ''\)\)/);
+    assert.match(block, /return kind\.test\(cat\) \|\| \(r\.rating != null && kind\.test\(name\)\)/);
+    assert.match(block, /const NEVER = \/casino\|betting\|gambling/, 'the second London run had Ladbrokes under CLUBS');
+    // Whole phrases, never a bare word: "gambling club", "airport lounge" and
+    // "music shop" all carry a word that used to match.
+    assert.match(block, /club: \/night \?club\|disco\|dance club\|nightlife\/i/);
+    assert.doesNotMatch(block, /bar: \/[^/]*lounge/, 'lounge is an airport too');
     assert.match(block, /\(b\.rating != null\) - \(a\.rating != null\) \|\| \(a\.km \?\? 1e9\) - \(b\.km \?\? 1e9\)/, 'rated first, then nearest');
     assert.doesNotMatch(block, /rated\.length >= 3 \? rated : rows/, 'no unrated fallback on this shelf');
   });
