@@ -29,5 +29,7 @@
     "0040_place_photos.sql": "38048f9f773487154333134d583b068ef12c91cf4ee23dad2ca6d71ee7a547a9"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0041_bill_proposals.sql"
+  ]
 }

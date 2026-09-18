@@ -371,6 +371,7 @@ import * as QRCHECK from './qrcheck.mjs';
 import * as PAYRAILS from '../worker/payrails.mjs';
 import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
+import * as BILLPHOTO from '../worker/billphoto.mjs';
 // sendBatch lives in its own module now — see resend.mjs — so the invite
 // drain (invitecron.mjs) makes the exact same Resend call this worker
 // already made for host invites, rather than a second copy that could drift.
@@ -1299,6 +1300,8 @@ const WORKER = {
       if (p === "/api/venue/tables/state" && req.method === "POST") return qrTableState(req, env, url);
       if (p === "/api/venue/tables/codes" && req.method === "POST") return qrIssueCodes(req, env, url);
       if (p === "/api/venue/bill" && req.method === "POST") return qrBillCreate(req, env, url);
+      if (p === "/api/venue/bill/photo" && req.method === "POST") return qrBillPhoto(req, env, url);
+      if (p === "/api/venue/bill/photo/confirm" && req.method === "POST") return qrBillPhotoConfirm(req, env, url);
       if (p === "/api/venue/bill/settle" && req.method === "POST") return qrBillSettle(req, env, url, ctx);
       if (p === "/api/venue/bills" && req.method === "GET") return qrBillsOpen(req, env, url);
       if (p === "/api/venue/staff" && req.method === "GET") return qrStaffList(req, env, url);
@@ -10219,6 +10222,58 @@ async function qrBillCreate(req, env, url) {
   return J(out);
 }
 
+/* ── POST /api/venue/bill/photo — read the paper bill ─────────────────────
+ *
+ * Staff hold the slip up, the phone reads the total, and NOTHING is minted.
+ * What comes back is a proposal with a Confirm button beside it. The whole
+ * reason billqr.mjs can say a venue cannot quietly under-report is that a
+ * human is accountable for the figure on the code; a model minting silently
+ * would take that away. See worker/billphoto.mjs.
+ *
+ * `bill` permission, not `settle` — reading a bill is the thing a waiter does,
+ * and the role table already says a waiter may put an amount on a table.
+ */
+async function qrBillPhoto(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "bill")) return qrDeny("bill");
+  let b;
+  // A base64 photo is much larger than the 2KB the other bill routes allow.
+  try { b = await readJSON(req, 9 * 1024 * 1024); } catch (e) { return J({ ok: false, error: "that photo was too big to send" }, 413); }
+
+  const out = await BILLPHOTO.proposeFromPhoto(env, {
+    businessId: who.business.id,
+    resourceId: b.resource_id ? String(b.resource_id) : null,
+    bookingId: b.booking_id ? String(b.booking_id).slice(0, 64) : null,
+    data: String(b.image || ""),
+    mediaType: String(b.media_type || "image/jpeg"),
+    by: who.userId || "key",
+  });
+  // A refusal is a 200 with ok:false: the screen shows the reason and the
+  // amount box, which is exactly where staff were before this feature existed.
+  return J(out);
+}
+
+/* ── POST /api/venue/bill/photo/confirm — the human says yes ─────────────── */
+async function qrBillPhotoConfirm(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "bill")) return qrDeny("bill");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+
+  const out = await BILLPHOTO.confirmProposal(env, who.business.id, String(b.id || ""), {
+    // Whatever staff typed wins over whatever the model read. They are holding
+    // the paper; it saw a photograph of it.
+    amount: b.amount == null ? null : String(b.amount),
+    by: who.userId || "key",
+    mint: (args) => QR.billForTable(env, { ...args, issuedBy: who.userId || "key" }),
+  });
+  if (!out.ok) return J(out, 400);
+  await logKeyEvent(env, req, who.business.id, "ok", "bill_photo:" + out.token);
+  return J(out);
+}
+
 async function qrBillSettle(req, env, url, ctx) {
   const who = await qrWho(req, env, url);
   if (!who) return J({ ok: false, error: "unauthorised" }, 401);
@@ -11095,6 +11150,9 @@ async function qrTablesPage(req, env, url) {
 
 <p class="muted"><a href="/biz/statement" id="stmt">What you owe NUM &rarr;</a></p>
 
+<style>.shoot{display:block;margin-top:8px;text-align:center;padding:12px;border:1.5px dashed var(--pine,#1f3a34);
+border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;color:var(--pine,#1f3a34)}
+.shoot:active{background:#eef2f0}</style>
 <h2>Put an amount on a table</h2>
 <div class="card">
   <div class="row">
@@ -11102,6 +11160,13 @@ async function qrTablesPage(req, env, url) {
     <div><label for="ba">Amount</label><input id="ba" inputmode="decimal" placeholder="2400"></div>
   </div>
   <button id="bill">Make the paying QR</button>
+  <!-- Photograph the bill. capture="environment" opens the back camera
+       straight away on a phone, which is what staff are holding. It fills the
+       Amount box above and never mints on its own — the same button below
+       still makes the code, and the person who presses it is the one who
+       checked the figure. -->
+  <label class="shoot" for="bphoto">Photograph the bill instead</label>
+  <input id="bphoto" type="file" accept="image/*" capture="environment" hidden>
   <div id="billout" class="out"></div>
 </div>
 
@@ -11408,6 +11473,63 @@ function refresh(){
 }
 refresh();
 if(K)document.getElementById('stmt').href='/biz/statement?k='+encodeURIComponent(K);
+
+/* Reading the paper bill.
+ *
+ * Downscaled in the browser before it is sent: a modern phone photo is 3-5MB,
+ * a restaurant's wifi is not, and a member of staff waiting on an upload will
+ * go back to typing. 1600px on the long edge is more than enough to read a
+ * printed total.
+ *
+ * What comes back fills the Amount box and nothing else. Staff read it against
+ * the paper in their hand and press the same button they always did. */
+function shrink(file){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onerror=function(){rej(new Error('could not read that file'))};
+    fr.onload=function(){
+      var im=new Image();
+      im.onerror=function(){rej(new Error('that file is not a photo'))};
+      im.onload=function(){
+        var max=1600, w=im.width, h=im.height;
+        var sc=Math.min(1, max/Math.max(w,h));
+        var c=document.createElement('canvas');
+        c.width=Math.round(w*sc); c.height=Math.round(h*sc);
+        c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+        var url=c.toDataURL('image/jpeg',0.82);
+        res({data:url.slice(url.indexOf(',')+1), media_type:'image/jpeg'});
+      };
+      im.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+document.getElementById('bphoto').onchange=function(){
+  var f=this.files&&this.files[0]; if(!f) return;
+  var o=document.getElementById('billout');
+  o.textContent='Reading the bill…';
+  var self=this;
+  shrink(f).then(function(img){
+    return post('/api/venue/bill/photo',{image:img.data,media_type:img.media_type,
+                                         resource_id:document.getElementById('bt').value});
+  }).then(function(j){
+    self.value='';
+    if(!j.ok){
+      o.textContent=(j.reason||'Could not read that photo.')+' Type the amount instead.';
+      document.getElementById('ba').focus();
+      return;
+    }
+    document.getElementById('ba').value=j.amount;
+    o.textContent='';
+    o.appendChild(el('div', j.amount+' '+j.currency)).className='big';
+    o.appendChild(el('div', j.confirm)).className='muted';
+    document.getElementById('ba').focus();
+    document.getElementById('ba').select();
+  }).catch(function(e){
+    self.value='';
+    o.textContent=(e&&e.message ? e.message : 'Could not read that photo.')+' Type the amount instead.';
+  });
+};
 
 document.getElementById('bill').onclick=function(){
   var o=document.getElementById('billout');o.textContent='';

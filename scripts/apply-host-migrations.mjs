@@ -149,6 +149,9 @@ const FILES = [
   // proof (venue-code scan or a fix within 150 m) and the reward in cents on
   // every row. Two new tables, all IF NOT EXISTS, no ALTER — re-runnable.
   'worker/migrations/0040_place_photos.sql',
+  // A figure read off a photo of a paper bill, waiting for staff to confirm.
+  // One table and one index, both IF NOT EXISTS, so a second pass is a no-op.
+  'worker/migrations/0041_bill_proposals.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

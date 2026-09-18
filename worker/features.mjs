@@ -604,6 +604,22 @@ export const FEATURES = Object.freeze([
     },
   },
   {
+    id: 'billphoto',
+    plan: 'free',
+    entitlement: null,
+    name: 'Read the bill from a photo',
+    does: 'Staff photograph the paper bill and the total fills itself in — for the venues that have no till to read.',
+    needs: ['ANTHROPIC_API_KEY'],
+    ready: (env) => has(env, 'ANTHROPIC_API_KEY'),
+    surface: 'Console → tables → Photograph the bill instead',
+    code: ['worker/billphoto.mjs', 'worker/migrations/0041_bill_proposals.sql'],
+    sop: {
+      on: 'Nothing beyond ANTHROPIC_API_KEY on num-growth and migration 0041. This is the Thailand path: Ocha, FoodStory and StoreHub have no public API, and a large share of Thai restaurants run on a paper slip.',
+      check: 'Console → put an amount on a table → Photograph the bill instead. A clear photo of a printed total should fill the Amount box; a blurred one should say so and leave the box empty.',
+      broken: 'THE MODEL PROPOSES, STAFF CONFIRM, THE GUEST NEVER SETS THE AMOUNT. Nothing here mints a bill code — that is still the button a human presses, because billqr.mjs\'s whole case that a venue cannot under-report rests on a person being accountable for the figure. A read below MIN_CONFIDENCE is refused rather than shown. The currency comes from the venue profile, never the photograph. The photograph is never stored — only the raw answer, the confidence and a hash.',
+    },
+  },
+  {
     id: 'membership',
     plan: 'free',
     entitlement: null,
