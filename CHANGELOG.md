@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.378 — 2026-09-18 23:37 UTC
+
+what's-on refresh in its own cron lane
+
+- commit `04c3984`
+
 ## 0.8.377 — 2026-09-18 23:31 UTC
 
 motion: sheets, doors, tabs, skeleton, landed pop
