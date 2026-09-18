@@ -182,7 +182,13 @@ export default function MembershipCard() {
           tier being real sits under them where it reassures instead of
           arguing you out of upgrading. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={kicker}>{current === 'free' ? t('UPGRADE') : t('YOUR PLAN')}</div>
+        {/* "UPGRADE" only where upgrading is possible. On iOS every paid row
+            below is hidden by canOfferSubscription(), so a free member opened
+            the wallet, read UPGRADE and a line promising more, and found
+            nothing to tap — reported 18 Sep as "it has plan and you can't
+            click it". The gate is right and stays; the advertisement for a
+            door we deliberately do not open is what was wrong. */}
+        <div style={kicker}>{current === 'free' && canOfferSubscription() ? t('UPGRADE') : t('YOUR PLAN')}</div>
         <div style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '3px 8px', borderRadius: 999, background: current === 'free' ? 'var(--field-bg)' : 'var(--grad-accent)', color: current === 'free' ? 'var(--ink-60)' : '#fff', border: current === 'free' ? '1px solid var(--ink-12)' : 'none' }}>
           {(currentTier?.name ?? 'Num').toUpperCase()}
         </div>
@@ -198,8 +204,18 @@ export default function MembershipCard() {
           which is true, belongs here, and was arguing people out of the
           upgrade before they had seen a price. It is in the small print under
           the plans now, where it reassures instead. */}
+      {/* The same rule for the line under it. "More plans, deeper research,
+          new things first" is a sales line; on iOS it sells something the
+          screen cannot deliver. A free member there gets a plain statement of
+          where they stand instead — no pitch, no price, and deliberately no
+          pointer anywhere else, because the promise made to App Review is
+          that this app has no purchase surface at all. */}
       <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
-        {current === 'free' ? t('More plans, deeper research, new things first.') : currentTier?.blurb}
+        {current !== 'free'
+          ? currentTier?.blurb
+          : canOfferSubscription()
+            ? t('More plans, deeper research, new things first.')
+            : t('You are on the free plan, and everything you have used so far is part of it.')}
       </div>
 
       {/* What you've actually used. Shown before any upsell so the number is
