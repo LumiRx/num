@@ -175,6 +175,29 @@ export async function told(env, kind, subject = '', via = '') {
   ).bind(keyFor(kind, subject), String(via).slice(0, 60)).run().catch(() => {});
 }
 
+/**
+ * Triage decided this alert is not worth waking anybody for; the morning
+ * digest carries it. That is a DECISION, not a delivery failure — so the row
+ * stays open (the digest reads open rows) and stays untold (nobody was
+ * reached), but it is stamped so `summary()` can tell it apart from an alert
+ * that NOTHING carried.
+ *
+ * 17 Sep 2026: "✅ Num is healthy again." was held sixteen times since 3 Sep,
+ * each time correctly — and each time it read as "a failure nobody was told
+ * about", `blind` went true, /api/health said 503, the DOWN alert fired, the
+ * product "recovered", and the next held recovery notice restarted the loop.
+ */
+export async function held(env, kind, subject = '', judge = '') {
+  if (!env?.DB || !kind) return;
+  await ensure(env);
+  await env.DB.prepare(
+    'UPDATE num_failures SET told_via = ?2 WHERE id = ?1 AND told = 0',
+  ).bind(keyFor(kind, subject), `held:${String(judge || 'triage').slice(0, 50)}`).run().catch(() => {});
+}
+
+/** An open alert a judge deferred to the digest. Untold on purpose; not blind. */
+const isHeld = (r) => !r.told && String(r.told_via ?? '').startsWith('held:');
+
 /** What is broken right now, worst and oldest first. */
 export async function open(env, { limit = 50 } = {}) {
   if (!env?.DB) return [];
@@ -225,7 +248,11 @@ export async function summary(env) {
   // `blind` is for — but it is not itself an open product failure, or the
   // ledger spends forever declaring the product down because it could not
   // send a text about the product being down. That loop ran all night.
-  const blind = rows.some((r) => !r.told && settled(r) && r.severity !== 'low');
+  //
+  // An alert a judge HELD is neither: nobody was reached, by decision, and
+  // the digest carries it. It is stamped `held:` and does not blind — see
+  // `held()` above for the sixteen-lap loop that made this necessary.
+  const blind = rows.some((r) => !r.told && !isHeld(r) && settled(r) && r.severity !== 'low');
   return {
     // The honest total. Nothing is swept under the rug — falsedown.test.mjs
     // holds this line, and it is the right one.

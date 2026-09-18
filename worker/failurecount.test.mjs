@@ -48,6 +48,16 @@ test('an alert NUM could not deliver is a broken alarm, not an open fault', asyn
   assert.equal(s.blind, true, 'and it still says the alarm channel is broken, which is the point');
 });
 
+test('an alert a judge HELD for the digest is not blind — the loop of 3–17 Sep', async () => {
+  // Same row shape as above, one difference: triage stamped it `held:`.
+  // Untold on purpose, open on purpose, and no reason to say the product is down.
+  const rows = [{ id: 'f_alert|healthy', kind: 'alert', subject: '✅ Num is healthy again.', severity: 'high', told: 0, told_via: 'held:haiku', seen: 16, first_seen: old }];
+  const s = await summary({ DB: dbOf(rows) });
+  assert.equal(s.open, 1, 'the digest still carries it');
+  assert.equal(s.actionable, 0);
+  assert.equal(s.blind, false, 'deferred by a judge is a decision, not a broken alarm channel');
+});
+
 test('a real failure still counts, and still says so', async () => {
   const rows = [
     { id: 'f_brain_down|x', kind: 'brain_down', subject: 'every structured brain is cooling', severity: 'high', told: 0, seen: 1, first_seen: old },

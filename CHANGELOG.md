@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.336 — 2026-09-18 02:58 UTC
+
+Tonight only puts forward places it can stand behind: the neighbourhood is rated before it is ranked
+
+- commit `20ae955`
+
 ## 0.8.335 — 2026-09-18 01:53 UTC
 
 Tonight rails, feature registry, and the false NUM IS DOWN alarm

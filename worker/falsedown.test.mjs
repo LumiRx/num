@@ -36,7 +36,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { record, resolve, told, summary } from './failures.mjs';
+import { record, resolve, told, held, summary } from './failures.mjs';
 
 const MAILDELIVERY = readFileSync(new URL('./maildelivery.mjs', import.meta.url), 'utf8');
 const HEALTH = readFileSync(new URL('./health.mjs', import.meta.url), 'utf8');
@@ -132,6 +132,43 @@ describe('the alert ledger stops eating its own tail', () => {
     const resolveAt = HEALTH.indexOf('await resolveFailure(env, kind');
     assert.ok(resolveAt > 0 && resolveAt < elseAt,
       'resolve must sit in the delivered branch, never past the else');
+  });
+
+  test('A HELD ALERT IS DEFERRED, NOT BLIND — the sixteen-lap loop of 3–17 Sep', async () => {
+    // "✅ Num is healthy again." is correctly not worth a 2am text, so triage
+    // holds it for the digest. Held means untold, and untold-and-settled
+    // meant blind, and blind put `failures` on the DOWN list: verdict 503,
+    // DOWN alert, recovery, another held "healthy again". Sixteen times.
+    await record(env, { kind: 'alert', subject: '✅ Num is healthy again.', severity: 'high' });
+    await held(env, 'alert', '✅ Num is healthy again.', 'haiku');
+    settle('healthy again');
+    const s = await summary(env);
+    assert.equal(s.open, 1, 'still open — the digest carries it');
+    assert.equal(s.actionable, 0, 'and nobody is asked to do anything about it');
+    assert.equal(s.blind, false, 'deferred by a judge is a decision, not blindness');
+    const row = db.prepare("SELECT told, told_via FROM num_failures WHERE kind = 'alert'").get();
+    assert.equal(row.told, 0, 'held is NOT told — nobody was reached');
+    assert.equal(row.told_via, 'held:haiku');
+  });
+
+  test('a held alert that later gets carried is told, and told wins', async () => {
+    await record(env, { kind: 'alert', subject: 'x', severity: 'high' });
+    await held(env, 'alert', 'x', 'haiku');
+    await told(env, 'alert', 'x', 'sms');
+    const row = db.prepare("SELECT told, told_via FROM num_failures WHERE kind = 'alert'").get();
+    assert.equal(row.told, 1);
+    assert.equal(row.told_via, 'sms');
+    // And held() never overwrites a delivery receipt.
+    await held(env, 'alert', 'x', 'haiku');
+    assert.equal(db.prepare("SELECT told_via FROM num_failures WHERE kind = 'alert'").get().told_via, 'sms');
+  });
+
+  test('health.mjs stamps the row on the held branch, before it returns', () => {
+    const i = HEALTH.indexOf('if (!call.send) {');
+    assert.ok(i > 0, 'the triage hold branch is gone');
+    const branch = HEALTH.slice(i, HEALTH.indexOf('return { carried: null, held: true', i));
+    assert.match(branch, /await markHeld\(env, kind, subject \|\| text\.slice\(0, 100\), call\.judge\)/,
+      'a held alert must be stamped or it is indistinguishable from an undelivered one');
   });
 });
 

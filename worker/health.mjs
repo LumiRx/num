@@ -548,7 +548,7 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
   // because the way you would find out was the broken thing. So the ledger
   // comes first and is not conditional on any channel working. See
   // worker/failures.mjs.
-  const { record, told: markTold, resolve: resolveFailure } = await import('./failures.mjs');
+  const { record, told: markTold, held: markHeld, resolve: resolveFailure } = await import('./failures.mjs');
   await record(env, {
     kind, subject: subject || text.slice(0, 100),
     detail: text, severity: 'high',
@@ -570,10 +570,17 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
   // A held alert is NOT marked told: it stays open in the ledger and the
   // morning digest carries it. Marking it told would hide it from the very
   // check that catches an alerting system going quiet.
+  //
+  // It IS stamped `held:<judge>`, though. Without that, a held alert and an
+  // alert nothing carried look identical to the ledger — untold, open, high —
+  // and `blind` treats both as "a failure nobody was told about". From 3 Sep
+  // to 17 Sep 2026 the held "✅ Num is healthy again." notice did exactly
+  // that sixteen times: verdict 503, DOWN alert, recovery, held again.
   try {
     const { triage } = await import('./alerttriage.mjs');
     const call = await triage(env, { text, kind, subject: subject || text.slice(0, 100) });
     if (!call.send) {
+      await markHeld(env, kind, subject || text.slice(0, 100), call.judge);
       console.warn('[health] held for digest —', call.why, `(${call.judge})`, '::', text.slice(0, 120));
       return { carried: null, held: true, why: call.why, judge: call.judge };
     }
