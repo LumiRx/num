@@ -77,6 +77,20 @@ const MIGRATIONS = [
   "ALTER TABLE num_event_guests ADD COLUMN via TEXT NOT NULL DEFAULT 'link'",
   // When their Num was actually told, as opposed to when the row was written.
   'ALTER TABLE num_event_guests ADD COLUMN delivered_at TEXT',
+  // PUBLIC LISTING (18 Sep 2026). Dre: "allow business and hosts to create
+  // events and list it just like other events." An event with public=1 is
+  // offered on TONIGHT beside Ticketmaster's, nearest first, labelled
+  // "Hosted on NUM". Members' private events keep public=0 and never appear.
+  // lat/lng/dest come from the directory place the event is AT (place_id),
+  // so a public event is always somewhere real that can be ranked by distance.
+  'ALTER TABLE num_events ADD COLUMN public INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE num_events ADD COLUMN place_id TEXT',
+  'ALTER TABLE num_events ADD COLUMN dest TEXT',
+  'ALTER TABLE num_events ADD COLUMN lat REAL',
+  'ALTER TABLE num_events ADD COLUMN lng REAL',
+  'ALTER TABLE num_events ADD COLUMN cover TEXT',
+  'ALTER TABLE num_events ADD COLUMN price_note TEXT',
+  'CREATE INDEX IF NOT EXISTS idx_num_events_public ON num_events(public, day)',
 ];
 
 let ensured = false;
@@ -135,20 +149,54 @@ async function createEvent(env, req, origin) {
   // accepted only as a fallback. Until 4 Sep 2026 nothing ever filled this,
   // so an event at a partner venue was invisible to that venue.
   let businessId = clip(b.business_id, 40);
-  const placeId = clip(b.place_id, 120);
+  let placeId = clip(b.place_id, 120);
+  let pl = null;
   if (placeId) {
-    const pl = await env.DB.prepare('SELECT business_id, name, address FROM places WHERE id=?1').bind(placeId).first().catch(() => null);
-    if (pl?.business_id) businessId = String(pl.business_id);
-    if (pl && !b.place) b.place = pl.name;
-    if (pl && !b.address && pl.address) b.address = pl.address;
+    pl = await env.DB.prepare('SELECT id, business_id, name, address, dest, lat, lng FROM places WHERE id=?1').bind(placeId).first().catch(() => null);
+  } else if (b.public && clip(b.place, 120)) {
+    // The host typed a venue name. For a PUBLIC listing it has to be a place
+    // the directory knows (that is where the coordinates come from), so try
+    // the name in the host's destination: exact first, then a prefix. A
+    // private event keeps the free text and never reaches this branch.
+    const name = String(b.place).trim();
+    // The app sends the place NAME it knows ("Bangkok"); the directory keys
+    // on the slug. resolveDest is the same translation TONIGHT uses.
+    const { resolveDest } = await import('./suggest.mjs');
+    const dest = clip(b.dest, 80) ? await resolveDest(env, clip(b.dest, 80)).catch(() => null) : null;
+    pl = await env.DB.prepare(
+      `SELECT id, business_id, name, address, dest, lat, lng FROM places
+        WHERE lat IS NOT NULL AND (?2 IS NULL OR dest = ?2) AND (LOWER(name) = LOWER(?1) OR LOWER(name) LIKE LOWER(?1) || '%')
+        ORDER BY CASE WHEN LOWER(name) = LOWER(?1) THEN 0 ELSE 1 END, (rating IS NULL), rating DESC LIMIT 1`,
+    ).bind(name, dest).first().catch(() => null);
+    if (pl) placeId = String(pl.id);
+  }
+  if (pl) {
+    if (pl.business_id) businessId = String(pl.business_id);
+    if (!b.place) b.place = pl.name;
+    if (!b.address && pl.address) b.address = pl.address;
+  }
+  // Public needs three things, and refuses plainly without them: a day (a
+  // listing with no date is not a listing), a directory place (so it has
+  // somewhere real and a distance), and a host NUM can reach (a verified
+  // contact — the same bar as sending a message). `publicRefused` says which
+  // one was missing; the event is still created, privately.
+  let isPublic = 0, publicRefused = null;
+  if (b.public === true || b.public === 1 || b.public === 'true') {
+    const { hasVerifiedContact } = await import('./membercontact.mjs');
+    const hm = await env.DB.prepare('SELECT phone_verified, email_verified FROM num_members WHERE id=?1').bind(hostId).first();
+    if (!clip(b.day, 20)) publicRefused = 'a public event needs a day';
+    else if (!pl || pl.lat == null || pl.lng == null) publicRefused = 'a public event needs a place from the directory';
+    else if (!hasVerifiedContact(hm)) publicRefused = 'verify a number or an email to list publicly';
+    else isPublic = 1;
   }
   await env.DB.prepare(
-    `INSERT INTO num_events (id, host_id, business_id, title, day, time, place, address, dress, note, capacity, plan_id, slug)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`,
+    `INSERT INTO num_events (id, host_id, business_id, title, day, time, place, address, dress, note, capacity, plan_id, slug, public, place_id, dest, lat, lng, cover, price_note)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
   ).bind(
     id, hostId, businessId, clip(b.title, 120) || 'Our event', clip(b.day, 20), clip(b.time, 10),
     clip(b.place, 120), clip(b.address, 200), clip(b.dress, 80), clip(b.note, 600),
     b.capacity == null ? null : Number(b.capacity) || null, clip(b.plan_id, 40), slug,
+    isPublic, placeId, pl?.dest ?? null, pl?.lat ?? null, pl?.lng ?? null, clip(b.cover, 300), clip(b.price_note, 60),
   ).run();
 
   const event = await env.DB.prepare('SELECT * FROM num_events WHERE id=?1').bind(id).first();
@@ -174,7 +222,7 @@ async function createEvent(env, req, origin) {
       })
     : null;
 
-  return json({ event, url: `${origin}/e/${slug}`, ...(dispatched ?? {}) });
+  return json({ event, url: `${origin}/e/${slug}`, public_refused: publicRefused, ...(dispatched ?? {}) });
 }
 
 async function updateEvent(env, req) {
@@ -838,6 +886,43 @@ document.querySelectorAll('button[data-r]').forEach(b=>b.addEventListener('click
 
 // ── router ────────────────────────────────────────────────────────────────
 
+/**
+ * NUM-hosted events for a shelf: public, open, on or after today, nearest
+ * first when a fix is given (otherwise this destination's). Shaped like a
+ * discover item so tonightPick can rank it beside Ticketmaster's rows, with
+ * the label that says where it came from. Throws on a failed read — a shelf
+ * that quietly shows nothing is the bug 13 Sep fixed elsewhere.
+ */
+export async function publicEventsFor(env, { dest = null, lat = null, lng = null, day = null, limit = 12, origin = 'https://app.itsnum.com' } = {}) {
+  if (!env?.DB) return [];
+  await ensure(env);
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(String(day ?? '')) ? day : new Date().toISOString().slice(0, 10);
+  const fix = lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+  const { results } = fix
+    ? await env.DB.prepare(
+      `SELECT e.*, (SELECT COUNT(*) FROM num_event_guests g WHERE g.event_id = e.id AND g.rsvp = 'yes') AS yes
+         FROM num_events e WHERE e.public = 1 AND e.state = 'open' AND e.day >= ?1 AND e.lat IS NOT NULL
+         ORDER BY e.day ASC, ((e.lat - ?2) * (e.lat - ?2) + (e.lng - ?3) * (e.lng - ?3)) ASC LIMIT ?4`,
+    ).bind(today, Number(lat), Number(lng), Math.min(50, limit | 0)).all()
+    : await env.DB.prepare(
+      `SELECT e.*, (SELECT COUNT(*) FROM num_event_guests g WHERE g.event_id = e.id AND g.rsvp = 'yes') AS yes
+         FROM num_events e WHERE e.public = 1 AND e.state = 'open' AND e.day >= ?1 AND (?2 IS NULL OR e.dest = ?2)
+         ORDER BY e.day ASC LIMIT ?3`,
+    ).bind(today, dest ?? null, Math.min(50, limit | 0)).all();
+  const R = 6371, rad = Math.PI / 180;
+  const km = (a, b, c, d) => R * Math.acos(Math.min(1, Math.max(-1, Math.sin(a * rad) * Math.sin(c * rad) + Math.cos(a * rad) * Math.cos(c * rad) * Math.cos((d - b) * rad))));
+  return (results ?? []).filter((e) => fix ? km(Number(lat), Number(lng), Number(e.lat), Number(e.lng)) <= 40 : true).map((e) => ({
+    source: 'num', id: `ev_${e.slug}`, title: e.title,
+    sub: [e.place, e.day, e.time].filter(Boolean).join(' · '),
+    image: e.cover ?? null, rating: null, price: null, currency: null, price_note: e.price_note ?? null,
+    url: `${origin}/e/${e.slug}`,
+    starts_on: e.day, ends_on: e.day, starts_at: e.time ? `${e.day}T${String(e.time).padStart(5, '0')}:00` : null,
+    venue: e.place ?? null, lat: e.lat, lng: e.lng,
+    distance_km: fix ? Math.round(km(Number(lat), Number(lng), Number(e.lat), Number(e.lng)) * 10) / 10 : null,
+    label: 'Hosted on NUM', going: Number(e.yes ?? 0), capacity: e.capacity ?? null, genre: null,
+  }));
+}
+
 export async function handleEvents(request, env, path, origin) {
   if (!env.DB) return json({ error: 'events need the database binding' }, 503);
   await ensure(env);
@@ -853,6 +938,9 @@ export async function handleEvents(request, env, path, origin) {
     if (path === '/reply' && post) return await replyToInvite(env, request);
     if (path === '/dashboard') return await eventDashboard(env, url, origin);
     if (path === '/list') return await listEvents(env, url, origin);
+    if (path === '/public') {
+      return json({ events: await publicEventsFor(env, { dest: url.searchParams.get('dest'), lat: url.searchParams.get('lat'), lng: url.searchParams.get('lng'), day: url.searchParams.get('day'), origin }) });
+    }
     return json({ error: 'not found' }, 404);
   } catch (err) {
     console.error('[events]', path, err?.message ?? err);

@@ -59,6 +59,13 @@ export default function EventSheet() {
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // LIST IT PUBLICLY (18 Sep 2026). Off by default: an event is private
+  // until the host says otherwise. On, it is offered on TONIGHT to anyone
+  // nearby, beside Ticketmaster's, labelled "Hosted on NUM". The server
+  // decides whether it qualifies (a day, a venue it knows, a verified host)
+  // and says why not in `public_refused`, which is shown as-is.
+  const [listPublic, setListPublic] = useState(false);
+  const dest = useApp((s) => s.place);
 
   // The dashboard is server truth — RSVPs arrive from other people's phones,
   // so local state can never be the source.
@@ -81,7 +88,12 @@ export default function EventSheet() {
     if (!title.trim()) return;
     setBusy(true);
     try {
-      await createEvent({ title: title.trim(), day: day || null, time: time || null, place: place || null, dress: dress || null });
+      const made = await createEvent({
+        title: title.trim(), day: day || null, time: time || null, place: place || null, dress: dress || null,
+        ...(listPublic ? { public: true, dest: dest ?? null } : {}),
+      });
+      if (made?.public_refused) setNote(t('Created privately — {why}.', { why: made.public_refused }));
+      else if (listPublic) setNote(t('Listed on TONIGHT for everyone nearby.'));
       setTitle('');
       setDay('');
       setTime('');
@@ -184,6 +196,20 @@ export default function EventSheet() {
             </div>
             <input style={field} placeholder={t('Venue')} value={place} onChange={(e) => setPlace(e.target.value)} />
             <input style={field} placeholder={t('Dress code (optional)')} value={dress} onChange={(e) => setDress(e.target.value)} />
+            <div
+              aria-checked={listPublic}
+              {...pressable(() => setListPublic((v) => !v), 'switch')}
+              className="glass press"
+              style={{ cursor: 'pointer', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center', minHeight: 44 }}
+            >
+              <span style={{ width: 34, height: 20, borderRadius: 999, flex: 'none', background: listPublic ? 'var(--color-accent)' : 'var(--ink-12)', position: 'relative', transition: 'background .15s' }}>
+                <span style={{ position: 'absolute', top: 2, left: listPublic ? 16 : 2, width: 16, height: 16, borderRadius: 999, background: '#fff', transition: 'left .15s' }} />
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700 }}>{t('List it on TONIGHT')}</span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.45 }}>{t('Anyone nearby sees it beside the other events, marked “Hosted on NUM”. Needs a day and a venue NUM knows.')}</span>
+              </span>
+            </div>
             <div {...pressable(doCreate)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
               {busy ? 'ONE SEC…' : 'CREATE THE EVENT'}
             </div>

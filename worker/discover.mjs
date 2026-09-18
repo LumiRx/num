@@ -423,16 +423,20 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
   // Ticketmaster where it has inventory. No places, no Viator — a strip for
   // the TODAY tab, each row with a start the countdown can tick from.
   if (mode === 'tonight') {
-    const [tm, ours] = await Promise.all([
+    // HOSTED ON NUM (18 Sep 2026): businesses' and hosts' public events, from
+    // worker/events.mjs, ranked by tonightPick beside Ticketmaster's like any
+    // other listing. Private events never reach here (public = 1 only).
+    const [tm, ours, hosted] = await Promise.all([
       eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true }),
       withTimeout(cityEventsFor(env, dest, { limit: 4 }), 1500, []),
+      withTimeout(import('./events.mjs').then((m) => m.publicEventsFor(env, { dest, lat, lng, day: g('day'), origin: url.origin })), 1500, []),
     ]);
     const curated = (ours ?? []).map((r) => ({
       source: 'num', id: `ce_${slug(r.title)}`, title: r.title, sub: [r.venue, r.area].filter(Boolean).join(' · '),
       image: null, rating: null, price: null, currency: null, price_note: r.price_note ?? null, url: null,
       starts_on: r.starts_on ?? null, ends_on: r.ends_on ?? null, starts_at: null, venue: r.venue ?? null, label: 'Checked by NUM', why: r.why ?? null,
     }));
-    const items = tonightPick(curated, tm, g('day'));
+    const items = tonightPick([...(hosted ?? []), ...curated], tm, g('day'));
     // Restaurants and bars near the person, through the same ranking the
     // concierge uses (ai/places.js: real ratings first, open now first,
     // not the same three as last time). Both rails are always there, so

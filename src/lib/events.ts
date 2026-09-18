@@ -31,17 +31,17 @@ export interface InviteDispatch {
 }
 
 export async function createEvent(
-  e: Partial<NumEvent> & { ask?: string[]; place_id?: string | null },
-): Promise<(NumEvent & { dispatch?: InviteDispatch }) | null> {
+  e: Partial<NumEvent> & { ask?: string[]; place_id?: string | null; public?: boolean; dest?: string | null },
+): Promise<(NumEvent & { dispatch?: InviteDispatch; public_refused?: string | null }) | null> {
   const me = store.get().me;
   if (!me) return null;
-  const out = await api<{ event: NumEvent; url: string } & Partial<InviteDispatch>>('/create', {
+  const out = await api<{ event: NumEvent; url: string; public_refused?: string | null } & Partial<InviteDispatch>>('/create', {
     method: 'POST',
     body: JSON.stringify({ host_id: me.id, plan_id: store.get().planId, ...e }),
   });
   const event = { ...out.event, url: out.url };
   store.set((s) => ({ events: [event, ...s.events], eventId: event.id, eventOpen: true }));
-  return { ...event, dispatch: out.summary ? (out as unknown as InviteDispatch) : undefined };
+  return { ...event, public_refused: out.public_refused ?? null, dispatch: out.summary ? (out as unknown as InviteDispatch) : undefined };
 }
 
 /** Everything this member's NUM has been asked to join, already phrased. */

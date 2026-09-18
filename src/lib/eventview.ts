@@ -64,9 +64,14 @@ export function costOf(e: EventCard): string | null {
 }
 
 /** The button that leaves NUM, named after whose page it opens. */
+/** A NUM-hosted event: a business's or host's own listing, RSVP'd on its /e/ page. */
+export const hostedOnNum = (e: EventCard): boolean => e.source === 'num' && /\/e\/[A-Za-z0-9_-]+$/.test(e.url ?? '');
+
 export function ticketLabel(e: EventCard): string | null {
   if (!e.url) return null;
-  return e.source === 'ticketmaster' ? 'GET TICKETS ON TICKETMASTER' : 'OPEN THE EVENT PAGE';
+  if (e.source === 'ticketmaster') return 'GET TICKETS ON TICKETMASTER';
+  if (hostedOnNum(e)) return 'SAY YOU’RE COMING';
+  return 'OPEN THE EVENT PAGE';
 }
 
 /**
@@ -77,6 +82,7 @@ export function ticketLabel(e: EventCard): string | null {
  */
 export function sellerNote(e: EventCard): string | null {
   if (e.source === 'ticketmaster') return 'Tickets are sold by Ticketmaster. NUM holds nothing and charges nothing for them.';
+  if (hostedOnNum(e)) return 'Hosted on NUM by a business or host. Your RSVP goes to them; any price is theirs.';
   if (e.url) return 'Tickets are sold on the event’s own page.';
   return null;
 }
