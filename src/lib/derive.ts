@@ -285,7 +285,7 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
       lane: e.lane,
       lanes: nL,
       top: (e._s - TL_START) * TL_PPM,
-      height: Math.max((e._e - e._s) * TL_PPM, e.who ? 46 : 34),
+      height: Math.max((e._e - e._s) * TL_PPM, e.who ? 60 : 34),
       who: e.who,
       planId: e.planId,
       planTitle: e.planTitle,
