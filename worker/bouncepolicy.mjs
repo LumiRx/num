@@ -57,6 +57,11 @@
 export const BOUNCE_CEILING = 0.05;
 /** Below this many recent sends the rate is noise, not a signal. */
 export const MIN_SAMPLE = 40;
+/**
+ * How far back the health window looks. THIS IS THE WAY BACK, and without it
+ * the breaker below is a one-way door — see the long note on sendHealth.
+ */
+export const HEALTH_WINDOW_DAYS = 7;
 
 const PERMANENT = /permanent|no.?such|does ?not exist|unknown user|user unknown|invalid recipient|recipient (address )?rejected|mailbox unavailable|address rejected|no mailbox|domain not found|nxdomain|550/i;
 const TRANSIENT = /transient|temporar|greylist|grey.?list|deferred|mailbox full|over quota|quota exceeded|try again|timed? out|throttl|rate.?limit|4\d\d/i;
@@ -151,8 +156,38 @@ export async function recordBounce(env, { ref, to, type, data = {} } = {}) {
  * MIN_SAMPLE attempts the honest answer is "not yet known", and a breaker that
  * trips on three bounces out of five stops a launch on noise.
  */
-export async function sendHealth(env, { sample = 300 } = {}) {
+export async function sendHealth(env, { sample = 300, windowDays = HEALTH_WINDOW_DAYS } = {}) {
   if (!env?.DB) return { ok: true, known: false, reason: 'no database' };
+
+  /* ── WHY THIS WINDOW IS BOUNDED BY TIME AND NOT ONLY BY ROWS ─────────
+   *
+   * The first version of this function read the last 300 rows with no time
+   * bound, and that made it a ONE-WAY DOOR. Trace it: the rate goes over the
+   * ceiling, the drain stops. Because the drain has stopped, no new rows are
+   * written. Because no new rows are written, the last 300 rows are the same
+   * 300 rows tomorrow, and next month. The breaker stays shut for ever — on a
+   * perfectly clean list, with a fixed sender, after the bad addresses have
+   * been removed. At the permanent-bounce rate actually observed in September
+   * it would have tripped within about two hours of deploying and then never
+   * reopened.
+   *
+   * The breaker twenty lines up in invitecron.mjs was given a cooldown and a
+   * half-open probe deliberately, and the comment above it says why: on 31 Aug
+   * 2026 a permanent trip held the queue from 11:45 against a transport that
+   * had worked again since 18:30. This function repeated that mistake in a
+   * form that was harder to see, because nothing about it looks like a latch.
+   *
+   * Bounding by time is the whole fix. A week of not sending lets the bad
+   * history age out of the window, `n` falls under MIN_SAMPLE, and the gate
+   * reopens on its own with the honest reason "too few to judge" — which is
+   * exactly what is true after a week of silence. No cooldown constant, no
+   * half-open state, no reset button for somebody to forget about.
+   *
+   * It also makes the reading mean what its name says. "Our recent bounce
+   * rate" should be about the recent past, not about the last 300 messages
+   * whenever they happened to go out.
+   */
+  const since = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 19).replace('T', ' ');
   const row = await env.DB.prepare(
     `SELECT
         COUNT(*)                                                       AS n,
@@ -160,21 +195,29 @@ export async function sendHealth(env, { sample = 300 } = {}) {
         SUM(CASE WHEN status LIKE 'bounced_%'          THEN 1 ELSE 0 END) AS bounced,
         SUM(CASE WHEN status = 'complained'            THEN 1 ELSE 0 END) AS complaints
        FROM (SELECT status FROM num_invites
-              WHERE status IN ('sent','complained')
-                 OR status LIKE 'bounced_%'
+              WHERE (status IN ('sent','complained') OR status LIKE 'bounced_%')
+                -- A row with no sent_at cannot be placed in time. It is left
+                -- out rather than assumed recent: assuming would let ancient
+                -- unstamped rows hold the gate shut, which is the failure this
+                -- window exists to remove.
+                AND sent_at IS NOT NULL
+                AND sent_at >= ?2
               ORDER BY sent_at DESC LIMIT ?1)`,
-  ).bind(sample).first().catch(() => null);
+  ).bind(sample, since).first().catch(() => null);
 
   const n = Number(row?.n ?? 0);
   if (n < MIN_SAMPLE) {
-    return { ok: true, known: false, n, reason: `only ${n} attempts on record — too few to judge` };
+    return {
+      ok: true, known: false, n, since,
+      reason: `only ${n} attempts in the last ${windowDays} days — too few to judge`,
+    };
   }
   const hard = Number(row?.hard ?? 0);
   const complaints = Number(row?.complaints ?? 0);
   const rate = hard / n;
   const ok = rate <= BOUNCE_CEILING;
   return {
-    ok, known: true, n, hard, complaints,
+    ok, known: true, n, hard, complaints, since, windowDays,
     bounced: Number(row?.bounced ?? 0),
     rate: Math.round(rate * 1000) / 1000,
     ceiling: BOUNCE_CEILING,
@@ -182,6 +225,7 @@ export async function sendHealth(env, { sample = 300 } = {}) {
       ? `${hard} hard bounces in the last ${n} — under the ${Math.round(BOUNCE_CEILING * 100)}% ceiling`
       : `${hard} hard bounces in the last ${n} (${Math.round(rate * 100)}%) — over the `
         + `${Math.round(BOUNCE_CEILING * 100)}% ceiling. Sending more spends a reputation that `
-        + 'sign-in codes and booking confirmations also depend on. Clean the list before resuming.',
+        + 'sign-in codes and booking confirmations also depend on. Clean the list before resuming — '
+        + `this reopens on its own once those ${windowDays} days have passed without more bounces.`,
   };
 }
