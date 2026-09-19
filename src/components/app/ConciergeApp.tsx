@@ -359,16 +359,16 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       {/* THREAD left the tab bar — it is the floating dot now, reachable from
           every screen instead of being one of three equal places to be. */}
       <div role="tablist" className="glass" style={{ display: 'flex', margin: '10px 10px 2px', borderRadius: 999, padding: 4, position: 'relative', zIndex: 2 }}>
-        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />{t('TODAY')}</div>
+        <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />{t('TODAY').toUpperCase()}</div>
         <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={{ ...segStyle(view === 'plan'), position: 'relative' }}>
-          <RouteIcon size={13} />{t('PLAN')}
+          <RouteIcon size={13} />{t('PLAN').toUpperCase()}
           {/* Open invites and plans that need your answer — the count on the
               rail at the top of PLAN, so it can be seen from any tab. */}
           {inviteCount > 0 && (
             <span aria-label={t('{n} waiting on you', { n: inviteCount })} style={{ position: 'absolute', top: 4, right: 8, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: view === 'plan' ? '#fff' : 'var(--grad-accent)', color: view === 'plan' ? 'var(--color-accent-700)' : '#fff', fontSize: 9, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{inviteCount}</span>
           )}
         </div>
-        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />{t('MEMORY')}</div>
+        <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />{t('MEMORY').toUpperCase()}</div>
       </div>
 
       {/* views float above the aurora ground; wrapper mirrors the root's flex column */}

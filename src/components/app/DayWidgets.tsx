@@ -160,7 +160,7 @@ export function TripCheck() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={kicker}>{t('TRIP CHECK')}</div>
           <div style={{ ...h, marginTop: 3 }}>
-            {clean ? t('Nothing needs you') : `${findings.length} thing${findings.length === 1 ? '' : 's'} to look at`}
+            {clean ? t('Nothing needs you') : findings.length === 1 ? t('1 thing to look at') : t('{n} things to look at', { n: findings.length })}
           </div>
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} />

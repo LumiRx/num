@@ -53,8 +53,12 @@ const still = { sheet: await census('sheet') };
 await page.keyboard.press('Escape');
 await page.waitForTimeout(600);
 await page.screenshot({ path: `${outdir}/03-thread-${lang}.png` });
-const closeThread = page.locator('[role="dialog"] .glass.press').filter({ has: page.locator('svg') }).last();
-if (await closeThread.count()) await closeThread.click().catch(() => {});
+await page.evaluate(() => {
+  // The thread's × is the round glass button in its header with no text.
+  const dlg = [...document.querySelectorAll('[role="dialog"]')].find((d) => d.getAttribute('aria-hidden') === 'false' && d.querySelector('.glass.press'));
+  const x = dlg && [...dlg.querySelectorAll('.glass.press')].filter((b) => !b.textContent.trim()).pop();
+  x?.click();
+});
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${outdir}/04-today-${lang}.png` });
 still.today = await census('today');
