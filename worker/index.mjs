@@ -3025,6 +3025,35 @@ export default {
     // comment there. Leaving a second copy here would look like the live one
     // and never run.
 
+    // ── STAYS ────────────────────────────────────────────────────────────
+    //
+    // The one rail in this worker that can take a room rather than point at
+    // one. Two things are load-bearing here and neither is in liteapi.mjs:
+    //
+    //   1. WHO IS SIGNED IN IS VERIFIED AGAINST num_members, not taken from
+    //      the query string. Below-public pricing is only lawful inside a
+    //      closed user group, so "signed in" is a contract boundary. If it
+    //      could be satisfied by typing ?me=anything, the closed user group
+    //      would be open and NUM would be in breach without a single line of
+    //      code looking wrong.
+    //
+    //   2. The lookup FAILS CLOSED. A D1 error means "not a member", which
+    //      means public prices, which is the safe direction to be wrong in.
+    if (url.pathname.startsWith('/api/stays')) {
+      const { handleStays } = await import('./liteapi.mjs');
+      const probe = request.method === 'POST' ? await request.clone().json().catch(() => ({})) : {};
+      const claimed = String(probe.me ?? url.searchParams.get('me') ?? '').trim();
+      let session = null;
+      if (claimed) {
+        const row = await env.DB.prepare('SELECT id FROM num_members WHERE id = ?1')
+          .bind(claimed).first().catch(() => null);
+        if (row?.id) session = { memberId: row.id };
+      }
+      const res = await handleStays(request, env, url.pathname.slice('/api/stays'.length) || '/', { session });
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/sabre')) {
       const res = await handleSabre(request, env, url.pathname.slice('/api/sabre'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));

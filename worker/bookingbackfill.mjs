@@ -42,6 +42,7 @@
  * nothing" is a result, and not recording it is how a crawler loops.
  */
 import { detectBooking } from './booking.mjs';
+import { offerable, stayKind } from './staykind.mjs';
 
 /** Marked into booking_platform when a site was read and had no booking system. */
 export const NONE = '-';
@@ -64,7 +65,9 @@ export const NONE = '-';
  * read, or it genuinely is not there. Everything else is a bad moment, and a
  * bad moment earns another look later.
  */
-export const FINAL = Object.freeze(['found', 'none', 'http-404', 'no-site']);
+export const FINAL = Object.freeze(['found', 'none', 'http-404', 'no-site', 'not-a-stay']);
+// 'not-a-stay' is FINAL on purpose: a hall of residence does not become a
+// hotel in four days, so re-queueing it is pure waste.
 export const isFinal = (outcome) => FINAL.includes(String(outcome ?? ''));
 
 /** How long before a bad moment is worth another try, and how many times. */
@@ -165,7 +168,7 @@ export async function candidates(env, { limit = 40 } = {}) {
   // few from every city each tick is what stops one city eating the queue.
   const { results } = await env.DB.prepare(
     `WITH queue AS (
-       SELECT p.id, p.name, p.website, p.dest,
+       SELECT p.id, p.name, p.website, p.dest, p.category,
               (CASE WHEN p.hours_mask IS NOT NULL AND p.hours_mask <> '' THEN 1 ELSE 0 END) AS rv,
               -- Established-venue first: published hours, then whatever review
               -- count exists. See the note above on why reviews alone was inert.
@@ -179,7 +182,24 @@ export async function candidates(env, { limit = 40 } = {}) {
         WHERE p.website IS NOT NULL AND p.website <> ''
           AND (p.booking_platform IS NULL OR p.booking_platform = '')
           AND (p.category LIKE '%restaurant%' OR p.category LIKE '%bar%' OR p.category LIKE '%cafe%'
-               OR p.category LIKE '%food%' OR p.category LIKE '%dining%')
+               OR p.category LIKE '%food%' OR p.category LIKE '%dining%'
+               -- STAYS, added 19 Sep 2026. This crawler had run since 7 Sep
+               -- and had never looked at a single hotel: the filter above was
+               -- the whole reason the places table held 17 booking platforms
+               -- while booking.mjs knew fourteen hotel engines and
+               -- hotelbooking.test proved them against live UK pages. The
+               -- thirteen Edinburgh hotels that WERE deep-linked were typed
+               -- in by hand.
+               --
+               -- The SQL is deliberately loose because the category column is
+               -- dirty; staykind.mjs does the real sorting in JS below,
+               -- where a hall of residence and a serviced apartment can be
+               -- told apart.
+               OR p.category LIKE '%hotel%' OR p.category LIKE '%hostel%'
+               OR p.category LIKE '%motel%' OR p.category LIKE '%inn%'
+               OR p.category LIKE '%guest house%' OR p.category LIKE '%guesthouse%'
+               OR p.category LIKE '%bed and breakfast%' OR p.category LIKE '%resort%'
+               OR p.category LIKE '%lodging%' OR p.category LIKE '%apartment%')
           AND (
             s.place_id IS NULL
             OR (
@@ -190,11 +210,35 @@ export async function candidates(env, { limit = 40 } = {}) {
             )
           )
      )
-     SELECT id, name, website, dest FROM queue
+     SELECT id, name, website, dest, category FROM queue
       ORDER BY rank ASC, rv DESC
       LIMIT ?1`,
-  ).bind(limit, ...FINAL, MAX_ATTEMPTS, `-${RETRY_AFTER_DAYS} days`).all().catch(() => ({ results: [] }));
+  ).bind(limit, ...FINAL, MAX_ATTEMPTS, `-${RETRY_AFTER_DAYS} days`).all();
+  // NOT `.catch(() => ({ results: [] }))`. STATUS.md calls that the single most
+  // expensive habit in this codebase and this is exactly the shape it costs
+  // the most: a D1 hiccup would make the crawler believe the queue was empty
+  // and go quiet for ever, with nothing in the logs and a caller that reads
+  // "done: true". A throw here is one noisy tick; the swallow is a silent
+  // month. The cron caller already tolerates a thrown tick.
   return results ?? [];
+}
+
+/**
+ * A stay row the crawler should not spend a fetch on.
+ *
+ * staykind.mjs exists because the UK slice alone holds 4,666 rows whose
+ * category says "hotel" and which include halls of residence, an NHS staff
+ * residence and a university's own accommodation. Crawling those wastes the
+ * budget and, worse, a booking engine found on a student-housing site would be
+ * written onto a row a concierge could then offer as a hotel.
+ *
+ * Restaurants and bars are unaffected — `stayKind` only gets a say on rows the
+ * stay half of the filter let through.
+ */
+const STAYISH = /hotel|hostel|motel|\binn\b|guest ?house|bed and breakfast|resort|lodging|apartment/i;
+export function worthScanning(row = {}) {
+  if (!STAYISH.test(String(row.category ?? ''))) return true;
+  return offerable(row);
 }
 
 /**
@@ -243,6 +287,13 @@ export async function backfillBookings(env, { limit = 40, fetchImpl } = {}) {
 
   const results = [];
   for (const place of rows) {
+    // A student residence is marked and skipped rather than dropped. "We
+    // looked and it is not a stay" is a result, and not recording it is how a
+    // crawler loops on the same rows for ever.
+    if (!worthScanning(place)) {
+      results.push({ id: place.id, outcome: 'not-a-stay', platform: null, kind: stayKind(place) });
+      continue;
+    }
     // Sequential on purpose. Forty parallel fetches from one Worker is a
     // burst that looks like an attack to a small restaurant's host, and this
     // job has no deadline — it runs every tick, forever.

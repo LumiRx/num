@@ -111,7 +111,12 @@ describe('A RATE-LIMIT IS NOT AN ANSWER', () => {
   // would be recorded as having no booking system for ever, and its guests
   // sent to a phone number instead of its reservation page.
   test('only a real reading counts as final', () => {
-    assert.deepEqual([...FINAL], ['found', 'none', 'http-404', 'no-site']);
+    // 'not-a-stay' joined this list on 19 Sep when the crawler was pointed at
+    // hotels. It belongs here for the same reason the other four do: it is a
+    // REAL reading. A hall of residence does not become a hotel in four days,
+    // so re-queueing it is pure waste — unlike a 429, which is the site
+    // having a bad moment and says nothing about its booking system.
+    assert.deepEqual([...FINAL], ['found', 'none', 'http-404', 'no-site', 'not-a-stay']);
     for (const bad of ['http-429', 'http-403', 'http-500', 'unreachable']) {
       assert.equal(isFinal(bad), false, `${bad} was treated as a settled answer`);
     }

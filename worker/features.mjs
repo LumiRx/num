@@ -424,16 +424,42 @@ export const FEATURES = Object.freeze([
     plan: 'free',
     entitlement: null,
     ungated: true,
-    name: 'Hotel rates',
-    does: 'Live room rates, from the same system the flights come from.',
-    needs: ['SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'SABRE_HOTEL_RATES_PATH'],
-    ready: (env) => has(env, 'SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'SABRE_HOTEL_RATES_PATH'),
-    surface: 'thread card',
-    code: ['worker/sabre.mjs', 'worker/staykind.mjs'],
+    name: 'Stays',
+    does: 'Live room rates NUM can actually book, not a link out to somebody else.',
+    // Moved off Sabre on 19 Sep 2026. Sabre SHOPS hotels and cannot take one —
+    // its own header says so, and sabre-booking.mjs maps only flight
+    // operations, so there has never been a hotel booking path behind it.
+    // LiteAPI is the one supply route a company this size can hold today that
+    // both prices and books.
+    needs: ['LITEAPI_KEY'],
+    ready: (env) => has(env, 'LITEAPI_KEY'),
+    surface: 'STAYS page + thread card',
+    code: ['worker/liteapi.mjs', 'worker/staykind.mjs', 'worker/booking.mjs'],
     sop: {
-      on: 'Needs the Sabre pair plus SABRE_HOTEL_RATES_PATH. Not connected as of 18 Sep 2026.',
-      check: 'GET /api/works-with — sabre_hotel should read Live.',
-      broken: 'NUM recommends hotels from its own directory and cannot price them. Saying "from $X" without a live rate would be inventing a price, so it does not.',
+      on: 'Set LITEAPI_KEY (sand_ to rehearse, prod_ to sell). Shopping starts there. BOOKING is a separate switch — LITEAPI_BOOKING_ENABLED=true — and a production key needs LITEAPI_BOOKING_LIVE=true on top of it. Two switches, because the failure mode of one is a real charge against what you thought was a sandbox.',
+      check: 'GET /api/stays/status — it reports the estate read off the key prefix, both margins, and which switch is holding booking shut.',
+      broken: 'Without the key NUM still recommends hotels from its own directory and deep-links the ones whose own booking engine it knows, and it quotes nothing. Saying "from $X" without a live rate would be inventing a price, so it does not.',
+    },
+  },
+  {
+    id: 'stays_member_rate',
+    plan: 'free',
+    entitlement: null,
+    ungated: true,
+    name: 'Member room rate',
+    does: 'A signed-in member is priced below the public rate on the same room.',
+    // This is a supplier CONTRACT TERM expressed as a feature: below-public
+    // pricing is only lawful inside a closed user group, and NUM's app is one
+    // because it requires an account. Signed out, worker/liteapi.mjs floors
+    // every rate up to the public price rather than hiding it.
+    needs: ['LITEAPI_KEY', 'LITEAPI_MARGIN_PUBLIC', 'LITEAPI_MARGIN_MEMBER'],
+    ready: (env) => has(env, 'LITEAPI_KEY', 'LITEAPI_MARGIN_PUBLIC', 'LITEAPI_MARGIN_MEMBER'),
+    surface: 'STAYS page, signed in only',
+    code: ['worker/liteapi.mjs'],
+    sop: {
+      on: 'Set both margins as percentages. LITEAPI_MARGIN_MEMBER below LITEAPI_MARGIN_PUBLIC is the whole mechanic; equal is legal and pointless.',
+      check: 'Search signed out and signed in on the same room. Signed out must read the public price.',
+      broken: 'With one margin set, members and strangers see the same number and the membership has nothing in it. With neither set, NUM sells at net — it earns nothing and it is not breaking anything.',
     },
   },
 
