@@ -47,6 +47,12 @@ import { RAILS, railsFor, venueRails, checkoutTypesFor, guestFromRequest, action
 import { recordExternalPayment } from '../growth/pos/index.mjs';
 import { attemptAutoPay } from './autopay.mjs';
 import { itemsFor } from './billitems.mjs';
+import { track } from './paytrack.mjs';
+// 5arz lives in growth/ because the host board is served from num-growth, but
+// a bill settles HERE, on num-app. Same reasoning as the POS adapter above:
+// one module bundled into both, rather than two copies that can disagree
+// about what a binding is.
+import { bindTransaction } from '../growth/fivearz.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -122,6 +128,22 @@ async function decorate(env, bill) {
  * ONE list, read by the pay page, the app and the console.
  */
 export async function billRails(env, tokenValue, guest = {}) {
+  const out = await billAndRails(env, tokenValue, guest);
+  if (!out) return null;
+  // The venue is TRIMMED on the way out. The full record carries the connected
+  // Stripe account id, and this answer is served to a guest's browser.
+  return { bill: out.bill, venue: { id: out.venue.id, name: out.venue.name, country: out.venue.country }, rails: out.rails };
+}
+
+/**
+ * The same read, with the venue's full record kept.
+ *
+ * createBillCheckout used to call billRails and then venueRails AGAIN, because
+ * it needed the connected account id that billRails deliberately strips. That
+ * is a second round trip to D1 on the one path where a guest is waiting with
+ * their thumb on a button. One read, two callers, one of which trims.
+ */
+async function billAndRails(env, tokenValue, guest = {}) {
   const bill = await decorate(env, await billFor(env, tokenValue));
   if (!bill) return null;
   const venue = await venueRails(env, bill.business_id);
@@ -129,7 +151,7 @@ export async function billRails(env, tokenValue, guest = {}) {
   const rails = railsFor({ ...venue, currency: bill.currency }, guest).map((r) => ({
     ...r, action: actionFor(env, r, bill.token),
   }));
-  return { bill, venue: { id: venue.id, name: venue.name, country: venue.country }, rails };
+  return { bill, venue, rails };
 }
 
 /**
@@ -149,9 +171,21 @@ export async function feeForBill(env, bill) {
   // it out again here, one share at a time, is how four shares end up adding
   // to a penny more or less than the fee the venue's own terms say — so this
   // reads what was decided rather than deciding again.
-  const share = await env.DB.prepare(
-    'SELECT split_parent, application_fee_minor FROM num_paylinks WHERE token = ?1',
-  ).bind(bill.token).first().catch(() => null);
+  //
+  // These three reads are independent of each other and used to run one after
+  // another, which is three sequential round trips to D1 on the path where a
+  // guest is waiting for a payment page to open. Nothing here reads anything
+  // another one writes, so they go together.
+  const [share, terms, verified] = await Promise.all([
+    env.DB.prepare('SELECT split_parent, application_fee_minor FROM num_paylinks WHERE token = ?1')
+      .bind(bill.token).first().catch(() => null),
+    env.DB.prepare('SELECT commission_bp, walkin_fee_cs FROM num_business_settings WHERE business_id = ?1')
+      .bind(bill.business_id).first().catch(() => null),
+    bill.booking_id
+      ? env.DB.prepare('SELECT id FROM num_bookings WHERE id = ?1 AND business_id = ?2')
+        .bind(String(bill.booking_id), bill.business_id).first().catch(() => null)
+      : Promise.resolve(null),
+  ]);
   if (share?.split_parent) {
     const minor = Number(share.application_fee_minor);
     return {
@@ -160,14 +194,6 @@ export async function feeForBill(env, bill) {
     };
   }
 
-  const terms = await env.DB.prepare(
-    'SELECT commission_bp, walkin_fee_cs FROM num_business_settings WHERE business_id = ?1',
-  ).bind(bill.business_id).first().catch(() => null);
-  let verified = null;
-  if (bill.booking_id) {
-    verified = await env.DB.prepare('SELECT id FROM num_bookings WHERE id = ?1 AND business_id = ?2')
-      .bind(String(bill.booking_id), bill.business_id).first().catch(() => null);
-  }
   if (verified) {
     const bp = Number.isFinite(terms?.commission_bp) && terms.commission_bp > 0 ? terms.commission_bp : 1000;
     const minor = Math.round((bill.amount_minor * bp) / 10_000);
@@ -184,9 +210,9 @@ export async function feeForBill(env, bill) {
  */
 export async function createBillCheckout(env, tokenValue, railId, { guest = {}, me = null } = {}) {
   if (!env?.STRIPE_SECRET_KEY) return { ok: false, status: 503, reason: 'payments are not configured on this worker' };
-  const out = await billRails(env, tokenValue, { ...guest, signedIn: true });
+  const out = await billAndRails(env, tokenValue, { ...guest, signedIn: true });
   if (!out) return { ok: false, status: 404, reason: 'unknown bill code' };
-  const { bill, rails } = out;
+  const { bill, rails, venue } = out;
   if (bill.state === 'paid') return { ok: false, status: 409, reason: 'this bill is already paid' };
   // A split bill is paid by its shares. Leaving the parent payable is how one
   // dinner gets paid twice — a friend paying their share while somebody else,
@@ -197,7 +223,6 @@ export async function createBillCheckout(env, tokenValue, railId, { guest = {}, 
 
   const rail = rails.find((r) => r.id === railId && r.source === 'stripe' && r.ready);
   if (!rail) return { ok: false, status: 422, reason: `${RAILS[railId]?.label ?? railId} is not available for this bill` };
-  const venue = await venueRails(env, bill.business_id);
   const types = checkoutTypesFor(rails, { only: railId });
   if (!types.length) return { ok: false, status: 422, reason: 'no Stripe payment type for that rail' };
 
@@ -253,11 +278,16 @@ export async function createBillCheckout(env, tokenValue, railId, { guest = {}, 
     // Stripe dashboard. Card is always on. Fall to card ONCE, say so, and
     // never silently for a non-card rail the guest explicitly chose.
     if (types[0] !== 'card' && /payment_method_type|payment method/i.test(e?.message ?? '')) {
+      await track(env, { token: bill.token, businessId: bill.business_id, kind: 'checkout_refused', rail: railId, memberId: me, detail: `${rail.label} is not switched on in this venue's Stripe account` });
       return { ok: false, status: 422, reason: `${rail.label} is not switched on in ${bill.venue}'s Stripe account yet — choose another way to pay`, stripe: e.message };
     }
+    await track(env, { token: bill.token, businessId: bill.business_id, kind: 'checkout_refused', rail: railId, memberId: me, detail: e?.message ?? 'Stripe refused' });
     return { ok: false, status: 502, reason: 'Stripe refused to open the payment page', stripe: e?.message ?? String(e) };
   }
-  if (!session?.url) return { ok: false, status: 502, reason: 'Stripe returned no payment page' };
+  if (!session?.url) {
+    await track(env, { token: bill.token, businessId: bill.business_id, kind: 'checkout_refused', rail: railId, memberId: me, detail: 'Stripe returned no payment page' });
+    return { ok: false, status: 502, reason: 'Stripe returned no payment page' };
+  }
 
   // Remember the session on the bill. The columns arrive with migration 0035;
   // before it the webhook still settles by metadata, so a failure here is
@@ -266,19 +296,32 @@ export async function createBillCheckout(env, tokenValue, railId, { guest = {}, 
     'UPDATE num_paylinks SET checkout_session_id = ?2, charged_via = ?3, application_fee_minor = ?4 WHERE token = ?1',
   ).bind(bill.token, session.id, railId, fee.minor).run().catch((e) => console.warn('[billpay] could not stamp session', e?.message));
 
-  // WHO IS PAYING, written down at last.
+  // WHO IS PAYING, written down at last — and on INTENT, not on success.
   //
-  // Recorded here rather than at the webhook because this is the only moment
-  // NUM knows: the webhook arrives from Stripe with the bill token and the
-  // venue and nothing about the guest. Written on INTENT, not on success — so
-  // it is confirmed at the webhook and means nothing on its own until
-  // settled_at is set beside it. A member who opened a payment page and walked
-  // away has not paid anything, and their history must not say they did.
+  // This is the only moment NUM knows: the webhook arrives from Stripe with
+  // the bill token and the venue and nothing about the guest. It means nothing
+  // on its own until settled_at is set beside it, because a member who opened
+  // a payment page and walked away has not paid anything and their history
+  // must not say they did.
+  //
+  // DELIBERATELY ITS OWN STATEMENT, and it was briefly folded into the one
+  // above to save a round trip. That was wrong: paid_by_member arrives with
+  // migration 0045, so a combined UPDATE fails whole on any database that has
+  // the code and not the column — and it would take the session id and the fee
+  // down with it, which is the bill's own record of what it charged. A round
+  // trip is cheaper than a migration ordering constraint.
   if (me) {
     await env.DB.prepare('UPDATE num_paylinks SET paid_by_member = ?2 WHERE token = ?1')
       .bind(bill.token, String(me).slice(0, 64)).run()
       .catch((e) => console.warn('[billpay] could not stamp the payer', e?.message));
   }
+
+
+
+  await track(env, {
+    token: bill.token, businessId: bill.business_id, kind: 'checkout_opened',
+    rail: railId, memberId: me, amountMinor: bill.amount_minor,
+  });
 
   return { ok: true, url: session.url, session_id: session.id, fee, types, expires_at: body.expires_at };
 }
@@ -290,6 +333,46 @@ export async function createBillCheckout(env, tokenValue, railId, { guest = {}, 
  * platform endpoint behaves. Idempotent: settleBillCode() flips settled_at
  * once and markPaid() rewrites the same paid_cs.
  */
+/**
+ * Bind the human behind a paid bill, at 5arz.
+ *
+ * ── WHY HERE, AND WHY THIS IS THE FIRST CALLER ───────────────────────────
+ *
+ * growth/fivearz.mjs has carried bindTransaction since it was written, fully
+ * tested, with no caller anywhere in the codebase. Its own comment calls it
+ * "5arz revenue surface #3", and it says plainly that it must be called AFTER
+ * a payment settles, because binding an unpaid job records a human behind
+ * money that never moved. Until bill pay there was no settled payment with a
+ * member behind it to bind. Now there is, and this is it.
+ *
+ * Three guards, all of which are the point rather than caution:
+ *
+ * - Only a bill we KNOW a member paid. paid_by_member is stamped on intent and
+ *   means nothing until settled_at sits beside it; binding a bill with no
+ *   payer would assert a human we cannot name.
+ * - Never blocks, never throws, never retried. The money moved seconds ago. A
+ *   partner being down is not a reason to fail a webhook and have Stripe retry
+ *   a settled bill.
+ * - Off unless FIVEARZ_API_KEY is set, and killable with NUM_OFF_BILLBIND.
+ */
+async function bindHuman(env, bill, memberId) {
+  if (!memberId || !env?.FIVEARZ_API_KEY || env.NUM_OFF_BILLBIND === '1') return null;
+  try {
+    const out = await bindTransaction(env, {
+      paymentRef: bill.token,
+      memberId,
+      // Which venue the money went to. 5arz stores it as the work reference;
+      // it is the only piece of context that makes a binding legible later.
+      workRef: bill.business_id,
+    });
+    if (!out?.ok) console.warn('[billpay] 5arz did not bind', bill.token, out?.error ?? '');
+    return out;
+  } catch (e) {
+    console.warn('[billpay] 5arz bind threw', String(e?.message ?? e).slice(0, 120));
+    return null;
+  }
+}
+
 /**
  * Close the check in the venue's own till, once the ledger is written.
  *
@@ -314,8 +397,15 @@ async function closeTill(env, bill) {
   if (pos?.ok) {
     await env.DB.prepare("UPDATE num_paylinks SET pos_closed_at = datetime('now') WHERE token = ?1")
       .bind(bill.token).run().catch(() => null);
+    await track(env, { token: bill.token, businessId: bill.business_id, kind: 'till_closed', rail: link.pos_vendor ?? null });
   } else {
     console.warn('[billpay] the bill is paid but the check is still open in the till:', bill.token, pos?.reason);
+    // The one failure a guest feels at the door, so it is recorded where the
+    // venue's own console can show it rather than only in a log nobody reads.
+    await track(env, {
+      token: bill.token, businessId: bill.business_id, kind: 'till_failed',
+      rail: link.pos_vendor ?? null, detail: pos?.reason ?? 'till unreachable',
+    });
   }
   return pos;
 }
@@ -349,12 +439,30 @@ export async function handleConnectWebhook(request, env) {
       // shares cover it. So a share records nothing here, and the moment the
       // last one lands the parent's settlement reports the fees every share
       // collected — recorded once, against the parent's line.
+      // Who paid it, read back rather than assumed: the webhook itself carries
+      // nothing about the guest, and paid_by_member only counts now that
+      // settled_at is beside it.
+      const payer = (await env.DB.prepare('SELECT paid_by_member FROM num_paylinks WHERE token = ?1')
+        .bind(bill.token).first().catch(() => null))?.paid_by_member ?? null;
+      await bindHuman(env, bill, payer);
+      await track(env, {
+        token: bill.token, businessId: bill.business_id, memberId: payer,
+        kind: settled.split_parent ? 'share_paid' : 'paid',
+        rail: s.metadata?.num_rail ?? 'stripe',
+        amountMinor: bill.amount_minor,
+        detail: settled.split_parent ? `share of ${settled.split_parent}` : null,
+      });
       if (settled.split_parent) {
         const p = settled.parent;
         if (p?.settled && Number.isFinite(p.fees_minor) && p.fees_minor >= 0) {
           const parentBill = await billFor(env, settled.split_parent);
           const key = p.result?.booking_id || `bill:${settled.split_parent}`;
           await markPaid(env, key, p.fees_minor);
+          await track(env, {
+            token: settled.split_parent, businessId: bill.business_id, kind: 'paid',
+            rail: 'split', amountMinor: parentBill?.amount_minor ?? null,
+            detail: 'every share landed',
+          });
           if (parentBill) await closeTill(env, parentBill);
         }
       } else {
@@ -467,6 +575,15 @@ export async function handleBill(request, env, path) {
       await env.DB.prepare('UPDATE num_paylinks SET paid_by_member = ?2 WHERE token = ?1')
         .bind(bill.token, me).run().catch(() => null);
     }
+    await track(env, {
+      token: bill.token, businessId: bill.business_id,
+      kind: out.ok ? 'autopay_paid' : 'autopay_refused',
+      rail: 'autopay', memberId: me,
+      amountMinor: out.ok ? bill.amount_minor : null,
+      // The specific no, not "it did not work": over_cap and
+      // needs_authentication are different problems with different fixes.
+      detail: out.ok ? null : (out.why ?? 'refused'),
+    });
     return json(out);
   }
 
@@ -474,6 +591,9 @@ export async function handleBill(request, env, path) {
     const rail = String(url.searchParams.get('rail') || 'card');
     let res;
     const me = String(url.searchParams.get('me') ?? '').slice(0, 64) || null;
+    // Recorded BEFORE Stripe is asked, so a rail that always fails to open
+    // still shows up as a thing guests keep choosing.
+    await track(env, { token, kind: 'rail_chosen', rail, memberId: me });
     try { res = await createBillCheckout(env, token, rail, { guest, me }); } catch (e) {
       console.warn('[billpay] checkout failed', e?.message);
       return json({ error: 'could not open the payment page' }, 503);

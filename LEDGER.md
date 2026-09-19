@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 00:32 UTC from 34 entries._
+_Built 2026-09-19 00:54 UTC from 37 entries._
 
 ## Deployed right now
 
@@ -16,9 +16,9 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-console | 🔴 **STALE** — 2 files changed since it shipped |
-| num-app | 🔴 **STALE** — 8 files changed since it shipped |
-| num-growth | 🔴 **STALE** — 11 files changed since it shipped |
+| num-console | 🔴 **STALE** — 3 files changed since it shipped |
+| num-app | 🔴 **STALE** — 9 files changed since it shipped |
+| num-growth | 🟢 up to date (2026-09-19 00:54) |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -35,6 +35,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - 🟡 **bill photo** — worker/billphoto.mjs - staff photograph the paper bill and the total fills the Amount box. The Thailand path: Ocha/FoodStory/StoreHub have no public API and a large share of Thai restaurants run on a paper slip, so growth/pos can never help them. THE MODEL PROPOSES, STAFF CONFIRM, THE GUEST NEVER SETS THE AMOUNT - nothing here mints a code; that is still the button a human presses, because billqr.mjs's case that a venue cannot under-report rests on a person being accountable for the figure. A read below MIN_CONFIDENCE (0.75) is refused rather than shown, because staff typing four digits is never wrong. Currency comes from num_business_profiles, never the photograph (a slip reading 2,400 in Phuket is baht; a model calling it dollars multiplies the bill by 35). The photograph is NEVER stored - only the raw answer, confidence and a SHA-256, because a restaurant bill can carry a guest's name and a card's last four. Staff's typed figure wins over the model's and the difference is recorded in the corrected column, which over a few hundred bills is the only honest measure of whether this beats typing. Anthropic vision via the same pattern as growth/fleetvision.mjs. Console: 'Photograph the bill instead' on the tables page, back camera via capture=environment, downscaled to 1600px in the browser before upload (restaurant wifi). Routes /api/venue/bill/photo + /confirm, bill permission. Migration 0041 (num_bill_proposals) PENDING. features.mjs: billphoto. 6,252 tests green. NOT SHIPPED. Needs 0041 run and ANTHROPIC_API_KEY on num-growth.
   _claude, 2026-09-18 18:29_
+- 🟡 **business comms** — A business could not reach us. Invitations carried Reply-To: info@thatislumi.com - another company's domain, one person's mailbox - so no reply from a venue has ever entered this system. Hugo's arrived as a screenshot. The funnel says why it matters: 3,538 invited, 668 opened, 77 clicked, 9 filled the form, 4 started verification, 2 verified. Built: bizthread.mjs (a thread per contact, every message both ways, matched by reply+<key>@itsnum.com then headers then From, and the record says WHICH be
+  _claude, 2026-09-19 00:52_
 - 🟡 **business onboarding** — Hugo's Restaurant (4 LA sites) answered an invite and named four holes. (1) The claim form's submit handler refused every claim with <7 digits of phone, under a label reading (optional), against a server that accepts phone OR email — the mobile requirement was removed on 15 Sep in the label and the server and never in the validator, and the test that said 'the form no longer demands a mobile number' was checking the required attribute on a novalidate form. Now a four-way question: sms / email / 
   _claude, 2026-09-18 22:40_
 - 🟡 **clover and autopay** — Clover adapter + capped auto-pay. growth/pos/clover.mjs: the second till, and the one that proves the registry earns its keep - Clover disagrees with Square about everything (GET+query vs POST+filter, an external tender id you must look up per merchant vs a first-class EXTERNAL source, total-minus-payments vs net_amount_due_money) and none of it escapes the adapter. v2 OAuth with expiring access AND refresh tokens, unix expiries converted to ISO. pickTender NEVER falls back to cash - a NUM payme
@@ -49,8 +51,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
-- 🟡 **qr bill pay** — QR pay, continued. Fixed the dead-payment-page bug I had flagged and then found two more while closing it out. (1) Stripe replays an idempotent request for 24 hours, and the checkout key was a fixed bill:token:rail - so the SECOND tap on a rail returned the FIRST session byte for byte, including its URL. Right for a double-tap, wrong thirty-one minutes later: the session expires at 30 and the bill lives 90, so a guest who opened the page, ordered another drink and came back met a dead Stripe pag
-  _claude, 2026-09-19 00:32_
+- 🟡 **qr bill pay** — QR pay: tracking and a measured optimisation pass. The system could not answer 'how many people who scanned actually paid, and by what' about itself - num_pay_events recorded scans and four other view events, all of them on num-growth, and the half where money moves lives on num-app: the rail chosen, the Checkout session opened, the webhook that settled, the till that closed or refused. None of it was written anywhere. Migration 0047 adds rail, member_id, detail and amount_minor to num_pay_event
+  _claude, 2026-09-19 00:52_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre
@@ -66,6 +68,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:17_
 - 🟢 **fleet from photographs** — 0037: identified_json+draft on num_assets, batch_id on photos, asset_id on products. fleet-upload (one image, raw body, sha256 dedupe, R2) then fleet-intake (Haiku vision groups photos of the same vehicle into one DRAFT asset, listing text written, plate kept private and scrubbed from client copy) then fleet-draft confirm/discard/product. Degrades to one draft per photo with no ANTHROPIC_API_KEY on num-growth - Dre must set that secret. Verified end to end in production and the probe rows remove
   _claude, 2026-09-18 07:31_
+- 🟢 **fleet vision without a second key** — Dre: no second API key. num-growth gets the Workers AI binding instead (num-console already uses it for translation); fleetvision prefers ANTHROPIC_API_KEY when set and falls back, so setting that secret later upgrades the reader with no code change. MEASURED, NOT ASSUMED, against five real stills from our own Pexels stock through the live endpoint. First version invented things: a cove with no boat in it came back 'a blue yacht on the water', and a Lisbon tram numbered 559 came back make 'volvo
+  _claude, 2026-09-19 00:54_
 - 🟢 **health** — 0.8.337: held alerts are deferred, not blind — the 503/DOWN loop since 3 Sep is closed; 0.8.334-336 finally live
   _claude, 2026-09-18 03:28_
 - 🟢 **Hollywood retrieval** — Named neighbourhood now beats a coarse IP guess; never-empty floor under nearbyPlaces. Live on num-ai and num-app (v0.8.309).

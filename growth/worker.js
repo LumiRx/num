@@ -373,6 +373,7 @@ import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
 import * as BILLITEMS from '../worker/billitems.mjs';
+import * as PAYTRACK from '../worker/paytrack.mjs';
 // sendBatch lives in its own module now — see resend.mjs — so the invite
 // drain (invitecron.mjs) makes the exact same Resend call this worker
 // already made for host invites, rather than a second copy that could drift.
@@ -1248,6 +1249,14 @@ const WORKER = {
 
       if (p === "/api/admin/earnings" && req.method === "POST") return adminEarnings(req, env);
 
+      // The desk: where a person reads what a business wrote and answers it.
+      // Every route behind one guard inside handleBizDesk — see worker/bizdesk
+      // .mjs on why the gate is at the dispatcher and not per route.
+      if (p.startsWith("/api/admin/biz/")) {
+        const { handleBizDesk } = await import("../worker/bizdesk.mjs");
+        return handleBizDesk(req, env, p.slice("/api/admin/biz".length));
+      }
+
       if (p === "/api/venue/arrive" && req.method === "POST")
         return withCors(req, await venueArrive(req, env));
       if (p === "/api/venue/confirm" && req.method === "POST") return venueConfirm(req, env);
@@ -1302,6 +1311,8 @@ const WORKER = {
       if (p === "/api/venue/tables/codes" && req.method === "POST") return qrIssueCodes(req, env, url);
       if (p === "/api/venue/bill" && req.method === "POST") return qrBillCreate(req, env, url);
       if (p === "/api/venue/products" && req.method === "GET") return qrProducts(req, env, url);
+      if (p === "/api/venue/funnel" && req.method === "GET") return qrFunnel(req, env, url);
+      if (p === "/api/venue/bill/trail" && req.method === "GET") return qrBillTrail(req, env, url);
       if (p === "/api/venue/products" && req.method === "POST") return qrProductWrite(req, env, url);
       if (p === "/api/venue/bill/photo" && req.method === "POST") return qrBillPhoto(req, env, url);
       if (p === "/api/venue/bill/photo/confirm" && req.method === "POST") return qrBillPhotoConfirm(req, env, url);
@@ -10442,6 +10453,47 @@ async function qrProductWrite(req, env, url) {
   return made.ok ? J(made) : J({ ok: false, error: made.reason }, 400);
 }
 
+/* ── what actually happened to this venue's bills ─────────────────────────
+ *
+ * Counts, and the reasons behind the refusals. Deliberately no conversion
+ * percentage: a scan and a payment are counted over the same window but they
+ * are not the same population — a guest can scan on Monday and pay on
+ * Tuesday, and a bill can be paid in the app without /p/ ever being opened.
+ * Dividing one by the other makes a number that looks like a rate, is not
+ * one, and that a venue would make decisions on. See worker/paytrack.mjs.
+ */
+async function qrFunnel(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "view")) return qrDeny("view");
+  const days = Number(url.searchParams.get("days") || 30);
+  const out = await PAYTRACK.funnelFor(env, who.business.id, { days });
+  // null means the columns are not there yet (migration 0047). Say so rather
+  // than drawing an empty funnel a venue would read as "nobody paid".
+  if (!out) return J({ ok: true, ready: false, why: "Bill tracking starts once the next update is applied." });
+  return J({ ok: true, ready: true, funnel: out });
+}
+
+/* Everything that happened to ONE bill, in order.
+ *
+ * The question this answers is the one a person actually asks: a guest says
+ * they paid, the venue says they did not, and somebody has to find out which
+ * is true. A count cannot answer that. */
+async function qrBillTrail(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "view")) return qrDeny("view");
+  const token = clean(url.searchParams.get("token") || "", 40).toUpperCase();
+  if (!token) return J({ ok: false, error: "which bill?" }, 400);
+  // Scoped to this venue's own codes. Without it a session for one venue
+  // could read the trail of another venue's bill.
+  const own = await env.DB.prepare(
+    "SELECT token FROM num_paylinks WHERE token = ?1 AND business_id = ?2",
+  ).bind(token, who.business.id).first().catch(() => null);
+  if (!own) return J({ ok: false, error: "not one of your codes" }, 404);
+  return J({ ok: true, token, trail: await PAYTRACK.trailFor(env, token) });
+}
+
 /** The currency the venue's own codes are in — never one the caller sends. */
 async function venueCurrency(env, businessId) {
   const row = await env.DB.prepare(
@@ -11422,6 +11474,19 @@ border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;color:var(--pin
 <div class="card"><table><thead><tr><th>Table</th><th>Amount</th><th>Code</th><th></th></tr></thead>
 <tbody id="bills"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
 
+<h2>What happened to your bills</h2>
+<div class="card">
+  <p class="muted">The last 30 days. Counts, not a conversion rate &mdash; a guest can scan on Monday and
+  pay on Tuesday, and a bill can be paid in the app without this page ever being opened, so dividing one
+  by the other would make a number that looks like a rate and isn't.</p>
+  <div id="funnel" class="muted">Loading&hellip;</div>
+  <div class="row" style="margin-top:10px">
+    <div style="flex:2"><label for="ft">Trace one bill</label><input id="ft" placeholder="Bill code"></div>
+    <div style="flex:1;display:flex;align-items:flex-end"><button id="fgo" class="ghost" style="width:100%">Look it up</button></div>
+  </div>
+  <div id="ftrail" class="out"></div>
+</div>
+
 ${isOwner ? `
 <h2>Your price list</h2>
 <div class="card">
@@ -11717,6 +11782,7 @@ function refresh(){
     loader('/api/venue/identity',function(j){drawIdentity(j)},'identity'),
     loader('/api/venue/tables',function(j){drawTables(j.tables||[])},'tables'),
     loader('/api/venue/bills',function(j){drawBills(j.bills||[])},'bills'),
+    loader('/api/venue/funnel',drawFunnel,'funnel'),
     loader('/api/venue/agent',function(j){drawAgent(j.runs||[])},'agent')
   ];
   ${isOwner ? "jobs.push(loader('/api/venue/staff',function(j){drawStaff(j.staff||[])},'staff'));" : ""}
@@ -11875,6 +11941,68 @@ function loadProducts(){
     });
   },'prodchips');
 }
+
+/* The funnel, and one bill's trail. Both read-only. */
+var FSTEPS=[['scan','Opened the code'],['rail_chosen','Picked a way to pay'],
+            ['checkout_opened','Payment page opened'],['checkout_refused','Payment page refused'],
+            ['paid','Paid'],['share_paid','A share paid'],['autopay_paid','Paid automatically'],
+            ['autopay_refused','Automatic payment declined'],['split','Split between friends'],
+            ['till_closed','Closed in your till'],['till_failed','Paid, still open in your till']];
+function drawFunnel(j){
+  var o=document.getElementById('funnel');o.textContent='';
+  if(!j||!j.ok)return void(o.textContent='Could not read that just now.');
+  if(!j.ready)return void(o.textContent=j.why||'Not tracking yet.');
+  var f=j.funnel,t=el('table');
+  FSTEPS.forEach(function(st){
+    var n=f.counts[st[0]]||0;
+    if(!n&&st[0]!=='scan'&&st[0]!=='paid')return;
+    var tr=el('tr');tr.appendChild(td(st[1]));
+    var c=td(String(n));c.className='r';tr.appendChild(c);
+    // The one row that is never good news, called out rather than listed.
+    if(st[0]==='till_failed'&&n)tr.style.color='#b4552d';
+    t.appendChild(tr);
+  });
+  o.appendChild(t);
+  var rails=Object.keys(f.rails||{});
+  if(rails.length){
+    o.appendChild(el('div','By way of paying')).className='muted';
+    var rt=el('table');
+    rails.forEach(function(k){
+      var r=f.rails[k],tr=el('tr');
+      tr.appendChild(td(k));
+      var c=td(r.paid+' paid of '+r.opened+' opened'+(r.refused?', '+r.refused+' refused':''));
+      c.className='r';tr.appendChild(c);rt.appendChild(tr);
+    });
+    o.appendChild(rt);
+  }
+  if(f.refusals&&f.refusals.length){
+    o.appendChild(el('div','Why they did not go through')).className='muted';
+    var wt=el('table');
+    f.refusals.forEach(function(w){
+      var tr=el('tr');tr.appendChild(td(w.detail));
+      var c=td(String(w.n));c.className='r';tr.appendChild(c);wt.appendChild(tr);
+    });
+    o.appendChild(wt);
+  }
+}
+document.getElementById('fgo').onclick=function(){
+  var o=document.getElementById('ftrail');o.textContent='Looking\u2026';
+  var tk=document.getElementById('ft').value.trim().toUpperCase();
+  if(!tk)return void(o.textContent='Which bill?');
+  loader('/api/venue/bill/trail?token='+encodeURIComponent(tk),function(j){
+    o.textContent='';
+    if(!j||!j.ok)return void(o.textContent=(j&&j.error)||'Could not find that code.');
+    if(!j.trail.length)return void(o.textContent='Nothing recorded against that code yet.');
+    var t=el('table');
+    j.trail.forEach(function(e){
+      var tr=el('tr');
+      tr.appendChild(td(String(e.at).replace('T',' ').slice(0,16)));
+      tr.appendChild(td(e.what+(e.rail?' \u00b7 '+e.rail:'')+(e.detail?' \u00b7 '+e.detail:'')));
+      t.appendChild(tr);
+    });
+    o.appendChild(t);
+  },'ftrail');
+};
 
 document.getElementById('bill').onclick=function(){
   var o=document.getElementById('billout');o.textContent='';
