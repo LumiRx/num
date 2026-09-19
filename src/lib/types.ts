@@ -318,6 +318,18 @@ export interface PlanItem {
   attendees?: Array<{ member_id: string | null; name: string; rsvp: 'going' | 'maybe' | 'out' }>;
   /** Everyone who hasn't said no — the number the venue holds seats against. */
   party_size?: number;
+  /** Order inside its hour on the board (0 first). */
+  sort?: number;
+  /** The amount the split is computed from — minor units of the plan's currency. */
+  cost_minor?: number | null;
+  /** Who paid — a member id on the plan. */
+  paid_by?: string | null;
+  /** Who shares the cost — member ids; null means everyone on the plan. */
+  split_with?: string[] | null;
+  /** Comments hung on this item (server count). */
+  comments?: number;
+  votes?: { up: number; down: number };
+  my_vote?: 'up' | 'down' | null;
 }
 
 /** One entry in a plan's shared feed — a member comment or a system event. */
@@ -329,6 +341,8 @@ export interface PlanEvent {
   /** 'comment' is a human talking; everything else is their NUM reporting. */
   kind: string;
   summary: string;
+  /** Set when the line is about one item (a comment on it, a move of it). */
+  item_id?: string | null;
 }
 
 export interface PartyPlan {
@@ -338,10 +352,40 @@ export interface PartyPlan {
   owner_id: string;
   starts_on?: string | null;
   starts_time?: string | null;
+  /** Last day of a multi-day plan; null means one day (starts_on). */
+  ends_on?: string | null;
+  /** ISO 4217; every cost_minor on the plan is in this. */
+  currency?: string | null;
+  /** Set while the owner has the plan locked — nobody else may change it. */
+  locked_at?: string | null;
+  locked_by?: string | null;
   state: 'planning' | 'booked' | 'done' | 'archived';
   join_code?: string | null;
   members?: number;
   items?: number;
+}
+
+/** One person's line in the plan's money: what they paid, what they owe, the net. */
+export interface PlanPerson {
+  member_id: string;
+  name: string | null;
+  paid_minor: number;
+  owes_minor: number;
+  settled_out_minor: number;
+  settled_in_minor: number;
+  /** > 0: the plan owes them; < 0: they owe the plan. */
+  net_minor: number;
+}
+
+/** The money on a plan, computed by the server from the items every read. */
+export interface PlanMoney {
+  currency: string;
+  total_minor: number;
+  per_head_minor: number;
+  people: PlanPerson[];
+  /** The fewest payments that square everyone. */
+  transfers: Array<{ from_id: string; from_name: string | null; to_id: string; to_name: string | null; minor: number }>;
+  settlements: Array<{ id: string; from_id: string; from_name: string | null; to_id: string; to_name: string | null; minor: number; via: 'stars' | 'outside'; at: string }>;
 }
 
 /** Open state for the invite sheet — what NUM is about to send, and to whom. */
@@ -580,6 +624,8 @@ export interface AppState {
    * stores one feed — see planComment in worker/social.mjs.
    */
   planFeed: PlanEvent[];
+  /** The open plan's money — total, per head, who owes whom. Server-computed on every sync. */
+  planMoney: PlanMoney | null;
   /** Referral that brought this user in, and the invite token to accept. */
   refCode: string | null;
   inviteToken: string | null;

@@ -166,6 +166,7 @@ function baseState() {
     planMembers: [],
     planCursor: 0,
     planFeed: [],
+    planMoney: null,
     refCode: null,
     inviteToken: null,
     inviteOpen: null,

@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-// PLAN tab — bookings grouped by city, expandable rows with note, cost,
-// receipt, and the ASK TO CHANGE / SHARE actions.
+import { useEffect, useRef, useState } from 'react';
+// PLAN tab — a tab per plan (18 Sep 2026), and MY DIARY: bookings grouped by
+// city, expandable rows with note, cost, receipt, and the ASK TO CHANGE /
+// SHARE actions. A plan tab opens the plan board inline (PlanBoard.tsx).
 import { store, useApp } from '../../lib/store';
+import PlanBoard from './PlanBoard';
 import { openPlan, setAttendee } from '../../lib/social';
 import { pressable } from '../../lib/a11y';
 import { tagOf, bookingMetaLine, monthName } from '../../lib/derive';
@@ -227,26 +229,46 @@ function groupsFor(demo: boolean, bookings: Booking[]) {
     .sort((a, b) => a.items[0].mo - b.items[0].mo || a.items[0].day - b.items[0].day);
 }
 
+/** Which plan tab is showing: the diary, or one plan by id. */
+type PlanTab = 'diary' | string;
+
 /**
- * The group-plan strip, and the ONLY place a new plan starts. It lives here
- * rather than in the header because "start a plan" is a thing you do while
- * looking at the plan, and a second entry point elsewhere is how people end up
- * with two half-built plans.
+ * The tab strip across the top of PLAN: MY DIARY, then one tab per plan, then
+ * NEW. Selecting a plan opens its board right here (PlanBoard) — the sheet
+ * (PartySheet) is now the group chat and the plan's settings, one tap away
+ * from the board. Still the ONLY place a new plan starts.
  */
-function PartyStrip() {
+function PlanTabs({ tab, setTab }: { tab: PlanTab; setTab: (t: PlanTab) => void }) {
   const plans = useApp((s) => s.plans);
   const partyOpen = useApp((s) => s.partyOpen);
   // A plan you started naming and never created. Read each time the sheet
   // closes, because that is the moment it can have changed.
   const [unfinished, setUnfinished] = useState<string | null>(null);
   useEffect(() => { if (!partyOpen) setUnfinished(draftLine(loadDraft(NEW))); }, [partyOpen]);
+  const seg = (on: boolean): React.CSSProperties => ({
+    cursor: 'pointer', flex: 'none', minHeight: 44, padding: '0 14px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 6,
+    fontSize: 11.5, fontWeight: 700, letterSpacing: '.05em', whiteSpace: 'nowrap', scrollSnapAlign: 'start',
+    background: on ? 'var(--grad-accent)' : 'transparent', color: on ? '#fff' : 'var(--ink)',
+    boxShadow: on ? '0 4px 14px rgba(14,164,131,.28)' : 'none',
+  });
   return (
-    <div style={{ margin: '12px 12px 4px' }}>
-      {unfinished && (
+    <div style={{ margin: '10px 12px 4px' }}>
+      <div role="tablist" aria-label={t('Your plans')} className="glass no-scrollbar" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 999, overflowX: 'auto', scrollSnapType: 'x proximity' }}>
+        <div {...pressable(() => setTab('diary'), 'tab')} aria-selected={tab === 'diary'} style={seg(tab === 'diary')}>{t('MY DIARY')}</div>
+        {plans.map((p) => (
+          <div key={p.id} {...pressable(() => setTab(p.id), 'tab')} aria-selected={tab === p.id} style={{ ...seg(tab === p.id), maxWidth: 180 }}>
+            <UsersIcon size={12} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.title}</span>
+            {p.locked_at ? <span aria-label={t('Locked')} style={{ fontSize: 9, opacity: 0.85 }}>●</span> : null}
+          </div>
+        ))}
+        <div {...pressable(() => store.set({ planId: null, partyOpen: true }))} aria-label={t('New plan')} style={{ ...seg(false), color: 'var(--color-accent-700)' }}>+ {t('NEW')}</div>
+      </div>
+      {unfinished && tab === 'diary' && (
         <div
           {...pressable(() => store.set({ planId: null, partyOpen: true }))}
           className="glass lift"
-          style={{ cursor: 'pointer', marginBottom: 8, borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
+          style={{ cursor: 'pointer', marginTop: 8, borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>{t('PICK UP WHERE YOU LEFT OFF')}</div>
@@ -256,41 +278,7 @@ function PartyStrip() {
           <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
         </div>
       )}
-      {/* NEW PLAN stands alone at the top; the plans themselves are listed
-          below it as their own tappable rows — a button that also pretends to
-          be the current plan was doing two jobs badly. */}
-      <div
-        {...pressable(() => store.set({ planId: null, partyOpen: true }))}
-        className="press"
-        style={{
-          cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
-          fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '12px 14px', textAlign: 'center',
-          boxShadow: '0 4px 14px rgba(14,164,131,.28)',
-        }}
-      >
-        + NEW PLAN
-      </div>
-      {plans.map((p) => (
-        <div
-          key={p.id}
-          {...pressable(() => { void openPlan(p.id); store.set({ partyOpen: true }); })}
-          className="glass lift"
-          style={{ cursor: 'pointer', marginTop: 8, borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', gap: 11, alignItems: 'center' }}
-        >
-          <div style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-            <UsersIcon size={17} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 }}>{p.title}</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
-              {p.starts_on ? `${p.starts_on}${p.starts_time ? ` · ${p.starts_time}` : ''} · ` : ''}
-              {p.members ?? 1} in · {p.items ?? 0} {p.items === 1 ? 'item' : 'items'} · tap for details & chat
-            </div>
-          </div>
-          <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
-        </div>
-      ))}
-      {plans.length === 0 && (
+      {plans.length === 0 && tab === 'diary' && (
         <div style={{ fontSize: 11, color: 'var(--ink-60)', margin: '10px 4px 0', lineHeight: 1.5 }}>{t('No dates and no bookings needed — start a plan, pull friends in, decide together.')}</div>
       )}
     </div>
@@ -302,9 +290,32 @@ export default function PlanView() {
   const demo = useApp((s) => s.demo);
   const groups = groupsFor(demo, bookings);
   const flights = useApp((s) => s.flights);
+  const plans = useApp((s) => s.plans);
+  const planId = useApp((s) => s.planId);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // The tab follows the open plan: openPlan() from anywhere (an event kept
+  // into a plan, a join link, the sheet's ALL PLANS list) lands here on that
+  // plan's board. Picking a tab opens that plan so the sheet agrees.
+  const [tab, setTab] = useState<PlanTab>(planId ?? 'diary');
+  useEffect(() => { if (planId && plans.some((p) => p.id === planId)) setTab(planId); }, [planId, plans]);
+  const pick = (next: PlanTab) => {
+    setTab(next);
+    if (next !== 'diary' && next !== planId) void openPlan(next);
+  };
+  const plan = tab !== 'diary' ? plans.find((p) => p.id === tab) ?? null : null;
+  useEffect(() => { if (tab !== 'diary' && !plan) setTab('diary'); }, [tab, plan]);
+
+  if (!demo && plan) {
+    return (
+      <div ref={scrollRef} className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
+        <PlanTabs tab={tab} setTab={pick} />
+        <PlanBoard plan={plan} scrollRef={scrollRef} />
+      </div>
+    );
+  }
   return (
-    <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
-      {!demo && <PartyStrip />}
+    <div ref={scrollRef} className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
+      {!demo && <PlanTabs tab={tab} setTab={pick} />}
       {/* YOUR DAY, at the top of your plan (18 Sep 2026). These three came off
           TODAY, which had become the concierge's screen and your diary at the
           same time. The fortnight leads, because it is the shape of the week

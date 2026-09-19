@@ -11,7 +11,7 @@ import { refreshStars } from './stars';
 import { resumeDm } from './dm';
 import { askNum } from './concierge';
 import { track } from './track';
-import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, Booking } from './types';
+import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, PlanMoney, Booking } from './types';
 import { apiUrl } from '../lib/apibase';
 import { isNativeApp } from './native';
 
@@ -176,12 +176,38 @@ export function bootSocial(): void {
   //
   // Persisted the same way the UTM is, and for the same reason: somebody taps
   // a friend's link today and signs up on Thursday, and the code has to
-  // survive that gap. First touch wins — the friend who actually persuaded
-  // them keeps the credit even if a different link is opened later.
+  // survive that gap.
+  //
+  // ── STICKY, BUT NOT DEAF (18 Sep 2026, Dre's rule) ────────────────────
+  //
+  // It used to be pure first touch: once a code was stored, nothing replaced
+  // it. That is right for the case it was written for — someone who returns
+  // later WITHOUT a link still belongs to whoever persuaded them, and losing
+  // that is how a referrer gets robbed by their own referee's second visit.
+  // That half is unchanged and is the reason this is stored at all.
+  //
+  // But it also meant a genuinely new referral could never be recorded. Tap
+  // Ana's link in March, never sign up; tap Ben's link in September, sign up
+  // that day — and the credit went to Ana, who had nothing to do with it.
+  // With two people posting the same product, that is not a rounding error,
+  // it is the wrong person being paid.
+  //
+  // So: the stored code survives a visit with NO code, and yields to a visit
+  // that carries a DIFFERENT one. Last explicit link wins; silence changes
+  // nothing. Re-opening the same link is not a change and is not written, so
+  // a referrer refreshing their own post cannot churn the record.
+  //
+  // The honest cost, stated because it is a real trade-off and not a free
+  // win: someone who was persuaded by Ana and later happens to open Ben's
+  // link — a repost, a group chat — moves to Ben. Last touch is the
+  // convention the people being paid expect, and it is the one that can be
+  // explained to both of them without either feeling cheated.
   const ref = q.get('ref');
-  if (ref && !localStorage.getItem('num-ref')) {
-    try { localStorage.setItem('num-ref', ref.slice(0, 40)); }
-    catch { /* private mode — attribution is not worth breaking boot */ }
+  if (ref) {
+    try {
+      const code = ref.slice(0, 40);
+      if (localStorage.getItem('num-ref') !== code) localStorage.setItem('num-ref', code);
+    } catch { /* private mode — attribution is not worth breaking boot */ }
   }
   const token = q.get('i');
 
@@ -1337,8 +1363,132 @@ export async function createPlan(title: string, dest?: string | null, startsOn?:
 }
 
 export async function openPlan(id: string): Promise<void> {
-  store.set({ planId: id, planItems: [], planCursor: 0, planFeed: [] });
+  store.set({ planId: id, planItems: [], planCursor: 0, planFeed: [], planMoney: null });
   await syncPlan();
+}
+
+// ── the plan board (18 Sep 2026) ──────────────────────────────────────────
+//
+// Days and hours, an order inside the hour, a lock, money on items, comments
+// on items, settling up. Every write goes to the server first and the board
+// re-reads — except a drag, which is applied locally the moment it lands and
+// reconciled by the reorder call's own answer, because a card that snaps back
+// for 300ms while the server thinks is a card that feels dropped.
+
+/** A 423 from the server — the plan is locked and this member is not its owner. */
+export const isLockedError = (err: unknown): boolean => /locked/i.test(String((err as Error)?.message ?? ''));
+
+/** Change any of an item's fields. '' clears a field (a time taken off). */
+export async function patchPlanItem(id: string, patch: Partial<PlanItem> & { split_with?: string[] | null; cost_minor?: number | null; paid_by?: string | null }): Promise<PlanItem | null> {
+  const { me, planId } = store.get();
+  if (!me || !planId) return null;
+  const out = await api<{ item: PlanItem }>('/plan/item', {
+    method: 'POST',
+    body: JSON.stringify({ me: me.id, plan_id: planId, id, ...patch }),
+  });
+  store.set((s) => ({ planItems: s.planItems.map((i) => (i.id === id ? { ...i, ...out.item, split_with: parseSplit(out.item.split_with) } : i)) }));
+  void syncPlan();
+  return out.item;
+}
+
+const parseSplit = (v: unknown): string[] | null => {
+  if (Array.isArray(v)) return v as string[];
+  if (typeof v === 'string') { try { const a = JSON.parse(v); return Array.isArray(a) ? a : null; } catch { return null; } }
+  return null;
+};
+
+/** Move items to new hours/days and set their order — one call per drag. */
+export async function reorderPlanItems(moves: Array<{ id: string; day?: string | null; time?: string | null; sort: number }>): Promise<boolean> {
+  const { me, planId } = store.get();
+  if (!me || !planId || !moves.length) return false;
+  // Optimistic: the board shows the landing immediately.
+  store.set((s) => ({
+    planItems: s.planItems.map((i) => {
+      const m = moves.find((x) => x.id === i.id);
+      return m ? { ...i, day: m.day === undefined ? i.day : (m.day || null), time: m.time === undefined ? i.time : (m.time || null), sort: m.sort } : i;
+    }),
+  }));
+  try {
+    const out = await api<{ items: PlanItem[] }>('/plan/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, plan_id: planId, moves: moves.map((m) => ({ ...m, day: m.day === null ? '' : m.day, time: m.time === null ? '' : m.time })) }),
+    });
+    // The server's order is the order; keep the per-item extras the read gave us.
+    store.set((s) => ({
+      planItems: out.items.map((i) => ({ ...(s.planItems.find((x) => x.id === i.id) ?? {}), ...i, split_with: parseSplit(i.split_with) })),
+    }));
+    return true;
+  } catch (err) {
+    await syncPlan();
+    if (isLockedError(err)) narrate('That plan is locked — only whoever started it can move things now.');
+    return false;
+  }
+}
+
+/** Owner only: freeze or unfreeze the plan. */
+export async function lockPlan(lock: boolean): Promise<boolean> {
+  const { me, planId } = store.get();
+  if (!me || !planId) return false;
+  try {
+    const out = await api<{ plan: PartyPlan }>('/plan', { method: 'POST', body: JSON.stringify({ me: me.id, id: planId, lock }) });
+    store.set((s) => ({ plans: s.plans.map((p) => (p.id === out.plan.id ? out.plan : p)) }));
+    return true;
+  } catch (err) {
+    narrate((err as Error).message || 'Couldn’t change the lock just now.');
+    return false;
+  }
+}
+
+/** The days the plan covers, and the money it is counted in. */
+export async function setPlanSpan(patch: { starts_on?: string; ends_on?: string | null; currency?: string; title?: string }): Promise<boolean> {
+  const { me, planId } = store.get();
+  if (!me || !planId) return false;
+  try {
+    const out = await api<{ plan: PartyPlan }>('/plan', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, id: planId, ...patch, ends_on: patch.ends_on === null ? '' : patch.ends_on }),
+    });
+    store.set((s) => ({ plans: s.plans.map((p) => (p.id === out.plan.id ? out.plan : p)) }));
+    return true;
+  } catch (err) {
+    narrate((err as Error).message || 'Couldn’t change that just now.');
+    return false;
+  }
+}
+
+/** A comment ON one item. Lands in the group chat too. */
+export async function commentOnItem(itemId: string, text: string): Promise<boolean> {
+  const { me, planId } = store.get();
+  if (!me || !planId || !text.trim()) return false;
+  try {
+    await api('/plan/comment', { method: 'POST', body: JSON.stringify({ me: me.id, plan_id: planId, item_id: itemId, text: text.trim() }) });
+    await syncPlan();
+    return true;
+  } catch (err) {
+    narrate((err as Error).message || 'That didn’t send.');
+    return false;
+  }
+}
+
+/**
+ * Square up with one person on the plan. `stars` moves Stars through NUM
+ * (USD plans only — ★1 = $1); `outside` records that it was paid some other
+ * way. The message is what the board shows.
+ */
+export async function settlePlan(to: string, minor: number, via: 'stars' | 'outside'): Promise<{ ok: boolean; message: string }> {
+  const { me, planId } = store.get();
+  if (!me || !planId) return { ok: false, message: 'Open a plan first.' };
+  try {
+    const out = await api<{ ok: boolean; via: string; stars?: number; already?: boolean }>('/plan/settle', {
+      method: 'POST',
+      body: JSON.stringify({ me: me.id, plan_id: planId, to, minor, via, idem: crypto.randomUUID() }),
+    });
+    await syncPlan();
+    if (via === 'stars') { void refreshStars(); return { ok: true, message: out.already ? 'Already paid.' : `Paid ★${out.stars} through NUM.` }; }
+    return { ok: true, message: 'Marked as paid.' };
+  } catch (err) {
+    return { ok: false, message: (err as Error).message || 'That didn’t go through.' };
+  }
 }
 
 /**
@@ -1458,7 +1608,8 @@ export async function syncPlan(): Promise<void> {
       plan: PartyPlan;
       members: Array<{ member_id: string; name: string | null; role: string }>;
       items: PlanItem[];
-      events: Array<{ id: number; ts: string; by_id: string | null; by_name: string | null; kind: string; summary: string }>;
+      money?: PlanMoney;
+      events: Array<{ id: number; ts: string; by_id: string | null; by_name: string | null; kind: string; summary: string; item_id?: string | null }>;
       cursor: number;
     }>(`/plan?id=${encodeURIComponent(planId)}&me=${encodeURIComponent(me.id)}&since=${planCursor}&self=1`);
 
@@ -1468,7 +1619,8 @@ export async function syncPlan(): Promise<void> {
       plans: s.plans.some((p) => p.id === out.plan.id)
         ? s.plans.map((p) => (p.id === out.plan.id ? out.plan : p))
         : [out.plan, ...s.plans],
-      planItems: out.items,
+      planItems: out.items.map((i) => ({ ...i, split_with: parseSplit(i.split_with) })),
+      planMoney: out.money ?? null,
       planMembers: out.members,
       planCursor: out.cursor,
       // Append-and-dedupe: openPlan resets the cursor to 0, so a reopen
