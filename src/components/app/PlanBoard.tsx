@@ -457,8 +457,10 @@ function ItemDetail(p: CardProps) {
       <div style={row}>
         <span style={lab}>{t('WHEN')}</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <input type="date" value={it.day ?? ''} disabled={!canEdit} aria-label={t('Day')} style={{ ...small, flex: 1.3 }} onChange={(e) => void patchPlanItem(it.id, { day: e.target.value || '' })} />
-          <input type="time" value={it.time ?? ''} disabled={!canEdit} aria-label={t('Time')} style={{ ...small, flex: 1 }} onChange={(e) => void patchPlanItem(it.id, { time: e.target.value || '' })} />
+          {/* 13px, not 14: Chrome's native date/time text is wide, and at 14 a
+              full date lost its year inside this card. iOS draws its own wheel. */}
+          <input type="date" value={it.day ?? ''} disabled={!canEdit} aria-label={t('Day')} style={{ ...small, flex: 1.3, fontSize: 13, padding: '0 8px', minWidth: 0 }} onChange={(e) => void patchPlanItem(it.id, { day: e.target.value || '' })} />
+          <input type="time" value={it.time ?? ''} disabled={!canEdit} aria-label={t('Time')} style={{ ...small, flex: 1, fontSize: 13, padding: '0 8px', minWidth: 0 }} onChange={(e) => void patchPlanItem(it.id, { time: e.target.value || '' })} />
         </div>
       </div>
       {/* how much */}
