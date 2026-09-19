@@ -210,6 +210,9 @@ const FILES = [
   // hold, so nothing is lost and no score moves. DELETE by primary key,
   // no ALTER, and a second pass removes nothing because they are gone.
   'worker/migrations/0054_editorial_award_names.sql',
+  // When the venue's money actually lands. One table, IF NOT EXISTS, no
+  // ALTER, so a second pass really is a no-op here.
+  'worker/migrations/0056_venue_payouts.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

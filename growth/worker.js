@@ -382,6 +382,7 @@ import * as PAYRAILS from '../worker/payrails.mjs';
 import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
 import * as DETECT from './pos/detect.mjs';
+import * as VENUEPAY from '../worker/venuepayout.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
 import * as BILLITEMS from '../worker/billitems.mjs';
 import * as PAYTRACK from '../worker/paytrack.mjs';
@@ -405,6 +406,10 @@ import {
 } from './venuesettings.mjs';
 import { CURRENCY_BY_COUNTRY, foodAndDrink } from '../worker/commission.mjs';
 import { fridayRules } from './fridayrules.mjs';
+// The trip's Official Rules. A HANDLER IS NOT A ROUTE — see the route list in
+// growth/wrangler.jsonc, where /friday-rules had to be added by hand after it
+// 404'd for a week. This one is added in the same commit as the handler.
+import { tokyoRules } from './tokyorules.mjs';
 import { geocode, geocodeReady } from '../worker/geocode.mjs';
 import {
   hostAssets, hostAssetPhoto, hostAssetHolds, assetImage, offerableAssets,
@@ -423,7 +428,7 @@ import { hostSuppliers, supplierAssets } from './hostsuppliers.mjs';
 // and already pays — see that file's header, and ambassador.mjs's.
 import {
   ambJoin, ambSummary, ambProfile, ambSocial, ambOffers, ambClaim, ambDirectory,
-  ambMilestonesAdmin,
+  ambMilestonesAdmin, tokyoAdmin,
 } from './ambassador.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
@@ -1158,6 +1163,7 @@ const WORKER = {
       // and a free prize draw is only lawful if the terms are stated in public —
       // so if this route is down, the posts stop.
       if (p === "/friday-rules" || p === "/friday-rules/") return fridayRules();
+      if (p === "/tokyo-rules" || p === "/tokyo-rules/") return tokyoRules();
 
       if (p === "/api/ev" && req.method === "POST")
         return withCors(req, await ev(req, env));
@@ -1238,6 +1244,9 @@ const WORKER = {
       // the list that keeps a discretionary reward from becoming silence.
       if (p === "/api/admin/milestones")
         return ambMilestonesAdmin(req, env, url, AMB_DEPS);
+      // The trip: the field, the draw, and the postal free entry.
+      if (p === "/api/admin/tokyo")
+        return tokyoAdmin(req, env, url, AMB_DEPS);
 
       if (p === "/api/host/intros") return hostIntros(req, env, url, ctx);
       if (p === "/api/host/nearby" && req.method === "GET") return hostNearby(req, env, url);
@@ -9442,6 +9451,41 @@ async function venuePayPage(req, env, url) {
    * Deliberately below the rails tile and deliberately optional: a venue
    * with no POS loses nothing, because staff typing the figure is still the
    * path everything else is built on. */
+  /* ── WHERE THE MONEY IS ────────────────────────────────────────────────
+   * Two figures, side by side, never added. A Stripe payout is the venue's
+   * WHOLE balance — their own card sales as well as anything through NUM —
+   * so "your NUM money arrives Tuesday" would be false twice over. What NUM
+   * can state exactly is what its own settled bills came to. See
+   * worker/venuepayout.mjs. */
+  let moneyTile = "";
+  try {
+    const m = await VENUEPAY.moneyView(env, biz.id);
+    const cash = (minor, cur) => esc(cur) + " " + (Number(minor) / 100).toFixed(2);
+    const through = m.through_num.length
+      ? m.through_num.map((r) => `<p class="sub" style="margin-top:2px"><b>${cash(r.net_minor, r.currency)}</b>
+          from ${r.bills} bill${r.bills === 1 ? "" : "s"} paid through NUM in the last ${m.days} days
+          <span class="muted">(${cash(r.gross_minor, r.currency)} billed, ${cash(r.fee_minor, r.currency)} NUM fee taken at source)</span></p>`).join("")
+      : `<p class="sub" style="margin-top:2px">No bills paid through NUM yet.</p>`;
+    const rows = m.payouts.length
+      ? `<table style="margin-top:8px">${m.payouts.map((p) => `<tr>
+          <td>${esc(String(p.arrives_on || p.created_at || "").slice(0, 10))}</td>
+          <td>${cash(p.amount_minor, p.currency)}</td>
+          <td class="r"${p.status === "failed" ? ' style="color:#b4552d"' : ""}>${esc(p.status)}${p.failure ? " &middot; " + esc(p.failure) : ""}</td>
+        </tr>`).join("")}</table>`
+      : `<p class="sub" style="margin-top:8px">No payouts recorded yet. They appear here as Stripe makes them.</p>`;
+    moneyTile = `
+<div class="tile noprint" id="money">
+  <b>Where your money is</b>
+  ${through}
+  <p class="sub" style="margin-top:10px"><b>Your Stripe payouts</b></p>
+  ${rows}
+  <p class="sub" style="margin-top:8px">${esc(m.note)} NUM never holds it and cannot move it.</p>
+</div>`;
+  } catch (e) {
+    console.warn("[biz/pay] money tile", e && e.message);
+    moneyTile = "";
+  }
+
   let posTile = "";
   try {
     const conn = await POS.connectionFor(env, biz.id);
@@ -9575,6 +9619,7 @@ details summary{cursor:pointer;margin-top:10px;font-size:13px}
 </div>
 
 ${railsTile}
+${moneyTile}
 ${posTile}
 <div class="tile noprint">
   <b>Add a payment QR</b>

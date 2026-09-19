@@ -630,6 +630,22 @@ export const FEATURES = Object.freeze([
     },
   },
   {
+    id: 'venuepayout',
+    plan: 'free',
+    entitlement: null,
+    name: 'Where your money is',
+    does: 'Shows a venue what its NUM bills came to and, separately, when its own Stripe payouts land.',
+    needs: ['migration 0056', 'the Connect webhook subscribed to payout.paid, payout.failed and payout.created'],
+    ready: (env) => !!env.DB,
+    surface: 'Console → Pay → Where your money is',
+    code: ['worker/venuepayout.mjs', 'worker/billpay.mjs', 'growth/worker.js', 'worker/migrations/0056_venue_payouts.sql'],
+    sop: {
+      on: 'Run 0056, then add payout.created, payout.paid and payout.failed to the existing Connect endpoint (Dashboard → Webhooks → the endpoint at /api/pay/webhook/connect). No new credential: it is the same endpoint the bills already use.',
+      check: 'In test mode, pay a bill on a connected venue and trigger a payout on that account. The tile shows the payout with Stripe\'s own status, and the NUM figure beside it — not added to it.',
+      broken: 'The two figures are NEVER summed. A Stripe payout is the venue\'s whole balance — their own card sales, refunds and adjustments as well as anything through NUM — so a combined total would be a number nobody can check, and "your NUM money arrives Tuesday" would be false twice over. The payout status is copied from Stripe and never inferred: a failed payout must not read as arriving. What NUM settled is counted per currency and never summed across them, and a split dinner counts its SHARES (which were really charged) and not its parent (which never was). Nothing in venuepayout.mjs moves money and nothing ever should — a test refuses an exported function whose name starts with a verb like pay, send or release.',
+    },
+  },
+  {
     id: 'billsplit',
     plan: 'free',
     entitlement: null,

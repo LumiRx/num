@@ -48,6 +48,7 @@ import { recordExternalPayment } from '../growth/pos/index.mjs';
 import { attemptAutoPay } from './autopay.mjs';
 import { itemsFor } from './billitems.mjs';
 import { track } from './paytrack.mjs';
+import { PAYOUT_EVENTS, recordPayout } from './venuepayout.mjs';
 // 5arz lives in growth/ because the host board is served from num-growth, but
 // a bill settles HERE, on num-app. Same reasoning as the POS adapter above:
 // one module bundled into both, rather than two copies that can disagree
@@ -491,6 +492,18 @@ export async function handleConnectWebhook(request, env) {
     if (settled?.ok && !settled.already && !settled.split_parent && bill) pos = await closeTill(env, bill);
 
     return json({ received: true, settled: !!settled?.ok, already: !!settled?.already, pos_closed: !!pos?.ok });
+  }
+
+  // ── THE VENUE'S OWN MONEY LEAVING STRIPE FOR THEIR BANK ──────────────
+  //
+  // Nothing to do with a bill, and nothing NUM can affect: this is the
+  // venue's whole balance paying out on their own schedule. Recorded so the
+  // console can answer "where is it", which is the first question a new
+  // venue asks and had no answer in the product. See worker/venuepayout.mjs
+  // for why it is shown beside what NUM settled and never added to it.
+  if (PAYOUT_EVENTS.includes(event.type)) {
+    const out = await recordPayout(env, event);
+    return json({ received: true, payout: out.ok ? out.status : null });
   }
 
   if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {

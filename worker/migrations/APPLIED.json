@@ -43,5 +43,8 @@
     "0054_editorial_award_names.sql": "d0aa6e7e37919ee359397082751b33419124b7d0209faf07482f75cc98224cdc"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0055_niches_and_tokyo.sql",
+    "0056_venue_payouts.sql"
+  ]
 }
