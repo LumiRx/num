@@ -249,6 +249,71 @@ async function viaCloudflare(env, m) {
  */
 export const AUDIENCE = { INTERNAL: 'internal', EXTERNAL: 'external' };
 
+/**
+ * WHICH ADDRESS A MESSAGE LEAVES FROM, AND WHY IT IS NO LONGER ONE ADDRESS.
+ *
+ * Until 19 Sep 2026 everything left from `NUM <hello@itsnum.com>`: sign-in
+ * codes, booking confirmations, claim links and cold outreach, one address,
+ * one reputation. That was a deliberate choice, recorded in
+ * growth/wrangler.jsonc — recognition beats reputation isolation while almost
+ * nobody knows the brand exists — and at fifty sends a day it was right.
+ *
+ * The arithmetic reversed. In the seven days to 18 Sep: 2,306 sent, 505
+ * bounced, 21.9%, rising to 25.7%. Roughly 96% of the month's volume was cold
+ * outreach and it was bouncing at a quarter. The 4% that is transactional
+ * inherited whatever reputation that built — which is the answer to "why did
+ * a guest not get their sign-in code", and to why a restaurant owner had to
+ * press "trust sender" to read an invitation we asked him to open.
+ *
+ * Four kinds, and what each one is protecting:
+ *
+ *   transactional  A person asked for this and is waiting: a sign-in code, a
+ *                  receipt, a booking confirmation. If one of these is
+ *                  filtered, the product does not work. Highest protection.
+ *   business       A message to a venue in an ongoing conversation — a reply,
+ *                  a verification code, a correction. They know who we are.
+ *   outreach       Cold. Somebody who never asked. This is the one that can
+ *                  be burned, and the only one that should be able to burn a
+ *                  domain.
+ *   alert          Us, to us. Reputation is irrelevant; arriving is not.
+ *
+ * FALLING BACK IS SAFE IN ONE DIRECTION ONLY. An unconfigured transactional
+ * sender falls back to MAIL_FROM, which is where it already was. An
+ * unconfigured OUTREACH sender falls back to MAIL_FROM too — it must not
+ * silently borrow the protected sender, so `outreachIsolated()` exists to say
+ * out loud whether the split is actually in force, and the drain reports it.
+ * A split that is half configured and believed to be complete is worse than
+ * no split, because it is the same risk with the alarm switched off.
+ */
+export const MAIL_KIND = Object.freeze({
+  TRANSACTIONAL: 'transactional',
+  BUSINESS: 'business',
+  OUTREACH: 'outreach',
+  ALERT: 'alert',
+});
+
+export function senderFor(env, kind) {
+  const base = env?.MAIL_FROM || 'NUM <hello@itsnum.com>';
+  switch (kind) {
+    case MAIL_KIND.OUTREACH: return env?.MAIL_FROM_OUTREACH || base;
+    case MAIL_KIND.BUSINESS: return env?.MAIL_FROM_BIZ || base;
+    case MAIL_KIND.ALERT: return env?.ALERT_EMAIL_FROM || base;
+    default: return env?.MAIL_FROM_TRANSACTIONAL || base;
+  }
+}
+
+/** The honest answer to "is outreach actually on its own domain yet?" */
+export function outreachIsolated(env) {
+  const out = env?.MAIL_FROM_OUTREACH;
+  const tx = env?.MAIL_FROM_TRANSACTIONAL || env?.MAIL_FROM;
+  if (!out) return { isolated: false, why: 'MAIL_FROM_OUTREACH is not set \u2014 outreach still leaves from the transactional sender' };
+  const domain = (v) => String(v).match(/@([^>\s]+)/)?.[1]?.toLowerCase() ?? null;
+  const a = domain(out); const b = domain(tx);
+  if (!a) return { isolated: false, why: 'MAIL_FROM_OUTREACH has no readable domain' };
+  if (a === b) return { isolated: false, why: `outreach and transactional are both on ${a}` };
+  return { isolated: true, outreach: a, transactional: b };
+}
+
 export function chainFor(audience) {
   return audience === AUDIENCE.EXTERNAL
     // Resend only. It reports per-message status and bounces, so a failure is

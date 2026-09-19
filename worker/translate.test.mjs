@@ -37,6 +37,7 @@ const NO_TRANSLATE = {
   'get/index.html': 'a redirect stub, on screen for milliseconds',
   'join/index.html': 'a redirect stub',
   'console/index.html': 'the partner console, not a page a stranger lands on',
+  'desk/index.html': 'the internal business desk — nobody lands on it and no traveller ever sees it',
   'host/index.html': 'the private host console, key-gated and noindex',
   'app-preview/index.html': 'team-only prototype, noindex, linked from nowhere public',
 };

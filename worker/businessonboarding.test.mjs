@@ -22,6 +22,10 @@ import {
 } from './bizgroup.mjs';
 import { parseFinding, blockerFor } from './integrationagent.mjs';
 
+// Rows must land inside sendHealth's time window, or the very fix under test
+// (bad history ages out) would silently make every bounce test pass.
+const NOW = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
 function realDb(extra = '') {
   const d = new DatabaseSync(':memory:');
   d.exec(`
@@ -241,7 +245,7 @@ test('a full mailbox is not a dead address', () => {
 
 test('a mailbox that does not exist is suppressed and the lead is marked dead', async () => {
   const { d, env } = realDb();
-  d.prepare("INSERT INTO num_invites (token,email,provider_id,status,sent_at) VALUES ('t1','x@dead.example','em_1','sent','2026-09-18')").run();
+  d.prepare("INSERT INTO num_invites (token,email,provider_id,status,sent_at) VALUES ('t1','x@dead.example','em_1','sent',datetime('now'))").run();
   d.prepare("INSERT INTO leads (id,email,status) VALUES ('l1','x@dead.example',NULL)").run();
 
   const out = await recordBounce(env, {
@@ -259,7 +263,7 @@ test('a mailbox that does not exist is suppressed and the lead is marked dead', 
 
 test('a transient bounce is recorded and the address is kept', async () => {
   const { d, env } = realDb();
-  d.prepare("INSERT INTO num_invites (token,email,provider_id,status,sent_at) VALUES ('t1','x@busy.example','em_1','sent','2026-09-18')").run();
+  d.prepare("INSERT INTO num_invites (token,email,provider_id,status,sent_at) VALUES ('t1','x@busy.example','em_1','sent',datetime('now'))").run();
   const out = await recordBounce(env, {
     ref: 'em_1', to: 'x@busy.example', type: 'email.bounced',
     data: { bounce: { type: 'Transient', subType: 'MailboxFull' } },
@@ -274,11 +278,11 @@ test('the drain stops when the hard-bounce rate is over the ceiling', async () =
   // on itsnum.com was 207 hard bounces in 1,821 sends, and nothing stopped.
   for (let i = 0; i < 79; i++) {
     d.prepare('INSERT INTO num_invites (token,email,status,sent_at) VALUES (?,?,?,?)')
-      .run(`ok${i}`, `a${i}@x.example`, 'sent', '2026-09-18');
+      .run(`ok${i}`, `a${i}@x.example`, 'sent', NOW);
   }
   for (let i = 0; i < 21; i++) {
     d.prepare('INSERT INTO num_invites (token,email,status,sent_at) VALUES (?,?,?,?)')
-      .run(`no${i}`, `b${i}@x.example`, 'bounced_permanent', '2026-09-18');
+      .run(`no${i}`, `b${i}@x.example`, 'bounced_permanent', NOW);
   }
   const h = await sendHealth(env);
   assert.equal(h.ok, false);
@@ -286,10 +290,51 @@ test('the drain stops when the hard-bounce rate is over the ceiling', async () =
   assert.match(h.reason, /hard bounces/, 'a pause with no figure attached is a pause people override');
 });
 
+test('the breaker can reopen \u2014 a stopped drain must not latch itself shut for ever', async () => {
+  // Caught in review before this shipped, and it was the whole design wrong,
+  // not a detail. The window read the last 300 rows with no time bound: trip
+  // it, the drain stops, no new rows are written, the same 300 rows are still
+  // the last 300 next month, and the gate never opens again \u2014 on a clean list,
+  // after the bad addresses are gone. The breaker in invitecron.mjs was given
+  // a way back deliberately, because on 31 Aug 2026 a permanent trip held the
+  // queue for seven hours against a transport that already worked.
+  const { d, env } = realDb();
+  const old = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+  for (let i = 0; i < 60; i++) {
+    d.prepare('INSERT INTO num_invites (token,email,status,sent_at) VALUES (?,?,?,?)')
+      .run(`no${i}`, `b${i}@x.example`, 'bounced_permanent', old);
+  }
+  // Inside a 90-day window that history is damning and the gate is shut.
+  const wide = await sendHealth(env, { windowDays: 90 });
+  assert.equal(wide.ok, false, 'a month of hard bounces should stop the drain');
+
+  // Inside the real window it has aged out, and the honest answer is that we
+  // no longer know \u2014 which is what is true after a month of not sending.
+  const now = await sendHealth(env);
+  assert.equal(now.ok, true);
+  assert.equal(now.known, false);
+  assert.equal(now.n, 0);
+  assert.match(now.reason, /too few to judge/);
+});
+
+test('an unstamped row cannot hold the gate shut', async () => {
+  // sent_at IS NULL means "we cannot place this in time". Treating it as
+  // recent would let rows nobody can date keep the breaker closed for ever,
+  // which is the same one-way door by another route.
+  const { d, env } = realDb();
+  for (let i = 0; i < 60; i++) {
+    d.prepare('INSERT INTO num_invites (token,email,status,sent_at) VALUES (?,?,?,NULL)')
+      .run(`x${i}`, `c${i}@x.example`, 'bounced_permanent');
+  }
+  const h = await sendHealth(env);
+  assert.equal(h.known, false);
+  assert.equal(h.n, 0);
+});
+
 test('a handful of bounces in a handful of sends is noise, and does not stop a launch', async () => {
   const { d, env } = realDb();
-  d.prepare("INSERT INTO num_invites (token,email,status,sent_at) VALUES ('a','a@x.example','sent','2026-09-18')").run();
-  d.prepare("INSERT INTO num_invites (token,email,status,sent_at) VALUES ('b','b@x.example','bounced_permanent','2026-09-18')").run();
+  d.prepare("INSERT INTO num_invites (token,email,status,sent_at) VALUES ('a','a@x.example','sent',datetime('now'))").run();
+  d.prepare("INSERT INTO num_invites (token,email,status,sent_at) VALUES ('b','b@x.example','bounced_permanent',datetime('now'))").run();
   const h = await sendHealth(env);
   assert.equal(h.ok, true);
   assert.equal(h.known, false, 'one bounce in two sends is 50% and means nothing');

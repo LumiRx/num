@@ -25,6 +25,21 @@
   // (the host console serves and moderates it on itsnum.com). Bind it in one
   // and the other half of the feature fails with "cannot read property put of
   // undefined" at the moment a supplier is standing on a dock.
+  // Workers AI, for reading photographs a host drops on the fleet card.
+  //
+  // LINE COMMENTS ONLY IN THIS FILE. growth/ceiling.test.mjs parses it by
+  // stripping "//" lines and then JSON.parse-ing what is left, so a /* */
+  // block here is not a style choice — it fails the build.
+  //
+  // num-app holds the only Anthropic key we pay for, and Dre's call on
+  // 19 Sep 2026 was not to mint a second one for this worker: nothing to
+  // rotate, nothing to leak, no per-call invoice. growth/fleetvision.mjs
+  // prefers ANTHROPIC_API_KEY when it is set and falls back to this binding
+  // when it is not, so setting that secret later upgrades the reader without
+  // a code change. num-console already runs Workers AI on this account for
+  // translation, so this is the same door rather than a new dependency.
+  "ai": { "binding": "AI" },
+
   "r2_buckets": [
     { "binding": "PHOTOS", "bucket_name": "num-asset-photos" }
   ],
@@ -75,6 +90,43 @@
     // transactional mail; adding that to growth would start copying venue and
     // host correspondence into a mailbox nobody asked to receive it in.
     "MAIL_REPLY_TO": "info@thatislumi.com",
+
+    // ── TALKING TO A BUSINESS, BOTH WAYS (19 Sep 2026) ────────────────
+    //
+    // MAIL_REPLY_TO above points at another company's domain and one person's
+    // mailbox, which is why no reply from a business has ever reached this
+    // system. It stays as the fallback and is no longer the norm: every
+    // outbound message that belongs to a thread now replies to
+    // reply+<thread key>@itsnum.com, and the Email Worker reads the key back
+    // out. See worker/bizthread.mjs.
+    //
+    // The local part here must match the Cloudflare Email Routing rule. A
+    // custom address cannot carry +tags on its own, so the rule has to be a
+    // CATCH-ALL to the Worker — a rule on the literal "reply@itsnum.com" will
+    // not match "reply+abc@itsnum.com" and every reply would bounce.
+    "MAIL_REPLY_BASE": "reply@itsnum.com",
+
+    // Every inbound message is forwarded here BEFORE anything is parsed or
+    // written, so a bug in the recording cannot lose a business's reply.
+    // Recording is an improvement on forwarding, never a replacement.
+    "MAIL_INBOUND_FORWARD": "info@thatislumi.com",
+
+    // ── THE SENDER SPLIT ──────────────────────────────────────
+    //
+    // MAIL_FROM_OUTREACH is deliberately NOT set yet: it needs a verified
+    // sending subdomain, which is a DNS job. Until it is set, outreach leaves
+    // from MAIL_FROM exactly as before, and `outreachIsolated()` reports
+    // `isolated: false` on every drain tick so nobody can believe the split
+    // is done when it is not.
+    //
+    // When the subdomain is verified, add:
+    //   "MAIL_FROM_OUTREACH": "NUM <invites@mail.itsnum.com>"
+    // and leave MAIL_FROM where it is. Sign-in codes, booking confirmations
+    // and claim links keep the recognisable address; cold outreach — 96% of
+    // volume and bouncing at a quarter — stops being able to take them down
+    // with it.
+    "MAIL_FROM_BIZ": "NUM <hello@itsnum.com>",
+
     "SEND_BUDGET": "40",
 
     // ── merchant-invite drain (invitecron.mjs) ─────────────────────────

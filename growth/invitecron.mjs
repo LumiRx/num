@@ -33,6 +33,7 @@ import { generateInvite, riskOf, excludeReason, isFreemail } from '../scripts/in
 import { INVITE_TEMPLATE } from './invitetemplate.mjs';
 import { sendBatch } from './resend.mjs';
 import { sendHealth } from '../worker/bouncepolicy.mjs';
+import { senderFor, outreachIsolated, MAIL_KIND } from '../worker/mailer.mjs';
 
 /* ── schema ──────────────────────────────────────────────────────────────── */
 
@@ -418,16 +419,59 @@ export async function drainInvites(env, event = {}) {
   }
   if (!claimed.length) return { sent: 0, reason: 'lost every race to a concurrent tick', attempted: drafts.length };
 
+  /* ── A THREAD PER BUSINESS, OPENED BEFORE THE MAIL GOES OUT ──────────
+   *
+   * Until 19 Sep 2026 an invitation carried `Reply-To: info@thatislumi.com`,
+   * so a business that answered was writing to another company's domain and
+   * into one person's mailbox. Nothing in this system ever learned they had
+   * replied. Of 3,538 invitations, the only reply anyone can point to reached
+   * NUM as a screenshot.
+   *
+   * Every invitation now belongs to a thread, and the Reply-To names it. A
+   * reply lands back on the same object as the invitation that caused it,
+   * beside how far that business got. See worker/bizthread.mjs.
+   *
+   * Opened BEFORE the send and not after: the reply address has to be in the
+   * message, and a thread that exists for a mail that then fails is a harmless
+   * empty row, while a mail that goes out with no thread is a reply nobody
+   * can place.
+   */
+  const { openThread, replyAddress, record } = await import('../worker/bizthread.mjs');
+  const threads = new Map();
+  for (const { lead, token } of claimed) {
+    const t = await openThread(env, {
+      email: lead.email,
+      businessName: lead.name,
+      leadId: lead.id,
+      inviteToken: token,
+      dest: lead.dest,
+      country: lead.country,
+      state: 'invited',
+    }).catch(() => null);
+    if (t) threads.set(token, t);
+  }
+
   const messages = claimed.map(({ lead, token, draft }) => ({
     __idem: 'invite-' + token,
-    from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+    // The outreach sender, which is the whole point of the split: a cold list
+    // bouncing at a quarter must not be able to take the sign-in codes down
+    // with it. Falls back to MAIL_FROM when the split is not configured yet,
+    // and the tick's result says which — see `isolated` below.
+    from: senderFor(env, MAIL_KIND.OUTREACH),
     to: [lead.email],
     // Not hardcoded any more. info@itsnum.com's MX points at an SES inbound
     // host with no receipt rule set, so it rejects at the SMTP layer: every
     // business that hit reply on one of the 1,051 invites already sent got a
     // bounce, and so did anyone using the mailto unsubscribe below — which is
     // one of the two opt-out routes CAN-SPAM and PECR require us to honour.
-    reply_to: [env.MAIL_REPLY_TO || 'info@itsnum.com'],
+    // The thread's own address when we have one, so a reply routes itself.
+    // The configured address is the fallback and not the norm: a business
+    // whose reply we cannot place is a business we have to go and find.
+    reply_to: [
+      threads.has(token)
+        ? replyAddress(env, threads.get(token).reply_key)
+        : (env.MAIL_REPLY_TO || 'info@itsnum.com'),
+    ],
     subject: draft.subject,
     html: draft.html,
     text: draft.text,
@@ -472,8 +516,33 @@ export async function drainInvites(env, event = {}) {
       .bind(res.ids[i] || null, token),
   )).catch(() => {});
 
+  // The outbound half of the conversation. Recorded after the send reports
+  // success, with the provider's id, so the thread shows what actually left
+  // rather than what was attempted.
+  for (const [i, { lead, token, draft }] of claimed.entries()) {
+    const t = threads.get(token);
+    if (!t) continue;
+    await record(env, t.id, {
+      direction: 'out',
+      to: lead.email,
+      from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+      subject: draft.subject,
+      body: draft.text,
+      providerId: res.ids[i] || null,
+      state: 'sent',
+      draftedBy: 'invitecron',
+    }).catch(() => {});
+    await env.DB.prepare("UPDATE num_biz_threads SET last_out_at=datetime('now') WHERE id=?1")
+      .bind(t.id).run().catch(() => {});
+  }
+
   await clearBreaker(env);
-  return { sent: claimed.length, dests, tick, cap, sentToday: sentToday + claimed.length };
+  return {
+    sent: claimed.length, dests, tick, cap, sentToday: sentToday + claimed.length,
+    // Reported every tick rather than assumed. A half-configured split that
+    // everyone believes is done is the same risk with the alarm switched off.
+    isolated: outreachIsolated(env),
+  };
 }
 
 /**

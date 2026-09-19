@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>NUM · business desk</title>
+<!--
+  The desk. Where a person reads what a business wrote and answers it.
+
+  WHY THIS PAGE EXISTS AT ALL. NUM sent 3,538 invitations and two businesses
+  were ever verified. The one substantive reply anybody can point to arrived as
+  a screenshot, because Reply-To pointed at a personal mailbox on another
+  company's domain. Everything behind this page is about that: a reply lands on
+  a thread, the thread knows how far that business got, and answering takes one
+  screen instead of six lookups nobody was doing.
+
+  THE KEY IS NOT STORED. It is held in a variable for the life of the tab and
+  never written to localStorage. This page can read what a business wrote to us
+  and send mail in NUM's name; a key sitting in browser storage on a laptop in
+  a cafe is a different risk from one that dies when the tab closes.
+
+  SENDING IS ALWAYS A SEPARATE, DELIBERATE CLICK. Draft and send are different
+  buttons calling different endpoints, and the send button says who is
+  approving, because "who approved this" is the first question anybody asks
+  about a message a business disputes.
+-->
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e5e7eb; --ink:#111827; --muted:#6b7280;
+    --accent:#0e8a63; --warn:#b45309; --bad:#b91c1c;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+    --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --ink:#e7e9ee; --muted:#9aa2b1;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  header{padding:18px 16px;border-bottom:1px solid var(--line);display:flex;
+    gap:12px;align-items:center;flex-wrap:wrap}
+  h1{margin:0;font-size:18px;letter-spacing:-.2px}
+  .wrap{max-width:900px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px;margin:0 0 12px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--muted);font-size:14px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;
+    font-weight:600;border:1px solid var(--line);color:var(--muted)}
+  .pill.us{color:var(--warn);border-color:var(--warn)}
+  .pill.old{color:var(--bad);border-color:var(--bad)}
+  button{font:inherit;padding:9px 14px;border-radius:9px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);cursor:pointer}
+  button.go{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  input,textarea{font:inherit;width:100%;padding:10px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card);color:var(--ink)}
+  textarea{min-height:190px;resize:vertical}
+  .msg{border-left:3px solid var(--line);padding:2px 0 2px 12px;margin:0 0 14px;
+    white-space:pre-wrap;font-size:15px}
+  .msg.in{border-color:var(--accent)}
+  .who{font-size:12px;color:var(--muted);margin-bottom:2px}
+  .err{color:var(--bad);font-size:14px}
+  .funnel{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
+  .funnel b{display:block;font-size:20px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Business desk</h1>
+  <span class="muted" id="sub">who is waiting, and what they are waiting for</span>
+  <span style="flex:1"></span>
+  <button id="refresh">Refresh</button>
+</header>
+
+<div class="wrap">
+  <div class="card" id="gate">
+    <p class="muted" style="margin-top:0">Admin key. Held for this tab only and never stored.</p>
+    <div class="row">
+      <input id="key" type="password" placeholder="ADMIN_KEY" style="flex:1;min-width:220px">
+      <input id="me" placeholder="your name, for the approval record" style="flex:1;min-width:200px">
+      <button class="go" id="unlock">Open</button>
+    </div>
+    <p class="err" id="gate-err"></p>
+  </div>
+
+  <div class="card hidden" id="funnel-card">
+    <div class="funnel" id="funnel"></div>
+    <p class="muted" id="funnel-note" style="margin-bottom:0"></p>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="card hidden" id="thread">
+    <div class="row">
+      <button id="back">&larr; Back</button>
+      <strong id="t-name"></strong>
+      <span class="pill" id="t-step"></span>
+      <span style="flex:1"></span>
+      <span class="muted" id="t-email"></span>
+    </div>
+    <p class="muted" id="t-next"></p>
+    <div id="t-msgs" style="margin-top:14px"></div>
+
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <div class="row" style="margin-bottom:8px">
+        <button id="draft">Draft a reply</button>
+        <span class="muted" id="draft-note"></span>
+      </div>
+      <textarea id="body" placeholder="Nothing drafted yet. You can also just write it."></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="go" id="send" disabled>Send it</button>
+        <button id="declineBtn" disabled>Throw the draft away</button>
+        <span class="err" id="send-err"></span>
+      </div>
+      <p class="muted" style="margin-bottom:0">
+        Sending is always this button. Nothing on this page sends by itself.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // Never localStorage. See the note at the top of the file.
+  var KEY = "", ME = "", CURRENT = null, DRAFT_ID = null;
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); };
+
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch("/api/admin/biz" + path, {
+      method: opts.method || "GET",
+      headers: { "X-Admin-Key": KEY, "Content-Type": "application/json" },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        // A refusal carries its reason and it is shown, not swallowed. The
+        // reasons a draft was refused are the only record of what the
+        // drafting agent gets wrong.
+        if (!r.ok && !j.why && !j.error) throw new Error("HTTP " + r.status);
+        return j;
+      });
+    });
+  }
+
+  $("unlock").addEventListener("click", function () {
+    KEY = $("key").value.trim();
+    ME = $("me").value.trim();
+    if (!KEY) { $("gate-err").textContent = "The key, please."; return; }
+    if (!ME) { $("gate-err").textContent = "Your name too — it goes on the approval."; return; }
+    $("gate-err").textContent = "";
+    load();
+  });
+
+  $("refresh").addEventListener("click", function () { if (KEY) load(); });
+  $("back").addEventListener("click", function () {
+    $("thread").classList.add("hidden"); $("list").classList.remove("hidden"); load();
+  });
+
+  function load() {
+    Promise.all([api("/desk"), api("/funnel")]).then(function (r) {
+      var desk = r[0], f = r[1];
+      if (desk.error) { $("gate-err").textContent = desk.error; return; }
+      $("gate").classList.add("hidden");
+      $("funnel-card").classList.remove("hidden");
+      $("thread").classList.add("hidden");
+      $("list").classList.remove("hidden");
+      drawFunnel(f);
+      drawList(desk.waiting || []);
+    }).catch(function (e) { $("gate-err").textContent = String(e.message || e); });
+  }
+
+  function drawFunnel(f) {
+    var d = (f && f.funnel) || {};
+    var order = [["invited","invited"],["delivered","delivered"],["clicked","clicked"],
+      ["applied","filled the form"],["verified","verified"],["configured","chose a channel"],
+      ["replied","replied to us"]];
+    $("funnel").innerHTML = order.map(function (p) {
+      return '<div><b>' + (d[p[0]] == null ? "—" : d[p[0]]) + '</b><span class="muted">' + p[1] + '</span></div>';
+    }).join("");
+    $("funnel-note").textContent = (f && f.note) || "";
+  }
+
+  function drawList(rows) {
+    if (!rows.length) {
+      $("list").innerHTML = '<div class="card"><p class="muted" style="margin:0">'
+        + 'Nobody is waiting on us. That is the good state, not an empty page.</p></div>';
+      return;
+    }
+    $("list").innerHTML = rows.map(function (t) {
+      var late = t.waiting_hours != null && t.waiting_hours >= 24;
+      var ours = t.next && t.next.blocked_by === "us";
+      return '<div class="card"><div class="row">'
+        + '<strong>' + esc(t.business || t.email) + '</strong>'
+        + '<span class="pill">' + esc(t.step || "?") + '</span>'
+        + (ours ? '<span class="pill us">our move</span>' : "")
+        + '<span style="flex:1"></span>'
+        + '<span class="pill' + (late ? " old" : "") + '">'
+        + (t.waiting_hours == null ? "—" : t.waiting_hours + "h waiting") + '</span>'
+        + '</div>'
+        + '<p class="muted" style="margin:8px 0 6px">' + esc(t.next && t.next.say) + '</p>'
+        + '<div class="msg in">' + esc(String(t.last_message || "").slice(0, 300)) + '</div>'
+        + '<button data-id="' + esc(t.thread_id) + '" class="open">Open</button></div>';
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".open"), function (b) {
+      b.addEventListener("click", function () { openThread(b.getAttribute("data-id")); });
+    });
+  }
+
+  function openThread(id) {
+    api("/thread?id=" + encodeURIComponent(id)).then(function (j) {
+      if (j.error) return;
+      CURRENT = id; DRAFT_ID = null;
+      $("list").classList.add("hidden");
+      $("thread").classList.remove("hidden");
+      $("t-name").textContent = j.thread.business_name || j.thread.email;
+      $("t-email").textContent = j.thread.email;
+      $("t-step").textContent = (j.state && j.state.step) || j.thread.state || "?";
+      $("t-next").textContent = (j.state && j.state.next && j.state.next.say) || "";
+      $("t-msgs").innerHTML = (j.messages || []).map(function (m) {
+        return '<div class="msg ' + (m.direction === "in" ? "in" : "") + '">'
+          + '<div class="who">' + (m.direction === "in" ? "them" : "NUM")
+          + " · " + esc(m.created_at) + (m.state ? " · " + esc(m.state) : "")
+          + (m.matched_by === "address" ? " · matched on the address alone — worth a glance" : "")
+          + '</div>' + esc(m.body) + '</div>';
+      }).join("");
+      $("body").value = ""; $("send").disabled = true; $("declineBtn").disabled = true;
+      $("draft-note").textContent = ""; $("send-err").textContent = "";
+    });
+  }
+
+  $("draft").addEventListener("click", function () {
+    if (!CURRENT) return;
+    $("draft").disabled = true; $("draft-note").textContent = "thinking…";
+    api("/draft", { method: "POST", body: { thread_id: CURRENT, by: ME } }).then(function (j) {
+      $("draft").disabled = false;
+      if (!j.ok) {
+        // Refusals are shown in full. A guard nobody can see is a guard
+        // nobody can improve.
+        $("draft-note").textContent = "refused: " + (j.why || "unknown");
+        if (j.rejected) $("body").value = "[REFUSED DRAFT — do not send as is]\n\n" + j.rejected;
+        return;
+      }
+      DRAFT_ID = j.id;
+      $("body").value = j.body;
+      $("draft-note").textContent = "drafted — read it before you send it";
+      $("send").disabled = false; $("declineBtn").disabled = false;
+    }).catch(function (e) { $("draft").disabled = false; $("draft-note").textContent = String(e.message || e); });
+  });
+
+  $("send").addEventListener("click", function () {
+    if (!DRAFT_ID) return;
+    $("send").disabled = true; $("send-err").textContent = "";
+    api("/send", { method: "POST", body: { message_id: DRAFT_ID, by: ME } }).then(function (j) {
+      if (!j.ok) { $("send-err").textContent = j.why || "did not send"; $("send").disabled = false; return; }
+      openThread(CURRENT);
+    });
+  });
+
+  $("declineBtn").addEventListener("click", function () {
+    if (!DRAFT_ID) return;
+    api("/decline", { method: "POST", body: { message_id: DRAFT_ID, by: ME } })
+      .then(function () { $("body").value = ""; $("send").disabled = true; $("declineBtn").disabled = true;
+        $("draft-note").textContent = "thrown away, and kept on the record"; });
+  });
+})();
+</script>
+</body>
+</html>

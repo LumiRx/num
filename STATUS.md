@@ -29,6 +29,82 @@ _Last updated: 2026-09-18 06:30 UTC · **0.8.345 live on num-app** — all 12 TO
 - **Host side** — clients, requests (7 statuses), `.ics` calendar feed, products, host network, intros, messages, plan/billing, close account, integrity checker.
 - **Host client book** (12 Sep) — `GET /api/host/book`: every client with their work folded in, whose move it is, days waiting, quiet clients, plus the next 30 days. Console shows "Your week" above the book.
 
+## Talking to a business — 19 Sep 2026
+
+**Not shipped.** Migration `0048_business_comms.sql` is PENDING, and the
+Cloudflare Email Routing rule is a dashboard job that has not been done.
+
+### The thing that was actually broken
+
+Invitations went out with `Reply-To: info@thatislumi.com` — another company's
+domain, one person's mailbox. **No reply from a business has ever entered this
+system.** Hugo's Restaurant's reply reached NUM as a screenshot pasted into a
+chat window, because there was nowhere else for it to go.
+
+The funnel says why that is the expensive bug and not a tidiness one:
+
+| | |
+|---|---:|
+| invitations sent | 3,538 |
+| opened | 668 |
+| clicked through to the claim page | 77 |
+| filled the form | 9 |
+| ever started verification | 4 |
+| **businesses verified** | **2** |
+
+Two. The scarce thing is not addresses to mail. It is businesses who answered,
+and we were dropping those on the floor.
+
+### What exists now
+
+- **`bizthread.mjs`** — a thread per business contact, every message both ways.
+  Outbound mail replies to `reply+<key>@itsnum.com`; inbound is matched by that
+  key, then by `In-Reply-To`/`References`, then by the From address, and the row
+  **records which**, because matching on an address alone is a guess and two
+  people at one restaurant will land it wrong.
+- **`mailparse.mjs`** — enough MIME for Gmail, Outlook and Apple Mail. The
+  caller keeps the raw message always, so a parse failure degrades to "a human
+  reads the source", never to a lost reply.
+- **`bizinbound.mjs`** — the Cloudflare Email Worker. **Forwards to a human
+  first**, before parsing or any database write. An unmatched message opens a
+  thread rather than vanishing. An auto-reply is recorded and never counts as
+  an answer.
+- **`bizstate.mjs`** — where a business is, derived from rows that only exist
+  if the thing happened. No status column, deliberately: `num_claim_decisions
+  .onboarded` said six businesses had been told and none had. Plus the one next
+  move and **whose** it is — half of them are ours.
+- **`bizreply.mjs`** — drafts grounded in that business's real record, and a
+  guard that refuses invented prices, invented links and promises. **Nothing
+  sends without a named human approving**; draft and send are separate routes.
+- **`bizfollowup.mjs`** — one message to the 68 who clicked and could not
+  finish, saying the form was broken, which it was. `dryRun` defaults to true.
+- **`bizdesk.mjs` + `public/desk/`** — where a person actually answers.
+
+### A bug of mine, caught in review
+
+`sendHealth` read the last 300 rows **with no time bound**. Trip it, the drain
+stops; because it stopped, no new rows are written; because no new rows are
+written, the window never changes. The breaker latched shut for ever — on a
+clean list, after the bad addresses were gone. It is now bounded by seven days,
+so bad history ages out and the gate reopens on its own. Two regression tests
+pin it. The deliverability-halt doc caught this before it shipped.
+
+### The sender split
+
+`senderFor()` and `outreachIsolated()` in `mailer.mjs`. Outreach is 96% of
+volume and bounces at a quarter; sign-in codes inherited that reputation.
+`MAIL_FROM_OUTREACH` is deliberately **unset** until the subdomain is verified,
+and every drain tick reports `isolated: false` so nobody can believe the split
+is done when it is not.
+
+### Dre's three jobs before any of this works
+
+1. `npx wrangler d1 execute num-db --remote --file=worker/migrations/0048_business_comms.sql`
+2. Cloudflare → Email Routing → **catch-all to the `num-growth` Worker**. It has
+   to be catch-all: a rule on the literal `reply@itsnum.com` will not match
+   `reply+abc123@itsnum.com`, and every business reply would bounce.
+3. Verify a sending subdomain in Resend, then set `MAIL_FROM_OUTREACH`.
+
 ## Business onboarding — 18 Sep 2026
 
 Hugo's Restaurant (West Hollywood, four LA sites) answered an invitation and

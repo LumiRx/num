@@ -645,9 +645,15 @@ test('an our-fault failure releases its claims instead of burning them', async (
 });
 
 test('a delivered tick clears the breaker', async () => {
+  // Bounded by the end of the success path, not by a character count. It read
+  // `.slice(0, 400)` and broke on 19 Sep 2026 when the conversation-thread
+  // recording was added between the status update and the clear \u2014 a test about
+  // the breaker failing because of something else entirely. A window measured
+  // in characters moves whenever anyone edits above it.
   const src = readFileSync(new URL('./invitecron.mjs', import.meta.url), 'utf8');
-  const tail = src.slice(src.indexOf("UPDATE num_invites SET status='sent'"));
-  assert.match(tail.slice(0, 400), /clearBreaker\(env\)/, 'success is the only evidence the path works');
+  const from = src.indexOf("UPDATE num_invites SET status='sent'");
+  const tail = src.slice(from, src.indexOf('return { sent: claimed.length', from));
+  assert.match(tail, /clearBreaker\(env\)/, 'success is the only evidence the path works');
 });
 
 test('US is only sendable because the postal address is actually there', async () => {
