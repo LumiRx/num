@@ -2,6 +2,42 @@
 
 Every version that has been live, newest first.
 
+## 0.8.388 — 2026-09-19 01:42 UTC
+
+invites rail on PLAN, your day with who
+
+- commit `00639b8`
+
+## 0.8.387 — 2026-09-19 01:39 UTC
+
+invites rail on PLAN, your day with who
+
+- commit `bbc4a38`
+
+## 0.8.386 — 2026-09-19 01:36 UTC
+
+invites rail on PLAN, your day with who
+
+- commit `7e1b9ac`
+
+## 0.8.385 — 2026-09-19 01:28 UTC
+
+invites rail on PLAN, your day with who
+
+- commit `49046da`
+
+## 0.8.384 — 2026-09-19 01:24 UTC
+
+invites rail on PLAN, your day with who
+
+- commit `e07f0b2`
+
+## 0.8.383 — 2026-09-19 01:21 UTC
+
+invites rail on PLAN, your day with who
+
+- commit `b3a5c29`
+
 ## 0.8.382 — 2026-09-19 00:54 UTC
 
 booking loop: venue answer lands on diary, thread and plan
