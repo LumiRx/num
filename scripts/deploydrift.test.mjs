@@ -190,10 +190,28 @@ describe('the mechanism', () => {
       assert.ok(warn, 'a deploy with an unrecorded sibling must say something');
       assert.match(warn, /num-ai/, 'the worker sharing the shipped file has to be named');
       assert.match(warn, /never recorded/i, 'and it must say we do not know what it runs');
-      assert.match(warn, /ai\/wrangler\.jsonc/, 'with the command that fixes it');
+      assert.match(warn, /npm run deploy:ai/, 'with the command that fixes it');
       assert.doesNotMatch(warn, /num-scout/,
         'a worker that compiles none of the changed code is not this deploy\u2019s problem');
     } finally { process.chdir(cwd); rmSync(d, { recursive: true, force: true }); }
+  });
+
+  test('every command this tool prints is one that also records', () => {
+    // The warning is copy-pasted by whoever reads it, so the command in it has
+    // to leave the ledger correct. It did not. On 19 Sep the warning named
+    // num-ai, its bare `wrangler deploy` line was run, num-ai deployed — and
+    // nothing recorded it, so it stayed "never recorded" and the next deploy
+    // warned about it again. A tool whose own advice defeats it trains people
+    // to ignore the warning it exists to give.
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')).scripts ?? {};
+    for (const [name, w] of Object.entries(WORKERS)) {
+      const cmd = w.ship;
+      const records = /deploydrift\.mjs record/.test(cmd)
+        || /release:ship/.test(cmd)
+        || [...cmd.matchAll(/npm run ([\w:-]+)/g)]
+          .some((m) => /deploydrift\.mjs record/.test(pkg[m[1]] ?? ''));
+      assert.ok(records, `${name}: "${cmd}" deploys without recording — the ledger will lie afterwards`);
+    }
   });
 
   test('siblingWarning stays silent when nothing is stale', () => {

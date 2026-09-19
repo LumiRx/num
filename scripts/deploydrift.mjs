@@ -53,16 +53,25 @@ const LEDGER = '.deploy-shipped.json';
  * gave it a `main` (the site in nine languages). It is a code worker now, so
  * it is in the map like the other eight.
  */
+/*
+ * `ship` is COPIED AND PASTED by whoever reads the warning, so it has to be
+ * the command that also records. It was the bare `wrangler deploy` line, and
+ * on 19 Sep that is exactly what happened: the warning named num-ai, the raw
+ * command was run, num-ai deployed — and because nothing recorded it, it
+ * stayed "never recorded from this machine" and the next deploy warned about
+ * it all over again. A tool whose own advice defeats it is worse than none,
+ * because the warning it repeats starts reading as noise.
+ */
 export const WORKERS = Object.freeze({
-  'num-console': { config: 'wrangler.jsonc', main: 'worker/site.mjs', ship: 'npx wrangler deploy --config wrangler.jsonc' },
+  'num-console': { config: 'wrangler.jsonc', main: 'worker/site.mjs', ship: 'npm run deploy:site' },
   'num-app': { config: 'wrangler.app.jsonc', main: 'worker/index.mjs', ship: 'npm run release:stage "<what changed>" && npm run release:ship' },
-  'num-growth': { config: 'growth/wrangler.jsonc', main: 'growth/worker.js', ship: 'npx wrangler deploy --config growth/wrangler.jsonc' },
-  'num-ai': { config: 'ai/wrangler.jsonc', main: 'ai/worker.js', ship: 'npx wrangler deploy --config ai/wrangler.jsonc' },
-  'num-accounts': { config: 'accounts/wrangler.jsonc', main: 'accounts/worker.js', ship: 'npx wrangler deploy --config accounts/wrangler.jsonc' },
-  'num-payouts': { config: 'payouts/wrangler.jsonc', main: 'payouts/index.mjs', ship: 'npx wrangler deploy --config payouts/wrangler.jsonc' },
-  'num-claim': { config: 'claim/wrangler.jsonc', main: 'claim/worker.js', ship: 'npx wrangler deploy --config claim/wrangler.jsonc' },
-  'num-agents': { config: 'agents/wrangler.jsonc', main: 'agents/worker.js', ship: 'npx wrangler deploy --config agents/wrangler.jsonc' },
-  'num-scout': { config: 'scout/wrangler.jsonc', main: 'scout/worker.js', ship: 'npx wrangler deploy --config scout/wrangler.jsonc' },
+  'num-growth': { config: 'growth/wrangler.jsonc', main: 'growth/worker.js', ship: 'npm run deploy:growth' },
+  'num-ai': { config: 'ai/wrangler.jsonc', main: 'ai/worker.js', ship: 'npm run deploy:ai' },
+  'num-accounts': { config: 'accounts/wrangler.jsonc', main: 'accounts/worker.js', ship: 'npx wrangler deploy --config accounts/wrangler.jsonc && node scripts/deploydrift.mjs record num-accounts' },
+  'num-payouts': { config: 'payouts/wrangler.jsonc', main: 'payouts/index.mjs', ship: 'npx wrangler deploy --config payouts/wrangler.jsonc && node scripts/deploydrift.mjs record num-payouts' },
+  'num-claim': { config: 'claim/wrangler.jsonc', main: 'claim/worker.js', ship: 'npx wrangler deploy --config claim/wrangler.jsonc && node scripts/deploydrift.mjs record num-claim' },
+  'num-agents': { config: 'agents/wrangler.jsonc', main: 'agents/worker.js', ship: 'npx wrangler deploy --config agents/wrangler.jsonc && node scripts/deploydrift.mjs record num-agents' },
+  'num-scout': { config: 'scout/wrangler.jsonc', main: 'scout/worker.js', ship: 'npx wrangler deploy --config scout/wrangler.jsonc && node scripts/deploydrift.mjs record num-scout' },
 });
 
 /**
