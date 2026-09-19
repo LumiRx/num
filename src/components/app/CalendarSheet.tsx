@@ -121,7 +121,6 @@ export default function CalendarSheet() {
                   key={e.key}
                   // A friend's plan on your day opens that plan's board.
                   {...(e.planId ? pressable(() => { void openPlan(e.planId as string); store.set({ calOpen: false, view: 'plan' }); }) : {})}
-                  className={e.planId ? 'tap' : undefined}
                   style={{
                     cursor: e.planId ? 'pointer' : 'default',
                     position: 'absolute',
