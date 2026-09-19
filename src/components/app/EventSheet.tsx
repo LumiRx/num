@@ -24,7 +24,7 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', display: 'flex', gap: 7, alignItems: 'center',
-  justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  justifyContent: 'center', boxShadow: '0 4px 14px var(--accent-30)',
 };
 const ghost: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, padding: '11px 14px', fontSize: 11.5, fontWeight: 700,
@@ -32,10 +32,10 @@ const ghost: React.CSSProperties = {
 };
 
 const RSVP_STYLE: Record<string, { bg: string; fg: string; text: string }> = {
-  yes: { bg: 'rgba(22,140,90,.14)', fg: '#0e6b45', text: 'COMING' },
-  no: { bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)', text: 'CAN’T' },
-  maybe: { bg: 'rgba(14,164,131,.12)', fg: 'var(--color-accent-700)', text: 'MAYBE' },
-  pending: { bg: 'rgba(32,30,29,.05)', fg: 'var(--ink-40)', text: 'NO REPLY' },
+  yes: { bg: 'var(--ok-soft)', fg: 'var(--ok)', text: 'COMING' },
+  no: { bg: 'var(--ink-08)', fg: 'var(--ink-60)', text: 'CAN’T' },
+  maybe: { bg: 'var(--accent-12)', fg: 'var(--color-accent-700)', text: 'MAYBE' },
+  pending: { bg: 'var(--ink-08)', fg: 'var(--ink-40)', text: 'NO REPLY' },
 };
 
 export default function EventSheet() {

@@ -13,6 +13,35 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
+  /* ── SEMANTIC COLOUR (19 Sep 2026) ────────────────────────────────────
+     Dre: "the theme distributed through the app". Until today twenty
+     components carried their own green for "confirmed", their own red for
+     "that did not go through", the old ember accent in a few shadows, and
+     the old paper colour in a few backgrounds — so a theme change moved the
+     ground and left the furniture. These are the words those colours were
+     standing for. Every theme sets all of them. */
+  --ok: #0e6b45;                    /* checked, confirmed, paid, verified */
+  --ok-soft: rgba(22, 140, 90, 0.14);
+  --ok-line: rgba(22, 140, 90, 0.28);
+  --danger: #a3271c;                /* did not go through, delete, leave */
+  --danger-soft: rgba(190, 40, 30, 0.12);
+  --danger-line: rgba(190, 40, 30, 0.3);
+  --warn: #9a3412;                  /* closed now, expiring, look at this */
+  --warn-soft: rgba(154, 52, 18, 0.12);
+  --amber: #9a6a12;                 /* deposit, reminder, waiting */
+  --amber-soft: rgba(214, 158, 46, 0.16);
+  --amber-line: rgba(214, 158, 46, 0.3);
+  --slate: #3b4a5f;                 /* a synced meeting, an event: not ours */
+  --slate-soft: rgba(71, 85, 105, 0.12);
+  --slate-line: rgba(71, 85, 105, 0.22);
+  --violet: #6b4fa8;                /* a memory */
+  --violet-soft: rgba(161, 140, 209, 0.16);
+  --violet-line: rgba(161, 140, 209, 0.3);
+  --accent-12: rgba(14, 164, 131, 0.12);   /* the accent as a tint, a glow, a ring */
+  --accent-30: rgba(14, 164, 131, 0.3);
+  --on-accent: #ffffff;             /* text on the accent gradient */
+  --scrim: rgba(0, 0, 0, 0.35);     /* over a photo, so white text reads */
+
   /* Raised surfaces inside glass — inputs, tiles, pills. One token so a dark
      theme does not end up with white boxes floating on black. */
   --field-bg: rgba(255, 255, 255, 0.75);
@@ -56,7 +85,10 @@
   --money: #0b6b45;
   --money-soft: rgba(11, 107, 69, 0.11);
   --money-ink: #084d31;
-  --color-bg: #f6faf9;
+  /* WHITE is the base (Dre, 19 Sep 2026): the app sits on paper white, the
+     green is the only colour that speaks, the aurora is a breath of mint
+     under the glass rather than a tint over everything. */
+  --color-bg: #ffffff;
   --color-surface: #ffffff;
   --color-text: #0a1a24;
   --color-accent: #0ea483;
@@ -76,10 +108,10 @@
   --glass-bg: rgba(255, 255, 255, 0.58);
   --glass-strong: rgba(255, 255, 255, 0.84);
   --glass-border: rgba(255, 255, 255, 0.66);
-  --aurora-base: linear-gradient(180deg, #f6faf9 0%, #eef5f2 100%);
-  --aurora-a: radial-gradient(circle at 35% 35%, #d5f2e8 0%, #c2ebdd 55%, transparent 72%);
-  --aurora-b: radial-gradient(circle at 60% 45%, #dce9f4 0%, #e6f0ee 55%, transparent 72%);
-  --aurora-opacity: 0.5;
+  --aurora-base: linear-gradient(180deg, #ffffff 0%, #f7fbf9 100%);
+  --aurora-a: radial-gradient(circle at 35% 35%, #dff5ec 0%, #d0efe3 55%, transparent 72%);
+  --aurora-b: radial-gradient(circle at 60% 45%, #e6f0f6 0%, #eef5f2 55%, transparent 72%);
+  --aurora-opacity: 0.32;
   --glow: 0 8px 22px rgba(14,164,131,.30), 0 0 14px rgba(44,196,159,.18);
   --glow-soft: 0 0 0 1px rgba(14,164,131,.16), 0 4px 16px rgba(14,164,131,.14);
   --shell-bg: #0a1a24;
@@ -89,6 +121,26 @@
    ink becomes paper, the green stays the signal. Chosen by the system's
    dark mode when Look is Auto. */
 [data-theme='verified-dark'] {
+  --ok: #5fdda0;
+  --ok-soft: rgba(95, 221, 160, 0.14);
+  --ok-line: rgba(95, 221, 160, 0.3);
+  --danger: #ff8f80;
+  --danger-soft: rgba(255, 120, 105, 0.14);
+  --danger-line: rgba(255, 120, 105, 0.32);
+  --warn: #f5b083;
+  --warn-soft: rgba(245, 176, 131, 0.14);
+  --amber: #f0c56a;
+  --amber-soft: rgba(240, 197, 106, 0.16);
+  --amber-line: rgba(240, 197, 106, 0.32);
+  --slate: #b7c4cc;
+  --slate-soft: rgba(183, 196, 204, 0.14);
+  --slate-line: rgba(183, 196, 204, 0.26);
+  --violet: #c7b8ef;
+  --violet-soft: rgba(199, 184, 239, 0.16);
+  --violet-line: rgba(199, 184, 239, 0.32);
+  --accent-12: rgba(44, 196, 159, 0.14);
+  --accent-30: rgba(44, 196, 159, 0.34);
+  --scrim: rgba(0, 0, 0, 0.5);
   --money: #5fdda0;
   --money-soft: rgba(95, 221, 160, 0.14);
   --money-ink: #c9f7e2;

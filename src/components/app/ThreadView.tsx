@@ -388,7 +388,7 @@ function ServiceTray() {
             className="press"
             style={{
               cursor: 'pointer', flex: 'none', borderRadius: 999, padding: '9px 14px', fontSize: 11.5, fontWeight: 700,
-              background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px rgba(14,164,131,.28)',
+              background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px var(--accent-30)',
               display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap',
             }}
           >
@@ -435,14 +435,20 @@ function UpgradeNudge() {
   );
 }
 
-function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: boolean }) {
+function MsgBubble({ m, index, rateable, continues }: { m: Msg; index: number; rateable: boolean; continues?: boolean }) {
   const u = m.who === 'u';
   const ct = m.card ? tagOf(m.card.tag) : null;
+  // A bubble that is only a grid of places goes edge to edge of the column:
+  // two picture cards need the width, and a glass frame around a glass grid
+  // is a frame around a frame.
+  const gridOnly = !u && !!m.picks?.length && !cleanText(m.text).trim() && !m.card;
   return (
-    <div className="msg-in" style={{ display: 'flex', justifyContent: u ? 'flex-end' : 'flex-start', padding: '0 16px' }}>
+    // The parts of one turn sit close (continues): they are one answer, not
+    // three. The 10px the list gives every bubble drops to 4 between them.
+    <div className="msg-in" style={{ display: 'flex', justifyContent: u ? 'flex-end' : 'flex-start', padding: '0 16px', marginTop: continues ? -6 : undefined }}>
       <div
-        className={u ? undefined : 'glass'}
-        style={{
+        className={u || gridOnly ? undefined : 'glass'}
+        style={gridOnly ? { width: '100%', maxWidth: '100%' } : {
           // 13px was set for density; this is a READING surface. NUM's replies
           // run several sentences, often on a phone, often outdoors, often by
           // someone tired at the end of a travel day. 15.5/1.62 is the size
@@ -453,14 +459,14 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
           letterSpacing: '.005em',
           borderRadius: 18,
           ...(u
-            ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(14,164,131,.25)' }
+            ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px var(--accent-30)' }
             : { borderBottomLeftRadius: 6, color: 'var(--ink)' }),
         }}
       >
-        <div style={{ whiteSpace: 'pre-line' }}>{u ? m.text : t(cleanText(m.text))}</div>
+        {gridOnly ? null : <div style={{ whiteSpace: 'pre-line' }}>{u ? m.text : t(cleanText(m.text))}</div>}
         {/* Recommended places, each with a real link. Rendered as cards rather
             than prose since 3 Sep 2026 — see PickCards.tsx for why. */}
-        {!u && m.picks?.length ? <PickCards picks={m.picks} /> : null}
+        {!u && m.picks?.length ? <PickCards picks={m.picks} msgIndex={index} /> : null}
         {m.card && ct && (
           <div
             {...pressable(() => {
@@ -475,7 +481,7 @@ function MsgBubble({ m, index, rateable }: { m: Msg; index: number; rateable: bo
               cursor: 'pointer',
               marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 11, padding: 10,
               background: 'var(--field-bg)', border: '1px solid var(--ink-08)',
-              borderRadius: 'var(--r-md)', boxShadow: '0 4px 12px rgba(32,30,29,.08)', color: 'var(--ink)',
+              borderRadius: 'var(--r-md)', boxShadow: '0 4px 12px var(--ink-08)', color: 'var(--ink)',
             }}
           >
             {/* A real venue photo earns more room than the icon fallback does. */}
@@ -701,7 +707,7 @@ export default function ThreadView() {
             style={{
               margin: '0 12px 4px', borderRadius: 14, padding: '10px 13px',
               fontSize: 12.5, lineHeight: 1.45, fontWeight: 600,
-              color: 'var(--warn, #9a3412)', display: 'flex', gap: 8, alignItems: 'center',
+              color: 'var(--warn)', display: 'flex', gap: 8, alignItems: 'center',
             }}
           >
             <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true" style={{ flex: 'none' }}>
@@ -724,9 +730,11 @@ export default function ThreadView() {
             key={i}
             m={m}
             index={i}
+            continues={m.who === 'c' && !!m.part && m.part !== 'lead' && msgs[i - 1]?.who === 'c' && !!msgs[i - 1]?.part}
             // A suggestion is something NUM said in ANSWER to something. Until
-            // the user has spoken, nothing on screen is a suggestion.
-            rateable={m.who === 'c' && msgs.slice(0, i).some((p) => p.who === 'u') && (!!m.card || cleanText(m.text).length > 90)}
+            // the user has spoken, nothing on screen is a suggestion. The
+            // parts of one turn are rated once, on the last of them.
+            rateable={m.who === 'c' && msgs.slice(0, i).some((p) => p.who === 'u') && (!!m.card || cleanText(m.text).length > 90 || !!m.picks?.length) && !(m.part && msgs[i + 1]?.who === 'c' && msgs[i + 1]?.part && msgs[i + 1]?.part !== 'lead')}
           />
         ))}
         {typing && <Thinking />}

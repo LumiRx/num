@@ -101,7 +101,7 @@ export default function ScoutSheet() {
                 the server's earned figure, never a sum of introductions. */}
             <div className="glass" style={card}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 26, color: 'var(--money, var(--color-accent))' }}>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 26, color: 'var(--money)' }}>
                   {money(data.money.accrued_minor + data.money.payable_minor + data.money.paid_minor)}
                 </div>
                 <div style={{ ...muted, flex: 1 }}>{t('earned so far')}</div>

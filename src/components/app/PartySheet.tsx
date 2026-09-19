@@ -20,15 +20,15 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', display: 'flex', gap: 7, alignItems: 'center',
-  justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  justifyContent: 'center', boxShadow: '0 4px 14px var(--accent-30)',
 };
 
 const STATUS: Record<string, { text: string; bg: string; fg: string }> = {
-  idea: { text: 'IDEA', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
-  proposed: { text: 'PROPOSED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
-  held: { text: 'HELD', bg: 'rgba(14,164,131,.12)', fg: 'var(--color-accent-700)' },
-  confirmed: { text: 'BOOKED', bg: 'rgba(22,140,90,.14)', fg: '#0e6b45' },
-  cancelled: { text: 'DROPPED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
+  idea: { text: 'IDEA', bg: 'var(--ink-08)', fg: 'var(--ink-60)' },
+  proposed: { text: 'PROPOSED', bg: 'var(--ink-08)', fg: 'var(--ink-60)' },
+  held: { text: 'HELD', bg: 'var(--accent-12)', fg: 'var(--color-accent-700)' },
+  confirmed: { text: 'BOOKED', bg: 'var(--ok-soft)', fg: 'var(--ok)' },
+  cancelled: { text: 'DROPPED', bg: 'var(--ink-08)', fg: 'var(--ink-60)' },
 };
 
 export default function PartySheet() {
@@ -281,8 +281,8 @@ export default function PartySheet() {
                       border: '1px solid var(--ink-12)',
                       opacity: m.vote === 'out' ? 0.45 : 1,
                       textDecoration: m.vote === 'out' ? 'line-through' : 'none',
-                      background: m.vote === 'in' ? 'rgba(22,140,90,.14)' : 'transparent',
-                      color: m.vote === 'in' ? '#0e6b45' : 'var(--ink-60)',
+                      background: m.vote === 'in' ? 'var(--ok-soft)' : 'transparent',
+                      color: m.vote === 'in' ? 'var(--ok)' : 'var(--ink-60)',
                     }}
                   >
                     {m.member_id === me?.id ? t('You') : m.name || 'Friend'}
@@ -300,7 +300,7 @@ export default function PartySheet() {
                         cursor: 'pointer', flex: 1, textAlign: 'center', borderRadius: 999, padding: '9px 12px',
                         fontSize: 11, fontWeight: 800, letterSpacing: '.06em',
                         background: mine === 'in' ? 'rgba(22,140,90,.16)' : 'var(--field-bg)',
-                        border: mine === 'in' ? '1px solid #0e6b45' : '1px solid var(--ink-12)', color: '#0e6b45',
+                        border: mine === 'in' ? '1px solid var(--ok)' : '1px solid var(--ink-12)', color: 'var(--ok)',
                       }}
                     >
                       ✓ I'M IN
@@ -310,7 +310,7 @@ export default function PartySheet() {
                       style={{
                         cursor: 'pointer', flex: 1, textAlign: 'center', borderRadius: 999, padding: '9px 12px',
                         fontSize: 11, fontWeight: 800, letterSpacing: '.06em',
-                        background: mine === 'out' ? 'rgba(32,30,29,.10)' : 'var(--field-bg)',
+                        background: mine === 'out' ? 'var(--ink-12)' : 'var(--field-bg)',
                         border: mine === 'out' ? '1px solid var(--ink-60)' : '1px solid var(--ink-12)', color: 'var(--ink-60)',
                       }}
                     >
@@ -376,7 +376,7 @@ export default function PartySheet() {
                       {...pressable(() => { if (!busy) void killPlan(); })}
                       style={{
                         cursor: 'pointer', flex: 1, borderRadius: 999, padding: '11px 14px',
-                        border: '1.5px solid rgba(190,40,30,.35)', color: '#a3271c',
+                        border: '1.5px solid var(--danger-line)', color: 'var(--danger)',
                         fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
                       }}
                     >

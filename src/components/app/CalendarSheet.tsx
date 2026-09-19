@@ -32,7 +32,7 @@ function DayCell({ d }: { d: CalCell }) {
           background: d.sel ? 'var(--grad-accent)' : 'transparent',
           color: d.sel ? '#fff' : d.past ? 'var(--ink-40)' : 'var(--ink)',
           boxShadow: d.sel
-            ? t('0 3px 10px rgba(14,164,131,.35)')
+            ? t('0 3px 10px var(--accent-30)')
             : d.today
               ? t('inset 0 0 0 1.5px var(--color-accent)')
               : 'none',
@@ -132,7 +132,7 @@ export default function CalendarSheet() {
                     background: 'rgba(255,255,255,.82)',
                     border: '1px solid var(--ink-08)',
                     borderLeft: '3px solid ' + (e.kind === 'meet' ? 'var(--ink)' : 'var(--color-accent)'),
-                    boxShadow: '0 2px 8px rgba(32,30,29,.07)',
+                    boxShadow: '0 2px 8px var(--ink-08)',
                     padding: '5px 8px',
                     overflow: 'hidden',
                     boxSizing: 'border-box',

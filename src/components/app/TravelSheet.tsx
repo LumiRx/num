@@ -156,12 +156,12 @@ export default function TravelSheet() {
             <div
               style={{
                 display: 'flex', gap: 8, alignItems: 'center', borderRadius: 12, padding: '11px 13px',
-                background: live?.state === 'confirmed' ? 'rgba(22,140,90,.12)' : 'var(--field-bg)',
+                background: live?.state === 'confirmed' ? 'var(--ok-soft)' : 'var(--field-bg)',
                 border: '1px solid var(--ink-08)',
               }}
             >
               {live?.state === 'confirmed' ? <CheckIcon size={14} /> : <Dots />}
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: live?.state === 'confirmed' ? '#0e6b45' : 'var(--ink)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: live?.state === 'confirmed' ? 'var(--ok)' : 'var(--ink)' }}>
                 {/* The server's own line for the state. Never re-worded here —
                     "confirmed" on this screen means an AGENCY issued something,
                     and only the server knows that. */}

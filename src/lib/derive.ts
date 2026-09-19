@@ -26,33 +26,33 @@ export function tagOf(b: Booking | TagKind): Tag {
   const status: TagKind = typeof b === 'string' ? b : b.status;
   const holdBy = typeof b === 'string' ? undefined : b.holdBy;
   const map: Record<TagKind, Tag> = {
-    confirmed: { label: t('CONFIRMED'), st: { ...tagBase, background: 'rgba(56,161,105,.14)', color: '#1f7a48', border: '1px solid rgba(56,161,105,.25)' } },
-    hold: { label: t('HOLD') + (holdBy ? ' · BY ' + holdBy : ''), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
-    deposit: { label: t('DEPOSIT PAID'), st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
+    confirmed: { label: t('CONFIRMED'), st: { ...tagBase, background: 'var(--ok-soft)', color: 'var(--ok)', border: '1px solid var(--ok-line)' } },
+    hold: { label: t('HOLD') + (holdBy ? ' · BY ' + holdBy : ''), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px var(--accent-30)' } },
+    deposit: { label: t('DEPOSIT PAID'), st: { ...tagBase, background: 'var(--amber-soft)', color: 'var(--amber)', border: '1px solid var(--amber-line)' } },
     rebooked: { label: t('REBOOKED'), st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
     cancelled: { label: t('CANCELLED'), st: { ...tagBase, background: 'var(--ink-08)', color: 'var(--ink-40)' } },
-    meeting: { label: t('MEETING · SYNCED'), st: { ...tagBase, background: 'rgba(71,85,105,.12)', color: '#3b4a5f', border: '1px solid rgba(71,85,105,.22)' } },
-    memory: { label: t('MEMORY'), st: { ...tagBase, background: 'rgba(161,140,209,.16)', color: '#6b4fa8', border: '1px solid rgba(161,140,209,.3)' } },
-    bill: { label: t('BILL · DUE'), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
+    meeting: { label: t('MEETING · SYNCED'), st: { ...tagBase, background: 'var(--slate-soft)', color: 'var(--slate)', border: '1px solid var(--slate-line)' } },
+    memory: { label: t('MEMORY'), st: { ...tagBase, background: 'var(--violet-soft)', color: 'var(--violet)', border: '1px solid var(--violet-line)' } },
+    bill: { label: t('BILL · DUE'), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px var(--accent-30)' } },
     paid: { label: t('PAID'), st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
     shared: { label: t('SHARED'), st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
-    reminder: { label: t('REMINDER'), st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
+    reminder: { label: t('REMINDER'), st: { ...tagBase, background: 'var(--amber-soft)', color: 'var(--amber)', border: '1px solid var(--amber-line)' } },
   };
   return map[status] ?? map.confirmed;
 }
 
 export const mtgTag: CSSProperties = {
   ...tagBase,
-  background: 'rgba(71,85,105,.12)',
-  color: '#3b4a5f',
-  border: '1px solid rgba(71,85,105,.22)',
+  background: 'var(--slate-soft)',
+  color: 'var(--slate)',
+  border: '1px solid var(--slate-line)',
 };
 
 export const memTag: CSSProperties = {
   ...tagBase,
-  background: 'rgba(161,140,209,.16)',
-  color: '#6b4fa8',
-  border: '1px solid rgba(161,140,209,.3)',
+  background: 'var(--violet-soft)',
+  color: 'var(--violet)',
+  border: '1px solid var(--violet-line)',
 };
 
 const MONTH_SHORT = [T('Jan'), T('Feb'), T('Mar'), T('Apr'), T('May'), T('Jun'), T('Jul'), T('Aug'), T('Sep'), T('Oct'), T('Nov'), T('Dec')];
@@ -299,7 +299,7 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
           : e.kind === 'group'
             // The plan's name, quietly — the card is about the thing, the tag
             // says which plan it belongs to. Never the loud HOLD gradient.
-            ? { label: (e.planTitle ?? 'PLAN').toUpperCase().slice(0, 14), st: { ...mtgTag, background: 'rgba(14,164,131,.12)', color: 'var(--color-accent-700)', border: '1px solid rgba(14,164,131,.22)', maxWidth: '48%', overflow: 'hidden', textOverflow: 'ellipsis', flex: 'none' } }
+            ? { label: (e.planTitle ?? 'PLAN').toUpperCase().slice(0, 14), st: { ...mtgTag, background: 'var(--accent-12)', color: 'var(--color-accent-700)', border: '1px solid rgba(14,164,131,.22)', maxWidth: '48%', overflow: 'hidden', textOverflow: 'ellipsis', flex: 'none' } }
             : tagOf(e as Booking);
     return {
       key: e.id,
@@ -444,7 +444,7 @@ export const segStyle = (on: boolean): CSSProperties => ({
   borderRadius: 999,
   background: on ? 'var(--grad-accent)' : 'transparent',
   color: on ? '#fff' : 'var(--ink-60)',
-  boxShadow: on ? '0 3px 12px rgba(236,48,19,.3)' : 'none',
+  boxShadow: on ? '0 3px 12px var(--accent-30)' : 'none',
   transition: 'background .25s ease, color .25s ease, box-shadow .25s ease',
 });
 
@@ -459,6 +459,6 @@ export const checkboxStyle = (on: boolean): CSSProperties => ({
   background: on ? 'var(--grad-accent)' : 'rgba(255,255,255,.7)',
   color: '#fff',
   flex: 'none',
-  boxShadow: on ? '0 2px 8px rgba(236,48,19,.3)' : 'none',
+  boxShadow: on ? '0 2px 8px var(--accent-30)' : 'none',
   transition: 'background .2s ease, box-shadow .2s ease',
 });

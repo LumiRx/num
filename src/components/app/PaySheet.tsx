@@ -86,7 +86,7 @@ export default function PaySheet() {
                 style={{
                   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
                   fontSize: 12, letterSpacing: '.06em', padding: '14px 16px', textAlign: 'center',
-                  boxShadow: '0 4px 14px rgba(14,164,131,.3)', opacity: busy || !valid ? 0.55 : 1,
+                  boxShadow: '0 4px 14px var(--accent-30)', opacity: busy || !valid ? 0.55 : 1,
                 }}
               >
                 {busy ? t('SENDING…') : valid ? `SEND ★${n.toLocaleString()}` : n > balance ? t('NOT ENOUGH STARS') : t('ENTER AN AMOUNT')}

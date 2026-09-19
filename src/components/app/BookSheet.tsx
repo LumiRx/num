@@ -148,12 +148,12 @@ export default function BookSheet() {
             <div
               style={{
                 display: 'flex', gap: 8, alignItems: 'center', borderRadius: 12, padding: '11px 13px',
-                background: sent?.state === 'confirmed' ? 'rgba(22,140,90,.12)' : 'var(--field-bg)',
+                background: sent?.state === 'confirmed' ? 'var(--ok-soft)' : 'var(--field-bg)',
                 border: '1px solid var(--ink-08)',
               }}
             >
               {sent?.state === 'confirmed' ? <BookedCheck size={20} /> : <Dots />}
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: sent?.state === 'confirmed' ? '#0e6b45' : 'var(--ink)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: sent?.state === 'confirmed' ? 'var(--ok)' : 'var(--ink)' }}>
                 {sent ? stateLine(sent) : t('Asked — waiting on the venue')}
               </div>
             </div>

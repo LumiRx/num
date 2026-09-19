@@ -330,7 +330,7 @@ export default function ProfileView() {
             background: me.avatar ? `center/cover url(${me.avatar})` : 'var(--grad-accent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
             fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22,
-            boxShadow: '0 6px 18px rgba(14,164,131,.25)',
+            boxShadow: '0 6px 18px var(--accent-30)',
           }}
         >
           {!me.avatar && (me.name?.[0]?.toUpperCase() ?? '?')}
@@ -377,8 +377,8 @@ export default function ProfileView() {
                 // Either channel counts. Reading only phone_verified meant a
                 // member who proved an email address was labelled UNVERIFIED
                 // for ever, on a channel they never claimed to have.
-                background: contactVerified ? 'rgba(22,140,90,.14)' : 'rgba(32,30,29,.07)',
-                color: contactVerified ? '#0e6b45' : 'var(--ink-60)',
+                background: contactVerified ? 'var(--ok-soft)' : 'var(--ink-08)',
+                color: contactVerified ? 'var(--ok)' : 'var(--ink-60)',
                 display: 'inline-flex', gap: 3, alignItems: 'center',
               }}
             >

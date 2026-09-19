@@ -19,7 +19,7 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center',
-  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  boxShadow: '0 4px 14px var(--accent-30)',
 };
 
 export default function BusinessSheet() {
@@ -112,7 +112,7 @@ export default function BusinessSheet() {
                   {[p.category, p.area, p.dest].filter(Boolean).join(' · ')}
                 </div>
               </div>
-              <span style={{ flex: 'none', fontSize: 9, fontWeight: 800, letterSpacing: '.08em', padding: '4px 8px', borderRadius: 999, background: 'rgba(22,140,90,.14)', color: '#0e6b45', display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ flex: 'none', fontSize: 9, fontWeight: 800, letterSpacing: '.08em', padding: '4px 8px', borderRadius: 999, background: 'var(--ok-soft)', color: 'var(--ok)', display: 'flex', gap: 4, alignItems: 'center' }}>
                 <CheckIcon size={10} />{' '}{t('VERIFIED')}</span>
             </div>
             {p.rating != null && (

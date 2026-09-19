@@ -10,8 +10,8 @@ import type { ThemeId } from './types';
  * the summer are retired — a concierge has one look, like a good hotel.
  */
 export const THEMES: Array<{ id: ThemeId; name: string; blurb: string; swatch: [string, string, string] }> = [
-  { id: 'auto', name: 'Auto', blurb: 'Follows your phone — light by day, dark at night', swatch: ['#f6faf9', '#0ea483', '#0a1a24'] },
-  { id: 'verified', name: 'Light', blurb: 'Ink on paper, the checked green', swatch: ['#f6faf9', '#0ea483', '#d5f2e8'] },
+  { id: 'auto', name: 'Auto', blurb: 'Follows your phone — light by day, dark at night', swatch: ['#ffffff', '#0ea483', '#0a1a24'] },
+  { id: 'verified', name: 'Light', blurb: 'Ink on paper, the checked green', swatch: ['#ffffff', '#0ea483', '#d5f2e8'] },
   { id: 'verified-dark', name: 'Dark', blurb: 'Paper on ink, easy at 2am', swatch: ['#0a1a24', '#2cc49f', '#112631'] },
 ];
 
@@ -32,7 +32,7 @@ export function applyTheme(id: ThemeId): void {
 
   // Keep the browser chrome in step with the app, or the top of the screen
   // stays cream while the app goes black.
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#06121a' : '#f6faf9');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#06121a' : '#ffffff');
   document
     .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
     ?.setAttribute('content', dark ? 'black-translucent' : 'default');

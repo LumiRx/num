@@ -180,7 +180,7 @@ body {
    whatever theme is on, not a near-black nobody chose. */
 html.num-standalone,
 html.num-standalone body {
-  background: var(--color-bg, #faf7f4);
+  background: var(--color-bg, #ffffff);
 }
 
 html.num-standalone,

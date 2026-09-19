@@ -124,9 +124,45 @@ export function telLink(phone) {
  * Every field is either from the row or derived from it — nothing here can be
  * invented, which is the entire point.
  */
+/**
+ * The venue's social handles, from what the directory row already holds. A
+ * row whose "website" is an Instagram page (23,586 of them, 19 Sep 2026) has
+ * told us its Instagram; nothing is guessed from a name. Anything richer —
+ * a handle found on the venue's own site — comes from num_place_social
+ * (worker/placemedia.mjs) and is merged by the caller.
+ */
+export function socialOf(p) {
+  const site = String(p?.website ?? '').trim();
+  const out = { instagram: null, tiktok: null, facebook: null };
+  if (!site) return out;
+  const m = site.match(/^(?:https?:\/\/)?(?:www\.)?(instagram\.com|tiktok\.com|facebook\.com|fb\.com)\/([^/?#]+)/i);
+  if (!m) return out;
+  const host = m[1].toLowerCase();
+  const handle = m[2].replace(/^@/, '');
+  if (!handle || /^(p|reel|reels|explore|accounts|share|stories|profile\.php|pages|groups|hashtag|video|discover|tag)$/i.test(handle)) return out;
+  if (host === 'instagram.com') out.instagram = `https://www.instagram.com/${handle}/`;
+  else if (host === 'tiktok.com') out.tiktok = `https://www.tiktok.com/@${handle}`;
+  else out.facebook = `https://www.facebook.com/${handle}`;
+  return out;
+}
+
+/** A picture only when the row has one — the venue's own preview image or a licensed Commons photo. Never a placeholder URL. */
+export function photoOf(p) {
+  const url = String(p?.photo_url ?? '').trim();
+  if (!/^https:\/\//i.test(url)) return { photo: null, photo_attr: null };
+  return { photo: url, photo_attr: p?.photo_attr ? String(p.photo_attr).slice(0, 120) : null };
+}
+
 export function placeContact(p) {
   const link = placeLink(p);
+  const social = socialOf(p);
+  // The website pill is the venue's own site — never the Instagram page that
+  // is already offered as Instagram.
+  const site = link?.kind === 'website' && !social.instagram && !social.tiktok && !social.facebook ? link.url : null;
   return {
+    ...photoOf(p),
+    ...social,
+    website: site,
     id: p?.id ?? null,
     name: p?.name ?? null,
     link: link?.url ?? null,

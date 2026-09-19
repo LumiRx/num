@@ -39,7 +39,7 @@ const small: React.CSSProperties = {
 };
 
 const LABEL_COLOR: Record<DiscoverItem['source'], string> = {
-  num: 'var(--color-accent)', ticketmaster: '#2A63C8', viator: '#8A5CF5', crew: '#E9A23B',
+  num: 'var(--color-accent)', ticketmaster: '#2A63C8', viator: '#8A5CF5', crew: 'var(--color-accent-2)',
 };
 
 export default function DiscoverSheet() {
@@ -238,7 +238,7 @@ function SuggestCard({ i, planId, onDone }: { i: DiscoverItem; planId: string | 
     <div className="glass" style={{ borderRadius: 18, overflow: 'hidden' }}>
       {/* No photo (most directory rows) gets a tinted band so the stamp and
           the source label have somewhere to sit instead of the title. */}
-      <div style={{ height: i.image ? 130 : 44, background: i.image ? `url(${i.image}) center/cover` : 'linear-gradient(135deg, var(--color-accent-300, #9fe3cf), var(--field-bg))', position: 'relative' }}>
+      <div style={{ height: i.image ? 130 : 44, background: i.image ? `url(${i.image}) center/cover` : 'linear-gradient(135deg, var(--color-accent-300), var(--field-bg))', position: 'relative' }}>
         {i.novelty.never_tried && (
           <div style={{ position: 'absolute', top: 8, left: 8, background: 'var(--color-accent)', color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '3px 8px', borderRadius: 8 }}>{t('NEVER TRIED')}</div>
         )}

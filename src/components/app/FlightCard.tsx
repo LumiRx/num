@@ -31,7 +31,7 @@ export default function FlightCard({ w, compact = false }: { w: FlightWatch; com
   const q = p, x = 24 + 252 * q, y = (1 - q) * (1 - q) * 96 + 2 * (1 - q) * q * -18 + q * q * 96;
   const dx = 252, dy = 2 * (1 - q) * (-18 - 96) + 2 * q * (96 + 18);
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-  const pillBg = h.tone === 'late' ? '#E9A23B' : h.tone === 'bad' ? '#D9534F' : 'rgba(255,255,255,.22)';
+  const pillBg = h.tone === 'late' ? 'var(--color-accent-2)' : h.tone === 'bad' ? '#D9534F' : 'rgba(255,255,255,.22)';
 
   return (
     <div className="rise-in" style={{ borderRadius: 22, overflow: 'hidden', color: '#fff', background: landed ? 'var(--ink)' : `linear-gradient(170deg, ${c1}, ${c2})`, position: 'relative', transition: 'background 1.2s' }}>

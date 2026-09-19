@@ -119,12 +119,12 @@ export default function DangerZone() {
             display: 'flex', flexDirection: 'column', gap: 2,
           }}
         >
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#a3271c' }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--danger)' }}>
             {busy ? 'Checking…' : t('Delete my account')}
           </div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.45 }}>{t('Permanently erases your account, your thread and everything NUM remembers.')}</div>
         </div>
-        {note && <div style={{ fontSize: 11, color: '#a3271c', padding: '8px 2px 0' }}>{note}</div>}
+        {note && <div style={{ fontSize: 11, color: 'var(--danger)', padding: '8px 2px 0' }}>{note}</div>}
       </div>
     );
   }
@@ -134,7 +134,7 @@ export default function DangerZone() {
 
   return (
     <div className="glass" style={{ ...card, border: '1.5px solid rgba(190,40,30,.28)' }}>
-      <div style={{ ...kicker, color: '#a3271c' }}>{t('DELETE YOUR ACCOUNT')}</div>
+      <div style={{ ...kicker, color: 'var(--danger)' }}>{t('DELETE YOUR ACCOUNT')}</div>
 
       {inv.length === 0 ? (
         <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>{t('There’s nothing stored against this account yet — deleting it removes it and nothing else.')}</div>
@@ -186,7 +186,7 @@ export default function DangerZone() {
             aria-disabled={typed.trim().toUpperCase() !== 'DELETE'}
             style={{
               cursor: 'pointer', marginTop: 10, borderRadius: 999, padding: '12px 16px', textAlign: 'center',
-              background: typed.trim().toUpperCase() === 'DELETE' ? '#a3271c' : 'var(--ink-08)',
+              background: typed.trim().toUpperCase() === 'DELETE' ? 'var(--danger)' : 'var(--ink-08)',
               color: typed.trim().toUpperCase() === 'DELETE' ? '#fff' : 'var(--ink-40)',
               fontWeight: 800, fontSize: 11.5, letterSpacing: '.06em', opacity: busy ? 0.6 : 1,
             }}
@@ -203,7 +203,7 @@ export default function DangerZone() {
         KEEP MY ACCOUNT
       </div>
 
-      {note && <div style={{ marginTop: 9, fontSize: 11.5, color: '#a3271c', lineHeight: 1.5 }}>{note}</div>}
+      {note && <div style={{ marginTop: 9, fontSize: 11.5, color: 'var(--danger)', lineHeight: 1.5 }}>{note}</div>}
     </div>
   );
 }

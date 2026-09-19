@@ -160,7 +160,7 @@ function EventCard({ m }: { m: DmMessage }) {
                 cursor: 'pointer', flex: 1, textAlign: 'center', borderRadius: 999, padding: '9px 6px',
                 fontSize: 11.5, fontWeight: 800,
                 ...(id === 'yes'
-                  ? { background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px rgba(14,164,131,.28)' }
+                  ? { background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 3px 10px var(--accent-30)' }
                   : { background: 'var(--field-bg)', border: '1px solid var(--ink-12)', color: 'var(--ink)' }),
                 ...(busy ? { pointerEvents: 'none' as const, opacity: 0.5 } : {}),
               }}
@@ -233,7 +233,7 @@ function Conversation() {
                   maxWidth: '82%', fontSize: 13, lineHeight: 1.5, padding: '10px 13px', borderRadius: 18,
                   opacity: m.pending ? 0.6 : 1,
                   ...(mine
-                    ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px rgba(14,164,131,.25)' }
+                    ? { borderBottomRightRadius: 6, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 4px 14px var(--accent-30)' }
                     : { borderBottomLeftRadius: 6, color: 'var(--ink)' }),
                 }}
               >
@@ -292,7 +292,7 @@ function Conversation() {
             style={{
               cursor: 'pointer', width: 44, height: 44, borderRadius: 999, flex: 'none',
               background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(14,164,131,.35)', opacity: draft.trim() ? 1 : 0.45,
+              boxShadow: '0 4px 14px var(--accent-30)', opacity: draft.trim() ? 1 : 0.45,
             }}
             title={t('Send')}
           >
@@ -321,7 +321,7 @@ export default function DmSheet() {
       aria-hidden={!open}
       style={{
         position: 'absolute', inset: 0, zIndex: 47, display: 'flex', flexDirection: 'column',
-        background: 'var(--color-bg, #faf7f4)',
+        background: 'var(--color-bg)',
         visibility: open ? 'visible' : 'hidden',
         transform: open ? 'translateY(0)' : 'translateY(100%)',
         transition: 'transform .34s cubic-bezier(.32,.72,.29,.99), visibility .34s',

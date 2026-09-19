@@ -156,7 +156,7 @@ export default function Verify5arz() {
     return (
       <div className="glass" style={{ margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 700, color: 'var(--ink-40)' }}>{t('IDENTITY · 5ARZ')}</div>
-        <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: '#0e6b45' }}>{t('✓ Verified human — linked to your 5arz identity. Friends see this next to your name.')}</div>
+        <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: 'var(--ok)' }}>{t('✓ Verified human — linked to your 5arz identity. Friends see this next to your name.')}</div>
       </div>
     );
   }
@@ -170,7 +170,7 @@ export default function Verify5arz() {
     <div className="glass" style={{ margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 }}>
       <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 700, color: 'var(--ink-40)' }}>{t('IDENTITY · 5ARZ')}</div>
       {done ? (
-        <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: '#0e6b45' }}>{t('✓ Verified human — linked to your 5arz identity. Friends see this next to your name.')}</div>
+        <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: 'var(--ok)' }}>{t('✓ Verified human — linked to your 5arz identity. Friends see this next to your name.')}</div>
       ) : (
         <>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', lineHeight: 1.5, margin: '6px 0 9px' }}>{t('Already verified on 5arz? Link it — sign in with the same Google account and NUM carries the “verified human” badge. One 5arz identity links to one NUM account, ever.')}</div>

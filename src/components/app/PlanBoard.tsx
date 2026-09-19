@@ -44,21 +44,21 @@ const chip = (on: boolean): CSSProperties => ({
   fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', whiteSpace: 'nowrap',
   background: on ? 'var(--grad-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink)',
   border: on ? '1px solid transparent' : '1px solid var(--ink-12)',
-  boxShadow: on ? t('0 4px 14px rgba(14,164,131,.28)') : 'none',
+  boxShadow: on ? t('0 4px 14px var(--accent-30)') : 'none',
 });
 const primary: CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', minHeight: 44, padding: '0 16px', display: 'inline-flex', gap: 7, alignItems: 'center',
-  justifyContent: 'center', boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  justifyContent: 'center', boxShadow: '0 4px 14px var(--accent-30)',
 };
 const ghost: CSSProperties = { ...primary, background: 'var(--field-bg)', color: 'var(--ink)', border: '1px solid var(--ink-12)', boxShadow: 'none' };
 
 const STATUS: Record<string, { text: string; bg: string; fg: string }> = {
-  idea: { text: 'IDEA', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
-  proposed: { text: 'PROPOSED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
-  held: { text: 'HELD', bg: 'rgba(14,164,131,.12)', fg: 'var(--color-accent-700)' },
-  confirmed: { text: 'BOOKED', bg: 'rgba(22,140,90,.14)', fg: '#0e6b45' },
-  cancelled: { text: 'DROPPED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
+  idea: { text: 'IDEA', bg: 'var(--ink-08)', fg: 'var(--ink-60)' },
+  proposed: { text: 'PROPOSED', bg: 'var(--ink-08)', fg: 'var(--ink-60)' },
+  held: { text: 'HELD', bg: 'var(--accent-12)', fg: 'var(--color-accent-700)' },
+  confirmed: { text: 'BOOKED', bg: 'var(--ok-soft)', fg: 'var(--ok)' },
+  cancelled: { text: 'DROPPED', bg: 'var(--ink-08)', fg: 'var(--ink-60)' },
 };
 
 
@@ -282,7 +282,7 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
 
       {/* the ghost that follows the thumb */}
       {drag && (
-        <div aria-hidden="true" style={{ position: 'fixed', left: drag.x + 12, top: drag.y - 22, zIndex: 80, pointerEvents: 'none', maxWidth: 220, padding: '9px 12px', borderRadius: 12, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12.5, boxShadow: '0 10px 28px rgba(14,164,131,.35)', transform: 'rotate(-2deg)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div aria-hidden="true" style={{ position: 'fixed', left: drag.x + 12, top: drag.y - 22, zIndex: 80, pointerEvents: 'none', maxWidth: 220, padding: '9px 12px', borderRadius: 12, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12.5, boxShadow: '0 10px 28px var(--accent-30)', transform: 'rotate(-2deg)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {drag.title}
         </div>
       )}
@@ -588,7 +588,7 @@ function MoneyPanel({ money, meId, currency, onNote }: { money: PlanMoney; meId:
               <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.member_id === meId ? t('You') : p.name ?? t('Friend')}</span>
               <span style={quiet}>{t('paid')} {fmtMinor(p.paid_minor, currency)}</span>
               <span style={quiet}>{t('share')} {fmtMinor(p.owes_minor, currency)}</span>
-              <span style={{ fontWeight: 800, color: p.net_minor > 0 ? '#0e6b45' : p.net_minor < 0 ? '#a3271c' : 'var(--ink-40)', minWidth: 64, textAlign: 'right' }}>
+              <span style={{ fontWeight: 800, color: p.net_minor > 0 ? 'var(--ok)' : p.net_minor < 0 ? 'var(--danger)' : 'var(--ink-40)', minWidth: 64, textAlign: 'right' }}>
                 {p.net_minor === 0 ? t('square') : p.net_minor > 0 ? `+${fmtMinor(p.net_minor, currency)}` : `−${fmtMinor(-p.net_minor, currency)}`}
               </span>
             </div>

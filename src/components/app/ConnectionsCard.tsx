@@ -98,7 +98,7 @@ export default function ConnectionsCard() {
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t(c.label)}</div>
-                <div style={{ fontSize: 10.5, color: on && detail[c.key] ? 'var(--ink-80, var(--ink-60))' : 'var(--ink-60)', overflowWrap: 'anywhere' }}>
+                <div style={{ fontSize: 10.5, color: on && detail[c.key] ? 'var(--ink-80)' : 'var(--ink-60)', overflowWrap: 'anywhere' }}>
                   {(on && detail[c.key]) || t(c.why)}
                 </div>
               </div>

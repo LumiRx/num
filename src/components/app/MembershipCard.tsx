@@ -262,7 +262,7 @@ export default function MembershipCard() {
                 className={badgeOf(tr).top ? 'sheen' : undefined}
                 style={{
                   borderRadius: 14, padding: 12, position: 'relative', overflow: 'hidden',
-                  border: '1.5px solid ' + (on ? 'var(--color-accent)' : badgeOf(tr).top ? 'var(--color-accent-300, #9fe3cf)' : 'var(--ink-08)'),
+                  border: '1.5px solid ' + (on ? 'var(--color-accent)' : badgeOf(tr).top ? 'var(--color-accent-300)' : 'var(--ink-08)'),
                   background: 'var(--field-bg)',
                 }}
               >
@@ -341,7 +341,7 @@ export default function MembershipCard() {
         </div>
       )}
 
-      {note && <div style={{ marginTop: 9, fontSize: 11.5, color: '#a3271c', lineHeight: 1.5 }}>{note}</div>}
+      {note && <div style={{ marginTop: 9, fontSize: 11.5, color: 'var(--danger)', lineHeight: 1.5 }}>{note}</div>}
     </div>
   );
 }

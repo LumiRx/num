@@ -124,7 +124,7 @@ describe('the installed app never paints the desktop stage', () => {
   test('the override follows the theme rather than hardcoding one colour', () => {
     const at = GLASS.indexOf('html.num-standalone,');
     const block = GLASS.slice(at, at + 220);
-    assert.match(block, /--color-bg, #faf7f4/, 'with a light fallback for a theme that has not loaded');
+    assert.match(block, /--color-bg, #ffffff/, 'with a light fallback for a theme that has not loaded');
   });
 });
 

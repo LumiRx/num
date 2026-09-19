@@ -173,7 +173,7 @@ function BookingRow({ b }: { b: Booking }) {
               style={{
                 padding: '6px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
                 background: 'var(--grad-accent)', color: '#fff', cursor: 'pointer',
-                boxShadow: '0 3px 12px rgba(14,164,131,.3)',
+                boxShadow: '0 3px 12px var(--accent-30)',
               }}
             >
               ASK TO CHANGE
@@ -252,7 +252,7 @@ function PlanTabs({ tab, setTab }: { tab: PlanTab; setTab: (t: PlanTab) => void 
     cursor: 'pointer', flex: 'none', minHeight: 44, padding: '0 14px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 6,
     fontSize: 11.5, fontWeight: 700, letterSpacing: '.05em', whiteSpace: 'nowrap', scrollSnapAlign: 'start',
     background: on ? 'var(--grad-accent)' : 'transparent', color: on ? '#fff' : 'var(--ink)',
-    boxShadow: on ? t('0 4px 14px rgba(14,164,131,.28)') : 'none',
+    boxShadow: on ? t('0 4px 14px var(--accent-30)') : 'none',
   });
   return (
     <div style={{ margin: '10px 12px 4px' }}>

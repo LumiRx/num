@@ -31,7 +31,7 @@ const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
   fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px',
   display: 'flex', gap: 7, alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  boxShadow: '0 4px 14px var(--accent-30)',
 };
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
 const helpText: React.CSSProperties = { fontSize: 10.5, color: 'var(--color-neutral-500)', lineHeight: 1.55, marginTop: 10 };
@@ -588,7 +588,7 @@ export default function InviteSheet() {
             <input style={field} placeholder={sending ? t('Your name') : t('What should I call you?')} value={name} onChange={(e) => setName(e.target.value)} />
             <input style={field} placeholder={sending ? t('Their mobile') : t('Mobile number')} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             {phone.trim() && phoneInfo.note && (
-              <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : '#c0392b' }}>
+              <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : 'var(--danger)' }}>
                 {phoneInfo.note}
               </div>
             )}
@@ -620,7 +620,7 @@ export default function InviteSheet() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
                 {email.trim() && !emailOk && (
-                  <div style={{ fontSize: 12, lineHeight: 1.4, color: '#c0392b' }}>{t('That address doesn’t look complete — check for a missing @ or a typo in the domain.')}</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--danger)' }}>{t('That address doesn’t look complete — check for a missing @ or a typo in the domain.')}</div>
                 )}
                 <div style={{ ...helpText, marginTop: 0 }}>{t('NUM emails you a six-digit code to finish. Nothing else goes to this address unless you ask for it.')}</div>
               </>
@@ -781,8 +781,8 @@ export default function InviteSheet() {
                   <div
                     style={{
                       fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: '8px 12px', lineHeight: 1.45,
-                      background: onNum ? 'rgba(22,140,90,.12)' : 'rgba(14,164,131,.08)',
-                      color: onNum ? '#0e6b45' : 'var(--color-accent-700)',
+                      background: onNum ? 'var(--ok-soft)' : 'rgba(14,164,131,.08)',
+                      color: onNum ? 'var(--ok)' : 'var(--color-accent-700)',
                     }}
                   >
                     {onNum

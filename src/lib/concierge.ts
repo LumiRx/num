@@ -9,6 +9,7 @@ import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
 import { demoState } from './data';
 import { addPlanItem, commentOnPlan, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
 import { addReminder, cancelReminder, parseReminder, parseTellGroup, whenLine } from './reminders';
+import { splitReply, PART_GAP_MS } from './replyparts';
 import { offerService } from './services';
 import { runFlightSearch, type FlightQuery } from './flights';
 import { createEvent } from './events';
@@ -858,22 +859,36 @@ export async function askNum(text: string) {
         }),
       }));
     }
+    // ONE ANSWER, UP TO THREE BUBBLES (lib/replyparts.ts): the answer, the
+    // places, the question. The first lands now; each next one after a short
+    // typing pause, so it reads as a person talking rather than a wall.
+    const parts = splitReply(out.reply, out.picks, { ...(out.card ? { card: out.card } : {}), ...(out.turn ? { turn: out.turn } : {}) });
+    // The card rides on the first bubble only.
+    parts.forEach((p, i) => { if (i > 0 && p.card) delete p.card; });
+    const chips = (() => { const no = spotFlight(text); const base = out.chips ?? defChips(); return no && !base.some((c) => c.id === `watch:${no}`) ? [{ id: `watch:${no}`, label: `Watch ${no}` }, ...base] : base; })();
     store.set((prev) => ({
-      typing: false,
+      typing: parts.length > 1,
       // An answer arrived, so whatever was wrong is over. The banner clears
       // itself rather than waiting for a reload — a stale outage warning is
       // its own kind of wrong.
       outage: null,
       // Unread only counts while the thread is closed — the dot carries it.
       unread: prev.threadOpen ? 0 : prev.unread + 1,
-      msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}), ...(out.picks?.length ? { picks: out.picks } : {}), ...(out.turn ? { turn: out.turn } : {}) }],
+      msgs: [...prev.msgs, parts[0]],
       // A flight number in the ask gets one extra chip: Watch it. The card
       // then lives at the top of the thread and on TODAY (flightwatch.ts).
-      chips: (() => { const no = spotFlight(text); const base = out.chips ?? defChips(); return no && !base.some((c) => c.id === `watch:${no}`) ? [{ id: `watch:${no}`, label: `Watch ${no}` }, ...base] : base; })(),
+      // Chips wait for the last bubble — they answer the question, not the lead.
+      chips: parts.length > 1 ? [] : chips,
       // The server resolves location against the shared destination database;
       // once it knows where we are, the header follows and onboarding is done.
       ...(out.place ? { place: out.place, onboarded: true } : {}),
     }));
+    parts.slice(1).forEach((part, i) => {
+      setTimeout(() => {
+        const last = i === parts.length - 2;
+        store.set((prev) => ({ typing: !last, msgs: [...prev.msgs, part], ...(last ? { chips } : {}) }));
+      }, PART_GAP_MS * (i + 1));
+    });
   } catch (err) {
     console.error('[num-ai]', err);
     // ── WHOSE FAULT IT IS (19 Sep 2026) ──────────────────────────────

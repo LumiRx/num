@@ -65,7 +65,7 @@ const field: React.CSSProperties = {
 const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
   fontSize: 12, letterSpacing: '.06em', padding: '13px 16px', textAlign: 'center',
-  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  boxShadow: '0 4px 14px var(--accent-30)',
 };
 
 const fmt = (n: number | null | undefined) => (n ?? 0).toLocaleString();
@@ -152,7 +152,7 @@ function Pulse({ d }: { d: Overview }) {
                 key={i}
                 style={{
                   fontSize: 12, lineHeight: 1.5, padding: '9px 11px', borderRadius: 10,
-                  background: a.level === 'bad' ? 'rgba(236,48,19,.12)' : 'var(--field-bg)',
+                  background: a.level === 'bad' ? 'var(--accent-12)' : 'var(--field-bg)',
                   color: a.level === 'bad' ? 'var(--color-accent-700)' : 'var(--ink-60)',
                   fontWeight: a.level === 'bad' ? 700 : 400,
                 }}
@@ -301,7 +301,7 @@ function PayoutPanel() {
           {data.rails.all.map((r) => (
             <Row
               key={r.id}
-              left={<>{r.label} {r.ready ? <span style={{ color: '#0e6b45' }}>✓</span> : <span style={{ color: 'var(--ink-40)' }}>{t('not connected')}</span>}</>}
+              left={<>{r.label} {r.ready ? <span style={{ color: 'var(--ok)' }}>✓</span> : <span style={{ color: 'var(--ink-40)' }}>{t('not connected')}</span>}</>}
               right={r.ready ? 'live' : r.needs}
             />
           ))}
@@ -329,7 +329,7 @@ function PayoutPanel() {
                       {f.severity === 'block' ? '✕' : f.severity === 'hold' ? '!' : '·'} {f.message}
                     </div>
                   ))}
-                  {!r.findings.length && <div style={{ fontSize: 11.5, marginTop: 5, color: '#0e6b45' }}>{t('Nothing wrong — clear to pay.')}</div>}
+                  {!r.findings.length && <div style={{ fontSize: 11.5, marginTop: 5, color: 'var(--ok)' }}>{t('Nothing wrong — clear to pay.')}</div>}
                 </div>
               )}
             </div>
@@ -709,7 +709,7 @@ export default function AdminView() {
                   {data.ai.by_day.map((r) => (
                     <Row
                       key={r.day + r.lane}
-                      left={<>{r.day} · <b style={{ color: r.lane === 'small' ? '#0e6b45' : 'var(--color-accent)' }}>{r.lane}</b></>}
+                      left={<>{r.day} · <b style={{ color: r.lane === 'small' ? 'var(--ok)' : 'var(--color-accent)' }}>{r.lane}</b></>}
                       right={`${r.turns} · ${fmt((r.in_tokens ?? 0) + (r.out_tokens ?? 0))} tok · $${((r.micro_usd ?? 0) / 1e6).toFixed(3)}`}
                     />
                   ))}
@@ -733,7 +733,7 @@ export default function AdminView() {
                       {data.app.recent.map((r) => (
                         <Row
                           key={r.id}
-                          left={<>{r.name ?? '—'} {r.phone_verified ? <span style={{ color: '#0e6b45' }}>✓</span> : null} <span style={{ color: 'var(--ink-40)' }}>{r.phone ?? ''}</span></>}
+                          left={<>{r.name ?? '—'} {r.phone_verified ? <span style={{ color: 'var(--ok)' }}>✓</span> : null} <span style={{ color: 'var(--ink-40)' }}>{r.phone ?? ''}</span></>}
                           right={`${r.dest ?? '—'} · ${(r.created_at ?? '').slice(5, 16)}`}
                         />
                       ))}
@@ -830,7 +830,7 @@ export default function AdminView() {
                   <div
                     style={{
                       marginTop: 12, padding: '9px 11px', borderRadius: 10, fontSize: 11.5, lineHeight: 1.5,
-                      background: data.money.escrow_balanced ? 'var(--field-bg)' : 'rgba(236,48,19,.12)',
+                      background: data.money.escrow_balanced ? 'var(--field-bg)' : 'var(--accent-12)',
                       color: data.money.escrow_balanced ? 'var(--ink-60)' : 'var(--color-accent-700)',
                       fontWeight: data.money.escrow_balanced ? 400 : 700,
                     }}
@@ -908,7 +908,7 @@ export default function AdminView() {
                     {Object.entries(data.rails).map(([k, v]) => (
                       <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '4px 0' }}>
                         <span style={{ color: 'var(--ink-60)' }}>{k.replace(/_/g, ' ')}</span>
-                        <span style={{ fontWeight: 700, color: v === true ? '#1f7a48' : v === false ? 'var(--ink-40)' : 'var(--ink)' }}>
+                        <span style={{ fontWeight: 700, color: v === true ? 'var(--ok)' : v === false ? 'var(--ink-40)' : 'var(--ink)' }}>
                           {v === true ? 'connected' : v === false ? 'not connected' : String(v ?? '—')}
                         </span>
                       </div>

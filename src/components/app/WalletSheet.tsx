@@ -319,14 +319,14 @@ export default function WalletSheet() {
             <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--ink-08)', fontSize: 11.5 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
-                <div style={{ fontSize: 9.5, color: wrong ? '#a3271c' : 'var(--color-neutral-500)', marginTop: 1 }}>
+                <div style={{ fontSize: 9.5, color: wrong ? 'var(--danger)' : 'var(--color-neutral-500)', marginTop: 1 }}>
                   {[note, a.detail, whenOf(a.at)].filter(Boolean).join(' · ')}
                 </div>
               </div>
               <span
                 style={{
                   fontWeight: 700, whiteSpace: 'nowrap',
-                  color: wrong ? 'var(--color-neutral-500)' : good ? '#1f7a48' : 'var(--ink)',
+                  color: wrong ? 'var(--color-neutral-500)' : good ? 'var(--ok)' : 'var(--ink)',
                   textDecoration: a.state === 'refunded' ? 'line-through' : 'none',
                 }}
               >

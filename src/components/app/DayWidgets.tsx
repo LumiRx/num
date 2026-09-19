@@ -154,7 +154,7 @@ export function TripCheck() {
   return (
     <div className="glass" style={card}>
       <div {...pressable(() => setOpen((v) => !v))} aria-expanded={open} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, minHeight: 44 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: clean ? 'rgba(22,140,90,.14)' : 'rgba(14,164,131,.12)', color: clean ? '#0e6b45' : 'var(--color-accent-700)' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 999, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: clean ? 'var(--ok-soft)' : 'var(--accent-12)', color: clean ? 'var(--ok)' : 'var(--color-accent-700)' }}>
           {clean ? <CheckIcon size={15} /> : <BellIcon size={15} />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>

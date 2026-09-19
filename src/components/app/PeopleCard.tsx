@@ -102,7 +102,7 @@ export default function PeopleCard() {
                     {...pressable(() => { if (!busy && f.id) void remove(f.id); })}
                     style={{
                       cursor: 'pointer', marginTop: 10, borderRadius: 999, padding: '10px 14px', textAlign: 'center',
-                      border: '1.5px solid rgba(190,40,30,.35)', color: '#a3271c',
+                      border: '1.5px solid var(--danger-line)', color: 'var(--danger)',
                       fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
                     }}
                   >

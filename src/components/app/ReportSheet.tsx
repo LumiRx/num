@@ -37,7 +37,7 @@ const primary: React.CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff',
   fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '12px 16px',
   display: 'flex', gap: 7, alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 4px 14px rgba(14,164,131,.3)',
+  boxShadow: '0 4px 14px var(--accent-30)',
 };
 
 export default function ReportSheet({
