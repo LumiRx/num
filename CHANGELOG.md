@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.401 — 2026-09-19 21:05 UTC
+
+the verified block is back — the ring query had thrown on every ask since the editorial layer; white base; three-bubble answers with a grid of places
+
+- commit `22706d4`
+
+## 0.8.400 — 2026-09-19 20:57 UTC
+
+white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures
+
+- commit `2ef7db9`
+
 ## 0.8.399 — 2026-09-19 20:54 UTC
 
 (no note given)

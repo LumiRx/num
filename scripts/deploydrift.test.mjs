@@ -161,6 +161,41 @@ describe('the mechanism', () => {
     } finally { process.chdir(cwd); rmSync(d, { recursive: true, force: true }); }
   });
 
+  test('a worker nobody has ever recorded is NAMED after a deploy, not skipped', () => {
+    // 19 Sep 2026, the second time this bug happened and the first time it was
+    // caught. `ai/places.js` gained the expired-mobile-venue guard, num-app
+    // shipped, and the warning listed num-growth and num-console. num-ai —
+    // last deployed four days earlier, bundling that same file, serving
+    // /api/places to the public — was not mentioned at all, because it had no
+    // ledger entry and this function only ever listed 'stale'.
+    //
+    // Unknown is the WORSE case: for a stale worker we can name the files, for
+    // an unknown one we can say nothing. It must not read as silence.
+    const d = mkdtempSync(join(tmpdir(), 'drift-unknown-'));
+    const cwd = process.cwd();
+    try {
+      process.chdir(d);
+      mkdirSync('worker', { recursive: true });
+      mkdirSync('ai', { recursive: true });
+      mkdirSync('scout', { recursive: true });
+      writeFileSync('ai/places.js', 'export const nearbyPlaces = () => [];\n');
+      // num-app and num-ai both compile ai/places.js; num-scout compiles none of it.
+      writeFileSync('worker/index.mjs', "import './../ai/places.js';\n");
+      writeFileSync('ai/worker.js', "import './places.js';\n");
+      writeFileSync('scout/worker.js', 'export default {};\n');
+
+      record('num-app');                       // num-ai is deliberately never recorded
+      const warn = siblingWarning('num-app');
+
+      assert.ok(warn, 'a deploy with an unrecorded sibling must say something');
+      assert.match(warn, /num-ai/, 'the worker sharing the shipped file has to be named');
+      assert.match(warn, /never recorded/i, 'and it must say we do not know what it runs');
+      assert.match(warn, /ai\/wrangler\.jsonc/, 'with the command that fixes it');
+      assert.doesNotMatch(warn, /num-scout/,
+        'a worker that compiles none of the changed code is not this deploy\u2019s problem');
+    } finally { process.chdir(cwd); rmSync(d, { recursive: true, force: true }); }
+  });
+
   test('siblingWarning stays silent when nothing is stale', () => {
     const d = mkdtempSync(join(tmpdir(), 'drift-quiet-'));
     const cwd = process.cwd();

@@ -76,6 +76,10 @@ export const WORKERS = Object.freeze({
  */
 const STATIC = /(?:^|[\s;}])(?:import|export)\s[^'"]*?from\s*['"](\.[^'"]+)['"]/g;
 const DYNAMIC = /\bimport\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+// `import './thing.mjs';` — no bindings, no `from`, so STATIC never saw it.
+// A side-effect import bundles the file exactly like any other, and a file
+// this tool cannot see is a file it will report as unchanged forever.
+const BARE = /(?:^|[\s;}])import\s*['"](\.[^'"]+)['"]/g;
 
 const EXTS = ['', '.mjs', '.js', '.ts', '/index.mjs', '/index.js'];
 
@@ -102,7 +106,7 @@ export function bundleFiles(entry, seen = new Set()) {
   seen.add(entry);
   let src = '';
   try { src = readFileSync(entry, 'utf8'); } catch { return seen; }
-  for (const re of [STATIC, DYNAMIC]) {
+  for (const re of [STATIC, DYNAMIC, BARE]) {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(src)) !== null) {
@@ -185,8 +189,43 @@ export function check({ only = null } = {}) {
  * past it, and then it is not a guard.
  */
 export function siblingWarning(justShipped = null) {
-  const stale = check().filter((r) => r.state === 'stale' && r.name !== justShipped);
-  if (!stale.length) return null;
+  const report = check().filter((r) => r.name !== justShipped);
+  const stale = report.filter((r) => r.state === 'stale');
+
+  /* ── WHY 'unknown' IS IN THIS WARNING AND NOT JUST IN `check` ──────────
+   *
+   * 19 Sep 2026. `ai/places.js` gained the guard that drops a mobile venue
+   * from a search once its operator's "parked till" has passed. num-app
+   * shipped it and this warning named num-growth and num-console. It did not
+   * name num-ai — which had not deployed since 15 Sep, bundles that same
+   * file, and serves /api/places to the public.
+   *
+   * num-ai was not missed because it looked current. It was missed because it
+   * had no ledger entry at all, `check()` called that 'unknown', and this
+   * function only ever listed 'stale'. The header of this very file says a
+   * worker with no entry is "reported as UNKNOWN, never as clean" — and then
+   * the one line anybody actually reads after a deploy silently dropped it.
+   *
+   * An unknown worker is the WORSE case, not the lesser one: a stale worker
+   * we can name the files for, and an unknown one we cannot say anything
+   * about at all. So it appears, filtered to the ones that share at least one
+   * file with whatever just shipped — because a worker that compiles none of
+   * the changed code is genuinely not this deploy's problem, and a warning
+   * that lists everything is one people learn to scroll past.
+   */
+  const shippedFiles = justShipped && WORKERS[justShipped] && existsSync(WORKERS[justShipped].main)
+    ? bundleFiles(WORKERS[justShipped].main)
+    : null;
+  const unknown = report.filter((r) => {
+    if (r.state !== 'unknown') return false;
+    if (!shippedFiles) return true;
+    const w = WORKERS[r.name];
+    if (!w || !existsSync(w.main)) return false;
+    for (const f of bundleFiles(w.main)) if (shippedFiles.has(f)) return true;
+    return false;
+  });
+
+  if (!stale.length && !unknown.length) return null;
   const lines = [
     '',
     '⚠  OTHER WORKERS ARE NOW BEHIND THE REPO.',
@@ -199,6 +238,12 @@ export function siblingWarning(justShipped = null) {
     for (const f of s.changed.slice(0, 6)) lines.push(`     · ${f}`);
     if (s.changed.length > 6) lines.push(`     · …and ${s.changed.length - 6} more`);
     lines.push(`     ${s.ship}`);
+    lines.push('');
+  }
+  for (const u of unknown) {
+    lines.push(`   ${u.name} — never recorded from this machine, and it bundles code you just shipped`);
+    lines.push('     Nothing here knows what version it is running. Ship it, or check it by hand.');
+    lines.push(`     ${u.ship}`);
     lines.push('');
   }
   return lines.join('\n');

@@ -79,7 +79,13 @@ test('lean-mode answers are never cached', () => {
   // Caching a degraded reply would outlive the outage that caused it — guests
   // would keep getting "I'm running lean" hours after the brains recovered.
   const index = readFileSync(join(HERE, 'index.mjs'), 'utf8');
-  assert.match(index, /!_degraded && cacheable\(/,
+  // Matched loosely on purpose. This asserted the exact string
+  // `!_degraded && cacheable(` and went red the moment a SECOND guard —
+  // `!flaggedForCache` — was added between the two, which made the write
+  // stricter, not weaker. A test that fails when the thing it guards gets
+  // safer teaches people to edit the test, which is how the guard dies. What
+  // matters is that _degraded still gates the write, not what sits beside it.
+  assert.match(index, /!_degraded\s*&&[^\n]*\bcacheable\(/,
     'a degraded reply can be written to the cache — lean mode would become permanent for that question');
 });
 
