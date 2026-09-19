@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.406 — 2026-09-19 22:51 UTC
+
+invite consent + ambassador sign-up
+
+- commit `df39792`
+
 ## 0.8.405 — 2026-09-19 22:49 UTC
 
 cron chain guards + sweep heartbeat
