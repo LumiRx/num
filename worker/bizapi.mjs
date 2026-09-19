@@ -384,13 +384,12 @@ async function patchProfile(env, businessId, placeId, req) {
     if (!plan.promotions) {
       return err('upgrade_required', 'Promotions are part of a paid plan. See GET /v1/billing/tiers.', 402);
     }
-    const row = await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1')
-      .bind(businessId).first().catch(() => null);
-    let cf = {};
-    try { cf = JSON.parse(row?.custom_fields || '{}') ?? {}; } catch { cf = {}; }
-    cf.promo_text = clip(b.promo_text, 140) ?? '';
-    await env.DB.prepare('UPDATE num_business_profiles SET custom_fields=?2 WHERE business_id=?1')
-      .bind(businessId, JSON.stringify(cf)).run().catch(() => {});
+    // savePromo rather than a write here, because the line is useless without
+    // the day it was written: worker/venuepromo.mjs refuses to serve an
+    // undated or stale promotion, and a second writer that forgot the stamp
+    // would be a promotion a venue pays for and never hears.
+    const { savePromo } = await import('./venuepromo.mjs');
+    await savePromo(env, businessId, b.promo_text, 'api');
   }
   if (!sets.length && !hasPromo) {
     return err('nothing_editable',

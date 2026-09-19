@@ -1740,13 +1740,11 @@ export async function handleBizConsole(request, env, url) {
       const { bizEntitlements } = await import('./bizbilling.mjs');
       const plan = businessId ? await bizEntitlements(env, businessId) : null;
       if (plan?.promotions && businessId) {
-        const row = await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1')
-          .bind(businessId).first().catch(() => null);
-        let cf = {};
-        try { cf = JSON.parse(row?.custom_fields || '{}') ?? {}; } catch { cf = {}; }
-        cf.promo_text = String(promoRaw).trim().slice(0, 140);
-        await env.DB.prepare('UPDATE num_business_profiles SET custom_fields=?2 WHERE business_id=?1')
-          .bind(businessId, JSON.stringify(cf)).run().catch(() => {});
+        // savePromo stamps the day alongside the line. venuepromo.mjs will not
+        // serve an undated promotion, so a write that skipped the stamp would
+        // save cleanly, show in this form, and never reach a guest.
+        const { savePromo } = await import('./venuepromo.mjs');
+        await savePromo(env, businessId, promoRaw, 'console');
         promoNote = 'promo';
       } else if (String(promoRaw).trim()) {
         return await loadDashboard(env, placeId, token, origin, '', 'Promotions are part of a paid plan.', '', '', backTo);
