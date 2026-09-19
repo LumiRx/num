@@ -18,7 +18,7 @@ import { cityEventsFor, wantsEvents } from './cityevents.mjs';
  * @returns {Promise<{place: object|null, partners: array, guide: string|null}>}
  */
 export async function groundRequest(env, { userText, statedPlace, cf, fix = null, member = null, topicHint = null }) {
-  const none = { place: null, partners: [], disclosures: '', guide: null, buzz: [], events: [], widened: false };
+  const none = { place: null, partners: [], disclosures: '', promos: '', guide: null, buzz: [], events: [], widened: false };
   if (!env?.DB) return none; // local dev without the binding — Claude flies on general knowledge
 
   try {
@@ -71,10 +71,14 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
       } catch (err) { console.warn('[ratings]', err?.message ?? err); }
     }
 
-    const [{ rows, widened }, guide, buzz, showtimes, events] = await Promise.all([
+    const [{ rows, widened, error: nearbyError }, guide, buzz, showtimes, events] = await Promise.all([
       // Ten candidates, not six: enough for three good picks that are not
       // the same three as last time (see the rotation in nearbyPlaces).
-      nearbyPlaces(env, loc, userText, 10, topicHint, { memberId: member?.id ?? null }).catch(() => ({ rows: [] })),
+      // A failure here is the single most expensive silent failure in the
+      // product — no rows means no block, and the model answers from its own
+      // memory with names nothing can link. So it is caught, but it is kept:
+      // `nearbyError` travels out to the x-num-debug view.
+      nearbyPlaces(env, loc, userText, 10, topicHint, { memberId: member?.id ?? null }).catch((e) => ({ rows: [], error: String(e?.message ?? e) })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
       // Only on a movie ask, and dark without a SERPAPI_KEY secret — the
@@ -119,7 +123,20 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
     // ranking already chose; it never adds one, and it never removes one
     // except on a family ask, where naming it at all is the mistake.
     const { annotate, allowedFor, disclosureBlock } = await import('./venuedisclosure.mjs');
-    const annotated = allowedFor(await annotate(env, merged), { member, userText });
+    let annotated = allowedFor(await annotate(env, merged), { member, userText });
+
+    // A paying venue's own line, attached to the rows above and to nothing
+    // else. Same contract as the disclosure pass and for a sharper reason:
+    // /pricing/ promises no paid placement, so a promotion may never widen
+    // this list, reorder it, or become why one place beat another. It rides
+    // along with a row ranking already chose, or it does not appear.
+    // worker/venuepromo.mjs carries the whole argument.
+    let promos = '';
+    try {
+      const { annotatePromos, promoBlock } = await import('./venuepromo.mjs');
+      annotated = await annotatePromos(env, annotated);
+      promos = promoBlock(annotated);
+    } catch (e) { console.warn('[grounding] promo', e?.message ?? e); }
 
     // OUR OWN LIST FIRST; A LIVE SEARCH ONLY WHEN IT IS EMPTY.
     //
@@ -178,6 +195,8 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
         inferred: loc.source === 'ip_location',
       },
       partners: annotated,
+      /** How the location was read and whether the row search failed — for x-num-debug only. */
+      _trace: { source: loc.source, dest: loc.dest.slug, label: loc.label ?? null, lat: loc.lat ?? null, lng: loc.lng ?? null, rows: baseRows.length, named: named.length, error: nearbyError ?? null },
       // TRUE when the rows came from the whole destination rather than from
       // anywhere near the guest — the never-empty floor in nearbyPlaces fired.
       // The prompt turns this into "these are across town", because presenting
@@ -188,6 +207,11 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
       // Facts these venues have published about themselves that a guest has to
       // hear BEFORE they picture the trip. Empty for almost every answer.
       disclosures: disclosureBlock(annotated),
+      // What a paying venue says about itself today. Its own block, never
+      // merged into `disclosures`: one is something a guest must be told and
+      // the other is something a venue would like said, and a prompt that
+      // blurs those two has turned a safety rail into a billboard.
+      promos,
       guide,
       buzz,
       showtimes,

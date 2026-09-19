@@ -250,6 +250,13 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // gets applied at the end of the paragraph, which is exactly the failure.
   if (grounding?.disclosures) system.push({ type: 'text', text: grounding.disclosures });
 
+  // A paying venue's own line about itself, if any of the places above has
+  // one. Pushed AFTER the disclosure block on purpose: if a venue both has
+  // something a guest must be told and something it would like said, the
+  // must-be-told sentence is the one that has to survive a model running out
+  // of room. See worker/venuepromo.mjs for why this can never affect ranking.
+  if (grounding?.promos) system.push({ type: 'text', text: grounding.promos });
+
   // Where the traveller is standing changes what may be said. Pushed near the
   // end so it sits AFTER the specialist brief that might otherwise cheerfully
   // recommend a bar, and screened again after generation — a prompt is a
@@ -1723,6 +1730,7 @@ export async function handleNum(request, env, ctx, hooks = null) {
     // request instead of a tail nobody can hold.
     const _ground = wantsDebug ? {
       partners: (grounding?.partners ?? []).map((p) => p?.name).filter(Boolean).slice(0, 40),
+      trace: grounding?._trace ?? null,
       picks_from_model: Array.isArray(result._modelPicks) ? result._modelPicks : null,
       picks_from_prose: result._picksFromProse ?? 0,
       dropped: result._dropped ?? [],
