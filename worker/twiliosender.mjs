@@ -62,3 +62,42 @@ export function senderParams(env) {
 /** True when a Messaging Service is configured and usable. */
 export const usingMessagingService = (env) =>
   Object.hasOwn(senderParams(env) || {}, 'MessagingServiceSid');
+
+/* ── THE NUMBER A HUMAN CAN TEXT ───────────────────────────────────────────
+ *
+ * Found 19 Sep 2026, walking the host console. The host console promises three
+ * separate times that "your supplier can text a photo straight to NUM", the
+ * supplier invite email promises the same thing, and the photo queue, the
+ * moderation panel and resolveSupplier() all exist to receive it. The inbound
+ * path is real: worker/sms.mjs answers the webhook and calls ingestMedia.
+ *
+ * The number to send them TO was printed nowhere. Not in the console, not in
+ * the invite email, not on any page. The invite did name a number, correctly —
+ * the supplier's own, as the number they send FROM, which is how we know whose
+ * photograph it is — so the sentence read as a complete instruction while the
+ * only part a supplier actually needed was absent. The console was plainer
+ * about the gap and no more useful: "text a photo to your NUM number", three
+ * times, to a host who has never been told what that number is.
+ *
+ * A working feature nobody can address is not a working feature, so it lives
+ * here beside senderParams: one function, one truth, and a null that callers
+ * must handle by dropping the promise rather than printing a blank.
+ *
+ * NUM_SMS_NUMBER is preferred because the number that ANSWERS the webhook need
+ * not be the number we send from. TWILIO_FROM is the fallback because when we
+ * do send from it, it is already sitting in the supplier's message thread as
+ * the number to reply to. A Messaging Service SID is never returned: "MG64f…"
+ * is not something a person can text.
+ */
+export function numSmsNumber(env) {
+  for (const v of [env?.NUM_SMS_NUMBER, env?.TWILIO_FROM]) {
+    // Spaces, brackets, hyphens and the unicode dashes a number gets pasted
+    // with are stripped; nothing else is, so a letter still fails the test.
+    const s = String(v || '').trim().replace(/[\s()./-]/g, '')
+      .replace(/[‐‑‒–—―]/g, '');
+    // E.164 and nothing else. A short code, an alphanumeric sender id or a
+    // half-typed number would print as an address a supplier cannot reach.
+    if (/^\+[1-9]\d{7,14}$/.test(s)) return s;
+  }
+  return null;
+}

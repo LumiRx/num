@@ -340,6 +340,84 @@ test('the drafts list shows only your own, and says whether reading photos is on
   assert.equal(theirs.drafts.length, 0);
 });
 
+/* ── WHAT THE HOST IS TOLD WHEN NOTHING WAS IDENTIFIED ────────────────────
+ *
+ * Found 19 Sep 2026 by dropping one photograph into the live console and
+ * reading the banner. Workers AI had looked at it and answered "No vehicle in
+ * this one" — correct, and printed on the draft card — while the banner
+ * directly above called it a failure to read AND said "Fill the names in and
+ * they are live", which nothing in this file has ever made true.
+ *
+ * Three states, three sentences, and the live claim never appears in any of
+ * them. These tests exist so the copy cannot quietly collapse back into two. */
+
+// An AI binding that answers the presence question with "no": the model is
+// working and the answer is that there is no vehicle in the picture.
+const aiSaysNothingThere = () => ({ run: async () => ({ response: 'no' }) });
+// An AI binding that never answers at all.
+const aiSilent = () => ({ run: async () => { throw new Error('gateway'); } });
+
+test('reading is off: told so, and never told it is live', async () => {
+  const db = freshDb(); const e = env(db);
+  const ids = await twoUploads(db, e);
+  const r = await (await fleetIntake(jsonReq('fleet-intake', { media_ids: ids }), e, U('fleet-intake'), deps(db))).json();
+  assert.equal(r.identified, false);
+  assert.match(r.says, /not switched on/);
+  assert.equal(/\bare live\b/.test(r.says), false);
+  assert.equal(/could not read/.test(r.says), false);
+});
+
+test('the model looked and could not tell: that is an ANSWER, not an outage', async () => {
+  const db = freshDb();
+  const e = { ...env(db), AI: aiSaysNothingThere() };
+  const ids = await twoUploads(db, e);
+  const r = await (await fleetIntake(jsonReq('fleet-intake', { media_ids: ids }), e, U('fleet-intake'), deps(db))).json();
+  assert.equal(r.ok, true);
+  assert.equal(r.identified, false);
+  // The distinction the old copy destroyed: it looked.
+  assert.match(r.says, /We looked/);
+  assert.equal(/could not read them/.test(r.says), false);
+  assert.equal(/\bare live\b/.test(r.says), false);
+  // And the model's own reason reaches the host on the draft itself.
+  assert.match(r.drafts[0].unsure, /could not see anything here to let out/);
+});
+
+test('the model never answered: told plainly, and told to come back', async () => {
+  const db = freshDb();
+  const e = { ...env(db), AI: aiSilent() };
+  const ids = await twoUploads(db, e);
+  const r = await (await fleetIntake(jsonReq('fleet-intake', { media_ids: ids }), e, U('fleet-intake'), deps(db))).json();
+  assert.equal(r.ok, true);
+  assert.equal(r.identified, false);
+  assert.match(r.says, /could not read them just now/);
+  assert.match(r.says, /come back later/);
+  assert.equal(/\bare live\b/.test(r.says), false);
+});
+
+test('NOTHING INTAKE SAYS EVER CLAIMS A ROW IS LIVE', async () => {
+  const saids = [];
+  for (const ai of [null, aiSaysNothingThere(), aiSilent()]) {
+    // A fresh database each time: uploads dedupe on the bytes, so the same two
+    // photographs through one database would be nothing to read the second
+    // time round and this test would pass on a 404.
+    const db = freshDb();
+    const e = ai ? { ...env(db), AI: ai } : env(db);
+    const ids = await twoUploads(db, e);
+    const r = await (await fleetIntake(jsonReq('fleet-intake', { media_ids: ids }), e, U('fleet-intake'), deps(db))).json();
+    saids.push(r.says);
+    // The claim and the database have to agree, so check the database too.
+    for (const d of r.drafts) {
+      const row = db.prepare('SELECT draft, listable FROM num_assets WHERE id=?').get(d.id);
+      assert.equal(row.draft, 1);
+      assert.equal(row.listable, 0);
+    }
+  }
+  for (const s of saids) {
+    assert.equal(/\bare live\b|\bis live\b|\bgo live\b/i.test(s), false, `says a row is live: ${s}`);
+  }
+  assert.equal(new Set(saids).size, 3, 'three states must read differently');
+});
+
 /* ── the helpers ───────────────────────────────────────────────────────── */
 
 test('base64 survives a photograph-sized buffer', () => {

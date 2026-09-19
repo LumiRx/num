@@ -125,6 +125,24 @@ test('adding somebody TELLS them — that is the consent step', async () => {
   assert.match(m.text, /pay you\s*\ndirectly/, 'the money rule has to be in the first mail he gets');
   assert.match(m.text, /\+66812345678/, 'tell him which number to text photos from');
   assert.match(m.text, /STOP/, 'a way out must be in the same message');
+  // With no inbound number configured this deployment cannot make the promise,
+  // so it says so instead of leaving a sentence with a hole in it.
+  assert.match(m.text, /not switched on just yet/);
+});
+
+test('...and tells him BOTH numbers once texting in is configured', async () => {
+  // The half that was missing until 19 Sep 2026: "to NUM" with no address.
+  // From-number and to-number are different things and he needs both.
+  const db = freshDb();
+  const D = deps(db);
+  await hostSuppliers(POST({
+    display_name: 'Marco', phone: '+66812345678', email: 'marco@example.com',
+  }), { DB: d1(db), SITE: 'https://itsnum.com', TWILIO_FROM: '+14243460888' }, U(), D);
+
+  const m = D._mail[0];
+  assert.match(m.text, /to NUM on \+14243460888/, 'the destination');
+  assert.match(m.text, /from \+66812345678/, 'and the number he sends it from');
+  assert.equal(/not switched on/.test(m.text), false);
 });
 
 test('no email means no mail, and the record still stands', async () => {

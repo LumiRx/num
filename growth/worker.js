@@ -434,6 +434,7 @@ import {
   ambMilestonesAdmin, tokyoAdmin, holdsAdmin,
 } from './ambassador.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
+import { numSmsNumber } from '../worker/twiliosender.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
 // The screen after the table. worker/aftertable.mjs had rate(), tip() and
 // prioritySeating() fully written and fully tested with no call sites at all;
@@ -3021,6 +3022,10 @@ async function hostSummary(req, env, url) {
     invited: (contacts && contacts.invited) || 0,
     bookings: rows.filter((r) => r.state !== "void").length,
     earned_minor: earned,
+    /* The number a supplier texts photographs to. Null when texting in is not
+     * configured, and the console drops the promise rather than printing a gap
+     * — see numSmsNumber() in worker/twiliosender.mjs for why this exists. */
+    sms_number: numSmsNumber(env),
     earnings: rows.map((r) => ({
       what: r.business_ref || r.booking_ref,
       booking_ref: r.booking_ref,

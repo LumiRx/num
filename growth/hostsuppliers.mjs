@@ -13,6 +13,7 @@
 // tracks it and never stands between them. Nothing here moves money.
 
 import { e164 } from '../worker/bizowner.mjs';
+import { numSmsNumber } from '../worker/twiliosender.mjs';
 import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
 
 export const SUPPLIER_KINDS = ['marina', 'driver', 'crew', 'concierge', 'caterer', 'agency', 'other'];
@@ -233,6 +234,7 @@ export async function hostSuppliers(req, env, url, D) {
   // about it is not a working relationship, it is a list.
   if (email && D.sendBatch) {
     const site = env.SITE || 'https://itsnum.com';
+    const smsNumber = numSmsNumber(env);
     D.sendBatch(env, [{
       to: email,
       subject: `${host.name} has added you as a supplier on NUM`,
@@ -243,9 +245,23 @@ export async function hostSuppliers(req, env, url, D) {
         'guests met, the job reaches you with the full instructions on it. They pay you',
         'directly, exactly as now — NUM records the job and never sits between you.',
         '',
-        phone
-          ? `You can also text photographs of anything you look after straight to NUM from ${phone} and they will appear in ${host.name}'s listing for their clients to see. No app, no login.`
-          : 'Ask them to add your mobile number and you will be able to text photographs straight in.',
+        /* THE DESTINATION, WHICH WAS MISSING EVERYWHERE.
+         *
+         * This line already named a number and named it correctly — `phone` is
+         * the supplier's own, and "from ${phone}" is the number they send FROM,
+         * which is how we know whose photograph it is. What it never said, and
+         * what nothing else in the product said either, was the number to send
+         * it TO. Found 19 Sep 2026; see numSmsNumber() in worker/twiliosender.
+         *
+         * Two things must be true to make the promise: a number we hold for
+         * them, and a number for them to reach. With only the first, we say so
+         * and still confirm the mobile we have — a supplier who was told their
+         * number is on file will not go hunting for the setting. */
+        (phone && smsNumber
+          ? `You can also text photographs of anything you look after to NUM on ${smsNumber}, from ${phone} — the mobile ${host.name} gave us, so we know they are yours. They appear in ${host.name}'s listing once they approve them. No app, no login.`
+          : (phone
+            ? `${host.name} gave us ${phone} as your mobile. Texting photographs in is not switched on just yet; when it is, we will send you the number to use.`
+            : 'Ask them to add your mobile number and you will be able to text photographs straight in.')),
         '',
         'If this is not right, reply to this email and we will take you off. You can reply',
         'STOP to any text to stop those.',

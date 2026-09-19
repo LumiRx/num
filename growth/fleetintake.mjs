@@ -34,6 +34,14 @@ import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
 // Matches inboundmedia's ceiling. A phone photograph is 2-5MB.
 export const MAX_BYTES = 12 * 1024 * 1024;
 
+/* The `identify` reasons that mean we genuinely could not look, as opposed to
+ * looked and could not tell. The difference matters to a host: one is ours to
+ * fix and worth their trying again later, the other is a real answer about
+ * their photograph. Telling them the first when it was the second is how a
+ * working feature gets written off. 'http_*' is variable, so it is matched
+ * separately where this set is used. */
+export const READ_FAILED = new Set(['no_images', 'unreachable', 'bad_json', 'workers_ai_silent']);
+
 export const UPLOAD_TYPES = new Set([
   'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif',
 ]);
@@ -295,9 +303,29 @@ export async function fleetIntake(req, env, url, D) {
         + (seen.reason === 'workers_ai'
           ? ' These were read one picture at a time, so pictures of the same thing may have landed in separate drafts \u2014 merge them by deleting one and adding its photographs to the other.'
           : '')
-      : (visionReady(env)
-        ? 'Your photographs are saved and grouped, but we could not read them just now. Fill the names in and they are live.'
-        : 'Your photographs are saved. Reading them automatically is not switched on yet, so the names are yours to fill in.'),
+      /* THREE THINGS, NOT TWO. `identified === false` covers two completely
+       * different events, and the copy here told a host the same wrong story
+       * for both — plus one outright falsehood.
+       *
+       * Found 19 Sep 2026 by dropping a photograph in and reading the banner.
+       * Workers AI HAD looked at it and answered "No vehicle in this one",
+       * which was correct; that answer was printed on the draft card, and the
+       * banner directly above it called the read a failure. A host reads that
+       * and concludes the feature is broken when it had just worked.
+       *
+       * The dangerous half was "Fill the names in and they are live." Nothing
+       * this file writes is live: every row is draft = 1, listable = 0, and
+       * Go live refuses again without an approved photograph. Two gates exist
+       * so that a model never gets the last word, and one sentence telling a
+       * host it is already done defeats both. It is gone. */
+      : (seen.reason === 'no_brain'
+        ? 'Your photographs are saved. Reading them automatically is not switched on yet, so the names are yours '
+          + 'to fill in — then say go on each one.'
+        : (READ_FAILED.has(seen.reason) || /^http_/.test(String(seen.reason))
+          ? 'Your photographs are saved and grouped, but we could not read them just now. Name each one yourself '
+            + 'and say go — or come back later and we will try again.'
+          : 'Your photographs are saved and grouped. We looked and could not tell what we were looking at — each '
+            + 'draft says why. Name them yourself and say go.')),
   });
 }
 

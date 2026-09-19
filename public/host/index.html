@@ -701,6 +701,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       what answers them — with photographs, a real day rate, and a calendar that will not let the same hull go out
       twice. <b>Your supplier can text a photo straight to NUM</b> and it lands here waiting for your nod.</p>
 
+    <!-- THE ADDRESS. This page promised three times that a supplier could text
+         photographs in and never once said where to. Filled by paintSummary
+         from summary.sms_number, and honest when there is no number to give. -->
+    <p class="hint" id="flSms" style="margin:-6px 0 14px"></p>
+
     <div class="note warn on">
       <b>Two rules that never bend.</b> A photo texted in is <b>held until you approve it</b> — nothing reaches a
       booker unseen. And a registration number is <b>never</b> sent to a client: a hull or tail number tells anyone
@@ -1332,6 +1337,19 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     $('lede').innerHTML = 'Your clients are yours. NUM is the back office. Your invite link is ' +
       '<span class="mono">' + esc(d.link) + '</span> — anyone who joins through it arrives in your book. ' +
       'Every figure below is read from the database.';
+    /* The number a supplier texts photographs to. Kept here rather than in the
+       fleet loader because the summary is the one call that knows it, and a
+       host reading the fleet copy needs the number on the same screen as the
+       promise. Never a blank and never a placeholder: with no number the page
+       says texting in is not on yet, which is the truth. */
+    SMSNUM = d.sms_number || null;
+    if ($('flSms')) {
+      $('flSms').innerHTML = SMSNUM
+        ? 'Suppliers text photographs to <b class="mono">' + esc(SMSNUM) + '</b>, from the mobile you gave us for '
+          + 'them. We are told this once you add them, so you do not have to pass it on.'
+        : 'Texting photographs in is not switched on yet, so drop them here yourself for now. Nothing else changes '
+          + '— every photograph still waits for your nod.';
+    }
     var cur = d.currency || 'GBP';
     $('tiles').innerHTML = [
       ['arrivals', d.arrivals, 'people who opened your link'],
@@ -2134,6 +2152,19 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     }).catch(function () {});
     api('products').then(function (d) { if (d.ok) paintProducts(d); }).catch(function () {});
     api('network').then(function (d) { if (d.ok) paintNetwork(d); }).catch(function () {});
+    /* ── DRAFTS SURVIVE A RELOAD ────────────────────────────────────────
+     *
+     * Found 19 Sep 2026. A host drops in photographs, NUM reads them and
+     * writes a draft per vehicle — and those drafts were only ever painted
+     * from the response to the intake call. Reload the page, or come back
+     * tomorrow, and they were gone from the screen while sitting in the
+     * database with draft = 1, listable = 0, waiting for a confirmation
+     * that nothing was offering any more.
+     *
+     * /api/host/fleet-drafts existed for exactly this and had no caller. */
+    api('fleet-drafts').then(function (d) {
+      if (d.ok && d.drafts && d.drafts.length) flPaintDrafts(d.drafts, d.says);
+    }).catch(function () {});
   }
 
   // Array.prototype.forEach.call, named. The console is written without
@@ -2278,6 +2309,9 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
      ══════════════════════════════════════════════════════════════════════ */
 
   var FLEET = [];
+  // The number suppliers text photographs to, or null when that is not on.
+  // Set by paintSummary, which is the one call that is told it.
+  var SMSNUM = null;
 
   function flRate(a) {
     if (a.rate_unit === 'quote' || !a.rate_minor) return 'On quote';
@@ -2350,8 +2384,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   /* ── the photo queue ────────────────────────────────────────────────── */
   function paintQueue(q) {
     if (!q.length) {
-      $('flQueue').innerHTML = '<p class="hint">Nothing waiting. When a supplier texts a photo to your NUM number ' +
-        'it appears here.</p>';
+      // Says the number rather than "your NUM number", which a host has no way
+      // of knowing. Nothing in the product printed it before 19 Sep 2026.
+      $('flQueue').innerHTML = '<p class="hint">Nothing waiting. ' + (SMSNUM
+        ? 'When a supplier texts a photo to <b class="mono">' + esc(SMSNUM) + '</b> it appears here.'
+        : 'Texting photographs in is not switched on yet — drop them in above instead.') + '</p>';
       return;
     }
     var opts = FLEET.map(function (a) {
@@ -3440,8 +3477,36 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   ['thCard', 'rmCard', 'cfCard'].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el || !window.MutationObserver) return;
+
+    /* ── ONLY THE HIDDEN → VISIBLE EDGE. THIS LOCKED THE WHOLE CONSOLE. ──
+     *
+     * Found 19 Sep 2026 by opening a client's file and then trying to leave.
+     *
+     * This used to act on ANY class change where the card was not `hide`,
+     * and `show()` itself changes the class of every card on the page — it
+     * adds `t-off` to the ones belonging to other tabs. So with a client
+     * file open:
+     *
+     *   host clicks Work  →  show('work') adds t-off to cfCard
+     *                     →  that is a class mutation
+     *                     →  observer fires, cfCard has no `hide`
+     *                     →  show('clients'), and a smooth scroll back
+     *
+     * Every tab snapped straight back to Clients, and the page yanked itself
+     * up as it did. A host who opened one client could not reach their work,
+     * their fleet, their money or their settings again without reloading.
+     * The message thread and the remove-a-client card did the same thing
+     * once either of them was on screen.
+     *
+     * The intent was "when the console REVEALS one of these, open its tab".
+     * That is an edge, not a state, so the previous value is remembered and
+     * anything that is not a reveal is ignored. */
+    var wasHidden = el.classList.contains('hide');
     new MutationObserver(function () {
-      if (el.classList.contains('hide')) return;
+      var hidden = el.classList.contains('hide');
+      var justRevealed = wasHidden && !hidden;
+      wasHidden = hidden;
+      if (!justRevealed) return;
       var key = owner[id];
       if (key && key !== current) show(key, true);
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });

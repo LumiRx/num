@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { senderParams, usingMessagingService } from './twiliosender.mjs';
+import { senderParams, usingMessagingService, numSmsNumber } from './twiliosender.mjs';
 
 const src = (f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8');
 const SVC = 'MG64fac2280000000000000000000000ab';   // MG + 32 hex
@@ -81,6 +81,70 @@ for (const [file, fn] of [
     assert.match(s, /\.\.\.(sms)?[Ss]ender,/, `${file} must spread the chosen sender`);
   });
 }
+
+/* ── THE NUMBER A HUMAN CAN TEXT ─────────────────────────────────────────
+ *
+ * Found 19 Sep 2026: the host console promised three times that a supplier
+ * could text photographs in, the supplier invite promised it too, and the
+ * number to send them TO appeared nowhere in the product. The invite named the
+ * supplier's own number as the one they send FROM, which is correct and is not
+ * the missing half. These tests exist so a promise can only be made with a
+ * real destination attached to it.
+ */
+
+test('the explicit inbound number wins over the sending number', () => {
+  assert.equal(numSmsNumber({ NUM_SMS_NUMBER: '+447700900123', TWILIO_FROM: NUM }), '+447700900123');
+});
+
+test('the sending number is used when no inbound number is set', () => {
+  assert.equal(numSmsNumber({ TWILIO_FROM: NUM }), NUM);
+});
+
+test('a Messaging Service SID is NEVER offered as a number to text', () => {
+  // "MG64fac2…" printed as an address would be worse than printing nothing.
+  assert.equal(numSmsNumber({ TWILIO_MESSAGING_SERVICE_SID: SVC }), null);
+});
+
+test('nothing configured means null, so callers drop the promise', () => {
+  assert.equal(numSmsNumber({}), null);
+  assert.equal(numSmsNumber(null), null);
+  assert.equal(numSmsNumber(undefined), null);
+});
+
+test('a number pasted with spaces, brackets or dashes still works', () => {
+  for (const messy of ['+1 (424) 346-0888', '+1-424-346-0888', ' +1 424 346 0888 ', '+1.424.346.0888']) {
+    assert.equal(numSmsNumber({ NUM_SMS_NUMBER: messy }), NUM, `failed on ${messy}`);
+  }
+  // An en dash and a non-breaking hyphen, which is what a pasted number from a
+  // document actually contains.
+  assert.equal(numSmsNumber({ NUM_SMS_NUMBER: '+1–424‑346‑0888' }), NUM);
+});
+
+test('anything that is not E.164 is refused rather than printed', () => {
+  for (const bad of ['NUMHELP', '4243460888', '+0424346088', '12345', '+1424', 'AC64fac228',
+    '+1424346088812345678', 'call us', '']) {
+    assert.equal(numSmsNumber({ NUM_SMS_NUMBER: bad }), null, `accepted ${bad}`);
+  }
+});
+
+test('the console and the invite both say the number, or say it is off', () => {
+  // The two surfaces that made the promise. They must consult the helper
+  // rather than hard-coding a number, and they must have a not-configured
+  // branch — a page that prints an empty bold tag is the original bug back.
+  const inv = src('../growth/hostsuppliers.mjs');
+  assert.match(inv, /numSmsNumber/, 'the supplier invite must ask for the real number');
+  assert.match(inv, /to NUM on \$\{smsNumber\}/, 'the invite must name the destination');
+  assert.match(inv, /not switched on just yet/, 'the invite needs a no-number branch');
+  // And the no-number branch still has to confirm the mobile we hold, or a
+  // supplier is left wondering whether we have it at all.
+  assert.match(inv, /gave us \$\{phone\} as your mobile/);
+
+  const console_ = src('../public/host/index.html');
+  assert.match(console_, /sms_number/, 'the console must read the number from the summary');
+  assert.match(console_, /not switched on yet/, 'the console needs a no-number branch');
+  assert.equal(/to your NUM number/.test(console_), false,
+    '"your NUM number" tells a host nothing — it must print the number');
+});
 
 /* ── the health check that would have caught this in August ────────────── */
 
