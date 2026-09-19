@@ -604,7 +604,7 @@ export default function InviteSheet() {
                 {...pressable(() => setEmailOpen(true))}
                 style={{ ...helpText, marginTop: 0, cursor: 'pointer', textDecoration: 'underline', minHeight: 44, display: 'flex', alignItems: 'center', fontSize: 12 }}
               >
-                No mobile I can be texted on — use my email instead
+                {t('No mobile I can be texted on — use my email instead')}
               </div>
             )}
             {!sending && emailOpen && (

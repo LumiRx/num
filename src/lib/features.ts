@@ -340,7 +340,7 @@ export const FEATURES: readonly Feature[] = [
     // tile promising concerts and matches got a form asking what they were
     // hosting. Tickets live in the thread (Ticketmaster, worker/events.tm.mjs),
     // so the ask goes there and hosting keeps its own door below.
-    id: 'events', kicker: T('EVENTS'), title: 'Tickets & events', cover: '/covers/events.webp', cta: T('See what’s on'),
+    id: 'events', kicker: T('EVENTS'), title: T('Tickets & events'), cover: '/covers/events.webp', cta: T('See what’s on'),
     blurb: T('What’s on while you’re here, with tickets.'),
     promise: T('Concerts, matches, club nights — what’s on while you’re here, with a real way to get in.'),
     fields: [
@@ -357,7 +357,7 @@ export const FEATURES: readonly Feature[] = [
     opens: () => store.set({ featureOpen: null, partyOpen: true }),
   },
   {
-    id: 'wallet', kicker: T('WALLET'), title: 'Stars & tabs', cover: '/covers/wallet.webp', cta: T('Open wallet'),
+    id: 'wallet', kicker: T('WALLET'), title: T('Stars & tabs'), cover: '/covers/wallet.webp', cta: T('Open wallet'),
     blurb: T('What you’ve paid, what’s held, what’s open.'),
     promise: T('What you’ve paid, what’s held, what’s open — in your currency.'),
     opens: () => store.set({ featureOpen: null, walletOpen: true }),

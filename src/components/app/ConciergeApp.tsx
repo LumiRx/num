@@ -233,7 +233,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       >
         {/* 62px clears the device frame's overlaid status bar; full-bleed the browser chrome already holds it */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: standalone ? 'max(env(safe-area-inset-top), 16px) 16px 0' : '62px 16px 0' }}>
-          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>NUM{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· TEXT IT. IT’S BOOKED.</span>
+          <div style={{ fontSize: 11, letterSpacing: '.16em', fontWeight: 700, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>NUM{' '}<span style={{ fontWeight: 400, opacity: 0.55 }}>· {t('TEXT IT. IT’S BOOKED.')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {me && <div

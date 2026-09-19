@@ -26,7 +26,7 @@ await page.screenshot({ path: `${outdir}/01-signin-en.png` });
 
 await page.getByRole('radio', { name: NAMES[lang] }).click();
 // The catalogue map: cached → network → possibly a second ask 20 s later.
-await page.waitForTimeout(12_000);
+await page.waitForTimeout(6_000);
 await page.screenshot({ path: `${outdir}/02-signin-${lang}.png` });
 
 // What is still English on the sheet?
@@ -49,13 +49,17 @@ const census = async (label) => {
 };
 const still = { sheet: await census('sheet') };
 
-// Close the sheet, look at TODAY and PLAN.
+// Close the sheet and the thread overlay the app opens on, look at TODAY and PLAN.
 await page.keyboard.press('Escape');
 await page.waitForTimeout(600);
-await page.screenshot({ path: `${outdir}/03-today-${lang}.png` });
+await page.screenshot({ path: `${outdir}/03-thread-${lang}.png` });
+const closeThread = page.locator('[role="dialog"] .glass.press').filter({ has: page.locator('svg') }).last();
+if (await closeThread.count()) await closeThread.click().catch(() => {});
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${outdir}/04-today-${lang}.png` });
 still.today = await census('today');
 const plan = page.getByRole('tab', { name: /plan|แผน|プラン|计划|계획|planes|plans|pläne|خطط|төлөвлөгөө/i }).first();
-if (await plan.count()) { await plan.click(); await page.waitForTimeout(1200); await page.screenshot({ path: `${outdir}/04-plan-${lang}.png` }); still.plan = await census('plan'); }
+if (await plan.count()) { await plan.click(); await page.waitForTimeout(1200); await page.screenshot({ path: `${outdir}/05-plan-${lang}.png` }); still.plan = await census('plan'); }
 
 writeFileSync(`${outdir}/census-${lang}.json`, JSON.stringify(still, null, 1));
 console.log(errors.length ? `page errors:\n  ${errors.join('\n  ')}` : 'no page errors');
