@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.395 — 2026-09-19 20:25 UTC
+
+white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures
+
+- commit `6325c02`
+
 ## 0.8.394 — 2026-09-19 18:32 UTC
 
 your language from the first screen — picker on sign-in, 690 more lines translated, cities and titles follow
