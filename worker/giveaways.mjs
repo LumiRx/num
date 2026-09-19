@@ -31,6 +31,10 @@ import { RULES } from '../growth/fridayrules.mjs';
 import { weekStart, weekEnd, entrantKey, eligibleCount, phoneForMember } from './giveaway.mjs';
 import { recordEntry, weekKeyFor, ENTRY_CODE } from './packdraw.mjs';
 import { hasVerifiedContact } from './membercontact.mjs';
+import {
+  CAMPAIGN as TOKYO_ID, PRIZE as TOKYO, LADDER as TOKYO_LADDER,
+  standingFor as tokyoStanding, grantFreeEntry as tokyoFreeEntry,
+} from '../growth/tokyodraw.mjs';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
@@ -56,7 +60,19 @@ export async function fridayStatus(env, member, nowSec = Math.floor(Date.now() /
   return out;
 }
 
-/** The catalogue. One today; the shape is the contract the profile renders. */
+/** Where this member stands in the Tokyo draw.
+ *
+ *  `entered` is true when they hold ANY entry, earned or free — the card's job
+ *  is to say whether they are in the draw, and somebody with four earned
+ *  entries who never tapped the free button is very much in it. */
+export async function tokyoStatus(env, member) {
+  const out = { entered: false, won: null, entries: 0, earned: 0, free: 0, referred: 0, to_next: TOKYO_LADDER.first };
+  if (!member?.id) return out;
+  const s = await tokyoStanding(env, member.id);
+  return { ...out, ...s, entered: s.entries > 0 };
+}
+
+/** The catalogue. The shape is the contract the profile renders. */
 export const LIVE = Object.freeze([
   Object.freeze({
     id: FRIDAY_PACKS_ID,
@@ -69,6 +85,32 @@ export const LIVE = Object.freeze([
     note: 'Not sponsored by or affiliated with Nintendo or The Pokémon Company.',
     status: fridayStatus,
     enter: (env, member) => recordEntry(env, { memberId: member.id, source: 'profile' }),
+  }),
+  /* ── THE TOKYO TRIP ──────────────────────────────────────────────────
+   *
+   * Entries are EARNED by bringing people to NUM, and the Enter button is
+   * the FREE route rather than the only route. That is not a quirk of the
+   * UI, it is the clause that keeps the draw lawful: a prize draw whose
+   * entries must be earned by recruiting can be treated as requiring
+   * consideration, and a draw with consideration is a lottery.
+   *
+   * So the button says "enter free", it asks for nothing, and anybody who
+   * taps it is in the draw alongside the people who brought in fifty.
+   */
+  Object.freeze({
+    id: TOKYO_ID,
+    title: TOKYO.title,
+    prize: TOKYO.what,
+    how: `Enter free here, or earn more entries: ${TOKYO_LADDER.first} people you bring to NUM is one entry, `
+      + `${TOKYO_LADDER.second} is two, then one more for every ${TOKYO_LADDER.step} after that`,
+    who: `${RULES.countries.join(' and ')}, ${RULES.minAge}+ · free to enter · no purchase necessary`,
+    rules_url: `https://${RULES.site}/tokyo-rules`,
+    note: 'Entries are counted from real signups. Free entry needs no referrals at all.',
+    // Not the Friday week. Without this the card would tell everybody the
+    // trip closes this Sunday.
+    closesAt: '2026-12-31T23:59:59.000Z',
+    status: tokyoStatus,
+    enter: (env, member) => tokyoFreeEntry(env, { memberId: member.id, source: 'profile' }),
   }),
 ]);
 
@@ -86,7 +128,10 @@ export async function list(env, me, nowSec = Math.floor(Date.now() / 1000)) {
     const s = await g.status(env, member, nowSec);
     items.push({
       id: g.id, title: g.title, prize: g.prize, how: g.how, who: g.who, rules_url: g.rules_url, note: g.note,
-      closes_at: new Date(weekEnd(start) * 1000).toISOString(),
+      // The Friday draw closes on Sunday; a one-off campaign does not. An
+      // item that knows its own end date says so, rather than inheriting a
+      // week boundary that has nothing to do with it.
+      closes_at: g.closesAt ?? new Date(weekEnd(start) * 1000).toISOString(),
       draw_label: weekKeyFor(new Date(nowSec * 1000)),
       ...s,
     });

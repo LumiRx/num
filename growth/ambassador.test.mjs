@@ -32,6 +32,12 @@ function freshDb() {
   // happens to contain a semicolon tears the statement either side of it.
   const sql = load('0051_ambassadors.sql').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
   for (const stmt of sql.split(';').map((x) => x.trim()).filter(Boolean)) db.exec(stmt + ';');
+  // The columns 0055 adds. Applied here too, because a fixture that is a
+  // schema behind tests a table production does not have.
+  const later = load('0055_niches_and_tokyo.sql').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+  for (const stmt of later.split(';').map((x) => x.trim()).filter(Boolean)) {
+    try { db.exec(stmt + ';'); } catch { /* the giveaway tables are not part of this fixture */ }
+  }
   return db;
 }
 

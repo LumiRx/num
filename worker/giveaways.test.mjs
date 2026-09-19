@@ -29,10 +29,12 @@ function fakeDb(answers) {
 
 const MEMBER = { id: 'm1', phone: null, phone_verified: 0, email: 'a@b.c', email_verified: 1 };
 
-test('the one live giveaway is the Friday pack draw, worded from the rules object', () => {
-  assert.equal(LIVE.length, 1);
-  const g = LIVE[0];
-  assert.equal(g.id, FRIDAY_PACKS_ID);
+test('the Friday pack draw is still worded from the rules object', () => {
+  // Two live giveaways since 19 Sep: the Friday packs and the Tokyo trip.
+  // Asserted by ID rather than by position, so adding a third cannot make
+  // this test silently check the wrong one.
+  const g = LIVE.find((x) => x.id === FRIDAY_PACKS_ID);
+  assert.ok(g, 'the Friday pack draw is gone');
   assert.match(g.prize, new RegExp(`^${RULES.winnersPerWeek} winners`));
   assert.match(g.how, new RegExp(ENTRY_CODE));
   assert.match(g.who, /United States and United Kingdom, 18\+/);
@@ -44,11 +46,36 @@ test('list: a signed-out visitor sees the giveaway, cannot enter, and is not "in
   const env = { DB: fakeDb([[/COUNT\(DISTINCT entrant_key\)/, { n: 7 }]]) };
   const d = await list(env, null, 1789689600); // Fri 18 Sep 2026 00:00 UTC — a period opens
   assert.equal(d.can_enter, false);
-  assert.equal(d.giveaways.length, 1);
-  assert.equal(d.giveaways[0].entered, false);
-  assert.equal(d.giveaways[0].entries, 7);
-  assert.equal(d.giveaways[0].draw_label, '2026-09-24');
-  assert.match(d.giveaways[0].closes_at, /^2026-09-24T23:59:59/);
+  const friday = d.giveaways.find((g) => g.id === 'friday-packs');
+  assert.ok(friday);
+  assert.equal(friday.entered, false);
+  assert.equal(friday.entries, 7);
+  assert.equal(friday.draw_label, '2026-09-24');
+  assert.match(friday.closes_at, /^2026-09-24T23:59:59/);
+  // A signed-out visitor sees the trip too, and is in neither.
+  const tokyo = d.giveaways.find((g) => g.id === 'tokyo-2026');
+  assert.ok(tokyo, 'the Tokyo trip is not listed');
+  assert.equal(tokyo.entered, false);
+});
+
+test('a one-off campaign keeps its own closing date, not the Friday week', () => {
+  // The Friday draw closes on Sunday. Before 19 Sep every item inherited that
+  // boundary, which would have told everybody the trip closed this weekend.
+  const tokyo = LIVE.find((g) => g.id === 'tokyo-2026');
+  assert.ok(tokyo.closesAt, 'the trip has no end date of its own');
+  assert.equal(/2026-09-2[0-9]/.test(tokyo.closesAt), false,
+    'the trip inherited the Friday week boundary: ' + tokyo.closesAt);
+});
+
+test('the free route is the button, and it asks for nothing', () => {
+  // THE CLAUSE THAT KEEPS IT LAWFUL. Entries earned by recruiting people can
+  // count as consideration, and a draw with consideration is a lottery. The
+  // Enter button must stay a free door that needs no referrals.
+  const tokyo = LIVE.find((g) => g.id === 'tokyo-2026');
+  assert.match(tokyo.who, /free to enter/i);
+  assert.match(tokyo.who, /no purchase necessary/i);
+  assert.match(tokyo.note, /no referrals/i);
+  assert.equal(typeof tokyo.enter, 'function');
 });
 
 test('list: a verified member who entered by text this week shows as in — one ticket, either door', async () => {

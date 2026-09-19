@@ -383,6 +383,7 @@ import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
 import * as DETECT from './pos/detect.mjs';
 import * as VENUEPAY from '../worker/venuepayout.mjs';
+import * as TILLBILL from '../worker/tillbill.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
 import * as BILLITEMS from '../worker/billitems.mjs';
 import * as PAYTRACK from '../worker/paytrack.mjs';
@@ -1416,10 +1417,14 @@ const WORKER = {
         // /p/<token>/go         the tracked hop to the venue's own payment page
         // /p/<token>/promptpay  the venue's PromptPay sticker view
         // /p/<token>/crypto     the venue's USDC address view
+        // /p/<token>/bill      raise the table's live till check as a bill
         const rest = p.slice(3);
-        const m = rest.match(/^([^/]+)(?:\/(go|promptpay|crypto))?\/?$/);
+        const m = rest.match(/^([^/]+)(?:\/(go|promptpay|crypto|bill))?\/?$/);
         if (!m) return payLanding(req, env, rest);
         if (m[2] === "go") return payGo(req, env, m[1]);
+        // A POST, deliberately. Minting a payable code is a thing a guest
+        // DOES, not something that happens because a page was drawn.
+        if (m[2] === "bill") return payRaiseBill(req, env, m[1]);
         return payLanding(req, env, m[1], m[2] || "auto");
       }
       if (p === "/biz/connect/start") return connectStart(req, env, url);

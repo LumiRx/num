@@ -77,6 +77,12 @@ ul.plain li:first-child{border-top:0}
 .rung .n{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:#f1f5f9;color:var(--slate);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 .rung.got .n{background:var(--pri);color:#fff}
+.niches{display:flex;flex-wrap:wrap;gap:8px}
+.niches label{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
+  padding:8px 14px;font-size:14px;font-weight:600;color:var(--slate);cursor:pointer;margin:0;background:#fff}
+.niches label.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.niches input{width:auto;margin:0}
+.forme{background:#ecfdf5;color:#065f46;font-weight:650}
 @media(max-width:620px){.row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -187,6 +193,33 @@ ul.plain li:first-child{border-top:0}
     <p class="hint" id="msHow"></p>
   </section>
 
+  <!-- ══ THE TRIP ═══════════════════════════════════════════════════════ -->
+  <section id="tokyoCard" class="card2" data-tab="people">
+    <span class="tag">The big one</span>
+    <h2>Five days in Tokyo</h2>
+    <p class="sub">Return flights and five nights, for you and somebody. Entries are counted from
+      real signups — and there is a free way in that needs no referrals at all.</p>
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile"><div class="k">Your entries</div><div class="v tnum" id="tkEntries">0</div>
+        <div class="s" id="tkSplit"></div></div>
+      <div class="tile"><div class="k">Next entry in</div><div class="v tnum" id="tkNext">—</div>
+        <div class="s">more people</div></div>
+    </div>
+    <ul class="plain" id="tkLadder"></ul>
+    <p class="hint" id="tkFree"></p>
+  </section>
+
+  <!-- ══ WHAT A MILESTONE COULD BE ══════════════════════════════════════
+       The POOL, never a prediction. Naming what the next one will be turns a
+       mystery into a promise, which is the one thing this may not do. -->
+  <section id="poolCard" class="card2" data-tab="people">
+    <span class="tag">The rotation</span>
+    <h2>What a mystery bonus can be</h2>
+    <p class="sub">These are the kinds of things NUM draws from. Which one you get, if any, is
+      decided when you reach a rung — the ones marked not yet are being worked on.</p>
+    <ul class="plain" id="poolList"></ul>
+  </section>
+
   <!-- ══ CHANNELS ═══════════════════════════════════════════════════════ -->
   <section id="socCard" class="card2" data-tab="channels">
     <span class="tag">Where you post</span>
@@ -285,6 +318,16 @@ ul.plain li:first-child{border-top:0}
       </div>
       <button class="btn pri" type="submit">Save</button>
     </form>
+  </section>
+
+  <section id="nicheCard" class="card2" data-tab="settings">
+    <span class="tag">Your specialty</span>
+    <h2>What you are known for</h2>
+    <p class="sub" id="nicheWhy"></p>
+    <div class="note" id="nicheMsg"></div>
+    <div id="nicheList" class="niches"></div>
+    <button class="btn pri" id="saveNiches" type="button" style="margin-top:14px">Save</button>
+    <p class="hint">Pick up to six. Offers matched to yours are shown first on the Offers tab.</p>
   </section>
 
   <section id="dirCard" class="card2" data-tab="settings">
@@ -391,6 +434,9 @@ ul.plain li:first-child{border-top:0}
     $('pct').textContent = s.money.pct;
 
     paintBrought(s.brought, s.payable);
+    paintTokyo(s.tokyo);
+    paintPool(s.reward_pool);
+    paintNiches(s.niches);
     paintMilestones(s.milestones, s.money.referred);
     paintSocials(s.socials);
     paintBenefits(s.benefits);
@@ -419,6 +465,70 @@ ul.plain li:first-child{border-top:0}
     return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   }
 
+  function paintTokyo(t) {
+    if (!t) return;
+    $('tkEntries').textContent = nf(t.entries || 0);
+    $('tkSplit').textContent = (t.free ? t.free + ' free' : 'none free')
+      + ' · ' + nf(t.earned || 0) + ' earned';
+    $('tkNext').textContent = t.to_next == null ? '—' : nf(t.to_next);
+    var L = t.ladder || {};
+    $('tkLadder').innerHTML =
+      '<li><b>' + nf(L.first) + ' people</b> — one entry</li>' +
+      '<li><b>' + nf(L.second) + ' people</b> — two entries</li>' +
+      '<li><b>every ' + nf(L.step) + ' after that</b> — one more entry each time</li>';
+    /* THE FREE ROUTE, SAID ON THE PAGE. It is what keeps the draw lawful
+       where NUM runs it, and a free route nobody is told about is not one. */
+    $('tkFree').innerHTML = 'No purchase necessary, and no referrals necessary — you can enter free '
+      + 'from the Giveaways tab in the NUM app, or by emailing '
+      + '<a href="mailto:info@itsnum.com">info@itsnum.com</a>. '
+      + '<a href="/tokyo-rules" target="_blank" rel="noopener">Official Rules</a>.';
+  }
+
+  function paintPool(pool) {
+    if (!pool) return;
+    $('poolList').innerHTML = pool.map(function (r) {
+      return '<li><b>' + esc(r.label) + '</b>' +
+        (r.ready ? '' : ' <span class="pill off">not yet</span>') +
+        '<div class="meta">' + esc(r.blurb) + '</div></li>';
+    }).join('');
+  }
+
+  function paintNiches(n) {
+    if (!n) return;
+    $('nicheWhy').textContent = n.why;
+    var mine = n.mine || [];
+    $('nicheList').innerHTML = (n.all || []).map(function (x) {
+      var on = mine.indexOf(x.key) !== -1;
+      return '<label class="' + (on ? 'on' : '') + '"><input type="checkbox" value="' +
+        esc(x.key) + '"' + (on ? ' checked' : '') + '>' + esc(x.label) + '</label>';
+    }).join('');
+    Array.prototype.forEach.call($('nicheList').querySelectorAll('input'), function (i) {
+      i.onchange = function () {
+        i.parentNode.className = i.checked ? 'on' : '';
+        // Six is the cap the API enforces. Saying so at the moment somebody
+        // ticks a seventh is kinder than refusing the save afterwards.
+        var picked = $('nicheList').querySelectorAll('input:checked').length;
+        if (picked > 6) {
+          i.checked = false;
+          i.parentNode.className = '';
+          note($('nicheMsg'), 'Six is the most — an ambassador who is known for everything is not a specialty.', 'bad');
+        } else { note($('nicheMsg'), '', 'good'); }
+      };
+    });
+  }
+
+  $('saveNiches').onclick = function () {
+    var picked = [];
+    Array.prototype.forEach.call($('nicheList').querySelectorAll('input:checked'), function (i) {
+      picked.push(i.value);
+    });
+    send('/api/amb/profile', { niches: picked }).then(function (r) {
+      note($('nicheMsg'), r.ok ? 'Saved. Offers matched to these come first now.' : 'Could not save that.',
+        r.ok ? 'good' : 'bad');
+      refresh();
+    });
+  };
+
   function paintBrought(list, payable) {
     list = list || [];
     $('broughtNote').textContent = list.length
@@ -426,12 +536,23 @@ ul.plain li:first-child{border-top:0}
       : (payable
         ? 'Nobody yet. The moment somebody joins through your link you get a notification, and they appear here.'
         : 'Nobody is counted here yet because your NUM account is not connected — see the note on Today. Arrivals are still being logged.');
-    $('broughtList').innerHTML = list.map(function (m) {
+    /* SHOW TWELVE, THEN A COUNT. Thirty rows of "F. joined today" is a wall,
+       not a list — seen on a real console with thirty referrals, where it
+       pushed the Tokyo card and the milestones two full screens down. The
+       people who have actually earned something are lifted to the top,
+       because those are the rows worth reading. */
+    var SHOW = 12;
+    var sorted = list.slice().sort(function (a, b) { return (b.earned || 0) - (a.earned || 0); });
+    var head = sorted.slice(0, SHOW);
+    $('broughtList').innerHTML = head.map(function (m) {
       return '<li><b>' + esc(m.initial) + '</b> joined ' + esc(ago(m.joined)) +
         '<div class="meta">' + (m.earned > 0
           ? 'has earned you \u2605' + nf(m.earned)
           : 'has not used NUM yet, so has earned you nothing so far') + '</div></li>';
-    }).join('');
+    }).join('') + (list.length > SHOW
+      ? '<li class="meta">and ' + nf(list.length - SHOW) + ' more. Everyone is counted — '
+        + 'the ones who have earned you something are shown first.</li>'
+      : '');
   }
 
   function paintMilestones(ms, count) {
@@ -524,6 +645,7 @@ ul.plain li:first-child{border-top:0}
     $('offList').innerHTML = j.offers.map(function (o) {
       var taken = o.slots != null ? (o.taken + ' of ' + o.slots + ' taken') : (o.taken + ' taken');
       return '<div class="item"><h3>' + esc(o.title) +
+        (o.for_you ? '<span class="pill forme">for you</span>' : '') +
         (o.mine ? '<span class="pill on">' + esc(o.mine) + '</span>' : (o.full ? '<span class="pill off">full</span>' : '')) + '</h3>' +
         '<p class="meta"><b>You get:</b> ' + esc(o.they_get) + '</p>' +
         '<p class="meta"><b>We ask:</b> ' + esc(o.we_ask) + '</p>' +

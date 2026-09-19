@@ -335,6 +335,11 @@
     // the terms are published, so a 404 here is not a broken page, it is a
     // promotion that cannot legally run.
     { "pattern": "itsnum.com/friday-rules*", "zone_name": "itsnum.com" },
+    // The trip's Official Rules. Added in the same breath as the handler,
+    // because /friday-rules shipped wired-but-unrouted and 404'd for a week
+    // while every post about the draw linked to it — and a free prize draw is
+    // only lawful if its terms are actually published.
+    { "pattern": "itsnum.com/tokyo-rules*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/a/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/after/*", "zone_name": "itsnum.com" },
     // A HANDLER IS NOT A ROUTE — the third time this file has had to say it.

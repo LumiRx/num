@@ -63,6 +63,8 @@
 import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
 import { referralSummary } from '../worker/memberreferral.mjs';
 import { TIERS, MYSTERY_LINE, nextTier, milestonesFor, recordMilestones } from './milestones.mjs';
+import { NICHES, readNiches, cleanNiches, offerFit, REWARD_POOL } from './niches.mjs';
+import { CAMPAIGN as TOKYO, standingFor as tokyoStandingFor } from './tokyodraw.mjs';
 
 /** Matches the CHECK on num_ambassador_socials.platform. Both copies exist
  *  because SQLite will not hand the list back; a test binds them. */
@@ -295,6 +297,19 @@ export async function ambSummary(req, env, url, D) {
         joined: m.referred_at || m.created_at,
         earned: Number(m.earned || 0),
       })),
+      niches: {
+        mine: readNiches(amb.niches_json),
+        all: NICHES,
+        why: 'A business looking for somebody to talk about a restaurant wants an audience that came for food, not the biggest account on the list. This is the field that makes an offer land, and it decides what you see on the Offers tab.',
+      },
+      /* THE ROTATION, shown as a POOL and never as a prediction. Naming what
+         the next one will be would turn a mystery into a promise, which is
+         the one thing the milestone copy may not do. */
+      reward_pool: REWARD_POOL.map((r) => ({ key: r.key, label: r.label, blurb: r.blurb, ready: r.ready })),
+      tokyo: {
+        campaign: TOKYO,
+        ...(memberId ? await tokyoStandingFor(env, memberId) : { referred: 0, earned: 0, free: 0, entries: 0 }),
+      },
       milestones: {
         tiers: TIERS,
         reached,
@@ -368,14 +383,18 @@ export async function ambProfile(req, env, url, D) {
   const country = clean(b.country, 80);
   const bio = clean(b.bio, 400);
   const listed = b.listed === undefined ? Number(amb.listed) : (b.listed ? 1 : 0);
+  // Absent means "not sent by this form", which is different from "cleared".
+  // A settings form that posts only the fields it shows must not silently
+  // wipe a field it does not.
+  const niches = b.niches === undefined ? readNiches(amb.niches_json) : cleanNiches(b.niches);
 
   await env.DB.prepare(
     `UPDATE num_ambassadors
-        SET name=?2, city=?3, country=?4, bio=?5, listed=?6, updated_at=?7
+        SET name=?2, city=?3, country=?4, bio=?5, listed=?6, niches_json=?7, updated_at=?8
       WHERE id=?1`,
-  ).bind(amb.id, name, city, country, bio, listed, nowIso()).run();
+  ).bind(amb.id, name, city, country, bio, listed, JSON.stringify(niches), nowIso()).run();
 
-  return J({ ok: true, saved: true, listed: listed === 1 });
+  return J({ ok: true, saved: true, listed: listed === 1, niches });
 }
 
 /**
@@ -477,10 +496,22 @@ export async function ambOffers(req, env, url, D) {
         ORDER BY o.created_at DESC LIMIT 100`,
     ).bind(amb.id, nowIso().slice(0, 10)).all(), 'what is on offer');
 
+    /* ORDERED BY WHO IT IS FOR. An ambassador who opens this tab and finds
+       nine things with nothing to do with them stops opening it, and the
+       tenth — the one that was for them — is never seen. An untargeted offer
+       scores neutral rather than zero so the open ones do not sink out of
+       sight behind every targeted one. */
+    const mine = readNiches(amb.niches_json);
+    const scored = list.map((o) => ({ o, fit: offerFit(o.niches_json, mine) }))
+      .sort((a, b) => b.fit - a.fit || String(b.o.created_at).localeCompare(String(a.o.created_at)));
+
     return J({
       ok: true,
-      offers: list.map((o) => ({
+      your_niches: mine,
+      offers: scored.map(({ o, fit }) => ({
         id: o.id,
+        for_you: fit > 1,
+        niches: readNiches(o.niches_json),
         title: o.title,
         they_get: o.they_get,
         we_ask: o.we_ask,
@@ -874,4 +905,68 @@ export async function ambMilestonesAdmin(req, env, url, D) {
 
   if (!Number(res?.meta?.changes ?? 0)) return J({ ok: false, error: 'no such milestone' }, 404);
   return J({ ok: true, id, state });
+}
+
+/**
+ * GET  /api/admin/tokyo?key=ADMIN  — the standings, and who would win.
+ * POST /api/admin/tokyo?key=ADMIN  — { action:'draw', seed? } or
+ *                                    { action:'free', email, name }
+ *
+ * ── THE DRAW IS NOT RUN BY ACCIDENT ──────────────────────────────────────
+ *
+ * GET shows the field and never selects anybody. POST with action 'draw' is
+ * the only thing that records a result, and `INSERT OR IGNORE` on a date-keyed
+ * id means running it twice in one day cannot produce a second winner.
+ *
+ * The response hands back the seed and the whole ticket list, because clause 8
+ * of the Official Rules promises the result can be checked rather than taken
+ * on trust, and a promise that requires somebody to go digging in a database
+ * is not one that will be kept.
+ */
+export async function tokyoAdmin(req, env, url, D) {
+  const { J, clean, readJSON } = D;
+  const key = url.searchParams.get('key') || '';
+  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return J({ ok: false }, 401);
+
+  const { standings, runTokyoDraw, grantFreeEntry, LADDER, PRIZE, CAMPAIGN }
+    = await import('./tokyodraw.mjs');
+
+  if (req.method === 'GET') {
+    const rows = await standings(env);
+    return J({
+      ok: true,
+      campaign: CAMPAIGN,
+      prize: PRIZE,
+      ladder: LADDER,
+      people: rows.length,
+      tickets: rows.reduce((n, r) => n + r.entries, 0),
+      standings: rows.slice(0, 200),
+      // Said plainly so nobody has to infer it from an empty array.
+      note: rows.length ? null
+        : `Nobody holds an entry yet. The first rung is ${LADDER.first} signups, and the free route is the Enter button in the app.`,
+      how: "POST { action: 'draw', seed? } to run it, or { action: 'free', email, name } to grant a postal entry.",
+    });
+  }
+
+  if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
+  let b;
+  try { b = await readJSON(req, 8192); } catch { return J({ ok: false }, 400); }
+
+  if (b.action === 'free') {
+    // The mail-in route from clause 3. Granted by hand because it arrives by
+    // hand, and it must work for somebody with no NUM account at all.
+    const email = clean(b.email, 160).toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return J({ ok: false, error: 'email' }, 400);
+    const r = await grantFreeEntry(env, {
+      email, name: clean(b.name, 120), source: 'post', note: clean(b.note, 200),
+    });
+    return J(r);
+  }
+
+  if (b.action === 'draw') {
+    const r = await runTokyoDraw(env, { seed: clean(b.seed, 120) || null, winners: 1 });
+    return J(r, r.ok ? 200 : 409);
+  }
+
+  return J({ ok: false, error: 'action' }, 400);
 }

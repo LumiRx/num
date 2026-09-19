@@ -210,9 +210,18 @@ const FILES = [
   // hold, so nothing is lost and no score moves. DELETE by primary key,
   // no ALTER, and a second pass removes nothing because they are gone.
   'worker/migrations/0054_editorial_award_names.sql',
+  // What an ambassador is FOR, and a second draw riding on the Friday draw's
+  // machinery rather than a new one. Four ALTERs (one per statement), one
+  // table, two partial unique indexes. The free-entry table is the thing that
+  // keeps the trip draw a sweepstake rather than a lottery.
+  'worker/migrations/0055_niches_and_tokyo.sql',
   // When the venue's money actually lands. One table, IF NOT EXISTS, no
   // ALTER, so a second pass really is a no-op here.
   'worker/migrations/0056_venue_payouts.sql',
+  // Which table on the till is this table in NUM. One ALTER on
+  // num_resources plus an index. An ADD COLUMN is never a no-op on a
+  // second pass -- a re-run stops there and changes nothing.
+  'worker/migrations/0057_till_tables.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

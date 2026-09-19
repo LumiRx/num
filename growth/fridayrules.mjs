@@ -48,22 +48,15 @@ export const RULES = Object.freeze({
   contact: 'info@itsnum.com',
 });
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-export function rulesHtml() {
-  const r = RULES;
-  return `<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Friday Pack Draw — Official Rules · Num</title>
-<meta name="description" content="Official Rules for the Num Friday Pack Draw. No purchase necessary. US and UK, 18+. Void where prohibited.">
-<meta name="robots" content="index,follow">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap">
-<style>
+/**
+ * The stylesheet both Official Rules pages are set in.
+ *
+ * Extracted 19 Sep 2026, when the Tokyo trip needed a rules page of its own.
+ * Copying 4KB of CSS would have meant two documents drifting apart — and these
+ * are legal documents, where "why does the other one look different" is a
+ * question nobody wants to be asked. One stylesheet, two pages.
+ */
+export const RULES_CSS = `<style>
 :root{
   color-scheme:light dark;
   --ink:#14162e;--ink60:#5a5e7d;--ink40:#8b8fae;
@@ -143,7 +136,24 @@ strong{font-weight:700}
   ol{padding-left:18px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-</style>
+</style>`;
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+export function rulesHtml() {
+  const r = RULES;
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Friday Pack Draw — Official Rules · Num</title>
+<meta name="description" content="Official Rules for the Num Friday Pack Draw. No purchase necessary. US and UK, 18+. Void where prohibited.">
+<meta name="robots" content="index,follow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap">
+${RULES_CSS}
 </head><body><main>
 
 <div class="top">
