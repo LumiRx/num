@@ -128,6 +128,11 @@ function Card({ p, i, single }: { p: Pick; i: number; single: boolean }) {
         {(meta || p.category) && (
           <div style={{ fontSize: 11, color: 'var(--ink-40)', lineHeight: 1.35 }}>{[p.category, meta].filter(Boolean).join(' · ')}</div>
         )}
+        {/* NUM knew the name but the directory does not hold it yet: say so,
+            and offer the map search rather than a detail we cannot back. */}
+        {p.unverified && (
+          <div style={{ fontSize: 10.5, color: 'var(--amber)', fontWeight: 600, lineHeight: 1.35 }}>{t('Not in NUM’s directory yet — map search')}</div>
+        )}
 
         {open && (
           <div className="rise-in" style={{ display: 'grid', gap: 8, marginTop: 4 }}>

@@ -151,6 +151,6 @@ test('a recommendation gives a real choice and a pick', () => {
     'the recommendation carve-out has no ceiling — "give three" becomes permission to ramble');
   assert.match(brains, /fewer than three, give what it holds and say plainly that is all/,
     'nothing covers a thin directory — the model will invent a third place to fill the list');
-  assert.match(prompt, /give what it holds and say plainly that is all/,
+  assert.match(prompt, /say plainly that is all — never pad the list/,
     'prompt.mjs: nothing covers a thin directory — the model will invent one to fill the list');
 });

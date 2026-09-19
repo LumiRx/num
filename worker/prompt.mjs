@@ -339,18 +339,23 @@ export const REPLY_SCHEMA = {
             'anything tapped from a widget. Three was the rule from 11 Aug 2026 and it was right when every option was a ' +
             'paragraph of prose; now each one is a card with its own link, phone and map, so a short list is a shorter ' +
             'menu rather than a cleaner answer. Still answer a SPECIFIC question specifically: "is Sorn worth it" gets one ' +
-            'pick, not eight. ONLY places from the VERIFIED NEARBY PARTNERS block ' +
-            '— never a place you know of from elsewhere, because Num can only attach a real link to a real row, and a ' +
-            'pick it cannot link is dropped before the guest ever sees it. If the block holds fewer than you would give, ' +
-            'give what it holds and say plainly that is all — never invent one to fill the list.',
+            'pick, not eight. DRAW ON BOTH OF YOUR SOURCES (Dre, 19 Sep 2026): the VERIFIED NEARBY PARTNERS block first — ' +
+            'real rows, real details, copy id and name exactly — AND the places you genuinely know in this city: the famous, the ' +
+            'long-standing, the ones a good concierge would name without looking. The block is a sample of a directory of ' +
+            'millions, not the whole city, and a guest asking for the best deserves the best you know. Mark a place that is ' +
+            'not in the block with from: "memory" and give ONLY its name and why — Num checks it against the full directory and ' +
+            'attaches the real link, phone and map when it finds it, and says plainly when it could not. Never invent a place, ' +
+            'and never invent an address, phone number, price or hours for one you name from memory. If you have neither, ' +
+            'say plainly that is all — never pad the list.',
           items: {
             type: 'object',
             additionalProperties: false,
             required: ['name', 'why'],
             properties: {
               id: { type: 'string', description: 'The partner id from the verified block, copied exactly. This is what attaches the link — always include it when the block gives one.' },
-              name: { type: 'string', description: 'The place name, copied exactly from the verified block.' },
+              name: { type: 'string', description: 'The place name — copied exactly from the verified block, or the real name of a place you know.' },
               why: { type: 'string', description: 'The ONE detail that separates this place from the other two, in twelve words or fewer. Not a review — the reason a friend would name this one.' },
+              from: { enum: ['block', 'memory'], description: '"block" when copied from the verified block (the default), "memory" when it is a place you know that the block did not list.' },
             },
           },
         },

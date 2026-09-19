@@ -98,19 +98,25 @@ test('recommendations are structured, and the prose is told not to repeat them',
   assert.match(desc, /Never write a URL here/);
 });
 
-test('picks exist, are required, and may only name places from the verified block', () => {
+test('picks exist, are required, and draw on the block first and the model’s own knowledge second — flagged, never linked by the model', () => {
   const picks = REPLY_SCHEMA.properties.picks;
   assert.ok(picks, 'picks is missing from the schema — the reply description has referenced it since August');
   assert.ok(REPLY_SCHEMA.required.includes('picks'));
   const items = picks.anyOf.find((x) => x.type === 'array');
-  assert.match(items.description, /ONLY places from the VERIFIED NEARBY PARTNERS/);
+  // 19 Sep 2026 (Dre): "the model pulls from both memory and directory so we
+  // give the best places." The block first; a place the model knows is
+  // marked from: "memory" and the SERVER verifies it against the full
+  // directory — the model still cannot write a single tappable field.
+  assert.match(items.description, /DRAW ON BOTH OF YOUR SOURCES/);
+  assert.match(items.description, /from: "memory"/);
+  assert.match(items.description, /never invent an address, phone number, price or hours/);
   assert.deepEqual(items.items.required, ['name', 'why']);
   // The model supplies identity and reasoning only. Nothing tappable — no
   // url, link, phone or address field exists here for it to fill in, which is
   // what makes a hallucinated link structurally impossible rather than merely
   // discouraged.
   const props = Object.keys(items.items.properties);
-  assert.deepEqual(props.sort(), ['id', 'name', 'why']);
+  assert.deepEqual(props.sort(), ['from', 'id', 'name', 'why']);
   for (const banned of ['url', 'link', 'website', 'phone', 'address', 'map']) {
     assert.equal(props.includes(banned), false, `the model must not be able to write "${banned}" — links are attached server-side`);
   }

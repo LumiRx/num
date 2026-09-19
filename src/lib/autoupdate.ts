@@ -39,6 +39,7 @@
  */
 import { VERSION } from './version';
 import { apiUrl } from '../lib/apibase';
+import { nativePlatform } from './native';
 
 const RELOADED = 'num_autoupdate_reloaded';
 const EVERY_MS = 15 * 60 * 1000;
@@ -60,7 +61,9 @@ async function nudgeWorker(): Promise<void> {
  */
 async function serverVersion(): Promise<string | null> {
   try {
-    const res = await fetch(apiUrl('/api/version'), { cache: 'no-store' });
+    // Say which build is asking: the server counts builds per platform per
+    // day, which is how "is anyone still on an old version" gets a number.
+    const res = await fetch(apiUrl(`/api/version?client=${encodeURIComponent(VERSION)}&platform=${nativePlatform()}`), { cache: 'no-store' });
     if (!res.ok) return null;
     const { version } = (await res.json()) as { version?: string };
     // "unknown" is the Worker saying it does not know what it is running, not
@@ -80,6 +83,15 @@ async function serverVersion(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * The native shells bundle their JavaScript (capacitor webDir: dist), so a
+ * reload cannot update them — only a store build can. They still say which
+ * build they are, once per launch, so the count above includes them.
+ */
+export function reportVersion(): void {
+  void serverVersion();
 }
 
 export type AutoUpdateOptions = {

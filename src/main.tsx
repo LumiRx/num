@@ -141,6 +141,10 @@ if (web && 'serviceWorker' in navigator && import.meta.env.PROD) {
 // all. startAutoUpdate closes that gap — and refuses to interrupt a guest who
 // is mid-question, because losing a half-typed ask is worse than being a
 // version behind for another minute.
+if (!web && import.meta.env.PROD) {
+  // A store build cannot reload into a newer bundle; it can at least be counted.
+  void import('./lib/autoupdate').then(({ reportVersion }) => reportVersion());
+}
 if (web && import.meta.env.PROD) {
   void import('./lib/autoupdate').then(({ startAutoUpdate }) => {
     startAutoUpdate({

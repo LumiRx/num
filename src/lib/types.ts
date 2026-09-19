@@ -128,6 +128,8 @@ export interface Pick {
   instagram?: string | null;
   tiktok?: string | null;
   facebook?: string | null;
+  /** NUM named this from what it knows and could not find it in its directory: the link is a map search, and the card says so. */
+  unverified?: boolean;
 }
 
 export interface Msg {

@@ -149,7 +149,7 @@ describe('the ad pixel cannot fire inside the app', () => {
 
 describe('why the auto-updater could never win in a frozen bundle', () => {
   test('it compares the built-in version against the live server', () => {
-    assert.match(AUTOUPDATE, /apiUrl\('\/api\/version'\)/);
+    assert.match(AUTOUPDATE, /apiUrl\(`\/api\/version\?client=/);
     assert.match(AUTOUPDATE, /version !== VERSION/);
   });
 
