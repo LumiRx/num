@@ -8603,12 +8603,41 @@ function hostOf(u) {
   try { return new URL(String(u)).hostname.replace(/^www\./, ""); } catch { return null; }
 }
 
+/* ── POST /p/<token>/bill — the guest raises their table's live check ─────
+ *
+ * Only ever a POST. Minting a payable code is a thing a guest DOES, and a
+ * screen being drawn must never do it — the same rule autopay follows.
+ *
+ * The check itself was already shown to them, with its items, when it opened
+ * and how many covers, so this is them saying "yes, that is our table". Even
+ * a correctly mapped table can hold the previous party's check if nobody
+ * cleared it on the till, and a human looking at their own order is the only
+ * check that catches that.
+ */
+async function payRaiseBill(req, env, tok) {
+  const ptok = clean(tok, 40).toUpperCase();
+  if (req.method !== "POST") return Response.redirect(`${env.SITE || "https://itsnum.com"}/p/${encodeURIComponent(ptok)}`, 303);
+
+  const link = await env.DB.prepare(
+    "SELECT token, business_id, resource_id FROM num_paylinks WHERE token = ?1 AND state = 'active'",
+  ).bind(ptok).first().catch(() => null);
+  if (!link?.resource_id) return Response.redirect(`${env.SITE || "https://itsnum.com"}/p/${encodeURIComponent(ptok)}`, 303);
+
+  const out = await TILLBILL.billFromCheck(env, link.business_id, link.resource_id);
+  if (!out.ok) {
+    const why = TILLBILL.whyNot(out.reason) || "That bill could not be raised just now — ask staff.";
+    return Response.redirect(`${env.SITE || "https://itsnum.com"}/p/${encodeURIComponent(ptok)}?why=${encodeURIComponent(why)}`, 303);
+  }
+  // 303 so a refresh of the new page cannot re-post and raise it again.
+  return Response.redirect(`${env.SITE || "https://itsnum.com"}/p/${encodeURIComponent(out.token)}`, 303);
+}
+
 /* ── GET /p/<token> — what the guest's camera opens ─────────────────────── */
 async function payLanding(req, env, tok, view = "auto") {
   const ptok = clean(tok, 40).toUpperCase();
   const link = await env.DB.prepare(
     `SELECT l.token, l.business_id, l.label, l.kind, l.target, l.amount, l.amount_mode, l.currency,
-            l.state, l.crypto_asset, l.crypto_base_units, l.crypto_quote, l.settled_at,
+            l.state, l.crypto_asset, l.crypto_base_units, l.crypto_quote, l.settled_at, l.resource_id,
             b.name AS business_name
        FROM num_paylinks l JOIN businesses b ON b.id = l.business_id
       WHERE l.token = ?`
@@ -8645,6 +8674,8 @@ async function payLanding(req, env, tok, view = "auto") {
     }));
   }
 
+  const q0 = new URL(req.url).searchParams;
+
   // A SPLIT BILL IS NOT PAYABLE FROM THE TABLE'S CODE.
   //
   // Its shares are the bills now. Leaving this page payable is how one dinner
@@ -8657,6 +8688,43 @@ async function payLanding(req, env, tok, view = "auto") {
       state: "split", token: ptok, venue: link.business_name, label: link.label,
       amount: link.amount, currency: link.currency, items: lines,
     }));
+  }
+
+  /* ── THE TABLE'S OWN LIVE CHECK ──────────────────────────────────────────
+   *
+   * A permanent table sticker carries no amount, and until now that page said
+   * "ask staff for the bill". At a venue whose till can be asked about ONE
+   * table — only Lightspeed, today — it can say what the table actually owes
+   * and show the items, with no member of staff involved at all.
+   *
+   * Shown, never minted: the guest presses a button to raise it. Even a
+   * correctly mapped table can hold the previous party's check if nobody
+   * cleared it on the till, and a person looking at their own order is the
+   * only check that catches that — which is why the covers and the time it
+   * opened are on the page. */
+  if (link.amount_mode !== "fixed" && link.resource_id) {
+    const live = await TILLBILL.liveCheckFor(env, link.business_id, link.resource_id).catch(() => null);
+    if (live?.ok) {
+      await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "scan", active: true });
+      return HTML(payPage({
+        state: "till", token: ptok, venue: link.business_name,
+        label: live.resource_name || link.label,
+        amount: (live.check.amount_minor / 100).toFixed(2),
+        currency: live.check.currency,
+        items: live.check.items,
+        opened_at: live.check.opened_at,
+        guests: live.check.guests,
+        why: q0.get("why") ? clean(q0.get("why"), 200) : null,
+      }));
+    }
+    const say = live && !live.ok ? TILLBILL.whyNot(live.why, link.business_name) : null;
+    if (say) {
+      await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "scan", active: true });
+      return HTML(payPage({
+        state: "held", token: ptok, venue: link.business_name, label: link.label,
+        why: say, rails: [],
+      }));
+    }
   }
 
   await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "scan", active: true });
@@ -9246,6 +9314,28 @@ function payPage(o) {
     don't pay, and tell staff.</div>
     <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`,
     "Pay " + o.venue + " — NUM");
+
+  /* The table's live check, straight off the till.
+   *
+   * A form and a button, no JavaScript: this page is opened by whatever
+   * browser a phone's camera launched, on whatever signal a restaurant has.
+   * The POST is what raises it — a page being drawn must never mint a
+   * payable code. */
+  if (o.state === "till") return payShell(`
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>Your table's bill</h1>
+    <div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>
+    ${billLines(o.items)}
+    <p class="lede">Straight from ${esc(o.venue)}'s till${o.guests ? `, for ${esc(String(o.guests))} ${o.guests === 1 ? "guest" : "guests"}` : ""}${o.opened_at ? `, opened ${esc(String(o.opened_at).replace("T", " ").slice(0, 16))}` : ""}.
+    Have a look — if this is not your table, do not pay it and tell staff.</p>
+    ${o.why ? `<div class="warn">${esc(o.why)}</div>` : ""}
+    <form method="POST" action="/p/${encodeURIComponent(o.token)}/bill">
+      <button class="btn" type="submit" style="width:100%;font-size:17px;padding:14px">That's our bill &mdash; pay it</button>
+    </form>
+    <p class="note">Nothing is charged by pressing this. It puts the bill on a NUM code and shows you every way
+    you can pay it &mdash; the money then goes straight to ${esc(o.venue)}.</p>
+    <p class="foot">Powered by NUM &middot; <a href="https://itsnum.com/">itsnum.com</a></p>`,
+    "Your bill at " + o.venue + " — NUM");
 
   // A bill that was divided. Its shares are the bills now, and each went to
   // the NUM of the person it was for — so this page is information, not a

@@ -646,6 +646,22 @@ export const FEATURES = Object.freeze([
     },
   },
   {
+    id: 'tillbill',
+    plan: 'free',
+    entitlement: null,
+    name: 'Scan the table, see your bill',
+    does: 'At a venue whose till can be asked about one table, the permanent table sticker shows the real open check with its items, and the guest raises it as a bill themselves.',
+    needs: ['migration 0057', 'a till that answers per table — only Lightspeed K-Series today', 'a table a person has mapped to its till number'],
+    ready: (env) => !!env.DB,
+    surface: '/p/<sticker token> → POST /p/<token>/bill',
+    code: ['worker/tillbill.mjs', 'growth/worker.js', 'growth/pos/lightspeed.mjs', 'worker/migrations/0057_till_tables.sql'],
+    sop: {
+      on: 'Run 0057. Connect Lightspeed from Pay → Your till, then map each table to the number its till uses. Until a table is mapped it behaves exactly as a Square venue does: staff type the figure.',
+      check: 'Open a check on table 7 in Lightspeed, scan that table\'s NUM sticker: the page shows the real amount and the real items, with the covers and the time it opened. Press the button and it becomes an ordinary NUM bill code carrying pos_order_id, so settling it closes that check.',
+      broken: 'The table mapping is STORED and never parsed at read time. Digits in a name get it right most of the time, and the one time they do not a guest is shown somebody else\'s dinner and invited to pay for it — the exact failure Square and Clover avoid by leaving the match to a human. Nothing is minted by drawing a page: raising the bill is a POST, because a screen being drawn must never create a payable code. Two guests tapping at once get the SAME code, since two codes for one dinner is two ways to pay for it. The check is shown with its covers and open time so a person can tell it is theirs, because a correctly mapped table still holds the previous party\'s check if nobody cleared it. Only a till with checkForTable qualifies — matching an open check by amount would be the guess this whole feature refuses.',
+    },
+  },
+  {
     id: 'billsplit',
     plan: 'free',
     entitlement: null,

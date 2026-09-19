@@ -33,6 +33,10 @@ function world({ country = 'US', connected = true, kind = 'url', target = 'https
       ALTER TABLE num_paylinks ADD COLUMN split_at TEXT;
       ALTER TABLE num_paylinks ADD COLUMN split_for_member TEXT;
       ALTER TABLE num_paylinks ADD COLUMN paid_by_member TEXT;
+      ALTER TABLE num_paylinks ADD COLUMN pos_vendor TEXT;
+      ALTER TABLE num_paylinks ADD COLUMN pos_order_id TEXT;
+      ALTER TABLE num_paylinks ADD COLUMN pos_closed_at TEXT;
+      ALTER TABLE num_paylinks ADD COLUMN issued_by TEXT;
       CREATE TABLE num_bill_items (id TEXT PRIMARY KEY, token TEXT, pos INTEGER, name TEXT,
         qty INTEGER, unit_minor INTEGER, line_minor INTEGER, created_at TEXT);
     `);
@@ -212,4 +216,90 @@ test('a share of a split is an ordinary payable bill', async () => {
   assert.match(html, /How would you like to pay\?/);
   assert.match(html, /USD 21\.13/);
   assert.ok(/class="rail/.test(html));
+});
+
+
+/* ── the table's own live check, off the till ───────────────────────────── */
+
+function withTill(world_, d, { check = null, status = 200 } = {}) {
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS num_resources (id TEXT PRIMARY KEY, business_id TEXT, name TEXT, active INTEGER DEFAULT 1, pos_table TEXT);
+    CREATE TABLE IF NOT EXISTS num_business_pos (business_id TEXT PRIMARY KEY, vendor TEXT, merchant_id TEXT,
+      location_id TEXT, token_enc TEXT, refresh_enc TEXT, expires_at TEXT, state TEXT DEFAULT 'active',
+      last_error TEXT, connected_at TEXT, updated_at TEXT, webhook_id TEXT);
+  `);
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(check), { status });
+  return { restore() { globalThis.fetch = real; } };
+}
+
+const LIVE = {
+  uuid: 'chk-1', tableNumber: 7, clientCount: 4, openDate: '2026-09-19T19:04:00Z',
+  currentAmount: 84.5, paidAmount: 0,
+  salesEntries: [{ name: 'Pad Thai', quantity: 2, unitAmount: 18 }],
+};
+
+test('a table sticker at a Lightspeed venue shows the real check, and asks before minting', async () => {
+  const { d, env } = world({ migrated: true });
+  const v = withTill(world, d, { check: LIVE });
+  try {
+    const { saveConnection } = await import('./pos/index.mjs');
+    env.POS_TOKEN_KEY = 'k';
+    d.exec("INSERT INTO num_resources VALUES ('r7','b1','Table 7',1,'7');");
+    d.prepare("UPDATE num_paylinks SET resource_id='r7' WHERE token='STICK1'").run();
+    await saveConnection(env, 'b1', { vendor: 'lightspeed', locationId: '77', token: 't' });
+
+    const html = await (await get(env, '/p/STICK1')).text();
+    assert.match(html, /Your table's bill/);
+    assert.match(html, /USD 84\.50/);
+    assert.match(html, /Pad Thai/);
+    assert.match(html, /4 guests/);
+    // Shown, never minted: the guest presses a button.
+    assert.match(html, /<form method="POST" action="\/p\/STICK1\/bill">/);
+    assert.match(html, /not your table, do not pay it/);
+    // Counting codes raised FROM a till check — world() already seeds an
+    // ordinary bill, and that is not what this is about.
+    assert.equal(d.prepare("SELECT COUNT(*) n FROM num_paylinks WHERE pos_order_id IS NOT NULL").get().n, 0,
+      'drawing the page must not create a payable code');
+  } finally { v.restore(); }
+});
+
+test('an unmapped table falls back to the ordinary sticker, saying nothing about tills', async () => {
+  const { d, env } = world({ migrated: true });
+  const v = withTill(world, d, { check: LIVE });
+  try {
+    const { saveConnection } = await import('./pos/index.mjs');
+    env.POS_TOKEN_KEY = 'k';
+    d.exec("INSERT INTO num_resources VALUES ('r9','b1','Terrace',1,NULL);");
+    d.prepare("UPDATE num_paylinks SET resource_id='r9' WHERE token='STICK1'").run();
+    await saveConnection(env, 'b1', { vendor: 'lightspeed', locationId: '77', token: 't' });
+
+    const html = await (await get(env, '/p/STICK1')).text();
+    assert.ok(!/Your table's bill/.test(html), 'a table nobody mapped shows no till bill');
+    assert.ok(!/till/i.test(html), 'and the guest is told nothing about a till they cannot see');
+  } finally { v.restore(); }
+});
+
+test('a table with nothing open says so, rather than showing a blank', async () => {
+  const { d, env } = world({ migrated: true });
+  const v = withTill(world, d, { check: null });
+  try {
+    const { saveConnection } = await import('./pos/index.mjs');
+    env.POS_TOKEN_KEY = 'k';
+    d.exec("INSERT INTO num_resources VALUES ('r7','b1','Table 7',1,'7');");
+    d.prepare("UPDATE num_paylinks SET resource_id='r7' WHERE token='STICK1'").run();
+    await saveConnection(env, 'b1', { vendor: 'lightspeed', locationId: '77', token: 't' });
+
+    const html = await (await get(env, '/p/STICK1')).text();
+    assert.match(html, /nothing open on this table/);
+  } finally { v.restore(); }
+});
+
+test('GET on the raise-bill path mints nothing and sends the guest back', async () => {
+  // A link somebody shared, a prefetch, a crawler. None of them may create a
+  // payable code.
+  const { d, env } = world({ migrated: true });
+  const r = await get(env, '/p/STICK1/bill');
+  assert.equal(r.status, 303);
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM num_paylinks WHERE pos_order_id IS NOT NULL").get().n, 0);
 });
