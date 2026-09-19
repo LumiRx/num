@@ -196,14 +196,25 @@ describe('the identity surfaces reach real data, not placeholders', () => {
    * the way to the handler, because a LINK MY BUSINESS button that posts
    * nowhere is the exact failure the wire-before-you-ship rule exists for.
    */
-  test('LINK MY BUSINESS calls something that calls the server', () => {
-    assert.match(CARD, /import \{[^}]*linkMyBusiness[^}]*\} from '\.\.\/\.\.\/lib\/social'/);
-    assert.match(CARD, /LINK MY BUSINESS/);
-    assert.match(CARD, /void run\('business'\)/);
+  test('LINK MY ACCOUNTS calls something that calls the server, and lands somewhere', () => {
+    // 19 Sep 2026: one button, every hat, by every verified contact — and then
+    // the dashboard, not a message about the dashboard.
+    assert.match(CARD, /import \{[^}]*linkMyAccounts[^}]*\} from '\.\.\/\.\.\/lib\/social'/);
+    assert.match(CARD, /LINK MY ACCOUNTS/);
+    assert.match(CARD, /void run\('all'\)/);
+    assert.match(SOCIAL, /export async function linkMyAccounts/);
+    assert.match(SOCIAL, /apiUrl\('\/api\/identity\/link'\)/);
+    assert.match(WORKER, /rest === '\/link' && request\.method === 'POST'/);
+    assert.match(WORKER, /m\.linkAll\(env, \{ memberId: me \}\)/);
+    // a linked business opens its dashboard; anything else opens its hat
+    assert.match(CARD, /const biz = linked\.find\(\(l\) => l\.type === 'business'\)/);
+    assert.match(CARD, /if \(biz\) \{ store\.set\(\{ businessOpen: true \}\); return; \}/);
+    assert.match(CARD, /setOpen\(`\$\{hat\.type\}:\$\{hat\.id\}`\)/);
+  });
+
+  test('the old single-business door still answers, for a client that has not updated', () => {
     assert.match(SOCIAL, /export async function linkMyBusiness/);
-    assert.match(SOCIAL, /apiUrl\('\/api\/identity\/claim-business'\)/);
     assert.match(WORKER, /rest === '\/claim-business' && request\.method === 'POST'/);
-    assert.match(WORKER, /m\.claimBusinessByPhone\(env, \{ memberId: me \}\)/);
   });
 
   test('LINK MY HOST calls something that calls the server', () => {
@@ -224,9 +235,10 @@ describe('the identity surfaces reach real data, not placeholders', () => {
       'the number comes from the account, not from a field');
   });
 
-  test('the offer disappears once the hat is worn', () => {
-    assert.match(CARD, /if \(hasBusiness && hasHost\) return null;/);
-    assert.match(CARD, /\{!hasBusiness &&/);
+  test('the offer disappears once every hat is worn', () => {
+    // One button links every hat, so it stays until there is nothing left to
+    // link — a person with a business may still have a host account waiting.
+    assert.match(CARD, /if \(hasBusiness && hasHost && hasAmbassador\) return null;/);
     assert.match(CARD, /\{!hasHost &&/);
   });
 

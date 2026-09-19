@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import {
   identitiesFor, codeFor, resolveCode, recordScan, connectionsFor,
-  claimHost, claimBusinessByPhone, identityPayload, linkFor, newCode, HATS,
+  claimHost, claimBusinessByPhone, identityPayload, linkFor, newCode, HATS, linkAll, verifiedContacts,
 } from './identity.mjs';
 
 let db; let env;
@@ -40,17 +40,22 @@ beforeEach(() => {
   // phone and phone_verified matter now: claimBusinessByPhone reads the
   // number off the MEMBER rather than taking one from the caller, because a
   // venue's number is printed on its own door.
-  db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, phone TEXT, phone_verified INTEGER NOT NULL DEFAULT 0)`);
-  db.prepare('INSERT INTO num_members VALUES (?,?,?,?)').run(ME, 'Dre', '+1 (310) 555-0000', 1);
-  db.prepare('INSERT INTO num_members VALUES (?,?,?,?)').run(OTHER, 'Guest', '+13105551111', 1);
+  db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, phone TEXT, phone_verified INTEGER NOT NULL DEFAULT 0,
+    email TEXT, email_verified INTEGER NOT NULL DEFAULT 0)`);
+  db.prepare('INSERT INTO num_members (id,name,phone,phone_verified) VALUES (?,?,?,?)').run(ME, 'Dre', '+1 (310) 555-0000', 1);
+  db.prepare('INSERT INTO num_members (id,name,phone,phone_verified) VALUES (?,?,?,?)').run(OTHER, 'Guest', '+13105551111', 1);
   db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, dest TEXT)`);
   db.prepare('INSERT INTO places VALUES (?,?,?)').run('p1', 'Bestia', 'los-angeles');
   db.exec(`CREATE TABLE businesses (id TEXT PRIMARY KEY, name TEXT)`);
   db.prepare('INSERT INTO businesses VALUES (?,?)').run('biz1', 'Bestia');
   db.exec(`CREATE TABLE num_place_owners (place_id TEXT PRIMARY KEY, business_id TEXT, claim_id TEXT, method TEXT, phone TEXT, verified_at TEXT, revoked_at TEXT, member_ref TEXT)`);
   db.prepare("INSERT INTO num_place_owners VALUES ('p1','biz1','c1','sms','+13105550000',datetime('now'),NULL,NULL)").run();
-  db.exec(`CREATE TABLE num_hosts (id TEXT PRIMARY KEY, name TEXT, company TEXT, console_key TEXT, status TEXT DEFAULT 'active', closed_at TEXT)`);
-  db.prepare("INSERT INTO num_hosts (id,name,company,console_key,status) VALUES ('h1','Sean','Edinburgh Concierge','KEY-SEAN','active')").run();
+  db.exec(`CREATE TABLE num_hosts (id TEXT PRIMARY KEY, name TEXT, company TEXT, console_key TEXT, status TEXT DEFAULT 'active', closed_at TEXT,
+    email TEXT, phone TEXT, member_id TEXT)`);
+  db.prepare("INSERT INTO num_hosts (id,name,company,console_key,status,email) VALUES ('h1','Sean','Edinburgh Concierge','KEY-SEAN','active','sean@edinburgh.example')").run();
+  db.exec(`CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, email TEXT, phone_e164 TEXT)`);
+  db.exec(`CREATE TABLE num_claims (id TEXT PRIMARY KEY, place_id TEXT, claimant_email TEXT, claimant_phone TEXT, state TEXT, decided_at TEXT)`);
+  db.exec(`CREATE TABLE num_ambassadors (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT, member_id TEXT, status TEXT DEFAULT 'active', ended_at TEXT)`);
   env = { DB: d1(db) };
 });
 
@@ -258,7 +263,7 @@ describe('the shape the app reads', () => {
   });
 
   test('the hats are declared in one place', () => {
-    assert.deepEqual([...HATS], ['member', 'business', 'host']);
+    assert.deepEqual([...HATS], ['member', 'business', 'host', 'ambassador']);
   });
 
   test('no database is a shape, not a crash', async () => {
@@ -268,5 +273,101 @@ describe('the shape the app reads', () => {
     assert.deepEqual(await connectionsFor({}, { ownerType: 'member', ownerId: ME }).catch(() => 'threw'), []);
     assert.equal(await codeFor({}, { ownerType: 'member', ownerId: ME }).catch(() => 'threw'), null);
     assert.equal((await recordScan({}, { code: 'X', scannerMemberId: ME }).catch(() => 'threw')).ok, false);
+  });
+});
+
+// ── EVERY HAT, BY EVERY VERIFIED CONTACT ─────────────────────────────────
+//
+// Dre, 19 Sep 2026: the number AND the email on the account should connect
+// the businesses a person has, and the same for hosts and ambassadors.
+describe('linking every hat by verified contact', () => {
+  const setEmail = (id, email, verified = 1) =>
+    db.prepare('UPDATE num_members SET email=?, email_verified=? WHERE id=?').run(email, verified, id);
+
+  test('a business claimed on email links by the verified email', async () => {
+    // The anti-hijack rule sends the claim code to the contact the LISTING
+    // publishes; for most restaurants that is an address, so the owner row
+    // holds no phone at all. That person had no way in before.
+    db.prepare("UPDATE num_place_owners SET phone=NULL WHERE place_id='p1'").run();
+    db.prepare("INSERT INTO num_claims VALUES ('c1','p1','owner@bestia.example',NULL,'verified',datetime('now'))").run();
+    setEmail(ME, 'Owner@Bestia.example');
+    const out = await linkAll(env, { memberId: ME });
+    assert.equal(out.ok, true);
+    assert.deepEqual(out.linked.map((l) => [l.type, l.id]), [['business', 'biz1']]);
+    assert.ok((await identitiesFor(env, ME)).some((h) => h.type === 'business' && h.id === 'biz1'));
+  });
+
+  test('an unverified email links nothing, however well it matches', async () => {
+    db.prepare("UPDATE num_place_owners SET phone=NULL WHERE place_id='p1'").run();
+    db.prepare("INSERT INTO num_claims VALUES ('c1','p1','owner@bestia.example',NULL,'verified',datetime('now'))").run();
+    setEmail(ME, 'owner@bestia.example', 0);
+    db.prepare("UPDATE num_members SET phone_verified=0 WHERE id=?").run(ME);
+    const out = await linkAll(env, { memberId: ME });
+    assert.equal(out.ok, false);
+    assert.match(out.error, /verify/);
+  });
+
+  test('a pending claim is not a verified one', async () => {
+    db.prepare("UPDATE num_place_owners SET phone=NULL WHERE place_id='p1'").run();
+    db.prepare("INSERT INTO num_claims VALUES ('c1','p1','stranger@example.com',NULL,'pending',NULL)").run();
+    setEmail(ME, 'stranger@example.com');
+    db.prepare("UPDATE num_members SET phone='+10000000000' WHERE id=?").run(ME);
+    const out = await linkAll(env, { memberId: ME });
+    assert.equal(out.ok, false, 'typing an email into a claim form and never finishing it linked a business');
+  });
+
+  test('every match links, not just the first', async () => {
+    db.prepare("INSERT INTO places VALUES ('p2','Bestia Venice','los-angeles')").run();
+    db.prepare("INSERT INTO num_place_owners VALUES ('p2','biz2','c2','sms','+13105550000',datetime('now'),NULL,NULL)").run();
+    const out = await linkAll(env, { memberId: ME });
+    assert.deepEqual(out.linked.map((l) => l.id).sort(), ['biz1', 'biz2']);
+  });
+
+  test('a host links by verified email, and the key path still works for one who has not', async () => {
+    setEmail(ME, 'sean@edinburgh.example');
+    const out = await linkAll(env, { memberId: ME });
+    assert.ok(out.linked.some((l) => l.type === 'host' && l.id === 'h1'));
+    assert.ok((await identitiesFor(env, ME)).some((h) => h.type === 'host'));
+    // and the key path is untouched
+    db.prepare("UPDATE num_hosts SET member_id=NULL WHERE id='h1'").run();
+    assert.equal((await claimHost(env, { memberId: ME, consoleKey: 'KEY-SEAN' })).ok, true);
+  });
+
+  test('an ambassador links by phone or email and becomes a hat', async () => {
+    db.prepare("INSERT INTO num_ambassadors (id,name,phone,status) VALUES ('amb1','Dre','+1 310 555 0000','active')").run();
+    const out = await linkAll(env, { memberId: ME });
+    assert.ok(out.linked.some((l) => l.type === 'ambassador' && l.id === 'amb1'));
+    const hats = await identitiesFor(env, ME);
+    assert.ok(hats.some((h) => h.type === 'ambassador' && h.id === 'amb1'));
+    assert.ok(HATS.includes('ambassador'));
+  });
+
+  test('an ended ambassador and a closed host keep no hat', async () => {
+    db.prepare("INSERT INTO num_ambassadors (id,name,phone,status,ended_at) VALUES ('amb1','Dre','+13105550000','ended',datetime('now'))").run();
+    db.prepare("UPDATE num_hosts SET phone='+13105550000', closed_at=datetime('now') WHERE id='h1'").run();
+    const out = await linkAll(env, { memberId: ME });
+    assert.equal(out.linked.some((l) => l.type !== 'business'), false);
+  });
+
+  test('a record already linked to someone else is reported, never taken', async () => {
+    db.prepare("UPDATE num_place_owners SET member_ref=? WHERE place_id='p1'").run(OTHER);
+    const out = await linkAll(env, { memberId: ME });
+    assert.equal(out.ok, true, 'taken is still a result the app can show');
+    assert.deepEqual(out.linked, []);
+    assert.deepEqual(out.taken.map((t) => t.id), ['biz1']);
+    assert.equal(db.prepare("SELECT member_ref FROM num_place_owners WHERE place_id='p1'").get().member_ref, OTHER);
+  });
+
+  test('linking twice is the same result, not a second link', async () => {
+    await linkAll(env, { memberId: ME });
+    const again = await linkAll(env, { memberId: ME });
+    assert.equal(again.ok, true);
+    assert.equal(again.linked[0].already, true);
+  });
+
+  test('the contacts come from the member row, never the caller', async () => {
+    const c = await verifiedContacts(env, ME);
+    assert.equal(c.phone, '+1 (310) 555-0000');
+    assert.equal(c.email, null, 'no email verified means no email to match on');
   });
 });

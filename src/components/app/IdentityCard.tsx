@@ -18,7 +18,8 @@ import { pressable } from '../../lib/a11y';
 import { qrSvg } from '../../lib/qr';
 import { pretty } from '../../lib/links';
 import { shareNative } from '../../lib/services';
-import { myIdentities, myConnections, linkMyBusiness, linkMyHost } from '../../lib/social';
+import { myIdentities, myConnections, linkMyAccounts, linkMyHost } from '../../lib/social';
+import type { LinkedHat } from '../../lib/social';
 import { ChevronRightIcon, CopyIcon, ShareIcon, UsersIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
 import { T } from '../../lib/i18nmark';
@@ -33,7 +34,7 @@ const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
 
 /** What we call each hat to a human. The server's word is a type, not a label. */
-const LABEL: Record<string, string> = { member: T('You'), business: T('Business'), host: T('VIP host') };
+const LABEL: Record<string, string> = { member: T('You'), business: T('Business'), host: T('VIP host'), ambassador: T('Ambassador') };
 
 const when = (iso: string): string => {
   const d = new Date(String(iso).replace(' ', 'T') + 'Z');
@@ -41,40 +42,70 @@ const when = (iso: string): string => {
 };
 
 /**
- * "I own a business / I'm a host" — the way in for someone whose other account
- * was created before this existed.
+ * "I own a business / I'm a host / I'm an ambassador" — the way in for
+ * someone whose other account was created before this existed.
  *
- * Shown only when they are NOT already wearing that hat, because an offer to
- * link something you already linked reads as the app not knowing what it has.
+ * Shown only when there is something left to link, because an offer to link
+ * something you already linked reads as the app not knowing what it has.
  *
- * Neither control asks for a phone number. The business side proves itself
- * with the number NUM already texted this member; the host side with the
- * console key they already hold. Anything a person could read off a signboard
- * is not proof, and asking for it would only teach them that it is.
+ * ONE BUTTON. Dre, 19 Sep 2026: "the number and email that's connected
+ * connects the businesses they have. same thing for hosts and ambassadors.
+ * when they link it we need to take them to their mobile dashboard." So the
+ * control asks for nothing: the server matches every contact NUM has
+ * verified for this member — the number it texted, the address it mailed —
+ * against every business, host and ambassador record, and links all of
+ * them. Anything a person could read off a signboard is not proof, and the
+ * client is given no way to send one.
+ *
+ * The host console key stays as a second door, for a host who has not yet
+ * verified their email in the app.
+ *
+ * AND THEN IT GOES SOMEWHERE. A business that just linked opens its
+ * dashboard (BusinessSheet). A host or ambassador has no in-app dashboard
+ * yet — the web console is theirs — so the newly linked hat is opened on
+ * this card, code and share button showing, rather than a message that
+ * promises a screen that does not exist.
  */
-function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void }) {
+function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: (linked: LinkedHat[]) => void }) {
   const hasBusiness = hats.some((h) => h.type === 'business');
   const hasHost = hats.some((h) => h.type === 'host');
+  const hasAmbassador = hats.some((h) => h.type === 'ambassador');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [keyOpen, setKeyOpen] = useState(false);
   const [key, setKey] = useState('');
 
-  if (hasBusiness && hasHost) return null;
+  if (hasBusiness && hasHost && hasAmbassador) return null;
 
-  const run = async (what: 'business' | 'host') => {
+  const run = async (what: 'all' | 'host') => {
     setBusy(what);
     setMsg(null);
-    const out = what === 'business' ? await linkMyBusiness() : await linkMyHost(key);
-    setBusy(null);
-    if (out.ok) {
-      setMsg(what === 'business' ? t('Linked. Your business dashboard is above.') : t('Linked. Your host dashboard is above.'));
-      setKey('');
-      setKeyOpen(false);
-      onLinked();
+    if (what === 'host') {
+      const out = await linkMyHost(key);
+      setBusy(null);
+      if (out.ok) {
+        setMsg(t('Linked. Your host dashboard is above.'));
+        setKey('');
+        setKeyOpen(false);
+        onLinked([{ type: 'host', id: '', name: null }]);
+        return;
+      }
+      setMsg(out.error ?? 'That didn\u2019t link — tell us at info@itsnum.com and we\u2019ll do it by hand.');
       return;
     }
-    setMsg(out.error ?? 'That didn\u2019t link — tell us at info@itsnum.com and we\u2019ll do it by hand.');
+    const out = await linkMyAccounts();
+    setBusy(null);
+    if (out.ok && out.linked.length) {
+      const names = out.linked.map((l) => l.name ?? LABEL[l.type] ?? l.type);
+      setMsg(names.length === 1 ? `Linked ${names[0]}.` : `Linked ${names.length}: ${names.join(', ')}.`);
+      onLinked(out.linked);
+      return;
+    }
+    if (out.ok && out.taken.length) {
+      setMsg(t('That\u2019s already linked to another NUM account. If it\u2019s yours, tell us at info@itsnum.com.'));
+      return;
+    }
+    setMsg(out.error ?? 'Nothing found on your verified number or email. Verify the one your business or host account uses, then try again.');
   };
 
   const btn: React.CSSProperties = {
@@ -86,18 +117,16 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
   return (
     <div style={{ marginTop: 14, paddingTop: 13, borderTop: '1px solid var(--ink-08)' }}>
       <div style={kicker}>{t('ALREADY ON NUM ANOTHER WAY?')}</div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('If you claimed a business listing or run as a VIP host, bring it in here and you manage it from this app — same account, separate dashboard.')}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('If you claimed a business listing, run as a VIP host or are a NUM ambassador, bring it in here and you manage it from this app — same account, separate dashboard.')}</div>
 
       <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-        {!hasBusiness && (
-          <div
-            {...pressable(() => { if (!busy) void run('business'); })}
-            className="press"
-            style={{ ...btn, background: 'var(--grad-accent)', color: '#fff' }}
-          >
-            {busy === 'business' ? '\u2026' : t('LINK MY BUSINESS')}
-          </div>
-        )}
+        <div
+          {...pressable(() => { if (!busy) void run('all'); })}
+          className="press"
+          style={{ ...btn, background: 'var(--grad-accent)', color: '#fff' }}
+        >
+          {busy === 'all' ? '\u2026' : t('LINK MY ACCOUNTS')}
+        </div>
         {!hasHost && !keyOpen && (
           <div
             {...pressable(() => setKeyOpen(true))}
@@ -140,7 +169,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
       {msg && (
         <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-60)' }}>{msg}</div>
       )}
-      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('Your business links by the number NUM already verified for you — the one you signed in with. Your host account links by the key in your host console.')}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('Everything links by the number and email NUM has already verified for you — nothing to type. A host can also link with the key from the host console.')}</div>
     </div>
   );
 }
@@ -290,7 +319,22 @@ export default function IdentityCard() {
         })}
       </div>
 
-      <LinkAccounts hats={hats ?? []} onLinked={() => { void myIdentities().then(setHats); }} />
+      <LinkAccounts
+        hats={hats ?? []}
+        onLinked={(linked) => {
+          void myIdentities().then((fresh) => {
+            setHats(fresh);
+            // Take them where they were going. A business has a dashboard in
+            // this app; a host or ambassador does not yet, so the hat opens
+            // here with its code — nothing promised that is not built.
+            const biz = linked.find((l) => l.type === 'business');
+            if (biz) { store.set({ businessOpen: true }); return; }
+            const first = linked[0];
+            const hat = first ? fresh.find((h) => h.type === first.type && (!first.id || h.id === first.id)) : null;
+            if (hat) setOpen(`${hat.type}:${hat.id}`);
+          });
+        }}
+      />
     </div>
   );
 }

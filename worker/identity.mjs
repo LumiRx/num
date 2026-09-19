@@ -41,7 +41,7 @@
  */
 
 /** The hats a member can wear. `member` is not optional — everyone has it. */
-export const HATS = Object.freeze(['member', 'business', 'host']);
+export const HATS = Object.freeze(['member', 'business', 'host', 'ambassador']);
 
 /** How a connection was made. Kept small on purpose. */
 export const VIA = Object.freeze(['qr', 'link']);
@@ -157,6 +157,15 @@ export async function identitiesFor(env, memberId) {
       WHERE member_id = ?1 AND closed_at IS NULL AND status <> 'ended'`,
   ).bind(me).all().catch(() => ({ results: [] }));
   for (const h of hosts.results ?? []) out.push({ type: 'host', id: h.id, name: h.company || h.name || null });
+
+  // An ambassador is theirs the same way a host is: `member_id` is them and
+  // the programme has not ended for them. `applied` still counts — the hat is
+  // how they see where their application stands.
+  const amb = await env.DB.prepare(
+    `SELECT id, name, status FROM num_ambassadors
+      WHERE member_id = ?1 AND ended_at IS NULL AND status <> 'ended'`,
+  ).bind(me).all().catch(() => ({ results: [] }));
+  for (const a of amb.results ?? []) out.push({ type: 'ambassador', id: a.id, name: a.name ?? null, status: a.status ?? null });
 
   return out;
 }
@@ -295,6 +304,135 @@ export async function claimHost(env, { memberId, consoleKey }) {
     .bind(host.id, me).run();
   await codeFor(env, { ownerType: 'host', ownerId: host.id, memberId: me });
   return { ok: true, host: { id: host.id, name: host.company || host.name } };
+}
+
+/**
+ * ── EVERY HAT AT ONCE, BY THE CONTACTS NUM HAS ACTUALLY VERIFIED ─────────
+ *
+ * Dre, 19 Sep 2026: "when a business clicks link a business in their app
+ * lets make sure the number and email thats connected connects the
+ * businesses they have. same thing for hosts and ambassadors."
+ *
+ * What was there before: a business linked by verified PHONE only, one at a
+ * time; a host linked by pasting a console key; an ambassador could not link
+ * at all. So a restaurant owner whose claim went through on email — the
+ * anti-hijack rule sends the code to the contact the LISTING publishes, and
+ * for most restaurants that is an address — had a verified email on their
+ * account and no way to use it.
+ *
+ * The rule is unchanged in the one place it matters: a contact counts only
+ * if NUM verified it — texted the handset or mailed the address and the
+ * person read the code back. `num_members.phone_verified` /
+ * `email_verified` are the gates, and the client sends nothing but "it is
+ * me". The earlier note on claimHost — "matching on email alone would let
+ * anyone who knows a host's address adopt their dashboard" — was about an
+ * UNVERIFIED email typed into a box. A verified one is control of the inbox,
+ * which is exactly what the console key proved. The key path stays for a
+ * host who has not verified their email in the app.
+ *
+ * What is matched, per hat:
+ *   business    num_place_owners.phone (the number the claim was proved on),
+ *               num_business_profiles.email / phone_e164, and the claimant
+ *               contacts on a VERIFIED num_claims row — never a pending one.
+ *   host        num_hosts.email / phone, not closed, not ended.
+ *   ambassador  num_ambassadors.email / phone, not ended.
+ *
+ * ALL matches link, not the first: a person with three sites gets three.
+ * A record already linked to a DIFFERENT member is reported, never taken.
+ */
+export async function verifiedContacts(env, memberId) {
+  const me = String(memberId ?? '').trim();
+  if (!env?.DB || !me) return { phone: null, email: null };
+  const m = await env.DB.prepare(
+    'SELECT phone, phone_verified, email, email_verified FROM num_members WHERE id = ?1',
+  ).bind(me).first().catch(() => null);
+  return {
+    phone: m?.phone && Number(m.phone_verified) ? String(m.phone) : null,
+    email: m?.email && Number(m.email_verified) ? String(m.email).trim().toLowerCase() : null,
+  };
+}
+
+const sameEmail = (a, b) => {
+  const x = String(a ?? '').trim().toLowerCase();
+  const y = String(b ?? '').trim().toLowerCase();
+  return !!x && x === y;
+};
+
+export async function linkAll(env, { memberId }) {
+  if (!env?.DB) return { ok: false, error: 'no database' };
+  await ensure(env);
+  const me = String(memberId ?? '').trim();
+  if (!me) return { ok: false, error: 'missing details' };
+
+  const { phone, email } = await verifiedContacts(env, me);
+  if (!phone && !email) {
+    return { ok: false, error: 'verify your phone number or email first — that is what proves an account is yours', linked: [], taken: [] };
+  }
+  const hit = (p, e) => (phone && samePhone(p, phone)) || (email && sameEmail(e, email));
+  const linked = [];
+  const taken = [];
+
+  // ── businesses ──
+  const owners = await env.DB.prepare(
+    `SELECT o.place_id, o.business_id, o.member_ref, o.phone AS owner_phone,
+            bp.email AS profile_email, bp.phone_e164 AS profile_phone,
+            (SELECT c.claimant_email FROM num_claims c WHERE c.place_id = o.place_id AND c.state = 'verified'
+              ORDER BY c.decided_at DESC LIMIT 1) AS claim_email,
+            (SELECT c.claimant_phone FROM num_claims c WHERE c.place_id = o.place_id AND c.state = 'verified'
+              ORDER BY c.decided_at DESC LIMIT 1) AS claim_phone,
+            p.name AS name
+       FROM num_place_owners o
+       LEFT JOIN num_business_profiles bp ON bp.business_id = o.business_id
+       LEFT JOIN places p ON p.id = o.place_id
+      WHERE o.revoked_at IS NULL`,
+  ).all().catch(() => ({ results: [] }));
+  for (const r of owners.results ?? []) {
+    const mine = hit(r.owner_phone, null) || hit(r.profile_phone, r.profile_email) || hit(r.claim_phone, r.claim_email);
+    if (!mine) continue;
+    if (r.member_ref && r.member_ref !== me) { taken.push({ type: 'business', id: r.business_id, name: r.name ?? null }); continue; }
+    if (!r.member_ref) {
+      await env.DB.prepare('UPDATE num_place_owners SET member_ref=?2 WHERE place_id=?1 AND member_ref IS NULL')
+        .bind(r.place_id, me).run();
+    }
+    await codeFor(env, { ownerType: 'business', ownerId: r.business_id, memberId: me });
+    linked.push({ type: 'business', id: r.business_id, name: r.name ?? null, already: !!r.member_ref });
+  }
+
+  // ── hosts ──
+  const hosts = await env.DB.prepare(
+    `SELECT id, name, company, email, phone, member_id FROM num_hosts
+      WHERE closed_at IS NULL AND status <> 'ended'`,
+  ).all().catch(() => ({ results: [] }));
+  for (const h of hosts.results ?? []) {
+    if (!hit(h.phone, h.email)) continue;
+    const name = h.company || h.name || null;
+    if (h.member_id && h.member_id !== me) { taken.push({ type: 'host', id: h.id, name }); continue; }
+    if (!h.member_id) {
+      await env.DB.prepare('UPDATE num_hosts SET member_id=?2 WHERE id=?1 AND member_id IS NULL').bind(h.id, me).run();
+    }
+    await codeFor(env, { ownerType: 'host', ownerId: h.id, memberId: me });
+    linked.push({ type: 'host', id: h.id, name, already: !!h.member_id });
+  }
+
+  // ── ambassadors ──
+  const ambs = await env.DB.prepare(
+    `SELECT id, name, email, phone, member_id FROM num_ambassadors
+      WHERE ended_at IS NULL AND status <> 'ended'`,
+  ).all().catch(() => ({ results: [] }));
+  for (const a of ambs.results ?? []) {
+    if (!hit(a.phone, a.email)) continue;
+    if (a.member_id && a.member_id !== me) { taken.push({ type: 'ambassador', id: a.id, name: a.name ?? null }); continue; }
+    if (!a.member_id) {
+      await env.DB.prepare('UPDATE num_ambassadors SET member_id=?2 WHERE id=?1 AND member_id IS NULL').bind(a.id, me).run();
+    }
+    await codeFor(env, { ownerType: 'ambassador', ownerId: a.id, memberId: me });
+    linked.push({ type: 'ambassador', id: a.id, name: a.name ?? null, already: !!a.member_id });
+  }
+
+  if (!linked.length && !taken.length) {
+    return { ok: false, error: 'nothing on NUM is registered to your verified number or email', linked, taken, matched_on: { phone: !!phone, email: !!email } };
+  }
+  return { ok: true, linked, taken, matched_on: { phone: !!phone, email: !!email } };
 }
 
 /** Digits only, so +1 (310) 555-0134 and +13105550134 are the same number. */

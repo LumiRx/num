@@ -10,7 +10,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import {
-  formatPrice, currencyFor, minorPer, listFor, forPlaces, upsert, hide, show, countFor, UNITS,
+  formatPrice, currencyFor, minorPer, listFor, forPlaces, upsert, hide, show, countFor, UNITS, ageMinFor,
 } from './bizoffer.mjs';
 import { detail } from './pickdetail.mjs';
 
@@ -39,7 +39,9 @@ const env = { DB: d1(db) };
 before(() => {
   db.exec(`CREATE TABLE num_place_owners (place_id TEXT PRIMARY KEY, business_id TEXT,
     verified_at TEXT, revoked_at TEXT)`);
-  db.exec(`CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, country TEXT)`);
+  db.exec(`CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, country TEXT, custom_fields TEXT DEFAULT '{}')`);
+  db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, category TEXT)`);
+  db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, identity_verified INTEGER DEFAULT 0)`);
   db.exec(`CREATE TABLE num_business_offerings (
     id TEXT PRIMARY KEY, business_id TEXT NOT NULL, place_id TEXT NOT NULL, section TEXT,
     name TEXT NOT NULL, description TEXT, price_minor INTEGER, price_note TEXT, currency TEXT,
@@ -49,7 +51,8 @@ before(() => {
 });
 
 beforeEach(() => {
-  for (const t of ['num_place_owners', 'num_business_profiles', 'num_business_offerings']) db.exec(`DELETE FROM ${t}`);
+  for (const t of ['num_place_owners', 'num_business_profiles', 'num_business_offerings', 'places', 'num_members']) db.exec(`DELETE FROM ${t}`);
+  db.exec("INSERT INTO places (id,category) VALUES ('pl_suay','Restaurant')");
   db.exec("INSERT INTO num_place_owners (place_id,business_id,verified_at) VALUES ('pl_suay','biz_1','2026-08-01')");
   db.exec("INSERT INTO num_business_profiles (business_id,country) VALUES ('biz_1','TH')");
 });
@@ -249,5 +252,105 @@ describe('an assistant can manage the menu', () => {
     assert.match(api, /await import\('\.\/bizoffer\.mjs'\)/);
     assert.ok(!/price_minor\s*=\s*Math\.round/.test(api),
       'bizapi grew its own price arithmetic instead of calling bizoffer');
+  });
+});
+
+// ── THE AGE GATE ─────────────────────────────────────────────────────────
+//
+// The console tells a dispensary owner their menu reaches only ID-verified
+// guests. Until 19 Sep 2026 that was true of delivery and false of the menu:
+// forPlaces read every active offering to every guest. These pin the promise
+// on the path that actually answers.
+describe('a 21+ menu reaches only a verified adult', () => {
+  const list = async (memberId) => (await forPlaces(env, ['pl_suay', 'pl_weed'], { memberId })).get('pl_weed') ?? [];
+  beforeEach(async () => {
+    db.exec("INSERT INTO num_place_owners (place_id,business_id,verified_at) VALUES ('pl_weed','biz_weed','2026-09-07')");
+    db.exec("INSERT INTO num_business_profiles (business_id,country,custom_fields) VALUES ('biz_weed','US','{}')");
+    db.exec("INSERT INTO places (id,category) VALUES ('pl_weed','Cannabis Delivery')");
+    db.exec("INSERT INTO num_members (id,identity_verified) VALUES ('mem_kid',0), ('mem_adult',1)");
+    await upsert(env, 'biz_weed', { place_id: 'pl_weed', name: 'Eighth — Blue Dream', section: 'Flower', price: 35 });
+    await upsert(env, 'biz_1', { place_id: 'pl_suay', name: 'Green curry', price: 180 });
+  });
+
+  test('the trade decides the gate, with nothing typed in the profile', () => {
+    assert.equal(ageMinFor('Cannabis Delivery', '{}'), 21);
+    assert.equal(ageMinFor('Cannabis Dispensary', null), 21);
+    assert.equal(ageMinFor('Restaurant', '{}'), 0);
+  });
+
+  test('the profile can only make it stricter, never looser', () => {
+    assert.equal(ageMinFor('Restaurant', '{"age_min":18}'), 18, 'a bar that set 18 is 18');
+    assert.equal(ageMinFor('Cannabis Delivery', '{"age_min":18}'), 21, 'a dispensary cannot lower itself to 18');
+    assert.equal(ageMinFor('Cannabis Delivery', 'not json'), 21, 'a broken field is not a way past the gate');
+  });
+
+  test('an anonymous guest gets the place and no prices', async () => {
+    assert.deepEqual(await list(null), []);
+  });
+
+  test('a signed-in member whose identity is not verified gets no prices either', async () => {
+    assert.deepEqual(await list('mem_kid'), []);
+    assert.deepEqual(await list('mem_nobody'), [], 'an unknown member id is not a verified one');
+  });
+
+  test('a verified adult gets the menu', async () => {
+    const items = await list('mem_adult');
+    assert.equal(items.length, 1);
+    assert.equal(items[0].name, 'Eighth — Blue Dream');
+  });
+
+  test('the gate never touches an ordinary business in the same answer', async () => {
+    const both = await forPlaces(env, ['pl_suay', 'pl_weed'], { memberId: null });
+    assert.equal(both.get('pl_suay')?.[0]?.name, 'Green curry', 'the noodle shop lost its menu to somebody else\'s gate');
+    assert.equal(both.has('pl_weed'), false);
+  });
+
+  test('the answer path passes the member through, so the gate is not decorative', () => {
+    const src = readFileSync(new URL('./index.mjs', import.meta.url), 'utf8');
+    assert.match(src, /forPlaces\(env, rows\.map\(\(r\) => r\?\.id\)\.filter\(Boolean\), \{ memberId: memberId \?\? null \}\)/,
+      'index.mjs calls forPlaces without the member, so every guest is anonymous to the gate');
+  });
+});
+
+// ── THE THIRD DOOR: THE APP ─────────────────────────────────────────────
+//
+// Dre, 19 Sep 2026: "we need to have his dashboard so he can add his products
+// and pricing." The list had two doors — the web console and the keyed API —
+// and the app's business sheet, where a member lands after linking, had
+// neither. These pin the member-keyed door to the same implementation.
+describe('the app edits the same list through the same rules', () => {
+  const CONSOLE = readFileSync(new URL('./console.mjs', import.meta.url), 'utf8');
+  const SHEET = readFileSync(new URL('../src/components/app/BusinessSheet.tsx', import.meta.url), 'utf8');
+  const PROFILE = readFileSync(new URL('../src/lib/profile.ts', import.meta.url), 'utf8');
+
+  test('the member route reuses bizoffer — no second set of price rules', () => {
+    assert.match(CONSOLE, /path === '\/business\/offerings'/);
+    assert.match(CONSOLE, /offers\.upsert\(env, target\.business_id/);
+    assert.match(CONSOLE, /offers\.hide\(env, target\.business_id/);
+    assert.match(CONSOLE, /offers\.show\(env, target\.business_id/);
+    assert.equal(/INSERT INTO num_business_offerings/.test(CONSOLE), false, 'console.mjs grew its own insert');
+  });
+
+  test('the ownership row is the authorisation, and it must be on a VERIFIED phone', () => {
+    // Before 19 Sep 2026 ownedPlaces matched a member's phone whether or not
+    // NUM had ever texted it, so signing up with a venue's published number
+    // and never entering a code owned that venue's overview.
+    assert.match(CONSOLE, /const verifiedPhone = \(m\) => \(m\?\.phone && Number\(m\.phone_verified\) \? String\(m\.phone\) : null\);/);
+    for (const fn of ['businessOverview', 'businessUpdate', 'businessOfferings']) {
+      const i = CONSOLE.indexOf(`async function ${fn}(`);
+      const body = CONSOLE.slice(i, CONSOLE.indexOf('\n}\n', i));
+      assert.match(body, /phone_verified FROM num_members/, `${fn} does not read phone_verified`);
+      assert.match(body, /ownedPlaces\(env, me, verifiedPhone\(member\)\)/, `${fn} passes an unverified phone to ownedPlaces`);
+    }
+    assert.match(CONSOLE, /if \(!target\?\.business_id\) return json\(\{ error: 'not your listing' \}, 403\);/);
+  });
+
+  test('the sheet shows the list and the form, keyed by the business the member owns', () => {
+    assert.match(SHEET, /function Offerings\(\{ businessId \}/);
+    assert.match(SHEET, /\{p\.business_id && <Offerings businessId=\{p\.business_id\} \/>\}/);
+    assert.match(PROFILE, /apiUrl\('\/api\/business\/offerings'\)/);
+    assert.match(PROFILE, /action: 'save'/);
+    // a 21+ trade's note reaches the owner's eyes, since the answer path now enforces it
+    assert.match(SHEET, /tpl\.note \? ` \$\{tpl\.note\}` : ''/);
   });
 });

@@ -43,6 +43,8 @@
  *    The owner may store as many as they like; the answer path takes a capped,
  *    ordered slice, and `forPlaces` says so in its own signature.
  */
+import { templateFor } from './biztemplates.mjs';
+
 
 /**
  * Currencies whose smallest unit IS the unit — no decimals. Getting this wrong
@@ -150,26 +152,77 @@ export async function listFor(env, businessId) {
 }
 
 /**
+ * ── THE AGE GATE, ON THE MENU AND NOT ONLY ON DELIVERY ───────────────────
+ *
+ * The console's cannabis template promises the owner, in so many words:
+ * "Guests only ever see this where your licence is valid, and only if they
+ * are ID-verified in Num." worker/delivery.mjs keeps that promise for
+ * DELIVERY — a partner is offered only to a member whose identity 5arz has
+ * verified. Nothing kept it for the menu. `forPlaces` handed every active
+ * offering to every guest in the grounding set, anonymous included, so an
+ * eighth priced on the "What you offer" page would have been recited to
+ * whoever asked what was near 608 S Main — in an app that ships through the
+ * App Store, where 1.4.3 is the rule that decides whether NUM is listed.
+ *
+ * Found 19 Sep 2026 while connecting LA Cannabis Club's dashboard, before a
+ * single item had been listed. The gate is decided the same two ways the
+ * delivery one is: the trade's template (a dispensary is 21+ by category)
+ * and the profile's own custom_fields.age_min, whichever is stricter.
+ *
+ * What is NOT gated is the place itself. A licensed retailer is a fact of
+ * the directory, like any shop; what it sells and for how much is what the
+ * law and the store's own promise say a stranger may not be read.
+ */
+export function ageMinFor(category, customFields) {
+  let fromFields = 0;
+  try {
+    const f = typeof customFields === 'string' ? JSON.parse(customFields || '{}') : (customFields ?? {});
+    fromFields = Number(f?.age_min) || 0;
+  } catch { fromFields = 0; }
+  const fromTrade = Number(templateFor(category)?.age_min) || 0;
+  return Math.max(fromFields, fromTrade);
+}
+
+/**
  * What the concierge may say about these places.
  *
  * Capped per place, active only, in the owner's order. The cap is in the
  * signature rather than hidden inside, because a caller that wants more should
  * have to ask for it and think about what a 200-line answer reads like.
  */
-export async function forPlaces(env, placeIds, { perPlace = 8 } = {}) {
+export async function forPlaces(env, placeIds, { perPlace = 8, memberId = null } = {}) {
   const ids = [...new Set((placeIds ?? []).map(String).filter(Boolean))].slice(0, 20);
   if (!env?.DB || !ids.length) return new Map();
   await ensure(env);
   const marks = ids.map((_, i) => `?${i + 1}`).join(',');
+  // The category and the profile's custom fields ride along so the age gate
+  // below can be decided per row without a second query per place. Both
+  // joins are LEFT: an offering whose place row is missing is still an
+  // offering, and a missing profile means "not gated", never "hidden".
   const { results } = await env.DB.prepare(
-    `SELECT place_id, section, name, description, price_minor, price_note, currency, unit, available, position
-       FROM num_business_offerings
-      WHERE active = 1 AND place_id IN (${marks})
-      ORDER BY place_id, position ASC, rowid ASC`,
+    `SELECT o.place_id, o.section, o.name, o.description, o.price_minor, o.price_note, o.currency,
+            o.unit, o.available, o.position, p.category AS category, bp.custom_fields AS custom_fields
+       FROM num_business_offerings o
+       LEFT JOIN places p ON p.id = o.place_id
+       LEFT JOIN num_business_profiles bp ON bp.business_id = o.business_id
+      WHERE o.active = 1 AND o.place_id IN (${marks})
+      ORDER BY o.place_id, o.position ASC, o.rowid ASC`,
   ).bind(...ids).all().catch(() => ({ results: [] }));
+
+  // Looked up once, only if a gated row is actually in the result, so the
+  // ordinary case — a noodle shop, a spa — costs nothing extra.
+  let verified = null;
+  const isVerified = async () => {
+    if (verified !== null) return verified;
+    if (!memberId) return (verified = false);
+    const m = await env.DB.prepare('SELECT identity_verified FROM num_members WHERE id = ?1')
+      .bind(String(memberId)).first().catch(() => null);
+    return (verified = !!Number(m?.identity_verified));
+  };
 
   const out = new Map();
   for (const r of results ?? []) {
+    if (ageMinFor(r.category, r.custom_fields) && !(await isVerified())) continue;
     const list = out.get(r.place_id) ?? [];
     if (list.length >= perPlace) continue;
     list.push({

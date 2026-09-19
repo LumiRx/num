@@ -89,6 +89,7 @@ export interface OwnedPlace {
   photo_url: string | null;
   method: string | null;
   owned_since: string | null;
+  business_id?: string | null;
 }
 
 export interface BusinessOverview {
@@ -120,4 +121,63 @@ export async function businessUpdate(placeId: string, patch: { phone?: string; w
     body: JSON.stringify({ me: me.id, place_id: placeId, ...patch }),
   });
   return res.ok;
+}
+
+// ── What you offer, from the app ─────────────────────────────────────────
+//
+// The same list the web console edits ("What you offer") and the keyed API
+// serves (/v1/offerings), keyed off the member here. The rules about an item
+// live on the server; this only carries the form. See businessOfferings in
+// worker/console.mjs.
+export interface Offering {
+  id: string; section: string | null; name: string; description: string | null;
+  price_label: string | null; available: string | null; active: boolean;
+}
+export interface OfferingsPage {
+  business_id: string; place_id: string; name: string;
+  template: { id: string; label: string; noun: string; sections: string[]; example: string; price_hint: string; age_min: number; note: string | null };
+  items: Offering[];
+}
+
+export async function businessOfferings(businessId: string): Promise<OfferingsPage | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  try {
+    const res = await fetch(apiUrl(`/api/business/offerings?me=${encodeURIComponent(me.id)}&business_id=${encodeURIComponent(businessId)}`));
+    if (!res.ok) return null;
+    return (await res.json()) as OfferingsPage;
+  } catch {
+    return null;
+  }
+}
+
+export async function businessOfferingSave(businessId: string, item: { id?: string; name: string; section?: string; price?: string; price_note?: string; description?: string; available?: string }): Promise<{ ok: boolean; error?: string }> {
+  const me = store.get().me;
+  if (!me) return { ok: false, error: 'Sign in first.' };
+  try {
+    const res = await fetch(apiUrl('/api/business/offerings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, business_id: businessId, action: 'save', ...item }),
+    });
+    const out = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    return { ok: !!out.ok, error: out.error };
+  } catch {
+    return { ok: false, error: 'Couldn\u2019t reach NUM just now.' };
+  }
+}
+
+export async function businessOfferingVisible(businessId: string, id: string, visible: boolean): Promise<boolean> {
+  const me = store.get().me;
+  if (!me) return false;
+  try {
+    const res = await fetch(apiUrl('/api/business/offerings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, business_id: businessId, action: visible ? 'show' : 'hide', id }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

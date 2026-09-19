@@ -172,6 +172,13 @@ export async function logUsage(env, { lane, model, specialist, place, usage, ms,
 // ── business side ─────────────────────────────────────────────────────────
 
 /** Every place this member has proved they own. The scope for everything else. */
+// `phone` here must be a VERIFIED number — the callers read phone_verified
+// off num_members and pass null otherwise. Before 19 Sep 2026 they passed the
+// member's phone whether or not NUM had ever texted it, and `o.phone = ?2`
+// matched it: anyone who signed up with a venue's published number, and
+// never entered a code, owned that venue's overview and could rewrite its
+// phone and website. The number on the door is not proof — see the note on
+// claimBusinessByPhone in identity.mjs, which got this right and this did not.
 async function ownedPlaces(env, memberId, phone) {
   const { results } = await env.DB.prepare(
     // Columns match the real num_place_owners (place_id, business_id, claim_id,
@@ -185,13 +192,63 @@ async function ownedPlaces(env, memberId, phone) {
   return results ?? [];
 }
 
+const verifiedPhone = (m) => (m?.phone && Number(m.phone_verified) ? String(m.phone) : null);
+
+/**
+ * WHAT YOU OFFER, FROM THE APP.
+ *
+ * Dre, 19 Sep 2026, on LA Cannabis Club: "we need to have his dashboard so he
+ * can add his products and pricing." The offerings list existed on the web
+ * console (bizconsole.mjs, "What you offer") and on the keyed API
+ * (bizapi.mjs /v1/offerings) — and the app's business sheet, the dashboard a
+ * member actually reaches after linking, could not show or edit it. These
+ * three routes are that list keyed off the member, with the same rule the
+ * rest of this surface uses: the ownership row is the authorisation, and a
+ * business you do not own is "not your listing", never a lookup.
+ *
+ * The rules about an item — a name is required, a price may be absent, the
+ * currency is the business's country and never the caller's — live in
+ * bizoffer.upsert and are not restated here. One implementation, three doors.
+ */
+async function businessOfferings(env, request, url, post) {
+  const b = post ? await readBody(request) : {};
+  const me = clip(post ? b.me : url.searchParams.get('me'), 40);
+  if (!me) return json({ error: 'me required' }, 400);
+  const member = await env.DB.prepare('SELECT id, phone, phone_verified FROM num_members WHERE id=?1').bind(me).first();
+  if (!member) return json({ error: 'sign up first' }, 404);
+  const places = await ownedPlaces(env, me, verifiedPhone(member));
+  const wanted = clip(post ? b.business_id : url.searchParams.get('business_id'), 60);
+  const target = wanted ? places.find((p) => p.business_id === wanted) : places[0];
+  if (!target?.business_id) return json({ error: 'not your listing' }, 403);
+
+  const offers = await import('./bizoffer.mjs');
+  if (!post) {
+    const items = await offers.listFor(env, target.business_id);
+    const { templateFor } = await import('./biztemplates.mjs');
+    const tpl = templateFor(target.category);
+    return json({
+      business_id: target.business_id, place_id: target.id, name: target.name,
+      template: { id: tpl.id, label: tpl.label, noun: tpl.noun, sections: tpl.sections ?? [], example: tpl.example ?? '', price_hint: tpl.price_hint ?? '', age_min: tpl.age_min ?? 0, note: tpl.note ?? null },
+      items,
+    });
+  }
+  const action = clip(b.action, 12) || 'save';
+  if (action === 'hide') return json(await offers.hide(env, target.business_id, clip(b.id, 40)));
+  if (action === 'show') return json(await offers.show(env, target.business_id, clip(b.id, 40)));
+  const out = await offers.upsert(env, target.business_id, {
+    id: b.id, name: b.name, description: b.description, section: b.section,
+    price: b.price, price_note: b.price_note, unit: b.unit, available: b.available,
+  });
+  return json(out, out.ok ? 200 : 400);
+}
+
 async function businessOverview(env, url) {
   const me = url.searchParams.get('me');
   if (!me) return json({ error: 'me required' }, 400);
-  const member = await env.DB.prepare('SELECT id, name, phone FROM num_members WHERE id=?1').bind(me).first();
+  const member = await env.DB.prepare('SELECT id, name, phone, phone_verified FROM num_members WHERE id=?1').bind(me).first();
   if (!member) return json({ error: 'sign up first' }, 404);
 
-  const places = await ownedPlaces(env, me, member.phone);
+  const places = await ownedPlaces(env, me, verifiedPhone(member));
   if (!places.length) {
     // Not an error: most people are not business owners. Say what to do next.
     return json({ places: [], claimable: true, hint: 'No verified listing on this account yet — claim one to open the business tools.' });
@@ -226,9 +283,9 @@ async function businessOverview(env, url) {
 async function businessUpdate(env, req) {
   const b = await readBody(req);
   const me = clip(b.me, 40);
-  const member = await env.DB.prepare('SELECT id, phone FROM num_members WHERE id=?1').bind(me ?? '').first();
+  const member = await env.DB.prepare('SELECT id, phone, phone_verified FROM num_members WHERE id=?1').bind(me ?? '').first();
   if (!member) return json({ error: 'sign up first' }, 404);
-  const places = await ownedPlaces(env, me, member.phone);
+  const places = await ownedPlaces(env, me, verifiedPhone(member));
   const target = places.find((p) => p.id === clip(b.place_id, 60));
   // The verification is the authorisation: no owner row, no edit.
   if (!target) return json({ error: 'not your listing' }, 403);
@@ -2109,6 +2166,7 @@ export async function handleConsole(request, env, path) {
     if (path.startsWith('/business')) {
       if (path === '/business/overview') return await businessOverview(env, url);
       if (path === '/business/update' && post) return await businessUpdate(env, request);
+      if (path === '/business/offerings') return await businessOfferings(env, request, url, post);
       return json({ error: 'not found' }, 404);
     }
     if (path.startsWith('/admin')) {

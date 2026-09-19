@@ -66,6 +66,7 @@ import { handleWallet } from './privy.mjs';
 import { handleAutopay } from './autopay.mjs';
 import { handleSplit } from './billsplit.mjs';
 import { handleBills } from './billhistory.mjs';
+import { handleLedger } from './ledger.mjs';
 import { handlePlacePhotos } from './placephotos.mjs';
 import { handleGiveaways } from './giveaways.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
@@ -1434,6 +1435,47 @@ export async function handleNum(request, env, ctx, hooks = null) {
     {
       let resolved = resolvePicks(result.picks, grounding?.partners ?? []);
       result = { ...result, _modelPicks: (result.picks ?? []).map((pk) => pk?.name).filter(Boolean), _dropped: resolved.dropped };
+      // MEMORY MEETS THE DIRECTORY (19 Sep 2026, Dre: "pulls from both").
+      // A pick the block did not hold is looked up in the whole destination;
+      // found → a real row and the same card as any block pick; not found →
+      // a flagged map-search card that says so. See worker/pickrescue.mjs.
+      // The model's order is kept: the best place first is the whole point.
+      if (resolved.dropped.length && grounding?.place?.slug) {
+        try {
+          const { findInDirectory, unverifiedPick } = await import('./pickrescue.mjs');
+          const found = await findInDirectory(env, { dest: grounding.place.slug, lat: grounding.place.lat, lng: grounding.place.lng, names: resolved.dropped });
+          if (found.rows.length) {
+            // The found rows join the partner list so enrichPicks (hours,
+            // walk time, rating count) reads them like any other row.
+            grounding.partners = [...(grounding.partners ?? []), ...found.rows];
+          }
+          const byName = new Map(resolved.picks.map((pk) => [String(pk.name).toLowerCase(), pk]));
+          const merged = [];
+          const seen = new Set();
+          let fromDirectory = 0; let unverified = 0;
+          for (const pk of result.picks ?? []) {
+            const nm = String(pk?.name ?? '').trim();
+            if (!nm) continue;
+            const kept = byName.get(nm.toLowerCase()) ?? resolved.picks.find((r) => r.name === nm);
+            let card = kept ?? null;
+            if (!card && found.rows.length) {
+              const again = resolvePicks([pk], found.rows);
+              if (again.picks[0]) { card = again.picks[0]; fromDirectory++; }
+            }
+            if (!card && found.missing.includes(nm)) { card = unverifiedPick(pk, grounding.place.name); unverified++; }
+            if (!card) continue;
+            const key = card.id ?? card.name;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(card);
+          }
+          // Anything resolvePicks kept that the loop above did not see (a
+          // name the model spelled differently) stays in.
+          for (const pk of resolved.picks) { const key = pk.id ?? pk.name; if (!seen.has(key)) { seen.add(key); merged.push(pk); } }
+          resolved = { picks: merged, dropped: found.missing.filter((n) => !merged.some((m) => m.name === n)) };
+          result = { ...result, _fromDirectory: fromDirectory, _unverified: unverified, _dropped: resolved.dropped };
+        } catch (e) { console.warn('[pickrescue]', e?.message ?? e); }
+      }
       // THE NAMES ARE IN THE PROSE AND THE PICKS ARE EMPTY (19 Sep 2026).
       // The bulk lane does this on most recommendation turns: three real rows
       // from the block, written as a paragraph, `picks: []`. Every partner the
@@ -1464,7 +1506,10 @@ export async function handleNum(request, env, ctx, hooks = null) {
       try {
         const { forPlaces } = await import('./bizoffer.mjs');
         const rows = grounding?.partners ?? [];
-        const byPlace = await forPlaces(env, rows.map((r) => r?.id).filter(Boolean));
+        // memberId decides the age gate inside forPlaces: a 21+ trade's menu
+        // reaches only an identity-verified member, and an anonymous guest
+        // gets the place with no prices — see the note on ageMinFor.
+        const byPlace = await forPlaces(env, rows.map((r) => r?.id).filter(Boolean), { memberId: memberId ?? null });
         if (byPlace.size) {
           for (const r of rows) {
             const offers = r?.id != null ? byPlace.get(String(r.id)) : null;
@@ -1739,6 +1784,8 @@ export async function handleNum(request, env, ctx, hooks = null) {
       trace: grounding?._trace ?? null,
       picks_from_model: Array.isArray(result._modelPicks) ? result._modelPicks : null,
       picks_from_prose: result._picksFromProse ?? 0,
+      picks_from_directory: result._fromDirectory ?? 0,
+      picks_unverified: result._unverified ?? 0,
       dropped: result._dropped ?? [],
     } : null;
     return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, turn, ...(_degraded ? { degraded: true, brain: _brain } : {}), ...(wantsDebug ? { _timing: timing, _ground } : {}) });
@@ -2135,6 +2182,13 @@ export default {
         if (!me) return json(400, { error: 'who?' });
         return json(200, await m.claimBusinessByPhone(env, { memberId: me }));
       }
+      // Every hat at once — business, host, ambassador — by whichever of
+      // the member's contacts NUM has verified. Same rule as above: nothing
+      // is read from the body but "it is me". See linkAll.
+      if (rest === '/link' && request.method === 'POST') {
+        if (!me) return json(400, { error: 'who?' });
+        return json(200, await m.linkAll(env, { memberId: me }));
+      }
       return json(404, { error: 'no such identity route' });
     }
 
@@ -2434,6 +2488,21 @@ export default {
     }
 
     if (url.pathname === '/api/version') {
+      // WHO IS ON WHAT (19 Sep 2026). The app says which build is asking
+      // (?client=0.8.403&platform=ios); one row per build per platform per
+      // day. This is the only way to answer "is anyone still on the old
+      // version" with a number — the web auto-updates, the store builds do
+      // not, and until now nothing counted either.
+      const client = String(url.searchParams.get('client') ?? '').slice(0, 24);
+      const platform = String(url.searchParams.get('platform') ?? '').slice(0, 12);
+      if (client && /^[\w.+-]+$/.test(client) && env.DB) {
+        ctx.waitUntil((async () => {
+          try {
+            await env.DB.prepare(`CREATE TABLE IF NOT EXISTS num_client_versions (day TEXT NOT NULL, version TEXT NOT NULL, platform TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, version, platform))`).run();
+            await env.DB.prepare(`INSERT INTO num_client_versions (day, version, platform, n) VALUES (date('now'), ?1, ?2, 1) ON CONFLICT(day, version, platform) DO UPDATE SET n = n + 1`).bind(client, platform || 'web').run();
+          } catch (e) { console.warn('[version] count', e?.message ?? e); }
+        })());
+      }
       // What is actually wired, in one place. Each flag is a capability claim,
       // so it reads the same predicate the code paths do rather than a list
       // someone has to remember to update.
@@ -3074,6 +3143,16 @@ export default {
     // characters.
     if (url.pathname === '/api/bills' || url.pathname.startsWith('/api/bills/')) {
       const res = await handleBills(request, env, url.pathname.slice('/api/bills'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // The same history as money: every line, in order, with what is owed kept
+    // out of what was spent. /api/bills answers "what have I paid"; this
+    // answers "where did my money go", which is a different question and the
+    // one a person asks when a figure looks wrong.
+    if (url.pathname === '/api/ledger') {
+      const res = await handleLedger(request, env);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

@@ -1893,6 +1893,29 @@ export async function linkMyBusiness(): Promise<{ ok: boolean; error?: string }>
   }
 }
 
+export type LinkedHat = { type: 'business' | 'host' | 'ambassador'; id: string; name: string | null; already?: boolean };
+
+/**
+ * Every hat at once — business, host, ambassador — by whichever of this
+ * member's contacts NUM has verified: the number it texted them, the address
+ * it mailed them. Sends nothing but "it is me"; the server decides what those
+ * contacts are registered to. See linkAll in worker/identity.mjs.
+ */
+export async function linkMyAccounts(): Promise<{ ok: boolean; error?: string; linked: LinkedHat[]; taken: LinkedHat[] }> {
+  const me = store.get().me;
+  if (!me) return { ok: false, error: t('Sign in first.'), linked: [], taken: [] };
+  try {
+    const out = await fetch(apiUrl('/api/identity/link'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id }),
+    }).then((r) => r.json()) as { ok?: boolean; error?: string; linked?: LinkedHat[]; taken?: LinkedHat[] };
+    return { ok: !!out.ok, error: out.error, linked: out.linked ?? [], taken: out.taken ?? [] };
+  } catch {
+    return { ok: false, error: t('Couldn\u2019t reach NUM just now — try again in a moment.'), linked: [], taken: [] };
+  }
+}
+
 /**
  * The same, for a VIP host. Proof here is the console key they already hold:
  * matching on email alone would let anyone who knows a host's address adopt

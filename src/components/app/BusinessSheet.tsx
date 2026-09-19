@@ -6,9 +6,9 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, StarIcon, XIcon } from '../../lib/icons';
-import { businessOverview, businessUpdate } from '../../lib/profile';
+import { businessOverview, businessUpdate, businessOfferings, businessOfferingSave, businessOfferingVisible } from '../../lib/profile';
 import { nativePlatform } from '../../lib/native';
-import type { BusinessOverview } from '../../lib/profile';
+import type { BusinessOverview, OfferingsPage } from '../../lib/profile';
 import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -21,6 +21,90 @@ const primary: React.CSSProperties = {
   fontSize: 12, letterSpacing: '.06em', padding: '12px 16px', textAlign: 'center',
   boxShadow: '0 4px 14px var(--accent-30)',
 };
+
+/**
+ * WHAT YOU OFFER — products, treatments, rooms, with prices.
+ *
+ * Dre, 19 Sep 2026: "we need to have his dashboard so he can add his products
+ * and pricing." This is the same list the web console edits; here it is
+ * keyed off the member, so the dashboard a person lands on after linking is
+ * the one they can fill in. Free on every plan. NUM only ever says what is
+ * put here — it does not guess a menu.
+ *
+ * The template comes from the server (a dispensary prices by the eighth and
+ * is 21+; a spa sells sessions), so the sections and the example are the
+ * trade's own, and the 21+ note is shown to the owner exactly as the console
+ * shows it — because the answer path now enforces it (bizoffer.ageMinFor).
+ */
+function Offerings({ businessId }: { businessId: string }) {
+  const [page, setPage] = useState<OfferingsPage | null>(null);
+  const [name, setName] = useState('');
+  const [section, setSection] = useState('');
+  const [price, setPrice] = useState('');
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => { void businessOfferings(businessId).then(setPage); };
+  useEffect(load, [businessId]);
+
+  if (!page) return null;
+  const tpl = page.template;
+  const add = async () => {
+    if (busy || !name.trim()) return;
+    setBusy(true); setErr(null);
+    const out = await businessOfferingSave(businessId, { name, section: section || undefined, price: price || undefined, description: desc || undefined });
+    setBusy(false);
+    if (!out.ok) { setErr(out.error ?? 'That did not save.'); return; }
+    setName(''); setPrice(''); setDesc('');
+    load();
+  };
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--ink-08)' }}>
+      <div style={{ ...label, color: 'var(--ink-60)' }}>{tpl.label.toUpperCase()}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 4, lineHeight: 1.5 }}>
+        {t('What NUM tells travellers you offer, at the prices you list. It never guesses.')}
+        {tpl.note ? ` ${tpl.note}` : ''}
+      </div>
+
+      {page.items.length > 0 && (
+        <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
+          {page.items.map((o) => (
+            <div key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--ink-08)', opacity: o.active ? 1 : 0.5 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.name}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>{[o.section, o.price_label].filter(Boolean).join(' · ') || t('price varies')}</div>
+              </div>
+              <div
+                {...pressable(async () => { if (await businessOfferingVisible(businessId, o.id, !o.active)) load(); })}
+                style={{ cursor: 'pointer', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', padding: '8px 10px', borderRadius: 999, border: '1px solid var(--ink-12)', minHeight: 32 }}
+              >
+                {o.active ? t('HIDE') : t('SHOW')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+        <input style={field} placeholder={tpl.example || t('Name')} value={name} onChange={(e) => setName(e.target.value)} />
+        {tpl.sections.length > 0 && (
+          <select style={{ ...field, appearance: 'auto' }} value={section} onChange={(e) => setSection(e.target.value)}>
+            <option value="">{t('Section')}</option>
+            {tpl.sections.map((sName) => <option key={sName} value={sName}>{sName}</option>)}
+          </select>
+        )}
+        <input style={field} inputMode="decimal" placeholder={tpl.price_hint || t('Price (leave empty if it varies)')} value={price} onChange={(e) => setPrice(e.target.value)} />
+        <input style={field} placeholder={t('One line a guest would find useful (optional)')} value={desc} onChange={(e) => setDesc(e.target.value)} />
+        <div {...pressable(() => { void add(); })} style={{ ...primary, opacity: name.trim() ? 1 : 0.5 }}>
+          {busy ? '\u2026' : `${t('ADD')} ${tpl.noun.toUpperCase()}`}
+        </div>
+        {err && <div style={{ fontSize: 11, color: 'var(--danger, #c0392b)' }}>{err}</div>}
+      </div>
+    </div>
+  );
+}
 
 export default function BusinessSheet() {
   const open = useApp((s) => s.businessOpen);
@@ -143,6 +227,7 @@ export default function BusinessSheet() {
               </div>
             </div>
             <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('These are the details NUM quotes to travellers. Changing the phone here does not change what verified you — that stays tied to the number we already reached you on.')}</div>
+            {p.business_id && <Offerings businessId={p.business_id} />}
           </div>
         ))}
 
