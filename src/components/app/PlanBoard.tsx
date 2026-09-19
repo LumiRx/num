@@ -28,6 +28,7 @@ import {
 } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
 import { t } from '../../lib/i18n';
+import { HOURS, addDays, dayLabel, fmtMinor, hourLabel, hourOf, inOrder, initials, landing, spanDays } from '../../lib/planboard';
 import type { PartyPlan, PlanItem, PlanMoney } from '../../lib/types';
 
 // ── shared bits ────────────────────────────────────────────────────────────
@@ -60,52 +61,6 @@ const STATUS: Record<string, { text: string; bg: string; fg: string }> = {
   cancelled: { text: 'DROPPED', bg: 'rgba(32,30,29,.07)', fg: 'var(--ink-60)' },
 };
 
-/** "$12.50" / "€8" / "฿1,200" in the plan's currency. */
-export function fmtMinor(minor: number, currency: string): string {
-  const n = Number(minor) || 0;
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: n % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(n / 100);
-  } catch {
-    return `${currency} ${(n / 100).toFixed(2)}`;
-  }
-}
-
-/** YYYY-MM-DD + n days. */
-export const addDays = (day: string, n: number): string => {
-  const [y, m, d] = day.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  return dt.toISOString().slice(0, 10);
-};
-
-/** Every day between two dates inclusive, capped so a typo can't draw a year. */
-export function spanDays(from: string | null | undefined, to: string | null | undefined, cap = 21): string[] {
-  if (!from) return [];
-  const out = [from];
-  let cur = from;
-  while (to && cur < to && out.length < cap) { cur = addDays(cur, 1); out.push(cur); }
-  return out;
-}
-
-const dayLabel = (day: string): string => {
-  const [y, m, d] = day.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getUTCDay()];
-  const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
-  return `${wd} ${d} ${mo}`;
-};
-
-/** The hours a day on the board shows: morning to the small hours. */
-export const HOURS: string[] = [...Array.from({ length: 17 }, (_, i) => String(i + 7).padStart(2, '0')), '00', '01'];
-const hourOf = (time: string | null | undefined): string | null => (time && /^\d{2}:\d{2}$/.test(time) ? time.slice(0, 2) : null);
-const hourLabel = (hh: string): string => {
-  const h = Number(hh);
-  return h === 0 ? '12am' : h === 12 ? '12pm' : h < 12 ? `${h}am` : `${h - 12}pm`;
-};
-
-const initials = (name: string | null | undefined): string => (name || '?').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
-
-/** Items in one slot, in board order. */
-const inOrder = (a: PlanItem, b: PlanItem) => (a.time ?? '').localeCompare(b.time ?? '') || (a.sort ?? 0) - (b.sort ?? 0) || a.title.localeCompare(b.title);
 
 // ── the board ──────────────────────────────────────────────────────────────
 
@@ -159,6 +114,8 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
   // the slot under the thumb lights up; on release one reorder call moves it.
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const startDrag = (it: PlanItem) => (e: React.PointerEvent) => {
     if (!canEdit) return;
     e.preventDefault();
@@ -188,24 +145,10 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
     const d = dragRef.current;
     dragRef.current = null; setDrag(null);
     if (!d || !d.over) return;
-    const [toDay, toHour] = d.over.split('|');
-    const moving = items.find((i) => i.id === d.id);
-    if (!moving) return;
-    const targetDay = toDay === 'any' ? null : toDay;
-    // Keep the minutes when staying inside the same hour; land on :00 otherwise.
-    const sameHour = hourOf(moving.time) === toHour && (moving.day ?? null) === targetDay;
-    const targetTime = toHour === '' ? null : sameHour ? moving.time ?? `${toHour}:00` : `${toHour}:00`;
-    // Everyone in the target slot, with the moved card put where it landed.
-    const slotItems = live
-      .filter((i) => i.id !== d.id && (i.day ?? null) === targetDay && (toHour === '' ? !i.time : hourOf(i.time) === toHour))
-      .sort(inOrder);
-    const at = d.before ? slotItems.findIndex((i) => i.id === d.before) : -1;
-    const ordered = at >= 0 ? [...slotItems.slice(0, at), moving, ...slotItems.slice(at)] : [...slotItems, moving];
-    const moves = ordered.map((i, n) => ({ id: i.id, sort: n, ...(i.id === d.id ? { day: targetDay, time: targetTime } : {}) }));
-    const changed = moves.some((m) => {
-      const cur = items.find((i) => i.id === m.id);
-      return !cur || (cur.sort ?? 0) !== m.sort || (m.id === d.id && ((cur.day ?? null) !== targetDay || (cur.time ?? null) !== targetTime));
-    });
+    // Where it landed and what order the slot takes — lib/planboard.ts landing().
+    // itemsRef, not items: the window listener that calls this was bound when
+    // the drag began, and an 8-second sync may have refreshed the list since.
+    const { moves, changed } = landing(itemsRef.current, d.id, d.over, d.before);
     if (changed) await reorderPlanItems(moves);
   };
   // A drag that leaves the window still ends.
@@ -381,7 +324,7 @@ function Slot(p: SlotProps) {
     return (
       <div data-slot={p.slot} {...(p.canEdit ? pressable(() => setAdding(true)) : {})} className={p.canEdit ? 'tap' : undefined}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', minHeight: 30, cursor: p.canEdit ? 'pointer' : 'default' }}>
-        <span style={{ width: 40, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-40)', flex: 'none' }}>{p.label}</span>
+        <span style={{ width: 52, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-40)', flex: 'none', lineHeight: 1.1 }}>{p.label}</span>
         <span style={{ flex: 1, height: 1, background: 'var(--ink-08)' }} />
         {p.canEdit && <span style={{ fontSize: 14, color: 'var(--ink-40)', width: 20, textAlign: 'center' }}>+</span>}
       </div>
@@ -398,13 +341,13 @@ function Slot(p: SlotProps) {
   };
   return (
     <div data-slot={p.slot} style={{ display: 'flex', gap: 10, padding: '4px 14px', minHeight: 44, background: over ? 'rgba(14,164,131,.10)' : 'transparent', borderLeft: over ? '3px solid var(--color-accent)' : '3px solid transparent', transition: 'background .15s' }}>
-      <span style={{ width: 40, paddingTop: 12, fontSize: 10.5, fontWeight: 700, color: p.items.length ? 'var(--ink)' : 'var(--ink-40)', flex: 'none' }}>{p.label}</span>
+      <span style={{ width: 52, paddingTop: 12, fontSize: 10.5, fontWeight: 700, color: p.items.length ? 'var(--ink)' : 'var(--ink-40)', flex: 'none', lineHeight: 1.1 }}>{p.label}</span>
       <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 6 }}>
         {p.items.map((it) => (
           <ItemCard key={it.id} it={it} open={p.openItem === it.id} onToggle={() => p.setOpenItem(p.openItem === it.id ? null : it.id)}
             canEdit={p.canEdit} onDrag={p.startDrag(it)} members={p.members} meId={p.meId} currency={p.currency} feed={p.feed} plan={p.plan} dragging={p.drag?.id === it.id} landing={p.drag?.before === it.id} />
         ))}
-        {empty && p.drag && <div style={{ minHeight: 36, borderRadius: 10, border: '1.5px dashed var(--ink-12)' }} />}
+        {empty && p.drag && <div style={{ minHeight: 30, borderRadius: 10, border: '1.5px dashed var(--ink-12)' }} />}
         {adding && (
           <div style={{ display: 'flex', gap: 6 }}>
             <input autoFocus style={{ ...field, flex: 1, height: 40, fontSize: 15 }} placeholder={p.hour ? t('Add at {h}…', { h: p.label }) : t('Add an idea…')} value={text}
@@ -413,7 +356,7 @@ function Slot(p: SlotProps) {
           </div>
         )}
         {!empty && !adding && p.canEdit && p.hour && (
-          <div {...pressable(() => setAdding(true))} className="tap" style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-40)', minHeight: 28, display: 'flex', alignItems: 'center' }}>+ {t('ADD HERE')}</div>
+          <div {...pressable(() => setAdding(true))} className="tap" style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-40)', minHeight: 36, display: 'flex', alignItems: 'center' }}>+ {t('ADD HERE')}</div>
         )}
       </div>
     </div>
@@ -501,7 +444,10 @@ function ItemDetail(p: CardProps) {
     void askNum(`Book ${it.title} for our group plan "${p.plan.title}"${it.day ? ` on ${it.day}` : ''}${it.time ? ` at ${it.time}` : ''}${it.address || it.place ? ` at ${it.address || it.place}` : ''} — ${members.length || 'a few'} of us.`);
   };
 
-  const row: CSSProperties = { display: 'grid', gridTemplateColumns: '72px 1fr', alignItems: 'center', gap: 8, minHeight: 40 };
+  // Labels sit ABOVE their fields: the card is narrow (hour column + handle
+  // beside it), and a label column beside a date and a time input left them
+  // too thin to read the date in.
+  const row: CSSProperties = { display: 'grid', gap: 5 };
   const lab: CSSProperties = { fontSize: 10, letterSpacing: '.12em', fontWeight: 800, color: 'var(--ink-40)' };
   const small: CSSProperties = { ...field, height: 40, fontSize: 14 };
 
@@ -518,10 +464,10 @@ function ItemDetail(p: CardProps) {
       {/* how much */}
       <div style={row}>
         <span style={lab}>{t('COST')}</span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input inputMode="decimal" placeholder={`0.00 ${currency}`} value={amount} disabled={!canEdit} aria-label={t('Amount')} style={{ ...small, flex: 1 }}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 6, alignItems: 'center' }}>
+          <input inputMode="decimal" placeholder={`0.00 ${currency}`} value={amount} disabled={!canEdit} aria-label={t('Amount')} style={{ ...small, minWidth: 0 }}
             onChange={(e) => setAmount(e.target.value)} onBlur={() => void saveAmount()} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
-          <select value={it.paid_by ?? ''} disabled={!canEdit} aria-label={t('Paid by')} style={{ ...small, flex: 1, appearance: 'auto' }} onChange={(e) => void patchPlanItem(it.id, { paid_by: e.target.value || '' })}>
+          <select value={it.paid_by ?? ''} disabled={!canEdit} aria-label={t('Paid by')} style={{ ...small, minWidth: 0, appearance: 'auto' }} onChange={(e) => void patchPlanItem(it.id, { paid_by: e.target.value || '' })}>
             <option value="">{t('Nobody paid yet')}</option>
             {members.map((m) => <option key={m.member_id} value={m.member_id}>{m.member_id === meId ? t('You paid') : t('{name} paid', { name: m.name ?? t('Friend') })}</option>)}
           </select>
