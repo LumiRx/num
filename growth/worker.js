@@ -372,6 +372,7 @@ import * as PAYRAILS from '../worker/payrails.mjs';
 import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
+import * as BILLITEMS from '../worker/billitems.mjs';
 // sendBatch lives in its own module now — see resend.mjs — so the invite
 // drain (invitecron.mjs) makes the exact same Resend call this worker
 // already made for host invites, rather than a second copy that could drift.
@@ -1300,6 +1301,8 @@ const WORKER = {
       if (p === "/api/venue/tables/state" && req.method === "POST") return qrTableState(req, env, url);
       if (p === "/api/venue/tables/codes" && req.method === "POST") return qrIssueCodes(req, env, url);
       if (p === "/api/venue/bill" && req.method === "POST") return qrBillCreate(req, env, url);
+      if (p === "/api/venue/products" && req.method === "GET") return qrProducts(req, env, url);
+      if (p === "/api/venue/products" && req.method === "POST") return qrProductWrite(req, env, url);
       if (p === "/api/venue/bill/photo" && req.method === "POST") return qrBillPhoto(req, env, url);
       if (p === "/api/venue/bill/photo/confirm" && req.method === "POST") return qrBillPhotoConfirm(req, env, url);
       if (p === "/api/venue/bill/settle" && req.method === "POST") return qrBillSettle(req, env, url, ctx);
@@ -8513,6 +8516,17 @@ async function payLanding(req, env, tok, view = "auto") {
     await logPayEvent(env, req, { token: ptok, business_id: "", kind: "unknown_token" });
     return HTML(payPage({ state: "unknown" }), 404);
   }
+
+  // What was on the bill, and whether it has been split. Both behind a defined
+  // fallback: they arrive with migration 0045, and a pay page that 500s
+  // between the deploy and the migration is the exact failure the migration
+  // hygiene rules exist to describe. No lines is the normal case — most bills
+  // are a total — and no split columns reads as "not split", which is true of
+  // every bill that existed before the feature.
+  const lines = await BILLITEMS.itemsFor(env, ptok);
+  const splitRow = await env.DB.prepare(
+    "SELECT split_at, split_parent FROM num_paylinks WHERE token = ?1",
+  ).bind(ptok).first().catch(() => null);
   if (link.state === "revoked") {
     await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "retired_view" });
     return HTML(payPage({ state: "retired", venue: link.business_name }), 410);
@@ -8524,8 +8538,22 @@ async function payLanding(req, env, tok, view = "auto") {
     await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "receipt_view" });
     return HTML(payPage({
       state: "paid", token: ptok, venue: link.business_name, label: link.label,
-      amount: link.amount, currency: link.currency,
+      amount: link.amount, currency: link.currency, items: lines,
       settledOn: String(link.settled_at).slice(0, 10),
+    }));
+  }
+
+  // A SPLIT BILL IS NOT PAYABLE FROM THE TABLE'S CODE.
+  //
+  // Its shares are the bills now. Leaving this page payable is how one dinner
+  // gets paid twice: a friend pays their share while somebody else, looking at
+  // the code still sitting on the table, pays the lot — and there is no refund
+  // path that makes that pleasant for anybody.
+  if (splitRow && splitRow.split_at) {
+    await logPayEvent(env, req, { token: ptok, business_id: link.business_id, kind: "receipt_view" });
+    return HTML(payPage({
+      state: "split", token: ptok, venue: link.business_name, label: link.label,
+      amount: link.amount, currency: link.currency, items: lines,
     }));
   }
 
@@ -8588,7 +8616,7 @@ async function payLanding(req, env, tok, view = "auto") {
   const q = new URL(req.url).searchParams;
   return HTML(payPage({
     state: "choose", token: ptok, venue: link.business_name, label: link.label,
-    amount: link.amount, currency: link.currency, rails: usable,
+    amount: link.amount, currency: link.currency, rails: usable, items: lines,
     why: q.get("why") ? clean(q.get("why"), 200) : null,
     confirming: q.get("paid") === "1",
   }));
@@ -8968,6 +8996,11 @@ main{max-width:430px;width:100%;padding:28px 22px 40px}
 h1{font-size:20px;margin:14px 0 6px}
 .lede{color:#4a5450;margin:0 0 18px}
 .amount{font-size:34px;font-weight:800;margin:8px 0 16px}
+.lines{width:100%;border-collapse:collapse;margin:-8px 0 16px;font-size:15px;color:#4a5450}
+.lines td{padding:5px 0;border-bottom:1px solid #eceae2;vertical-align:top}
+.lines tr:last-child td{border-bottom:0}
+.lines .q{width:34px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.lines .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .btn{display:block;width:100%;text-align:center;background:#1f3a34;color:#fff;border:0;
   border-radius:12px;padding:16px;font-size:18px;font-weight:700;text-decoration:none;box-sizing:border-box}
 .btn.ghost{background:transparent;color:#1f3a34;border:1.5px solid #1f3a34;margin-top:10px}
@@ -9034,6 +9067,24 @@ h1{font-size:20px;margin:14px 0 6px}
 </body></html>`;
 }
 
+/**
+ * The lines on a bill, when the venue itemised it.
+ *
+ * Plain HTML in a plain table because this page has to work with no
+ * JavaScript at all — a guest scanning a sticker on a table is on whatever
+ * browser their camera opened, on whatever signal the restaurant has. The
+ * lines always add up to the figure above them, because the bill was minted
+ * FROM them (worker/billitems.mjs); there is no second total anywhere that
+ * could drift.
+ */
+function billLines(items) {
+  if (!items || !items.length) return "";
+  const rows = items.map((it) =>
+    `<tr><td class="q">${esc(String(it.qty))}&times;</td><td>${esc(it.name)}</td>`
+    + `<td class="r">${esc((Number(it.line_minor) / 100).toFixed(2))}</td></tr>`).join("");
+  return `<table class="lines">${rows}</table>`;
+}
+
 function payPage(o) {
   if (o.state === "unknown") return payShell(`
     <h1>This payment code isn't one of ours</h1>
@@ -9082,6 +9133,7 @@ function payPage(o) {
     <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
     <h1>${o.confirming ? "Payment received" : "How would you like to pay?"}</h1>
     ${o.amount ? `<div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>` : ""}
+    ${billLines(o.items)}
     ${o.confirming ? `<p class="lede">Confirming with ${esc(o.venue)}&hellip; this page will update itself.
       Keep it open to show staff.</p><meta http-equiv="refresh" content="3">` : ""}
     ${o.why ? `<div class="warn">${esc(o.why)}</div>` : ""}
@@ -9092,6 +9144,21 @@ function payPage(o) {
     don't pay, and tell staff.</div>
     <p class="foot">Powered by NUM · <a href="https://itsnum.com/">itsnum.com</a></p>`,
     "Pay " + o.venue + " — NUM");
+
+  // A bill that was divided. Its shares are the bills now, and each went to
+  // the NUM of the person it was for — so this page is information, not a
+  // demand, and deliberately offers no way to pay the whole thing again.
+  if (o.state === "split") return payShell(`
+    <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
+    <h1>This bill was split</h1>
+    ${o.amount ? `<div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>` : ""}
+    ${billLines(o.items)}
+    <p class="lede">Everyone pays their own share, and each share was sent to their NUM.
+    Nothing is owed on this code &mdash; paying it again would pay for the table twice.</p>
+    <div class="ppbox">Your reference<br><span class="ppid">${esc(o.token)}</span><br>
+    <span class="note">Quote this if you need to ask ${esc(o.venue)} about the bill.</span></div>
+    <p class="foot">Powered by NUM &middot; <a href="https://itsnum.com/">itsnum.com</a></p>`,
+    "Split bill — NUM");
 
   /*
    * The receipt.
@@ -9110,6 +9177,7 @@ function payPage(o) {
     <div class="venue">${esc(o.venue)}${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}</div>
     <h1>Paid — thank you</h1>
     ${o.amount ? `<div class="amount">${esc(o.currency)} ${esc(o.amount)}</div>` : ""}
+    ${billLines(o.items)}
     <p class="lede">${esc(o.venue)} marked this bill settled${o.settledOn ? ` on ${esc(o.settledOn)}` : ""}.
     Nothing further is owed on this code and it cannot be paid again.</p>
     <div class="ppbox">Your reference<br><span class="ppid">${esc(o.token)}</span><br>
@@ -10107,6 +10175,22 @@ WORKER.scheduled = async (event, env, ctx) => {
     if (out?.alerted) console.log('integration alert sent', out.alerted, 'via', out.via);
   })());
 };
+/* ── INBOUND MAIL ────────────────────────────────────────────
+ *
+ * A business replying to NUM used to write to info@thatislumi.com — another
+ * company's domain, a person's own mailbox — and nothing here ever learned
+ * that they had answered. Hugo's Restaurant's reply reached NUM as a
+ * screenshot, because there was nowhere for it to land.
+ *
+ * itsnum.com's MX already points at Cloudflare, so this needs a routing rule
+ * and no DNS change. The handler forwards to a human FIRST and records after,
+ * so a bug in the recording cannot lose a reply. See worker/bizinbound.mjs.
+ */
+WORKER.email = async (message, env, ctx) => {
+  const { handleInboundEmail } = await import('../worker/bizinbound.mjs');
+  return handleInboundEmail(message, env, ctx);
+};
+
 export default WORKER;
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -10287,16 +10371,83 @@ async function qrBillCreate(req, env, url) {
   let b;
   try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
 
+  // ── A TOTAL, OR THE THINGS THAT MAKE IT UP ────────────────────────────
+  //
+  // Both, and neither is compulsory. A paper-bill restaurant in Bangkok types
+  // 2400 and sends, exactly as it did yesterday, and always will — the moment
+  // itemising becomes the only way, the feature stops being for them.
+  //
+  // When lines ARE sent, they decide the amount. There is no second field
+  // where staff type a total the lines then fail to add up to: a bill whose
+  // items say 2,400 and whose charge says 2,600 is what a guest disputes at
+  // the door, and the only way to make that impossible is never to store the
+  // two apart. See worker/billitems.mjs.
+  let lines = null;
+  let amount = b.amount;
+  if (Array.isArray(b.items) && b.items.length) {
+    const read = BILLITEMS.normaliseItems(b.items);
+    if (!read.ok) return J({ ok: false, error: read.reason }, 400);
+    lines = read.items;
+    amount = read.total;
+  }
+
   const out = await QR.billForTable(env, {
     businessId: who.business.id,
     resourceId: b.resource_id ? String(b.resource_id) : null,
-    amount: b.amount,
+    amount,
     bookingId: b.booking_id ? String(b.booking_id).slice(0, 64) : null,
     issuedBy: who.userId || "key",
   });
   if (!out.ok) return J(out, 400);
+  // After the code exists, deliberately: a failure here costs the itemisation
+  // and not the bill. A guest can always be shown a total.
+  if (lines) await BILLITEMS.saveItems(env, out.token, lines);
   await logKeyEvent(env, req, who.business.id, "ok", "bill_create:" + out.token);
-  return J(out);
+  return J({ ...out, items: lines ? lines.length : 0 });
+}
+
+/* ── the venue's own list of what it sells ────────────────────────────────
+ *
+ * A convenience for staff and nothing more. A bill line copies the name and
+ * the price at the moment it is added and never looks at the product again,
+ * so nothing here can change a figure a guest was already charged. Archiving
+ * is the only removal for the same reason.
+ */
+async function qrProducts(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "bill")) return qrDeny("bill");
+  const items = await BILLITEMS.listProducts(env, who.business.id);
+  return J({ ok: true, products: items });
+}
+
+async function qrProductWrite(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  // Changing the price list is the owner's, the same as the billing basis.
+  // A waiter may put an amount on a table; a waiter may not decide what a
+  // Singha costs.
+  if (!QR.can(who.role, "settle")) return qrDeny("settle");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+
+  if (b.archive) {
+    const gone = await BILLITEMS.archiveProduct(env, who.business.id, String(b.archive));
+    return gone.ok ? J({ ok: true }) : J({ ok: false, error: gone.reason }, 404);
+  }
+  const cur = await venueCurrency(env, who.business.id);
+  const made = await BILLITEMS.addProduct(env, who.business.id, {
+    name: b.name, price: b.price, currency: cur, sort: b.sort,
+  });
+  return made.ok ? J(made) : J({ ok: false, error: made.reason }, 400);
+}
+
+/** The currency the venue's own codes are in — never one the caller sends. */
+async function venueCurrency(env, businessId) {
+  const row = await env.DB.prepare(
+    "SELECT currency FROM num_paylinks WHERE business_id = ?1 AND state = 'active' ORDER BY created_at DESC LIMIT 1",
+  ).bind(businessId).first().catch(() => null);
+  return String(row?.currency || 'THB').toUpperCase();
 }
 
 /* ── POST /api/venue/bill/photo — read the paper bill ─────────────────────
@@ -11236,6 +11387,26 @@ border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;color:var(--pin
     <div><label for="bt">Table</label><select id="bt"></select></div>
     <div><label for="ba">Amount</label><input id="ba" inputmode="decimal" placeholder="2400"></div>
   </div>
+  <!-- ITEMS, OR JUST A TOTAL.
+       Typing a total stays the fast path and always will. When lines are
+       added they DECIDE the amount, and the Amount box above goes read-only
+       showing their sum, so there is no way to send a bill whose items and
+       whose charge disagree. -->
+  <div id="itemwrap" style="margin-top:10px">
+    <button id="itoggle" type="button" class="ghost" style="width:100%">Add what they had instead</button>
+    <div id="itembox" hidden style="margin-top:10px">
+      <div id="prodchips" class="muted" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+      <div class="row">
+        <div style="flex:2"><label for="iname">Item</label><input id="iname" placeholder="Pad Thai"></div>
+        <div style="flex:1"><label for="iqty">Qty</label><input id="iqty" inputmode="numeric" value="1"></div>
+        <div style="flex:1"><label for="iprice">Price</label><input id="iprice" inputmode="decimal" placeholder="180"></div>
+      </div>
+      <button id="iadd" type="button" class="ghost" style="width:100%">Add the line</button>
+      <table style="margin-top:8px"><tbody id="ilines"></tbody></table>
+      <div id="itotal" class="big"></div>
+      <div id="ierr" class="out"></div>
+    </div>
+  </div>
   <button id="bill">Make the paying QR</button>
   <!-- Photograph the bill. capture="environment" opens the back camera
        straight away on a phone, which is what staff are holding. It fills the
@@ -11250,6 +11421,20 @@ border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;color:var(--pin
 <h2>Open bills</h2>
 <div class="card"><table><thead><tr><th>Table</th><th>Amount</th><th>Code</th><th></th></tr></thead>
 <tbody id="bills"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+
+${isOwner ? `
+<h2>Your price list</h2>
+<div class="card">
+  <p class="muted">Saved so staff tap instead of typing. Changing a price here never changes a bill
+  a guest was already charged — a line keeps the name and the price it had at the time.</p>
+  <div class="row">
+    <div style="flex:2"><label for="pn">Item</label><input id="pn" placeholder="Pad Thai"></div>
+    <div style="flex:1"><label for="pp">Price</label><input id="pp" inputmode="decimal" placeholder="180"></div>
+  </div>
+  <button id="padd" class="ghost" style="width:100%">Save it</button>
+  <table style="margin-top:8px"><tbody id="plist"><tr><td class="muted">Loading…</td></tr></tbody></table>
+  <div id="pout" class="out"></div>
+</div>` : ""}
 
 ${canTables ? `
 <h2>Your floor</h2>
@@ -11332,7 +11517,12 @@ function drawBills(rows){
   if(!rows.length){var tr=el('tr');var c=td('Nothing open.','muted');c.colSpan=4;tr.appendChild(c);tb.appendChild(tr);return}
   rows.forEach(function(r){
     var tr=el('tr');
-    tr.appendChild(td(r.table_name||r.label||'—'));
+    // A split bill is ONE table being paid in parts, not several bills.
+    // Staff see how far through it is rather than four rows they might each
+    // try to close.
+    var name=r.table_name||r.label||'\u2014';
+    if(r.split_at&&r.shares)name=name+' \u00b7 split '+r.shares+' ways, '+(r.shares_paid||0)+' paid';
+    tr.appendChild(td(name));
     tr.appendChild(td(r.amount+' '+r.currency));
     tr.appendChild(td(r.token));
     var c=el('td');c.className='r';
@@ -11608,10 +11798,89 @@ document.getElementById('bphoto').onchange=function(){
   });
 };
 
+/* ── the lines on a bill ────────────────────────────────────────────────
+ *
+ * LINES is the truth while the bill is being built, and the Amount box is
+ * only ever a reflection of it. The server adds the lines up again anyway
+ * (worker/billitems.mjs) and mints for THAT figure, so a browser that is
+ * lied to cannot produce a bill whose items and charge disagree. */
+var LINES=[];
+function money(m){return (m/100).toFixed(2)}
+function drawLines(){
+  var tb=document.getElementById('ilines');tb.textContent='';
+  var total=0;
+  LINES.forEach(function(it,i){
+    total+=it.line_minor;
+    var tr=el('tr');
+    tr.appendChild(el('td',it.qty+' x '+it.name));
+    var td=el('td',money(it.line_minor));td.style.textAlign='right';tr.appendChild(td);
+    var x=el('td');var b=el('button','Remove');b.type='button';b.className='ghost';
+    b.onclick=function(){LINES.splice(i,1);drawLines()};
+    x.appendChild(b);x.style.textAlign='right';tr.appendChild(x);
+    tb.appendChild(tr);
+  });
+  var amt=document.getElementById('ba');
+  document.getElementById('itotal').textContent=LINES.length?('Total '+money(total)):'';
+  // The Amount box stops being typeable the moment there are lines, because
+  // two editable figures for one bill is how they end up disagreeing.
+  amt.readOnly=LINES.length>0;
+  if(LINES.length)amt.value=money(total);
+}
+function addLine(name,priceMinor,qty){
+  var q=parseInt(qty||'1',10);
+  if(!name||!(q>0)){document.getElementById('ierr').textContent='Name it, and say how many.';return}
+  if(!(priceMinor>=0)){document.getElementById('ierr').textContent='That price is not a plain amount.';return}
+  document.getElementById('ierr').textContent='';
+  // Tapping the same product twice is another one of it, not a second row —
+  // which is what a person doing this at a table actually means.
+  var same=null;
+  LINES.forEach(function(l){if(l.name===name&&l.unit_minor===priceMinor)same=l});
+  if(same){same.qty+=q;same.line_minor=same.unit_minor*same.qty}
+  else LINES.push({name:name,qty:q,unit_minor:priceMinor,line_minor:priceMinor*q});
+  drawLines();
+}
+function parseMinor(v){
+  var t=String(v==null?'':v).trim().replace(/[, ]/g,'');
+  if(!/^\d{1,9}(\.\d{1,2})?$/.test(t))return -1;
+  return Math.round(Number(t)*100);
+}
+document.getElementById('itoggle').onclick=function(){
+  var box=document.getElementById('itembox');
+  box.hidden=!box.hidden;
+  this.textContent=box.hidden?'Add what they had instead':'Just type a total instead';
+  if(box.hidden){LINES=[];drawLines();document.getElementById('ba').readOnly=false}
+  else loadProducts();
+};
+document.getElementById('iadd').onclick=function(){
+  addLine(document.getElementById('iname').value.trim(),
+          parseMinor(document.getElementById('iprice').value),
+          document.getElementById('iqty').value);
+  document.getElementById('iname').value='';
+  document.getElementById('iprice').value='';
+  document.getElementById('iqty').value='1';
+  document.getElementById('iname').focus();
+};
+function loadProducts(){
+  var wrap=document.getElementById('prodchips');
+  if(wrap.dataset.loaded)return;
+  loader('/api/venue/products',function(j){
+    wrap.dataset.loaded='1';wrap.textContent='';
+    var ps=(j&&j.products)||[];
+    if(!ps.length){wrap.textContent='No saved items yet — type them in below, or add a price list in Settings.';return}
+    ps.forEach(function(pr){
+      var b=el('button',pr.name+' '+money(pr.price_minor));
+      b.type='button';b.className='ghost';b.style.padding='6px 10px';
+      b.onclick=function(){addLine(pr.name,pr.price_minor,1)};
+      wrap.appendChild(b);
+    });
+  },'prodchips');
+}
+
 document.getElementById('bill').onclick=function(){
   var o=document.getElementById('billout');o.textContent='';
   post('/api/venue/bill',{resource_id:document.getElementById('bt').value,
-                          amount:document.getElementById('ba').value}).then(function(j){
+                          amount:document.getElementById('ba').value,
+                          items:LINES.length?LINES:null}).then(function(j){
     if(!j.ok){o.textContent=j.reason||j.error||'Could not make that code.';return}
     o.textContent='';
     var img=el('img');img.src='/api/pay/qr/'+encodeURIComponent(j.token)+'.svg';
@@ -11620,6 +11889,9 @@ document.getElementById('bill').onclick=function(){
     o.appendChild(el('div', j.booking ? ('Booking '+j.booking.short_code+' · '+j.booking.party_size+' guests — NUM earns its commission on this one') : 'No booking on this table — NUM takes no commission on it')).className='muted';
     o.appendChild(img);
     o.appendChild(el('div',j.url));
+    if(j.items)o.appendChild(el('div',j.items+' lines on this one')).className='muted';
+    LINES=[];drawLines();
+    document.getElementById('ba').readOnly=false;
     document.getElementById('ba').value='';
     refresh();
   });
@@ -11649,6 +11921,40 @@ document.getElementById('sadd').onclick=function(){
     refresh();
   });
 };` : ""}
+
+${isOwner ? `
+function drawPrices(ps){
+  var tb=document.getElementById('plist');tb.textContent='';
+  if(!ps.length){tb.appendChild(el('tr')).appendChild(el('td','Nothing saved yet.')).className='muted';return}
+  ps.forEach(function(pr){
+    var tr=el('tr');
+    tr.appendChild(el('td',pr.name));
+    var td=el('td',money(pr.price_minor));td.style.textAlign='right';tr.appendChild(td);
+    var x=el('td');var b=el('button','Remove');b.type='button';b.className='ghost';
+    b.onclick=function(){
+      // Archived, never deleted: a product that priced a bill last month has
+      // to stay findable when somebody asks what that bill was.
+      post('/api/venue/products',{archive:pr.id}).then(function(j){
+        document.getElementById('pout').textContent=j.ok?'':(j.error||'Could not remove that.');
+        if(j.ok){document.getElementById('prodchips').dataset.loaded='';loadPrices()}
+      });
+    };
+    x.appendChild(b);x.style.textAlign='right';tr.appendChild(x);
+    tb.appendChild(tr);
+  });
+}
+function loadPrices(){loader('/api/venue/products',function(j){drawPrices((j&&j.products)||[])},'plist')}
+document.getElementById('padd').onclick=function(){
+  var o=document.getElementById('pout');o.textContent='';
+  post('/api/venue/products',{name:document.getElementById('pn').value.trim(),
+                              price:document.getElementById('pp').value}).then(function(j){
+    if(!j.ok){o.textContent=j.error||'Could not save that.';return}
+    document.getElementById('pn').value='';document.getElementById('pp').value='';
+    document.getElementById('prodchips').dataset.loaded='';
+    loadPrices();
+  });
+};
+loadPrices();` : ""}
 
 document.getElementById('out-btn').onclick=function(){
   post('/api/venue/logout').then(function(){location.href='/biz/tables'});

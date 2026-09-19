@@ -30,7 +30,8 @@
     "0041_bill_proposals.sql": "500ac161b2446051686a46fb27980ca9c598e2046f9fe5f8608be91023ffccf7",
     "0042_autopay.sql": "94787fcc654a4cdf17f01552dfa7040637f6b0422cf09c3be4a4e10fee463db8",
     "0043_business_onboarding.sql": "f56993f887fdee32efefdb942f335b204593d6ff1b7ba05e640361b3860c53dc",
-    "0044_whatson.sql": "bf0383257599959a8ecd17a8438c2cb6f0fff9490273793f0163c8f1e0ce2b42"
+    "0044_whatson.sql": "bf0383257599959a8ecd17a8438c2cb6f0fff9490273793f0163c8f1e0ce2b42",
+    "0045_bill_items_and_split.sql": "e48fbd9fae92ced3c383a6bc140757a7042c1013f348416ab8dae04332a33836"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
   "pending": []

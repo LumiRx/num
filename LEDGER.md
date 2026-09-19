@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-18 22:47 UTC from 32 entries._
+_Built 2026-09-19 00:32 UTC from 34 entries._
 
 ## Deployed right now
 
@@ -17,8 +17,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | 🔴 **STALE** — 2 files changed since it shipped |
-| num-app | 🔴 **STALE** — 11 files changed since it shipped |
-| num-growth | 🔴 **STALE** — 8 files changed since it shipped |
+| num-app | 🔴 **STALE** — 8 files changed since it shipped |
+| num-growth | 🔴 **STALE** — 11 files changed since it shipped |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -49,8 +49,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
-- 🟡 **qr bill pay** — QR bill pay: the Connect webhook did not exist. STRIPE_CONNECT_WEBHOOK_SECRET was set, /api/features read billpay:on, the /api/pay/webhook/connect route was deployed on 0.8.374 and listening - and Stripe had exactly one endpoint, the platform one. A bill is a DIRECT charge on the venue own Stripe account, so the event fires on THEIR account and the platform endpoint never sees it: the guest would have been charged, handed a Stripe receipt and walked out, while settleBillCode never ran, num_commi
-  _claude, 2026-09-18 22:47_
+- 🟡 **qr bill pay** — QR pay, continued. Fixed the dead-payment-page bug I had flagged and then found two more while closing it out. (1) Stripe replays an idempotent request for 24 hours, and the checkout key was a fixed bill:token:rail - so the SECOND tap on a rail returned the FIRST session byte for byte, including its URL. Right for a double-tap, wrong thirty-one minutes later: the session expires at 30 and the bill lives 90, so a guest who opened the page, ordered another drink and came back met a dead Stripe pag
+  _claude, 2026-09-19 00:32_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre

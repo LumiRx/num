@@ -200,6 +200,48 @@ export async function mintBillCode(env, {
  * that has not settled, and the ledger is only touched when that UPDATE
  * actually changed something.
  */
+/**
+ * The last share pays, so the dinner is paid.
+ *
+ * Called only from a share's own settlement. It settles the parent through the
+ * ordinary path — which is what reaches the commission ledger, exactly once —
+ * and hands back what the shares actually collected in fees so the caller can
+ * record it against that one line.
+ *
+ * It settles on COVERED, not on "all shares paid": a share can be paid by
+ * somebody outside the split, or a generous friend can pay two. What the venue
+ * cares about is whether the money adds up, so that is what is checked.
+ */
+async function settleParentIfCovered(env, parentToken, { settledBy = null } = {}) {
+  const parent = await env.DB.prepare(
+    'SELECT token, amount, settled_at FROM num_paylinks WHERE token = ?1',
+  ).bind(parentToken).first().catch(() => null);
+  if (!parent) return { settled: false, reason: 'unknown parent' };
+  if (parent.settled_at) return { settled: false, reason: 'already settled' };
+
+  const total = parseAmount(parent.amount);
+  if (!total.ok) return { settled: false, reason: 'parent amount unreadable' };
+
+  const paidShares = await env.DB.prepare(
+    'SELECT amount, application_fee_minor FROM num_paylinks WHERE split_parent = ?1 AND settled_at IS NOT NULL',
+  ).bind(parentToken).all().catch(() => null);
+  const rows = paidShares?.results ?? [];
+
+  let covered = 0;
+  let fees = 0;
+  for (const r of rows) {
+    const a = parseAmount(r.amount);
+    if (a.ok) covered += a.minor;
+    fees += Number(r.application_fee_minor) || 0;
+  }
+  if (covered < total.minor) {
+    return { settled: false, covered, of: total.minor, short: total.minor - covered };
+  }
+
+  const out = await settleBillCode(env, parentToken, { settledBy: settledBy ?? 'split' });
+  return { settled: !!out?.settled, covered, of: total.minor, fees_minor: fees, result: out };
+}
+
 export async function settleBillCode(env, tokenValue, { settledBy = null } = {}) {
   if (!env?.DB || !tokenValue) return { ok: false, reason: 'missing token' };
 
@@ -224,8 +266,48 @@ export async function settleBillCode(env, tokenValue, { settledBy = null } = {})
   ).bind(tokenValue, now, settledBy).run();
   if (!flip?.meta?.changes) return { ok: true, already: true, booking_id: row.booking_id };
 
+  // ── A SETTLED BILL MUST NOT LEAVE LIVE SHARES BEHIND ────────────────────
+  //
+  // Two ways here. The shares covered the dinner and the parent settled — in
+  // which case any share still unpaid is money the venue is no longer owed.
+  // Or staff settled the table by hand because somebody paid cash, and the
+  // four codes sitting in four friends' phones are now four ways to pay for a
+  // dinner that is done. Either way a live share after the bill is closed is a
+  // charge nobody should be able to make, so they are retired here.
+  //
+  // Only UNPAID ones, and a paid share is never touched: it is a real charge
+  // on the venue's account with a real receipt behind it.
+  await env.DB.prepare(
+    `UPDATE num_paylinks SET state = 'revoked', revoked_at = ?2
+      WHERE split_parent = ?1 AND settled_at IS NULL AND state = 'active'`,
+  ).bind(tokenValue, now).run().catch(() => null);
+
   const amt = parseAmount(row.amount);
   if (!amt.ok) return { ok: true, settled: true, billed: false, reason: 'stored amount unreadable' };
+
+  // ── A SHARE OF A SPLIT BILL EARNS NOTHING ON ITS OWN ────────────────────
+  //
+  // Four friends splitting one dinner is one dinner. If each share took the
+  // walk-in path below, a 2,400 bill split four ways would charge the venue
+  // four flat fees for one table — and with a booking attached it would be
+  // worse: the percentage once and the flat floor three times, because accrue
+  // is keyed on the booking and the second call records nothing.
+  //
+  // So a share settles and stops. The commission belongs to the whole bill,
+  // and the parent accrues it once, below, when the shares cover it. The read
+  // is a single row behind a defined fallback because split_parent arrives
+  // with migration 0045 and this must not throw on a worker that has the code
+  // and not the column.
+  const split = await env.DB.prepare('SELECT split_parent FROM num_paylinks WHERE token = ?1')
+    .bind(tokenValue).first().catch(() => null);
+  if (split?.split_parent) {
+    const parent = await settleParentIfCovered(env, split.split_parent, { settledBy });
+    return {
+      ok: true, settled: true, billed: false,
+      split_parent: split.split_parent, parent,
+      reason: 'a share of a split bill — the fee is charged once, on the whole bill',
+    };
+  }
 
   // ── NO BOOKING: NUM DID NOT SEND THIS GUEST ─────────────────────────────
   //

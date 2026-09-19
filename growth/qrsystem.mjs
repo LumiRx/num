@@ -284,16 +284,57 @@ export async function settleBill(env, businessId, tokenValue, { settledBy = null
   return settleBillCode(env, own.token, { settledBy });
 }
 
+/**
+ * The bills this venue is still waiting on.
+ *
+ * ── WHY A SPLIT DOES NOT TURN ONE TABLE INTO FIVE ────────────────────────
+ *
+ * A bill split four ways mints four real codes, so a flat list of unsettled
+ * codes would show staff five rows for one table — the original plus a share
+ * for each friend — and a waiter counting open bills at the end of a shift
+ * would believe the room owed five times what it does. The shares are not
+ * things staff act on one at a time; they are one bill being paid in parts.
+ *
+ * So the shares are folded into their parent, which carries how many there
+ * are and how many have landed. Staff see one table, one figure, and how far
+ * through it is. The whole read sits behind a fallback because the split
+ * columns arrive with migration 0045 and this list must keep working on a
+ * worker that has the code and not the column — a venue unable to see its own
+ * open bills is a far worse failure than a missing progress note.
+ */
 export async function openBills(env, businessId) {
-  const { results } = await env.DB.prepare(
-    `SELECT p.token, p.label, p.amount, p.currency, p.created_at, p.resource_id,
-            r.name AS table_name, p.booking_id, p.issued_by
-       FROM num_paylinks p
-       LEFT JOIN num_resources r ON r.id = p.resource_id
-      WHERE p.business_id = ?1 AND COALESCE(p.one_time,0)=1
-        AND p.state='active' AND p.settled_at IS NULL
-      ORDER BY p.created_at DESC LIMIT 100`,
-  ).bind(businessId).all();
+  // ASK WHETHER THE COLUMN IS THERE RATHER THAN GUESSING FROM A FAILURE.
+  //
+  // The first version of this ran the split-aware query and fell back when it
+  // errored. That reads fine and is wrong in one specific place: a D1 stub, or
+  // any layer that swallows a bad query into an empty result, hands back "no
+  // open bills" instead of an error — and a venue being told it is owed
+  // nothing is the worst possible way for a missing column to show up. So the
+  // schema is asked directly, once, and the answer picks the query.
+  const hasSplit = await env.DB.prepare(
+    "SELECT 1 AS ok FROM pragma_table_info('num_paylinks') WHERE name = 'split_parent'",
+  ).first().catch(() => null);
+
+  const sql = hasSplit
+    ? `SELECT p.token, p.label, p.amount, p.currency, p.created_at, p.resource_id,
+              r.name AS table_name, p.booking_id, p.issued_by, p.split_at,
+              (SELECT COUNT(*) FROM num_paylinks c WHERE c.split_parent = p.token) AS shares,
+              (SELECT COUNT(*) FROM num_paylinks c WHERE c.split_parent = p.token AND c.settled_at IS NOT NULL) AS shares_paid
+         FROM num_paylinks p
+         LEFT JOIN num_resources r ON r.id = p.resource_id
+        WHERE p.business_id = ?1 AND COALESCE(p.one_time,0)=1
+          AND p.state='active' AND p.settled_at IS NULL
+          AND p.split_parent IS NULL
+        ORDER BY p.created_at DESC LIMIT 100`
+    : `SELECT p.token, p.label, p.amount, p.currency, p.created_at, p.resource_id,
+              r.name AS table_name, p.booking_id, p.issued_by
+         FROM num_paylinks p
+         LEFT JOIN num_resources r ON r.id = p.resource_id
+        WHERE p.business_id = ?1 AND COALESCE(p.one_time,0)=1
+          AND p.state='active' AND p.settled_at IS NULL
+        ORDER BY p.created_at DESC LIMIT 100`;
+
+  const { results } = await env.DB.prepare(sql).bind(businessId).all();
   return results ?? [];
 }
 

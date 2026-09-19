@@ -162,6 +162,18 @@ const FILES = [
   // so a second pass is a no-op.
   'worker/migrations/0043_business_onboarding.sql',
   'worker/migrations/0044_whatson.sql',
+  // Who paid a bill, what was on it, and the share codes a split mints.
+  // Four ALTERs on num_paylinks, each its own statement, plus two new
+  // tables and their indexes with IF NOT EXISTS.
+  //
+  // NOT a no-op on a second pass, and this says so because an earlier
+  // version of this comment claimed otherwise. SQLite has no ADD COLUMN
+  // IF NOT EXISTS, so re-running this stops at the first ALTER with
+  // 'duplicate column name: paid_by_member'. That error means the
+  // migration is ALREADY APPLIED — it is the re-run failing, not the
+  // migration — and nothing is changed by it. Check with
+  // pragma_table_info('num_paylinks') before concluding anything else.
+  'worker/migrations/0045_bill_items_and_split.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

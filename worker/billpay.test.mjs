@@ -82,6 +82,51 @@ test('billRails: one list, every rail carries the URL that starts it', async () 
   assert.equal(out.rails.at(-1).action, 'https://app.itsnum.com/pay/BILL1');
 });
 
+test('a guest coming back later gets a live payment page, not the dead one', async () => {
+  // THE FAILURE THIS PINS. Stripe replays an idempotent request for 24 hours.
+  // With one fixed key per bill and rail, the second tap returned the FIRST
+  // session — URL and all — so a guest who opened the page, ordered another
+  // drink and came back at minute forty met an expired Stripe page on a bill
+  // that was still perfectly payable for another fifty.
+  const { env } = realDb();
+  const keys = [];
+  const realFetch = globalThis.fetch;
+  const realNow = Date.now;
+  globalThis.fetch = async (url, init) => {
+    keys.push(init.headers['Idempotency-Key']);
+    return new Response(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' }), { status: 200 });
+  };
+  try {
+    const t0 = 1_800_000_000_000;
+    Date.now = () => t0;
+    await createBillCheckout(env, 'BILL1', 'card', {});
+    // A double-tap on a bad connection must NOT mint a second session.
+    Date.now = () => t0 + 40_000;
+    await createBillCheckout(env, 'BILL1', 'card', {});
+    assert.equal(keys[0], keys[1], 'two taps a moment apart are one session');
+
+    // Thirty-one minutes later the old session is dead, so this must be a new
+    // one — a fresh page costs nothing, a dead page costs the table.
+    Date.now = () => t0 + 31 * 60_000;
+    await createBillCheckout(env, 'BILL1', 'card', {});
+    assert.notEqual(keys[2], keys[0], 'after the session expires, mint another');
+  } finally {
+    globalThis.fetch = realFetch;
+    Date.now = realNow;
+  }
+});
+
+test('the window is shorter than the session, so a replayed session always has time left on it', async () => {
+  // The two constants are the whole guarantee: if the window ever grew past
+  // the session's life, a replay could hand back something already expired.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('billpay.mjs', import.meta.url), 'utf8');
+  const session = Number(src.match(/const SESSION_MIN = (\d+)/)?.[1]);
+  const win = Number(src.match(/const WINDOW_MIN = (\d+)/)?.[1]);
+  assert.ok(Number.isFinite(session) && Number.isFinite(win));
+  assert.ok(win < session, `the idempotency window (${win}m) must be shorter than the session (${session}m)`);
+});
+
 test('feeForBill mirrors the ledger: 10% on a verified booking, the flat floor on a walk-in', async () => {
   const { env } = realDb();
   assert.deepEqual(await feeForBill(env, await billFor(env, 'BILL1')), { minor: 845, basis: 'percentage', rate_bp: 1000 });
@@ -102,7 +147,9 @@ test('createBillCheckout: a DIRECT charge on the venue account, approved types o
     assert.equal(res.url, 'https://checkout.stripe.com/c/pay/cs_test_1');
     assert.equal(calls.length, 1);
     assert.equal(calls[0].headers['Stripe-Account'], 'acct_venue', 'the charge must be ON the venue account');
-    assert.equal(calls[0].headers['Idempotency-Key'], 'bill:BILL1:cashapp');
+    // The key carries a time window shorter than the session's 30-minute life,
+    // so a replayed request can never hand back a session that has expired.
+    assert.match(calls[0].headers['Idempotency-Key'], /^bill:BILL1:cashapp:\d+$/);
     const body = decodeURIComponent(calls[0].body);
     assert.match(body, /payment_method_types\[0\]=cashapp/);
     assert.ok(!/payment_method_types\[1\]/.test(body), 'the guest chose one rail');
