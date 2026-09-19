@@ -385,6 +385,7 @@ import * as DETECT from './pos/detect.mjs';
 import * as VENUEPAY from '../worker/venuepayout.mjs';
 import * as LEDGER from '../worker/ledger.mjs';
 import { senderFor as mailSenderFor, MAIL_KIND } from '../worker/mailer.mjs';
+import * as RECEIPT from '../worker/billreceipt.mjs';
 import * as TILLBILL from '../worker/tillbill.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
 import * as BILLITEMS from '../worker/billitems.mjs';
@@ -8629,6 +8630,49 @@ function hostOf(u) {
  * cleared it on the till, and a human looking at their own order is the only
  * check that catches that.
  */
+/**
+ * A guest asks for their own copy, on the page where they have just paid.
+ *
+ * A plain form POST and a redirect back, not fetch(). The pay page has no
+ * JavaScript it depends on — it is opened by a camera on a stranger's phone
+ * on a venue's wifi — and a receipt box that only works when a script loads
+ * is a receipt box that does not work at the table.
+ *
+ * Deliberately NOT allowed to fail loudly. The page itself is the receipt and
+ * is already on screen, so every outcome here is a sentence and a 303 back to
+ * it. See worker/billreceipt.mjs.
+ */
+async function payReceipt(req, env, tok) {
+  const ptok = clean(tok, 40).toUpperCase();
+  // A CODE, never a sentence. Whatever goes in this redirect comes back as a
+  // query string, which is to say a thing anybody can write — and
+  // "?say=Your card was charged twice" on a real NUM receipt page, in NUM's
+  // own voice, is a better phishing message than most phishing messages.
+  // Escaping it stops a script and does nothing about the sentence. The page
+  // maps the code to fixed copy and renders nothing for one it does not know.
+  const back = (code) => Response.redirect(
+    `${env.SITE || "https://itsnum.com"}/p/${encodeURIComponent(ptok)}${code ? `?said=${encodeURIComponent(code)}` : ""}`,
+    303,
+  );
+  if (req.method !== "POST") return back(null);
+
+  let to = "";
+  try {
+    const form = await req.formData();
+    to = String(form.get("to") || "").slice(0, 160);
+  } catch (e) {
+    // A body we cannot read is a guest who gets their page back, not a 500.
+    console.warn("[p/receipt] unreadable body", e && e.message);
+    return back(null);
+  }
+
+  const out = await RECEIPT.sendReceipt(env, ptok, to).catch((e) => {
+    console.error("[p/receipt] threw", String(e).slice(0, 300));
+    return { ok: false, code: "nomail" };
+  });
+  return back(out.code);
+}
+
 async function payRaiseBill(req, env, tok) {
   const ptok = clean(tok, 40).toUpperCase();
   if (req.method !== "POST") return Response.redirect(`${env.SITE || "https://itsnum.com"}/p/${encodeURIComponent(ptok)}`, 303);
@@ -8686,6 +8730,12 @@ async function payLanding(req, env, tok, view = "auto") {
       state: "paid", token: ptok, venue: link.business_name, label: link.label,
       amount: link.amount, currency: link.currency, items: lines,
       settledOn: String(link.settled_at).slice(0, 10),
+      // Which boxes can actually work, asked rather than assumed: a guest
+      // typing into a dead field and hearing nothing is worse than a page
+      // that offered nothing. And whatever the last attempt said, carried
+      // back through the redirect.
+      canSend: RECEIPT.channelsAvailable(env),
+      say: RECEIPT.sayFor(new URL(req.url).searchParams.get("said")),
     }));
   }
 
@@ -9262,6 +9312,50 @@ h1{font-size:20px;margin:14px 0 6px}
  * FROM them (worker/billitems.mjs); there is no second total anywhere that
  * could drift.
  */
+/**
+ * "Want a copy?" — on the one screen where a guest will ever answer it.
+ *
+ * NUM held one member email address across 156 members on 19 Sep 2026, and no
+ * push token at all, so a guest receipt has never had anywhere to go. Asking
+ * at sign-up puts a field in the way of something somebody wanted; asking
+ * later gives them no reason to answer. Asking here, under the confirmation
+ * they are already reading, offers them the thing they are already looking at.
+ *
+ * A plain form. No fetch, no script, no JSON: this page is opened by a camera
+ * on a stranger's phone on a venue's wifi, and a box that needs JavaScript to
+ * work is a box that does not work at the table.
+ *
+ * One field, not two with a radio button. Whether it is an email or a number
+ * is read off the string — a person who has just paid for dinner should not
+ * also have to classify their own address.
+ *
+ * Renders NOTHING when no channel is configured, rather than a dead box.
+ */
+function receiptBox(o) {
+  const can = o.canSend || {};
+  // `o.say` has already been mapped from a code by RECEIPT.sayFor(), so it is
+  // one of nine sentences we wrote or it is null. Still escaped: defence in
+  // depth costs nothing and the next caller may not be so careful.
+  const said = o.say
+    ? `<p class="note" style="margin-top:8px"><b>${esc(o.say)}</b></p>`
+    : "";
+  if (!can.email && !can.sms) return said;
+  const what = can.email && can.sms
+    ? "email address or mobile number"
+    : can.email ? "email address" : "mobile number";
+  return `
+    <form method="post" action="/p/${esc(o.token)}/receipt" class="ppbox" style="margin-top:10px">
+      <label for="rcpt">Want a copy of this?</label><br>
+      <input id="rcpt" name="to" type="text" inputmode="${can.email ? "email" : "tel"}"
+        autocapitalize="off" autocorrect="off" spellcheck="false"
+        placeholder="${esc(what)}"
+        style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px 12px;font-size:16px;border:1px solid rgba(0,0,0,.18);border-radius:10px">
+      <button class="btn" type="submit" style="margin-top:8px;width:100%">Send my receipt</button>
+      <span class="note">Optional. Your receipt stays on this page whether or not you
+      give us anything, and NUM does not use it to sign you up for anything.${can.sms ? " Include the country code for a text." : ""}</span>
+    </form>${said}`;
+}
+
 function billLines(items) {
   if (!items || !items.length) return "";
   const rows = items.map((it) =>
@@ -9372,9 +9466,15 @@ function payPage(o) {
    *
    * This page is the only confirmation that reaches a guest without us holding
    * a single contact detail for them — they are already looking at it, and the
-   * link is in their phone's history. Num holds no member email addresses and
-   * a booking stores the guest's number encrypted, so until a receipt has
-   * somewhere to be sent, this IS the receipt.
+   * link is in their phone's history.
+   *
+   * `num_members.email` exists and, on 19 Sep 2026, held one address across
+   * 156 members, none of them verified, with no push token anywhere. So this
+   * page is not merely the fallback receipt, it is the ONLY one that has ever
+   * been delivered — which is why receiptBox() asks for an address here,
+   * under the confirmation, rather than at sign-up where it is a field in the
+   * way of something somebody wanted. Giving one is an addition and never a
+   * replacement: a guest who gives nothing has lost nothing.
    *
    * It also closes a real bug: `payLanding` never read `settled_at`, so
    * reopening a paid bill showed "Pay THB 2,400" again, telling a guest who
@@ -9389,6 +9489,7 @@ function payPage(o) {
     Nothing further is owed on this code and it cannot be paid again.</p>
     <div class="ppbox">Your reference<br><span class="ppid">${esc(o.token)}</span><br>
     <span class="note">Quote this if you need to ask ${esc(o.venue)} about the bill.</span></div>
+    ${receiptBox(o)}
     <p class="note">The money went straight from you to ${esc(o.venue)}. NUM never
     held it and never saw your card.</p>
     <div class="warn">Asked to pay again after seeing this? Don't — show staff

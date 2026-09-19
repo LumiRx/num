@@ -11,9 +11,10 @@ import { TabStarter } from './TabSheet';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
 import MembershipCard from './MembershipCard';
+import StaysCard from './StaysCard';
 import { apiUrl } from '../../lib/apibase';
 import { loadMemberWallet, createMemberWallet, shortAddress, type MemberWallet } from '../../lib/memberwallet';
-import { loadHistory, type PaidBill } from '../../lib/bill';
+import { loadHistory, loadOwed, type PaidBill, type LedgerEntry } from '../../lib/bill';
 import { t } from '../../lib/i18n';
 
 // No PACKS constant here on purpose. The wallet used to carry its own copy of
@@ -35,6 +36,10 @@ export default function WalletSheet() {
   // money on a bill are different units, and a single total would be a number
   // that means nothing.
   const [paid, setPaid] = useState<PaidBill[]>([]);
+  // Shares somebody split to this member that nobody has paid yet. Kept in
+  // its own list and never added to what they have spent — money owed is not
+  // money moved, and one figure covering both is a forecast, not a wallet.
+  const [owed, setOwed] = useState<LedgerEntry[]>([]);
   const [coinErr, setCoinErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
@@ -51,6 +56,7 @@ export default function WalletSheet() {
     void fetch(apiUrl('/api/pay/status')).then((r) => r.json()).then(setPay).catch(() => setPay(null));
     if (account?.id) void loadMemberWallet(account.id).then(setCoin);
     if (account?.id) void loadHistory(account.id).then((h) => setPaid(h.bills));
+    if (account?.id) void loadOwed(account.id).then(setOwed);
     // Pulled on every open. A wallet is read precisely when someone doubts
     // what it says, so a cached one is worth very little.
     void refreshActivity();
@@ -170,6 +176,12 @@ export default function WalletSheet() {
           <MembershipCard />
         </div>
       )}
+      {/* THE ROOMS NUM HAS BOOKED, and the way out of one.
+          Guarded by `open` for exactly the reason MembershipCard above is: this
+          sheet never unmounts, so an unguarded fetch would ask for every
+          member's stays on every app load. StaysCard renders nothing at all
+          when there are none, so it never nags somebody who has not booked. */}
+      {open && <StaysCard />}
       {/* EARNED — the money side. Shown only when there is something to show,
           so it never nags a traveller who has never run an errand. */}
       {!!out && out.cashable > 0 && (
@@ -261,6 +273,35 @@ export default function WalletSheet() {
             signed in for. A bill paid in a browser by somebody not signed in
             belongs to nobody and appears here for nobody — half the value of
             a history is trusting that what is in it is yours. */}
+        {/* WHAT YOU OWE, AND WHY IT IS FIRST.
+            A share somebody split to you is stamped with your id when it is
+            minted, so it sits here whether or not any notification reached
+            you — which on 19 Sep 2026 was every single time, the live member
+            base having no push tokens at all. For a member this is the most
+            reliable delivery the split has, so it goes above the history
+            rather than below it. */}
+        {!!owed.length && (
+          <div className="glass lift" style={{ borderRadius: 14, padding: '12px 13px', marginBottom: 14, border: '1.5px solid var(--color-accent)' }}>
+            <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('WAITING FOR YOU')}</div>
+            {owed.slice(0, 6).map((o) => (
+              <div
+                key={o.ref ?? o.at}
+                {...pressable(() => { if (o.ref) store.set({ walletOpen: false, billOpen: o.ref }); })}
+                role="button"
+                className="press"
+                style={{ cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'baseline', marginTop: 8, minHeight: 44 }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.counterparty}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 1 }}>{t('your share')}</div>
+                </div>
+                <div style={{ flex: 'none', fontWeight: 700, fontSize: 13.5, fontVariantNumeric: 'tabular-nums' }}>
+                  {o.currency} {o.amount}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {!!paid.length && (
           <div className="glass lift" style={{ borderRadius: 14, padding: '12px 13px', marginBottom: 14 }}>
             <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('BILLS YOU HAVE PAID')}</div>
