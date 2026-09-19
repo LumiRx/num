@@ -41,6 +41,10 @@ export default function BillSheet() {
   const [tab, setTab] = useState<TabState | null>(null);
   const [shares, setShares] = useState<BillShare[] | null>(null);
   const [splitErr, setSplitErr] = useState<string | null>(null);
+  // What a hand-over just did, shown for a couple of seconds. A share
+  // NUM could not send is passed on by the person holding the phone, and
+  // they need to see that the gesture worked.
+  const [handed, setHanded] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -106,6 +110,29 @@ export default function BillSheet() {
     if (again.ok) setView(again.view);
   };
 
+  /**
+   * Hand a share over. NUM reaching somebody is an improvement on this, never
+   * a replacement for it: on 19 Sep 2026 the live member base held zero push
+   * tokens, so this gesture is the delivery mechanism that actually works.
+   */
+  const handOver = async (sh: BillShare) => {
+    const link = sh.link;
+    if (!link) return;
+    const line = `${sh.name ? `${sh.name}, your` : 'Your'} share of the bill \u2014 ${bill?.currency ?? ''} ${sh.amount}`;
+    const nav = navigator as Navigator & { share?: (x: ShareData) => Promise<void> };
+    if (nav.share) {
+      // URL its own field: iOS only builds a link preview when it is.
+      try { await nav.share({ title: line, text: line, url: link }); return; } catch { /* cancelled, fall through to copy */ }
+    }
+    try {
+      await navigator.clipboard.writeText(`${line}\n${link}`);
+      setHanded(sh.token);
+      setTimeout(() => setHanded(null), 2400);
+    } catch {
+      setSplitErr(t('Could not copy that \u2014 the link is on the share itself.'));
+    }
+  };
+
   /** The share that was minted for whoever is looking at this screen. */
   const mine = shares?.find((sh) => sh.member_id && sh.member_id === me?.id) ?? null;
 
@@ -150,7 +177,7 @@ export default function BillSheet() {
               {bill?.currency} {mine.amount}
             </div>
             <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.5 }}>
-              {t('Everyone else has theirs in their NUM.')}
+              {t('Everyone else has their own share below.')}
             </div>
             <div
               {...pressable(() => store.set({ billOpen: mine.token }))}
@@ -172,7 +199,47 @@ export default function BillSheet() {
 
         {bill && bill.state === 'split' && !mine && (
           <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink-60)' }}>
-            {t('This bill was split. Everyone pays their own share, and each share was sent to their NUM.')}
+            {t('This bill was split. Everyone pays their own share.')}
+          </div>
+        )}
+
+        {/* ── EVERY SHARE, AND WHETHER IT ACTUALLY REACHED ANYBODY ─────────
+            This screen used to say "each share was sent to their NUM", which
+            on 19 Sep 2026 was untrue for every split ever made: zero push
+            tokens on the whole member base. So the server now says, per
+            person, what carried it — and where nothing did, the person
+            holding the phone hands the link over, which is a delivery
+            mechanism and not a failure. */}
+        {!!shares?.length && (
+          <div style={{ marginTop: 14, borderTop: '1px solid var(--ink-12)', paddingTop: 12 }}>
+            <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('THE SHARES')}</div>
+            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+              {shares.map((sh) => {
+                const sent = !!sh.sent_by?.length;
+                return (
+                  <div key={sh.token} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {sh.name || t('Share')} · {bill?.currency} {sh.amount}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 1 }}>
+                        {handed === sh.token ? t('Copied — paste it to them.') : (sh.say ?? '')}
+                      </div>
+                    </div>
+                    {sh.link && !sent && (
+                      <div
+                        {...pressable(() => { void handOver(sh); })}
+                        role="button"
+                        className="press"
+                        style={{ flex: 'none', cursor: 'pointer', minHeight: 36, display: 'flex', alignItems: 'center', borderRadius: 999, border: '1px solid var(--ink-12)', padding: '0 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.06em' }}
+                      >
+                        {t('SEND IT')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

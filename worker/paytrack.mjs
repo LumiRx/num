@@ -51,6 +51,7 @@ export const KINDS = Object.freeze({
   autopay_paid: 'the standing mandate paid it without a tap',
   autopay_refused: 'the mandate declined to, and why',
   split: 'the bill was divided into shares',
+  share_sent: 'a share was handed to the person it is for, or could not be',
   share_paid: 'one share of a split landed',
   till_closed: 'the check was closed in the venue POS',
   till_failed: 'the bill is paid and the check is still open',

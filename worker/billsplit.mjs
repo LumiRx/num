@@ -40,7 +40,7 @@
  */
 import { mintBillCode, parseAmount } from './billqr.mjs';
 import { billFor, feeForBill } from './billpay.mjs';
-import { notify } from './push.mjs';
+import { deliverShares } from './billreach.mjs';
 import { track } from './paytrack.mjs';
 
 const MAX_WAYS = 12;
@@ -114,7 +114,7 @@ export async function sharesFor(env, parentToken) {
  * splitting. `amounts` is optional: minor units per person, in the same order,
  * for an uneven split. Given neither, it splits evenly.
  */
-export async function splitBill(env, parentToken, { people, amounts = null, by = null } = {}) {
+export async function splitBill(env, parentToken, { people, amounts = null, by = null, note = null } = {}) {
   const parent = await billFor(env, parentToken);
   if (!parent) return { ok: false, status: 404, reason: 'unknown bill code' };
   if (!parent.fixed || !parent.amount_minor) return { ok: false, status: 422, reason: 'this code carries no amount to split' };
@@ -125,7 +125,16 @@ export async function splitBill(env, parentToken, { people, amounts = null, by =
   if (already.split_at) return { ok: false, status: 409, reason: 'this bill has already been split' };
   if (already.parent) return { ok: false, status: 409, reason: 'a share cannot be split again' };
 
-  const who = (people ?? []).map((p) => ({ member_id: clip(p?.member_id, 40), name: clip(p?.name, 60) }));
+  // Contact details are carried through rather than dropped. A share for a
+  // friend who is not on NUM has no member_id and used to have no way of
+  // reaching anybody at all; the number their friend typed at the table is
+  // the whole of what makes that share deliverable.
+  const who = (people ?? []).map((p) => ({
+    member_id: clip(p?.member_id, 40),
+    name: clip(p?.name, 60),
+    phone: clip(p?.phone, 20),
+    email: clip(p?.email, 160),
+  }));
   if (who.length < 2) return { ok: false, status: 422, reason: 'a split needs at least two people' };
   if (who.length > MAX_WAYS) return { ok: false, status: 422, reason: `${MAX_WAYS} ways is the most` };
 
@@ -177,7 +186,11 @@ export async function splitBill(env, parentToken, { people, amounts = null, by =
     await env.DB.prepare(
       'UPDATE num_paylinks SET split_parent = ?2, split_for_member = ?3, application_fee_minor = ?4 WHERE token = ?1',
     ).bind(one.token, parent.token, who[i].member_id, feeParts[i]).run();
-    made.push({ token: one.token, member_id: who[i].member_id, name: who[i].name, amount_minor: parts[i], amount: amt.display, fee_minor: feeParts[i] });
+    made.push({
+      token: one.token, member_id: who[i].member_id, name: who[i].name,
+      phone: who[i].phone, email: who[i].email,
+      amount_minor: parts[i], amount: amt.display, currency: parent.currency, fee_minor: feeParts[i],
+    });
   }
 
   // Close the parent to direct payment, and only if it is still unpaid — a
@@ -194,14 +207,42 @@ export async function splitBill(env, parentToken, { people, amounts = null, by =
     return { ok: false, status: 409, reason: 'that bill was paid while it was being split' };
   }
 
-  await Promise.all(made.map((m) => (m.member_id ? notify(env, {
-    memberId: m.member_id,
-    kind: 'bill',
-    title: parent.venue,
-    body: `Your share of the bill — ${parent.currency} ${m.amount}`,
-    url: `/pay/${m.token}`,
-    tag: `bill:${m.token}`,
-  }).catch(() => null) : null)));
+  /* ── HANDING THE SHARES OVER ─────────────────────────────────────────
+   *
+   * This was one `notify()` per member_id and nothing else, which on 19 Sep
+   * 2026 meant: zero push tokens on the whole member base, so zero people
+   * told, and a share minted for a friend who is not on NUM got not even
+   * that — it had no member_id to notify.
+   *
+   * billreach.mjs owns the ladder now: a link that always works, the in-app
+   * row, a text under friendtext's consent rules, an email if we hold one.
+   * The result is carried back so the app can say, per person, whether NUM
+   * reached them or whether somebody has to pass the link along. That
+   * distinction is the difference between a split that works and a split
+   * that looks like it worked.
+   *
+   * Never allowed to fail the split. The shares are minted, the parent is
+   * closed, the money is correct; a rail that would not carry a message is
+   * not a reason to unwind any of that. */
+  const splitter = by
+    ? await env.DB.prepare('SELECT id, name, phone_verified FROM num_members WHERE id = ?1')
+        .bind(by).first().catch(() => null)
+    : null;
+
+  const handed = await deliverShares(env, {
+    shares: made,
+    parent: {
+      token: parent.token,
+      venue: parent.venue,
+      currency: parent.currency,
+      business_id: parent.business_id,
+    },
+    from: splitter ?? {},
+    note,
+  }).catch((e) => {
+    console.error('[billsplit] handing over the shares threw', String(e?.message ?? e).slice(0, 200));
+    return null;
+  });
 
   await track(env, {
     token: parent.token, businessId: parent.business_id, kind: 'split',
@@ -209,7 +250,27 @@ export async function splitBill(env, parentToken, { people, amounts = null, by =
     detail: `${made.length} ways`,
   });
 
-  return { ok: true, parent: parent.token, currency: parent.currency, total_minor: parent.amount_minor, fee_minor: fee.minor, shares: made };
+  // Each share gets its link and the plain sentence about whether it was sent,
+  // merged onto the row the app already renders, so there is one list on
+  // screen rather than two that can disagree.
+  const bySlug = new Map((handed?.shares ?? []).map((h) => [h.token, h]));
+  const shares = made.map((m) => {
+    const h = bySlug.get(m.token);
+    return h ? { ...m, link: h.link, sent_by: h.reached, say: h.say, to: h.to } : m;
+  });
+
+  return {
+    ok: true,
+    parent: parent.token,
+    currency: parent.currency,
+    total_minor: parent.amount_minor,
+    fee_minor: fee.minor,
+    shares,
+    // How many NUM itself got to a person, and how many are links for the
+    // splitter to hand over. A handover is a real outcome, not a failure.
+    reached: handed?.reached ?? 0,
+    handover: handed?.handover ?? shares.length,
+  };
 }
 
 export async function handleSplit(request, env, path) {
@@ -223,6 +284,9 @@ export async function handleSplit(request, env, path) {
     people: body.people,
     amounts: body.amounts ?? null,
     by: clip(body.by, 40),
+    // A line the splitter types — "the wine was mine" — carried into the
+    // message their friend receives. Clipped here rather than trusted.
+    note: clip(body.note, 120),
   });
   if (!out.ok) return json({ error: out.reason }, out.status ?? 400);
   return json(out);

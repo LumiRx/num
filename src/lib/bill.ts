@@ -47,6 +47,18 @@ export interface BillShare {
   name: string | null;
   amount: string;
   amount_minor: number;
+  /**
+   * The share's own pay page. Always present, whatever else happened — a
+   * share NUM could not send is still a real bill somebody can be handed,
+   * and this is the thing they are handed.
+   */
+  link?: string;
+  /** Which rails carried it: [] means nobody was reached and that is fine. */
+  sent_by?: string[];
+  /** The sentence to show under their name. The server writes it, not us. */
+  say?: string;
+  /** Masked, so a screen never gives a friend's number away. */
+  to?: { phone: string | null; email: string | null; member: boolean };
 }
 
 /** app.itsnum.com/pay/<TOKEN> → open the sheet; the path is then tidied away. */
@@ -100,18 +112,23 @@ export function startRail(rail: BillRail, meId?: string | null): void {
  */
 export async function splitShares(
   token: string,
-  people: Array<{ member_id: string; name?: string | null }>,
+  // A person may be a member, or just a name with a number their friend
+  // typed at the table. Both get a real share; only the contact details
+  // decide whether NUM can deliver it or somebody passes the link over.
+  people: Array<{ member_id?: string | null; name?: string | null; phone?: string | null; email?: string | null }>,
   by?: string | null,
-): Promise<{ ok: true; shares: BillShare[] } | { ok: false; error: string }> {
+  note?: string | null,
+): Promise<{ ok: true; shares: BillShare[]; reached: number; handover: number } | { ok: false; error: string }> {
   try {
     const r = await fetch(apiUrl(`/api/bill/${encodeURIComponent(token)}/split`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ people, by }),
+      body: JSON.stringify({ people, by, note: note ?? null }),
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) return { ok: false, error: String((body as { error?: string })?.error ?? 'Could not split that bill.') };
-    return { ok: true, shares: (body as { shares: BillShare[] }).shares };
+    const out = body as { shares: BillShare[]; reached?: number; handover?: number };
+    return { ok: true, shares: out.shares, reached: out.reached ?? 0, handover: out.handover ?? out.shares.length };
   } catch (e) {
     return { ok: false, error: guestMessage(e, t('Could not split that bill just now.'), 'bill') };
   }
@@ -124,6 +141,46 @@ export interface PaidBill {
 export interface PastTab {
   id: string; code: string; title: string; venue: string | null; state: string;
   people: number; stars: number; opened_at: string; closed_at: string | null;
+}
+
+/** One line of the ledger: a thing that happened to this member's money. */
+export interface LedgerEntry {
+  at: string;
+  kind: string;
+  what: string;
+  direction: 'in' | 'out';
+  amount_minor: number | null;
+  amount: string | null;
+  currency: string | null;
+  counterparty: string | null;
+  state: string;
+  ref: string | null;
+  note: string | null;
+}
+
+/**
+ * What this member owes — shares somebody split to them that nobody has paid.
+ *
+ * This is a SECOND way a share arrives, and on 19 Sep 2026 it was the only
+ * reliable one: the live member base held zero push tokens, so a share minted
+ * for a member reached them by nothing at all. It is stamped with their id at
+ * split time, so it is waiting in their wallet whether or not any message
+ * left the building.
+ *
+ * Deliberately separate from the paid history and never added to it. Money
+ * owed is not money spent, and a total that mixed them would be a forecast.
+ */
+export async function loadOwed(meId: string): Promise<LedgerEntry[]> {
+  try {
+    const r = await fetch(apiUrl(`/api/ledger?me=${encodeURIComponent(meId)}`), { headers: { accept: 'application/json' } });
+    if (!r.ok) return [];
+    const body = await r.json() as { open?: LedgerEntry[] };
+    return body.open ?? [];
+  } catch {
+    // A wallet that cannot read this shows the rest of itself. An empty list
+    // is the truth as far as this device can see.
+    return [];
+  }
 }
 
 /** Everything this member has paid through NUM, and the tabs they were on. */

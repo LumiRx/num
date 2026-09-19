@@ -264,6 +264,61 @@ test('once the last share lands, nothing is left live on that bill', async () =>
   assert.equal(live.n, 0, 'a paid dinner leaves no payable code behind it');
 });
 
+/* ── the shares have to reach somebody ────────────────────────────────────
+ * Until 19 Sep 2026 this fanned out to push alone, and the live database held
+ * zero push tokens. The money was right and nobody was told. billreach.mjs
+ * owns the handover now; these pin that splitBill actually uses it and that a
+ * friend who is not on NUM is no longer unreachable by construction. */
+
+test('every share comes back with a link, whether or not NUM could send it', async () => {
+  const { d, env } = realDb();
+  putBill(d, { amount: '84.00' });
+  const out = await splitBill(env, 'PARENT', { people: FOUR, by: 'm1' });
+  assert.equal(out.ok, true);
+  assert.equal(out.shares.length, 4);
+  for (const s of out.shares) {
+    assert.match(s.link, /^https:\/\/itsnum\.com\/p\/[A-Z0-9]+$/, 'a share nobody can open is not a bill');
+    assert.equal(typeof s.say, 'string');
+  }
+});
+
+test('a friend who is not on NUM gets a real share and a way to be handed it', async () => {
+  const { d, env } = realDb();
+  putBill(d, { amount: '40.00' });
+  const out = await splitBill(env, 'PARENT', {
+    people: [{ member_id: 'm1', name: 'Dre' }, { name: 'Jo, not on NUM' }],
+    by: 'm1',
+  });
+  assert.equal(out.ok, true);
+  const jo = out.shares[1];
+  assert.equal(jo.member_id, null);
+  assert.ok(jo.link, 'this share used to exist with no path to any human at all');
+  assert.equal(out.handover >= 1, true);
+});
+
+test('a split says how many people NUM itself reached', async () => {
+  const { d, env } = realDb();
+  putBill(d, { amount: '40.00' });
+  const out = await splitBill(env, 'PARENT', { people: FOUR.slice(0, 2), by: 'm1' });
+  assert.equal(typeof out.reached, 'number');
+  assert.equal(typeof out.handover, 'number');
+  assert.equal(out.reached + out.handover, out.shares.length,
+    'every share is either reached or a handover — there is no third outcome');
+});
+
+test('a rail that cannot carry a message never unwinds a correct split', async () => {
+  // No Twilio, no Resend, no members table in this world at all. The shares
+  // are minted, the parent is closed, the money is right.
+  const { d, env } = realDb();
+  putBill(d, { amount: '84.00' });
+  const out = await splitBill(env, 'PARENT', { people: FOUR, by: 'm1' });
+  assert.equal(out.ok, true);
+  const state = await splitStateOf(env, 'PARENT');
+  assert.ok(state.split_at, 'the parent must still be closed');
+  const shares = await sharesFor(env, 'PARENT');
+  assert.equal(shares.length, 4);
+});
+
 test('two people is the floor and twelve the ceiling', async () => {
   const { d, env } = realDb();
   putBill(d, { amount: '84.00' });
