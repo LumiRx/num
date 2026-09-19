@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 19:11 UTC from 42 entries._
+_Built 2026-09-19 19:46 UTC from 43 entries._
 
 ## Deployed right now
 
@@ -17,10 +17,10 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | 🟢 up to date (2026-09-19 01:37) |
-| num-app | 🟢 up to date (2026-09-19 18:37) |
-| num-growth | 🟢 up to date (2026-09-19 17:49) |
+| num-app | 🔴 **STALE** — 1 file changed since it shipped |
+| num-growth | 🟢 up to date (2026-09-19 19:34) |
 | num-ai | ⚪ never recorded from this machine |
-| num-accounts | 🟢 up to date (2026-09-17 04:51) |
+| num-accounts | 🟢 up to date (2026-09-19 19:45) |
 | num-payouts | ⚪ never recorded from this machine |
 | num-claim | ⚪ never recorded from this machine |
 | num-agents | 🟢 up to date (2026-09-17 19:40) |
@@ -53,8 +53,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
-- 🟡 **qr bill pay** — QR pay: covered the two surfaces I had built and not tested. growth/paychooser.test.mjs gains six request-level tests driven through the real Worker: an itemised bill shows its lines and they ADD UP to the figure above them (36.00 + 34.50 + 14.00 = 84.50, checked by summing the rendered cells, because that is the entire reason for showing lines); a bill with no lines grows no empty box; the page still renders 200 when 0045 has not run, which is the state a deploy passes through; a split parent r
-  _claude, 2026-09-19 19:11_
+- 🟡 **qr bill pay** — Unblocked npm test for everyone, and clearing the gate showed what it had been hiding. coverage-claims runs BEFORE any test and was aborting the whole suite. Another session had fixed three of the four stale claims; the last was public/guides/index.html saying 'across 77 destinations' against a list of 106. I checked what 77 meant before changing it - the sentence is about the DIRECTORY, not about how many guides exist (there are none yet besides the index), so 106 is right. Its place count was 
+  _claude, 2026-09-19 19:46_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre
