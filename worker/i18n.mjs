@@ -119,12 +119,21 @@ async function translateBatch(env, strings, lang) {
       'Never say "booked" or "reserved" for something NUM cannot confirm; where the English says "asks" or "checked", keep that meaning.',
       'Answer with a JSON object only: {"<english>": "<translation>", ...} with the English strings as keys, exactly as given, nothing else.',
     ].join('\n');
-    const res = await client.messages.create({
+    const params = {
       model: env.NUM_MODEL_I18N || env.NUM_MODEL_STRONG || 'claude-opus-5',
       max_tokens: 12000,
       system,
       messages: [{ role: 'user', content: JSON.stringify(strings) }],
-    });
+    };
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try { res = await client.messages.create(params); break; } catch (err) {
+        // Rate-limited or overloaded: wait and try once more. Anything else
+        // is this batch's failure, and the caller falls through to m2m100.
+        if (attempt < 2 && (err?.status === 429 || err?.status === 529)) { await new Promise((r) => setTimeout(r, 4000 * (attempt + 1))); continue; }
+        throw err;
+      }
+    }
     const text = (res?.content ?? []).map((c) => c?.text ?? '').join('');
     const body = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
     let parsed;
@@ -222,8 +231,12 @@ export async function bundleFor(env, lang, strings, { defer = null } = {}) {
   if (defer && missing.length > FIRST_SYNC) {
     const now_ = missing.slice(0, FIRST_SYNC);
     const later = missing.slice(FIRST_SYNC);
-    defer(bundleFor(env, lang, later.map(([s]) => s)));
-    Object.assign(map, await bundleFor(env, lang, now_.map(([s]) => s)));
+    // One after the other, never side by side: two bundles translating at
+    // once put a dozen model calls in flight from one isolate, the model
+    // answered 429 to most of them, and Mongolian came back with nothing.
+    const first = bundleFor(env, lang, now_.map(([s]) => s));
+    defer(first.then(() => bundleFor(env, lang, later.map(([s]) => s))));
+    Object.assign(map, await first);
     return map;
   }
 
@@ -258,7 +271,7 @@ export async function bundleFor(env, lang, strings, { defer = null } = {}) {
   const batches = [];
   for (let i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATCH));
   let bi = 0;
-  await Promise.all(Array.from({ length: Math.min(6, batches.length) }, async () => {
+  await Promise.all(Array.from({ length: Math.min(4, batches.length) }, async () => {
     while (bi < batches.length) {
       const b = batches[bi++];
       const g = await translateBatch(env, b, lang);
