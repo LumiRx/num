@@ -180,8 +180,8 @@ export default function WalletSheet() {
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 17 }}>★{out.cashable.toLocaleString()}</div>
               <div style={{ fontSize: 10, color: 'var(--color-neutral-600)', marginTop: 2, lineHeight: 1.45 }}>
                 {out.open
-                  ? 'Sends to your 5arz account.'
-                  : 'Counted and safe — cash-out opens shortly.'}
+                  ? t('Sends to your 5arz account.')
+                  : t('Counted and safe — cash-out opens shortly.')}
                 {out.locked_purchased > 0 && ` ★${out.locked_purchased.toLocaleString()} bought, spends in NUM.`}
               </div>
             </div>

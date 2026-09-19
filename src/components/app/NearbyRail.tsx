@@ -58,7 +58,7 @@ function SourceMark({ source }: { source: RailItem['source'] }) {
   };
   if (source === 'ticketmaster') {
     return (
-      <span style={base} aria-label="Listed on Ticketmaster">
+      <span style={base} aria-label={t('Listed on Ticketmaster')}>
         <svg width="8" height="8" viewBox="0 0 20 20" aria-hidden="true">
           <path d="M3 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a1.8 1.8 0 0 0 0 3.6V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.2a1.8 1.8 0 0 0 0-3.6Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
           <path d="M8 5v10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" />
@@ -68,7 +68,7 @@ function SourceMark({ source }: { source: RailItem['source'] }) {
     );
   }
   return (
-    <span style={{ ...base, color: 'var(--color-accent)' }} aria-label="Checked by NUM">
+    <span style={{ ...base, color: 'var(--color-accent)' }} aria-label={t('Checked by NUM')}>
       <svg width="8" height="8" viewBox="0 0 20 20" aria-hidden="true">
         <path d="M4 10.5 8.2 14.5 16 6" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
@@ -218,7 +218,7 @@ export default function NearbyRail({ title, count, items, onOpen, onSend, onPhot
                     <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ink-60)', fontVariantNumeric: 'tabular-nums' }}>★ {i.rating}</span>
                   )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: onSend ? '1fr auto' : '1fr', gap: 4, marginTop: 4 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: onSend ? t('1fr auto') : '1fr', gap: 4, marginTop: 4 }}>
                   <div
                     {...pressable(() => onOpen(i))}
                     className="tap press glow"

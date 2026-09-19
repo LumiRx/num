@@ -62,7 +62,7 @@ export default function TabSheet() {
       setStars('');
       setOnly([]);
     } catch (err) {
-      setMsg(guestMessage(err, 'That didn’t go on.'));
+      setMsg(guestMessage(err, t('That didn’t go on.')));
     }
     setBusy(false);
   };
@@ -83,7 +83,7 @@ export default function TabSheet() {
 
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>
-          {live ? 'LIVE TAB' : 'TAB CLOSED'}
+          {live ? t('LIVE TAB') : t('TAB CLOSED')}
         </div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>{tab.tab.title}</div>
         <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 3 }}>
@@ -97,7 +97,7 @@ export default function TabSheet() {
               <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('ANYONE CAN JOIN WITH')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 22, letterSpacing: '.18em', marginTop: 2 }}>{tab.tab.code}</div>
             </div>
-            <div {...pressable(() => void navigator.clipboard?.writeText(tab.tab.code).then(() => setMsg('Code copied.')))} style={{ ...ghost, padding: '9px 14px', fontSize: 10.5 }}>{t('COPY')}</div>
+            <div {...pressable(() => void navigator.clipboard?.writeText(tab.tab.code).then(() => setMsg(t('Code copied.'))))} style={{ ...ghost, padding: '9px 14px', fontSize: 10.5 }}>{t('COPY')}</div>
           </div>
         )}
 
@@ -105,7 +105,7 @@ export default function TabSheet() {
         {mine && (
           <div style={{ marginTop: 14, textAlign: 'center' }}>
             <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>
-              {mine.net < 0 ? 'YOU OWE' : mine.net > 0 ? 'YOU’RE OWED' : 'YOU’RE SQUARE'}
+              {mine.net < 0 ? t('YOU OWE') : mine.net > 0 ? t('YOU’RE OWED') : t('YOU’RE SQUARE')}
             </div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 38, lineHeight: 1.1, marginTop: 2, color: mine.net < 0 ? 'var(--color-accent)' : 'var(--color-text)' }}>
               ★{Math.abs(mine.net).toLocaleString()}
@@ -162,7 +162,7 @@ export default function TabSheet() {
               })}
             </div>
             <div {...pressable(log)} style={{ ...button, opacity: busy || !label.trim() || !stars ? 0.55 : 1 }}>
-              {busy ? 'ADDING…' : 'PUT IT ON THE TAB'}
+              {busy ? t('ADDING…') : t('PUT IT ON THE TAB')}
             </div>
           </div>
         )}
@@ -192,7 +192,7 @@ export default function TabSheet() {
         <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>
           {mine && mine.net < 0 && (
             <div {...pressable(settle)} style={{ ...button, opacity: busy ? 0.55 : 1 }}>
-              {busy ? 'SETTLING…' : `SETTLE UP — ★${Math.abs(mine.net).toLocaleString()}`}
+              {busy ? t('SETTLING…') : `SETTLE UP — ★${Math.abs(mine.net).toLocaleString()}`}
             </div>
           )}
           {live && tab.tab.owner_id === me?.id && (
@@ -224,7 +224,7 @@ export function TabStarter() {
       await fn();
       store.set({ walletOpen: false });
     } catch (e) {
-      setErr(guestMessage(e, 'That didn’t work.'));
+      setErr(guestMessage(e, t('That didn’t work.')));
     }
     setBusy(false);
   };
@@ -245,10 +245,10 @@ export function TabStarter() {
           onChange={(e) => setCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}
         />
         <div
-          {...pressable(() => void go(() => (code.length === 6 ? joinTab(code) : openTab('Tonight'))))}
+          {...pressable(() => void go(() => (code.length === 6 ? joinTab(code) : openTab(t('Tonight')))))}
           style={{ ...button, padding: '13px 18px', whiteSpace: 'nowrap', opacity: busy ? 0.55 : 1 }}
         >
-          {busy ? '…' : code.length === 6 ? 'JOIN' : 'OPEN A TAB'}
+          {busy ? '…' : code.length === 6 ? t('JOIN') : t('OPEN A TAB')}
         </div>
       </div>
       {err && <div style={{ fontSize: 11.5, color: 'var(--color-accent)', marginTop: 8 }}>{err}</div>}

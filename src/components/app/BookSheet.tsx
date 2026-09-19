@@ -97,7 +97,7 @@ export default function BookSheet() {
       </div>
 
       <div style={{ padding: 16 }}>
-        <div style={label}>{!sentId ? 'ASK THE VENUE' : answered ? 'THE VENUE ANSWERED' : 'WAITING ON THE VENUE'}</div>
+        <div style={label}>{!sentId ? t('ASK THE VENUE') : answered ? t('THE VENUE ANSWERED') : t('WAITING ON THE VENUE')}</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
           {draft.venue_name}
         </div>
@@ -108,13 +108,13 @@ export default function BookSheet() {
         {/* The request in full, before it is sent. Nothing here is a summary —
             it is the message the restaurant is about to get. */}
         <div style={{ marginTop: 14, padding: '2px 12px 6px', borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)' }}>
-          <Fact k="Venue" v={draft.venue_name} />
-          <Fact k="Party" v={`${draft.party_size} ${draft.party_size === 1 ? 'person' : 'people'}`} />
-          <Fact k="When" v={`${draft.on_date ?? 'Tonight'}${draft.at_time ? ` · ${draft.at_time}` : ''}`} />
-          {draft.note && <Fact k="Note" v={draft.note} />}
+          <Fact k={t('Venue')} v={draft.venue_name} />
+          <Fact k={t('Party')} v={`${draft.party_size} ${draft.party_size === 1 ? 'person' : 'people'}`} />
+          <Fact k={t('When')} v={`${draft.on_date ?? 'Tonight'}${draft.at_time ? ` · ${draft.at_time}` : ''}`} />
+          {draft.note && <Fact k={t('Note')} v={draft.note} />}
           <Fact
-            k="Reaching them"
-            v={draft.venue_phone ? `by text · ${draft.venue_phone}` : 'by our desk — no number on file'}
+            k={t('Reaching them')}
+            v={draft.venue_phone ? `by text · ${draft.venue_phone}` : t('by our desk — no number on file')}
             last
           />
         </div>
@@ -129,13 +129,13 @@ export default function BookSheet() {
             ) : (
               <>
                 <div {...pressable(send)} aria-disabled={busy} style={{ ...button, marginTop: 14, opacity: busy ? 0.55 : 1 }}>
-                  {busy ? 'ASKING…' : `SEND THE REQUEST TO ${draft.venue_name.toUpperCase()}`}
+                  {busy ? t('ASKING…') : `SEND THE REQUEST TO ${draft.venue_name.toUpperCase()}`}
                 </div>
                 <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>{t('NOT YET')}</div>
                 <div style={{ ...help, marginTop: 12 }}>
                   {draft.venue_phone
-                    ? 'They get one text with your party size and time, and two links — confirm or decline. Nothing is held until they tap one.'
-                    : 'We have no number on file for this one, so our desk rings them and answers here. Nothing is held until they do.'}
+                    ? t('They get one text with your party size and time, and two links — confirm or decline. Nothing is held until they tap one.')
+                    : t('We have no number on file for this one, so our desk rings them and answers here. Nothing is held until they do.')}
                 </div>
               </>
             )}
@@ -154,15 +154,15 @@ export default function BookSheet() {
             >
               {sent?.state === 'confirmed' ? <BookedCheck size={20} /> : <Dots />}
               <div style={{ fontSize: 12.5, fontWeight: 600, color: sent?.state === 'confirmed' ? '#0e6b45' : 'var(--ink)' }}>
-                {sent ? stateLine(sent) : 'Asked — waiting on the venue'}
+                {sent ? stateLine(sent) : t('Asked — waiting on the venue')}
               </div>
             </div>
 
             <div style={{ ...help, marginTop: 12 }}>
               {sent?.state === 'confirmed'
-                ? 'It’s in your plan, and your phone has it. Turn up and say the name.'
+                ? t('It’s in your plan, and your phone has it. Turn up and say the name.')
                 : sent?.state === 'declined'
-                  ? 'Not this time. Ask me and I’ll find you somewhere just as good for the same hour.'
+                  ? t('Not this time. Ask me and I’ll find you somewhere just as good for the same hour.')
                   : note ?? 'You can close this — your phone buzzes the moment they answer.'}
             </div>
 
@@ -179,7 +179,7 @@ export default function BookSheet() {
               </a>
             )}
             <div {...pressable(close)} style={{ ...(answered ? button : ghost), marginTop: sent?.state === 'confirmed' ? 8 : 14 }}>
-              {answered ? 'DONE' : 'CLOSE — I’LL TELL YOU'}
+              {answered ? t('DONE') : t('CLOSE — I’LL TELL YOU')}
             </div>
           </div>
         )}

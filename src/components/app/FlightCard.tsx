@@ -54,7 +54,7 @@ export default function FlightCard({ w, compact = false }: { w: FlightWatch; com
             <path d="M24 96 Q150 -18 276 96" fill="none" stroke="#3CE0AE" strokeWidth={3} strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - p} style={{ transition: 'stroke-dashoffset 1.2s' }} />
             <circle cx={24} cy={96} r={4} fill="#fff" /><circle cx={276} cy={96} r={4} fill="#fff" />
             <g transform={`translate(${x} ${y}) rotate(${angle})`} style={{ transition: 'transform 1.2s' }}>
-              <path d="M12 0 L-6 -7 L-3 0 L-6 7 Z M-2 -2 L-8 -12 L-5 -12 L4 -2 Z M-2 2 L-8 12 L-5 12 L4 2 Z" fill="#fff" transform="scale(.9)" />
+              <path d={t('M12 0 L-6 -7 L-3 0 L-6 7 Z M-2 -2 L-8 -12 L-5 -12 L4 -2 Z M-2 2 L-8 12 L-5 12 L4 2 Z')} fill="#fff" transform="scale(.9)" />
             </g>
           </svg>
         </div>

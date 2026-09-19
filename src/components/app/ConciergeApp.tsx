@@ -253,7 +253,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
             {me && (
               <div
                 {...pressable(() => store.set({ dmOpen: true, dmWith: null, dmThread: [] }))}
-                aria-label={dmUnread ? `Messages, ${dmUnread} new` : 'Messages'}
+                aria-label={dmUnread ? `Messages, ${dmUnread} new` : t('Messages')}
                 className="glass press"
                 style={{ cursor: 'pointer', width: 32, height: 32, borderRadius: 999, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 title={t('Messages')}
@@ -499,7 +499,7 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       {!threadOpen && !profileOpen && !dmOpen && (
         <div
           {...pressable(() => store.set({ threadOpen: true, unread: 0 }))}
-          aria-label={unread ? `Open thread, ${unread} new` : 'Open thread'}
+          aria-label={unread ? `Open thread, ${unread} new` : t('Open thread')}
           className="press rise-in glow"
           style={{
             position: 'absolute', right: 16, bottom: 'max(env(safe-area-inset-bottom), 16px)', zIndex: 40,

@@ -21,6 +21,7 @@ import { shareNative } from '../../lib/services';
 import { myIdentities, myConnections, linkMyBusiness, linkMyHost } from '../../lib/social';
 import { ChevronRightIcon, CopyIcon, ShareIcon, UsersIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
+import { T } from '../../lib/i18nmark';
 
 type Hat = { type: string; id: string; name: string | null; code: string | null; link: string | null };
 type Met = {
@@ -32,7 +33,7 @@ const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
 
 /** What we call each hat to a human. The server's word is a type, not a label. */
-const LABEL: Record<string, string> = { member: 'You', business: 'Business', host: 'VIP host' };
+const LABEL: Record<string, string> = { member: T('You'), business: T('Business'), host: T('VIP host') };
 
 const when = (iso: string): string => {
   const d = new Date(String(iso).replace(' ', 'T') + 'Z');
@@ -67,7 +68,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
     const out = what === 'business' ? await linkMyBusiness() : await linkMyHost(key);
     setBusy(null);
     if (out.ok) {
-      setMsg(what === 'business' ? 'Linked. Your business dashboard is above.' : 'Linked. Your host dashboard is above.');
+      setMsg(what === 'business' ? t('Linked. Your business dashboard is above.') : t('Linked. Your host dashboard is above.'));
       setKey('');
       setKeyOpen(false);
       onLinked();
@@ -94,7 +95,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
             className="press"
             style={{ ...btn, background: 'var(--grad-accent)', color: '#fff' }}
           >
-            {busy === 'business' ? '\u2026' : 'LINK MY BUSINESS'}
+            {busy === 'business' ? '\u2026' : t('LINK MY BUSINESS')}
           </div>
         )}
         {!hasHost && !keyOpen && (
@@ -130,7 +131,7 @@ function LinkAccounts({ hats, onLinked }: { hats: Hat[]; onLinked: () => void })
                 color: key ? '#fff' : 'var(--ink-60)',
               }}
             >
-              {busy === 'host' ? '\u2026' : 'LINK'}
+              {busy === 'host' ? '\u2026' : t('LINK')}
             </div>
           </div>
         )}
@@ -195,7 +196,7 @@ export default function IdentityCard() {
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ ...kicker, fontSize: 9.5 }}>{LABEL[h.type] ?? h.type}</div>
+                  <div style={{ ...kicker, fontSize: 9.5 }}>{t(LABEL[h.type] ?? h.type)}</div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {h.name ?? me.name ?? 'Your code'}
                   </div>
@@ -229,13 +230,13 @@ export default function IdentityCard() {
                           })}
                           style={{ cursor: 'pointer', flex: 1, minHeight: 44, borderRadius: 999, border: '1px solid var(--ink-12)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 800, letterSpacing: '.05em' }}
                         >
-                          <CopyIcon size={13} /> {copied ? 'COPIED' : 'COPY LINK'}
+                          <CopyIcon size={13} /> {copied ? t('COPIED') : t('COPY LINK')}
                         </div>
                         <div
                           {...pressable(() => void shareNative({
                             title: h.name ?? 'NUM',
                             text: h.type === 'member'
-                              ? 'Connect with me on NUM.'
+                              ? t('Connect with me on NUM.')
                               : `Find ${h.name ?? 'us'} on NUM.`,
                             url: h.link ?? '',
                           }))}

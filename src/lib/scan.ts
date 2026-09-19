@@ -15,6 +15,7 @@
 // camera app, which does the job perfectly.
 
 import { connectByCode, isIdentityCode, recordIdentityScan } from './social';
+import { t } from './i18n';
 
 interface BarcodeDetectorLike {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
@@ -81,7 +82,7 @@ export async function startScan(
 ): Promise<ScanHandle> {
   const Ctor = detectorCtor();
   if (!Ctor || !navigator.mediaDevices?.getUserMedia) {
-    on.error('This browser can’t scan in-app — use your phone’s camera app on the code instead.');
+    on.error(t('This browser can’t scan in-app — use your phone’s camera app on the code instead.'));
     return { stop: () => {} };
   }
 
@@ -91,7 +92,7 @@ export async function startScan(
     // camera, which cannot see a code held up by the person opposite you.
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
   } catch {
-    on.error('I need camera access to scan — you can allow it in your browser settings.');
+    on.error(t('I need camera access to scan — you can allow it in your browser settings.'));
     return { stop: () => {} };
   }
 

@@ -47,7 +47,7 @@ export function PairHandoff() {
           className="press"
           style={{ flex: 1, cursor: 'pointer', textAlign: 'center', borderRadius: 999, padding: '11px 14px', background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em' }}
         >
-          {copied ? 'COPIED' : 'COPY CODE'}
+          {copied ? t('COPIED') : t('COPY CODE')}
         </div>
       </div>
       <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('Good for 15 minutes. No NUM app yet? Add this page to your home screen first — then open it and enter the code.')}</div>
@@ -68,7 +68,7 @@ export function PairRedeem() {
     const err = await redeemPairCode(code);
     setBusy(false);
     if (err) { setMsg(err); return; }
-    setMsg('Connected — they’re in your friends now.');
+    setMsg(t('Connected — they’re in your friends now.'));
     setCode('');
     setTimeout(() => { setOpen(false); setMsg(null); }, 2200);
   };

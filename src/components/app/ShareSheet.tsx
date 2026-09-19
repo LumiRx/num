@@ -54,7 +54,7 @@ export default function ShareSheet() {
     referral: me.ref ? referralLink(me.ref) : null,
     line: me.name
       ? `It’s ${me.name}. I use NUM as my concierge — one thread that books dinner, cars, tables, whole weekends. Here’s my invite:`
-      : 'NUM is a concierge in one thread — dinner, cars, tables, whole weekends.',
+      : t('NUM is a concierge in one thread — dinner, cars, tables, whole weekends.'),
   } : null;
 
   const say = (m: string) => { setSaid(m); setTimeout(() => setSaid(null), 2600); };
@@ -70,7 +70,7 @@ export default function ShareSheet() {
       if (nav.share) {
         // URL passed separately from text — iOS only builds a link preview
         // when the url field is its own thing.
-        try { await nav.share({ title: 'Join me on NUM', text: links.line, url: links.connect }); } catch { /* cancelled */ }
+        try { await nav.share({ title: t('Join me on NUM'), text: links.line, url: links.connect }); } catch { /* cancelled */ }
       } else {
         say((await copyText(privateText(links))) ? t('Copied — paste it anywhere.') : t('Couldn’t copy.'));
       }

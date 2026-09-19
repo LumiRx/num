@@ -28,9 +28,14 @@ export function spanDays(from: string | null | undefined, to: string | null | un
 }
 
 /** "Fri 2 Oct" — never "Sept", never a locale surprise. */
-export const dayLabel = (day: string): string => {
+export const dayLabel = (day: string, locale?: string): string => {
   const [y, m, d] = day.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
+  // In the reader's language when one is given ("พฤ. 2 ต.ค."); the English
+  // short form is the default so the board's tests read the same words.
+  if (locale && locale !== 'en') {
+    try { return dt.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }); } catch { /* unknown locale → English */ }
+  }
   const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getUTCDay()];
   const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
   return `${wd} ${d} ${mo}`;

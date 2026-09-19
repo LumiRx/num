@@ -54,7 +54,7 @@ export default function DangerZone() {
     setBusy(true);
     const out = await deleteAccount(false);
     setBusy(false);
-    if (!out) { setNote('Couldn’t reach NUM just now.'); return; }
+    if (!out) { setNote(t('Couldn’t reach NUM just now.')); return; }
     setLook(out);
     setStage('look');
   };
@@ -92,7 +92,7 @@ export default function DangerZone() {
       setNote(out.blockers?.length ? out.blockers.join(' ') : (out.note ?? 'That didn’t go through.'));
       if (out.blockers?.length) setLook({ ...(look ?? {}), ...out, can_delete: false });
     }
-    if (!out) setNote('Couldn’t reach NUM just now. Nothing was deleted.');
+    if (!out) setNote(t('Couldn’t reach NUM just now. Nothing was deleted.'));
   };
 
   if (stage === 'shut') {
@@ -120,7 +120,7 @@ export default function DangerZone() {
           }}
         >
           <div style={{ fontSize: 13.5, fontWeight: 700, color: '#a3271c' }}>
-            {busy ? 'Checking…' : 'Delete my account'}
+            {busy ? 'Checking…' : t('Delete my account')}
           </div>
           <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.45 }}>{t('Permanently erases your account, your thread and everything NUM remembers.')}</div>
         </div>
@@ -191,7 +191,7 @@ export default function DangerZone() {
               fontWeight: 800, fontSize: 11.5, letterSpacing: '.06em', opacity: busy ? 0.6 : 1,
             }}
           >
-            {busy ? 'DELETING…' : 'DELETE EVERYTHING'}
+            {busy ? t('DELETING…') : t('DELETE EVERYTHING')}
           </div>
         </>
       )}

@@ -20,12 +20,13 @@ import { canSend, dropKeyboard } from './gate';
 import { fixPosition } from './whereami';
 import { t } from './i18n';
 import type { Msg } from './types';
+import { T } from './i18nmark';
 
 /** How close "at the place" is. Same order as the server's NEAR_KM (150 m) with room for a phone's fix. */
 export const HERE_KM = 0.2;
 
 /** The small print, said once, exactly as the server pays. */
-export const SMALL_PRINT = 'Photos taken at the place earn 1¢ each once approved — paid as ★1 per 100, up to 3 per place a month. NUM checks every photo before it goes up.';
+export const SMALL_PRINT = T('Photos taken at the place earn 1¢ each once approved — paid as ★1 per 100, up to 3 per place a month. NUM checks every photo before it goes up.');
 
 export const atThePlace = (distanceKm: number | null | undefined): boolean =>
   distanceKm != null && Number.isFinite(distanceKm) && distanceKm <= HERE_KM;

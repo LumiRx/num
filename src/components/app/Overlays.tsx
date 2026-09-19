@@ -47,8 +47,8 @@ export function VoiceOverlay() {
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(voice !== 0, ref);
   if (voice === 0) return null;
-  const label = ['', 'LISTENING', 'ON IT…', 'DONE'][voice] || '';
-  const text = voice === 2 ? '“Move my massage to five.”' : voice === 3 ? 'Massage moved to 17:00 — calendar updated, nothing else touched.' : '';
+  const label = ['', t('LISTENING'), t('ON IT…'), t('DONE')][voice] || '';
+  const text = voice === 2 ? t('“Move my massage to five.”') : voice === 3 ? t('Massage moved to 17:00 — calendar updated, nothing else touched.') : '';
   return (
     <div
       ref={ref}

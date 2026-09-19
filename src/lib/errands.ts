@@ -8,6 +8,7 @@ import { store } from './store';
 import { refreshStars } from './stars';
 import { apiUrl } from '../lib/apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/errands') + path, {
@@ -48,33 +49,33 @@ export function nextActions(e: Errand): Array<{ action: string; label: string; p
     if (e.state === 'delivered')
       return [
         { action: 'confirm', label: 'Confirm & pay', primary: true },
-        { action: 'dispute', label: 'Something’s wrong' },
+        { action: 'dispute', label: t('Something’s wrong') },
       ];
     return [];
   }
   if (e.is_running) {
     if (e.state === 'claimed')
       return [
-        { action: 'pickup', label: 'I’ve got it', primary: true },
-        { action: 'giveup', label: 'Can’t do it' },
+        { action: 'pickup', label: t('I’ve got it'), primary: true },
+        { action: 'giveup', label: t('Can’t do it') },
       ];
-    if (e.state === 'collected') return [{ action: 'deliver', label: 'Delivered', primary: true }];
+    if (e.state === 'collected') return [{ action: 'deliver', label: t('Delivered'), primary: true }];
     return [];
   }
-  if (e.state === 'open') return [{ action: 'claim', label: 'I’ll go', primary: true }];
+  if (e.state === 'open') return [{ action: 'claim', label: t('I’ll go'), primary: true }];
   return [];
 }
 
 /** Plain English for where an errand has got to. */
 export const stateLine = (e: Errand): string =>
   ({
-    open: 'Waiting for someone to go',
+    open: t('Waiting for someone to go'),
     claimed: `${e.runner_name ?? 'Someone'} is on the way`,
     collected: `${e.runner_name ?? 'Someone'} has it`,
-    delivered: e.is_mine ? 'Delivered — confirm to release the Stars' : 'Delivered, waiting on confirmation',
-    settled: 'Done and paid',
-    cancelled: 'Cancelled',
-    disputed: 'Being sorted out',
+    delivered: e.is_mine ? t('Delivered — confirm to release the Stars') : t('Delivered, waiting on confirmation'),
+    settled: t('Done and paid'),
+    cancelled: t('Cancelled'),
+    disputed: t('Being sorted out'),
   })[e.state] ?? e.state;
 
 export async function loadBoard(place?: string | null): Promise<void> {
@@ -106,7 +107,7 @@ export async function postErrand(e: {
   spend_cap?: number;
 }): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Add your name and number first.' };
+  if (!me) return { ok: false, message: t('Add your name and number first.') };
   try {
     const out = await api<{ held: number }>('/post', {
       method: 'POST',
@@ -116,7 +117,7 @@ export async function postErrand(e: {
     await loadBoard(store.get().place);
     return { ok: true, message: `Posted — ★${out.held.toLocaleString()} is held until it's done.` };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t post.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t post.')) };
   }
 }
 
@@ -127,14 +128,14 @@ export async function act(
   extra?: { handoff_code?: string; spent?: number; note?: string },
 ): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Add your name and number first.' };
+  if (!me) return { ok: false, message: t('Add your name and number first.') };
   try {
     await api(`/${action}`, { method: 'POST', body: JSON.stringify({ me: me.id, id, ...extra }) });
     void refreshStars();
     await loadBoard(store.get().place);
     return { ok: true, message: '' };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t go through.')) };
   }
 }
 

@@ -48,7 +48,13 @@ export const APP_LANGS = Object.freeze({
 });
 
 const ENGINE = '@cf/meta/m2m100-1.2b';
-const MAX_STRINGS = 900;
+// 19 Sep 2026: the catalogue passed 1,200 lines once every expression-borne
+// string was wrapped (scripts/i18n-wrap2.mjs), and the app now also asks for
+// strings the catalogue cannot see. A request that is cut off silently is a
+// phone that stays half English, so the ceiling is well above the catalogue.
+const MAX_STRINGS = 2500;
+/** A language nobody has asked for yet is translated this far in the request; the rest after it. */
+const FIRST_SYNC = 240;
 const CONCURRENCY = 10;
 
 const json = (body, status = 200) =>
@@ -98,7 +104,7 @@ export function unmask(translated, kept) {
  * as written, short, warm, never formal. Returns {english: translated} for
  * the strings it got right; the rest fall through to m2m100.
  */
-const NAMES = { th: 'Thai', zh: 'Simplified Chinese', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic' };
+const NAMES = { th: 'Thai', zh: 'Simplified Chinese', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic', mn: 'Mongolian (Cyrillic)' };
 export const MODEL_ENGINE = 'claude-catalogue-1';
 async function translateBatch(env, strings, lang) {
   if (!env?.ANTHROPIC_API_KEY || !strings.length) return {};
@@ -207,6 +213,17 @@ export async function bundleFor(env, lang, strings, { defer = null } = {}) {
   // rest after the response (ctx.waitUntil), ready for the next launch.
   if (defer && missing.length && missing.length <= 40 && Object.keys(map).length > 0) {
     defer(bundleFor(env, lang, missing.map(([s]) => s)));
+    return map;
+  }
+  // A big gap — a release that wrapped hundreds of lines at once, or a
+  // language nobody has asked for yet. Translate the first stretch now so
+  // the phone gets something in this answer, and the rest behind it; the app
+  // asks again in twenty seconds (lib/i18n.ts loadLang) and on next launch.
+  if (defer && missing.length > FIRST_SYNC) {
+    const now_ = missing.slice(0, FIRST_SYNC);
+    const later = missing.slice(FIRST_SYNC);
+    defer(bundleFor(env, lang, later.map(([s]) => s)));
+    Object.assign(map, await bundleFor(env, lang, now_.map(([s]) => s)));
     return map;
   }
 

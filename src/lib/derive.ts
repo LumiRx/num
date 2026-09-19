@@ -3,6 +3,8 @@
 import type { CSSProperties } from 'react';
 import type { AppState, Booking, BookingStatus, Meeting, TagKind } from './types';
 import { selKey, withLine } from './agenda';
+import { t } from './i18n';
+import { T } from './i18nmark';
 
 export interface Tag {
   label: string;
@@ -24,17 +26,17 @@ export function tagOf(b: Booking | TagKind): Tag {
   const status: TagKind = typeof b === 'string' ? b : b.status;
   const holdBy = typeof b === 'string' ? undefined : b.holdBy;
   const map: Record<TagKind, Tag> = {
-    confirmed: { label: 'CONFIRMED', st: { ...tagBase, background: 'rgba(56,161,105,.14)', color: '#1f7a48', border: '1px solid rgba(56,161,105,.25)' } },
-    hold: { label: 'HOLD' + (holdBy ? ' · BY ' + holdBy : ''), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
-    deposit: { label: 'DEPOSIT PAID', st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
-    rebooked: { label: 'REBOOKED', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
-    cancelled: { label: 'CANCELLED', st: { ...tagBase, background: 'var(--ink-08)', color: 'var(--ink-40)' } },
-    meeting: { label: 'MEETING · SYNCED', st: { ...tagBase, background: 'rgba(71,85,105,.12)', color: '#3b4a5f', border: '1px solid rgba(71,85,105,.22)' } },
-    memory: { label: 'MEMORY', st: { ...tagBase, background: 'rgba(161,140,209,.16)', color: '#6b4fa8', border: '1px solid rgba(161,140,209,.3)' } },
-    bill: { label: 'BILL · DUE', st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
-    paid: { label: 'PAID', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
-    shared: { label: 'SHARED', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
-    reminder: { label: 'REMINDER', st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
+    confirmed: { label: t('CONFIRMED'), st: { ...tagBase, background: 'rgba(56,161,105,.14)', color: '#1f7a48', border: '1px solid rgba(56,161,105,.25)' } },
+    hold: { label: t('HOLD') + (holdBy ? ' · BY ' + holdBy : ''), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
+    deposit: { label: t('DEPOSIT PAID'), st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
+    rebooked: { label: t('REBOOKED'), st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
+    cancelled: { label: t('CANCELLED'), st: { ...tagBase, background: 'var(--ink-08)', color: 'var(--ink-40)' } },
+    meeting: { label: t('MEETING · SYNCED'), st: { ...tagBase, background: 'rgba(71,85,105,.12)', color: '#3b4a5f', border: '1px solid rgba(71,85,105,.22)' } },
+    memory: { label: t('MEMORY'), st: { ...tagBase, background: 'rgba(161,140,209,.16)', color: '#6b4fa8', border: '1px solid rgba(161,140,209,.3)' } },
+    bill: { label: t('BILL · DUE'), st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
+    paid: { label: t('PAID'), st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
+    shared: { label: t('SHARED'), st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
+    reminder: { label: t('REMINDER'), st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
   };
   return map[status] ?? map.confirmed;
 }
@@ -53,8 +55,8 @@ export const memTag: CSSProperties = {
   border: '1px solid rgba(161,140,209,.3)',
 };
 
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTH_LONG = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+const MONTH_SHORT = [T('Jan'), T('Feb'), T('Mar'), T('Apr'), T('May'), T('Jun'), T('Jul'), T('Aug'), T('Sep'), T('Oct'), T('Nov'), T('Dec')];
+const MONTH_LONG = [T('JANUARY'), T('FEBRUARY'), T('MARCH'), T('APRIL'), T('MAY'), T('JUNE'), T('JULY'), T('AUGUST'), T('SEPTEMBER'), T('OCTOBER'), T('NOVEMBER'), T('DECEMBER')];
 
 /** The demo trip lives in a fixed Jul/Aug 2026; real trips live in the actual
  *  current + next month, anywhere in the world. */
@@ -92,7 +94,7 @@ export interface MonthDef {
 
 function monthDef(y: number, mo: number, todayDay: number | null): MonthDef {
   return {
-    t: `${MONTH_LONG[mo - 1]} ${y}`,
+    t: `${t(MONTH_LONG[mo - 1])} ${y}`,
     mo,
     days: new Date(y, mo, 0).getDate(),
     lead: (new Date(y, mo - 1, 1).getDay() + 6) % 7,
@@ -289,9 +291,9 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
   return laid.map((e) => {
     const tag: Tag =
       e.kind === 'meet'
-        ? { label: (e as Meeting & { kind: 'meet' }).src === 'NUM' ? 'NUM' : 'GCAL', st: mtgTag }
+        ? { label: (e as Meeting & { kind: 'meet' }).src === 'NUM' ? t('NUM') : t('GCAL'), st: mtgTag }
         : e.kind === 'event'
-          ? { label: 'EVENT', st: mtgTag }
+          ? { label: t('EVENT'), st: mtgTag }
           : e.kind === 'reminder'
           ? tagOf('reminder')
           : e.kind === 'group'
@@ -335,22 +337,22 @@ export function selDayInfo(s: AppState, eventCount: number) {
   // The demo trip's scripted itinerary; a real trip shows the user's place.
   const demoCityOf = (mo: number, d: number) =>
     mo === 7
-      ? d < 31 ? 'BANGKOK' : 'BANGKOK → PHUKET'
-      : d < 5 ? 'PHUKET'
+      ? d < 31 ? t('BANGKOK') : 'BANGKOK → PHUKET'
+      : d < 5 ? t('PHUKET')
       : d === 5 ? 'PHUKET → SINGAPORE'
-      : d <= 8 ? 'SINGAPORE'
-      : d === 14 || d === 15 ? 'KOH PHANGAN'
+      : d <= 8 ? t('SINGAPORE')
+      : d === 14 || d === 15 ? t('KOH PHANGAN')
       : '';
   const city = !parts || selPast ? '' : s.demo ? demoCityOf(+parts[0], +parts[1]) : (s.place ?? '').toUpperCase();
   return {
     label: parts
       ? (wd(s.demo, +parts[0], +parts[1]) + ' ' + parts[1] + ' ' + monthName(+parts[0])).toUpperCase()
-      : 'TAP A DAY',
+      : t('TAP A DAY'),
     city,
-    count: parts ? (eventCount === 1 ? '1 THING' : eventCount + ' THINGS') : '',
+    count: parts ? (eventCount === 1 ? t('1 THING') : eventCount + ' THINGS') : '',
     emptyText: selPast
-      ? 'Nothing kept from this day — older days live under MEMORY.'
-      : 'Nothing here yet. Ask me and it’ll appear — there’s no booking form, and that’s the point.',
+      ? t('Nothing kept from this day — older days live under MEMORY.')
+      : t('Nothing here yet. Ask me and it’ll appear — there’s no booking form, and that’s the point.'),
   };
 }
 
@@ -365,16 +367,16 @@ export interface LiveActivity {
 }
 
 export function liveActivity(s: AppState): LiveActivity {
-  if (s.disr === 'active') return { tag: 'DISRUPTION', line: 'Phi Phi ferry cancelled', meta: 'Two rebook options in your thread', pulse: true, red: true };
-  if (s.disr === 'rebooked') return { tag: 'REBOOKED', line: 'Phi Phi — sorted', meta: (s.laLine || '') + ' · return 16:30 unchanged', pulse: false, red: false };
-  if (s.demo) return { tag: 'TONIGHT', line: 'Dinner — Le Du', meta: '19:30 · counter seats · table held to 19:45', pulse: false, red: false };
+  if (s.disr === 'active') return { tag: t('DISRUPTION'), line: t('Phi Phi ferry cancelled'), meta: t('Two rebook options in your thread'), pulse: true, red: true };
+  if (s.disr === 'rebooked') return { tag: t('REBOOKED'), line: t('Phi Phi — sorted'), meta: (s.laLine || '') + ' · return 16:30 unchanged', pulse: false, red: false };
+  if (s.demo) return { tag: t('TONIGHT'), line: t('Dinner — Le Du'), meta: t('19:30 · counter seats · table held to 19:45'), pulse: false, red: false };
   // Real trip: surface the next upcoming booking, or a quiet idle card.
   const next = [...s.bookings]
     .filter((b) => b.status !== 'cancelled')
     .sort((a, b) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time))[0];
   return next
-    ? { tag: 'NEXT UP', line: next.title, meta: `${wd(false, next.mo, next.day)} ${next.day} ${monthName(next.mo)} · ${next.time}${next.place ? ' · ' + next.place : ''}`, pulse: false, red: false }
-    : { tag: 'READY', line: 'NUM is watching your trip', meta: 'Nothing needs you right now', pulse: false, red: false };
+    ? { tag: t('NEXT UP'), line: next.title, meta: `${wd(false, next.mo, next.day)} ${next.day} ${monthName(next.mo)} · ${next.time}${next.place ? ' · ' + next.place : ''}`, pulse: false, red: false }
+    : { tag: t('READY'), line: t('NUM is watching your trip'), meta: t('Nothing needs you right now'), pulse: false, red: false };
 }
 
 // ── Shared sheet/segment styles ─────────────────────────────────────────────

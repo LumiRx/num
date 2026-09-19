@@ -56,18 +56,18 @@ type StarWallet = { star_tiers?: StarTier[]; spendable?: number; promo_locked?: 
 const money = (c: number) => (c % 100 === 0 ? `$${c / 100}` : `$${(c / 100).toFixed(2)}`);
 
 /** Turn raw entitlements into the two or three lines that actually differ. */
-function highlights(t: Tier, free: Tier | undefined): string[] {
+function highlights(tier: Tier, free: Tier | undefined): string[] {
   const out: string[] = [];
-  const e = t.entitlements;
+  const e = tier.entitlements;
   const f = free?.entitlements ?? {};
   const limit = (k: string, one: string, many: (n: number) => string) => {
     if (e[k] === f[k]) return;
     if (e[k] === null) out.push(one);
     else if (typeof e[k] === 'number') out.push(many(e[k] as number));
   };
-  limit('plans_max', 'Unlimited plans', (n) => `${n} plans at once`);
-  limit('deep_research_monthly', 'Unlimited deep research', (n) => `${n} deep searches a month`);
-  if (e.early_features && !f.early_features) out.push('New things first');
+  limit('plans_max', t('Unlimited plans'), (n) => `${n} plans at once`);
+  limit('deep_research_monthly', t('Unlimited deep research'), (n) => `${n} deep searches a month`);
+  if (e.early_features && !f.early_features) out.push(t('New things first'));
   // NOTHING ABOUT TRAVEL GOES HERE. See the header note: a paid tier may not
   // advertise a travel benefit. If a new capability is travel-shaped, it goes
   // in worker/membership.mjs UNGATED and never on this list.
@@ -87,8 +87,8 @@ function highlights(t: Tier, free: Tier | undefined): string[] {
 function badgeOf(tr: Tier): { label: string; bg: string; fg: string; top: boolean } {
   const top = tr.entitlements?.plans_max === null || tr.entitlements?.deep_research_monthly === null;
   return top
-    ? { label: 'NO CEILINGS', bg: 'var(--grad-accent)', fg: '#fff', top }
-    : { label: 'MORE ROOM', bg: 'var(--field-bg)', fg: 'var(--color-accent-700)', top };
+    ? { label: t('NO CEILINGS'), bg: 'var(--grad-accent)', fg: '#fff', top }
+    : { label: t('MORE ROOM'), bg: 'var(--field-bg)', fg: 'var(--color-accent-700)', top };
 }
 
 export default function MembershipCard() {
@@ -134,7 +134,7 @@ export default function MembershipCard() {
       if (out.url) { window.location.href = out.url; return; }
       setNote(out.error ?? 'Couldn’t start that just now.');
     } catch {
-      setNote('Couldn’t reach the till — try again in a moment.');
+      setNote(t('Couldn’t reach the till — try again in a moment.'));
     }
     setBusy(null);
   };
@@ -167,7 +167,7 @@ export default function MembershipCard() {
         setNote(out.error ?? 'Couldn’t do that just now.');
       }
     } catch {
-      setNote('Couldn’t reach the till — try again in a moment.');
+      setNote(t('Couldn’t reach the till — try again in a moment.'));
     }
     setBusy(null);
   };
@@ -301,7 +301,7 @@ export default function MembershipCard() {
                         opacity: busy ? 0.5 : 1,
                       }}
                     >
-                      {busy === tr.id ? 'OPENING…' : `GET ${tr.name.toUpperCase()}`}
+                      {busy === tr.id ? t('OPENING…') : `GET ${tr.name.toUpperCase()}`}
                     </div>
                     {/* The Stars door. Shown whenever a Star price exists, and
                         AFFORDABLE only when the member has enough of their own
@@ -318,7 +318,7 @@ export default function MembershipCard() {
                             fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
                           }}
                         >
-                          {busy === `stars:${tr.id}` ? 'PAYING…' : `OR PAY ★${starCost(tr.id)} FOR A MONTH`}
+                          {busy === `stars:${tr.id}` ? t('PAYING…') : `OR PAY ★${starCost(tr.id)} FOR A MONTH`}
                         </div>
                       ) : (
                         <div style={{ marginTop: 8, fontSize: 10.5, color: 'var(--ink-40)', textAlign: 'center', lineHeight: 1.5 }}>

@@ -32,9 +32,9 @@ function DayCell({ d }: { d: CalCell }) {
           background: d.sel ? 'var(--grad-accent)' : 'transparent',
           color: d.sel ? '#fff' : d.past ? 'var(--ink-40)' : 'var(--ink)',
           boxShadow: d.sel
-            ? '0 3px 10px rgba(14,164,131,.35)'
+            ? t('0 3px 10px rgba(14,164,131,.35)')
             : d.today
-              ? 'inset 0 0 0 1.5px var(--color-accent)'
+              ? t('inset 0 0 0 1.5px var(--color-accent)')
               : 'none',
           fontWeight: d.planDots || d.meetDots || d.today ? 700 : 400,
         }}

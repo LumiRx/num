@@ -27,8 +27,8 @@ describe('the sheet never does arithmetic on hope', () => {
   });
 
   test('"introduced" and "earning" are different words on the screen', () => {
-    assert.match(SHEET, /activated: 'Earning'/);
-    assert.match(SHEET, /introduced: 'Introduced'/);
+    assert.match(SHEET, /activated: T\('Earning'\)/);
+    assert.match(SHEET, /introduced: T\('Introduced'\)/);
   });
 
   test('the terms shown are the scout’s own, with the promise attached', () => {

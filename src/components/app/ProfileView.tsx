@@ -61,27 +61,27 @@ const QUICK_FIELDS: Field[] = [
   ['dinner_time', T('When you like to eat'), T('e.g. 19:30'), T('“dinner tonight” lands at your hour, not a default'), ['18:30', '19:30', '20:30', T('Late')]],
   ['ride_pref', T('How you like to get around'), T('Grab, taxi, private car…'), T('the right car is requested without a follow-up question'), ['Grab', T('Taxi'), T('Private car'), T('Walk / BTS')]],
   ['pay_pref', T('How you usually pay'), T('card, Stars, cash'), T('NUM picks the right payment step when it books'), [T('Card'), T('Stars'), T('Cash')]],
-  ['confirm_via', T('Where confirmations should reach you'), T('in the app, WhatsApp, LINE, SMS'), T('so a confirmation never goes to a channel you do not check'), [T('In the app'), 'WhatsApp', 'LINE', 'SMS']],
+  ['confirm_via', T('Where confirmations should reach you'), T('in the app, WhatsApp, LINE, SMS'), T('so a confirmation never goes to a channel you do not check'), [T('In the app'), 'WhatsApp', T('LINE'), T('SMS')]],
   ['kids', T('Kids with you'), T('ages, or none'), T('tables, menus and times that work for them'), [T('None'), T('Under 5'), T('5–12'), T('Teens')]],
 ];
 
 /** key, label, placeholder, why it helps — the "why" is the whole point. */
 const TRAVEL_FIELDS: Field[] = [
-  ['airline_status', 'Airline status', 'e.g. Delta Platinum, Star Alliance Gold', 'NUM weighs status against price instead of just picking the cheapest'],
-  ['hotel_status', 'Hotel programme', 'e.g. Marriott Titanium, Hyatt Globalist', 'gets you the upgrade you already earned'],
-  ['seat', 'Seat', 'aisle / window / bulkhead', 'so a flight suggestion already fits you', ['Aisle', 'Window', 'Bulkhead']],
-  ['home_airport', 'Home airport', 'e.g. LAX, BKK', 'the default origin for every fare search'],
-  ['passport', 'Passport country', 'e.g. United States', 'drives the visa line in a trip check — never stored as a number'],
+  ['airline_status', T('Airline status'), T('e.g. Delta Platinum, Star Alliance Gold'), T('NUM weighs status against price instead of just picking the cheapest')],
+  ['hotel_status', T('Hotel programme'), T('e.g. Marriott Titanium, Hyatt Globalist'), T('gets you the upgrade you already earned')],
+  ['seat', T('Seat'), 'aisle / window / bulkhead', T('so a flight suggestion already fits you'), [T('Aisle'), T('Window'), T('Bulkhead')]],
+  ['home_airport', T('Home airport'), T('e.g. LAX, BKK'), T('the default origin for every fare search')],
+  ['passport', T('Passport country'), T('e.g. United States'), T('drives the visa line in a trip check — never stored as a number')],
 ];
 
 const TASTE_FIELDS: Field[] = [
-  ['home_city', 'Home city', 'where you live', 'so NUM knows what is exotic to you and what is Tuesday'],
-  ['dietary', 'Dietary', 'vegetarian, halal, no shellfish…', 'never books you somewhere you cannot eat', ['Vegetarian', 'Vegan', 'Halal', 'No shellfish', 'No pork']],
-  ['allergies', 'Allergies', 'anything serious', 'flagged to the kitchen when NUM books'],
-  ['budget', 'Usual spend', 'e.g. mid-range, no ceiling on food', 'stops every suggestion landing in the wrong bracket', ['Keep it cheap', 'Mid-range', 'No ceiling on food']],
-  ['vibe', 'Your kind of night', 'quiet counter / big table / dancing', 'the single most useful thing you can tell NUM', ['Quiet counter', 'Big table', 'Dancing', 'Early night']],
-  ['work', 'What you do', 'optional', 'context for meetings and introductions'],
-  ['notes', 'Anything else', 'the things a good concierge would remember', 'goes straight into what NUM knows about you'],
+  ['home_city', T('Home city'), T('where you live'), T('so NUM knows what is exotic to you and what is Tuesday')],
+  ['dietary', T('Dietary'), T('vegetarian, halal, no shellfish…'), T('never books you somewhere you cannot eat'), [T('Vegetarian'), T('Vegan'), T('Halal'), T('No shellfish'), T('No pork')]],
+  ['allergies', T('Allergies'), T('anything serious'), T('flagged to the kitchen when NUM books')],
+  ['budget', T('Usual spend'), T('e.g. mid-range, no ceiling on food'), T('stops every suggestion landing in the wrong bracket'), [T('Keep it cheap'), 'Mid-range', T('No ceiling on food')]],
+  ['vibe', T('Your kind of night'), T('quiet counter / big table / dancing'), T('the single most useful thing you can tell NUM'), [T('Quiet counter'), T('Big table'), T('Dancing'), T('Early night')]],
+  ['work', T('What you do'), 'optional', T('context for meetings and introductions')],
+  ['notes', T('Anything else'), T('the things a good concierge would remember'), T('goes straight into what NUM knows about you')],
 ];
 
 /**
@@ -291,7 +291,7 @@ export default function ProfileView() {
       setNote(null);
       setTimeout(() => setSaved(false), 2600);
     } catch (err) {
-      setNote(guestMessage(err, 'Couldn’t save that.'));
+      setNote(guestMessage(err, t('Couldn’t save that.')));
     }
   };
 
@@ -300,7 +300,7 @@ export default function ProfileView() {
     try {
       await uploadAvatar(file);
     } catch (err) {
-      setNote(guestMessage(err, 'That image didn’t take.'));
+      setNote(guestMessage(err, t('That image didn’t take.')));
     }
   };
 
@@ -505,8 +505,8 @@ export default function ProfileView() {
           />
           <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 6, lineHeight: 1.5 }}>
             {me.name_locked
-              ? 'Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.'
-              : 'This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.'}
+              ? t('Locked to your verified number — this is what friends see next to it, so changing it goes through us. Ask NUM and we’ll sort it.')
+              : t('This is the name on your invites and what friends see when you connect. Once your number is verified it’s locked to it.')}
           </div>
         </Collapsible>
       </List>
@@ -567,20 +567,20 @@ function NotificationsCard() {
 
   const blurb =
     state === 'unsupported'
-      ? 'This browser can’t do notifications — everything still waits for you in the app.'
+      ? t('This browser can’t do notifications — everything still waits for you in the app.')
       : state === 'needs-install'
-        ? 'Add NUM to your home screen first: tap Share, then “Add to Home Screen”. iPhone only allows notifications for installed apps.'
+        ? t('Add NUM to your home screen first: tap Share, then “Add to Home Screen”. iPhone only allows notifications for installed apps.')
         : state === 'denied'
-          ? 'Notifications are blocked in your browser settings. Turn them back on there and NUM can reach you again.'
+          ? t('Notifications are blocked in your browser settings. Turn them back on there and NUM can reach you again.')
           : on
-            ? 'On. NUM will tell you when a table moves, a friend answers, or a plan changes — and nothing else.'
-            : 'A table that moved, a friend who said yes, a flight that shifted. Only the things you’d want interrupting you.';
+            ? t('On. NUM will tell you when a table moves, a friend answers, or a plan changes — and nothing else.')
+            : t('A table that moved, a friend who said yes, a flight that shifted. Only the things you’d want interrupting you.');
 
   const toggle = async () => {
     setBusy(true);
     if (on) {
       await disablePush();
-      setMsg('Off — you’ll still see everything next time you open NUM.');
+      setMsg(t('Off — you’ll still see everything next time you open NUM.'));
     } else {
       const out = await enablePush();
       setMsg(out.message);
@@ -595,7 +595,7 @@ function NotificationsCard() {
     <div className="glass" style={{ ...card }}>
       <div style={kicker}>{t('NOTIFICATIONS')}</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>
-        {on ? 'NUM can reach you' : 'Let NUM reach you'}
+        {on ? t('NUM can reach you') : t('Let NUM reach you')}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>{blurb}</div>
       {actionable && (
@@ -609,7 +609,7 @@ function NotificationsCard() {
               : { background: 'var(--grad-accent)', color: '#fff' }),
           }}
         >
-          {busy ? 'ONE MOMENT…' : on ? 'TURN THEM OFF' : 'TURN ON NOTIFICATIONS'}
+          {busy ? t('ONE MOMENT…') : on ? t('TURN THEM OFF') : t('TURN ON NOTIFICATIONS')}
         </div>
       )}
       {msg && <div style={{ fontSize: 10.5, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.5 }}>{msg}</div>}
@@ -670,7 +670,7 @@ function HostCard() {
       <div style={kicker}>{t('YOUR HOST')}</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, marginTop: 4 }}>{mine.host.name}</div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>
-        {does ? `Arranges ${does} for you.` : 'Arranges things for you, in person.'} Ask NUM for any of it and say “send it to {mine.host.name}” — it lands in their console, and they confirm with you directly.
+        {does ? `Arranges ${does} for you.` : t('Arranges things for you, in person.')} Ask NUM for any of it and say “send it to {mine.host.name}” — it lands in their console, and they confirm with you directly.
       </div>
       {mine.page && <a href={mine.page} target="_blank" rel="noreferrer" style={link}>{t('MY HOST PAGE')}</a>}
       {mine.calendar && <a href={mine.calendar.replace(/^https?:/, 'webcal:')} style={link}>{t('SUBSCRIBE TO THEIR BOOKINGS')}</a>}

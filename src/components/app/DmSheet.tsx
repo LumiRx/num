@@ -85,7 +85,7 @@ function PeopleList() {
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}
               >
-                {w ? w.last_body : 'Say something'}
+                {w ? w.last_body : t('Say something')}
               </div>
             </div>
             {w ? (
@@ -137,12 +137,12 @@ function EventCard({ m }: { m: DmMessage }) {
       void refreshRequests();
     } catch {
       setAnswer(null);
-      setLine('That didn’t go through — try again.');
+      setLine(t('That didn’t go through — try again.'));
     }
     setBusy(false);
   };
 
-  const CHOICES: Array<['yes' | 'no' | 'maybe', string]> = [['yes', 'I’m in'], ['maybe', 'Maybe'], ['no', 'Can’t']];
+  const CHOICES: Array<['yes' | 'no' | 'maybe', string]> = [['yes', t('I’m in')], ['maybe', t('Maybe')], ['no', 'Can’t']];
 
   return (
     <div className="glass" style={{ borderRadius: 'var(--r-md)', padding: '12px 13px', maxWidth: '86%' }}>
@@ -172,7 +172,7 @@ function EventCard({ m }: { m: DmMessage }) {
       )}
       {(line || answer) && (
         <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 9, lineHeight: 1.45 }}>
-          {line ?? (answer === 'yes' ? 'You’re in.' : answer === 'no' ? 'Told them you can’t.' : 'Marked as a maybe.')}
+          {line ?? (answer === 'yes' ? t('You’re in.') : answer === 'no' ? t('Told them you can’t.') : t('Marked as a maybe.'))}
         </div>
       )}
     </div>
@@ -317,7 +317,7 @@ export default function DmSheet() {
   return (
     <div
       role="dialog"
-      aria-label={withWho ? `Messages with ${withWho.name ?? 'a friend'}` : 'Messages'}
+      aria-label={withWho ? `Messages with ${withWho.name ?? 'a friend'}` : t('Messages')}
       aria-hidden={!open}
       style={{
         position: 'absolute', inset: 0, zIndex: 47, display: 'flex', flexDirection: 'column',
@@ -340,7 +340,7 @@ export default function DmSheet() {
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0, fontSize: 11, letterSpacing: '.16em', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {withWho ? (withWho.name || 'A FRIEND').toUpperCase() : 'MESSAGES'}
+          {withWho ? (withWho.name || 'A FRIEND').toUpperCase() : t('MESSAGES')}
           {!withWho && <span style={{ fontWeight: 400, opacity: 0.5 }}> · YOUR PEOPLE</span>}
         </div>
         {withWho?.id && (

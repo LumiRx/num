@@ -89,7 +89,7 @@ export default function PaySheet() {
                   boxShadow: '0 4px 14px rgba(14,164,131,.3)', opacity: busy || !valid ? 0.55 : 1,
                 }}
               >
-                {busy ? 'SENDING…' : valid ? `SEND ★${n.toLocaleString()}` : n > balance ? 'NOT ENOUGH STARS' : 'ENTER AN AMOUNT'}
+                {busy ? t('SENDING…') : valid ? `SEND ★${n.toLocaleString()}` : n > balance ? t('NOT ENOUGH STARS') : t('ENTER AN AMOUNT')}
               </div>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>{t('Stars are in-app credit, not money, and they move instantly between NUM accounts. Check the name above before you send — this cannot be undone from here.')}</div>

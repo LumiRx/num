@@ -8,6 +8,7 @@
 import { store } from './store';
 import { apiUrl } from './apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 export interface BillRail {
   id: string;
@@ -64,11 +65,11 @@ export async function loadBill(token: string): Promise<{ ok: true; view: BillVie
     const r = await fetch(apiUrl(`/api/bill/${encodeURIComponent(token)}?in=1`), { headers: { accept: 'application/json' } });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) {
-      return { ok: false, status: r.status, error: guestMessage(new Error(String(body?.error ?? '')), 'Could not read this bill just now — try again, or ask staff.', 'bill') };
+      return { ok: false, status: r.status, error: guestMessage(new Error(String(body?.error ?? '')), t('Could not read this bill just now — try again, or ask staff.'), 'bill') };
     }
     return { ok: true, view: body as BillView };
   } catch (e) {
-    return { ok: false, status: 0, error: guestMessage(e, 'You seem to be offline — the venue can take payment their usual way.', 'bill') };
+    return { ok: false, status: 0, error: guestMessage(e, t('You seem to be offline — the venue can take payment their usual way.'), 'bill') };
   }
 }
 
@@ -112,7 +113,7 @@ export async function splitShares(
     if (!r.ok) return { ok: false, error: String((body as { error?: string })?.error ?? 'Could not split that bill.') };
     return { ok: true, shares: (body as { shares: BillShare[] }).shares };
   } catch (e) {
-    return { ok: false, error: guestMessage(e, 'Could not split that bill just now.', 'bill') };
+    return { ok: false, error: guestMessage(e, t('Could not split that bill just now.'), 'bill') };
   }
 }
 
@@ -172,11 +173,11 @@ export async function tryAutoPay(token: string, meId: string): Promise<AutoPayRe
 /** Why it did not pay, in a sentence rather than a code. */
 export function autoPayNote(r: AutoPayResult): string | null {
   switch (r.why) {
-    case 'over_cap': return 'Over your auto-pay limit — pay it below.';
-    case 'needs_authentication': return 'Your bank wants to check this one.';
-    case 'declined': case 'card_unavailable': return 'Your saved card did not go through.';
-    case 'other_currency': return 'This bill is in another currency, so it needs a tap.';
-    case 'too_many_today': return 'That is your auto-pay limit for today.';
+    case 'over_cap': return t('Over your auto-pay limit — pay it below.');
+    case 'needs_authentication': return t('Your bank wants to check this one.');
+    case 'declined': case 'card_unavailable': return t('Your saved card did not go through.');
+    case 'other_currency': return t('This bill is in another currency, so it needs a tap.');
+    case 'too_many_today': return t('That is your auto-pay limit for today.');
     case 'venue_not_connected': case 'venue_unreadable': return null;
     default: return null;
   }

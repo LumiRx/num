@@ -72,7 +72,7 @@ export default function ShareToSheet() {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{name}</span>
         <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-40)', marginTop: 1 }}>
-          {failed === id ? 'That didn’t send — tap to try again' : sub}
+          {failed === id ? t('That didn’t send — tap to try again') : sub}
         </span>
       </span>
       {done === id
@@ -124,7 +124,7 @@ export default function ShareToSheet() {
                 key={`plan:${p.id}`}
                 id={`plan:${p.id}`}
                 name={p.title}
-                sub={p.dest ? `${p.dest} · goes on as an idea` : 'goes on as an idea'}
+                sub={p.dest ? `${p.dest} · goes on as an idea` : t('goes on as an idea')}
                 fn={() => shareToPlan(p.id)}
               />
             ))}
@@ -139,7 +139,7 @@ export default function ShareToSheet() {
                 key={`dm:${f.id}`}
                 id={`dm:${f.id}`}
                 name={f.name ?? 'Friend'}
-                sub="in your chat"
+                sub={t('in your chat')}
                 fn={() => shareToFriend(f.id!)}
               />
             ))}

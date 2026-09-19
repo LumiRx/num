@@ -69,7 +69,7 @@ function DirectionsWidget() {
           className="press tap"
           style={{ textDecoration: 'none', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em', background: 'var(--grad-accent)', color: '#fff' }}
         >
-          {app === 'apple' ? 'APPLE MAPS' : 'GOOGLE MAPS'}
+          {app === 'apple' ? t('APPLE MAPS') : t('GOOGLE MAPS')}
         </a>
         <a href={trafficUrl(next.place)} target="_blank" rel="noreferrer" className="glass press tap" style={{ textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}>{t('TRAFFIC NOW')}</a>
         <span
@@ -177,9 +177,9 @@ function GroupCard() {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={kicker}>{t('GROUP')}</div>
-        <div style={{ ...h, marginTop: 3 }}>{plan ? plan.title : 'Plan it with friends'}</div>
+        <div style={{ ...h, marginTop: 3 }}>{plan ? plan.title : t('Plan it with friends')}</div>
         <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>
-          {plan ? `${partySize || 1} in · everything syncs both ways` : 'Start one on the PLAN tab — no dates or bookings needed'}
+          {plan ? `${partySize || 1} in · everything syncs both ways` : t('Start one on the PLAN tab — no dates or bookings needed')}
         </div>
       </div>
       <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />
@@ -200,9 +200,9 @@ function EventsCard() {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={kicker}>{t('EVENTS')}</div>
-        <div style={{ ...h, marginTop: 3 }}>{events.length ? events[0].title : 'Host something'}</div>
+        <div style={{ ...h, marginTop: 3 }}>{events.length ? events[0].title : t('Host something')}</div>
         <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>
-          {events.length ? `${events[0].yes ?? 0} of ${events[0].invited ?? 0} coming · RSVP by text` : 'Guests RSVP from one text — no app on their side'}
+          {events.length ? `${events[0].yes ?? 0} of ${events[0].invited ?? 0} coming · RSVP by text` : t('Guests RSVP from one text — no app on their side')}
         </div>
       </div>
       <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)' }} />

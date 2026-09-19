@@ -160,7 +160,7 @@ export function TripCheck() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={kicker}>{t('TRIP CHECK')}</div>
           <div style={{ ...h, marginTop: 3 }}>
-            {clean ? 'Nothing needs you' : `${findings.length} thing${findings.length === 1 ? '' : 's'} to look at`}
+            {clean ? t('Nothing needs you') : `${findings.length} thing${findings.length === 1 ? '' : 's'} to look at`}
           </div>
         </div>
         <ChevronRightIcon size={15} style={{ color: 'var(--ink-40)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} />
@@ -173,7 +173,7 @@ export function TripCheck() {
             </div>
           ))}
           <div
-            {...pressable(() => { store.set({ threadOpen: true }); void askNum('Run a trip check and tell me what needs me.'); })}
+            {...pressable(() => { store.set({ threadOpen: true }); void askNum(t('Run a trip check and tell me what needs me.')); })}
             className="press"
             style={{ cursor: 'pointer', marginTop: 10, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11, letterSpacing: '.06em', padding: '10px 14px', textAlign: 'center' }}
           >

@@ -109,7 +109,7 @@ export default function TravelSheet() {
 
       <div style={{ padding: 16 }}>
         <div style={label}>
-          {!sentRef ? 'HAND THIS TO AN AGENCY' : quoted ? 'THE AGENCY QUOTED' : done ? 'WITH THE AGENCY' : 'WAITING ON THE AGENCY'}
+          {!sentRef ? t('HAND THIS TO AN AGENCY') : quoted ? t('THE AGENCY QUOTED') : done ? t('WITH THE AGENCY') : t('WAITING ON THE AGENCY')}
         </div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
           {draft.destination ?? 'Your trip'}
@@ -121,16 +121,16 @@ export default function TravelSheet() {
         {/* The request in full, before it goes. This is what a named company is
             about to receive about a named traveller. */}
         <div style={{ marginTop: 14, padding: '2px 12px 6px', borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)' }}>
-          <Fact k="Trip" v={itineraryLine(draft)} />
-          <Fact k="Travelling" v={paxLine(draft)} />
-          {draft.cabin && <Fact k="Cabin" v={draft.cabin} />}
+          <Fact k={t('Trip')} v={itineraryLine(draft)} />
+          <Fact k={t('Travelling')} v={paxLine(draft)} />
+          {draft.cabin && <Fact k={t('Cabin')} v={draft.cabin} />}
           {draft.budget_cs && draft.budget_currency && (
             /* THEIR ceiling, in THEIR currency — a number the member gave, not
                one NUM worked out. */
-            <Fact k="Your budget" v={`up to ${(draft.budget_cs / 100).toFixed(2)} ${draft.budget_currency}`} />
+            <Fact k={t('Your budget')} v={`up to ${(draft.budget_cs / 100).toFixed(2)} ${draft.budget_currency}`} />
           )}
-          {draft.notes && <Fact k="Notes" v={draft.notes} />}
-          <Fact k="They'll reach you on" v={draft.contact_email ?? draft.contact_phone ?? 'this thread'} last />
+          {draft.notes && <Fact k={t('Notes')} v={draft.notes} />}
+          <Fact k={t('They\'ll reach you on')} v={draft.contact_email ?? draft.contact_phone ?? 'this thread'} last />
         </div>
 
         {!sentRef ? (
@@ -143,7 +143,7 @@ export default function TravelSheet() {
             ) : (
               <>
                 <div {...pressable(send)} aria-disabled={busy} style={{ ...button, marginTop: 14, opacity: busy ? 0.55 : 1 }}>
-                  {busy ? 'SENDING…' : 'SEND THIS TO THE AGENCY'}
+                  {busy ? t('SENDING…') : t('SEND THIS TO THE AGENCY')}
                 </div>
                 <div {...pressable(close)} style={{ ...ghost, marginTop: 8 }}>{t('NOT YET')}</div>
                 <div style={{ ...help, marginTop: 12 }}>{t('A travel agency gets this with a NUM reference and comes back with options and a price. They quote it, they take the payment and they issue the confirmation — I don’t handle the money.')}</div>
@@ -178,26 +178,26 @@ export default function TravelSheet() {
             {live && quoteLine(live) && (
               <div style={{ marginTop: 12, padding: '2px 12px 6px', borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)' }}>
                 <Fact k={`${live.partner_name ?? 'The agency'} quotes`} v={quoteLine(live) as string} />
-                {live.quote_note && <Fact k="Includes" v={live.quote_note} last />}
+                {live.quote_note && <Fact k={t('Includes')} v={live.quote_note} last />}
               </div>
             )}
 
             {quoted && (
               <>
                 <div {...pressable(accept)} aria-disabled={busy} style={{ ...button, marginTop: 14, opacity: busy ? 0.55 : 1 }}>
-                  {busy ? 'PASSING IT ON…' : 'YES — GO AHEAD'}
+                  {busy ? t('PASSING IT ON…') : t('YES — GO AHEAD')}
                 </div>
                 <div style={{ ...help, marginTop: 10 }}>{t('Saying yes tells the agency to go ahead. They’ll contact you to take payment and issue the confirmation in their own name — nothing is held until they do that with you directly.')}</div>
               </>
             )}
 
             <div style={{ ...help, marginTop: 12 }}>
-              {note ?? (live?.state === 'sent' ? 'You can close this — I’ll bring their answer straight into the thread.' : '')}
+              {note ?? (live?.state === 'sent' ? t('You can close this — I’ll bring their answer straight into the thread.') : '')}
             </div>
             {err && <div style={{ fontSize: 11.5, color: 'var(--color-accent)', marginTop: 10 }}>{err}</div>}
 
             <div {...pressable(close)} style={{ ...(done ? button : ghost), marginTop: 14 }}>
-              {done ? 'DONE' : 'CLOSE — I’LL TELL YOU'}
+              {done ? t('DONE') : t('CLOSE — I’LL TELL YOU')}
             </div>
           </div>
         )}

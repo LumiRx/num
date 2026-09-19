@@ -25,6 +25,7 @@ import { store } from './store';
 import { pickContacts, contactsSupported, mirrorPlanDate } from './social';
 import type { Connections } from './types';
 import { apiUrl } from '../lib/apibase';
+import { t } from './i18n';
 
 const setConn = (key: keyof Connections, on: boolean, detail?: string) =>
   store.set((s) => ({
@@ -48,7 +49,7 @@ export async function sendAndShare(): Promise<void> {
   }
   try {
     await navigator.clipboard.writeText(url);
-    setConn('contacts', false, 'Link copied — paste it anywhere');
+    setConn('contacts', false, t('Link copied — paste it anywhere'));
   } catch { /* nothing to do */ }
 }
 
@@ -80,16 +81,16 @@ function connectCalendar(): void {
   for (const p of s.plans) {
     if (p.starts_on) { mirrorPlanDate(p); mirrored += 1; }
   }
-  setConn('calendar', true, mirrored ? `On — ${mirrored} plan${mirrored === 1 ? '' : 's'} already on your calendar` : 'On — dated plans appear here by themselves');
+  setConn('calendar', true, mirrored ? `On — ${mirrored} plan${mirrored === 1 ? '' : 's'} already on your calendar` : t('On — dated plans appear here by themselves'));
 }
 
 /** Read-only balance for an address the user types. Nothing ever signs. */
 async function connectCrypto(): Promise<void> {
-  const addr = window.prompt('Paste your wallet address (0x…) — read-only, balances only. Nothing can move.');
+  const addr = window.prompt(t('Paste your wallet address (0x…) — read-only, balances only. Nothing can move.'));
   if (!addr) return;
   const clean = addr.trim();
   if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
-    setConn('crypto', false, 'That doesn’t look like a wallet address');
+    setConn('crypto', false, t('That doesn’t look like a wallet address'));
     return;
   }
   setConn('crypto', true, `${clean.slice(0, 6)}…${clean.slice(-4)} — reading balance…`);
@@ -133,10 +134,10 @@ async function connectTexts(): Promise<void> {
       setConn('texts', true, `Text ${d.sms_number} — it reaches your NUM`);
       try { await navigator.clipboard.writeText(d.sms_number); } catch { /* row shows it */ }
     } else {
-      setConn('texts', false, 'Texting line isn’t switched on yet');
+      setConn('texts', false, t('Texting line isn’t switched on yet'));
     }
   } catch {
-    setConn('texts', false, 'Couldn’t reach the server — try again');
+    setConn('texts', false, t('Couldn’t reach the server — try again'));
   }
 }
 

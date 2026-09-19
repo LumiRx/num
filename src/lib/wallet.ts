@@ -6,6 +6,7 @@
 // the price shown wasn't necessarily the price charged.
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
+import { t } from './i18n';
 
 /** One line in the money story — a Star move or a card payment. */
 export interface Activity {
@@ -51,16 +52,16 @@ export function amountOf(a: Activity): string {
 
 /** A short, human "when". Exact timestamps are noise on a wallet row. */
 export function whenOf(at: string): string {
-  const t = Date.parse(at.includes('T') ? at : `${at.replace(' ', 'T')}Z`);
-  if (Number.isNaN(t)) return '';
-  const mins = Math.floor((Date.now() - t) / 60000);
-  if (mins < 1) return 'just now';
+  const at_ = Date.parse(at.includes('T') ? at : `${at.replace(' ', 'T')}Z`);
+  if (Number.isNaN(at_)) return '';
+  const mins = Math.floor((Date.now() - at_) / 60000);
+  if (mins < 1) return t('just now');
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return new Date(at_).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 /**
@@ -70,10 +71,10 @@ export function whenOf(at: string): string {
  */
 export function stateNote(a: Activity): string | null {
   switch (a.state) {
-    case 'pending': return 'Still going through';
-    case 'failed': return 'Didn’t go through';
-    case 'refunded': return 'Refunded';
-    case 'disputed': return 'Disputed — we’re on it';
+    case 'pending': return t('Still going through');
+    case 'failed': return t('Didn’t go through');
+    case 'refunded': return t('Refunded');
+    case 'disputed': return t('Disputed — we’re on it');
     default: return null;
   }
 }

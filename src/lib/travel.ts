@@ -19,6 +19,7 @@
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/travel') + path, {
@@ -120,7 +121,7 @@ export async function loadMyReferrals(): Promise<void> {
  */
 export async function referTravel(d: TravelDraft): Promise<{ ok: boolean; message: string; ref?: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Tell me your name first — the agency needs to know who is travelling.' };
+  if (!me) return { ok: false, message: t('Tell me your name first — the agency needs to know who is travelling.') };
   try {
     const out = await api<{ ref: string; partner: string; note: string }>('/refer', {
       method: 'POST',
@@ -129,7 +130,7 @@ export async function referTravel(d: TravelDraft): Promise<{ ok: boolean; messag
     await loadMyReferrals();
     return { ok: true, message: out.note, ref: out.ref };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t go through.')) };
   }
 }
 
@@ -143,7 +144,7 @@ export async function referTravel(d: TravelDraft): Promise<{ ok: boolean; messag
  */
 export async function acceptQuote(ref: string): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Sign in first.' };
+  if (!me) return { ok: false, message: t('Sign in first.') };
   try {
     const out = await api<{ note: string }>('/accept', {
       method: 'POST',
@@ -152,7 +153,7 @@ export async function acceptQuote(ref: string): Promise<{ ok: boolean; message: 
     await loadMyReferrals();
     return { ok: true, message: out.note };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t go through.')) };
   }
 }
 

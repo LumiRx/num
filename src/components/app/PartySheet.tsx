@@ -197,7 +197,7 @@ export default function PartySheet() {
               <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: -4 }}>{t('Picked up where you left off — this is kept on your phone until you start the plan.')}</div>
             )}
             <div {...pressable(newPlan)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
-              {busy ? 'ONE SEC…' : 'START THE PLAN'}
+              {busy ? t('ONE SEC…') : t('START THE PLAN')}
             </div>
           </div>
           {!!plans.length && (
@@ -239,7 +239,7 @@ export default function PartySheet() {
                 date wheel beats anything we could build. */}
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>
-                WHEN{plan.starts_on ? ` · ON EVERYONE'S CALENDAR` : ' · PICK A DATE AND IT LANDS ON EVERYONE’S CALENDAR'}
+                WHEN{plan.starts_on ? ` · ON EVERYONE'S CALENDAR` : t(' · PICK A DATE AND IT LANDS ON EVERYONE’S CALENDAR')}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
                 <input
@@ -285,7 +285,7 @@ export default function PartySheet() {
                       color: m.vote === 'in' ? '#0e6b45' : 'var(--ink-60)',
                     }}
                   >
-                    {m.member_id === me?.id ? 'You' : m.name || 'Friend'}
+                    {m.member_id === me?.id ? t('You') : m.name || 'Friend'}
                     {m.vote === 'in' ? ' ✓' : m.vote === 'out' ? ' ✗' : ' · ?'}
                   </span>
                 ))}
@@ -380,7 +380,7 @@ export default function PartySheet() {
                         fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
                       }}
                     >
-                      {busy ? '…' : mine ? 'DELETE' : 'LEAVE'}
+                      {busy ? '…' : mine ? t('DELETE') : t('LEAVE')}
                     </div>
                   </div>
                 </div>
@@ -389,7 +389,7 @@ export default function PartySheet() {
                   {...pressable(() => setKilling(true))}
                   style={{ cursor: 'pointer', fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: 'var(--color-neutral-500)', padding: '6px 0' }}
                 >
-                  {mine ? 'DELETE THIS PLAN' : 'LEAVE THIS PLAN'}
+                  {mine ? t('DELETE THIS PLAN') : t('LEAVE THIS PLAN')}
                 </div>
               )}
             </div>
@@ -478,7 +478,7 @@ export default function PartySheet() {
                       }}
                     >
                       <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.08em', color: 'var(--color-accent-700)' }}>
-                        {e.by_id === me?.id ? 'YOU' : (e.by_name || 'FRIEND').toUpperCase()}
+                        {e.by_id === me?.id ? t('YOU') : (e.by_name || 'FRIEND').toUpperCase()}
                       </div>
                       <div style={{ fontSize: 12.5, lineHeight: 1.45, marginTop: 2 }}>{e.summary}</div>
                     </div>

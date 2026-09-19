@@ -59,15 +59,15 @@ export default function DiscoverSheet() {
 
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>
-          {open === 'search' ? 'SEARCH' : 'SUGGEST'}
+          {open === 'search' ? 'SEARCH' : t('SUGGEST')}
         </div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
-          {open === 'search' ? 'What are you after?' : 'Three things none of you have tried'}
+          {open === 'search' ? t('What are you after?') : t('Three things none of you have tried')}
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
-          {(['search', 'suggest'] as const).map((t) => (
-            <div key={t} {...pressable(() => store.set({ discoverOpen: t }))} style={pill(open === t)}>
-              {t === 'search' ? 'SEARCH' : 'SUGGEST'}
+          {(['search', 'suggest'] as const).map((tab) => (
+            <div key={tab} {...pressable(() => store.set({ discoverOpen: tab }))} style={pill(open === tab)}>
+              {tab === 'search' ? t('SEARCH') : t('SUGGEST')}
             </div>
           ))}
         </div>
@@ -105,14 +105,14 @@ function Search({ onMsg }: { onMsg: (m: string | null) => void }) {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder={planId ? 'sunset boat · something Ari hasn’t done…' : 'sunset boat · cooking class saturday…'}
+        placeholder={planId ? t('sunset boat · something Ari hasn’t done…') : t('sunset boat · cooking class saturday…')}
         style={field}
         enterKeyHint="search"
         autoFocus
       />
       {sources && (
         <div style={{ ...kicker, marginTop: 10 }}>
-          {[['NUM', sources.num], ['TICKETMASTER', sources.ticketmaster], ['VIATOR', sources.viator], ['YOUR CREW', sources.crew]]
+          {[[t('NUM'), sources.num], [t('TICKETMASTER'), sources.ticketmaster], [t('VIATOR'), sources.viator], [t('YOUR CREW'), sources.crew]]
             .filter(([, n]) => Number(n) > 0).map(([k, n]) => `${n} ${k}`).join(' · ') || 'NOTHING YET'}
         </div>
       )}
@@ -122,7 +122,7 @@ function Search({ onMsg }: { onMsg: (m: string | null) => void }) {
           <div style={{ fontSize: 12, color: 'var(--ink-40)', lineHeight: 1.6, padding: '6px 2px' }}>
             {res.error === 'no_place'
               ? <span>{t('Tell NUM where you are first.')}{' '}<span {...pressable(() => store.set({ discoverOpen: null, placeOpen: true }))} style={{ color: 'var(--color-accent)', fontWeight: 700, cursor: 'pointer' }}>{t('Where am I?')}</span></span>
-              : res.error ? 'Couldn’t search just now.' : (res.note ?? 'Nothing for that here. Ask NUM in the thread and it will look wider.')}
+              : res.error ? t('Couldn’t search just now.') : (res.note ?? 'Nothing for that here. Ask NUM in the thread and it will look wider.')}
           </div>
         )}
         {res?.items.map((i) => <Row key={i.id} i={i} onMsg={onMsg} />)}
@@ -150,11 +150,11 @@ function Row({ i, onMsg }: { i: DiscoverItem; onMsg: (m: string | null) => void 
           <div
             {...pressable(async () => {
               if (!planId) { sendItem(i); return; }
-              onMsg((await addToPlan(i)) ? `Added “${i.title}” to the plan.` : 'Couldn’t add that just now.');
+              onMsg((await addToPlan(i)) ? `Added “${i.title}” to the plan.` : t('Couldn’t add that just now.'));
             })}
             style={small}
           >
-            {planId ? 'Add to plan' : 'Save'}
+            {planId ? t('Add to plan') : t('Save')}
           </div>
         </div>
       </div>
@@ -185,7 +185,7 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
   const deal = async (m: Mood | null) => {
     setBusy(true); onMsg(null);
     const r = await discover({ mode: 'surprise', mood: m });
-    setDeck(r.items); setNote(r.error === 'no_place' ? 'no_place' : r.error ? 'Couldn’t reach the shelf just now.' : r.note); setBusy(false);
+    setDeck(r.items); setNote(r.error === 'no_place' ? 'no_place' : r.error ? t('Couldn’t reach the shelf just now.') : r.note); setBusy(false);
   };
   useEffect(() => { void deal(null); /* first open deals a hand */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -198,12 +198,12 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
       <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.5 }}>
         {planId && names.length
           ? `Checked against what you, ${names.slice(0, 2).join(' and ')} have already done.`
-          : 'Checked against what you have already done. Open a plan and it checks the whole crew.'}
+          : t('Checked against what you have already done. Open a plan and it checks the whole crew.')}
       </div>
       <div className="no-scrollbar" style={{ display: 'flex', gap: 6, marginTop: 12, overflowX: 'auto' }}>
         {MOODS.map((m) => (
           <div key={m.id} {...pressable(() => { const next = mood === m.id ? null : m.id; setMood(next); void deal(next); })} style={pill(mood === m.id)}>
-            <span aria-hidden="true" style={{ marginRight: 5 }}>{m.emoji}</span>{m.label.toUpperCase()}
+            <span aria-hidden="true" style={{ marginRight: 5 }}>{m.emoji}</span>{t(m.label).toUpperCase()}
           </div>
         ))}
       </div>
@@ -213,7 +213,7 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
         style={{ cursor: 'pointer', marginTop: 10, borderRadius: 14, padding: '13px 16px', background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}
       >
         <SparklesIcon size={14} />
-        {busy ? 'Dealing…' : 'Surprise me'}
+        {busy ? 'Dealing…' : t('Surprise me')}
       </div>
 
       <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
@@ -256,7 +256,7 @@ function SuggestCard({ i, planId, onDone }: { i: DiscoverItem; planId: string | 
         <div
           {...pressable(async () => {
             if (!planId) { sendItem(i); onDone(null); return; }
-            onDone((await addToPlan(i)) ? `Saved “${i.title}” to the plan.` : 'Couldn’t save that just now.');
+            onDone((await addToPlan(i)) ? `Saved “${i.title}” to the plan.` : t('Couldn’t save that just now.'));
           })}
           style={small}
         >
@@ -266,7 +266,7 @@ function SuggestCard({ i, planId, onDone }: { i: DiscoverItem; planId: string | 
           {...pressable(async () => {
             if (planId) {
               const ok = await addToPlan(i);
-              onDone(ok ? `Sent to the crew. It lands in the plan as an idea they can vote on.` : 'Couldn’t send that just now.');
+              onDone(ok ? `Sent to the crew. It lands in the plan as an idea they can vote on.` : t('Couldn’t send that just now.'));
             } else { sendItem(i); onDone(null); }
           })}
           style={{ ...small, background: 'var(--grad-accent)', color: '#fff', border: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}

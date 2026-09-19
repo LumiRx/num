@@ -14,6 +14,7 @@
 //     they were never there.
 import type { Member } from './types';
 import { apiUrl } from './apibase';
+import { t } from './i18n';
 
 export const TITLES = ['mr', 'ms', 'mrs', 'miss', 'dr'] as const;
 export const GENDERS = ['m', 'f'] as const;
@@ -71,7 +72,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new Error(
       res.ok
-        ? "Couldn't reach NUM — the server answered with something unexpected."
+        ? t('Couldn\'t reach NUM — the server answered with something unexpected.')
         : `passengers ${res.status}`,
     );
   }

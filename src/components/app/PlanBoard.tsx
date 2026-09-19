@@ -27,7 +27,7 @@ import {
   setPlanSpan, settlePlan, startInvite, syncPlan,
 } from '../../lib/social';
 import { askNum } from '../../lib/concierge';
-import { t } from '../../lib/i18n';
+import { currentLang, t } from '../../lib/i18n';
 import { HOURS, addDays, dayLabel, fmtMinor, hourLabel, hourOf, inOrder, initials, landing, spanDays } from '../../lib/planboard';
 import type { PartyPlan, PlanItem, PlanMoney } from '../../lib/types';
 
@@ -44,7 +44,7 @@ const chip = (on: boolean): CSSProperties => ({
   fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', whiteSpace: 'nowrap',
   background: on ? 'var(--grad-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink)',
   border: on ? '1px solid transparent' : '1px solid var(--ink-12)',
-  boxShadow: on ? '0 4px 14px rgba(14,164,131,.28)' : 'none',
+  boxShadow: on ? t('0 4px 14px rgba(14,164,131,.28)') : 'none',
 });
 const primary: CSSProperties = {
   cursor: 'pointer', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700,
@@ -175,7 +175,7 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
             <div style={kicker}>{locked ? t('LOCKED PLAN') : t('GROUP PLAN')}</div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 4, lineHeight: 1.2 }}>{plan.title}</div>
             <div style={{ ...quiet, marginTop: 4 }}>
-              {plan.starts_on ? `${dayLabel(plan.starts_on)}${plan.ends_on && plan.ends_on !== plan.starts_on ? ` – ${dayLabel(plan.ends_on)}` : ''}` : t('No date yet')}
+              {plan.starts_on ? `${dayLabel(plan.starts_on, currentLang())}${plan.ends_on && plan.ends_on !== plan.starts_on ? ` – ${dayLabel(plan.ends_on, currentLang())}` : ''}` : t('No date yet')}
               {plan.dest ? ` · ${plan.dest}` : ''} · {members.length || 1} {members.length === 1 ? t('person') : t('people')} · {currency}
             </div>
           </div>
@@ -238,7 +238,7 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
             return (
               <div key={d} {...pressable(() => setDay(d))} role="tab" aria-selected={day === d} className="tap" data-slot={drag ? `${d}|` : undefined}
                 style={{ ...chip(day === d), flexDirection: 'column', alignItems: 'flex-start', gap: 1, minHeight: 48, padding: '6px 14px', scrollSnapAlign: 'start', outline: drag?.over === `${d}|` ? '2px solid var(--color-accent)' : 'none' }}>
-                <span>{dayLabel(d)}</span>
+                <span>{dayLabel(d, currentLang())}</span>
                 <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.8 }}>{n ? `${n} ${n === 1 ? t('thing') : t('things')}` : t('empty')}{cost ? ` · ${fmtMinor(cost, currency)}` : ''}</span>
               </div>
             );
@@ -258,7 +258,7 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
       {(plan.starts_on || undated.length > 0) && (
         <div className="glass" style={{ marginTop: 6, borderRadius: 'var(--r-lg)', padding: '6px 0 10px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 14px 6px' }}>
-            <span style={kicker}>{day === 'any' ? t('NO DAY YET') : dayLabel(day).toUpperCase()}</span>
+            <span style={kicker}>{day === 'any' ? t('NO DAY YET') : dayLabel(day, currentLang()).toUpperCase()}</span>
             <span style={quiet}>{shown.length ? `${shown.length} · ${fmtMinor(spend(day), currency)}` : t('Nothing here yet')}</span>
           </div>
 

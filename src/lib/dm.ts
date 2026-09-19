@@ -18,6 +18,7 @@
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 const IDLE_MS = 5_000;
 
@@ -96,7 +97,7 @@ export async function loadDmThread(withId: string): Promise<void> {
     }));
   } catch (err) {
     console.warn('[dm] thread failed', err);
-    store.set({ dmError: 'Couldn’t load that conversation.' });
+    store.set({ dmError: t('Couldn’t load that conversation.') });
   }
 }
 
@@ -149,7 +150,7 @@ export async function sendDm(to: string, text: string, opts: { id?: string } = {
     void loadDmThread(to);
     return true;
   } catch (err) {
-    const message = guestMessage(err, 'That didn’t send.');
+    const message = guestMessage(err, t('That didn’t send.'));
     store.set((s) => ({
       dmThread: s.dmThread.map((m) => (m.id === id ? { ...m, pending: false, failed: true } : m)),
       dmError: message,

@@ -24,13 +24,14 @@ const detect = (): Platform => {
 };
 
 const STEPS: Record<Platform, string[]> = {
-  ios: ['Tap the Share button at the bottom of Safari', 'Choose “Add to Home Screen”', 'Tap Add — NUM opens like any other app'],
-  android: ['Tap the ⋮ menu in Chrome', 'Choose “Install app” or “Add to Home screen”', 'Confirm — NUM opens like any other app'],
-  desktop: ['Click the install icon in your address bar', 'Choose Install', 'NUM opens in its own window'],
+  ios: [T('Tap the Share button at the bottom of Safari'), T('Choose “Add to Home Screen”'), T('Tap Add — NUM opens like any other app')],
+  android: [T('Tap the ⋮ menu in Chrome'), T('Choose “Install app” or “Add to Home screen”'), T('Confirm — NUM opens like any other app')],
+  desktop: [T('Click the install icon in your address bar'), T('Choose Install'), T('NUM opens in its own window')],
 };
 
 import { canOfferInstall, escapeCard, isStandalone } from '../../lib/native';
 import { t } from '../../lib/i18n';
+import { T } from '../../lib/i18nmark';
 
 /**
  * ── WHERE THIS RENDERS ────────────────────────────────────────────────────
@@ -225,7 +226,7 @@ export default function InstallPrompt({
               background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
             }}
           >
-            {copied ? 'LINK COPIED' : 'COPY THE LINK'}
+            {copied ? t('LINK COPIED') : t('COPY THE LINK')}
           </div>
           <div
             {...pressable(dismiss)}
@@ -264,7 +265,7 @@ export default function InstallPrompt({
 
       {open && (
         <ol style={{ margin: '11px 0 0', padding: '0 0 0 18px', fontSize: 11.5, color: 'var(--ink-60)', lineHeight: 1.7 }}>
-          {STEPS[platform].map((s) => <li key={s}>{s}</li>)}
+          {STEPS[platform].map((s) => <li key={s}>{t(s)}</li>)}
         </ol>
       )}
 
@@ -277,7 +278,7 @@ export default function InstallPrompt({
             background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em',
           }}
         >
-          {native && !open ? 'ADD — ONE TAP' : open ? 'GOT IT' : 'SHOW ME HOW'}
+          {native && !open ? t('ADD — ONE TAP') : open ? t('GOT IT') : t('SHOW ME HOW')}
         </div>
         <div
           {...pressable(dismiss)}

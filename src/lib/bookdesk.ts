@@ -15,6 +15,7 @@ import { store } from './store';
 import { apiUrl } from '../lib/apibase';
 import { guestMessage } from './saferr';
 import type { Booking, Msg } from './types';
+import { t } from './i18n';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/book') + path, {
@@ -59,10 +60,10 @@ export interface TableDraft {
 /** Plain English for where a request has got to. */
 export const stateLine = (r: TableRequest): string =>
   ({
-    requested: 'Asked — waiting on the venue',
-    confirmed: 'Confirmed by the venue',
-    declined: 'They couldn’t take it',
-    expired: 'No answer — worth trying elsewhere',
+    requested: t('Asked — waiting on the venue'),
+    confirmed: t('Confirmed by the venue'),
+    declined: t('They couldn’t take it'),
+    expired: t('No answer — worth trying elsewhere'),
   })[r.state] ?? r.state;
 
 /** The line under the heading: venue, party, when. */
@@ -103,7 +104,7 @@ export function tableBooking(r: TableRequest, today = new Date()): Booking {
     title: `Table for ${r.party_size} · ${r.venue_name}`,
     grp: 'BKK',
     status: 'confirmed',
-    note: [r.note, 'Confirmed by the venue through NUM.'].filter(Boolean).join(' '),
+    note: [r.note, t('Confirmed by the venue through NUM.')].filter(Boolean).join(' '),
     cost: '',
   };
 }
@@ -193,7 +194,7 @@ export function landing(
  */
 export async function requestTable(d: TableDraft): Promise<{ ok: boolean; message: string; id?: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Add your name first — a venue needs to know who the table is for.' };
+  if (!me) return { ok: false, message: t('Add your name first — a venue needs to know who the table is for.') };
   try {
     const out = await api<{ id: string; texted: boolean; note: string }>('/request', {
       method: 'POST',
@@ -212,7 +213,7 @@ export async function requestTable(d: TableDraft): Promise<{ ok: boolean; messag
     await loadMyRequests();
     return { ok: true, message: out.note, id: out.id };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t go through.')) };
   }
 }
 

@@ -19,6 +19,7 @@ import { store } from './store';
 import { near } from './near';
 import { fmtDate } from './i18n';
 import type { SharePayload } from './sharecard';
+import { t } from './i18n';
 
 export interface EventCard {
   source: 'num' | 'ticketmaster' | 'viator' | 'crew';
@@ -60,7 +61,7 @@ export function factsOf(e: EventCard): string[] {
  */
 export function costOf(e: EventCard): string | null {
   if (e.cost && e.cost.trim()) return e.cost.trim();
-  return e.url ? 'Price is on the ticket page' : null;
+  return e.url ? t('Price is on the ticket page') : null;
 }
 
 /** The button that leaves NUM, named after whose page it opens. */
@@ -69,9 +70,9 @@ export const hostedOnNum = (e: EventCard): boolean => e.source === 'num' && /\/e
 
 export function ticketLabel(e: EventCard): string | null {
   if (!e.url) return null;
-  if (e.source === 'ticketmaster') return 'GET TICKETS ON TICKETMASTER';
-  if (hostedOnNum(e)) return 'SAY YOU’RE COMING';
-  return 'OPEN THE EVENT PAGE';
+  if (e.source === 'ticketmaster') return t('GET TICKETS ON TICKETMASTER');
+  if (hostedOnNum(e)) return t('SAY YOU’RE COMING');
+  return t('OPEN THE EVENT PAGE');
 }
 
 /**
@@ -81,9 +82,9 @@ export function ticketLabel(e: EventCard): string | null {
  * sentence; it also stops the sheet from reading like NUM took the money.
  */
 export function sellerNote(e: EventCard): string | null {
-  if (e.source === 'ticketmaster') return 'Tickets are sold by Ticketmaster. NUM holds nothing and charges nothing for them.';
-  if (hostedOnNum(e)) return 'Hosted on NUM by a business or host. Your RSVP goes to them; any price is theirs.';
-  if (e.url) return 'Tickets are sold on the event’s own page.';
+  if (e.source === 'ticketmaster') return t('Tickets are sold by Ticketmaster. NUM holds nothing and charges nothing for them.');
+  if (hostedOnNum(e)) return t('Hosted on NUM by a business or host. Your RSVP goes to them; any price is theirs.');
+  if (e.url) return t('Tickets are sold on the event’s own page.');
   return null;
 }
 

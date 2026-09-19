@@ -4,6 +4,7 @@
 // that matters right now. Every time on screen is the airline's.
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
+import { t } from './i18n';
 
 export interface FlightLeg {
   iata: string | null; name: string | null;
@@ -53,13 +54,13 @@ export function headline(f: FlightSnapshot, now = Date.now()): { pill: string; t
   const st = f.status.toLowerCase();
   const dep = parse(f.dep.est ?? f.dep.sched), arr = parse(f.arr.est ?? f.arr.sched);
   const late = delayMinutes(f);
-  if (/cancel/.test(st)) return { pill: 'Cancelled', tone: 'bad', chip: 'Ask NUM for the next flights' };
-  if (/arrived|landed/.test(st) || (Number.isFinite(arr) && now > arr)) return { pill: 'Landed', tone: 'ok', chip: f.arr.belt ? `Bags on belt ${f.arr.belt}` : `Landed ${hhmm(f.arr.est_local ?? f.arr.sched_local)}` };
+  if (/cancel/.test(st)) return { pill: t('Cancelled'), tone: 'bad', chip: t('Ask NUM for the next flights') };
+  if (/arrived|landed/.test(st) || (Number.isFinite(arr) && now > arr)) return { pill: t('Landed'), tone: 'ok', chip: f.arr.belt ? `Bags on belt ${f.arr.belt}` : `Landed ${hhmm(f.arr.est_local ?? f.arr.sched_local)}` };
   if (Number.isFinite(dep) && now < dep) {
-    const pill = late >= 15 ? `${late} min late` : /boarding/.test(st) ? 'Boarding' : 'On time';
+    const pill = late >= 15 ? `${late} min late` : /boarding/.test(st) ? t('Boarding') : t('On time');
     return { pill, tone: late >= 15 ? 'late' : 'ok', chip: /boarding/.test(st) ? `Boarding${f.dep.gate ? ` at ${f.dep.gate}` : ''}` : `Departs in ${span(dep - now)}` };
   }
-  return { pill: late >= 15 ? `${late} min late` : 'In the air', tone: late >= 15 ? 'late' : 'ok', chip: Number.isFinite(arr) ? `Lands in ${span(arr - now)}` : 'In the air' };
+  return { pill: late >= 15 ? `${late} min late` : t('In the air'), tone: late >= 15 ? 'late' : 'ok', chip: Number.isFinite(arr) ? `Lands in ${span(arr - now)}` : t('In the air') };
 }
 
 export async function refreshFlights(): Promise<void> {
@@ -74,14 +75,14 @@ export async function refreshFlights(): Promise<void> {
 
 export async function watchFlight(flightNo: string, date: string): Promise<{ ok: true; watch: FlightWatch } | { ok: false; error: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, error: 'Tell NUM who you are first, so it knows who to ping.' };
+  if (!me) return { ok: false, error: t('Tell NUM who you are first, so it knows who to ping.') };
   try {
     const res = await fetch(apiUrl('/api/flightwatch'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ me: me.id, flight_no: flightNo, date }) });
     const body = (await res.json()) as { ok: boolean; watch?: FlightWatch; error?: string };
     if (!body.ok || !body.watch) return { ok: false, error: body.error ?? 'Could not start watching that flight.' };
     store.set((s) => ({ flights: [...s.flights.filter((w) => w.id !== body.watch!.id), body.watch!] }));
     return { ok: true, watch: body.watch };
-  } catch { return { ok: false, error: 'Offline. Try again in a moment.' }; }
+  } catch { return { ok: false, error: t('Offline. Try again in a moment.') }; }
 }
 
 export async function stopWatching(id: string): Promise<void> {

@@ -100,7 +100,7 @@ export default function EventSheet() {
       setPlace('');
       setDress('');
     } catch (err) {
-      setNote(guestMessage(err, 'Couldn’t create that.'));
+      setNote(guestMessage(err, t('Couldn’t create that.')));
     } finally {
       setBusy(false);
     }
@@ -119,7 +119,7 @@ export default function EventSheet() {
       setGuestPhone('');
       void eventDashboard(eventId).then(setDash);
     } catch (err) {
-      setNote(guestMessage(err, 'Couldn’t create that invite.'));
+      setNote(guestMessage(err, t('Couldn’t create that invite.')));
     } finally {
       setBusy(false);
     }
@@ -147,7 +147,7 @@ export default function EventSheet() {
       );
       void eventDashboard(eventId).then(setDash);
     } catch (err) {
-      setNote(guestMessage(err, 'Couldn’t ask them.'));
+      setNote(guestMessage(err, t('Couldn’t ask them.')));
     } finally {
       setAsking(null);
     }
@@ -211,7 +211,7 @@ export default function EventSheet() {
               </span>
             </div>
             <div {...pressable(doCreate)} style={{ ...primary, opacity: busy || !title.trim() ? 0.6 : 1 }}>
-              {busy ? 'ONE SEC…' : 'CREATE THE EVENT'}
+              {busy ? t('ONE SEC…') : t('CREATE THE EVENT')}
             </div>
           </div>
           {note && <div style={{ fontSize: 10.5, color: 'var(--color-accent-700)', marginTop: 10 }}>{note}</div>}
@@ -246,7 +246,7 @@ export default function EventSheet() {
                 </div>
                 {/* The four numbers a host checks obsessively. */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  {([['heads', 'COMING'], ['maybe', 'MAYBE'], ['no', 'CAN’T'], ['pending', 'SILENT']] as const).map(([k, l]) => (
+                  {([['heads', t('COMING')], ['maybe', t('MAYBE')], ['no', t('CAN’T')], ['pending', t('SILENT')]] as const).map(([k, l]) => (
                     <div key={k} className="glass" style={{ flex: 1, borderRadius: 'var(--r-md)', padding: '9px 6px', textAlign: 'center' }}>
                       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18 }}>{dash.summary[k]}</div>
                       <div style={{ fontSize: 9, letterSpacing: '.1em', color: 'var(--ink-60)', fontWeight: 700 }}>{l}</div>
@@ -303,7 +303,7 @@ export default function EventSheet() {
                       <div
                         key={f.id}
                         {...(done ? {} : pressable(() => void askFriend(f.id!, f.name)))}
-                        className={done ? 'glass' : 'glass press'}
+                        className={done ? 'glass' : t('glass press')}
                         style={{
                           cursor: done ? 'default' : 'pointer', flex: 'none', borderRadius: 999,
                           padding: '8px 13px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
@@ -332,7 +332,7 @@ export default function EventSheet() {
                 <input style={field} placeholder={t('Their name')} value={guest} onChange={(e) => setGuest(e.target.value)} />
                 <input style={field} placeholder={t('Their mobile (optional)')} inputMode="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} />
                 <div {...pressable(doInvite)} style={{ ...primary, opacity: busy ? 0.6 : 1 }}>
-                  {busy ? 'ONE SEC…' : 'CREATE THEIR INVITE'}
+                  {busy ? t('ONE SEC…') : t('CREATE THEIR INVITE')}
                 </div>
                 {note && <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.5 }}>{note}</div>}
               </div>
@@ -381,7 +381,7 @@ export default function EventSheet() {
                     </div>
                     <div style={{ fontSize: 10.5, color: 'var(--ink-60)' }}>
                       {g.phone ?? 'no number'}
-                      {g.rsvp === 'pending' && g.opened_at ? ' · opened it, no answer' : ''}
+                      {g.rsvp === 'pending' && g.opened_at ? t(' · opened it, no answer') : ''}
                       {g.message ? ` · “${g.message}”` : ''}
                     </div>
                   </div>

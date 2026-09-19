@@ -14,11 +14,12 @@ import { XIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
 import { loadBill, startRail, splitShares, tryAutoPay, autoPayNote, type BillView, type BillRail, type BillShare } from '../../lib/bill';
 import { openTab, loadTab, type TabState } from '../../lib/tabs';
+import { T } from '../../lib/i18nmark';
 
 const BADGE: Record<string, string> = {
-  apple_pay: ' Pay', google_pay: 'G Pay', card: 'CARD', link: 'Link', cashapp: '$', amazon_pay: 'a',
-  alipay: '支', wechat_pay: '微', pay_by_bank: 'BANK', revolut_pay: 'R', paypal: 'PayPal',
-  promptpay_stripe: 'PP', promptpay_sticker: 'PP', venue_link: '↗', usdc_stripe: 'USDC', usdc_direct: 'USDC',
+  apple_pay: ' Pay', google_pay: T('G Pay'), card: T('CARD'), link: 'Link', cashapp: '$', amazon_pay: 'a',
+  alipay: '支', wechat_pay: '微', pay_by_bank: T('BANK'), revolut_pay: 'R', paypal: 'PayPal',
+  promptpay_stripe: 'PP', promptpay_sticker: 'PP', venue_link: '↗', usdc_stripe: T('USDC'), usdc_direct: T('USDC'),
 };
 
 export default function BillSheet() {
@@ -206,7 +207,7 @@ export default function BillSheet() {
                   className="glass press"
                   style={{
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 66, borderRadius: 16,
-                    border: i === 0 ? '1.5px solid var(--color-accent)' : '1px solid var(--ink-12)', opacity: busy && busy !== r.id ? 0.6 : 1,
+                    border: i === 0 ? t('1.5px solid var(--color-accent)') : '1px solid var(--ink-12)', opacity: busy && busy !== r.id ? 0.6 : 1,
                   }}
                 >
                   <div aria-hidden style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--field-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flex: 'none' }}>

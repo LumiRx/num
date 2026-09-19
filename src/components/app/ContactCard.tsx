@@ -75,11 +75,11 @@ export default function ContactCard() {
       return;
     }
     if (email.trim() && !tidyEmail) {
-      setNote('That address doesn’t look complete — check for a missing @ or a typo in the domain.');
+      setNote(t('That address doesn’t look complete — check for a missing @ or a typo in the domain.'));
       return;
     }
     if (!tidyPhone && !tidyEmail) {
-      setNote('A mobile or an email — either one is fine.');
+      setNote(t('A mobile or an email — either one is fine.'));
       return;
     }
     setBusy(true);
@@ -87,24 +87,24 @@ export default function ContactCard() {
       const out = await addContact(tidyPhone ?? undefined, tidyEmail ?? undefined);
       setSent(!!out.sent);
       setNote(out.note ?? (out.sent
-        ? 'Code sent — type it in below.'
-        : 'Saved. I could not get a code out just now, so try again in a minute.'));
+        ? t('Code sent — type it in below.')
+        : t('Saved. I could not get a code out just now, so try again in a minute.')));
     } catch (err) {
-      setNote(guestMessage(err, 'That didn’t go through.'));
+      setNote(guestMessage(err, t('That didn’t go through.')));
     } finally {
       setBusy(false);
     }
   };
 
   const check = async () => {
-    if (code.trim().length < 4) { setNote('Type the six digits I sent you.'); return; }
+    if (code.trim().length < 4) { setNote(t('Type the six digits I sent you.')); return; }
     setBusy(true);
     try {
       const ok = await verifyCode(code.trim());
-      setNote(ok ? 'Done — I can reach you now.' : 'That code didn’t match.');
+      setNote(ok ? t('Done — I can reach you now.') : t('That code didn’t match.'));
       if (ok) setCode('');
     } catch (err) {
-      setNote(guestMessage(err, 'That code didn’t match.'));
+      setNote(guestMessage(err, t('That code didn’t match.')));
     } finally {
       setBusy(false);
     }
@@ -114,9 +114,9 @@ export default function ContactCard() {
     setBusy(true);
     try {
       const out = await resendCode();
-      setNote(out.already ? 'Already verified — you are in.' : out.sent ? 'New code on its way.' : 'I could not send another just now.');
+      setNote(out.already ? t('Already verified — you are in.') : out.sent ? t('New code on its way.') : t('I could not send another just now.'));
     } catch (err) {
-      setNote(guestMessage(err, 'Couldn’t send another just now.'));
+      setNote(guestMessage(err, t('Couldn’t send another just now.')));
     } finally {
       setBusy(false);
     }
@@ -127,10 +127,10 @@ export default function ContactCard() {
 
   return (
     <div ref={box} style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--ink-08)' }}>
-      <div style={kicker}>{missing ? 'A WAY TO REACH YOU' : 'FINISH VERIFYING'}</div>
+      <div style={kicker}>{missing ? t('A WAY TO REACH YOU') : t('FINISH VERIFYING')}</div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>
         {missing
-          ? 'I have no number and no email for you, which means I cannot tell you when a booking moves and you cannot get this account back if you change phones.'
+          ? t('I have no number and no email for you, which means I cannot tell you when a booking moves and you cannot get this account back if you change phones.')
           : `Type the code I sent to ${me.phone ?? me.email}. It is what proves the ${me.phone ? 'number' : 'address'} is yours.`}
       </div>
 
@@ -166,7 +166,7 @@ export default function ContactCard() {
             className="press"
             style={{ ...btn, background: 'var(--grad-accent)', color: '#fff' }}
           >
-            {busy ? '…' : 'SEND ME A CODE'}
+            {busy ? '…' : t('SEND ME A CODE')}
           </div>
         </div>
       )}
@@ -182,7 +182,7 @@ export default function ContactCard() {
             className="press"
             style={{ ...btn, padding: '0 18px', background: 'var(--grad-accent)', color: '#fff' }}
           >
-            {busy ? '…' : 'CHECK'}
+            {busy ? '…' : t('CHECK')}
           </div>
         </div>
       )}

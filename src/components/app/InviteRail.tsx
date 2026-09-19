@@ -49,7 +49,7 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
         if (c?.plan_id) void openPlan(c.plan_id);
       }
     } catch (err) {
-      setNote(guestMessage(err, 'That didn’t go through.'));
+      setNote(guestMessage(err, t('That didn’t go through.')));
     } finally {
       setBusy(null);
     }
@@ -64,7 +64,7 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
   const Btn = ({ label, onClick, primary: p, quiet }: { label: string; onClick: () => void; primary?: boolean; quiet?: boolean }) => (
     <span
       {...pressable(onClick)}
-      className={p ? 'press' : 'glass press'}
+      className={p ? 'press' : t('glass press')}
       style={{
         cursor: 'pointer', borderRadius: 999, minHeight: 36, padding: '0 13px', display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 700, letterSpacing: '.04em',
         ...(p ? { background: 'var(--grad-accent)', color: '#fff' } : { color: quiet ? 'var(--ink-40)' : 'var(--ink)' }),

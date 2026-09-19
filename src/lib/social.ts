@@ -14,6 +14,8 @@ import { track } from './track';
 import type { Friend, InviteDraft, Member, PartyPlan, PlanItem, PlanMoney, Booking } from './types';
 import { apiUrl } from '../lib/apibase';
 import { isNativeApp } from './native';
+import { t } from './i18n';
+import { T } from './i18nmark';
 
 const CLAIM = 'https://num-claim.thatislumi.workers.dev';
 
@@ -140,11 +142,11 @@ function nudgeForContact(me: { phone?: string | null; email?: string | null } | 
           who: 'c' as const,
           text:
             'One thing I never got from you: a mobile number, or an email if you would rather. '
-            + 'It is how I reach you when a booking moves, and how you get this account back if you '
-            + 'change phones — right now I can do neither. Nothing stops working if you skip it.',
+            + t('It is how I reach you when a booking moves, and how you get this account back if you ')
+            + t('change phones — right now I can do neither. Nothing stops working if you skip it.'),
         },
       ],
-      chips: [{ id: 'addcontact', label: 'Add my number' }, ...s.chips],
+      chips: [{ id: 'addcontact', label: t('Add my number') }, ...s.chips],
     }));
   }, 1200);
 }
@@ -345,7 +347,7 @@ export function bootSocial(): void {
             },
           ]
         : s.msgs,
-    chips: [{ id: 'signup', label: 'Tell NUM who I am' }],
+    chips: [{ id: 'signup', label: t('Tell NUM who I am') }],
   }));
   // Ask first. An INVITED person came here to be connected to someone, so the
   // form lands in front of them after the first paint. Everyone else gets the
@@ -545,10 +547,10 @@ export async function signUp(name: string, phone?: string, email?: string): Prom
     recoveringEmail = byEmail ? (out.email ?? email ?? null) : null;
     narrate(
       out.verification?.channel === 'review'
-        ? 'That number already has an account here. Enter the sign-in code and I will bring it back.'
+        ? t('That number already has an account here. Enter the sign-in code and I will bring it back.')
         : byEmail
-          ? 'That address is already on NUM — which means you have an account, not that you are locked out.\n\nI have just emailed it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.'
-          : 'That number is already on NUM — which means you have an account, not that you are locked out.\n\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.',
+          ? t('That address is already on NUM — which means you have an account, not that you are locked out.\\n\\nI have just emailed it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.')
+          : t('That number is already on NUM — which means you have an account, not that you are locked out.\\n\\nI have just texted it a six-digit code. Type it in and everything comes back: your friends, your plans, your Stars.'),
     );
     // Not `sign_up`: nobody signed up, somebody came back. Counting a
     // recovery as a fresh signup would inflate the exact number the ad
@@ -785,7 +787,7 @@ export async function addContact(
   email?: string,
 ): Promise<{ sent: boolean; note: string | null }> {
   const me = store.get().me;
-  if (!me) return { sent: false, note: 'Sign in first.' };
+  if (!me) return { sent: false, note: t('Sign in first.') };
   const out = await api<Partial<MeResponse>>('/me', {
     method: 'POST',
     body: JSON.stringify({ id: me.id, phone, email }),
@@ -855,7 +857,7 @@ export async function unfriend(id: string, block = false): Promise<string | null
     await refreshFriends();
     return out.note ?? null;
   } catch {
-    return 'Couldn’t do that just now — try again.';
+    return t('Couldn’t do that just now — try again.');
   }
 }
 
@@ -863,11 +865,11 @@ export async function unfriend(id: string, block = false): Promise<string | null
 export type ReportReason = 'harassment' | 'spam' | 'impersonation' | 'inappropriate' | 'other';
 
 export const REPORT_REASONS: { id: ReportReason; label: string }[] = [
-  { id: 'harassment', label: 'Harassment or abuse' },
-  { id: 'spam', label: 'Spam or scam' },
-  { id: 'impersonation', label: 'Pretending to be someone else' },
-  { id: 'inappropriate', label: 'Inappropriate content' },
-  { id: 'other', label: 'Something else' },
+  { id: 'harassment', label: T('Harassment or abuse') },
+  { id: 'spam', label: T('Spam or scam') },
+  { id: 'impersonation', label: T('Pretending to be someone else') },
+  { id: 'inappropriate', label: T('Inappropriate content') },
+  { id: 'other', label: T('Something else') },
 ];
 
 /**
@@ -908,7 +910,7 @@ export async function reportMember(
     if (opts.block) await refreshFriends();
     return out.note ?? out.error ?? null;
   } catch {
-    return 'Couldn’t send that just now — try again.';
+    return t('Couldn’t send that just now — try again.');
   }
 }
 
@@ -930,7 +932,7 @@ export async function removePlan(planId: string): Promise<string | null> {
     await refreshPlans();
     return out.deleted ? `${out.title} is gone — everyone's been told.` : `You've left ${out.title}.`;
   } catch {
-    return 'Couldn’t remove that just now.';
+    return t('Couldn’t remove that just now.');
   }
 }
 
@@ -950,7 +952,7 @@ export async function deleteAccount(confirm = false): Promise<{
     const out = await fetch(apiUrl('/api/account/delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ me: me.id, ...(confirm ? { confirm: 'DELETE' } : {}) }),
+      body: JSON.stringify({ me: me.id, ...(confirm ? { confirm: t('DELETE') } : {}) }),
     }).then((r) => r.json());
     if (out?.ok && out?.deleted) {
       // START THEM OVER, PROPERLY.
@@ -1016,7 +1018,7 @@ export async function shareWithPlan(planId: string, share: boolean): Promise<boo
 export async function redeemPairCode(code: string): Promise<string | null> {
   const me = store.get().me;
   const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-  if (!me || clean.length < 6) return 'Enter the six characters from the link.';
+  if (!me || clean.length < 6) return t('Enter the six characters from the link.');
   try {
     const r = await fetch(apiUrl('/api/social/pair/redeem'), {
       method: 'POST',
@@ -1030,7 +1032,7 @@ export async function redeemPairCode(code: string): Promise<string | null> {
     store.set({ pairCode: null });
     return null;
   } catch {
-    return 'Couldn’t reach NUM — try again in a moment.';
+    return t('Couldn’t reach NUM — try again in a moment.');
   }
 }
 
@@ -1143,7 +1145,7 @@ export async function pickContacts(): Promise<Array<{ name: string; phone?: stri
   }
 }
 
-const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const norm = (v: string) => v.normalize(t('NFD')).replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 /**
  * "send invite to sam" → who is sam? We match saved contacts and existing
@@ -1196,7 +1198,7 @@ export async function mintInvite(name: string, phone?: string, planId?: string |
   const me = store.get().me;
   if (!me) {
     store.set({ inviteOpen: { name, phone, planId } });
-    narrate('I need your name and number first — an invite has to come from someone. Tap “Set up my NUM account” and I’ll send it straight after.');
+    narrate(t('I need your name and number first — an invite has to come from someone. Tap “Set up my NUM account” and I’ll send it straight after.'));
     return;
   }
   const minted = await api<InviteDraft['minted']>('/invite', {
@@ -1230,13 +1232,13 @@ export async function mintInvite(name: string, phone?: string, planId?: string |
 export async function textInviteFromNum(): Promise<{ ok: boolean; note: string }> {
   const me = store.get().me;
   const minted = store.get().inviteOpen?.minted;
-  if (!me || !minted) return { ok: false, note: 'Nothing to send yet.' };
+  if (!me || !minted) return { ok: false, note: t('Nothing to send yet.') };
   try {
     const out = await api<{ ok: boolean; already?: boolean; to?: string; error?: string }>('/invite/text', {
       method: 'POST',
       body: JSON.stringify({ token: minted.token, from: me.id }),
     });
-    if (out.ok) return { ok: true, note: out.already ? 'Already sent — once is enough.' : `Sent by NUM to ${out.to ?? 'them'}.` };
+    if (out.ok) return { ok: true, note: out.already ? t('Already sent — once is enough.') : `Sent by NUM to ${out.to ?? 'them'}.` };
     return { ok: false, note: out.error ?? 'NUM could not send it — use TEXT IT instead.' };
   } catch (err) {
     return { ok: false, note: (err as Error).message || 'NUM could not send it — use TEXT IT instead.' };
@@ -1250,7 +1252,7 @@ export async function shareInvite(): Promise<'shared' | 'copied' | 'none'> {
   const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
   if (nav.share) {
     try {
-      await nav.share({ title: 'Join me on NUM', text: minted.message, url: minted.link });
+      await nav.share({ title: t('Join me on NUM'), text: minted.message, url: minted.link });
       return 'shared';
     } catch {
       /* user cancelled — fall through to copy */
@@ -1284,7 +1286,7 @@ export async function setAttendee(
   opts?: { memberId?: string | null; rsvp?: 'going' | 'maybe' | 'out'; remove?: boolean },
 ): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Add your name and number first.' };
+  if (!me) return { ok: false, message: t('Add your name and number first.') };
   try {
     const res = await fetch(apiUrl('/api/social/plan/item/attendees'), {
       method: 'POST',
@@ -1307,7 +1309,7 @@ export async function setAttendee(
     try {
       body = (await res.json()) as typeof body;
     } catch {
-      return { ok: false, message: 'That didn’t go through — NUM didn’t answer properly. Try again?' };
+      return { ok: false, message: t('That didn’t go through — NUM didn’t answer properly. Try again?') };
     }
     if (!res.ok) return { ok: false, message: body.error ?? 'That didn’t go through.' };
     // Patch the item in place rather than re-syncing the whole plan: the
@@ -1320,7 +1322,7 @@ export async function setAttendee(
     }));
     return { ok: true, message: '' };
   } catch {
-    return { ok: false, message: 'That didn’t go through.' };
+    return { ok: false, message: t('That didn’t go through.') };
   }
 }
 
@@ -1342,7 +1344,7 @@ export async function refreshPlans(): Promise<void> {
 export async function createPlan(title: string, dest?: string | null, startsOn?: string | null): Promise<PartyPlan | null> {
   const me = store.get().me;
   if (!me) {
-    narrate('Give me your name and number first and I’ll open the plan under your account, so you can pull friends into it.');
+    narrate(t('Give me your name and number first and I’ll open the plan under your account, so you can pull friends into it.'));
     return null;
   }
   // A failure here used to be invisible: api() throws, nothing caught it, and
@@ -1420,7 +1422,7 @@ export async function reorderPlanItems(moves: Array<{ id: string; day?: string |
     return true;
   } catch (err) {
     await syncPlan();
-    if (isLockedError(err)) narrate('That plan is locked — only whoever started it can move things now.');
+    if (isLockedError(err)) narrate(t('That plan is locked — only whoever started it can move things now.'));
     return false;
   }
 }
@@ -1477,15 +1479,15 @@ export async function commentOnItem(itemId: string, text: string): Promise<boole
  */
 export async function settlePlan(to: string, minor: number, via: 'stars' | 'outside'): Promise<{ ok: boolean; message: string }> {
   const { me, planId } = store.get();
-  if (!me || !planId) return { ok: false, message: 'Open a plan first.' };
+  if (!me || !planId) return { ok: false, message: t('Open a plan first.') };
   try {
     const out = await api<{ ok: boolean; via: string; stars?: number; already?: boolean }>('/plan/settle', {
       method: 'POST',
       body: JSON.stringify({ me: me.id, plan_id: planId, to, minor, via, idem: crypto.randomUUID() }),
     });
     await syncPlan();
-    if (via === 'stars') { void refreshStars(); return { ok: true, message: out.already ? 'Already paid.' : `Paid ★${out.stars} through NUM.` }; }
-    return { ok: true, message: 'Marked as paid.' };
+    if (via === 'stars') { void refreshStars(); return { ok: true, message: out.already ? t('Already paid.') : `Paid ★${out.stars} through NUM.` }; }
+    return { ok: true, message: t('Marked as paid.') };
   } catch (err) {
     return { ok: false, message: (err as Error).message || 'That didn’t go through.' };
   }
@@ -1708,7 +1710,7 @@ export function mirrorPlanDate(plan: PartyPlan): void {
     // anywhere, so coin the 3-letter code the same way the model does and cast.
     grp: (((plan.dest ?? 'NUM').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'NUM')) as Booking['grp'],
     status: 'confirmed',
-    note: 'Group plan — everyone on the plan sees this.',
+    note: t('Group plan — everyone on the plan sees this.'),
     cost: '',
   };
   store.set((s) => ({
@@ -1878,7 +1880,7 @@ export async function myIdentities(): Promise<Array<{
  */
 export async function linkMyBusiness(): Promise<{ ok: boolean; error?: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, error: 'Sign in first.' };
+  if (!me) return { ok: false, error: t('Sign in first.') };
   try {
     const out = await fetch(apiUrl('/api/identity/claim-business'), {
       method: 'POST',
@@ -1887,7 +1889,7 @@ export async function linkMyBusiness(): Promise<{ ok: boolean; error?: string }>
     }).then((r) => r.json()) as { ok?: boolean; error?: string };
     return { ok: !!out.ok, error: out.error };
   } catch {
-    return { ok: false, error: 'Couldn\u2019t reach NUM just now — try again in a moment.' };
+    return { ok: false, error: t('Couldn\\u2019t reach NUM just now — try again in a moment.') };
   }
 }
 
@@ -1898,9 +1900,9 @@ export async function linkMyBusiness(): Promise<{ ok: boolean; error?: string }>
  */
 export async function linkMyHost(consoleKey: string): Promise<{ ok: boolean; error?: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, error: 'Sign in first.' };
+  if (!me) return { ok: false, error: t('Sign in first.') };
   const key = String(consoleKey ?? '').trim();
-  if (!key) return { ok: false, error: 'Paste the key from your host console.' };
+  if (!key) return { ok: false, error: t('Paste the key from your host console.') };
   try {
     const out = await fetch(apiUrl('/api/identity/claim-host'), {
       method: 'POST',
@@ -1909,7 +1911,7 @@ export async function linkMyHost(consoleKey: string): Promise<{ ok: boolean; err
     }).then((r) => r.json()) as { ok?: boolean; error?: string };
     return { ok: !!out.ok, error: out.error };
   } catch {
-    return { ok: false, error: 'Couldn\u2019t reach NUM just now — try again in a moment.' };
+    return { ok: false, error: t('Couldn\\u2019t reach NUM just now — try again in a moment.') };
   }
 }
 

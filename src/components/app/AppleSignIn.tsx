@@ -77,7 +77,7 @@ export default function AppleSignIn({ onDone }: { onDone?: () => void }) {
         }}
       >
         <AppleMark />
-        {busy ? 'Signing in…' : 'Sign in with Apple'}
+        {busy ? t('Signing in…') : t('Sign in with Apple')}
       </button>
       <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.5, marginTop: 7, textAlign: 'center' }}>{t('Apple shares only your name and email, and you can hide the email. No code, no waiting for a text.')}</div>
       {note && (

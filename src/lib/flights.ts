@@ -78,7 +78,7 @@ export async function runFlightSearch(q: FlightQuery): Promise<void> {
         : (body.error ?? 'The fare search didn’t answer.'),
     });
   } catch {
-    store.set({ flightSearching: false, flightError: 'The fare search didn’t answer.' });
+    store.set({ flightSearching: false, flightError: t('The fare search didn’t answer.') });
   }
 }
 
@@ -116,7 +116,7 @@ export async function checkOffer(o: FlightOffer, q: FlightQuery): Promise<{ ok: 
     const body = (await res.json().catch(() => ({}))) as { offers?: FlightOffer[]; error?: string };
     if (!res.ok) return { ok: false, same: false, message: body.error ?? 'Couldn’t re-check that one.' };
     const checked = body.offers?.[0];
-    if (!checked) return { ok: false, same: false, message: 'That fare has gone — want me to search again?' };
+    if (!checked) return { ok: false, same: false, message: t('That fare has gone — want me to search again?') };
 
     // Keep the ORIGINAL id. A flight check comes back with its own fresh
     // offer id, and spreading it over the shopped offer silently renames the
@@ -142,7 +142,7 @@ export async function checkOffer(o: FlightOffer, q: FlightQuery): Promise<{ ok: 
         : `That exact fare has gone. The airline is offering ${checked.currency} ${checked.price} instead — same cabin, different fare.`,
     };
   } catch {
-    return { ok: false, same: false, message: 'Couldn’t re-check that one.' };
+    return { ok: false, same: false, message: t('Couldn’t re-check that one.') };
   }
 }
 
@@ -153,6 +153,7 @@ export async function checkOffer(o: FlightOffer, q: FlightQuery): Promise<{ ok: 
    rest of the app has one place to import fare things from. */
 export { dayShift, duration, heldFor, legWindow, stopsLabel } from './faredisplay.mjs';
 import { duration, legWindow, stopsLabel } from './faredisplay.mjs';
+import { t } from './i18n';
 
 /**
  * One line a person can paste into a message and still understand tomorrow.
@@ -210,6 +211,6 @@ export async function bookHandoff(o: FlightOffer, q: FlightQuery): Promise<BookH
     if (!res.ok) return { available: false, why: body.error ?? 'Couldn’t open the booking link.' };
     return body;
   } catch {
-    return { available: false, why: 'Couldn’t open the booking link.' };
+    return { available: false, why: t('Couldn’t open the booking link.') };
   }
 }

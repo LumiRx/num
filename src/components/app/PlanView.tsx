@@ -77,7 +77,7 @@ function Attendees({ title }: { title: string }) {
             <span
               key={a.name}
               {...(mine ? pressable(() => void change(a.name, { rsvp: next as 'going' })) : {})}
-              title={mine ? 'Tap to change' : `${a.name} answers for themselves`}
+              title={mine ? t('Tap to change') : `${a.name} answers for themselves`}
               style={{
                 borderRadius: 999, padding: '5px 11px', fontSize: 11, fontWeight: 600,
                 border: '1px solid var(--ink-12)',
@@ -252,7 +252,7 @@ function PlanTabs({ tab, setTab }: { tab: PlanTab; setTab: (t: PlanTab) => void 
     cursor: 'pointer', flex: 'none', minHeight: 44, padding: '0 14px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 6,
     fontSize: 11.5, fontWeight: 700, letterSpacing: '.05em', whiteSpace: 'nowrap', scrollSnapAlign: 'start',
     background: on ? 'var(--grad-accent)' : 'transparent', color: on ? '#fff' : 'var(--ink)',
-    boxShadow: on ? '0 4px 14px rgba(14,164,131,.28)' : 'none',
+    boxShadow: on ? t('0 4px 14px rgba(14,164,131,.28)') : 'none',
   });
   return (
     <div style={{ margin: '10px 12px 4px' }}>
@@ -371,7 +371,7 @@ export default function PlanView() {
             <div style={{ marginTop: 4 }}>{t('Ask NUM for a table, a car or a whole evening. It lands here by itself.')}</div>
             <div {...pressable(() => store.set({ threadOpen: true }))} className="press tap" style={{ display: 'inline-flex', marginTop: 12, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', padding: '0 18px', cursor: 'pointer' }}>{t('ASK NUM')}</div>
           </div>
-        ) : 'Nothing to add here — new plans come from the thread. Ask, and it appears.'}
+        ) : t('Nothing to add here — new plans come from the thread. Ask, and it appears.')}
       </div>
     </div>
   );

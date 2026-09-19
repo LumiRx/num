@@ -126,14 +126,14 @@ export default function Verify5arz() {
                 message:
                   d?.message ??
                   (kind === 'no_5arz_account'
-                    ? 'No 5arz account uses that Google sign-in. Verify on 5arz first, then link here.'
+                    ? t('No 5arz account uses that Google sign-in. Verify on 5arz first, then link here.')
                     : kind === 'not_verified_there'
-                    ? 'That 5arz account exists but isn’t verified yet — finish verification on 5arz, then come back.'
+                    ? t('That 5arz account exists but isn’t verified yet — finish verification on 5arz, then come back.')
                     : d?.error ?? 'That didn’t go through — try again in a moment.'),
               });
             }
           } catch {
-            setOutcome({ kind: 'error', message: 'That didn’t go through — try again in a moment.' });
+            setOutcome({ kind: 'error', message: t('That didn’t go through — try again in a moment.') });
           } finally {
             setBusy(false);
           }

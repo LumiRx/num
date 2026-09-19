@@ -17,6 +17,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { XIcon, SparklesIcon } from '../../lib/icons';
 import { startResearch, stopWatchingResearch } from '../../lib/research';
 import { t } from '../../lib/i18n';
+import { T } from '../../lib/i18nmark';
 
 const field: React.CSSProperties = {
   width: '100%', minHeight: 92, borderRadius: 14, border: '1px solid var(--ink-12)', padding: '12px 14px',
@@ -34,9 +35,9 @@ const label: React.CSSProperties = {
 
 /** Examples, not placeholders — the shape of brief this is for. */
 const EXAMPLES = [
-  'Three days in Phuket with a five-year-old and a grandmother who cannot walk far',
-  'Compare Ari, Thonglor and Ekkamai for a month of working remotely',
-  'Dinner for eight on Saturday at nine, two vegans, one who hates seafood',
+  T('Three days in Phuket with a five-year-old and a grandmother who cannot walk far'),
+  T('Compare Ari, Thonglor and Ekkamai for a month of working remotely'),
+  T('Dinner for eight on Saturday at nine, two vegans, one who hates seafood'),
 ];
 
 export default function ResearchSheet() {
@@ -115,7 +116,7 @@ export default function ResearchSheet() {
                   className="glass press"
                   style={{ cursor: 'pointer', borderRadius: 999, padding: '9px 12px', fontSize: 12.5, minHeight: 44, display: 'flex', alignItems: 'center' }}
                 >
-                  {ex}
+                  {t(ex)}
                 </div>
               ))}
             </div>

@@ -31,7 +31,7 @@ export default function QrCard() {
   if (!me) return null;
 
   const value = tab === 'connect' ? connectLink(me.id, me.ref) : payLink(me.id, Number(amount) || undefined);
-  const label = tab === 'connect' ? 'Scan to connect with me' : amount ? `Scan to pay me ★${Number(amount).toLocaleString()}` : 'Scan to pay me';
+  const label = tab === 'connect' ? t('Scan to connect with me') : amount ? `Scan to pay me ★${Number(amount).toLocaleString()}` : t('Scan to pay me');
 
   const Tab = ({ id, text }: { id: 'connect' | 'pay'; text: string }) => (
     <span
@@ -72,7 +72,7 @@ export default function QrCard() {
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <div
-          {...pressable(() => void shareNative({ title: tab === 'connect' ? 'Connect with me on NUM' : 'Pay me on NUM', text: label, url: value }))}
+          {...pressable(() => void shareNative({ title: tab === 'connect' ? t('Connect with me on NUM') : t('Pay me on NUM'), text: label, url: value }))}
           style={{ cursor: 'pointer', flex: 1, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11.5, letterSpacing: '.06em', padding: '11px 14px', textAlign: 'center', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}
         >
           <ShareIcon size={13} />{' '}{t('SHARE')}</div>
@@ -81,14 +81,14 @@ export default function QrCard() {
           className="glass press"
           style={{ cursor: 'pointer', borderRadius: 999, padding: '11px 16px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', display: 'flex', gap: 6, alignItems: 'center' }}
         >
-          <CopyIcon size={13} /> {copied ? 'COPIED' : 'COPY'}
+          <CopyIcon size={13} /> {copied ? t('COPIED') : t('COPY')}
         </div>
       </div>
 
       <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
         {tab === 'connect'
-          ? 'Anyone who scans this connects to you and your invite counts as your referral.'
-          : 'Print it, tape it to the dashboard, or just hold up your phone. They scan, confirm the amount, and the Stars land here.'}
+          ? t('Anyone who scans this connects to you and your invite counts as your referral.')
+          : t('Print it, tape it to the dashboard, or just hold up your phone. They scan, confirm the amount, and the Stars land here.')}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import { apiUrl } from './apibase';
 import { nativePlatform } from './native';
 import type { Member } from './types';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 type AppleAuth = {
   identityToken: string;
@@ -46,14 +47,14 @@ export type AppleSignInResult =
  */
 export async function signInWithApple(currentMemberId?: string | null): Promise<AppleSignInResult> {
   const p = plugin();
-  if (!p) return { ok: false, cancelled: false, message: 'Apple sign-in is not available on this device.' };
+  if (!p) return { ok: false, cancelled: false, message: t('Apple sign-in is not available on this device.') };
 
   let auth: AppleAuth;
   try {
     auth = await p.authorize();
   } catch (err) {
     // A cancel is a decision, not a failure. The caller shows nothing.
-    const message = guestMessage(err, 'That didn’t go through.');
+    const message = guestMessage(err, t('That didn’t go through.'));
     return { ok: false, cancelled: /cancel/i.test(message), message };
   }
 

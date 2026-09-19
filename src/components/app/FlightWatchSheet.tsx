@@ -65,7 +65,7 @@ export default function FlightWatchSheet() {
           <input value={no} onChange={(e) => setNo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void go(); }} placeholder={t('TG917')} autoCapitalize="characters" style={field} aria-label={t('Flight number')} />
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={field} aria-label={t('Date')} />
         </div>
-        <div {...pressable(() => void go())} className="press" style={{ ...button, opacity: busy || !me ? 0.6 : 1 }}>{busy ? 'Looking it up…' : 'Watch this flight'}</div>
+        <div {...pressable(() => void go())} className="press" style={{ ...button, opacity: busy || !me ? 0.6 : 1 }}>{busy ? t('Looking it up…') : t('Watch this flight')}</div>
         {msg && <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.5 }}>{msg}</div>}
       </div>
     </div>

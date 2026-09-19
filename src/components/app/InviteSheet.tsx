@@ -13,7 +13,7 @@ import { contactsSupported, mintInvite, pickContacts, resendCode, shareInvite, s
 import { canOfferInstall } from '../../lib/native';
 import AppleSignIn from './AppleSignIn';
 import { guestMessage } from '../../lib/saferr';
-import { t } from '../../lib/i18n';
+import { t, LANGS, pickLang, setLang, type Lang } from '../../lib/i18n';
 
 /** Matches RESEND_COOLDOWN_SEC in worker/social.mjs. Kept in step by hand;
  *  the client one only has to be >= the server's, since the server is the
@@ -92,14 +92,44 @@ function AddToHomeScreen() {
           letterSpacing: '-.01em',
         }}
       >
-        {ios ? 'Tap Share, then Add to Home Screen' : 'Tap the menu, then Add to Home Screen'}
+        {ios ? t('Tap Share, then Add to Home Screen') : t('Tap the menu, then Add to Home Screen')}
       </div>
       <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.55 }}>
         {ios
-          ? 'The Share button is at the bottom of Safari — the square with an arrow coming out of it. Scroll down the list and pick “Add to Home Screen”.'
-          : 'Open the ⋮ menu at the top right of Chrome and choose “Add to Home screen” or “Install app”.'}
+          ? t('The Share button is at the bottom of Safari — the square with an arrow coming out of it. Scroll down the list and pick “Add to Home Screen”.')
+          : t('Open the ⋮ menu at the top right of Chrome and choose “Add to Home screen” or “Install app”.')}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>{t('It opens full screen, remembers you, and it is the only way NUM can reach you when a table moves or a friend replies.')}</div>
+    </div>
+  );
+}
+
+/** The language strip on the first screen: every language NUM speaks, in its own script. */
+function LanguageRow() {
+  const chosen = pickLang();
+  return (
+    <div role="radiogroup" aria-label={t('Language')} className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', margin: '0 -16px 12px', padding: '0 16px', scrollSnapType: 'x proximity' }}>
+      {(Object.keys(LANGS) as Lang[]).map((code) => {
+        const on = code === chosen;
+        return (
+          <div
+            key={code}
+            {...pressable(() => setLang(code))}
+            role="radio"
+            aria-checked={on}
+            lang={code}
+            className="press"
+            style={{
+              cursor: 'pointer', flex: 'none', minHeight: 36, padding: '0 12px', borderRadius: 999, display: 'flex', alignItems: 'center',
+              fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', scrollSnapAlign: 'start',
+              background: on ? 'var(--color-accent)' : 'var(--field-bg)', color: on ? '#fff' : 'var(--ink-60)',
+              border: '1px solid ' + (on ? 'var(--color-accent)' : 'var(--ink-12)'),
+            }}
+          >
+            {LANGS[code].name}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -252,7 +282,7 @@ export default function InviteSheet() {
     // way to know their name did not register, so they tap it again, and
     // again, and then leave.
     if (!name.trim()) {
-      setAccountNote('I need a name first — just what you want to be called.');
+      setAccountNote(t('I need a name first — just what you want to be called.'));
       return;
     }
     // A number typed WRONG still stops here — a half-number is worse than
@@ -264,7 +294,7 @@ export default function InviteSheet() {
     }
     const tidyEmail = email.trim() ? normaliseEmail(email) : null;
     if (email.trim() && !tidyEmail) {
-      setAccountNote('That email doesn’t look complete — check for a missing @ or a typo in the domain.');
+      setAccountNote(t('That email doesn’t look complete — check for a missing @ or a typo in the domain.'));
       return;
     }
     // BOTH BLANK IS NO LONGER ALLOWED. The server refuses it too (that is the
@@ -274,8 +304,8 @@ export default function InviteSheet() {
     if (!tidy && !tidyEmail) {
       setEmailOpen(true);
       setAccountNote(
-        'I need a mobile or an email — it is how I reach you when a booking moves, and how you get '
-        + 'this account back if you change phones. Either one is fine.',
+        t('I need a mobile or an email — it is how I reach you when a booking moves, and how you get ')
+        + t('this account back if you change phones. Either one is fine.'),
       );
       return;
     }
@@ -296,15 +326,15 @@ export default function InviteSheet() {
         setResendNote(null);
         setAccountNote(
           out.verification?.channel === 'review'
-            ? 'Enter the sign-in code from App Store Connect.'
+            ? t('Enter the sign-in code from App Store Connect.')
             // A throttled recovery is not a failed one: a code went out
             // moments ago and is still the code to type. The server's own
             // sentence says so better than a second version of it here.
             : out.verification?.sent === false && out.verification?.note
               ? out.verification.note
               : out.channel === 'email'
-                ? 'That address already has an account — I have emailed it a six-digit code.'
-                : 'That number already has an account — I have texted it a six-digit code.',
+                ? t('That address already has an account — I have emailed it a six-digit code.')
+                : t('That number already has an account — I have texted it a six-digit code.'),
         );
         return;
       }
@@ -312,7 +342,7 @@ export default function InviteSheet() {
       // OUTCOME 1 — a new account. Honest about what actually happened to the
       // number.
       setSmsOn(!!out.verification?.sent);
-      setAccountNote(out.verification?.sent ? 'Code sent — type it in below.' : out.verification?.note ?? null);
+      setAccountNote(out.verification?.sent ? t('Code sent — type it in below.') : out.verification?.note ?? null);
       if (out.verification?.sent) { setResendIn(RESEND_COOLDOWN_SEC); setResendNote(null); }
       // Cold first run: they came to try the app, not to invite someone. Get
       // out of the way — NUM picks the conversation up in the thread. When an
@@ -322,7 +352,7 @@ export default function InviteSheet() {
         else store.set({ inviteOpen: null, threadOpen: true });
       }
     } catch (err) {
-      setAccountNote(guestMessage(err, 'That didn’t go through.'));
+      setAccountNote(guestMessage(err, t('That didn’t go through.')));
     } finally {
       setBusy(false);
     }
@@ -349,8 +379,8 @@ export default function InviteSheet() {
       const out = await resendCode(recoverPhone ?? undefined, recoverEmail ?? undefined);
       if (out.already) {
         setResendNote(recoverEmail && !recoverPhone
-          ? 'That address is already verified — you are in.'
-          : 'That number is already verified — you are in.');
+          ? t('That address is already verified — you are in.')
+          : t('That number is already verified — you are in.'));
         return;
       }
       // Start the wait BEFORE reporting anything: the message was sent either
@@ -362,11 +392,11 @@ export default function InviteSheet() {
         );
         return;
       }
-      setResendNote(out.sent ? 'New code on its way.' : 'I could not get a new code out just now. Give it a minute.');
+      setResendNote(out.sent ? t('New code on its way.') : t('I could not get a new code out just now. Give it a minute.'));
     } catch (err) {
       // The server's throttle sentences are written for people. Passing them
       // through is the honest thing; inventing a cheerful one is not.
-      setResendNote(guestMessage(err, 'I could not get a new code out just now.'));
+      setResendNote(guestMessage(err, t('I could not get a new code out just now.')));
     } finally {
       setBusy(false);
     }
@@ -374,7 +404,7 @@ export default function InviteSheet() {
 
   const doVerify = async () => {
     if (code.trim().length < 4) {
-      setAccountNote('Type the six digits I sent you and I’ll check them.');
+      setAccountNote(t('Type the six digits I sent you and I’ll check them.'));
       return;
     }
     setBusy(true);
@@ -392,11 +422,11 @@ export default function InviteSheet() {
         setAccountNote(null);
         return;
       }
-      setAccountNote(ok ? (me?.phone ? 'Number verified.' : 'Email verified.') : 'That code didn’t match.');
+      setAccountNote(ok ? (me?.phone ? t('Number verified.') : t('Email verified.')) : t('That code didn’t match.'));
     } catch (err) {
       // The server's own sentence — "that code expired — ask for a new one",
       // "too many attempts" — is better than any guess we could make here.
-      setAccountNote(guestMessage(err, 'That code didn’t match.'));
+      setAccountNote(guestMessage(err, t('That code didn’t match.')));
     } finally {
       setBusy(false);
     }
@@ -408,7 +438,7 @@ export default function InviteSheet() {
     try {
       await mintInvite(toName.trim(), toPhone.trim() || undefined, draft.planId);
     } catch (err) {
-      setInviteNote(guestMessage(err, 'Couldn’t create that invite.'));
+      setInviteNote(guestMessage(err, t('Couldn’t create that invite.')));
     } finally {
       setBusy(false);
     }
@@ -458,7 +488,7 @@ export default function InviteSheet() {
                 onChange={(e) => setCode(e.target.value)}
               />
               <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px', opacity: busy ? 0.5 : 1 }}>
-                {busy ? '…' : 'CHECK'}
+                {busy ? '…' : t('CHECK')}
               </div>
             </div>
             {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
@@ -483,7 +513,7 @@ export default function InviteSheet() {
                     color: 'var(--color-neutral-700)', opacity: busy ? 0.5 : 1,
                   }}
                 >
-                  {busy ? 'Sending…' : 'Send it again'}
+                  {busy ? 'Sending…' : t('Send it again')}
                 </span>
               )}
             </div>
@@ -506,20 +536,28 @@ export default function InviteSheet() {
               lose the user's progress"). A person who tapped "invite friends"
               inside a plan is told the account is for THAT, and that they go
               straight back to it. draft.intent / draft.returnTo. */}
-          <div style={label}>{sending ? 'YOUR NUM ACCOUNT' : draft.intent === 'plan' ? t('FOR YOUR PLAN') : draft.intent === 'business' ? t('FOR YOUR BUSINESS') : draft.intent === 'friend' ? t('TO ADD A FRIEND') : 'HELLO'}</div>
+          {/* YOUR LANGUAGE, BEFORE YOUR NAME (19 Sep 2026). The first screen
+              anyone reads is the one that decides whether they read on, and a
+              person who does not read English was being asked for their name
+              in it. The phone's language is pre-picked (lib/i18n pickLang);
+              one tap changes the whole app, this sheet included, and the
+              choice is kept (store.lang). Native names on purpose — a
+              Thai reader looks for ไทย, not for "Thai". */}
+          {!sending && <LanguageRow />}
+          <div style={label}>{sending ? t('YOUR NUM ACCOUNT') : draft.intent === 'plan' ? t('FOR YOUR PLAN') : draft.intent === 'business' ? t('FOR YOUR BUSINESS') : draft.intent === 'friend' ? t('TO ADD A FRIEND') : t('HELLO')}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
-            {sending ? 'Who am I sending this as?' : 'Let’s start with your name'}
+            {sending ? t('Who am I sending this as?') : t('Let’s start with your name')}
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginTop: 5, lineHeight: 1.55 }}>
             {sending
-              ? 'Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.'
+              ? t('Your number is how friends find you and how invites carry your name. It is never shown to anyone you haven’t connected with.')
               : draft.intent === 'plan'
                 ? t('A plan needs to know who’s who. One minute, then you’re straight back in it.')
                 : draft.intent === 'business'
                   ? t('Your listing needs an owner NUM can reach. One minute, then straight back to it.')
                   : draft.intent === 'friend'
                     ? t('An invite has to come from someone. One minute, then you’re back to sending it.')
-                    : 'So I know what to call you, and can reach you when a booking moves. Never shown to anyone you haven’t connected with.'}
+                    : t('So I know what to call you, and can reach you when a booking moves. Never shown to anyone you haven’t connected with.')}
           </div>
           {/* SIGN IN WITH APPLE, ON THE FIRST SCREEN — not buried in Profile.
 
@@ -543,8 +581,8 @@ export default function InviteSheet() {
           <AppleSignIn onDone={close} />
 
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder={sending ? 'Your name' : 'What should I call you?'} value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={field} placeholder={sending ? 'Their mobile' : 'Mobile number'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input style={field} placeholder={sending ? t('Your name') : t('What should I call you?')} value={name} onChange={(e) => setName(e.target.value)} />
+            <input style={field} placeholder={sending ? t('Their mobile') : t('Mobile number')} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             {phone.trim() && phoneInfo.note && (
               <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : '#c0392b' }}>
                 {phoneInfo.note}
@@ -595,18 +633,18 @@ export default function InviteSheet() {
               style={{ ...primary, opacity: busy || !ready ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}
             >
               {busy
-                ? 'ONE SEC…'
+                ? t('ONE SEC…')
                 : !name.trim()
-                  ? 'YOUR NAME FIRST'
+                  ? t('YOUR NAME FIRST')
                   : !phoneOk
-                    ? 'CHECK THAT NUMBER'
+                    ? t('CHECK THAT NUMBER')
                     : !emailOk
-                      ? 'CHECK THAT EMAIL'
+                      ? t('CHECK THAT EMAIL')
                       : !hasContact
-                        ? 'A NUMBER OR AN EMAIL'
+                        ? t('A NUMBER OR AN EMAIL')
                         : sending
-                          ? 'CREATE MY ACCOUNT'
-                          : 'NICE TO MEET YOU'}
+                          ? t('CREATE MY ACCOUNT')
+                          : t('NICE TO MEET YOU')}
             </div>
           </div>
           {accountNote && <div style={{ ...helpText, color: 'var(--color-neutral-700)' }}>{accountNote}</div>}
@@ -633,7 +671,7 @@ export default function InviteSheet() {
               left holding a code with nowhere to type it. */}
           {((smsOn && !me.phone_verified && me.phone) || (!me.email_verified && me.email && !me.phone)) && (
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
-              <div style={label}>{me.phone ? 'VERIFY YOUR NUMBER' : 'VERIFY YOUR EMAIL'}</div>
+              <div style={label}>{me.phone ? t('VERIFY YOUR NUMBER') : t('VERIFY YOUR EMAIL')}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <input style={{ ...field, flex: 1 }} placeholder={t('6-digit code')} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
                 <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px' }}>{t('CHECK')}</div>
@@ -660,7 +698,7 @@ export default function InviteSheet() {
                           color: 'var(--color-neutral-700)', opacity: busy ? 0.5 : 1,
                         }}
                       >
-                        {busy ? 'Sending…' : 'Send it again'}
+                        {busy ? 'Sending…' : t('Send it again')}
                       </span>
                   )}
               </div>
@@ -671,15 +709,15 @@ export default function InviteSheet() {
           {/* 3 — who is this going to? */}
           {!minted ? (
             <div style={{ padding: 16 }}>
-              <div style={label}>{draft.planId ? 'INVITE TO THE PLAN' : 'INVITE A FRIEND'}</div>
+              <div style={label}>{draft.planId ? t('INVITE TO THE PLAN') : t('INVITE A FRIEND')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-                {draft.name ? `Send ${draft.name} an invite` : 'Who are we bringing in?'}
+                {draft.name ? `Send ${draft.name} an invite` : t('Who are we bringing in?')}
               </div>
 
               {!!draft.candidates?.length && (
                 <>
                   <div style={{ fontSize: 11.5, color: 'var(--color-neutral-600)', marginTop: 6 }}>
-                    I found {draft.candidates.length === 1 ? 'one match' : `${draft.candidates.length} matches`} — tap the right one so it goes to the right person.
+                    I found {draft.candidates.length === 1 ? t('one match') : `${draft.candidates.length} matches`} — tap the right one so it goes to the right person.
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                     {draft.candidates.map((c) => (
@@ -744,8 +782,8 @@ export default function InviteSheet() {
                     }}
                   >
                     {onNum
-                      ? '✓ Already on NUM — your invite connects you two instantly, no download needed.'
-                      : 'Not on NUM yet — create the invite and text it to them; the link sets them up.'}
+                      ? t('✓ Already on NUM — your invite connects you two instantly, no download needed.')
+                      : t('Not on NUM yet — create the invite and text it to them; the link sets them up.')}
                   </div>
                 )}
                 {contactsSupported() && (
@@ -766,13 +804,13 @@ export default function InviteSheet() {
                   </div>
                 )}
                 <div {...pressable(doMint)} style={{ ...primary, opacity: busy || (!toName.trim() && !toPhone.trim()) ? 0.6 : 1 }}>
-                  {busy ? 'ONE SEC…' : 'CREATE THE INVITE'}
+                  {busy ? t('ONE SEC…') : t('CREATE THE INVITE')}
                 </div>
               </div>
               <div style={helpText}>
                 {contactsSupported()
-                  ? 'The picker only ever returns the person you tap — NUM never reads your address book.'
-                  : 'This browser has no contacts API, so type the name. Nothing is read from your phone.'}
+                  ? t('The picker only ever returns the person you tap — NUM never reads your address book.')
+                  : t('This browser has no contacts API, so type the name. Nothing is read from your phone.')}
               </div>
               {inviteNote && <div style={{ ...helpText, color: 'var(--color-accent-700)' }}>{inviteNote}</div>}
             </div>
@@ -786,7 +824,7 @@ export default function InviteSheet() {
                 ✓ Sent app to app{draft.name ? ` — ${draft.name} has it` : ''}
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--color-neutral-600)', lineHeight: 1.55, marginTop: 8 }}>
-                They’re already on NUM, so your NUM told theirs directly: the {draft.planId ? 'plan is in their PLAN tab' : 'connection is live'} and their phone just buzzed. Nothing to text, nothing to tap.
+                They’re already on NUM, so your NUM told theirs directly: the {draft.planId ? t('plan is in their PLAN tab') : t('connection is live')} and their phone just buzzed. Nothing to text, nothing to tap.
               </div>
               <div
                 {...pressable(close)}
@@ -803,7 +841,7 @@ export default function InviteSheet() {
             <div style={{ padding: 16 }}>
               <div style={label}>{t('READY TO SEND')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-                {draft.name ? `${draft.name}’s invite is ready` : 'Your invite is ready'}
+                {draft.name ? `${draft.name}’s invite is ready` : t('Your invite is ready')}
               </div>
               <div style={{ marginTop: 10, padding: 12, borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)', fontSize: 12, lineHeight: 1.5, color: 'var(--ink)' }}>
                 {minted.message}
@@ -824,7 +862,7 @@ export default function InviteSheet() {
                     style={primary}
                     aria-busy={numText.state === 'sending'}
                   >
-                    {numText.state === 'sending' ? 'SENDING…' : `NUM TEXTS ${draft.name ? draft.name.toUpperCase() : 'THEM'} FOR YOU`}
+                    {numText.state === 'sending' ? t('SENDING…') : `NUM TEXTS ${draft.name ? draft.name.toUpperCase() : 'THEM'} FOR YOU`}
                   </div>
                 ) : null}
                 {numText.note ? (
@@ -833,7 +871,7 @@ export default function InviteSheet() {
                   </div>
                 ) : null}
                 <div {...pressable(async () => setSent(((await shareInvite()) === 'shared' ? 'shared' : 'copied')))} style={minted.num_text && numText.state !== 'sent' ? { ...primary, background: 'var(--field-bg)', color: 'var(--ink)' } : primary}>
-                  <ShareIcon size={14} /> {sent === 'shared' ? 'SENT' : sent === 'copied' ? 'COPIED — PASTE IT TO THEM' : minted.num_text && numText.state !== 'sent' ? 'OR SEND IT YOURSELF' : 'SEND IT'}
+                  <ShareIcon size={14} /> {sent === 'shared' ? t('SENT') : sent === 'copied' ? t('COPIED — PASTE IT TO THEM') : minted.num_text && numText.state !== 'sent' ? t('OR SEND IT YOURSELF') : t('SEND IT')}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <a href={minted.sms_url} className="glass press tap" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '11px 12px', fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em' }}>{t('TEXT IT')}</a>
@@ -851,7 +889,7 @@ export default function InviteSheet() {
 
               {/* The part people actually forget: keeping it on the home screen. */}
               <div style={{ marginTop: 16, padding: 13, borderRadius: 'var(--r-md)', background: 'var(--field-bg)', border: '1px solid var(--ink-08)' }}>
-                <div style={{ ...label, color: 'var(--ink-60)' }}>WHAT THEY’LL DO — {isIOS() ? 'IPHONE' : 'ANDROID'}</div>
+                <div style={{ ...label, color: 'var(--ink-60)' }}>WHAT THEY’LL DO — {isIOS() ? t('IPHONE') : t('ANDROID')}</div>
                 <ol style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 11.5, lineHeight: 1.7, color: 'var(--color-neutral-700)' }}>
                   {steps.map((s) => (
                     <li key={s}>{s}</li>

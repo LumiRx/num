@@ -62,7 +62,7 @@ export default function ConnectionsCard() {
   return (
     <Collapsible
       title={t('CONNECT YOUR WORLD')}
-      summary={on ? `${on} of ${CONNECTIONS.length} connected` : 'All off — NUM asks only when it needs one'}
+      summary={on ? `${on} of ${CONNECTIONS.length} connected` : t('All off — NUM asks only when it needs one')}
     >
       <div>
         {CONNECTIONS.map((c) => {

@@ -17,14 +17,16 @@
 import { store } from './store';
 import { sendReaction } from './reactions';
 import type { AppState, Reaction, StyleProfile } from './types';
+import { t } from './i18n';
+import { T } from './i18nmark';
 
 /** The five reactions, in the order they're shown. */
 export const REACTIONS: Array<{ id: Reaction; emoji: string; label: string; weight: number }> = [
-  { id: 'love', emoji: '😍', label: 'Perfect — more like this', weight: 2 },
-  { id: 'like', emoji: '👍', label: 'Good', weight: 1 },
-  { id: 'meh', emoji: '😐', label: 'Not quite', weight: 0 },
-  { id: 'no', emoji: '👎', label: 'No — don’t suggest this again', weight: -2 },
-  { id: 'long', emoji: '🥱', label: 'Too much text', weight: 0 },
+  { id: 'love', emoji: '😍', label: T('Perfect — more like this'), weight: 2 },
+  { id: 'like', emoji: '👍', label: T('Good'), weight: 1 },
+  { id: 'meh', emoji: '😐', label: T('Not quite'), weight: 0 },
+  { id: 'no', emoji: '👎', label: T('No — don’t suggest this again'), weight: -2 },
+  { id: 'long', emoji: '🥱', label: T('Too much text'), weight: 0 },
 ];
 
 const MAX_REMEMBERED = 12;
@@ -105,7 +107,7 @@ export function styleForRequest(s: AppState): StyleProfile | undefined {
 export function tripCheck(s: AppState): string[] {
   const live = s.bookings.filter((b) => b.status !== 'cancelled').sort((a, b) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time));
   const out: string[] = [];
-  if (!live.length) return ['Nothing is booked yet — the plan is empty.'];
+  if (!live.length) return [t('Nothing is booked yet — the plan is empty.')];
 
   const mins = (t: string) => {
     const [h, m] = t.split(':').map(Number);
@@ -137,7 +139,7 @@ export function tripCheck(s: AppState): string[] {
 
   const cities = new Set(live.map((b) => b.grp));
   if (cities.size > 1) out.push(`MULTI-CITY: ${cities.size} cities on this trip — check every hop between them has transport booked.`);
-  if (s.planId) out.push('This trip has a shared group plan — anything that changes reaches the others automatically.');
+  if (s.planId) out.push(t('This trip has a shared group plan — anything that changes reaches the others automatically.'));
 
-  return out.length ? out : ['No clashes, no expiring holds, no empty days — the trip is clean.'];
+  return out.length ? out : [t('No clashes, no expiring holds, no empty days — the trip is clean.')];
 }

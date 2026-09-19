@@ -68,27 +68,27 @@ export default function ErrandSheet() {
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('ERRANDS')}</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 19, marginTop: 6 }}>
-          {tab === 'new' ? 'What do you need?' : 'Someone nearby can go'}
+          {tab === 'new' ? t('What do you need?') : t('Someone nearby can go')}
         </div>
         <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
           {tab === 'new'
-            ? 'Say what it is, where it’s going, and what it’s worth. The Stars are held until it’s in your hands.'
-            : 'Post something you need fetched, or earn Stars fetching for someone else.'}
+            ? t('Say what it is, where it’s going, and what it’s worth. The Stars are held until it’s in your hands.')
+            : t('Post something you need fetched, or earn Stars fetching for someone else.')}
         </div>
 
         <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-          {(['board', 'mine', 'new'] as const).map((t) => (
+          {(['board', 'mine', 'new'] as const).map((k) => (
             <div
-              key={t}
-              {...pressable(() => { setTab(t); setMsg(null); })}
+              key={k}
+              {...pressable(() => { setTab(k); setMsg(null); })}
               style={{
                 cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em',
                 border: '1px solid var(--ink-12)',
-                background: tab === t ? 'var(--grad-accent)' : 'transparent',
-                color: tab === t ? '#fff' : 'var(--ink-60)',
+                background: tab === k ? 'var(--grad-accent)' : 'transparent',
+                color: tab === k ? '#fff' : 'var(--ink-60)',
               }}
             >
-              {t === 'board' ? 'NEARBY' : t === 'mine' ? 'MINE' : 'POST ONE'}
+              {k === 'board' ? t('NEARBY') : k === 'mine' ? t('MINE') : t('POST ONE')}
             </div>
           ))}
         </div>
@@ -102,8 +102,8 @@ export default function ErrandSheet() {
             {list.length === 0 && (
               <div style={{ fontSize: 12, color: 'var(--ink-40)', lineHeight: 1.6, padding: '10px 2px' }}>
                 {tab === 'mine'
-                  ? 'Nothing of yours yet. Post something you need, or take one from Nearby.'
-                  : 'Nothing nearby right now. Post the first one — it’s how the board starts.'}
+                  ? t('Nothing of yours yet. Post something you need, or take one from Nearby.')
+                  : t('Nothing nearby right now. Post the first one — it’s how the board starts.')}
               </div>
             )}
             {list.map((e) => <Card key={e.id} e={e} onMsg={setMsg} />)}
@@ -152,7 +152,7 @@ function Card({ e, onMsg }: { e: Errand; onMsg: (m: string) => void }) {
           people it concerns, and only while it still means something. */}
       {e.handoff_code && ['claimed', 'collected', 'delivered'].includes(e.state) && (
         <div style={{ marginTop: 9, padding: '7px 10px', borderRadius: 10, background: 'var(--field-bg)', border: '1px solid var(--ink-08)' }}>
-          <div style={kicker}>{e.is_mine ? 'GIVE THIS CODE ON HANDOVER' : 'ASK FOR THIS ON HANDOVER'}</div>
+          <div style={kicker}>{e.is_mine ? t('GIVE THIS CODE ON HANDOVER') : t('ASK FOR THIS ON HANDOVER')}</div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 17, letterSpacing: '.16em', marginTop: 2 }}>{e.handoff_code}</div>
         </div>
       )}
@@ -171,7 +171,7 @@ function Card({ e, onMsg }: { e: Errand; onMsg: (m: string) => void }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <div {...pressable(() => run('confirm', { handoff_code: handoff, spent: Number(spent) || 0 }))}
               style={{ ...button, flex: 1, opacity: busy || handoff.length !== 6 ? 0.55 : 1 }}>
-              {busy ? 'PAYING…' : 'CONFIRM & PAY'}
+              {busy ? t('PAYING…') : t('CONFIRM & PAY')}
             </div>
             <div {...pressable(() => setConfirming(false))} style={{ ...ghost, flex: 'none', padding: '13px 16px' }}>{t('BACK')}</div>
           </div>
@@ -258,12 +258,12 @@ function NewErrand({ balance, hasAccount, draft, onDone }: {
 
       <div {...pressable(submit)} style={{ ...button, opacity: busy || !ready ? 0.55 : 1 }}>
         {busy
-          ? 'POSTING…'
+          ? t('POSTING…')
           : held > balance
             ? `NEED ★${held.toLocaleString()} — YOU HAVE ★${balance.toLocaleString()}`
             : held > 0
               ? `POST IT — HOLDS ★${held.toLocaleString()}`
-              : 'SET A BOUNTY'}
+              : t('SET A BOUNTY')}
       </div>
       <div style={{ fontSize: 10.5, color: 'var(--ink-40)', lineHeight: 1.55 }}>
         ★{held.toLocaleString() || '0'} leaves your balance the moment you post and is held by NUM until you confirm delivery. That’s what makes a stranger willing to go. Cancel before anyone claims it and you get all of it back.

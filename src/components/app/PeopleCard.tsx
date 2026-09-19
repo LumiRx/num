@@ -79,7 +79,7 @@ export default function PeopleCard() {
                 </div>
                 <div
                   {...pressable(() => { setOpenId(open ? null : f.id ?? null); setBlock(false); })}
-                  aria-label={open ? 'Close' : `Options for ${f.name ?? 'this person'}`}
+                  aria-label={open ? t('Close') : `Options for ${f.name ?? 'this person'}`}
                   style={{ cursor: 'pointer', fontSize: 15, letterSpacing: 1, color: 'var(--ink-40)', padding: '0 4px' }}
                 >
                   {open ? '×' : '···'}
@@ -106,7 +106,7 @@ export default function PeopleCard() {
                       fontWeight: 800, fontSize: 11, letterSpacing: '.06em', opacity: busy ? 0.5 : 1,
                     }}
                   >
-                    {busy ? 'REMOVING…' : block ? 'REMOVE AND BLOCK' : 'REMOVE'}
+                    {busy ? t('REMOVING…') : block ? t('REMOVE AND BLOCK') : t('REMOVE')}
                   </div>
                   {/* Said plainly so nobody removes someone expecting it to
                       land as a message. */}

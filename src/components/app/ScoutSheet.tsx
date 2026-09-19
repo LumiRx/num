@@ -17,6 +17,7 @@ import { XIcon } from '../../lib/icons';
 import { scoutDashboard, money, pct } from '../../lib/scout';
 import type { ScoutDashboard, ScoutState } from '../../lib/scout';
 import { t } from '../../lib/i18n';
+import { T } from '../../lib/i18nmark';
 
 const label: React.CSSProperties = {
   fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700,
@@ -29,10 +30,10 @@ const muted: React.CSSProperties = { fontSize: 11.5, color: 'var(--ink-55)', lin
 /** The order a scout cares about, not alphabetical. */
 const ORDER: ScoutState[] = ['activated', 'verified', 'introduced', 'rejected', 'void'];
 const TITLE: Record<ScoutState, string> = {
-  activated: 'Earning',
-  verified: 'Confirmed',
-  introduced: 'Introduced',
-  rejected: 'Not accepted',
+  activated: T('Earning'),
+  verified: T('Confirmed'),
+  introduced: T('Introduced'),
+  rejected: T('Not accepted'),
   void: 'Reversed',
 };
 
@@ -184,7 +185,7 @@ export default function ScoutSheet() {
                   <div key={st} style={{ marginTop: 9 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                       <b style={{ fontSize: 15 }}>{n}</b>
-                      <span style={{ fontSize: 12.5 }}>{TITLE[st]}</span>
+                      <span style={{ fontSize: 12.5 }}>{t(TITLE[st])}</span>
                     </div>
                     <div style={muted}>{data.businesses.meaning?.[st]}</div>
                   </div>

@@ -10,6 +10,7 @@ import { store } from './store';
 import { apiUrl } from '../lib/apibase';
 import { addPlanItem } from './social';
 import { openShareCard } from './sharecard';
+import { T } from './i18nmark';
 
 export type DiscoverSource = 'num' | 'ticketmaster' | 'viator' | 'crew';
 export type Mood = 'water' | 'food' | 'night' | 'sweat' | 'culture';
@@ -42,11 +43,11 @@ export interface DiscoverResult {
 }
 
 export const MOODS: Array<{ id: Mood; emoji: string; label: string }> = [
-  { id: 'water', emoji: '🛶', label: 'Water' },
-  { id: 'food', emoji: '🍜', label: 'Food' },
-  { id: 'night', emoji: '🌙', label: 'Night' },
-  { id: 'sweat', emoji: '🥊', label: 'Sweat' },
-  { id: 'culture', emoji: '🏛', label: 'Culture' },
+  { id: 'water', emoji: '🛶', label: T('Water') },
+  { id: 'food', emoji: '🍜', label: T('Food') },
+  { id: 'night', emoji: '🌙', label: T('Night') },
+  { id: 'sweat', emoji: '🥊', label: T('Sweat') },
+  { id: 'culture', emoji: '🏛', label: T('Culture') },
 ];
 
 /** Everything the server needs to know about where and who, from state. */

@@ -4,6 +4,7 @@
 import { store } from './store';
 import type { InboxRequests } from './types';
 import { apiUrl } from '../lib/apibase';
+import { t } from './i18n';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/social') + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
@@ -84,6 +85,6 @@ export async function respond(
       : `Connected with ${out.friend?.name ?? 'them'} — they've been told.`;
   }
   if (out.posted) return out.posted;
-  if (out.rsvp) return out.rsvp === 'yes' ? 'You’re on the list.' : out.rsvp === 'no' ? 'Told them you can’t.' : 'Marked as a maybe.';
+  if (out.rsvp) return out.rsvp === 'yes' ? t('You’re on the list.') : out.rsvp === 'no' ? t('Told them you can’t.') : t('Marked as a maybe.');
   return null;
 }

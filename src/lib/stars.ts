@@ -4,6 +4,7 @@
 import { store } from './store';
 import { apiUrl } from '../lib/apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -35,7 +36,7 @@ export async function refreshStars(): Promise<void> {
  */
 export async function payStars(to: string, amount: number, note?: string, idem?: string): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;
-  if (!me) return { ok: false, message: 'Add your name and number first.' };
+  if (!me) return { ok: false, message: t('Add your name and number first.') };
   try {
     const out = await api<{ ok?: boolean; already?: boolean; balance: number; to: string; amount?: number }>('/pay', {
       method: 'POST',
@@ -45,7 +46,7 @@ export async function payStars(to: string, amount: number, note?: string, idem?:
     void refreshStars();
     return { ok: true, message: out.already ? `Already sent to ${out.to}.` : `Sent ★${amount} to ${out.to}.` };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t go through.')) };
   }
 }
 

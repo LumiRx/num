@@ -117,7 +117,7 @@ export default function ReportSheet({
                   fontWeight: reason === r.id ? 700 : 400,
                 }}
               >
-                {r.label}
+                {t(r.label)}
               </div>
             ))}
           </div>
@@ -146,7 +146,7 @@ export default function ReportSheet({
             aria-disabled={!reason || busy}
             style={{ ...primary, marginTop: 14, opacity: !reason || busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}
           >
-            {busy ? 'SENDING…' : !reason ? 'PICK A REASON' : 'SEND REPORT'}
+            {busy ? t('SENDING…') : !reason ? t('PICK A REASON') : t('SEND REPORT')}
           </div>
         </div>
       )}

@@ -37,9 +37,71 @@ let map: Record<string, string> = {};
 
 /** Translate one string. `{name}` placeholders are filled after translation. */
 export function t(en: string, vars?: Record<string, string | number>): string {
-  let s = map[en] ?? en;
+  let s = map[en];
+  if (s === undefined) { s = en; queueDynamic(en); }
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
   return s;
+}
+
+// ── STRINGS THE CATALOGUE CANNOT SEE (19 Sep 2026) ────────────────────────
+//
+// The catalogue is every t('literal') in the source. A string that reaches
+// t() by another road — a city name from the directory, a category the server
+// sent, a label pulled out of a list — is not in it, and until today it stayed
+// English on a Thai phone: "titles and cities are still in English". So a
+// miss is now asked for: collected for half a second, sent once, merged into
+// the map, remembered on the phone, and the app re-renders. Each string is
+// asked once per launch, so a line the server cannot translate costs one
+// request, not one per render. Never for English, never for what is not text.
+const pendingDyn = new Set<string>();
+const askedDyn = new Set<string>();
+let dynFlush: ReturnType<typeof setTimeout> | null = null;
+const dynKey = (lang: Lang) => `num-i18n-dyn:${lang}`;
+const DYN_CAP = 600;
+
+function queueDynamic(en: string) {
+  if (current === 'en' || askedDyn.has(en) || pendingDyn.has(en)) return;
+  if (en.length < 2 || en.length > 200 || !/\p{L}/u.test(en)) return;
+  if (/^https?:|^\/|^[a-z0-9_.-]+$|^\d/.test(en)) return; // a url, a path, a key, a number
+  pendingDyn.add(en);
+  if (!dynFlush) dynFlush = setTimeout(() => { dynFlush = null; void flushDynamic(); }, 600);
+}
+
+async function flushDynamic(): Promise<void> {
+  const lang = current;
+  if (lang === 'en' || !pendingDyn.size) return;
+  const strings = [...pendingDyn].slice(0, 200);
+  for (const s of strings) { pendingDyn.delete(s); askedDyn.add(s); }
+  try {
+    const res = await fetch(apiUrl('/api/i18n'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang, strings }),
+    });
+    const body = (await res.json()) as { ok: boolean; map?: Record<string, string> };
+    if (!body.ok || !body.map || lang !== current) return;
+    const got = Object.entries(body.map).filter(([k, v]) => v && v !== k);
+    if (!got.length) return;
+    for (const [k, v] of got) map[k] = v;
+    try {
+      const raw = localStorage.getItem(dynKey(lang));
+      const dyn: Record<string, string> = raw ? JSON.parse(raw) : {};
+      for (const [k, v] of got) dyn[k] = v;
+      const keys = Object.keys(dyn);
+      for (const k of keys.slice(0, Math.max(0, keys.length - DYN_CAP))) delete dyn[k];
+      localStorage.setItem(dynKey(lang), JSON.stringify(dyn));
+    } catch { /* quota */ }
+    store.set((s) => ({ i18nTick: s.i18nTick + 1 }));
+  } catch { /* offline — English stands */ }
+  if (pendingDyn.size && !dynFlush) dynFlush = setTimeout(() => { dynFlush = null; void flushDynamic(); }, 600);
+}
+
+/** What this phone has already learned for a language, on top of the catalogue's map. */
+function withDynamic(lang: Lang, m: Record<string, string>): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(dynKey(lang));
+    if (raw) return { ...(JSON.parse(raw) as Record<string, string>), ...m };
+  } catch { /* fine */ }
+  return m;
 }
 
 export const currentLang = (): Lang => current;
@@ -62,11 +124,13 @@ export function pickLang(): Lang {
   return isLang(chosen) ? chosen : phoneLang();
 }
 
+const retried = new Set<Lang>();
 const cacheKey = (lang: Lang) => `num-i18n:${lang}:${catalog.hash}`;
 
 function apply(lang: Lang, m: Record<string, string>) {
+  if (lang !== current) { askedDyn.clear(); pendingDyn.clear(); }
   current = lang;
-  map = m;
+  map = lang === 'en' ? {} : withDynamic(lang, m);
   try {
     document.documentElement.lang = lang;
     document.documentElement.dir = LANGS[lang].dir;
@@ -85,10 +149,18 @@ export async function loadLang(lang: Lang): Promise<void> {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lang, strings: catalog.strings }),
     });
-    const body = (await res.json()) as { ok: boolean; map?: Record<string, string> };
+    const body = (await res.json()) as { ok: boolean; map?: Record<string, string>; translated?: number; asked?: number };
     if (body.ok && body.map && Object.keys(body.map).length) {
       try { localStorage.setItem(cacheKey(lang), JSON.stringify(body.map)); } catch { /* quota */ }
       if (!cached || JSON.stringify(cached) !== JSON.stringify(body.map)) apply(lang, body.map);
+      // The server answers with what it has stored and translates the rest
+      // after the response (worker/i18n.mjs bundleFor → defer). New strings
+      // from a fresh release arrive on the second ask, so ask once more soon
+      // rather than leaving them English until tomorrow's launch.
+      if ((body.translated ?? 0) < (body.asked ?? 0) && !retried.has(lang)) {
+        retried.add(lang);
+        setTimeout(() => { if (current === lang) void loadLang(lang); }, 20_000);
+      }
     } else if (!cached) apply('en', {});
   } catch {
     if (!cached) apply('en', {});

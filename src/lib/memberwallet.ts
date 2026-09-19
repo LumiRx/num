@@ -9,6 +9,7 @@
 // see worker/balances.mjs on why `held` and `owed` are never netted.
 import { apiUrl } from './apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 export interface MemberWallet {
   wallet: { address: string; chain: string; created_at?: string } | null;
@@ -33,11 +34,11 @@ export async function createMemberWallet(meId: string): Promise<{ ok: true; addr
     const r = await fetch(apiUrl(`/api/wallet/create?me=${encodeURIComponent(meId)}`), { method: 'POST' });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) {
-      return { ok: false, error: guestMessage(new Error(String(body?.error ?? '')), 'Could not make a wallet just now.', 'wallet') };
+      return { ok: false, error: guestMessage(new Error(String(body?.error ?? '')), t('Could not make a wallet just now.'), 'wallet') };
     }
     return { ok: true, address: String(body?.wallet?.address ?? '') };
   } catch (e) {
-    return { ok: false, error: guestMessage(e, 'You seem to be offline.', 'wallet') };
+    return { ok: false, error: guestMessage(e, t('You seem to be offline.'), 'wallet') };
   }
 }
 

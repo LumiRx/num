@@ -9,6 +9,7 @@
 // standing, or invent a URL.
 import { store } from './store';
 import type { ServiceHandoff, ServiceOption } from './types';
+import { T } from './i18nmark';
 
 /** Show the provider tray under the thread. */
 export function offerService(h: ServiceHandoff): void {
@@ -39,14 +40,14 @@ export function openService(o: ServiceOption): void {
 }
 
 export const KIND_LABEL: Record<ServiceHandoff['kind'], string> = {
-  ride: 'Get the car',
-  food: 'Order it',
-  table: 'Book the table',
-  wellness: 'Book it',
+  ride: T('Get the car'),
+  food: T('Order it'),
+  table: T('Book the table'),
+  wellness: T('Book it'),
   // Travel is a price comparison, not a purchase — the label has to say so, or
   // a tap feels like it should have booked something.
-  flight: 'Compare the fares',
-  hotel: 'Compare the rooms',
+  flight: T('Compare the fares'),
+  hotel: T('Compare the rooms'),
   rail: 'Compare the trains',
 };
 

@@ -64,7 +64,7 @@ export default function BusinessSheet() {
       <div style={{ padding: 16 }}>
         <div style={label}>{t('BUSINESS')}</div>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-          {data?.places.length ? 'Your listings' : 'Claim your place'}
+          {data?.places.length ? t('Your listings') : t('Claim your place')}
         </div>
 
         {!me && (
@@ -126,7 +126,7 @@ export default function BusinessSheet() {
                 <input
                   key={k}
                   style={field}
-                  placeholder={k === 'phone' ? 'Public phone' : k === 'website' ? 'Website' : 'Area / neighbourhood'}
+                  placeholder={k === 'phone' ? t('Public phone') : k === 'website' ? t('Website') : 'Area / neighbourhood'}
                   value={edit[p.id]?.[k] ?? ''}
                   onChange={(e) => setEdit((prev) => ({ ...prev, [p.id]: { ...prev[p.id], [k]: e.target.value } }))}
                 />
@@ -139,7 +139,7 @@ export default function BusinessSheet() {
                 })}
                 style={primary}
               >
-                {saved === p.id ? 'SAVED' : 'SAVE DETAILS'}
+                {saved === p.id ? t('SAVED') : t('SAVE DETAILS')}
               </div>
             </div>
             <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('These are the details NUM quotes to travellers. Changing the phone here does not change what verified you — that stays tied to the number we already reached you on.')}</div>

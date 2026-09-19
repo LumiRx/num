@@ -23,6 +23,7 @@ import { CheckIcon, ChevronRightIcon, XIcon } from '../../lib/icons';
 import { GENDERS, TITLES, listPassengers, removePassenger, savePassenger } from '../../lib/passengers';
 import type { Passenger, PassengerDraft } from '../../lib/passengers';
 import { t } from '../../lib/i18n';
+import { T } from '../../lib/i18nmark';
 
 const field: React.CSSProperties = {
   width: '100%', height: 44, borderRadius: 12, border: '1px solid var(--ink-12)',
@@ -44,7 +45,7 @@ const EMPTY: PassengerDraft = {
   email: '', phone_number: '', label: '', is_self: true,
 };
 
-const TITLE_LABEL: Record<string, string> = { mr: 'Mr', ms: 'Ms', mrs: 'Mrs', miss: 'Miss', dr: 'Dr' };
+const TITLE_LABEL: Record<string, string> = { mr: 'Mr', ms: 'Ms', mrs: T('Mrs'), miss: T('Miss'), dr: 'Dr' };
 
 function Segmented({ options, value, onPick, name }: {
   options: Array<[string, string]>;
@@ -173,7 +174,7 @@ export default function PassengerSheet() {
                       {TITLE_LABEL[p.title] ?? p.title} {p.given_name} {p.family_name}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--ink-40)', marginTop: 2 }}>
-                      {p.is_self ? 'You' : p.label || 'Travelling with you'} · born {p.born_on}
+                      {p.is_self ? t('You') : p.label || 'Travelling with you'} · born {p.born_on}
                     </div>
                   </div>
                   <div {...pressable(() => edit(p))} aria-label={`Edit ${p.given_name}`} className="press"
@@ -192,10 +193,10 @@ export default function PassengerSheet() {
           <div>
             <div style={legend}>{t('THIS PASSENGER IS')}</div>
             <Segmented
-              name="Who this record is for"
+              name={t('Who this record is for')}
               value={draft.is_self ? 'self' : 'other'}
               onPick={(v) => set({ is_self: v === 'self' })}
-              options={[['self', 'Me'], ['other', 'Someone I travel with']]}
+              options={[['self', 'Me'], ['other', t('Someone I travel with')]]}
             />
             {!draft.is_self && (
               <input
@@ -211,7 +212,7 @@ export default function PassengerSheet() {
           <div>
             <div style={legend}>{t('TITLE')}</div>
             <Segmented
-              name="Title"
+              name={t('Title')}
               value={draft.title ?? ''}
               onPick={(v) => set({ title: v })}
               options={TITLES.map((t) => [t, TITLE_LABEL[t]] as [string, string])}
@@ -244,7 +245,7 @@ export default function PassengerSheet() {
           <div>
             <div style={legend}>{t('GENDER ON THE DOCUMENT')}</div>
             <Segmented
-              name="Gender marker on the travel document"
+              name={t('Gender marker on the travel document')}
               value={draft.gender ?? ''}
               onPick={(v) => set({ gender: v })}
               options={GENDERS.map((g) => [g, g === 'm' ? 'M' : 'F'] as [string, string])}
@@ -277,7 +278,7 @@ export default function PassengerSheet() {
           aria-disabled={!ready || busy}
           style={{ ...primary, marginTop: 18, opacity: ready && !busy ? 1 : 0.45 }}>
           <CheckIcon size={14} />
-          {busy ? 'SAVING…' : editing ? 'UPDATE PASSENGER' : 'SAVE PASSENGER'}
+          {busy ? t('SAVING…') : editing ? t('UPDATE PASSENGER') : t('SAVE PASSENGER')}
         </div>
 
         <div style={{ ...helpText, marginTop: 12 }}>{t('Nothing is bought by saving this. It sits here until you choose a flight, and NUM shows you the fare and the name it is about to send before anything is bought.')}</div>

@@ -10,6 +10,7 @@
 import { store } from './store';
 import { apiUrl } from './apibase';
 import type { ResearchRun } from './types';
+import { t } from './i18n';
 
 /** Long enough not to hammer a 15–60s job, short enough to feel prompt. */
 const POLL_MS = 3_000;
@@ -53,7 +54,7 @@ function watch(id: string, me: string, startedAt = Date.now()): void {
       timer = null;
       store.set((s) => ({
         research: s.research && s.research.id === id
-          ? { ...s.research, state: 'failed', error: 'this one stopped before it finished — nothing was charged' }
+          ? { ...s.research, state: 'failed', error: t('this one stopped before it finished — nothing was charged') }
           : s.research,
       }));
       return;

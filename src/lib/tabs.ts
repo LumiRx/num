@@ -14,6 +14,7 @@ import { store } from './store';
 import { refreshStars } from './stars';
 import { apiUrl } from '../lib/apibase';
 import { guestMessage } from './saferr';
+import { t } from './i18n';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl('/api/social') + path, {
@@ -117,7 +118,7 @@ export async function addItem(label: string, stars: number, sharedWith?: string[
 export async function settleTab(): Promise<{ ok: boolean; message: string }> {
   const me = store.get().me;
   const tab = store.get().tabOpen;
-  if (!me || !tab) return { ok: false, message: 'No tab open.' };
+  if (!me || !tab) return { ok: false, message: t('No tab open.') };
   try {
     const out = await api<{ paid?: Array<{ to: string; stars: number }>; nothing_owed?: boolean }>('/tab/settle', {
       method: 'POST',
@@ -125,7 +126,7 @@ export async function settleTab(): Promise<{ ok: boolean; message: string }> {
     });
     await loadTab(tab.tab.id);
     void refreshStars();
-    if (out.nothing_owed) return { ok: true, message: 'You’re square — nothing to pay.' };
+    if (out.nothing_owed) return { ok: true, message: t('You’re square — nothing to pay.') };
     const paid = out.paid ?? [];
     return {
       ok: true,
@@ -134,7 +135,7 @@ export async function settleTab(): Promise<{ ok: boolean; message: string }> {
         : 'Settled.',
     };
   } catch (err) {
-    return { ok: false, message: guestMessage(err, 'That didn’t go through.') };
+    return { ok: false, message: guestMessage(err, t('That didn’t go through.')) };
   }
 }
 
