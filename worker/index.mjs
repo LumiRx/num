@@ -1656,7 +1656,13 @@ export async function handleNum(request, env, ctx, hooks = null) {
     // who asked, or carrying an action, is never stored. A degraded reply is
     // never stored either: caching lean mode would outlive the outage that
     // caused it.
-    if (!_degraded && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean, pos: cachePos })) {
+    // Nor an answer the grader flagged: a recommendation with no cards,
+    // stored, is served as "three near you" with nothing to tap for a week
+    // (seen 19 Sep 2026 — the cache lane handed back picks: [] for Thonglor
+    // seafood on every repeat). A flagged answer is paid for once and then
+    // let go, so the next ask gets a real try.
+    const flaggedForCache = (quality?.flags ?? []).some((f) => /without-picks|off-topic|invented|unverif/i.test(String(f)));
+    if (!_degraded && !flaggedForCache && cacheable({ userText: lastUser, profile, state: parsed.state ?? {}, reply: clean, pos: cachePos })) {
       ctx.waitUntil(writeCache(env, { userText: lastUser, place: grounding.place?.name ?? null, lang: acceptLang, reply: clean, pos: cachePos }));
     }
     // Durable memory: whatever `remember` actions this turn produced,
