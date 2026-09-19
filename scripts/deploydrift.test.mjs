@@ -170,3 +170,26 @@ describe('the mechanism', () => {
     } finally { process.chdir(cwd); rmSync(d, { recursive: true, force: true }); }
   });
 });
+
+// ── EVERY DEPLOY MUST RECORD ─────────────────────────────────────────────
+//
+// This whole file exists to answer "is the code that is in the repo actually
+// running". It answers that from `.deploy-shipped.json`, and a deploy that
+// does not write to that ledger is invisible to it.
+//
+// On 19 Sep 2026 `deploy:site` was the only deploy script with no
+// `deploydrift record` on the end. num-console is the worker that ships most
+// often — the marketing site — and the drift report had it last shipped at
+// 01:37 that morning after a day of deploys, so it was reporting the site
+// stale when it was current, and would have reported it current when it was
+// stale. A tool that is wrong in both directions is worse than no tool,
+// because it trains everyone to ignore the warning it exists to give.
+test('every deploy script records what it shipped', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const missing = [];
+  for (const [name, cmd] of Object.entries(pkg.scripts ?? {})) {
+    if (!/wrangler\s+deploy/.test(cmd)) continue;
+    if (!/deploydrift\.mjs\s+record\s+\S/.test(cmd)) missing.push(name);
+  }
+  assert.deepEqual(missing, [], `these deploys are invisible to the drift check: ${missing.join(', ')}`);
+});
