@@ -243,3 +243,60 @@ export function resolvePicks(picks, partners = []) {
   }
   return { picks: out, dropped };
 }
+
+/**
+ * THE PLACES THE MODEL NAMED IN PROSE, AS PICKS (19 Sep 2026).
+ *
+ * The bulk lane (Haiku) reads the verified block, names three real places
+ * from it — and hands back `picks: []`, the whole recommendation in one
+ * paragraph. Measured on the preview today: "Nahm for the seafood craft, or
+ * Savoey if you want the room…", all three rows in the directory, zero cards,
+ * and the quality retry failed. The guest got names with nothing to tap —
+ * the exact bare-name answer the CONTACT RULE forbids.
+ *
+ * This is the deterministic rescue: every partner whose name appears in the
+ * reply becomes a pick, in the order it was said, with the sentence it was
+ * said in as its `why`. Nothing is invented — the names were in the verified
+ * block and the reply; this only puts them where the app can act on them.
+ * Longest names first so "Baan Rim Naam Songwat" is not swallowed by "Baan
+ * Rim Naam". Three-letter names and shorter are skipped: too many false hits.
+ */
+export function picksFromProse(reply, partners = [], max = 8) {
+  const text = String(reply ?? '');
+  if (!text.trim() || !Array.isArray(partners) || !partners.length) return [];
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rows = partners
+    .filter((p) => p?.name && String(p.name).trim().length >= 4)
+    .sort((a, b) => String(b.name).length - String(a.name).length);
+  const taken = [];          // [start, end] spans already claimed by a longer name
+  const found = [];
+  for (const p of rows) {
+    const name = String(p.name).trim();
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${esc(name)}(?![\\p{L}\\p{N}])`, 'iu');
+    const m = re.exec(text);
+    if (!m) continue;
+    const start = m.index + m[1].length;
+    const end = start + name.length;
+    if (taken.some(([a, b]) => start < b && end > a)) continue;
+    taken.push([start, end]);
+    // The sentence it was said in, as the why — trimmed of the name's own
+    // leading "X for" so it reads as a reason rather than an echo.
+    const s0 = Math.max(text.lastIndexOf('. ', start), text.lastIndexOf('\n', start), text.lastIndexOf('— ', start)) + 1;
+    const s1a = text.indexOf('. ', end); const s1b = text.indexOf('\n', end);
+    const s1 = Math.min(...[s1a, s1b, text.length].filter((n) => n >= 0));
+    const sentence = text.slice(s0, s1);
+    // The clause, not the whole sentence: "or Savoey if you want the room and
+    // the river" rather than the line naming all three.
+    const rel = start - s0;
+    let why = sentence;
+    let offset = 0;
+    for (const part of sentence.split(/(?:, or |, but |; | — | – |, and )/)) {
+      const at = sentence.indexOf(part, offset);
+      if (rel >= at && rel < at + part.length) { why = part; break; }
+      offset = at + part.length;
+    }
+    why = why.replace(/^[\s—–-]+|[\s,.;]+$/g, '').replace(/^(but|or|and)\s+/i, '').trim().slice(0, 160) || null;
+    found.push({ at: start, pick: { id: p.id ?? null, name, why } });
+  }
+  return found.sort((a, b) => a.at - b.at).slice(0, max).map((f) => f.pick);
+}

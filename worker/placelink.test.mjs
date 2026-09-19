@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { placeLink, mapsUrl, cleanUrl, telLink, placeContact, linkable } from './placelink.mjs';
+import { placeLink, mapsUrl, cleanUrl, telLink, placeContact, linkable, picksFromProse } from './placelink.mjs';
 
 const KATA = { id: 'p1', name: 'Baan Rim Pa', lat: 7.8942, lng: 98.2931, address: '223 Prabaramee Rd', phone: '+66 76 340 789' };
 
@@ -129,5 +129,43 @@ describe('resolvePicks — the link comes from the row, or the pick does not shi
   test('a why longer than a sentence is clipped, not dropped', () => {
     const { picks } = resolvePicks([{ id: 'p1', name: 'Baan Rim Pa', why: 'y'.repeat(500) }], PARTNERS);
     assert.equal(picks[0].why.length, 160);
+  });
+});
+
+describe('the names are in the prose and the picks are empty (19 Sep 2026)', () => {
+  const partners = [
+    { id: '1', name: 'Nahm', lat: 13.7, lng: 100.5, website: 'nahm.example' },
+    { id: '2', name: 'Savoey', lat: 13.7, lng: 100.5, website: 'savoey.example' },
+    { id: '3', name: 'Sumo Loco', lat: 13.7, lng: 100.5 },
+    { id: '4', name: 'Baan Rim Naam', lat: 13.7, lng: 100.5 },
+    { id: '5', name: 'Baan Rim Naam Songwat', lat: 13.7, lng: 100.5 },
+    { id: '6', name: 'Bar', lat: 13.7, lng: 100.5 },
+  ];
+  const reply = 'Nahm for the seafood craft, or Savoey if you want the room and the river — but I’d take Sumo Loco, the fish is pristine.\n\nBaan Rim Naam Songwat is the quieter room. A bar after?';
+
+  test('every partner the reply names becomes a pick, in the order it was said, with its clause as the why', () => {
+    const picks = picksFromProse(reply, partners);
+    assert.deepEqual(picks.map((p) => p.name), ['Nahm', 'Savoey', 'Sumo Loco', 'Baan Rim Naam Songwat']);
+    assert.equal(picks[1].why, 'Savoey if you want the room and the river');
+    assert.equal(picks[2].why, 'I’d take Sumo Loco, the fish is pristine');
+  });
+
+  test('a longer name is not swallowed by a shorter one; a three-letter name never matches a common word', () => {
+    const names = picksFromProse(reply, partners).map((p) => p.name);
+    assert.ok(!names.includes('Baan Rim Naam'), 'the shorter row must not double-count the longer one');
+    assert.ok(!names.includes('Bar'), '"a bar after?" is not the venue called Bar');
+  });
+
+  test('the rescued picks resolve to real cards through the same door as the model’s own', () => {
+    const { picks, dropped } = resolvePicks(picksFromProse(reply, partners), partners);
+    assert.equal(picks.length, 4);
+    assert.equal(dropped.length, 0);
+    assert.equal(picks[0].link_kind, 'website');
+    assert.ok(picks[2].link, 'a row with no website still gets a map link');
+  });
+
+  test('nothing named, nothing rescued — and never anything the block does not hold', () => {
+    assert.deepEqual(picksFromProse('Where are you staying?', partners), []);
+    assert.deepEqual(picksFromProse('Try Jay Fai tonight.', partners), []);
   });
 });

@@ -12,7 +12,7 @@
 // request before we spend a token — see DEPLOY.md § Launch hardening.
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
-import { resolvePicks } from './placelink.mjs';
+import { resolvePicks, picksFromProse } from './placelink.mjs';
 import { redactProfile, redactState } from './redact.mjs';
 import { readCache, writeCache, cacheable } from './answercache.mjs';
 // Gate zero: the lookups that need no model at all. See knownanswer.mjs.
@@ -1425,7 +1425,17 @@ export async function handleNum(request, env, ctx, hooks = null) {
     // reach it. Runs BEFORE inspect() on purpose: the grader must judge the
     // message that will actually be sent, links and all.
     {
-      const resolved = resolvePicks(result.picks, grounding?.partners ?? []);
+      let resolved = resolvePicks(result.picks, grounding?.partners ?? []);
+      // THE NAMES ARE IN THE PROSE AND THE PICKS ARE EMPTY (19 Sep 2026).
+      // The bulk lane does this on most recommendation turns: three real rows
+      // from the block, written as a paragraph, `picks: []`. Every partner the
+      // reply names becomes a card — deterministic, nothing invented
+      // (placelink.mjs picksFromProse) — and the quality retry that used to
+      // chase this, and usually fail, is not needed.
+      if (!resolved.picks.length) {
+        const fromProse = resolvePicks(picksFromProse(result.reply, grounding?.partners ?? []), grounding?.partners ?? []);
+        if (fromProse.picks.length) { resolved = fromProse; result = { ...result, _picksFromProse: fromProse.picks.length }; }
+      }
       // Then the details a concierge actually says — "4 min walk", "open,
       // closes 23:00 (40 min)", the local-script name, the rating with the
       // count that earned it. All from the row, none invented, and absent
