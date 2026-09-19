@@ -1249,6 +1249,16 @@ const WORKER = {
 
       if (p === "/api/admin/earnings" && req.method === "POST") return adminEarnings(req, env);
 
+      /* A venue that moves. /here is the driver's own signed link \u2014 no
+         session, no admin key \u2014 because the person who has to act is in a
+         truck with the engine running. /near and /where are what a guest may
+         know, and they return a position only while the operator's own expiry
+         is still in the future. See worker/mobilevenue.mjs. */
+      if (p.startsWith("/api/mobile/")) {
+        const { handleMobile } = await import("../worker/mobileroutes.mjs");
+        return handleMobile(req, env, p.slice("/api/mobile".length));
+      }
+
       // The desk: where a person reads what a business wrote and answers it.
       // Every route behind one guard inside handleBizDesk — see worker/bizdesk
       // .mjs on why the gate is at the dispatcher and not per route.

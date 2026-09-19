@@ -188,6 +188,11 @@ const FILES = [
   // tables and their indexes, all IF NOT EXISTS, no ALTER, so a second pass
   // is a no-op.
   'worker/migrations/0048_business_comms.sql',
+  'worker/migrations/0049_editorial_aliases.sql',
+  // A venue that moves: which places are mobile, where each is standing now
+  // (with the expiry that makes it safe to say), and every pitch it has taken.
+  // Three tables and one index, all IF NOT EXISTS, no ALTER.
+  'worker/migrations/0050_mobile_venues.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

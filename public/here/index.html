@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0e8a63">
+<title>Where are you parked?</title>
+<!--
+  The driver's page. One job, one tap.
+
+  This is opened by somebody sitting in a truck with the engine running, on a
+  phone, in sunlight, possibly with a queue forming. Every decision here is
+  downstream of that:
+
+   · The button is enormous and it is the first thing on the screen.
+   · There is no login. The link carries a signed token for one venue.
+   · The time is three taps of a preset, not a picker. "Till 3" is a guess
+     they are allowed to change later by tapping again.
+   · Nothing is required except the tap. The label is optional, because a
+     driver who has to type a street name will stop doing this by Thursday.
+   · It says plainly what happens when the time runs out, because that is the
+     deal: NUM stops telling anyone where you are rather than telling them
+     something wrong.
+
+  It is deliberately not a PWA, not an app, and stores nothing. The whole
+  thing is a bookmark.
+-->
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --ink:#111827; --muted:#6b7280;
+    --go:#0e8a63; --warn:#b45309; --bad:#b91c1c;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+    --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --ink:#e7e9ee; --muted:#9aa2b1;
+  }}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+  h1{font-size:20px;margin:6px 0 2px;letter-spacing:-.3px}
+  .muted{color:var(--muted);font-size:15px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}
+  .state{font-size:17px;font-weight:600;margin:0}
+  button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:12px;padding:12px 14px;cursor:pointer}
+  #park{width:100%;padding:26px 18px;font-size:22px;font-weight:700;
+    background:var(--go);border-color:var(--go);color:#fff;border-radius:18px;
+    box-shadow:0 6px 18px rgba(14,138,99,.28)}
+  #park:disabled{opacity:.6;box-shadow:none}
+  .times{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
+  .times button{flex:1 1 auto;min-width:72px;font-weight:600}
+  .times button[aria-pressed=true]{background:var(--go);border-color:var(--go);color:#fff}
+  input{width:100%;font:inherit;padding:13px 12px;border:1px solid var(--line);
+    border-radius:12px;background:var(--card);color:var(--ink);margin-top:10px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .err{color:var(--bad);font-size:15px;margin:10px 0 0}
+  .ok{color:var(--go);font-weight:600}
+  .deal{font-size:14px;color:var(--muted);border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="name">Where are you parked?</h1>
+  <p class="muted" id="sub">One tap. Your phone tells us the spot.</p>
+
+  <div class="card">
+    <p class="state" id="state">Checking…</p>
+    <p class="muted hidden" id="recent"></p>
+  </div>
+
+  <button id="park" disabled>Park me here</button>
+  <p class="err hidden" id="err"></p>
+
+  <div class="card">
+    <div class="muted">How long are you here?</div>
+    <div class="times" id="times">
+      <button data-m="60" aria-pressed="false">1 hr</button>
+      <button data-m="120" aria-pressed="false">2 hrs</button>
+      <button data-m="180" aria-pressed="true">3 hrs</button>
+      <button data-m="300" aria-pressed="false">5 hrs</button>
+    </div>
+    <input id="label" placeholder="Where, in your words (optional)" autocomplete="off" enterkeyhint="done">
+    <div class="deal">
+      When that time is up, NUM stops telling anyone where you are. It never
+      gives out an old spot &mdash; nobody gets sent to a kerb you have left.
+      Tap again any time to move the pin or add time.
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="done" class="hidden">I&rsquo;ve packed up</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var qs = new URLSearchParams(location.search);
+  var P = qs.get("p") || "";
+  var T = qs.get("t") || "";
+  var minutes = 180;
+
+  function show(el, on) { el.classList.toggle("hidden", !on); }
+  function fail(msg) { $("err").textContent = msg; show($("err"), true); }
+  function clearFail() { show($("err"), false); }
+
+  function api(opts) {
+    return fetch("/api/mobile/here" + (opts.body ? "" : "?p=" + encodeURIComponent(P) + "&t=" + encodeURIComponent(T)), {
+      method: opts.body ? "POST" : "GET",
+      headers: { "Content-Type": "application/json" },
+      body: opts.body ? JSON.stringify(Object.assign({ p: P, t: T }, opts.body)) : undefined
+    }).then(function (r) { return r.json().catch(function () { return {}; }); });
+  }
+
+  Array.prototype.forEach.call($("times").querySelectorAll("button"), function (b) {
+    b.addEventListener("click", function () {
+      minutes = Number(b.getAttribute("data-m"));
+      Array.prototype.forEach.call($("times").querySelectorAll("button"), function (x) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      });
+    });
+  });
+
+  function paint(j) {
+    var pos = j.position || {};
+    if (pos.name) { $("name").textContent = pos.name; $("sub").textContent = "Where are you parked?"; }
+    $("state").textContent = j.say || "Not parked right now.";
+    $("state").className = "state" + (pos.state === "parked" ? " ok" : "");
+    show($("done"), pos.state === "parked");
+    $("park").textContent = pos.state === "parked" ? "Move the pin / add time" : "Park me here";
+    if (j.recent && j.recent.length) {
+      $("recent").textContent = "Last few: " + j.recent.map(function (r) {
+        return (r.label || "a spot") + " · " + String(r.created_at || "").slice(5, 10);
+      }).join("  ·  ");
+      show($("recent"), true);
+    }
+  }
+
+  if (!P || !T) { $("state").textContent = "This link is missing something. Ask NUM for a new one."; }
+  else {
+    api({}).then(function (j) {
+      if (j.ok === false) { $("state").textContent = j.say || "That link is not right."; return; }
+      paint(j);
+      $("park").disabled = false;
+    }).catch(function () { $("state").textContent = "Could not reach NUM. Try again in a moment."; });
+  }
+
+  $("park").addEventListener("click", function () {
+    clearFail();
+    if (!navigator.geolocation) { fail("This phone will not share its location with the browser."); return; }
+    $("park").disabled = true;
+    $("park").textContent = "Finding you…";
+    navigator.geolocation.getCurrentPosition(function (p) {
+      api({ body: {
+        lat: p.coords.latitude, lng: p.coords.longitude,
+        // Sent so the server can refuse a fix that is only a guess from a cell
+        // tower. A pin "somewhere within 2km" is not an answer.
+        accuracy: p.coords.accuracy,
+        minutes: minutes, label: $("label").value.trim() || null
+      } }).then(function (j) {
+        $("park").disabled = false;
+        if (!j.ok) { fail(j.say || "That did not save."); $("park").textContent = "Try again"; return; }
+        return api({}).then(paint);
+      });
+    }, function (e) {
+      $("park").disabled = false;
+      $("park").textContent = "Park me here";
+      fail(e && e.code === 1
+        ? "Location is switched off for this page. Turn it on and tap again."
+        : "Your phone could not find itself just now. Try again in a moment.");
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+
+  $("done").addEventListener("click", function () {
+    api({ body: { done: true } }).then(function () { return api({}); }).then(paint);
+  });
+})();
+</script>
+</body>
+</html>

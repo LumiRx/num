@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 01:38 UTC from 40 entries._
+_Built 2026-09-19 16:48 UTC from 41 entries._
 
 ## Deployed right now
 
@@ -18,7 +18,7 @@ Read from what each worker actually bundles, not from anyone's memory.
 |---|---|
 | num-console | 🟢 up to date (2026-09-19 01:37) |
 | num-app | 🔴 **STALE** — 3 files changed since it shipped |
-| num-growth | 🟢 up to date (2026-09-19 01:27) |
+| num-growth | 🔴 **STALE** — 5 files changed since it shipped |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -41,6 +41,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 22:40_
 - 🟡 **clover and autopay** — Clover adapter + capped auto-pay. growth/pos/clover.mjs: the second till, and the one that proves the registry earns its keep - Clover disagrees with Square about everything (GET+query vs POST+filter, an external tender id you must look up per merchant vs a first-class EXTERNAL source, total-minus-payments vs net_amount_due_money) and none of it escapes the adapter. v2 OAuth with expiring access AND refresh tokens, unix expiries converted to ISO. pickTender NEVER falls back to cash - a NUM payme
   _claude, 2026-09-18 18:39_
+- 🟡 **mobile venues** — Hugo's answered: Resy on the two restaurants, nothing on the tacos. RESY IS PARTNERSHIP-ONLY - no self-serve developer portal, integration restricted to approved partners, and their own integrations page lists 'Reservations & Discovery' as a category alongside Google, MICHELIN, Meta and The Infatuation, which is exactly what NUM is. That is the door. The private endpoints people reverse-engineer are not an option and would end the partnership. Also removed the invented seats/date query params fr
+  _claude, 2026-09-19 16:48_
 - 🟡 **num-expert-kit** — worker/scoutkit.mjs: three print-ready sheets per Expert at /api/scouts/kit?code=CODE — business one-pager, counter cards 4-up, pitch+objections card. Personalised: every sheet carries the Expert's code and a QR of itsnum.com/s/CODE drawn by worker/qr.mjs. Verified by decoding a render: 28.7mm on A4, resolves correctly. Prices copied verbatim from public/flyers/business; sample answer names no real venue (the live flyer names three — flagged to Dre). Linked from the dashboard. 15 tests.
   _claude, 2026-09-18 04:19_
 - 🟡 **num-expert-leads** — 0036 num_scout_leads: an Expert can add a shop they found themselves and work it. A lead earns nothing, spends no cap and reserves nothing — promoteLead() calls the same introduce() so the cap and first-come still apply, asserted by test. Dashboard counts leads beside businesses, never inside them. Add form and state list on /scout/. 19 lead tests, 5915 suite green.

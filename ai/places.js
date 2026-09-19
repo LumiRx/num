@@ -13,6 +13,7 @@ import { openNow } from '../worker/hours.mjs';
 // comment in the other. See worker/learn.mjs for why it is capped, why the
 // cap is not symmetric, and why nothing money can reach may ever appear here.
 import { SCORE_TERM as NUM_RATING_TERM } from '../worker/learn.mjs';
+import { SCORE_TERM as EDITORIAL_TERM, CLOSED_PREDICATE } from '../worker/editorial.mjs';
 
 // ---------------------------------------------------------------- categories
 
@@ -628,6 +629,14 @@ const SCORE = `(
   -- was crawled off the open web; this line is the only part of the score
   -- NUM learned, and it is the only part that can move DOWN.
   + ${NUM_RATING_TERM}
+  -- WHAT A CRITIC SAID. Everything above is a fact about the RECORD -- how
+  -- many people reviewed it, whether it has a phone. This is the only term
+  -- that is a judgement about the PLACE, and without it a 4.5-star chain
+  -- hotel outranks the best room in the city because more people slept there
+  -- and left a star. It is also the only term that can go sharply negative:
+  -- a venue stripped of a star must fall BELOW one nobody has judged, and a
+  -- venue that has closed must not appear at all. See worker/editorial.mjs.
+  + ${EDITORIAL_TERM}
   - km * ?7
 )`;
 
@@ -660,7 +669,12 @@ async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, 
       -- down: no amount of star rating makes a shuttered restaurant a good
       -- recommendation. NULL is unknown and stays eligible — most of the
       -- directory has never been checked, and hiding it would empty the map.
+      -- A SOURCED CLOSURE IS THE SAME STATEMENT AS alive = 0, so it is
+      -- excluded the same way rather than merely ranked down. See
+      -- CLOSED_PREDICATE in worker/editorial.mjs for why a penalty was not
+      -- enough: a closed three-star still outscores an ordinary open place.
       WHERE (alive IS NULL OR alive = 1)
+        AND ${CLOSED_PREDICATE}
         AND cell_lat BETWEEN ?3 AND ?4 AND cell_lng BETWEEN ?5 AND ?6${cat}${neg}
     ) WHERE km <= ${Number(radiusKm)} ORDER BY ${SCORE}${prefBonus} DESC LIMIT ${Math.max(1, limit | 0)}`;
   const binds = [
@@ -776,6 +790,29 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null, 
       rows = rows.map((r, i) => ({ r, i, k: key(r) })).sort((a, b) => b.k - a.k || a.i - b.i).map((x) => x.r);
     }
   } catch (e) { console.log('nearbyPlaces rotate', String(e)); }
+  /* ── A VENUE THAT HAS MOVED ON ─────────────────────────────────
+   *
+   * A few places in the directory move: a taco truck, a market stall, a boat
+   * that changes mooring. When one parks, worker/mobilevenue.mjs writes the
+   * pitch into places.lat/lng, so everything above finds it exactly like any
+   * other place and there is no second proximity search to keep in step.
+   *
+   * The cost of that is that those columns go on saying Abbot Kinney after the
+   * truck has left, because nothing moves them back. This is what moves them
+   * back: a venue whose operator's own "parked till" has passed drops out of
+   * the list here, before a guest ever sees it. Sending somebody to an empty
+   * kerb does not read as "the truck moved", it reads as NUM being wrong.
+   *
+   * Lazily imported and fully guarded. ai/places.js compiles into both num-ai
+   * and num-app, so a static import from worker/ would pull that tree into a
+   * bundle that does not want it; and on any failure hideExpired returns the
+   * list unchanged rather than empty.
+   */
+  try {
+    const { hideExpired } = await import('../worker/mobilevenue.mjs');
+    rows = await hideExpired(env, rows);
+  } catch (e) { console.log('nearbyPlaces mobile', String(e).slice(0, 160)); }
+
   return { cat, rows: withOpenState(rows, loc?.dest?.tz), near, widened };
 }
 

@@ -87,8 +87,20 @@ export const SYSTEMS = Object.freeze([
   {
     key: 'resy', name: 'Resy', vertical: 'restaurant', reach: 'partner',
     match: [/resy\.com/i, /widgets\.resy\.com/i, /resy[-_]?widget/i],
-    note: 'Widget and internal API exist; third-party booking access is by arrangement.',
-    link: (u, ask) => { const p = P(ask); return setp(u, { seats: p.covers, date: p.date }); },
+    apply: 'https://resy.com/join/integrations/',
+    note: 'Owned by American Express. No self-serve developer portal: integration is '
+      + 'restricted to approved partners under a direct agreement, and their own '
+      + 'integrations page lists "Reservations & Discovery" as a category \u2014 the one '
+      + 'Google, MICHELIN, Meta and The Infatuation sit in, which is exactly what NUM '
+      + 'is. That is the door to knock on. The private endpoints people reverse-engineer '
+      + 'are NOT an option: using them breaks their terms, breaks whenever Resy changes '
+      + 'something, and would end any chance of the partnership.',
+    // The bare link, deliberately. Every other entry here carries parameters
+    // that were checked; Resy's were not, and a booking link decorated with
+    // query parameters the site ignores is at best noise and at worst looks
+    // broken to the guest we just sent there. Add them the day somebody
+    // confirms them against a real venue's page — Hugo's has been asked.
+    link: (u) => u,
   },
   {
     key: 'sevenrooms', name: 'SevenRooms', vertical: 'restaurant', reach: 'partner',

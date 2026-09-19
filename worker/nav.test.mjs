@@ -53,6 +53,7 @@ const NO_NAV = {
   'join/index.html': 'a redirect stub',
   'console/index.html': 'the partner demo console, not a marketing page',
   'desk/index.html': 'the internal business desk — staff only, behind the admin key, and noindex',
+  'here/index.html': 'the driver’s one-tap parking page — opened from a signed link in a truck, noindex',
   'app-preview/index.html': 'team-only prototype, noindex, linked from nowhere public',
   'host/index.html': 'the private host console, key-gated and noindex',
   // Rehomed from num-biz-site on 12 Sep 2026 because that worker was serving a
