@@ -34,6 +34,12 @@ export interface StayOption {
   cancelBy: string | null;
   payAtHotel: number | null;
   payAtHotelFor: string[] | null;
+  /** From /data/hotel. "I land at six — can I get in?" is the most asked question. */
+  checkinFrom: string | null;
+  checkoutBefore: string | null;
+  /** Set when the property belongs to a loyalty chain, which is when the
+   *  points warning applies. */
+  chain: string | null;
   /** Present only when the operator switched the saving line on. */
   belowPublicBy?: number;
 }
@@ -87,6 +93,12 @@ export interface StayReceipt {
 /** What the confirm screen is still waiting for, named the way the server names it. */
 export interface StayDraft {
   option: StayOption;
+  /** True when the search said a chain property is in play. The confirm
+   *  screen must show the points warning, and what it sends back is recorded
+   *  against the booking — NULL if it was never a chain, 0 if it was and the
+   *  warning was not shown. */
+  loyaltyWarning: boolean;
+  loyaltyDisclosed: boolean;
   query: StayQuery;
   hold: StayHold | null;
   holder: { firstName: string; lastName: string; email: string; phone: string };
@@ -130,7 +142,7 @@ export const parseChildAges = (raw: string): number[] =>
     .map((v) => Number(v))
     .filter((n) => Number.isInteger(n) && n >= 0 && n <= 17);
 
-export async function searchStays(me: Member | null, q: StayQuery): Promise<{ options: StayOption[]; nights: number | null; member: boolean }> {
+export async function searchStays(me: Member | null, q: StayQuery): Promise<{ options: StayOption[]; nights: number | null; member: boolean; loyaltyWarning: boolean }> {
   return post(apiUrl('/api/stays/search'), {
     me: me?.id ?? null,
     checkin: q.checkin,
@@ -164,6 +176,7 @@ export async function bookStay(
     clientReference: draft.hold?.clientReference,
     holder: draft.holder,
     guests: draft.guests,
+    loyaltyDisclosed: draft.loyaltyDisclosed,
     // The guest pays through the supplier's SDK on this device. NUM never sees
     // a card, so there is no card field to send.
     //
@@ -196,11 +209,16 @@ export const HOLD_GOOD_FOR_MS = 10 * 60 * 1000;
 export const holdIsStale = (h: StayHold | null, now = Date.now()) =>
   !h || now - h.heldAt > HOLD_GOOD_FOR_MS;
 
-export const openStayBooking = (option: StayOption, query: StayQuery) =>
+export const openStayBooking = (option: StayOption, query: StayQuery, loyaltyWarning = false) =>
   store.set({
     stayBookOpen: {
       option,
       query,
+      loyaltyWarning: loyaltyWarning || !!option.chain,
+      // False until the confirm screen has actually rendered the warning.
+      // Defaulting this to true would make the column that exists to catch a
+      // missing disclosure always say it happened.
+      loyaltyDisclosed: false,
       hold: null,
       holder: { firstName: '', lastName: '', email: '', phone: '' },
       guests: [{ occupancyNumber: 1, firstName: '', lastName: '' }],

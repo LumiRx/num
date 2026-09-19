@@ -86,7 +86,14 @@ export default function StayBookSheet() {
     set({ busy: true, error: null });
     try {
       const hold = await prebookStay(me, option, query);
-      store.set({ stayBookOpen: { ...draft, hold, step: 'confirm', busy: false, error: null } });
+      // Marked here and not when the sheet opens: the confirm screen is where
+      // the warning is rendered, so this is the first moment it is true.
+      store.set({
+        stayBookOpen: {
+          ...draft, hold, step: 'confirm', busy: false, error: null,
+          loyaltyDisclosed: draft.loyaltyWarning,
+        },
+      });
     } catch (err) {
       set({ busy: false, error: (err as Error).message });
     }
@@ -230,6 +237,20 @@ export default function StayBookSheet() {
               </div>
             )}
 
+            {draft.loyaltyWarning && (
+              // Shown BEFORE the tap, never after, and it costs NUM the booking
+              // often enough to be worth saying: a room bought this way earns
+              // none of the chain's points, and some chains no longer give
+              // elite benefits on it at all. Losing a night's upgrade to save
+              // eleven dollars is not a saving.
+              <div style={{ marginTop: 12, borderRadius: 12, padding: '11px 13px', background: 'var(--ink-04)', fontSize: 12, lineHeight: 1.55 }}>
+                {t('This booking won’t earn {chain} points, and some chains don’t give members their usual upgrades or breakfast on bookings made this way.', { chain: option.chain || t('the hotel’s') })}
+                <div style={{ marginTop: 5 }}>
+                  {t('If you have status with them, it may be worth booking on the hotel’s own site instead — say the word and NUM will find it.')}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginTop: 12, fontSize: 12.5, lineHeight: 1.55 }}>
               {option.refundable === true && option.cancelBy
                 ? t('Free cancellation until {date}', { date: byWhen(option.cancelBy) ?? option.cancelBy })
@@ -239,6 +260,14 @@ export default function StayBookSheet() {
                     ? t('This room cannot be cancelled or refunded.')
                     : t('The hotel has not stated a cancellation policy for this room.')}
             </div>
+
+            {(option.checkinFrom || option.checkoutBefore) && (
+              <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-neutral-600)' }}>
+                {option.checkinFrom ? t('Check in from {from}', { from: option.checkinFrom }) : ''}
+                {option.checkinFrom && option.checkoutBefore ? ' · ' : ''}
+                {option.checkoutBefore ? t('out by {to}', { to: option.checkoutBefore }) : ''}
+              </div>
+            )}
 
             <div style={quiet}>
               {t('Nothing is reserved yet. Confirming takes the room and charges the hotel’s payment provider — NUM never holds your money.')}

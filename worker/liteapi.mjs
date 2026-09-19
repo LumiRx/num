@@ -419,9 +419,17 @@ export function rank(rates, { directKnownIds = new Set(), publicRefs = new Map()
  * competitor's name, because NUM has not read a competitor's page and must not
  * imply that it has.
  */
-export function publicOption(ranked, { nights = null, showSaving = false } = {}) {
+export function publicOption(ranked, { nights = null, showSaving = false, content = null } = {}) {
   const first = (ranked.cancelPolicies ?? [])[0];
   const out = {
+    // From /data/hotel. Public facts about the property, not about NUM's
+    // margin — the wall is about what NUM earns, not about the hotel.
+    //
+    // The two times are here because they answer the question a concierge is
+    // asked more than any other: "I land at six in the morning, can I get in?"
+    checkinFrom: content?.checkinFrom ?? null,
+    checkoutBefore: content?.checkoutBefore ?? null,
+    chain: content?.chain ?? null,
     id: ranked.offerId,
     hotel: ranked.hotelName,
     address: ranked.address,
@@ -507,15 +515,67 @@ export function floorToPublic(ranked) {
 }
 
 /** Everything the guest sees, in one call, with the wall enforced. */
-export function offer(rates, { signedIn, nights = null, directKnownIds, publicRefs, showSaving = false, take = 3 } = {}) {
+export function offer(rates, { signedIn, nights = null, directKnownIds, publicRefs, content, showSaving = false, take = 3 } = {}) {
   const ranked = rank(rates, { directKnownIds, publicRefs });
   const priced = signedIn ? ranked : ranked.map(floorToPublic);
   return priced.slice(0, take).map((r) => {
     assertPublicSafe(r, { signedIn });
     // A floored rate is being sold AT the public price, so there is no saving
     // to mention and mentioning one would be a lie about the guest's own bill.
-    return publicOption(r, { nights, showSaving: showSaving && !r._floored });
+    return publicOption(r, {
+      nights,
+      showSaving: showSaving && !r._floored,
+      content: content?.get?.(r.hotelId) ?? null,
+    });
   });
+}
+
+/**
+ * Fetch the second price reference and the property content — for the few
+ * options that will actually be shown, and no more.
+ *
+ * ── WHY THIS RANKS TWICE ──────────────────────────────────────────────────
+ *
+ * A search can return two hundred rates. Fetching a price-index reference for
+ * every one of them would be two hundred calls to answer a question about
+ * three hotels. So: rank once on what the rate payload already knows, take the
+ * handful that could plausibly be offered, and spend the calls only on those.
+ *
+ * ── AND WHY EVERY FAILURE IS SWALLOWED HERE, OF ALL PLACES ────────────────
+ *
+ * This file bans that everywhere else, and the reason it is right here is the
+ * shape of the loss. A missing second reference is not missing data — it is
+ * `one_sided`, which intel() already handles and which downgrades a claim
+ * rather than corrupting one. Nothing is silently wrong; NUM simply has one
+ * reference instead of two, exactly as it did yesterday. Letting a slow
+ * price-index lookup take down a hotel search would be trading a working
+ * answer for a stricter one.
+ */
+export async function enrich(env, rates, { checkin, checkout, currency = 'USD', consider = 6, fetchImpl } = {}) {
+  const shortlist = rank(rates).slice(0, consider);
+  const ids = [...new Set(shortlist.map((r) => r.hotelId).filter(Boolean))];
+  if (!ids.length) return { publicRefs: new Map(), content: new Map(), anyChain: false };
+
+  const { publicPrice, hotelContent, chainProperty } = await import('./staydata.mjs');
+  const settled = await Promise.allSettled([
+    ...ids.map((hotelId) => publicPrice(env, { hotelId, checkin, checkout, currency, fetchImpl })),
+    ...ids.map((hotelId) => hotelContent(env, hotelId, { fetchImpl })),
+  ]);
+
+  const publicRefs = new Map();
+  const content = new Map();
+  settled.slice(0, ids.length).forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value?.total != null) publicRefs.set(ids[i], r.value.total);
+  });
+  settled.slice(ids.length).forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value) content.set(ids[i], r.value);
+  });
+
+  // Does the loyalty disclosure apply to anything here? Checked against the
+  // content where there is some and the rate's own hotel name where there is
+  // not, so a content failure cannot silence the warning.
+  const anyChain = shortlist.some((r) => chainProperty(content.get(r.hotelId) ?? { name: r.hotelName }));
+  return { publicRefs, content, anyChain };
 }
 
 /* ── PREBOOK ───────────────────────────────────────────────────────────── */
@@ -789,14 +849,24 @@ export async function handleStays(request, env, path, { session = null, fetchImp
       const rs = await searchRates(env, q, { member: signedIn, fetchImpl });
       const rates = normalizeRates(rs);
       const nights = nightsBetween(q.checkin, q.checkout);
+      const { publicRefs, content, anyChain } = await enrich(env, rates, {
+        checkin: q.checkin, checkout: q.checkout, currency: q.currency, fetchImpl,
+      });
       return json({
         options: offer(rates, {
           signedIn,
           nights,
           directKnownIds: new Set(q._directKnownIds ?? []),
+          publicRefs,
+          content,
           showSaving: env.LITEAPI_SHOW_SAVING === 'true',
         }),
         nights,
+        // Not a nice-to-have. A room booked this way earns none of the chain's
+        // points, and at some chains carries no elite benefits at all. The
+        // confirm screen has to say so BEFORE the tap, and it can only do that
+        // if the search tells it the question applies.
+        loyaltyWarning: anyChain,
         // Deliberately NOT the count of everything found. A concierge that
         // says "and 213 more" is a search engine wearing a coat.
         member: signedIn,
@@ -822,6 +892,29 @@ export async function handleStays(request, env, path, { session = null, fetchImp
           wasMemberRate: true,
         });
         stayId = rec.id;
+
+        // The evidence trail (migration 0058), written as a follow-up so a
+        // slow or absent second reference can never cost the row that proves
+        // NUM tried. Failures here are logged and dropped for the same reason.
+        try {
+          const { recordEvidence } = await import('./staybookings.mjs');
+          const { chainProperty } = await import('./staydata.mjs');
+          const i = b.option?._intel ?? null;
+          await recordEvidence(env, stayId, {
+            publicRefCs: i?.publicUsed == null ? null : Math.round(i.publicUsed * 100),
+            publicRefVerdict: i?.publicRefVerdict ?? null,
+            publicRefGapPct: i?.publicRefGapPct ?? null,
+            hotelChain: b.option?.chain ?? null,
+            // NULL when it was never a chain; 0 when it was and the client did
+            // not confirm it showed the warning. The 0 is the point.
+            loyaltyDisclosed: chainProperty(b.option ?? {}) ? !!b.loyaltyDisclosed : null,
+            checkinFrom: b.option?.checkinFrom ?? null,
+            checkoutBefore: b.option?.checkoutBefore ?? null,
+            placeResolution: b.query?.placeId ? 'placeId' : b.query?.cityName ? 'cityName' : null,
+          });
+        } catch (err) {
+          console.warn('[stays] evidence not recorded', err?.message ?? err);
+        }
       }
       // `raw` is the supplier's whole body. Useful on the server, not something
       // to hand a browser — it carries fields NUM has not read or vouched for.

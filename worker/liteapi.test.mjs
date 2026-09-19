@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import {
   missingForRates, missingForBook, normalizeRates, nightsBetween,
   intel, rank, publicOption, assertPublicSafe, offer,
-  marginFor, keyEstate, bookingGate, searchRates, prebook, book, cancelBooking, paymentFor,
+  marginFor, keyEstate, bookingGate, searchRates, prebook, book, cancelBooking, paymentFor, enrich,
 } from './liteapi.mjs';
 
 const ENV = { LITEAPI_KEY: 'sand_test', LITEAPI_BOOKING_ENABLED: 'true' };
@@ -208,6 +208,90 @@ describe('the second public-price reference', () => {
       signedIn: true, nights: 3, publicRefs: new Map([['lp1a2b3', 180]]),
     });
     assert.equal(out.length, 2, 'a disputed reference changes the claim, not the inventory');
+  });
+});
+
+describe('enrich — the half that makes the data layer real', () => {
+  const rates = normalizeRates(RATES_RS);
+
+  const supplier = ({ price = 305, content = {}, failPrice = false, failContent = false } = {}) => {
+    const calls = [];
+    return {
+      calls,
+      fetchImpl: async (url) => {
+        calls.push(url);
+        if (url.includes('/price-index/public-price')) {
+          if (failPrice) return { ok: false, status: 500, json: async () => ({}) };
+          return { ok: true, status: 200, json: async () => ({ data: { publicPrice: price } }) };
+        }
+        if (url.includes('/data/hotel')) {
+          if (failContent) throw new Error('content down');
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: 'lp1a2b3', checkinCheckoutTimes: { checkin: '15:00', checkout: '11:00' }, ...content } }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      },
+    };
+  };
+
+  test('it spends calls only on the shortlist, not on every rate returned', async () => {
+    const sup = supplier();
+    await enrich(ENV, rates, { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    // One hotel in the fixture, two rates. Two calls — a price and a content —
+    // not one pair per rate.
+    assert.equal(sup.calls.length, 2, 'a 200-rate search must not become 200 reference lookups');
+  });
+
+  test('the second reference reaches the ranking', async () => {
+    const sup = supplier({ price: 180 });
+    const { publicRefs } = await enrich(ENV, rates, { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    assert.equal(publicRefs.get('lp1a2b3'), 180);
+    const out = offer(rates, { signedIn: true, nights: 3, publicRefs });
+    assert.ok(out.length > 0);
+  });
+
+  test('check-in times reach the guest payload — and the margin still does not', async () => {
+    const sup = supplier();
+    const { content } = await enrich(ENV, rates, { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    const [first] = offer(rates, { signedIn: true, nights: 3, content });
+    assert.equal(first.checkinFrom, '15:00');
+    assert.equal(first.checkoutBefore, '11:00');
+    const blob = JSON.stringify(first);
+    for (const leak of ['publicTotal', 'commission', '_intel', '_score']) {
+      assert.ok(!blob.includes(leak), `content enrichment leaked ${leak}`);
+    }
+  });
+
+  test('a chain is detected, which is what turns the loyalty warning on', async () => {
+    const sup = supplier({ content: { chain: 'Hilton' } });
+    const { anyChain } = await enrich(ENV, rates, { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    assert.equal(anyChain, true);
+  });
+
+  test('a content failure cannot SILENCE the warning — the hotel name is the fallback', async () => {
+    const chainRates = rates.map((r) => ({ ...r, hotelName: 'DoubleTree by Hilton Edinburgh' }));
+    const sup = supplier({ failContent: true });
+    const { anyChain, content } = await enrich(ENV, chainRates, { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    assert.equal(content.size, 0);
+    assert.equal(anyChain, true, 'a failed lookup must not quietly drop a disclosure');
+  });
+
+  test('a failed price lookup degrades to one reference, and the search still answers', async () => {
+    const sup = supplier({ failPrice: true });
+    const { publicRefs } = await enrich(ENV, rates, { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    assert.equal(publicRefs.size, 0);
+    const out = offer(rates, { signedIn: true, nights: 3, publicRefs });
+    assert.equal(out.length, 2, 'a slow price index must not take down a hotel search');
+  });
+
+  test('no rates in, no calls out', async () => {
+    const sup = supplier();
+    const e = await enrich(ENV, [], { checkin: '2026-10-01', checkout: '2026-10-04', fetchImpl: sup.fetchImpl });
+    assert.equal(sup.calls.length, 0);
+    assert.equal(e.anyChain, false);
   });
 });
 
