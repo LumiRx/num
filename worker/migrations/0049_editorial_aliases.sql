@@ -1,0 +1,23 @@
+-- NUM · the names a place is ALSO known by.
+--
+-- Matching editorial rows to directory rows is an exact folded-name equality
+-- and stays that way. The 19 Sep outdoor research made the reason vivid: the
+-- Bangkok directory holds twenty buildings whose names begin "Lumpini" --
+-- Lumpini Place Narathiwas, Lumpini Condotown Bodindecha, Lumpini Center
+-- Sukhumvit 77 -- and every one of them is a block of flats. A substring or
+-- fuzzy match would have attached Bangkok's flagship-park designation to a
+-- condominium.
+--
+-- But exactness cost real matches: only 4 of Bangkok's 24 outdoor rows found
+-- a place, because the research holds "Lumphini Park" and the directory holds
+-- "Lumpini Park", and the BMA writes "Benchakitti" where everyone else writes
+-- "Benjakitti".
+--
+-- The answer is not a looser match. It is MORE NAMES, each still matched
+-- exactly. The research already produced them -- Thai script, BMA spellings,
+-- the name locals actually use (Rot Fai Park for Wachirabenchathat) -- and
+-- they were sitting in the free-text note where nothing could use them.
+--
+-- Newline-separated rather than JSON: every consumer is SQL, and a LIKE over
+-- a delimited list is something SQLite can do without a parser.
+ALTER TABLE num_editorial ADD COLUMN aliases TEXT;

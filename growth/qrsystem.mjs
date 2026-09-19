@@ -89,8 +89,17 @@ const RESOURCE_TYPES = Object.freeze([
 ]);
 
 export async function listTables(env, businessId) {
+  // Ask whether the till-table column is there rather than inferring it from a
+  // failed query — the same reasoning as openBills below. A layer that
+  // swallows a bad query into an empty result would tell a venue it has no
+  // floor at all, which is a far worse way for a missing column to show up.
+  const hasTill = await env.DB.prepare(
+    "SELECT 1 AS ok FROM pragma_table_info('num_resources') WHERE name = 'pos_table'",
+  ).first().catch(() => null);
+
   const { results } = await env.DB.prepare(
     `SELECT r.id, r.type, r.name, r.capacity, r.max_party_size, r.active,
+            ${hasTill ? 'r.pos_table' : 'NULL'} AS pos_table,
             (SELECT token FROM num_paylinks p
               WHERE p.business_id = r.business_id AND p.resource_id = r.id
                 AND p.state='active' AND COALESCE(p.one_time,0)=0
@@ -272,6 +281,40 @@ export async function billForTable(env, {
     label: label ?? (table ? `Bill · ${table.name}` : null),
   });
   return booked ? { ...out, booking: booked } : out;
+}
+
+/**
+ * Say which table on the till this table is.
+ *
+ * Stored because it cannot be guessed: a venue's own table names are free
+ * text, and parsing digits out of them is right most of the time. The once it
+ * is wrong, a guest is shown somebody else's dinner and invited to pay for
+ * it — see worker/tillbill.mjs. So a person confirms it, and an empty value
+ * clears the mapping rather than leaving a stale one pointing at the wrong
+ * check.
+ */
+export async function setTillTable(env, businessId, resourceId, value) {
+  const own = await env.DB.prepare(
+    'SELECT id FROM num_resources WHERE id = ?1 AND business_id = ?2',
+  ).bind(String(resourceId ?? ''), businessId).first().catch(() => null);
+  if (!own) return { ok: false, reason: 'that table does not belong to this venue' };
+
+  const v = String(value ?? '').trim();
+  if (v && !/^[A-Za-z0-9 _.-]{1,24}$/.test(v)) return { ok: false, reason: 'that is not a table the till would recognise' };
+
+  // Two NUM tables pointing at one till table would have both stickers raise
+  // the same check, and whichever guest paid second would be told their bill
+  // was already settled.
+  if (v) {
+    const clash = await env.DB.prepare(
+      'SELECT id, name FROM num_resources WHERE business_id = ?1 AND pos_table = ?2 AND id <> ?3',
+    ).bind(businessId, v, own.id).first().catch(() => null);
+    if (clash) return { ok: false, reason: `${clash.name} is already mapped to till table ${v}` };
+  }
+
+  await env.DB.prepare('UPDATE num_resources SET pos_table = ?3, updated_at = datetime(\'now\') WHERE id = ?1 AND business_id = ?2')
+    .bind(own.id, businessId, v || null).run();
+  return { ok: true, pos_table: v || null };
 }
 
 export async function settleBill(env, businessId, tokenValue, { settledBy = null } = {}) {

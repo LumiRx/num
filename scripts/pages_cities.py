@@ -134,6 +134,22 @@ DESTS = [
     ("da-nang", "Da Nang", "VN", "Asia", 30396),
     ("hanoi", "Hanoi", "VN", "Asia", 78624),
     ("ho-chi-minh", "Ho Chi Minh City", "VN", "Asia", 100338),
+    # MONGOLIA — ADDED 19 SEP 2026, AND THE REASON FOR SIX WRONG NUMBERS.
+    #
+    # These two live in scripts/destinations.mjs and in the database (13,950
+    # and 106 places, counted there today) and had never been added here. This
+    # list is what every Python generator derives its coverage claims from, so
+    # the omission published "104 destinations, 38 countries" across llms.txt,
+    # llms-full.txt and /destinations/ while destinations.mjs, the database
+    # and coverage-claims.mjs all said 106 and 39.
+    #
+    # It also orphaned /ulaanbaatar/: the page is on disk, the sitemap is
+    # generated from this list, and a destination page in no sitemap is a page
+    # Google has to stumble into.
+    #
+    # One missing country is what made the count 38. Mongolia is the 39th.
+    ("ulaanbaatar", "Ulaanbaatar", "MN", "Asia", 13950),
+    ("terelj", "Gorkhi-Terelj", "MN", "Asia", 106),
 ]
 REGION_ORDER = ["UK", "Europe", "Asia", "Islands", "Americas"]
 REGION_LABEL = {
@@ -369,7 +385,7 @@ CITIES = {
          "10% of a booking NUM sends you and you complete. No listing fee, no monthly "
          "minimum, nothing on walk-ins or your own repeat customers."),
     ],
-    "nearby": [("London", "/london/"), ("All 77 destinations", "/destinations/"),
+    "nearby": [("London", "/london/"), ("All 106 destinations", "/destinations/"),
                ("How NUM works", "/how-it-works/"), ("List your business", "/list-your-business/")],
 },
 
@@ -440,7 +456,7 @@ CITIES = {
          "sends you and you complete. Nothing on walk-ins, nothing on your own repeat "
          "customers, no monthly minimum."),
     ],
-    "nearby": [("Edinburgh", "/edinburgh/"), ("All 77 destinations", "/destinations/"),
+    "nearby": [("Edinburgh", "/edinburgh/"), ("All 106 destinations", "/destinations/"),
                ("How NUM works", "/how-it-works/"), ("List your business", "/list-your-business/")],
 },
 
@@ -509,7 +525,7 @@ CITIES = {
          "Claim your listing — free to list, free to stay. 10% only on a booking NUM sends "
          "you and you complete. Nothing on walk-ins, nothing on your own repeat customers."),
     ],
-    "nearby": [("Bangkok", "/bangkok/"), ("All 77 destinations", "/destinations/"),
+    "nearby": [("Bangkok", "/bangkok/"), ("All 106 destinations", "/destinations/"),
                ("How NUM works", "/how-it-works/"), ("List your business", "/list-your-business/")],
 },
 
@@ -576,7 +592,7 @@ CITIES = {
          "Claim your listing. Free to list, free to stay listed, 10% only on a booking NUM "
          "sends you and you complete — nothing on walk-ins or your own repeat customers."),
     ],
-    "nearby": [("Phuket", "/phuket/"), ("All 77 destinations", "/destinations/"),
+    "nearby": [("Phuket", "/phuket/"), ("All 106 destinations", "/destinations/"),
                ("How NUM works", "/how-it-works/"), ("List your business", "/list-your-business/")],
 },
 

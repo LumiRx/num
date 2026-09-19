@@ -14,7 +14,7 @@ import {
 } from './mailparse.mjs';
 import {
   openThread, matchThread, record, markSent, waiting, conversation,
-  keyFromAddress, replyAddress, bareAddress, newReplyKey, __resetReady as resetThreads,
+  keyFromAddress, replyAddress, inboundReady, bareAddress, newReplyKey, __resetReady as resetThreads,
 } from './bizthread.mjs';
 import { handleInboundEmail } from './bizinbound.mjs';
 import { stateOf, nextMove, STEPS } from './bizstate.mjs';
@@ -144,11 +144,28 @@ test('a message with no headers at all still yields its text', () => {
 
 test('the reply address carries the thread, and reads back out of it', () => {
   const key = newReplyKey();
-  const addr = replyAddress({ MAIL_REPLY_BASE: 'reply@itsnum.com' }, key);
+  const addr = replyAddress({ MAIL_REPLY_BASE: 'reply@itsnum.com', MAIL_INBOUND_READY: 'true' }, key);
   assert.equal(addr, `reply+${key}@itsnum.com`);
   assert.equal(keyFromAddress(`NUM <${addr}>`), key);
   assert.equal(keyFromAddress('hello@itsnum.com'), null, 'a plain address has no key to find');
   assert.equal(bareAddress('Bill <bill@hugos.example>'), 'bill@hugos.example');
+});
+
+test('the per-thread reply address stays off until a reply could actually arrive', () => {
+  // On 19 Sep 2026 a host welcome to launchcheck@itsnum.com BOUNCED \u2014 our own
+  // domain, refusing a local part nothing routes. Email Routing delivers only
+  // the addresses a rule names, and there is no catch-all. So a Reply-To of
+  // reply+key@itsnum.com would bounce, and a business hitting reply would get
+  // a delivery failure FROM US. That is worse than the problem it fixes.
+  const before = { MAIL_REPLY_TO: 'info@thatislumi.com', MAIL_REPLY_BASE: 'reply@itsnum.com' };
+  assert.equal(replyAddress(before, 'abc123'), 'info@thatislumi.com',
+    'without inbound routing it must fall back, not hand out a bouncing address');
+  assert.equal(inboundReady(before).ready, false);
+  assert.match(inboundReady(before).why, /catch-all/i);
+
+  const after = { ...before, MAIL_INBOUND_READY: 'true' };
+  assert.equal(replyAddress(after, 'abc123'), 'reply+abc123@itsnum.com');
+  assert.equal(inboundReady(after).ready, true);
 });
 
 test('a reply is matched by its key, and the record says so', async () => {

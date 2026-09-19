@@ -102,3 +102,57 @@ describe('the draw never reads a broken query as an empty week', () => {
     assert.match(consoleSrc, /draw_read_failed/, 'a broken read must be visibly broken');
   });
 });
+
+/*
+ * THE DEFAULT PERIOD MUST BE A PERIOD THAT HAS ENDED — 18 SEP 2026.
+ *
+ * `/ops` posts `{action:'run'}` with no `week`, so the server's default IS the
+ * button's whole behaviour. That default was `weekStart(now)`, commented as
+ * "the period that is closing now" — true only if somebody draws on a Thursday.
+ * On Friday, the day the Official Rules promise a draw, it returned the period
+ * that had opened that morning.
+ *
+ * Caught before the first draw ever ran, with two entrants sitting in the
+ * closed period and one in the open one. `runDraw` is idempotent on the period
+ * and irreversible, so one click would have spent the open week's draw id and
+ * left the two real entrants permanently undrawn.
+ *
+ * Asserted across every hour of a week rather than at one instant, because the
+ * old bug was invisible on six days out of seven.
+ */
+describe('the draw defaults to a period that has closed', () => {
+  test('the source no longer defaults to the period containing now', () => {
+    assert.doesNotMatch(
+      code('worker', 'console.mjs'),
+      /:\s*weekStart\(Math\.floor\(Date\.now\(\) \/ 1000\)\)/,
+      'adminDraw defaults to the CURRENT period again — on a Friday that is a week still taking entries',
+    );
+  });
+
+  test('for every hour of a week, the default period has already ended', async () => {
+    const { weekStart, weekEnd } = await import('./giveaway.mjs');
+    // The expression adminDraw uses when no week is passed.
+    const defaultWeek = (now) => weekStart(weekStart(now) - 1);
+    const start = weekStart(Math.floor(Date.UTC(2026, 8, 18) / 1000));
+    for (let h = 0; h < 24 * 7; h += 1) {
+      const now = start + h * 3600;
+      const week = defaultWeek(now);
+      assert.ok(
+        weekEnd(week) < now,
+        `at +${h}h the default period ends ${new Date(weekEnd(week) * 1000).toISOString()}, which is not in the past`,
+      );
+      assert.equal(week, weekStart(now) - 7 * 24 * 3600,
+        `at +${h}h the default is not the period immediately before the current one`);
+    }
+  });
+
+  test('the preview says whether the period has closed', () => {
+    assert.match(consoleSrc, /closed: weekEnd\(week\) < nowSec/,
+      'without this the operator cannot tell a finished week from one still running');
+  });
+
+  test('the ops button is disabled while the period is open', () => {
+    assert.match(ops, /d\.closed === false/, 'the page never reads the closed flag');
+    assert.match(ops, /\|\| open \? 'disabled'/, 'an open period can still be drawn with one click');
+  });
+});

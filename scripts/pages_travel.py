@@ -26,7 +26,7 @@ def register(M):
     }
     out.append(P('/how-it-works/',
         'How NUM works — chat, get verified picks, book | NUM',
-        'NUM plans your trip in a chat, in any language, and books real local places that a human verified first. Live in 77 destinations across 38 countries. Free for travellers.',
+        'NUM plans your trip in a chat, in any language, and books real local places that a human verified first. Live in 106 destinations across 39 countries. Free for travellers.',
         G(ORG, WEBSITE, W('/how-it-works/', 'How NUM works', 'How the NUM travel concierge works, step by step.',
                           [('Home', '/'), ('How it works', '/how-it-works/')]), steps),
         H('&#10022; Four steps, about two minutes',
@@ -46,7 +46,7 @@ def register(M):
 <h2>What it costs you</h2>
 <p>Nothing. NUM is free for travellers. There is no subscription and no booking fee added to your bill. Businesses pay NUM a success fee only when a booking actually completes, which is why NUM has no reason to push you somewhere you did not ask for.</p>
 <h2>Where it works</h2>
-<p>77 destinations across 38 countries today, live on LINE, with WhatsApp and WeChat in progress. New cities are added as their local directories finish verification rather than all at once.</p>
+<p>106 destinations across 39 countries today, live on LINE, with WhatsApp and WeChat in progress. New cities are added as their local directories finish verification rather than all at once.</p>
 </section>"""))
 
     # ---------------------------------------------------------------- perks

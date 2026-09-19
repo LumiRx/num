@@ -55,7 +55,7 @@ def coverage():
     database \u2014 the same source scripts/coverage-claims.mjs checks the site
     against.
 
-    These were typed into this file as "77 destinations in 38 countries" and
+    These were typed into this file as "106 destinations in 39 countries" and
     then went stale. On 10 Sep the site was corrected to 104 in 149 places, but
     the correction could not reach this one, because the claim lives inside a
     JPEG and no linter can read a JPEG. So the single most-seen asset NUM has

@@ -28,7 +28,7 @@ ORG = {
     "alternateName": "NUM travel concierge",
     "url": SITE + "/",
     "email": "info@5arz.com",
-    "description": "NUM is an AI travel concierge you chat with. It plans your trip in any language and books real, verified local places across 77 destinations in 38 countries.",
+    "description": "NUM is an AI travel concierge you chat with. It plans your trip in any language and books real, verified local places across 106 destinations in 39 countries.",
     "parentOrganization": {
         "@type": "Organization",
         "name": "5arz",
@@ -175,7 +175,7 @@ FOOTER = """<footer><div class="wrap">
   <div class="frow">
     <div>
       <a class="brand" href="/" style="font-size:18px"><span class="dot"></span>NUM</a>
-      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 77 destinations across 38 countries. By 5arz.</p>
+      <p style="margin-top:12px;max-width:32ch">The verified AI travel concierge &mdash; connecting visitors with the best real local places in 106 destinations across 39 countries. By 5arz.</p>
     </div>
     <div><h4>Product</h4><a href="/get">Get the app</a><a href="/how-it-works">How it works</a><a href="/perks">Perks</a><a href="/business">For business</a><a href="/agents">For AI agents</a><a href="/tabs">Num Tab</a></div>
     <div><h4>Get started</h4><a href="/claim/">List your business</a><a href="/pricing">Pricing</a><a href="/list-your-business">Why list with NUM</a></div>

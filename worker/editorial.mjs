@@ -66,29 +66,56 @@ export function decay(awardedOn, now = new Date()) {
 }
 
 /**
+ * A CLOSURE DOES NOT FADE.
+ *
+ * Everything else here decays, and it should: a 2021 star says little about
+ * the kitchen in 2026. But a hotel that shut in 2020 is still shut, and under
+ * a uniform curve its -100 aged out to nothing — meaning the two permanently
+ * closed properties in this seed (The Roosevelt, The Standard Hollywood)
+ * scored exactly zero and were free to be recommended again.
+ *
+ * Recommending somewhere that no longer exists is the worst thing a concierge
+ * can do. It is the one judgement that is not a judgement at all but a fact
+ * about the world, and facts do not expire on a schedule.
+ */
+export const isPermanent = (r) => Number(r?.weight) === WEIGHTS.closed;
+
+/** A row's weight as it counts today: decayed, unless it is permanent. */
+export function liveWeight(r, now = new Date()) {
+  const w = Number(r?.weight) || 0;
+  if (!w) return 0;
+  return isPermanent(r) ? w : w * decay(r?.awarded_on, now);
+}
+
+/**
  * The net editorial points for one venue, from all of its rows.
  *
- * Positives do NOT stack freely: a restaurant with three stars and a 50 Best
- * place is not worth 45 + 42, it is worth the strongest claim plus a little
- * for the corroboration. Stacking is how a venue with five write-ups of the
- * same award buries a better one with a single quieter mention.
+ * ONE RULE, DELIBERATELY SIMPLE: the strongest live positive, plus every live
+ * loss. Positives do not stack.
  *
- * Losses stack in full, and are applied after. Being stripped of a star twice
- * is twice the warning.
+ * Stacking was the first version and it was wrong twice over. It let a venue
+ * with five write-ups of the same award bury a better one with a single
+ * quieter mention — and, worse, it could not be expressed in the SQL that
+ * actually does the ranking, so the number here and the number a guest felt
+ * would have drifted apart with nobody watching.
+ *
+ * Agreement between critics is not lost by this. It is already priced into
+ * the weights: consensus_3plus is worth 24 and consensus_2 is worth 15,
+ * decided when the row was written by someone who read the sources.
+ *
+ * Losses stack in full, and are applied after. Being stripped twice is twice
+ * the warning. This expression is mirrored exactly in rank_top_places.sql.
  */
 export function scoreFor(rows, now = new Date()) {
   let best = 0;
-  let corroboration = 0;
   let losses = 0;
   for (const r of rows ?? []) {
     if (!r || !r.source) continue; // unsourced rows may not score — see 0046
-    const w = Number(r.weight) || 0;
-    const live = w * decay(r.awarded_on, now);
-    if (live < 0) { losses += live; continue; }
-    if (live > best) { corroboration += Math.min(best, 6); best = live; }
-    else corroboration += Math.min(live, 6);
+    const live = liveWeight(r, now);
+    if (live < 0) losses += live;
+    else if (live > best) best = live;
   }
-  return Math.round((best + Math.min(corroboration, 12) + losses) * 100) / 100;
+  return Math.round((best + losses) * 100) / 100;
 }
 
 /**
@@ -103,7 +130,7 @@ export function sayIt(rows, now = new Date()) {
   let live = 0;
   for (const r of rows ?? []) {
     if (!r || !r.source || Number(r.weight) <= 0) continue;
-    const v = Number(r.weight) * decay(r.awarded_on, now);
+    const v = liveWeight(r, now);
     if (v > live) { live = v; top = r; }
   }
   if (!top || live < SAYABLE) return null;
@@ -114,9 +141,86 @@ export function sayIt(rows, now = new Date()) {
 /** Rows that say a venue has been stripped of something or has closed. */
 export function warnings(rows, now = new Date()) {
   return (rows ?? [])
-    .filter((r) => r && Number(r.weight) < 0 && decay(r.awarded_on, now) > 0)
+    .filter((r) => r && liveWeight(r, now) < 0)
     .map((r) => `${r.accolade} — ${r.source}, ${String(r.awarded_on).slice(0, 4)}`);
 }
+
+/* ── THE SAME JUDGEMENT, WHERE THE ANSWER IS ACTUALLY BUILT ───────────── */
+
+/**
+ * How much a point of editorial weight is worth to the LIVE nearby ranker.
+ *
+ * Two rankers exist and they are on different scales. `rank_top_places.sql`
+ * builds a pre-ranked shelf on a 0-150 scale where a rating is worth 40. The
+ * nearby query in ai/places.js ranks the rows that actually answer a guest,
+ * and it works in stars: a rating is 0-5, a heavily reviewed place gets 1.4,
+ * a claimed listing 1.5.
+ *
+ * Until 19 Sep 2026 the editorial layer was wired only into the first one.
+ * So the shelf knew Le Bernardin from Dunkin' and Mandarin Oriental from the
+ * Hilton, and the query a guest's question actually ran had never heard of
+ * any of it — which is exactly why a 2.5-star hotel came back for "somewhere
+ * downtown". The layer was right and it was not plugged in.
+ *
+ * 12 puts it on the star scale honestly:
+ *   three Michelin stars / Keys  45 -> +3.75   (beats every other term)
+ *   No. 1-10 on a 50 Best list   42 -> +3.50
+ *   one star                     28 -> +2.33
+ *   two publications agreeing    15 -> +1.25   (about a claimed listing)
+ *   one city critic               8 -> +0.67   (a nudge, not a claim)
+ *   a stripped star             -30 -> -2.50
+ *   permanently closed         -100 -> -8.33   (nothing recovers from this)
+ *
+ * The expression mirrors scoreFor() exactly — strongest live positive plus
+ * every live loss, closures exempt from decay — because three copies of one
+ * rule is one rule and two comments.
+ */
+export const POINTS_PER_STAR = 12;
+
+/** The SQL, built from the constants above so the rule lives in one place. */
+export const SCORE_TERM = `(
+    COALESCE((SELECT MAX(e.weight * MIN(1.0,
+               (1461.0 - (julianday('now') - julianday(e.awarded_on))) / 913.0))
+        FROM num_editorial e
+       WHERE e.place_id = places.id AND e.weight > 0
+         AND e.source IS NOT NULL AND e.source <> ''
+         AND julianday('now') - julianday(e.awarded_on) < 1461.0), 0)
+  + COALESCE((SELECT SUM(CASE WHEN e.weight = ${WEIGHTS.closed} THEN e.weight
+                              ELSE e.weight * MIN(1.0,
+               (1461.0 - (julianday('now') - julianday(e.awarded_on))) / 913.0) END)
+        FROM num_editorial e
+       WHERE e.place_id = places.id AND e.weight < 0
+         AND e.source IS NOT NULL AND e.source <> ''
+         AND (e.weight = ${WEIGHTS.closed}
+              OR julianday('now') - julianday(e.awarded_on) < 1461.0)), 0)
+  ) / ${POINTS_PER_STAR}.0`;
+
+/** The same arithmetic in JS, so a test can check the SQL agrees. */
+export const stars = (rows, now = new Date()) => scoreFor(rows, now) / POINTS_PER_STAR;
+
+/**
+ * A CLOSURE IS A FILTER, NOT A PENALTY.
+ *
+ * The first version of the term above scored a closure at -100 and let the
+ * ranking sort it out. It does not sort it out: a closed THREE-STAR nets
+ * 45 - 100 = -55, which is -4.58 stars, and a complete claimed listing with
+ * five thousand reviews is worth +8.35. The closed restaurant lands within
+ * half a star of an ordinary open one, and half a star is not a margin to
+ * bet a guest's evening on.
+ *
+ * `alive = 0` is already an exclusion in ai/places.js, and for exactly this
+ * reason: it means NUM fetched the venue's own site and found it gone, which
+ * is positive evidence, not a quality signal. A sourced closure row says the
+ * same thing from a dated news report. So it gets the same treatment.
+ *
+ * Unsourced rows do not exclude, for the same reason they do not score: a
+ * claim NUM cannot attribute is a claim it must not act on.
+ */
+export const CLOSED_PREDICATE = `NOT EXISTS (
+  SELECT 1 FROM num_editorial e
+   WHERE e.place_id = places.id
+     AND e.weight = ${WEIGHTS.closed}
+     AND e.source IS NOT NULL AND e.source <> '')`;
 
 /* ── THE FRESHNESS QUEUE ─────────────────────────────────────────────── */
 

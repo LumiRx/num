@@ -634,11 +634,24 @@ const TABS = {
            ${DRAW.busy ? 'Reading…' : 'Load this week'}</button></p>`);
     }
     const p = d?.period || {};
-    return head + `<div class="grid">
+    /* WHICH WEEK IS THIS? The button posts `run` with no `week`, so the period
+       is chosen entirely by the server default — and until 18 Sep 2026 that
+       default was `weekStart(now)`, which on a Friday is the week that opened
+       that morning rather than the one that just closed. The dates were already
+       on this page and still nobody would have caught it, because two ISO
+       strings do not tell you whether the period has ENDED. `closed` does, and
+       an open period is now a stop rather than a detail. */
+    const open = d && d.closed === false;
+    const openWarn = open
+      ? `<div class="banner"><div><h3>This period has not closed yet.</h3>
+           <p>It runs to ${esc((p.closes || '').slice(0, 16))} and is still taking entries.
+              Drawing it now records a seed and winners for a partial week, and that cannot be undone.</p></div></div>`
+      : '';
+    return head + openWarn + `<div class="grid">
         ${kpi('Entrants this period', n(d?.entrants), 'one person, one entry')}
-        ${kpi('Packs', n(d?.prizes), 'one each, ten winners')}
+        ${kpi('Packs', n(d?.prizes), d?.entrants && d.entrants < d.prizes ? `${n(d.prizes - d.entrants)} would go unawarded` : 'one each, ten winners')}
         ${kpi('Period opens', (p.opens || '').slice(0, 10), 'Friday 00:00 UTC')}
-        ${kpi('Period closes', (p.closes || '').slice(0, 10), 'Thursday 23:59 UTC')}
+        ${kpi('Period closes', (p.closes || '').slice(0, 10), open ? 'STILL OPEN' : 'closed — ready to draw')}
       </div>`
       + panel(done ? 'Already drawn' : 'Run the draw',
         done
@@ -652,8 +665,8 @@ const TABS = {
           : `<div style="padding:16px">
                <p class="sub">${d?.entrants ? `${n(d.entrants)} entered. ` : 'Nobody has entered this period yet. '}
                   Eligibility (18+, US/UK) is checked at claim, not here — see the Official Rules.</p>
-               <button class="press" onclick="drawRun()" ${DRAW.busy || !d?.entrants ? 'disabled' : ''}>
-                 ${DRAW.busy ? 'Drawing…' : 'Draw the winners'}</button>
+               <button class="press" onclick="drawRun()" ${DRAW.busy || !d?.entrants || open ? 'disabled' : ''}>
+                 ${DRAW.busy ? 'Drawing…' : open ? 'Period still open' : 'Draw the winners'}</button>
                <button class="press" onclick="drawLoad()" ${DRAW.busy ? 'disabled' : ''}>Refresh</button>
              </div>`);
   }],

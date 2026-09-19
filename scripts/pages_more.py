@@ -186,7 +186,7 @@ concierge.</p></div>
 <section class="wrap" style="padding-top:8px">
 <div class="grid3">
   <div class="card2"><h3>1. Claim your place</h3><p>Most businesses are already in NUM's directory of
-    more than half a million places. Search for yours and claim it &mdash; that is quicker than adding
+    more than 2 million places. Search for yours and claim it &mdash; that is quicker than adding
     one from scratch.</p></div>
   <div class="card2"><h3>2. Verify you are real</h3><p>5arz confirms a real, unique person is behind
     the account. That check is the reason the concierge can tell a traveller a place is verified.</p></div>

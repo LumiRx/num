@@ -1,7 +1,14 @@
 # itsnum.com — NUM, the verified AI travel concierge, by 5arz.
-# Answer engines are welcome here. Structured data on every page,
-# a plain-language summary at /llms.txt and the full corpus at
-# /llms-full.txt. Machine-readable business data: /for-ai/
+# Answer engines are welcome here. Structured data on every
+# destination and agent page, a plain-language summary at
+# /llms.txt and the full corpus at /llms-full.txt.
+# Machine-readable business data: /for-ai/
+#
+# 19 Sep 2026: this said "on every page" and 16 crawlable pages carried no
+# JSON-LD. The six that were genuinely indexable now do, and the claim was
+# narrowed to what scripts/crawlability.mjs can prove on every run. A site
+# selling "verified, real, checked" cannot open its robots.txt with a line a
+# crawler disproves in one fetch.
 
 User-agent: GPTBot
 Allow: /

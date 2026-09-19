@@ -1,0 +1,211 @@
+/**
+ * Which referrals count, which do not, and why — said out loud.
+ *
+ * Dre, 19 Sep 2026: "lets make sure its not gamable they only get one account
+ * to entered in the must verify with us through 5arz."
+ *
+ * ── THE THING THAT PAYS FOR FARMING, AND THE THING THAT STOPS IT ─────────
+ *
+ * A referral ladder with a trip at the top is an invitation to make accounts.
+ * Twenty signups on one phone is twenty minutes of work and, before this
+ * file, it was worth an entry. Two defences, and they do different jobs:
+ *
+ *   · THIS FILE removes the farm from the COUNT, so the entries never
+ *     accrue in the first place.
+ *   · THE CLAIM GATE (see tokyodraw.mjs) means a winner must be
+ *     5arz-verified to collect. `/verify/5arz` already enforces one 5arz
+ *     identity per Num account and says so in its own comment — "the whole
+ *     Sybil problem wearing a badge" — so a farmer who somehow accumulates
+ *     entries still cannot convert them into a trip.
+ *
+ * Together they remove the payoff twice over, which is the only way this
+ * ever holds: any single check can be worked around by somebody patient.
+ *
+ * ── WHY IP ALONE IS NOT EVIDENCE OF ANYTHING ─────────────────────────────
+ *
+ * Measured on production, 19 Sep 2026: 156 members across **104 devices and
+ * 61 IP addresses**. That is not a farm, it is households, offices, campus
+ * wifi and hotel NAT. Disqualifying a referral because two people share an IP
+ * would reject a man who signed his wife up on the sofa next to him, and the
+ * ambassador would have no idea why their number went down.
+ *
+ * So the signals are weighted by what they actually prove:
+ *   device_id match            → the same browser profile. Strong. Rejected.
+ *   ip_hash AND ua_hash match  → same network and same browser build. Rejected.
+ *   ip_hash alone              → a shared router. NOT rejected, flagged only.
+ *
+ * ── AND EVERY REJECTION HAS TO BE EXPLAINABLE ────────────────────────────
+ *
+ * An ambassador who brings thirty people, sees "2 count", and is told
+ * nothing will conclude NUM is stealing from them — and they will say so
+ * publicly, which costs more than the farm would have. Every rule here
+ * carries a `why` written for that person to read, and `assess()` returns the
+ * tally so their console can show it. A silent filter is worse than no
+ * filter.
+ */
+
+/**
+ * The rules, in the order they are applied. All four of Dre's choices, each
+ * one separately switchable — because two of them are severe at today's
+ * verification levels and the numbers behind them will change.
+ *
+ * `severity` is a note to whoever tunes this later, not a behaviour.
+ */
+export const RULES = Object.freeze([
+  {
+    key: 'self',
+    label: 'the referrer themselves',
+    why: 'This account is yours. Bringing yourself in is not a referral.',
+    severity: 'certain',
+  },
+  {
+    key: 'same_device',
+    label: 'same device as the referrer',
+    why: 'This signup came from the same device as your own account. If that was a real person using your phone, ask them to open NUM on their own and it will count.',
+    severity: 'strong',
+  },
+  {
+    key: 'same_fingerprint',
+    label: 'same network and browser as the referrer',
+    why: 'This signup matched your own network and browser exactly. Sharing wifi alone is fine — this one matched both.',
+    severity: 'strong',
+  },
+  {
+    key: 'cluster',
+    label: 'several signups from one device',
+    why: 'Several of your signups came from one device. One of them counts and the rest do not.',
+    severity: 'strong',
+  },
+  {
+    key: 'no_contact',
+    label: 'no verified phone or email',
+    why: 'This person has not verified a phone or an email yet, so NUM cannot tell they are real. It counts as soon as they do.',
+    severity: 'harsh-today',
+  },
+  {
+    key: 'inactive',
+    label: 'has never used NUM',
+    why: 'They signed up and have not asked NUM for anything yet. It counts the first time they do.',
+    severity: 'harsh-today',
+  },
+]);
+
+export const RULE_KEYS = Object.freeze(RULES.map((r) => r.key));
+export const ruleByKey = (k) => RULES.find((r) => r.key === k) || null;
+
+/**
+ * Which of these people actually count for the referrer, and why not.
+ *
+ * `rows` is every member with `referred_by = referrer`, carrying their
+ * signals. Pure and synchronous on purpose: the database work belongs to the
+ * caller, and a decision about who gets a prize should be testable without
+ * one.
+ *
+ * Returns { counted, rejected: [{ member_id, rule }], tally: { rule: n } }.
+ */
+export function assess({ referrerId, referrerSignals = null, rows = [] } = {}) {
+  const rejected = [];
+  const tally = {};
+  const reject = (id, rule) => {
+    rejected.push({ member_id: id, rule });
+    tally[rule] = (tally[rule] || 0) + 1;
+  };
+
+  // One pass to find which device fingerprints appear more than once ACROSS
+  // the referrals. A farm on a second phone shares nothing with the referrer
+  // and everything with itself, which the per-row checks below cannot see.
+  const seenDevice = new Map();
+  for (const r of rows) {
+    const d = r.device_id || null;
+    if (!d) continue;
+    seenDevice.set(d, (seenDevice.get(d) || 0) + 1);
+  }
+  const keptFromDevice = new Set();
+
+  let counted = 0;
+  for (const r of rows) {
+    const id = String(r.id);
+
+    if (id === String(referrerId)) { reject(id, 'self'); continue; }
+
+    if (r.device_id && referrerSignals?.device_id && r.device_id === referrerSignals.device_id) {
+      reject(id, 'same_device'); continue;
+    }
+
+    // BOTH, never IP alone. See the header: 61 IPs for 156 members.
+    if (r.ip_hash && r.ua_hash && referrerSignals?.ip_hash && referrerSignals?.ua_hash
+      && r.ip_hash === referrerSignals.ip_hash && r.ua_hash === referrerSignals.ua_hash) {
+      reject(id, 'same_fingerprint'); continue;
+    }
+
+    // The first from a repeated device counts; the rest do not. Keeping one
+    // rather than none matters — a family really might share a tablet, and
+    // taking all of them would punish the honest case as hard as the farm.
+    if (r.device_id && seenDevice.get(r.device_id) > 1) {
+      if (keptFromDevice.has(r.device_id)) { reject(id, 'cluster'); continue; }
+      keptFromDevice.add(r.device_id);
+    }
+
+    if (!(Number(r.phone_verified) === 1 || Number(r.email_verified) === 1)) {
+      reject(id, 'no_contact'); continue;
+    }
+
+    if (!(Number(r.activity) > 0)) { reject(id, 'inactive'); continue; }
+
+    counted += 1;
+  }
+
+  return { counted, rejected, tally };
+}
+
+/** The tally turned into sentences an ambassador can read. */
+export function explain(tally = {}) {
+  return Object.entries(tally)
+    .filter(([, n]) => n > 0)
+    .map(([key, n]) => {
+      const r = ruleByKey(key);
+      return { key, n, label: r?.label ?? key, why: r?.why ?? '' };
+    })
+    .sort((a, b) => b.n - a.n);
+}
+
+/**
+ * One human, one entrant.
+ *
+ * The key a person is deduplicated by, strongest evidence first:
+ *
+ *   5arz:<id>    a verified 5arz identity. `/verify/5arz` already refuses to
+ *                link one 5arz account to two Num accounts, so this is the
+ *                only key here that is actually PROVEN unique.
+ *   phone:<n>    a verified phone. Signup refuses a duplicate number.
+ *   device:<id>  the weakest, and only used when there is nothing better.
+ *                Two people who genuinely share a tablet collapse into one
+ *                entrant, which is the wrong answer — but the alternative is
+ *                that one person with two accounts gets two entries, and of
+ *                the two mistakes this is the one that does not hand out a
+ *                trip.
+ *   member:<id>  no evidence at all. Their own row, so they still enter.
+ */
+export function identityKey(member) {
+  if (!member) return null;
+  const five = five5arzId(member);
+  if (five) return '5arz:' + five;
+  if (Number(member.phone_verified) === 1 && member.phone) return 'phone:' + member.phone;
+  if (member.device_id) return 'device:' + member.device_id;
+  return 'member:' + member.id;
+}
+
+/** The 5arz id Num recorded when this member consented, or null. Mirrors
+ *  linked5arzId in worker/air.mjs — never parsed from a request. */
+export function five5arzId(row) {
+  if (!row?.bio) return null;
+  try {
+    const bio = typeof row.bio === 'string' ? JSON.parse(row.bio) : row.bio;
+    const id = bio?.['5arz_id'];
+    return typeof id === 'string' && id ? id : null;
+  } catch { return null; }
+}
+
+/** Is this person verified well enough to be handed a prize? */
+export const canClaim = (member) =>
+  Number(member?.identity_verified) === 1 && Boolean(five5arzId(member));

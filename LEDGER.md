@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 20:46 UTC from 46 entries._
+_Built 2026-09-19 20:53 UTC from 47 entries._
 
 ## Deployed right now
 
@@ -17,8 +17,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | 🟢 up to date (2026-09-19 20:42) |
-| num-app | 🔴 **STALE** — 6 files changed since it shipped |
-| num-growth | 🔴 **STALE** — 2 files changed since it shipped |
+| num-app | 🔴 **STALE** — 11 files changed since it shipped |
+| num-growth | 🔴 **STALE** — 3 files changed since it shipped |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-19 20:38) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -53,8 +53,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
-- 🟡 **qr bill pay** — Scan the table, see your bill. The demo that sells this, and the one that most needed guarding. Every other path to a bill needs staff: tap the table and type a figure, or photograph the slip and confirm it. Lightspeed K-Series is the first till that can answer 'what does table seven owe' on its own AND return the lines, so at a K-Series venue it collapses to one action by the GUEST: scan the permanent sticker, see the real order, pay it. worker/tillbill.mjs + migration 0057 (num_resources.pos_t
-  _claude, 2026-09-19 20:46_
+- 🟡 **qr bill pay** — Closed the loop on the till bill: a venue can now actually map its tables. Last pass built the storage and the guest page and left no way to set pos_table, so the feature could not be switched on. listTables carries the mapping (pragma-detected, so a venue before 0057 sees its floor rather than nothing), setTillTable stores it, and the console Tables page gets an owner-only 'On your till' column. Three guards worth naming. The permission is SETTLE, not tables: making a table and pointing one at 
+  _claude, 2026-09-19 20:53_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre

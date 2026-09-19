@@ -1494,12 +1494,30 @@ async function adminDraw(env, req, url) {
   const body = post ? await req.json().catch(() => ({})) : {};
   const action = String(body.action ?? url.searchParams.get('action') ?? 'preview');
 
-  // Default to the period that is closing now. Passing `week` explicitly is for
-  // re-running a past Friday, which is a real need the week after a mistake.
+  // Default to the most recent period that has actually CLOSED.
+  //
+  // This used to be `weekStart(now)`, described as "the period that is closing
+  // now" — which is only true if the draw is run during Thursday. Run it on
+  // Friday, the day the Official Rules promise a draw, and `weekStart(now)`
+  // returns the period that opened that morning: still open, still taking
+  // entries, one row in it. `runDraw` is idempotent on `draw_${week}` and
+  // irreversible, so that click would have burned the current period's draw id
+  // on a week that had not finished, and the people who entered the week that
+  // DID finish would never have been drawn at all.
+  //
+  // Found 18 Sep 2026, before the first draw was ever run, with two entrants
+  // waiting in the closed period and one in the open one. /ops calls `run` with
+  // no `week` at all, so this default WAS the whole behaviour of the button.
+  //
+  // A period that is still open must never be the DEFAULT. Passing `week`
+  // explicitly still reaches any period, the open one included, because
+  // re-running a past Friday is a real need — and `closed` below says plainly
+  // which kind of period you are looking at.
   const asked = Number(body.week ?? url.searchParams.get('week') ?? 0);
+  const nowSec = Math.floor(Date.now() / 1000);
   const week = Number.isFinite(asked) && asked > 0
     ? weekStart(asked)
-    : weekStart(Math.floor(Date.now() / 1000));
+    : weekStart(weekStart(nowSec) - 1);
   const period = {
     week_start: week,
     opens: new Date(week * 1000).toISOString(),
@@ -1513,6 +1531,10 @@ async function adminDraw(env, req, url) {
         .bind(`draw_${week}`).first();
       return json({
         ok: true, period, prizes: WINNERS_PER_DRAW,
+        // Whether this period has finished. Drawing a period that is still
+        // taking entries is almost always a mistake and cannot be undone, so
+        // the caller is told rather than left to compare two timestamps.
+        closed: weekEnd(week) < nowSec,
         entrants: keys.length,
         // How many can be told by text vs only in the app — the difference
         // decides how a winner actually hears about it.

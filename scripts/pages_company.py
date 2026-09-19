@@ -8,7 +8,7 @@ FAQS = [
     ("What is NUM?",
      "NUM is an AI travel concierge you talk to in ordinary language. You tell it what you want "
      "— dinner tonight, a massage near the beach, a driver at 6am — and it answers with real, "
-     "verified local places and books one for you. It works in 77 destinations across 38 countries."),
+     "verified local places and books one for you. It works in 106 destinations across 39 countries."),
     ("How much does NUM cost a traveller?",
      "Nothing. NUM is free for travellers. Businesses pay NUM 10% of a booking it completes, and "
      "that comes out of the business's side, not added to your bill."),
@@ -23,7 +23,7 @@ FAQS = [
      "NUM answers in the language you write in. The business does not have to speak it — NUM "
      "handles the booking on both sides."),
     ("Which countries does NUM cover?",
-     "77 destinations across 38 countries, with more than half a million places in the directory. "
+     "106 destinations across 39 countries, with more than 2 million places in the directory. "
      "Thailand and the United Kingdom are the deepest coverage today, and Edinburgh and London are "
      "live."),
     ("Does NUM sell my data?",
@@ -48,7 +48,7 @@ def register(M):
     # ------------------------------------------------------------------- about
     t = "About NUM — the verified AI travel concierge, by 5arz"
     d = ("NUM is an AI travel concierge built by 5arz. It plans trips in any language and books real, "
-         "verified local places in 77 destinations across 38 countries.")
+         "verified local places in 106 destinations across 39 countries.")
     ld = M.graph(
         M.ORG, M.WEBSITE,
         M.webpage("/about/", t, d, crumbs=[("Home", "/"), ("About", "/about/")]),
@@ -63,7 +63,7 @@ def register(M):
         "&#10022; By 5arz",
         "A concierge is only as good as the places it sends you to.",
         "NUM is an AI travel concierge. It plans your trip in a conversation and books real, verified "
-        "local places — in any language, at any hour, in 77 destinations across 38 countries.",
+        "local places — in any language, at any hour, in 106 destinations across 39 countries.",
     ) + """
 <section class="wrap" style="padding-top:8px"><div class="prose">
 <h2>The problem we started with</h2>
@@ -88,7 +88,7 @@ actually fit, and books one. The business does not need to speak your language. 
 sides.</p>
 
 <h2>Where we are</h2>
-<p>77 destinations across 38 countries. Thailand and the United Kingdom have the deepest coverage
+<p>106 destinations across 39 countries. Thailand and the United Kingdom have the deepest coverage
 today; Edinburgh and London are live and Phuket was the first market. NUM runs on LINE now, with
 WhatsApp and WeChat in progress, and installs to a phone home screen from
 <a href="/get">itsnum.com/get</a>.</p>

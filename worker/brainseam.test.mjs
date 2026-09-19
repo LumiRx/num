@@ -119,21 +119,38 @@ test('the cheap brain is held to the same three rules as Claude', () => {
     'the format guard is gone — raw JSON leaked to guests on 9 Aug');
 });
 
-test('a recommendation gives three options and a pick', () => {
+test('a recommendation gives a real choice and a pick', () => {
   // Dre, 11 Aug: "when someone asks for recommendations give them at least 3
   // options so they have choices." This sits in direct tension with the
   // 40-word cap added the same day — so it is a stated exception, on BOTH
   // paths, or one of the two rules quietly wins.
-  for (const f of ['brains.mjs', 'prompt.mjs']) {
-    const s = readFileSync(join(HERE, f), 'utf8');
-    assert.match(s, /THREE options/,
-      `${f}: the three-option rule is missing — the length cap will win and guests get one pick`);
-    assert.match(s, /which ONE (you )?would pick|say which ONE/,
-      `${f}: three options with no recommendation is a search result, not a concierge`);
-  }
+  //
+  // 19 Sep: the FLOOR stays three; the CEILING is gone on the structured
+  // path. Three was right when every option was a sentence of prose. Since
+  // `picks` shipped each one is a card carrying its own link, phone and map,
+  // so capping at three is a shorter menu rather than a cleaner answer — and
+  // a guest who taps a widget is browsing, not asking a question. brains.mjs
+  // is the prose fallback and keeps three, because there the cap is real.
   const brains = readFileSync(join(HERE, 'brains.mjs'), 'utf8');
+  assert.match(brains, /THREE options/,
+    'brains.mjs: the three-option rule is missing — the length cap will win and guests get one pick');
+
+  const prompt = readFileSync(join(HERE, 'prompt.mjs'), 'utf8');
+  assert.match(prompt, /at least three when the block holds three/,
+    'prompt.mjs: the floor is gone — a guest asking where to eat can be handed one place');
+  assert.match(prompt, /up to eight/,
+    'prompt.mjs: no ceiling at all invites a wall of cards; the range has to be stated');
+  assert.match(prompt, /answer a SPECIFIC question specifically/i,
+    'prompt.mjs: without this, "is Sorn worth it" comes back as eight restaurants');
+
+  for (const [f, s] of [['brains.mjs', brains], ['prompt.mjs', prompt]]) {
+    assert.match(s, /which ONE (you )?would pick|say which ONE/,
+      `${f}: options with no recommendation is a search result, not a concierge`);
+  }
   assert.match(brains, /Under 70 words even so/,
     'the recommendation carve-out has no ceiling — "give three" becomes permission to ramble');
   assert.match(brains, /fewer than three, give what it holds and say plainly that is all/,
     'nothing covers a thin directory — the model will invent a third place to fill the list');
+  assert.match(prompt, /give what it holds and say plainly that is all/,
+    'prompt.mjs: nothing covers a thin directory — the model will invent one to fill the list');
 });

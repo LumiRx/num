@@ -139,11 +139,51 @@ export function newReplyKey() {
   return [...a].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 18);
 }
 
-/** `reply+<key>@itsnum.com`, or whatever REPLY_DOMAIN says. */
+/**
+ * `reply+<key>@itsnum.com` — but ONLY once inbound routing actually exists.
+ *
+ * ── THE EVIDENCE THIS GUARD IS BUILT ON ─────────────────────────────
+ *
+ * 19 Sep 2026, 01:18 UTC: a host welcome addressed to launchcheck@itsnum.com
+ * BOUNCED. Not a stranger's dead mailbox — our own domain, refusing a local
+ * part nothing routes. itsnum.com's MX points at Cloudflare Email Routing, and
+ * Email Routing delivers only the addresses a rule names. There is no
+ * catch-all today.
+ *
+ * Which means that without this guard, every threaded message NUM sends would
+ * carry a Reply-To that bounces, and a business hitting reply would get a
+ * delivery failure from us. That is worse than the problem being fixed: today
+ * a reply goes to a mailbox we do not watch, and the alternative on offer was
+ * a reply that goes nowhere at all and tells the sender we are broken.
+ *
+ * So the per-thread address is opt-in behind MAIL_INBOUND_READY, and the flag
+ * means one specific thing: a CATCH-ALL rule on itsnum.com points at the
+ * num-growth Worker. A rule on the literal `reply@itsnum.com` is not enough
+ * and will not match `reply+abc123@itsnum.com`.
+ *
+ * Until it is set, mail replies to MAIL_REPLY_TO exactly as it did before —
+ * imperfect, watched by a human, and not bouncing.
+ */
 export function replyAddress(env, key) {
+  if (String(env?.MAIL_INBOUND_READY ?? '') !== 'true') {
+    return env?.MAIL_REPLY_TO || 'info@itsnum.com';
+  }
   const base = env?.MAIL_REPLY_BASE || 'reply@itsnum.com';
   const [local, domain] = String(base).split('@');
   return `${local}+${key}@${domain}`;
+}
+
+/** Whether a reply can find its way home yet, and why not. */
+export function inboundReady(env) {
+  return String(env?.MAIL_INBOUND_READY ?? '') === 'true'
+    ? { ready: true }
+    : {
+      ready: false,
+      why: 'MAIL_INBOUND_READY is not set. Mail to an unrouted address on '
+        + 'itsnum.com bounces (launchcheck@itsnum.com did, 19 Sep 2026), so '
+        + 'until a CATCH-ALL Email Routing rule points at num-growth, replies '
+        + 'go to MAIL_REPLY_TO rather than to a thread.',
+    };
 }
 
 /** The key back out of an address we were sent to. Null when there isn't one. */

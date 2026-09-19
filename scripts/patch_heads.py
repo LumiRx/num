@@ -37,7 +37,7 @@ PAGES = {
 HOME_FAQ = [
     ("What is NUM?",
      "NUM is an AI travel concierge you message in ordinary language. It plans your trip and books "
-     "real, verified local places across 77 destinations in 38 countries, in any language, at any "
+     "real, verified local places across 106 destinations in 39 countries, in any language, at any "
      "hour. It is free for travellers."),
     ("How do I get NUM?",
      "Add Num on LINE at line.me/R/ti/p/@799pyrus, or open itsnum.com/get on your phone and add it "
@@ -60,7 +60,7 @@ APP_SOFTWARE = {
     "installUrl": S + "/get/",
     "publisher": {"@id": S + "/#organization"},
     "description": "An AI travel concierge that plans your trip in chat and books real, verified "
-                   "local places in 77 destinations across 38 countries, in any language.",
+                   "local places in 106 destinations across 39 countries, in any language.",
     "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
     "featureList": [
         "Plans a trip in conversation, in any language",

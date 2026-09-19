@@ -334,11 +334,15 @@ export const REPLY_SCHEMA = {
         {
           type: 'array',
           description:
-            'The places you are recommending, best first. Give THREE options whenever the block holds three — Dre’s rule ' +
-            'from 11 Aug 2026, unchanged: three gives a real choice. ONLY places from the VERIFIED NEARBY PARTNERS block ' +
+            'The places you are recommending, BEST FIRST. Give at least three when the block holds three, and up to eight ' +
+            'when the guest is browsing rather than asking for one answer — "where should we eat", "what is there to do", ' +
+            'anything tapped from a widget. Three was the rule from 11 Aug 2026 and it was right when every option was a ' +
+            'paragraph of prose; now each one is a card with its own link, phone and map, so a short list is a shorter ' +
+            'menu rather than a cleaner answer. Still answer a SPECIFIC question specifically: "is Sorn worth it" gets one ' +
+            'pick, not eight. ONLY places from the VERIFIED NEARBY PARTNERS block ' +
             '— never a place you know of from elsewhere, because Num can only attach a real link to a real row, and a ' +
-            'pick it cannot link is dropped before the guest ever sees it. If the block holds fewer than three, give what ' +
-            'it holds and say plainly that is all — never invent a third to fill the list.',
+            'pick it cannot link is dropped before the guest ever sees it. If the block holds fewer than you would give, ' +
+            'give what it holds and say plainly that is all — never invent one to fill the list.',
           items: {
             type: 'object',
             additionalProperties: false,

@@ -2,6 +2,24 @@
 
 Every version that has been live, newest first.
 
+## 0.8.398 — 2026-09-19 20:50 UTC
+
+white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures
+
+- commit `321f99a`
+
+## 0.8.397 — 2026-09-19 20:47 UTC
+
+white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures
+
+- commit `cad4aac`
+
+## 0.8.396 — 2026-09-19 20:41 UTC
+
+white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures
+
+- commit `d4b392a`
+
 ## 0.8.395 — 2026-09-19 20:25 UTC
 
 white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures

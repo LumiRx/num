@@ -154,3 +154,35 @@ test('a funnel that cannot be read says so instead of drawing zeros', () => {
 test('a check left open after payment is the one row the tile colours', () => {
   assert.match(src, /if\(st\[0\]==='till_failed'&&n\)tr\.style\.color/);
 });
+
+
+/* ── mapping a table to the till ────────────────────────────────────────── */
+
+test('the till-table setter is routed and owner-gated', () => {
+  // Getting this wrong points a table's sticker at the wrong check, so a
+  // waiter must not be able to do it by tapping the wrong row.
+  assert.match(src, /p === "\/api\/venue\/tables\/till" && req\.method === "POST"\) return qrTableTill\(/);
+  const fn = src.slice(src.indexOf('async function qrTableTill('), src.indexOf('async function qrTableState('));
+  assert.match(fn, /QR\.can\(who\.role, "settle"\)/);
+  assert.ok(!/QR\.can\(who\.role, "tables"\)/.test(fn), 'making tables is not the same permission as pointing one at a till');
+});
+
+test('the console suggests a till number by the same rules the server uses', () => {
+  // A placeholder that disagrees with worker/tillbill.mjs would have staff
+  // saving a number the server would have refused to suggest.
+  assert.match(src, /function suggestTill\(name\)/);
+  assert.match(src, /if\(!nums\|\|nums\.length!==1\)return null/, 'two numbers is not one answer');
+  assert.match(src, /\\d\[A-Za-z\]/, '12A is not 12 as far as a till is concerned');
+});
+
+test('the suggestion fills a PLACEHOLDER and never a value', () => {
+  // Nothing is mapped until a person types and saves it.
+  assert.match(src, /inp\.value=r\.pos_table\|\|''/);
+  assert.match(src, /inp\.placeholder=suggestTill\(r\.name\)\|\|'—'/);
+});
+
+test('the till column is owner-only and explains when to leave it blank', () => {
+  assert.match(src, /\$\{isOwner \? "<th>On your till<\/th>" : ""\}/);
+  assert.match(src, /Lightspeed can, Square and Clover cannot/);
+  assert.match(src, /works\s*\n?\s*exactly as it does now/);
+});

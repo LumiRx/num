@@ -49,6 +49,43 @@
  * referral ladder look better.
  */
 import { pickWinners, newSeed } from '../worker/fridaydraw.mjs';
+import { assess, explain, identityKey, canClaim } from './entryquality.mjs';
+
+/**
+ * One person's referrals, with everything the quality rules need to judge
+ * them, in ONE query.
+ *
+ * `activity` is a count rather than a flag so the rule can be loosened later
+ * without another migration. num_messages keys members by `member_ref`, not
+ * `member_id` — a detail that silently returns zero for everybody if you
+ * assume otherwise.
+ */
+async function referralRows(env, referrerId) {
+  const { results = [] } = await env.DB.prepare(
+    `SELECT m.id, m.phone_verified, m.email_verified,
+            s.device_id, s.ip_hash, s.ua_hash,
+            (SELECT COUNT(*) FROM num_messages x WHERE x.member_ref = m.id) AS activity
+       FROM num_members m
+       LEFT JOIN num_identity_signals s ON s.member_id = m.id
+      WHERE m.referred_by = ?1`,
+  ).bind(String(referrerId)).all().catch(() => ({ results: [] }));
+  return results;
+}
+
+async function signalsFor(env, memberId) {
+  return env.DB.prepare(
+    'SELECT device_id, ip_hash, ua_hash FROM num_identity_signals WHERE member_id = ?1',
+  ).bind(String(memberId)).first().catch(() => null);
+}
+
+/** What one person's referrals are actually worth, and what was thrown out. */
+export async function qualityFor(env, memberId) {
+  const [rows, sig] = await Promise.all([
+    referralRows(env, memberId), signalsFor(env, memberId),
+  ]);
+  const a = assess({ referrerId: memberId, referrerSignals: sig, rows });
+  return { ...a, joined: rows.length, reasons: explain(a.tally) };
+}
 
 /** The campaign key. One string, used by the tables, the rules and the card. */
 export const CAMPAIGN = 'tokyo-2026';
@@ -156,19 +193,27 @@ export async function standings(env) {
 export async function standingFor(env, memberId) {
   const base = { referred: 0, earned: 0, free: 0, entries: 0 };
   if (!env?.DB || !memberId) return base;
-  const r = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM num_members WHERE referred_by = ?1',
-  ).bind(String(memberId)).first().catch(() => null);
-  const f = await env.DB.prepare(
-    'SELECT COALESCE(SUM(entries),0) AS n FROM num_draw_free_entries WHERE campaign = ?1 AND member_id = ?2',
-  ).bind(CAMPAIGN, String(memberId)).first().catch(() => null);
-  const referred = Number(r?.n ?? 0);
+  /* COUNTED, NOT JOINED. Before 19 Sep this was COUNT(*) of everyone with
+     referred_by set — which meant twenty accounts made on one phone were
+     twenty referrals and, at the top of the ladder, a trip. */
+  const [q, f] = await Promise.all([
+    qualityFor(env, memberId),
+    env.DB.prepare(
+      'SELECT COALESCE(SUM(entries),0) AS n FROM num_draw_free_entries WHERE campaign = ?1 AND member_id = ?2',
+    ).bind(CAMPAIGN, String(memberId)).first().catch(() => null),
+  ]);
+  const referred = q.counted;
   const earned = entriesFor(referred);
   const free = Number(f?.n ?? 0);
   return {
     referred, earned, free, entries: earned + free,
     to_next: toNextEntry(referred),
     ladder: LADDER,
+    // The honest half. "30 joined, 2 count" with no explanation is how an
+    // ambassador decides NUM is stealing from them.
+    joined: q.joined,
+    not_counted: q.joined - q.counted,
+    reasons: q.reasons,
   };
 }
 

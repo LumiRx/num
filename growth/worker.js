@@ -1370,6 +1370,7 @@ const WORKER = {
       if (p === "/api/venue/tables" && req.method === "GET") return qrTablesList(req, env, url);
       if (p === "/api/venue/tables" && req.method === "POST") return qrTablesCreate(req, env, url);
       if (p === "/api/venue/tables/state" && req.method === "POST") return qrTableState(req, env, url);
+      if (p === "/api/venue/tables/till" && req.method === "POST") return qrTableTill(req, env, url);
       if (p === "/api/venue/tables/codes" && req.method === "POST") return qrIssueCodes(req, env, url);
       if (p === "/api/venue/bill" && req.method === "POST") return qrBillCreate(req, env, url);
       if (p === "/api/venue/products" && req.method === "GET") return qrProducts(req, env, url);
@@ -10597,6 +10598,24 @@ async function qrTablesCreate(req, env, url) {
   return J({ ok: true, ...made, codes });
 }
 
+/* ── POST /api/venue/tables/till — which table on the till is this one ────
+ *
+ * The owner's, not a waiter's: getting this wrong points a table's sticker at
+ * the wrong check, and a waiter should not be able to do that by tapping the
+ * wrong row. The console offers the digits from the table's name as a
+ * SUGGESTION and a person saves it — nothing is mapped until somebody says so,
+ * and an unmapped table just works the way a Square venue does.
+ */
+async function qrTableTill(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: "unauthorised" }, 401);
+  if (!QR.can(who.role, "settle")) return qrDeny("settle");
+  let b;
+  try { b = await readJSON(req, 2048); } catch (e) { return J({ ok: false }, 400); }
+  const out = await QR.setTillTable(env, who.business.id, b.id, b.pos_table);
+  return out.ok ? J(out) : J({ ok: false, error: out.reason }, 400);
+}
+
 async function qrTableState(req, env, url) {
   const who = await qrWho(req, env, url);
   if (!who) return J({ ok: false, error: "unauthorised" }, 401);
@@ -11755,8 +11774,9 @@ ${canTables ? `
   <div id="mkout" class="out"></div>
 </div>` : ""}
 
-<div class="card"><table><thead><tr><th>Table</th><th>Pay sticker</th><th>Check-in</th><th></th></tr></thead>
-<tbody id="tables"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+<div class="card"><table><thead><tr><th>Table</th><th>Pay sticker</th><th>Check-in</th>${isOwner ? "<th>On your till</th>" : ""}<th></th></tr></thead>
+<tbody id="tables"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table></div>
+${isOwner ? `<p class="muted" style="margin-top:-8px">Only fill in &ldquo;On your till&rdquo; if your point of sale can be asked about a single table &mdash; Lightspeed can, Square and Clover cannot. A table left blank works exactly as it does now: staff put the amount on it.</p>` : ""}
 
 ${isOwner ? `
 <h2>Staff</h2>
@@ -11793,10 +11813,24 @@ function post(p,b){return fetch(q(p),{method:'POST',credentials:'same-origin',
 function el(t,txt){var e=document.createElement(t);if(txt!=null)e.textContent=txt;return e}
 function td(txt,cls){var e=el('td',txt);if(cls)e.className=cls;return e}
 
+/* The digits in a table's name, as a placeholder only.
+ *
+ * Deliberately the same rules as suggestTableNumber in worker/tillbill.mjs:
+ * exactly one run of digits and nothing clinging to it, so "Terrace" and
+ * "Table 12A" suggest nothing rather than something wrong. It fills a
+ * placeholder, never a value — a person still types and saves it. */
+function suggestTill(name){
+  var s=String(name||'').trim();
+  var nums=s.match(/\d+/g);
+  if(!nums||nums.length!==1)return null;
+  if(/\d[A-Za-z]/.test(s))return null;
+  return nums[0].replace(/^0+(?=\d)/,'');
+}
+
 function drawTables(rows){
   var tb=document.getElementById('tables');tb.textContent='';
   var sel=document.getElementById('bt');sel.textContent='';
-  if(!rows.length){tb.appendChild(el('tr')).appendChild(td('No tables yet.','muted')).colSpan=4;return}
+  if(!rows.length){tb.appendChild(el('tr')).appendChild(td('No tables yet.','muted')).colSpan=5;return}
   rows.forEach(function(r){
     var tr=el('tr');
     var n=td('');n.appendChild(el('b',r.name));
@@ -11813,6 +11847,27 @@ function drawTables(rows){
       } else { c.appendChild(el('span','—')).className='muted' }
       tr.appendChild(c);
     });
+    ${isOwner ? `
+    /* WHICH TABLE THE TILL CALLS THIS ONE.
+     *
+     * Pre-filled with the digits from the name as a SUGGESTION, and saved
+     * only when a person presses the button. Nothing is mapped until somebody
+     * says so, because the once a parsed number is wrong a guest is shown
+     * somebody else's dinner — see worker/tillbill.mjs. */
+    var tc=el('td');
+    var inp=el('input');inp.value=r.pos_table||'';inp.placeholder=suggestTill(r.name)||'—';
+    inp.style.width='72px';inp.setAttribute('aria-label','Till table for '+r.name);
+    var sv=el('button','Save');sv.type='button';sv.className='ghost';sv.style.marginLeft='6px';
+    sv.onclick=function(){
+      sv.disabled=true;sv.textContent='Saving…';
+      post('/api/venue/tables/till',{id:r.id,pos_table:inp.value.trim()}).then(function(j){
+        sv.disabled=false;sv.textContent='Save';
+        if(!j.ok){banner('<b>'+(j.error||'Could not save that.')+'</b>');return}
+        banner(null);refresh();
+      });
+    };
+    tc.appendChild(inp);tc.appendChild(sv);
+    tr.appendChild(tc);` : ""}
     tr.appendChild(td(r.open_bills?r.open_bills+' open':'','r muted'));
     tb.appendChild(tr);
     if(r.active){var o=el('option',r.name);o.value=r.id;sel.appendChild(o)}
