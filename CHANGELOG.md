@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.382 — 2026-09-19 00:54 UTC
+
+booking loop: venue answer lands on diary, thread and plan
+
+- commit `9b99ef1`
+
 ## 0.8.381 — 2026-09-19 00:33 UTC
 
 the plan board (0.8.381)
