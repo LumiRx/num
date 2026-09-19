@@ -90,7 +90,7 @@ test('5.1.1(v) — account deletion is findable, not merely present', () => {
   // bar; a reviewer (and a user) has to be able to see it.
   const dz = root('src/components/app/DangerZone.tsx');
   assert.match(dz, /aria-label=(?:"Delete my account"|\{t\('Delete my account'\)\})/, 'the delete control lost its accessible name');
-  const size = /fontSize: (\d+(?:\.\d+)?), fontWeight: 700, color: '#a3271c'/.exec(dz);
+  const size = /fontSize: (\d+(?:\.\d+)?), fontWeight: 700, color: '(?:#a3271c|var\(--danger\))'/.exec(dz);
   assert.ok(size && Number(size[1]) >= 13, 'the delete control shrank back below legible size');
   assert.ok(!/fontSize: 10\.5[\s\S]{0,80}DELETE MY ACCOUNT/.test(dz),
     'the faint 10.5px treatment that Apple could not find is back');
