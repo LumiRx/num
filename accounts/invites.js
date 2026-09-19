@@ -27,18 +27,60 @@ const noStore = {
   'Pragma': 'no-cache',
 };
 
+/* ── A SCANNER IS NOT A READER ────────────────────────────────────────────
+ *
+ * growth/botfilter.test.mjs records this lesson from 3 Sep, when 302 crawlers
+ * sat in the denominator of the landing page's conversion rate and made it
+ * read as "nobody who arrives is interested". The invite counters below never
+ * got the same treatment, and on 19 Sep they told the same lie twice as loudly.
+ *
+ * Of 77 recorded clicks on September's invites, 54 arrived under sixty seconds
+ * after the mail was sent, each URL fetched an average of 2.1 times. Over the
+ * same eleven days the claim page — whose analytics DO filter bots — logged
+ * zero human arrivals, while the rest of the site's event log ran at 300-700
+ * events a day. The clicks were corporate mail-security appliances opening
+ * every link the instant it landed. A whole afternoon's analysis was built on
+ * them before the contradiction between the two counters gave it away.
+ *
+ * So: the COUNTS still increment for everything, because a scanner touching a
+ * URL is real information and throwing it away would be its own blindness. The
+ * TIMESTAMPS are what people read and reason about, so they are now set only
+ * for something that looks like a browser a person is holding.
+ *
+ * Rows written before this date have machine touches in opened_at/clicked_at
+ * and cannot be cleaned retroactively — the user agent was never stored.
+ *
+ * Kept deliberately in step with BOT_UA in growth/worker.js. Two Workers that
+ * cannot import from each other will drift; a copy that says so drifts slower
+ * than a copy that pretends to be original.
+ */
+const BOT_UA = /bot\b|crawler|spider|crawling|slurp|bingpreview|facebookexternalhit|facebot|ia_archiver|semrush|ahrefs|mj12|dotbot|petalbot|yandex|baiduspider|duckduckbot|applebot|headlesschrome|phantomjs|puppeteer|playwright|python-requests|curl\/|wget|scrapy|go-http-client|axios\/|node-fetch|okhttp|java\/|httpclient|monitoring|uptime|pingdom|statuscake|gtmetrix|lighthouse|chrome-lighthouse/i;
+
+/** True when the fetch plausibly came from a person's browser. */
+export function looksHuman(req) {
+  const ua = req?.headers?.get?.('user-agent') || '';
+  // No user-agent at all is not a browser a person is holding.
+  if (!ua) return false;
+  return !BOT_UA.test(ua);
+}
+
 /* ── GET /i.gif?t= ─────────────────────────────────────────────────────── */
 
-export async function handleOpenPixel(env, url) {
+export async function handleOpenPixel(env, url, req) {
   const token = url.searchParams.get('t');
   if (token) {
     try {
+      // An open pixel is fetched by mail-client image proxies more often than
+      // by anything else, so `opened_at` only means a person if the fetch
+      // looks like one. `open_count` keeps counting every fetch.
+      const human = looksHuman(req);
       await env.DB.prepare(
         `UPDATE num_invites
             SET open_count = open_count + 1,
-                opened_at  = COALESCE(opened_at, datetime('now'))
-          WHERE token = ?`
-      ).bind(token).run();
+                opened_at  = CASE WHEN ?2 THEN COALESCE(opened_at, datetime('now'))
+                                  ELSE opened_at END
+          WHERE token = ?1`
+      ).bind(token, human ? 1 : 0).run();
     } catch (e) { /* a tracking miss must never break the image */ }
   }
   return new Response(PIXEL, {
@@ -48,7 +90,7 @@ export async function handleOpenPixel(env, url) {
 
 /* ── GET /claim?t= ─────────────────────────────────────────────────────── */
 
-export async function handleClaimClick(env, url) {
+export async function handleClaimClick(env, url, req) {
   const token = url.searchParams.get('t');
   /* Trailing slash is deliberate. /claim is a directory index, so the assets
      runtime answers /claim with a 307 to /claim/ — harmless, but it puts an
@@ -57,13 +99,19 @@ export async function handleClaimClick(env, url) {
   let dest = `${SITE}/claim/`;
   if (token) {
     try {
+      // A click implies an open, but only when a person did the clicking —
+      // otherwise one scanner fetch would stamp BOTH timestamps and a machine
+      // would appear in the funnel twice.
+      const human = looksHuman(req);
       await env.DB.prepare(
         `UPDATE num_invites
             SET click_count = click_count + 1,
-                clicked_at  = COALESCE(clicked_at, datetime('now')),
-                opened_at   = COALESCE(opened_at,  datetime('now'))
-          WHERE token = ?`
-      ).bind(token).run();
+                clicked_at  = CASE WHEN ?2 THEN COALESCE(clicked_at, datetime('now'))
+                                   ELSE clicked_at END,
+                opened_at   = CASE WHEN ?2 THEN COALESCE(opened_at,  datetime('now'))
+                                   ELSE opened_at END
+          WHERE token = ?1`
+      ).bind(token, human ? 1 : 0).run();
       const row = await env.DB.prepare(
         'SELECT lead_id, business_name FROM num_invites WHERE token = ?'
       ).bind(token).first();

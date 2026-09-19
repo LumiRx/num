@@ -249,8 +249,8 @@ export default {
       // These run from an email client before anyone has ever signed in.
       // POST is accepted on /unsubscribe for RFC 8058 one-click.
       if (path === '/unsubscribe' && (method === 'GET' || method === 'POST')) return await handleUnsubscribe(env, request, url);
-      if (path === '/i.gif' && method === 'GET') return await handleOpenPixel(env, url);
-      if (path === '/claim' && method === 'GET') return await handleClaimClick(env, url);
+      if (path === '/i.gif' && method === 'GET') return await handleOpenPixel(env, url, request);
+      if (path === '/claim' && method === 'GET') return await handleClaimClick(env, url, request);
 
       if (path === '/' && method === 'GET') return json({ ok: true, service: 'num-accounts' });
       if (path === '/login' && method === 'POST') return await handleLogin(request, env);
