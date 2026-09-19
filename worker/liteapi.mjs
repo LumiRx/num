@@ -666,7 +666,24 @@ export async function cancelBooking(env, bookingId, { fetchImpl } = {}) {
   return { bookingId, status: d?.status ?? 'CANCELLED', refund: num(d?.refundAmount), raw: d };
 }
 
-/* ── ROUTES ────────────────────────────────────────────────────────────── */
+/* ── ROUTES ──────────────────────────────────────────────────────────────
+
+   The routes are where the supplier call and the RECORD are joined, and the
+   order matters more than it looks:
+
+     prebook  → call the supplier, THEN write a held row
+     book     → confirm the held row, or mark it failed with the supplier's
+                own words
+     cancel   → cancel at the supplier, THEN mark the row cancelled
+
+   The row is written at prebook and not at book, deliberately. If it were only
+   written on success, a booking the supplier confirmed and whose response NUM
+   failed to read would be a room that exists with nothing in NUM pointing at
+   it. This way the worst case is a held row that never became a booking —
+   visible and reconcilable. The other way round is a guest holding a
+   reservation NUM denies.
+*/
+import { hold, confirm as recordConfirm, fail as recordFail, cancelled as recordCancelled, forMember, byId, newClientReference } from './staybookings.mjs';
 
 export async function handleStays(request, env, path, { session = null, fetchImpl } = {}) {
   const post = request.method === 'POST';
@@ -711,18 +728,64 @@ export async function handleStays(request, env, path, { session = null, fetchImp
 
     if (path === '/prebook' && post) {
       const b = await readBody(request);
-      return json(await prebook(env, { ...b, fetchImpl }));
+      const pre = await prebook(env, { ...b, fetchImpl });
+      // A hold is only recorded for a known member. An anonymous prebook is a
+      // price check; there is nobody to show a receipt to and nobody to charge.
+      let stayId = null;
+      let clientReference = null;
+      if (signedIn && b.option && b.query) {
+        clientReference = newClientReference();
+        const rec = await hold(env, {
+          memberId: session.memberId ?? session.member_id,
+          clientReference,
+          prebook: pre,
+          option: b.option,
+          query: b.query,
+          marginPct: marginFor(env, { member: true }),
+          wasMemberRate: true,
+        });
+        stayId = rec.id;
+      }
+      // `raw` is the supplier's whole body. Useful on the server, not something
+      // to hand a browser — it carries fields NUM has not read or vouched for.
+      const { raw, ...safe } = pre;
+      return json({ ...safe, stayId, clientReference });
+    }
+
+    if (path === '/mine') {
+      if (!signedIn) return json({ error: 'Sign in to see your stays.' }, 401);
+      return json({ stays: await forMember(env, session.memberId ?? session.member_id) });
     }
 
     if (path === '/book' && post) {
       const b = await readBody(request);
       const missing = missingForBook(b);
       if (missing.length) return json({ error: 'missing', missing }, 400);
-      return json(await book(env, b, { fetchImpl }));
+      try {
+        const confirmed = await book(env, b, { fetchImpl });
+        if (b.stayId) await recordConfirm(env, b.stayId, confirmed);
+        const { raw, ...safe } = confirmed;
+        return json(safe);
+      } catch (err) {
+        // The held row must not be left saying "held" for a booking that will
+        // never happen — that is the row somebody chases in March.
+        if (b.stayId) await recordFail(env, b.stayId, err.message).catch(() => {});
+        throw err;
+      }
     }
 
     if (path.startsWith('/cancel/') && post) {
-      return json(await cancelBooking(env, path.slice('/cancel/'.length), { fetchImpl }));
+      // NUM's own id, not the supplier's. A route that took the supplier's id
+      // would cancel any booking whose id somebody could guess; this one can
+      // only reach a row that belongs to the caller.
+      const stayId = path.slice('/cancel/'.length);
+      if (!signedIn) return json({ error: 'Sign in to cancel a stay.' }, 401);
+      const row = await byId(env, stayId, session.memberId ?? session.member_id);
+      if (!row) return json({ error: 'No such stay.' }, 404);
+      if (!row.booking_id) return json({ error: 'That stay was never confirmed, so there is nothing to cancel.' }, 409);
+      const out = await cancelBooking(env, row.booking_id, { fetchImpl });
+      await recordCancelled(env, stayId, { refund: out.refund ?? null });
+      return json({ id: stayId, status: out.status, refund: out.refund ?? null });
     }
 
     return json({ error: 'No such stays route.' }, 404);

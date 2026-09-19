@@ -42,6 +42,7 @@
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
   "pending": [
-    "0052_stay_bookings.sql"
+    "0052_stay_bookings.sql",
+    "0054_editorial_award_names.sql"
   ]
 }

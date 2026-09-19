@@ -118,6 +118,7 @@ function baseState() {
     discoverOpen: null,
     placeOpen: false,
     flightWatchOpen: false,
+    stayBookOpen: null,
     flightWatchPrefill: null,
     flights: [],
     errandsOpen: false,
@@ -128,7 +129,10 @@ function baseState() {
     // earn a slot when there is somewhere to be.
     widgets: ['next', 'tonight', 'requests', 'directions', 'calendar', 'tripcheck', 'group', 'events', 'wallet', 'connections'] as WidgetId[],
     pushOn: false,
-    theme: 'auto' as const,
+    // Light is the base (Dre, 19 Sep 2026): white paper, the green speaks.
+    // Auto and Dark are one tap away in Profile.
+    theme: 'verified' as const,
+    themeV: 2,
     textSize: 'standard' as const,
     lang: null,
     i18nTick: 0,
@@ -246,7 +250,7 @@ const STORAGE_KEY = 'num-trip-v1';
 /** Fields worth keeping across launches (UI transients stay out). */
 export function persistable(s: AppState) {
   const { view, typing, notifOn, calOpen, shareOpen, walletOpen, permOn, voice, expanded, selDay, calM, bought, copied,
-    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, billOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, flightWatchPrefill, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
+    inviteOpen, partyOpen, eventOpen, businessOpen, scoutOpen, profileOpen, threadOpen, unread, handoff, payOpen, billOpen, passengerOpen, tabOpen, discoverOpen, placeOpen, flightWatchOpen, stayBookOpen, flightWatchPrefill, flights, errandsOpen, errands, myErrands, flightOffers, flightSearching, flightError, errandDraft,
     // The turn in flight and the page that is open are this launch's business only.
     // savedFlights is NOT here: a fare somebody kept must survive closing the app.
     thinkingLine, featureOpen, eventView, pendingAsk, nightlifeOpen,
@@ -418,7 +422,11 @@ export function repairShapes(saved: Record<string, unknown>): Record<string, unk
 
   // The colour themes of the summer are gone; whatever a phone saved
   // (ember, midnight, bloom…) becomes Auto — the one look, light or dark.
-  if ('theme' in out && !['auto', 'verified', 'verified-dark'].includes(String(out.theme))) out.theme = 'auto';
+  if ('theme' in out && !['auto', 'verified', 'verified-dark'].includes(String(out.theme))) out.theme = 'verified';
+  // 19 Sep 2026: the base became Light. Every phone saved 'auto' because auto
+  // WAS the default, not because anyone chose it — so it moves to Light once
+  // (themeV 2). A phone that picks Auto or Dark after today keeps it.
+  if (Number(out.themeV ?? 1) < 2) { if (out.theme === 'auto' || !('theme' in out)) out.theme = 'verified'; out.themeV = 2; }
   if ('textSize' in out && !['standard', 'large', 'xl'].includes(String(out.textSize))) out.textSize = 'standard';
   // ★100 → ★5 (18 Sep 2026). A phone that opened NUM before today saved the
   // old signed-out seed — 100 Stars and a "Welcome stars ★100" line — and

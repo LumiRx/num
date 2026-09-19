@@ -203,6 +203,13 @@ const FILES = [
   // unique index, no ALTER. The rung a person reached is a row because a
   // discretionary reward with no record of who is owed one is not a reward.
   'worker/migrations/0053_ambassador_milestones.sql',
+  // Deletes two editorial rows that named an award "50 Best Bars North
+  // America", which is not what it is called. `sayIt()` speaks a row's
+  // source to the guest, so the string is a sentence NUM says out loud.
+  // Both are duplicates of correctly-named rows the same venues already
+  // hold, so nothing is lost and no score moves. DELETE by primary key,
+  // no ALTER, and a second pass removes nothing because they are gone.
+  'worker/migrations/0054_editorial_award_names.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

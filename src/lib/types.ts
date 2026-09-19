@@ -120,6 +120,14 @@ export interface Pick {
   area?: string | null;
   km?: number | null;
   rating?: number | null;
+  /** The venue's own preview image (or a licensed Commons photo, with `photo_attr`). Null until known — never a placeholder URL. */
+  photo?: string | null;
+  photo_attr?: string | null;
+  /** The venue's own pages, from its directory row or its own site (worker/placemedia.mjs). Never guessed from a name. */
+  website?: string | null;
+  instagram?: string | null;
+  tiktok?: string | null;
+  facebook?: string | null;
 }
 
 export interface Msg {
@@ -130,6 +138,12 @@ export interface Msg {
   picks?: Pick[];
   /** Which lane and brain produced this answer — filed with a reaction so the team can read ratings by lane. */
   turn?: { lane?: string | null; brain?: string | null; model?: string | null };
+  /**
+   * One answer can arrive as up to three bubbles (19 Sep 2026): the answer,
+   * the places, the question. `part` says which this is, so the thread draws
+   * them as one turn — tight, one avatar's worth of air between them.
+   */
+  part?: 'lead' | 'picks' | 'tail';
 }
 
 export interface Chip {
@@ -500,6 +514,8 @@ export interface AppState {
 
   /** Chosen colour layout — just a data-theme attribute on <html>. */
   theme: ThemeId;
+  /** Which default the saved theme was migrated to — 2 = Light is the base (19 Sep 2026). */
+  themeV?: number;
   /** Text size for people who cannot see as well — a data-text attribute on <html> (lib/textsize.ts). */
   textSize: 'standard' | 'large' | 'xl';
   /** Language chosen in Profile; null means the phone's. */
@@ -553,6 +569,10 @@ export interface AppState {
   placeOpen: boolean;
   /** Flight Watch: the sheet, and the flights NUM is watching (server truth). */
   flightWatchOpen: boolean;
+  /** The stay being booked, or null. Typed as unknown here and narrowed in
+   *  src/lib/stays.ts (StayDraft) so types.ts does not have to import a
+   *  feature module — the same shape every other sheet draft uses. */
+  stayBookOpen: unknown | null;
   /** A flight number NUM spotted in the thread, offered to watch. */
   flightWatchPrefill: string | null;
   flights: import('./flightwatch').FlightWatch[];

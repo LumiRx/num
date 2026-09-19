@@ -305,6 +305,36 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
   // this row is the only independent record that Num sent anybody. It is one
   // INSERT and it never throws; a bookkeeping failure costs a row, never a
   // reply and never the link.
+  // ── STAYS: what Num may SAY about a room ─────────────────────────────────
+  //
+  // Placed before the LGT block and holding `wantsStay` when it fires, because
+  // the two are alternatives rather than layers. LiteAPI takes the booking
+  // inside Num; the LGT rail sends somebody to another checkout and discloses a
+  // fee for doing it. Emitting both in one turn would offer a guest two ways to
+  // book the same night, one of which costs more, and call that a concierge.
+  //
+  // worker/staysprompt.mjs holds the sentences and the reasoning for each.
+  let stayHandled = false;
+  if (wantsStay(userText ?? '')) {
+    const { liteapiReady, bookingGate } = await import('./liteapi.mjs');
+    const { stayBlock: stayRules } = await import('./staysprompt.mjs');
+    if (liteapiReady(env ?? {})) {
+      system.push({
+        type: 'text',
+        text: stayRules({
+          signedIn: !!(state?.memberId ?? state?.member_id),
+          canBook: bookingGate(env ?? {}).ok,
+        }),
+      });
+      stayHandled = true;
+    }
+    // The no-supplier fallback is NOT decided here. Asking fulfilment() a third
+    // time would be a third gate with its own opinion about who fulfils, and
+    // flightbooking.test.mjs pins that count at two on purpose: "two gates with
+    // their own opinion is how one of them ends up wrong". So the fallback runs
+    // after the partner rail has had its turn, on whether anything answered.
+  }
+
   if (fulfilment(env ?? {}).primary === 'lgt') {
     const memberId = state?.memberId ?? state?.member_id ?? null;
     if (wantsFlight(userText ?? '')) {
@@ -313,18 +343,31 @@ async function askNum(client, messages, state, grounding, profile, extraSystem, 
         system.push({ type: 'text', text: flightBlock(f, env, {}) });
         await openReferral(env, { ref: f.ref, memberId, product: 'flight' });
       }
-    } else if (wantsStay(userText ?? '')) {
+    } else if (wantsStay(userText ?? '') && !stayHandled) {
       // `else if` on purpose: a turn that asks for both gets the flight, which
       // is the one with a deadline. Two booking links and two fee disclosures
       // in one reply is not a concierge, it is a banner.
+      //
+      // `!stayHandled` is the newer half: when Num can take the room itself,
+      // this hand-off must not also fire. See the stays block above.
       const s = stayLink(env, grounding.place);
       if (s) {
         system.push({ type: 'text', text: stayBlock(s, env, grounding.place) });
         await openReferral(env, {
           ref: s.ref, memberId, product: 'stay', destination: grounding.place?.name ?? null,
         });
+        stayHandled = true;
       }
     }
+  }
+
+  // Nothing could price a room this turn — no LiteAPI key, and either no
+  // partner or a partner that produced no link. Num still knows the places and
+  // still has the hotel's own booking page where it has read one off their
+  // site. What it must not do is imply a price it cannot fetch.
+  if (wantsStay(userText ?? '') && !stayHandled) {
+    const { NO_SUPPLIER: noSupplier } = await import('./staysprompt.mjs');
+    system.push({ type: 'text', text: noSupplier });
   }
   // An open flight booking Num is issuing ITSELF — the backup rail.
   //
@@ -2960,6 +3003,16 @@ export default {
     // is a POST and is gated on a verified phone inside privy.mjs, never here.
     if (url.pathname.startsWith('/api/wallet')) {
       const res = await handleWallet(request, env, url.pathname.slice('/api/wallet'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    // A pick's picture and socials, filled from the venue's own page the
+    // first time it is shown (placemedia.mjs). The app asks after the answer
+    // has rendered, so nothing here is on the answer's path.
+    if (url.pathname === '/api/places/media') {
+      const { handlePlaceMedia } = await import('./placemedia.mjs');
+      const res = await handlePlaceMedia(request, env, url);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
