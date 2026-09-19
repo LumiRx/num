@@ -676,7 +676,14 @@ async function queryRing(env, { lat, lng, dest, patterns, radiusKm, distWeight, 
       WHERE (alive IS NULL OR alive = 1)
         AND ${CLOSED_PREDICATE}
         AND cell_lat BETWEEN ?3 AND ?4 AND cell_lng BETWEEN ?5 AND ?6${cat}${neg}
-    ) WHERE km <= ${Number(radiusKm)} ORDER BY ${SCORE}${prefBonus} DESC LIMIT ${Math.max(1, limit | 0)}`;
+    ) AS places WHERE km <= ${Number(radiusKm)} ORDER BY ${SCORE}${prefBonus} DESC LIMIT ${Math.max(1, limit | 0)}`;
+  // `AS places` above is load-bearing (19 Sep 2026). The editorial term in
+  // SCORE correlates on `places.id`; the ORDER BY runs on the derived table,
+  // which had no name, so D1 answered "no such column: places.id" — for
+  // EVERY ring, for every city, for 27 hours after the editorial layer
+  // shipped. The catch below swallowed it, the floor sat inside the same
+  // try, and the model got an empty block and answered from memory. The
+  // stubbed tests never ran the SQL; ring.test.mjs now does, on real SQLite.
   const binds = [
     lat, lng,
     Math.floor((lat - dLat) * 10), Math.floor((lat + dLat) * 10),
