@@ -131,6 +131,19 @@ const MIGRATIONS = [
   'ALTER TABLE num_members ADD COLUMN utm_medium TEXT',
   'ALTER TABLE num_members ADD COLUMN utm_campaign TEXT',
   'ALTER TABLE num_members ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0',
+  // THE PLAN BOARD (18 Sep 2026). A plan spans days, keeps one currency,
+  // and can be locked by its owner so the schedule stops moving. Items have
+  // an order inside their hour, a real amount (minor units, plan currency),
+  // who paid, and who it is split across. Comments can hang off one item.
+  'ALTER TABLE num_plans ADD COLUMN ends_on TEXT',
+  "ALTER TABLE num_plans ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'",
+  'ALTER TABLE num_plans ADD COLUMN locked_at TEXT',
+  'ALTER TABLE num_plans ADD COLUMN locked_by TEXT',
+  'ALTER TABLE num_plan_items ADD COLUMN sort INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE num_plan_items ADD COLUMN cost_minor INTEGER',
+  'ALTER TABLE num_plan_items ADD COLUMN paid_by TEXT',
+  'ALTER TABLE num_plan_items ADD COLUMN split_with TEXT',
+  'ALTER TABLE num_plan_events ADD COLUMN item_id TEXT',
 ];
 
 // Inlined rather than fetched: a Worker has no filesystem. Kept identical to
@@ -161,6 +174,8 @@ CREATE INDEX IF NOT EXISTS idx_num_item_attendees_member ON num_item_attendees(m
 CREATE TABLE IF NOT EXISTS num_plan_item_votes (item_id TEXT NOT NULL, member_id TEXT NOT NULL, vote TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (item_id, member_id));
 CREATE TABLE IF NOT EXISTS num_plan_events (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id TEXT NOT NULL, ts TEXT NOT NULL DEFAULT (datetime('now')), by_id TEXT, by_name TEXT, kind TEXT NOT NULL, summary TEXT NOT NULL, payload TEXT);
 CREATE INDEX IF NOT EXISTS idx_num_plan_events_plan ON num_plan_events(plan_id, id);
+CREATE TABLE IF NOT EXISTS num_plan_settlements (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, from_id TEXT NOT NULL, to_id TEXT NOT NULL, minor INTEGER NOT NULL, currency TEXT NOT NULL, via TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_num_plan_settlements_plan ON num_plan_settlements(plan_id);
 CREATE TABLE IF NOT EXISTS num_star_balances (member_id TEXT PRIMARY KEY, stars INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS num_star_moves (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, delta INTEGER NOT NULL, kind TEXT NOT NULL, note TEXT, counterparty TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_num_star_moves_member ON num_star_moves(member_id);
@@ -174,10 +189,10 @@ CREATE TABLE IF NOT EXISTS num_tab_settlements (id TEXT PRIMARY KEY, tab_id TEXT
 CREATE INDEX IF NOT EXISTS idx_num_tab_settlements ON num_tab_settlements(tab_id);
 `;
 
-async function event(env, planId, by, kind, summary, payload) {
+async function event(env, planId, by, kind, summary, payload, itemId = null) {
   await env.DB.prepare(
-    'INSERT INTO num_plan_events (plan_id, by_id, by_name, kind, summary, payload) VALUES (?1,?2,?3,?4,?5,?6)',
-  ).bind(planId, by?.id ?? null, by?.name ?? null, kind, summary.slice(0, 300), payload ? JSON.stringify(payload) : null).run();
+    'INSERT INTO num_plan_events (plan_id, by_id, by_name, kind, summary, payload, item_id) VALUES (?1,?2,?3,?4,?5,?6,?7)',
+  ).bind(planId, by?.id ?? null, by?.name ?? null, kind, summary.slice(0, 300), payload ? JSON.stringify(payload) : null, itemId).run();
   await env.DB.prepare("UPDATE num_plans SET updated_at=datetime('now') WHERE id=?1").bind(planId).run();
 
   // The group hears about it on their phones, not the next time they happen to
@@ -223,6 +238,89 @@ async function memberOf(env, planId, memberId) {
   if (!planId || !memberId) return null;
   return await env.DB.prepare('SELECT * FROM num_plan_members WHERE plan_id=?1 AND member_id=?2')
     .bind(planId, memberId).first();
+}
+
+/**
+ * A locked plan refuses every change from everyone but its owner. Returns the
+ * refusal to send, or null when the write may go ahead. 423 (Locked) so the
+ * client can tell "you may not" from "you are not on this plan" (403).
+ */
+function lockedRefusal(plan, memberId) {
+  if (!plan?.locked_at || plan.owner_id === memberId) return null;
+  return json({ error: 'This plan is locked — only whoever started it can change it now.', locked: true }, 423);
+}
+
+/** Who shares an item's cost: the ids in split_with, or everyone on the plan. */
+function splitOf(item, memberIds) {
+  let ids = null;
+  try { ids = item.split_with ? JSON.parse(item.split_with) : null; } catch { ids = null; }
+  const chosen = Array.isArray(ids) ? ids.filter((id) => memberIds.includes(id)) : [];
+  return chosen.length ? chosen : memberIds;
+}
+
+/**
+ * The money on a plan, from the items rather than a ledger.
+ *
+ * Every item with an amount is split equally across its split list (or the
+ * whole plan). Whoever paid is credited the whole amount. Settlements already
+ * made move balances the same way a payment does. `net` > 0 means the plan
+ * owes this person; < 0 means they owe the plan. `transfers` turns the nets
+ * into the fewest payments that square everyone — the list the SETTLE UP
+ * screen shows. Integer minor units throughout; the remainder of an uneven
+ * split goes to the payer's own share so the pennies never vanish.
+ */
+function planMoney(plan, members, items, settlements) {
+  const ids = members.map((m) => m.member_id);
+  const names = Object.fromEntries(members.map((m) => [m.member_id, m.name]));
+  const paid = Object.fromEntries(ids.map((id) => [id, 0]));
+  const owes = Object.fromEntries(ids.map((id) => [id, 0]));
+  let total = 0;
+  for (const it of items) {
+    const minor = Number(it.cost_minor);
+    if (it.status === 'cancelled' || !Number.isFinite(minor) || minor <= 0) continue;
+    total += minor;
+    const across = splitOf(it, ids);
+    if (!across.length) continue;
+    const share = Math.floor(minor / across.length);
+    const rest = minor - share * across.length;
+    const payer = it.paid_by && ids.includes(it.paid_by) ? it.paid_by : null;
+    for (const id of across) owes[id] += share;
+    // The odd pennies land on the payer when they are in the split, else on the first.
+    owes[payer && across.includes(payer) ? payer : across[0]] += rest;
+    if (payer) paid[payer] += minor;
+  }
+  const settledOut = Object.fromEntries(ids.map((id) => [id, 0]));
+  const settledIn = Object.fromEntries(ids.map((id) => [id, 0]));
+  for (const s of settlements) {
+    if (ids.includes(s.from_id)) settledOut[s.from_id] += Number(s.minor);
+    if (ids.includes(s.to_id)) settledIn[s.to_id] += Number(s.minor);
+  }
+  const people = ids.map((id) => ({
+    member_id: id, name: names[id] ?? null,
+    paid_minor: paid[id], owes_minor: owes[id],
+    settled_out_minor: settledOut[id], settled_in_minor: settledIn[id],
+    net_minor: paid[id] - owes[id] + settledOut[id] - settledIn[id],
+  }));
+  // Greedy: biggest debtor pays biggest creditor until one of them is square.
+  const debtors = people.filter((p) => p.net_minor < 0).map((p) => ({ id: p.member_id, left: -p.net_minor })).sort((a, b) => b.left - a.left);
+  const creditors = people.filter((p) => p.net_minor > 0).map((p) => ({ id: p.member_id, left: p.net_minor })).sort((a, b) => b.left - a.left);
+  const transfers = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const amt = Math.min(debtors[i].left, creditors[j].left);
+    if (amt > 0) transfers.push({ from_id: debtors[i].id, from_name: names[debtors[i].id] ?? null, to_id: creditors[j].id, to_name: names[creditors[j].id] ?? null, minor: amt });
+    debtors[i].left -= amt; creditors[j].left -= amt;
+    if (debtors[i].left === 0) i++;
+    if (creditors[j].left === 0) j++;
+  }
+  return {
+    currency: plan?.currency ?? 'USD',
+    total_minor: total,
+    per_head_minor: ids.length ? Math.round(total / ids.length) : total,
+    people,
+    transfers,
+    settlements: settlements.map((s) => ({ id: s.id, from_id: s.from_id, from_name: names[s.from_id] ?? null, to_id: s.to_id, to_name: names[s.to_id] ?? null, minor: Number(s.minor), via: s.via, at: s.created_at })),
+  };
 }
 
 // ── who is real: signals and collisions ───────────────────────────────────
@@ -2475,9 +2573,34 @@ async function planWrite(env, req) {
   if (b.id) {
     const planId = clip(b.id, 40);
     if (!(await memberOf(env, planId, meId))) return json({ error: 'not your plan' }, 403);
+    const current = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first();
+    if (!current) return json({ error: 'unknown plan' }, 404);
+
+    // LOCK. The owner freezes the plan so nothing moves the night before;
+    // only the owner can lock, unlock, or change anything while it is locked.
+    // `lock` is the only field a locked plan accepts from its owner besides
+    // the ordinary edits, and from anyone else it accepts nothing.
+    if (typeof b.lock === 'boolean') {
+      if (current.owner_id !== meId) return json({ error: 'Only whoever started the plan can lock it.' }, 403);
+      await env.DB.prepare("UPDATE num_plans SET locked_at=?2, locked_by=?3, updated_at=datetime('now') WHERE id=?1")
+        .bind(planId, b.lock ? new Date().toISOString() : null, b.lock ? meId : null).run();
+      await event(env, planId, { id: meId, name: self.name }, b.lock ? 'locked' : 'unlocked',
+        b.lock ? `${self.name || 'Someone'} locked the plan — it stays as it is now.` : `${self.name || 'Someone'} unlocked the plan.`);
+    }
+    const refused = lockedRefusal(current, meId);
+    const editing = b.title != null || b.dest != null || b.starts_on != null || b.starts_time != null || b.ends_on != null || b.currency != null || b.state != null;
+    if (refused && editing) return refused;
+
+    const currency = b.currency == null ? null : String(b.currency).trim().toUpperCase();
+    if (currency != null && !/^[A-Z]{3}$/.test(currency)) return json({ error: 'currency is a 3-letter code' }, 400);
+    // ends_on may be cleared with '' so a multi-day plan can go back to one day.
+    const endsOn = b.ends_on === '' ? '' : clip(b.ends_on, 20);
     await env.DB.prepare(
-      "UPDATE num_plans SET title=COALESCE(?2,title), dest=COALESCE(?3,dest), starts_on=COALESCE(?4,starts_on), starts_time=COALESCE(?6,starts_time), state=COALESCE(?5,state), updated_at=datetime('now') WHERE id=?1",
-    ).bind(planId, clip(b.title, 120), clip(b.dest, 80), clip(b.starts_on, 20), clip(b.state, 20), clip(b.starts_time, 8)).run();
+      `UPDATE num_plans SET title=COALESCE(?2,title), dest=COALESCE(?3,dest), starts_on=COALESCE(?4,starts_on),
+              starts_time=COALESCE(?6,starts_time), state=COALESCE(?5,state),
+              ends_on=CASE WHEN ?7 = '' THEN NULL ELSE COALESCE(?7, ends_on) END,
+              currency=COALESCE(?8,currency), updated_at=datetime('now') WHERE id=?1`,
+    ).bind(planId, clip(b.title, 120), clip(b.dest, 80), clip(b.starts_on, 20), clip(b.state, 20), clip(b.starts_time, 8), endsOn ?? null, currency ?? null).run();
     const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first();
     // Setting WHEN is the moment a plan becomes real — it goes on the feed and
     // buzzes every member (event() pushes to everyone but the author), and the
@@ -2655,53 +2778,231 @@ async function planItem(env, req) {
   const mem = await memberOf(env, planId, meId);
   if (!mem) return json({ error: 'not your plan' }, 403);
   const by = { id: meId, name: mem.name };
+  const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first();
+  const refused = lockedRefusal(plan, meId);
+  if (refused) return refused;
 
+  // MONEY ON AN ITEM. `cost_minor` is the number the split is computed from,
+  // in the plan's currency; `cost` stays the display string for older
+  // clients. `paid_by` must be someone on the plan; `split_with` is a list
+  // of member ids (empty or absent = everyone), stored as JSON.
+  const { results: roster } = await env.DB.prepare('SELECT member_id FROM num_plan_members WHERE plan_id=?1').bind(planId).all();
+  const onPlan = new Set((roster ?? []).map((r) => r.member_id));
+  let costMinor;
+  if (b.cost_minor === '' || b.cost_minor === null) costMinor = null;
+  else if (b.cost_minor !== undefined) {
+    costMinor = Math.round(Number(b.cost_minor));
+    if (!Number.isFinite(costMinor) || costMinor < 0 || costMinor > 100_000_000) return json({ error: 'cost_minor is a whole number of minor units' }, 400);
+  }
+  let paidBy;
+  if (b.paid_by === '' || b.paid_by === null) paidBy = null;
+  else if (b.paid_by !== undefined) {
+    paidBy = clip(b.paid_by, 40);
+    if (!onPlan.has(paidBy)) return json({ error: 'paid_by has to be someone on the plan' }, 400);
+  }
+  let splitWith;
+  if (b.split_with === null || (Array.isArray(b.split_with) && b.split_with.length === 0)) splitWith = null;
+  else if (Array.isArray(b.split_with)) {
+    const ids = [...new Set(b.split_with.map((x) => clip(x, 40)).filter((x) => x && onPlan.has(x)))];
+    if (!ids.length) return json({ error: 'split_with names nobody on the plan' }, 400);
+    splitWith = JSON.stringify(ids);
+  }
+
+  // '' clears a field (a time taken off an item, a day unset); undefined/null
+  // leaves it alone. The old COALESCE could never clear anything.
+  const str = (v, n) => (v === '' ? null : clip(v, n));
   const fields = {
     kind: clip(b.kind, 20) ?? 'idea',
     title: clip(b.title, 120),
-    place: clip(b.place, 120),
-    address: clip(b.address, 200),
-    day: clip(b.day, 20),
-    time: clip(b.time, 10),
+    place: str(b.place, 120),
+    address: str(b.address, 200),
+    day: str(b.day, 20),
+    time: str(b.time, 10),
     status: clip(b.status, 20) ?? 'idea',
-    cost: clip(b.cost, 60),
-    note: clip(b.note, 500),
-    photo: clip(b.photo, 400),
+    cost: str(b.cost, 60),
+    note: str(b.note, 500),
+    photo: str(b.photo, 400),
+    sort: b.sort === undefined ? undefined : Math.max(0, Math.min(100000, Math.round(Number(b.sort)) || 0)),
+    cost_minor: costMinor,
+    paid_by: paidBy,
+    split_with: splitWith,
   };
+  if (fields.day && !/^\d{4}-\d{2}-\d{2}$/.test(fields.day)) return json({ error: 'day is YYYY-MM-DD' }, 400);
+  if (fields.time && !/^\d{2}:\d{2}$/.test(fields.time)) return json({ error: 'time is HH:MM' }, 400);
 
   if (b.id) {
     const id = clip(b.id, 40);
     const before = await env.DB.prepare('SELECT * FROM num_plan_items WHERE id=?1 AND plan_id=?2').bind(id, planId).first();
     if (!before) return json({ error: 'unknown item' }, 404);
+    // Merge in JS: a key present in the body wins (including '' → null); a
+    // key absent keeps what was there.
+    const has = (k) => b[k] !== undefined && b[k] !== null;
+    const next = {
+      kind: b.kind ? fields.kind : before.kind,
+      title: fields.title ?? before.title,
+      place: has('place') ? fields.place : before.place,
+      address: has('address') ? fields.address : before.address,
+      day: has('day') ? fields.day : before.day,
+      time: has('time') ? fields.time : before.time,
+      status: b.status ? fields.status : before.status,
+      cost: has('cost') ? fields.cost : before.cost,
+      note: has('note') ? fields.note : before.note,
+      photo: has('photo') ? fields.photo : before.photo,
+      sort: fields.sort === undefined ? before.sort : fields.sort,
+      cost_minor: costMinor === undefined ? before.cost_minor : costMinor,
+      paid_by: paidBy === undefined ? before.paid_by : paidBy,
+      split_with: splitWith === undefined ? before.split_with : splitWith,
+    };
     await env.DB.prepare(
-      `UPDATE num_plan_items SET kind=COALESCE(?3,kind), title=COALESCE(?4,title), place=COALESCE(?5,place),
-              address=COALESCE(?6,address), day=COALESCE(?7,day), time=COALESCE(?8,time), status=COALESCE(?9,status),
-              cost=COALESCE(?10,cost), note=COALESCE(?11,note), photo=COALESCE(?12,photo), updated_at=datetime('now')
+      `UPDATE num_plan_items SET kind=?3, title=?4, place=?5, address=?6, day=?7, time=?8, status=?9, cost=?10, note=?11, photo=?12,
+              sort=?13, cost_minor=?14, paid_by=?15, split_with=?16, updated_at=datetime('now')
         WHERE id=?1 AND plan_id=?2`,
-    ).bind(id, planId, b.kind ? fields.kind : null, fields.title, fields.place, fields.address, fields.day, fields.time,
-      b.status ? fields.status : null, fields.cost, fields.note, fields.photo).run();
+    ).bind(id, planId, next.kind, next.title, next.place, next.address, next.day, next.time, next.status, next.cost, next.note, next.photo,
+      next.sort ?? 0, next.cost_minor ?? null, next.paid_by ?? null, next.split_with ?? null).run();
     const after = await env.DB.prepare('SELECT * FROM num_plan_items WHERE id=?1').bind(id).first();
     const booked = before.status !== 'confirmed' && after.status === 'confirmed';
-    await event(env, planId, by, booked ? 'booked' : 'item_updated',
-      booked
-        ? `${by.name || 'Someone'} locked in ${after.title}${after.day ? ' — ' + after.day : ''}${after.time ? ' ' + after.time : ''}${after.address ? ' · ' + after.address : ''}.`
-        : `${by.name || 'Someone'} updated ${after.title}.`,
-      after);
+    const dropped = before.status !== 'cancelled' && after.status === 'cancelled';
+    const moved = (before.day !== after.day || before.time !== after.time) && before.title === after.title && before.status === after.status;
+    const priced = before.cost_minor !== after.cost_minor || before.paid_by !== after.paid_by;
+    const who = by.name || 'Someone';
+    const line = booked
+      ? `${who} locked in ${after.title}${after.day ? ' — ' + after.day : ''}${after.time ? ' ' + after.time : ''}${after.address ? ' · ' + after.address : ''}.`
+      : dropped ? `${who} took ${after.title} off the plan.`
+        : moved ? `${who} moved ${after.title} to ${[after.day, after.time].filter(Boolean).join(' ') || 'no set time'}.`
+          : priced ? `${who} put ${after.title} at ${moneyLine(after.cost_minor, plan?.currency)}${after.paid_by ? ` — ${after.paid_by === meId ? 'they' : 'someone'} paid` : ''}.`
+            : `${who} updated ${after.title}.`;
+    // A reorder inside the same hour (sort only) is not news to anyone.
+    const silent = !booked && !dropped && !moved && !priced && before.title === after.title && before.note === after.note && before.status === after.status;
+    if (!silent) await event(env, planId, by, booked ? 'booked' : dropped ? 'item_dropped' : moved ? 'item_moved' : 'item_updated', line, after, after.id);
     return json({ item: after });
   }
 
   if (!fields.title) return json({ error: 'title required' }, 400);
   const id = uid('itm');
+  // A new item goes to the end of its hour.
+  const last = await env.DB.prepare('SELECT MAX(sort) AS s FROM num_plan_items WHERE plan_id=?1 AND COALESCE(day,\'\')=COALESCE(?2,\'\') AND COALESCE(time,\'\')=COALESCE(?3,\'\')')
+    .bind(planId, fields.day ?? null, fields.time ?? null).first().catch(() => null);
+  const sort = fields.sort ?? (Number(last?.s ?? -1) + 1);
   await env.DB.prepare(
-    `INSERT INTO num_plan_items (id, plan_id, kind, title, place, address, day, time, status, cost, note, photo, by_id, by_name)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)`,
+    `INSERT INTO num_plan_items (id, plan_id, kind, title, place, address, day, time, status, cost, note, photo, by_id, by_name, sort, cost_minor, paid_by, split_with)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)`,
   ).bind(id, planId, fields.kind, fields.title, fields.place, fields.address, fields.day, fields.time, fields.status,
-    fields.cost, fields.note, fields.photo, meId, mem.name).run();
+    fields.cost, fields.note, fields.photo, meId, mem.name, sort, costMinor ?? null, paidBy ?? null, splitWith ?? null).run();
   const item = await env.DB.prepare('SELECT * FROM num_plan_items WHERE id=?1').bind(id).first();
   await event(env, planId, by, 'item_added',
     `${by.name || 'Someone'} added ${item.title}${item.day ? ' — ' + item.day : ''}${item.time ? ' ' + item.time : ''}${item.status === 'idea' ? ' (idea, nothing booked yet)' : ''}.`,
-    item);
+    item, item.id);
   return json({ item });
+}
+
+/** "$12.50", "€8", "฿1,200" — for feed lines. Whole units when there are no cents. */
+function moneyLine(minor, currency = 'USD') {
+  const n = Number(minor);
+  if (!Number.isFinite(n)) return 'no amount';
+  try {
+    return new Intl.NumberFormat('en', { style: 'currency', currency, minimumFractionDigits: n % 100 ? 2 : 0 }).format(n / 100);
+  } catch {
+    return `${currency} ${(n / 100).toFixed(2)}`;
+  }
+}
+
+/**
+ * One drag, one call: several items land on new hours (and a new order
+ * inside them) at once. Every move is checked against the plan and the lock;
+ * the whole batch is written together; one feed line for the lot. Silent when
+ * nothing actually changed hour or day (a shuffle inside one slot).
+ */
+async function planReorder(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const planId = clip(b.plan_id, 40);
+  const mem = await memberOf(env, planId, meId);
+  if (!mem) return json({ error: 'not your plan' }, 403);
+  const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first();
+  const refused = lockedRefusal(plan, meId);
+  if (refused) return refused;
+  const moves = Array.isArray(b.moves) ? b.moves.slice(0, 200) : [];
+  if (!moves.length) return json({ error: 'moves required' }, 400);
+  const { results: rows } = await env.DB.prepare('SELECT id, title, day, time, sort FROM num_plan_items WHERE plan_id=?1').bind(planId).all();
+  const byId = new Map((rows ?? []).map((r) => [r.id, r]));
+  const stmts = [];
+  const changed = [];
+  for (const m of moves) {
+    const id = clip(m.id, 40);
+    const before = byId.get(id);
+    if (!before) return json({ error: `unknown item ${id}` }, 404);
+    const day = m.day === '' ? null : m.day === undefined ? before.day : clip(m.day, 20);
+    const time = m.time === '' ? null : m.time === undefined ? before.time : clip(m.time, 10);
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'day is YYYY-MM-DD' }, 400);
+    if (time && !/^\d{2}:\d{2}$/.test(time)) return json({ error: 'time is HH:MM' }, 400);
+    const sort = Math.max(0, Math.min(100000, Math.round(Number(m.sort ?? before.sort)) || 0));
+    stmts.push(env.DB.prepare("UPDATE num_plan_items SET day=?2, time=?3, sort=?4, updated_at=datetime('now') WHERE id=?1 AND plan_id=?5").bind(id, day, time, sort, planId));
+    if (day !== before.day || time !== before.time) changed.push({ title: before.title, day, time });
+  }
+  await env.DB.batch(stmts);
+  if (changed.length) {
+    const who = mem.name || 'Someone';
+    const line = changed.length === 1
+      ? `${who} moved ${changed[0].title} to ${[changed[0].day, changed[0].time].filter(Boolean).join(' ') || 'no set time'}.`
+      : `${who} rearranged the day — ${changed.length} things moved.`;
+    await event(env, planId, { id: meId, name: mem.name }, 'item_moved', line, { moves: changed });
+  }
+  const { results: items } = await env.DB.prepare('SELECT * FROM num_plan_items WHERE plan_id=?1 ORDER BY day IS NULL, day, time IS NULL, time, sort').bind(planId).all();
+  return json({ ok: true, items: items ?? [] });
+}
+
+/**
+ * Squaring up inside the plan. `via: 'stars'` moves Stars through the same
+ * pay() every other Stars payment uses — same idempotency, same ledger, same
+ * buzz — and records the settlement against the plan so the balances move.
+ * Stars are dollars (★1 = $1, CENTS_PER_STAR), so this rail is only offered
+ * when the plan is in USD; any other currency is `via: 'outside'`, which
+ * records that the money changed hands some other way. Nothing here invents
+ * an exchange rate.
+ */
+async function planSettle(env, req) {
+  const b = await readBody(req);
+  const meId = clip(b.me, 40);
+  const planId = clip(b.plan_id, 40);
+  const to = clip(b.to, 40);
+  const minor = Math.round(Number(b.minor));
+  const via = b.via === 'stars' ? 'stars' : b.via === 'outside' ? 'outside' : null;
+  if (!meId || !planId || !to || !via) return json({ error: 'me, plan_id, to and via (stars|outside) required' }, 400);
+  if (!Number.isFinite(minor) || minor <= 0) return json({ error: 'minor has to be a positive whole number' }, 400);
+  if (to === meId) return json({ error: 'You can’t pay yourself.' }, 400);
+  const mem = await memberOf(env, planId, meId);
+  if (!mem) return json({ error: 'not your plan' }, 403);
+  if (!(await memberOf(env, planId, to))) return json({ error: 'They’re not on this plan.' }, 400);
+  const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(planId).first();
+  const currency = plan?.currency ?? 'USD';
+  const idem = clip(b.idem, 80) || crypto.randomUUID();
+
+  if (via === 'stars') {
+    if (currency !== 'USD') return json({ error: `This plan is in ${currency}. Stars are dollars, so settle it outside NUM and mark it paid here.` }, 400);
+    // Whole Stars; the odd cents round in the payee's favour so a debt never
+    // stays open by a few cents.
+    const stars = Math.max(1, Math.ceil(minor / 100));
+    const paid = await pay(env, new Request('https://num.internal/api/social/pay', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ me: meId, to, amount: stars, note: `${plan?.title ?? 'Plan'} — settling up`, idem: `plan:${idem}` }),
+    }));
+    if (!paid.ok) return paid;
+    const out = await paid.json();
+    if (!out.already) {
+      await env.DB.prepare('INSERT OR IGNORE INTO num_plan_settlements (id, plan_id, from_id, to_id, minor, currency, via) VALUES (?1,?2,?3,?4,?5,?6,?7)')
+        .bind(`stl_${idem}`, planId, meId, to, stars * 100, currency, 'stars').run();
+      await event(env, planId, { id: meId, name: mem.name }, 'settled', `${mem.name || 'Someone'} paid ${out.to ?? 'a friend'} ★${stars} through NUM — settling up.`);
+    }
+    return json({ ok: true, via, stars, balance: out.balance, already: !!out.already });
+  }
+
+  const ins = await env.DB.prepare('INSERT OR IGNORE INTO num_plan_settlements (id, plan_id, from_id, to_id, minor, currency, via) VALUES (?1,?2,?3,?4,?5,?6,?7)')
+    .bind(`stl_${idem}`, planId, meId, to, minor, currency, 'outside').run();
+  if (ins.meta?.changes) {
+    const payee = await env.DB.prepare('SELECT name FROM num_members WHERE id=?1').bind(to).first();
+    await event(env, planId, { id: meId, name: mem.name }, 'settled', `${mem.name || 'Someone'} marked ${moneyLine(minor, currency)} to ${payee?.name ?? 'a friend'} as paid.`);
+  }
+  return json({ ok: true, via });
 }
 
 /**
@@ -2717,10 +3018,18 @@ async function planRead(env, url) {
 
   const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(id).first();
   const { results: members } = await env.DB.prepare('SELECT member_id, name, role, vote FROM num_plan_members WHERE plan_id=?1').bind(id).all();
-  const { results: items } = await env.DB.prepare('SELECT * FROM num_plan_items WHERE plan_id=?1 ORDER BY day IS NULL, day, time').bind(id).all();
+  const { results: items } = await env.DB.prepare('SELECT * FROM num_plan_items WHERE plan_id=?1 ORDER BY day IS NULL, day, time IS NULL, time, sort').bind(id).all();
   const { results: events } = await env.DB.prepare(
-    'SELECT id, ts, by_id, by_name, kind, summary FROM num_plan_events WHERE plan_id=?1 AND id > ?2 ORDER BY id LIMIT 50',
+    'SELECT id, ts, by_id, by_name, kind, summary, item_id FROM num_plan_events WHERE plan_id=?1 AND id > ?2 ORDER BY id LIMIT 50',
   ).bind(id, since).all();
+  // How many people have said something ON each item — the badge on the card.
+  const { results: talk } = await env.DB.prepare(
+    "SELECT item_id, COUNT(*) AS n FROM num_plan_events WHERE plan_id=?1 AND kind='comment' AND item_id IS NOT NULL GROUP BY item_id",
+  ).bind(id).all();
+  const comments = Object.fromEntries((talk ?? []).map((r) => [r.item_id, Number(r.n)]));
+  const { results: settlements } = await env.DB.prepare(
+    'SELECT * FROM num_plan_settlements WHERE plan_id=?1 ORDER BY created_at',
+  ).bind(id).all();
 
   // One query for every attendee on the plan, grouped in memory. A per-item
   // query would be N round trips for a list that is almost always tiny.
@@ -2756,12 +3065,17 @@ async function planRead(env, url) {
       : null,
     plan,
     members: members ?? [],
+    // Total, per head, who paid what, who owes whom, and what has already
+    // been squared. Computed here, once, from the items — never stored.
+    money: planMoney(plan, members ?? [], items ?? [], settlements ?? []),
     items: (items ?? []).map((i) => {
       const attendees = byItem.get(i.id) ?? [];
       const v = tally[i.id] ?? { up: 0, down: 0, voters: [] };
       return {
         ...i,
         attendees,
+        comments: comments[i.id] ?? 0,
+        split_with: (() => { try { return i.split_with ? JSON.parse(i.split_with) : null; } catch { return null; } })(),
         // The group feeling on THIS idea, and my own tap so the button can
         // render pressed without a second request.
         votes: { up: v.up, down: v.down },
@@ -2820,7 +3134,15 @@ async function planComment(env, req) {
   const self = await env.DB.prepare('SELECT id, name FROM num_members WHERE id=?1').bind(meId).first();
   if (!self) return json({ error: 'sign up first' }, 404);
   if (!(await memberOf(env, planId, meId))) return json({ error: 'not your plan' }, 403);
-  await event(env, planId, { id: meId, name: self.name }, 'comment', text);
+  // A comment can be ON one item — "can we make this 8 instead?" — and then
+  // it shows under that card as well as in the group chat. Same event row.
+  let itemId = null;
+  if (b.item_id) {
+    itemId = clip(b.item_id, 40);
+    const it = await env.DB.prepare('SELECT id FROM num_plan_items WHERE id=?1 AND plan_id=?2').bind(itemId, planId).first();
+    if (!it) return json({ error: 'unknown item' }, 404);
+  }
+  await event(env, planId, { id: meId, name: self.name }, 'comment', text, null, itemId);
   return json({ ok: true });
 }
 
@@ -3094,6 +3416,8 @@ export async function handleSocial(request, env, path) {
   if (path === '/plan' && post) return await planWrite(env, request);
   if (path === '/plan') return await planRead(env, url);
   if (path === '/plan/item' && post) return await planItem(env, request);
+  if (path === '/plan/reorder' && post) return await planReorder(env, request);
+  if (path === '/plan/settle' && post) return await planSettle(env, request);
   if (path === '/plan/item/attendees' && post) return await itemAttendees(env, request);
   if (path === '/plan/join' && post) return await planJoin(env, request);
   if (path === '/plan/comment' && post) return await planComment(env, request);

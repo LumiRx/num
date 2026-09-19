@@ -97,3 +97,23 @@ CREATE TABLE IF NOT EXISTS num_plan_events (
   payload TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_num_plan_events_plan ON num_plan_events(plan_id, id);
+
+-- THE PLAN BOARD (18 Sep 2026). Added lazily by MIGRATIONS in social.mjs:
+--   num_plans        + ends_on, currency (ISO 4217, default USD), locked_at, locked_by
+--   num_plan_items   + sort (order inside an hour), cost_minor (plan currency),
+--                      paid_by (member id), split_with (JSON array of member ids; NULL = everyone)
+--   num_plan_events  + item_id (a comment ON one item; kinds also gain
+--                      item_moved | item_dropped | locked | unlocked | settled)
+-- Money is computed from the items every read (planMoney); only settlements
+-- are stored, because they are the one thing that cannot be re-derived.
+CREATE TABLE IF NOT EXISTS num_plan_settlements (
+  id         TEXT PRIMARY KEY,               -- stl_<idempotency key>
+  plan_id    TEXT NOT NULL,
+  from_id    TEXT NOT NULL,
+  to_id      TEXT NOT NULL,
+  minor      INTEGER NOT NULL,               -- plan currency, minor units
+  currency   TEXT NOT NULL,
+  via        TEXT NOT NULL,                  -- stars | outside
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_num_plan_settlements_plan ON num_plan_settlements(plan_id);
