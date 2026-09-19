@@ -92,22 +92,24 @@ function Card({ p, i, single }: { p: Pick; i: number; single: boolean }) {
   return (
     <div
       className="glass lift rise-in"
-      style={{ borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', animationDelay: `${i * 45}ms`, gridColumn: single ? '1 / -1' : undefined }}
+      // An open card takes the whole row: the action pills need the width, and
+      // a card that grows in place drags its neighbour's layout with it.
+      style={{ borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', animationDelay: `${i * 45}ms`, gridColumn: single || open ? '1 / -1' : undefined }}
     >
       {/* The picture is the door: tapping it opens the card. */}
       <div {...pressable(() => { setOpen((o) => !o); webEvent('pick_expand', open ? 'close' : 'open'); })} aria-expanded={open} style={{ cursor: 'pointer', position: 'relative' }}>
         {p.photo ? (
-          <div style={imgBox(single)}>
+          <div style={imgBox(single || open)}>
             <img src={p.photo} alt="" loading="lazy" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </div>
-        ) : <Tile name={p.name} tall={single} />}
+        ) : <Tile name={p.name} tall={single || open} />}
         <div style={{ position: 'absolute', top: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
           <OpenState open={p.open_now} />
           {p.rating ? <span style={{ ...badge, background: 'var(--scrim)', marginLeft: 'auto' }}>{p.rating}★</span> : null}
         </div>
       </div>
 
-      <div style={{ padding: '9px 10px 10px', display: 'grid', gap: 4, flex: 1 }}>
+      <div style={{ padding: '9px 10px 10px', display: 'grid', gap: 4, alignContent: 'start' }}>
         {/* The name IS the link. A separate "View" button next to a name
             is one more thing to read and one more thing to aim at. */}
         <a
@@ -180,7 +182,7 @@ export default function PickCards({ picks, msgIndex }: { picks: Pick[]; msgIndex
   const single = picks.length === 1;
   return (
     <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : '1fr 1fr', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : '1fr 1fr', gap: 8, alignItems: 'start' }}>
         {shown.map((p, i) => <Card key={p.id ?? `${p.name}-${i}`} p={p} i={i} single={single} />)}
       </div>
       {picks.length > FOLD_AT && !all && (

@@ -454,7 +454,9 @@ function MsgBubble({ m, index, rateable, continues }: { m: Msg; index: number; r
           // someone tired at the end of a travel day. 15.5/1.62 is the size
           // people actually read prose at — the extra millimetre costs a line
           // of scroll and buys not squinting.
-          maxWidth: '84%', fontSize: 15.5, lineHeight: 1.62, padding: '12px 15px',
+          // A bubble carrying place cards takes the column: two picture cards
+          // in 84% of a phone are two thumbnails with three-word names.
+          maxWidth: m.picks?.length ? '100%' : '84%', fontSize: 15.5, lineHeight: 1.62, padding: '12px 15px',
           fontFamily: 'var(--font-read)',
           letterSpacing: '.005em',
           borderRadius: 18,
