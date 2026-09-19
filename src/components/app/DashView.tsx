@@ -17,7 +17,8 @@ import { tagOf, monthName } from '../../lib/derive';
 import { tripCheck } from '../../lib/prefs';
 import { askNum } from '../../lib/concierge';
 import { listEvents } from '../../lib/events';
-import { refreshRequests, respond } from '../../lib/requests';
+import { refreshRequests } from '../../lib/requests';
+import InviteRail from './InviteRail';
 import { directionsUrl, nextWithPlace, preferredMaps, trafficUrl } from '../../lib/maps';
 import { Scene } from '../../lib/scenes';
 import {
@@ -35,124 +36,6 @@ const h: React.CSSProperties = { fontFamily: 'var(--font-heading)', fontWeight: 
 const sortB = (a: Booking, b: Booking) => a.mo - b.mo || a.day - b.day || a.time.localeCompare(b.time);
 
 /** Shared collapsible shell — the dash is long, and a long dash is a scroll. */
-
-/**
- * REQUESTS — what friends are waiting on. A connection request, a plan that
- * moved, a dinner invite: answered here in a tap rather than by finding the
- * original text and clicking a link.
- */
-function RequestsWidget() {
-  const inbox = useApp((s) => s.inbox);
-  const me = useApp((s) => s.me);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [replyTo, setReplyTo] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [when, setWhen] = useState('');
-
-  const act = async (kind: 'connect' | 'plan' | 'event', id: string, action: 'accept' | 'decline' | 'propose' | 'message', extra = {}) => {
-    setBusy(id);
-    try {
-      setNote(await respond(kind, id, action, extra));
-      setReplyTo(null);
-      setDraft('');
-      setWhen('');
-    } catch (err) {
-      setNote(guestMessage(err, 'That didn’t go through.'));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const pending = inbox.connects.length + inbox.events.length;
-  if (!me || (!pending && !inbox.plans.some((p) => p.latest))) return null;
-
-  const Btn = ({ label, onClick, primary: p }: { label: string; onClick: () => void; primary?: boolean }) => (
-    <span
-      {...pressable(onClick)}
-      className={p ? 'press' : 'glass press'}
-      style={{
-        cursor: 'pointer', borderRadius: 999, padding: '8px 13px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em',
-        ...(p ? { background: 'var(--grad-accent)', color: '#fff' } : { color: 'var(--ink)' }),
-      }}
-    >
-      {label}
-    </span>
-  );
-
-  return (
-    <div className="glass" style={{ ...card, borderLeft: pending ? '3px solid var(--color-accent)' : undefined }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={kicker}>{t('WAITING ON YOU')}</div>
-        {pending > 0 && (
-          <span style={{ background: 'var(--grad-accent)', color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: 999, padding: '2px 7px' }}>{pending}</span>
-        )}
-      </div>
-
-      {inbox.connects.map((c) => (
-        <div key={c.id} style={{ marginTop: 11, paddingTop: 11, borderTop: '1px solid var(--ink-08)' }}>
-          <div style={{ ...h }}>{c.from_name ?? 'A friend'} wants to connect</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
-            {c.plan_title ? `And bring you into “${c.plan_title}”` : 'Once you’re connected your two Nums can trade plans directly'}
-          </div>
-          <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
-            <Btn label={busy === c.id ? '…' : 'ACCEPT'} primary onClick={() => void act('connect', c.id, 'accept')} />
-            <Btn label="NOT NOW" onClick={() => void act('connect', c.id, 'decline')} />
-          </div>
-        </div>
-      ))}
-
-      {inbox.events.map((e) => (
-        <div key={e.token} style={{ marginTop: 11, paddingTop: 11, borderTop: '1px solid var(--ink-08)' }}>
-          <div style={{ ...h }}>{e.host_name ?? 'Someone'} invited you — {e.title}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3 }}>
-            {[e.day, e.time, e.place].filter(Boolean).join(' · ') || 'details to come'}
-          </div>
-          {/* Where the question came from. An invite that arrived with nobody
-              texting you is a surprising thing, and saying so once is cheaper
-              than leaving people to wonder how it got here. */}
-          {e.via === 'agent' && (
-            <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 3 }}>{t('Their NUM asked yours — answer here or in your messages.')}</div>
-          )}
-          <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
-            <Btn label="GOING" primary onClick={() => void act('event', e.token, 'accept')} />
-            <Btn label="MAYBE" onClick={() => void act('event', e.token, 'propose')} />
-            <Btn label="CAN’T" onClick={() => void act('event', e.token, 'decline')} />
-            <Btn label="REPLY" onClick={() => setReplyTo(replyTo === e.token ? null : e.token)} />
-          </div>
-          {replyTo === e.token && (
-            <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
-              <input style={inputStyle} placeholder={t('A note back to the host…')} value={draft} onChange={(ev) => setDraft(ev.target.value)} />
-              <Btn label="SEND" primary onClick={() => void act('event', e.token, 'accept', { message: draft })} />
-            </div>
-          )}
-        </div>
-      ))}
-
-      {inbox.plans.filter((p) => p.latest).map((p) => (
-        <div key={p.id} style={{ marginTop: 11, paddingTop: 11, borderTop: '1px solid var(--ink-08)' }}>
-          <div style={{ ...h }}>{p.title}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 3, lineHeight: 1.45 }}>{p.latest}</div>
-          <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
-            <Btn label="I’M IN" primary onClick={() => void act('plan', p.id, 'accept')} />
-            <Btn label="ANOTHER TIME" onClick={() => setReplyTo(replyTo === p.id ? null : p.id)} />
-            <Btn label="CAN’T" onClick={() => void act('plan', p.id, 'decline')} />
-            <Btn label="INVITE MORE" onClick={() => store.set({ planId: p.id, partyOpen: true })} />
-          </div>
-          {replyTo === p.id && (
-            <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
-              <input style={inputStyle} placeholder={t('When suits you? e.g. Friday 8pm')} value={when} onChange={(ev) => setWhen(ev.target.value)} />
-              <input style={inputStyle} placeholder={t('Add a note (optional)')} value={draft} onChange={(ev) => setDraft(ev.target.value)} />
-              <Btn label="SUGGEST IT" primary onClick={() => void act('plan', p.id, 'propose', { time: when, message: draft })} />
-            </div>
-          )}
-        </div>
-      ))}
-
-      {note && <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 10 }}>{note}</div>}
-    </div>
-  );
-}
 
 /**
  * DIRECTIONS — the only useful question about a route is what time to leave.
@@ -226,7 +109,7 @@ export default function DashView() {
     // the server still sends them.
     next: () => null,
     tonight: () => <TonightStrip />,
-    requests: () => <RequestsWidget />,
+    requests: () => <InviteRail variant="today" />,
     directions: () => <DirectionsWidget />,
     calendar: () => null,
     tripcheck: () => null,

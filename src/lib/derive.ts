@@ -1,7 +1,8 @@
 // Pure derivation helpers ported from Concierge.dc.html renderVals() —
 // tag styling, date formatting, calendar cells, and the day-timeline lane layout.
 import type { CSSProperties } from 'react';
-import type { AppState, Booking, Meeting, TagKind } from './types';
+import type { AppState, Booking, BookingStatus, Meeting, TagKind } from './types';
+import { selKey, withLine } from './agenda';
 
 export interface Tag {
   label: string;
@@ -129,6 +130,18 @@ export function calendarCells(s: AppState): CalCell[] {
       byDay[k] = (byDay[k] || 0) + 1;
     }
   });
+  // Friends' plans and events you're going to put a dot on the day too —
+  // a day that looks empty in the grid and has three friends' dinners on it
+  // is the calendar lying. Mirrored bookings are already counted above.
+  for (const i of s.agenda?.items ?? []) {
+    if (s.bookings.some((b) => b.id === 'grp_' + i.id.slice(-8))) continue;
+    const k = selKey(i.day);
+    byDay[k] = (byDay[k] || 0) + 1;
+  }
+  for (const e of s.agenda?.events ?? []) {
+    const k = selKey(e.day);
+    byDay[k] = (byDay[k] || 0) + 1;
+  }
   const byMeet: Record<string, number> = {};
   s.meetings.forEach((m) => {
     const k = m.mo + '-' + m.day;
@@ -162,7 +175,7 @@ export const TL_PPM = 0.6; // pixels per minute
 
 export interface TimelineEvent {
   key: string;
-  kind: 'plan' | 'meet';
+  kind: 'plan' | 'meet' | 'group' | 'event';
   title: string;
   place: string;
   timespan: string;
@@ -171,6 +184,48 @@ export interface TimelineEvent {
   lanes: number;
   top: number;
   height: number;
+  /** Who it's with — "Sam, Viv +2" for a plan item, "6 going" for an event. */
+  who?: string;
+  /** The plan it belongs to, for the coloured tag and the tap. */
+  planId?: string;
+  planTitle?: string;
+}
+
+/**
+ * The other plans' things and the events on this day (lib/agenda.ts), shaped
+ * like the diary's own entries. A plan item that is ALREADY on the diary as a
+ * mirrored booking (grp_<tail of item id>, or tbl_<request id> for a venue-
+ * confirmed table) is dropped here, so a shared dinner draws once — with the
+ * people — rather than twice.
+ */
+function agendaOnDay(s: AppState, selDay: string) {
+  const ag = s.agenda;
+  if (!ag) return { items: [] as Array<Booking & { kind: 'group'; who: string; planId: string; planTitle: string }>, events: [] as Array<Booking & { kind: 'event'; who: string }>, shadowed: new Set<string>() };
+  const meId = s.me?.id ?? null;
+  const shadowed = new Set<string>();
+  const items = ag.items
+    .filter((i) => selKey(i.day) === selDay && i.time)
+    .map((i) => {
+      shadowed.add('grp_' + i.id.slice(-8));
+      if (i.id.startsWith('itm_tbl_')) shadowed.add('tbl_' + i.id.slice('itm_tbl_'.length));
+      const [, m, d] = i.day.split('-').map(Number);
+      return {
+        id: 'ag_' + i.id, mo: m, day: d, time: i.time as string, dur: 90, place: i.address || i.place || '', title: i.title,
+        grp: 'BKK' as const, status: (i.status === 'confirmed' ? 'confirmed' : 'hold') as BookingStatus, note: '', cost: '',
+        kind: 'group' as const, who: withLine(i.with, meId), planId: i.plan_id, planTitle: i.plan_title,
+      };
+    });
+  const events = ag.events
+    .filter((e) => selKey(e.day) === selDay && e.time)
+    .map((e) => {
+      const [, m, d] = e.day.split('-').map(Number);
+      return {
+        id: 'ev_' + e.id, mo: m, day: d, time: e.time as string, dur: 150, place: e.address || e.place || '', title: e.title,
+        grp: 'BKK' as const, status: 'confirmed' as BookingStatus, note: '', cost: '',
+        kind: 'event' as const, who: e.my_part === 'host' ? `${e.going} going · you host` : `${e.host_name || 'a friend'} hosts · ${e.going} going`,
+      };
+    });
+  return { items, events, shadowed };
 }
 
 const toMin = (t: string) => {
@@ -182,13 +237,16 @@ const fmtM = (m: number) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + 
 
 export function dayTimeline(s: AppState): TimelineEvent[] {
   if (!s.selDay) return [];
+  const ag = agendaOnDay(s, s.selDay);
   const dayEvs = [
     ...s.bookings
-      .filter((b) => b.mo + '-' + b.day === s.selDay && b.status !== 'cancelled')
-      .map((b) => ({ ...b, kind: 'plan' as const, dur: b.dur || 90 })),
+      .filter((b) => b.mo + '-' + b.day === s.selDay && b.status !== 'cancelled' && !ag.shadowed.has(b.id))
+      .map((b) => ({ ...b, kind: 'plan' as const, dur: b.dur || 90, who: undefined as string | undefined, planId: undefined as string | undefined, planTitle: undefined as string | undefined })),
     ...s.meetings
       .filter((m) => m.mo + '-' + m.day === s.selDay)
-      .map((m) => ({ ...m, kind: 'meet' as const, dur: m.dur || 45 })),
+      .map((m) => ({ ...m, kind: 'meet' as const, dur: m.dur || 45, who: undefined as string | undefined, planId: undefined as string | undefined, planTitle: undefined as string | undefined })),
+    ...ag.items.map((i) => ({ ...i })),
+    ...ag.events.map((e) => ({ ...e, planId: undefined as string | undefined, planTitle: undefined as string | undefined })),
   ].sort((a, b) => a.time.localeCompare(b.time));
 
   // Greedy lane packing: place each event in the first lane free at its start.
@@ -210,7 +268,11 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
     const tag: Tag =
       e.kind === 'meet'
         ? { label: (e as Meeting & { kind: 'meet' }).src === 'NUM' ? 'NUM' : 'GCAL', st: mtgTag }
-        : tagOf(e as Booking);
+        : e.kind === 'event'
+          ? { label: 'EVENT', st: mtgTag }
+          : e.kind === 'group'
+            ? { label: (e.planTitle ?? 'PLAN').toUpperCase().slice(0, 14), st: tagOf(e as Booking).st }
+            : tagOf(e as Booking);
     return {
       key: e.id,
       kind: e.kind,
@@ -221,7 +283,10 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
       lane: e.lane,
       lanes: nL,
       top: (e._s - TL_START) * TL_PPM,
-      height: Math.max((e._e - e._s) * TL_PPM, 34),
+      height: Math.max((e._e - e._s) * TL_PPM, e.who ? 46 : 34),
+      who: e.who,
+      planId: e.planId,
+      planTitle: e.planTitle,
     };
   });
 }

@@ -1,6 +1,6 @@
 // Calendar sheet — month grid with plan/meeting dots, the Google Calendar
 // footer, and the selected day's visual timeline (lane-packed blocks).
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import {
@@ -9,6 +9,8 @@ import {
 import type { CalCell } from '../../lib/derive';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
+import { openPlan } from '../../lib/social';
+import { refreshAgenda } from '../../lib/agenda';
 
 function DayCell({ d }: { d: CalCell }) {
   if (!d.dayKey) return <div style={{ minHeight: 34 }} />;
@@ -55,6 +57,9 @@ export default function CalendarSheet() {
   const sel = selDayInfo(s, events.length);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(s.calOpen, ref);
+  // Every plan's things and the events I'm going to — fresh each time the
+  // calendar opens, so a friend's new dinner is on the day when you look.
+  useEffect(() => { if (s.calOpen && s.me) void refreshAgenda(); }, [s.calOpen, s.me?.id]);
   const close = () => store.set({ calOpen: false });
 
   return (
@@ -87,6 +92,7 @@ export default function CalendarSheet() {
         <span style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 9.5, letterSpacing: '.06em', color: 'var(--color-neutral-600)' }}>
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-accent)' }} />{t('PLANS')}</span>
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-text)' }} />{t('MEETINGS')}</span>
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-accent)', opacity: .5 }} />{t('WITH FRIENDS')}</span>
         </span>
       </div>
       <div className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -111,7 +117,11 @@ export default function CalendarSheet() {
               {events.map((e) => (
                 <div
                   key={e.key}
+                  // A friend's plan on your day opens that plan's board.
+                  {...(e.planId ? pressable(() => { void openPlan(e.planId as string); store.set({ calOpen: false, view: 'plan' }); }) : {})}
+                  className={e.planId ? 'tap' : undefined}
                   style={{
+                    cursor: e.planId ? 'pointer' : 'default',
                     position: 'absolute',
                     left: e.lane * (100 / e.lanes) + '%',
                     width: 'calc(' + 100 / e.lanes + '% - 4px)',
@@ -132,8 +142,15 @@ export default function CalendarSheet() {
                     <span style={e.tag.st}>{e.tag.label}</span>
                   </div>
                   <div style={{ fontSize: 9.5, color: 'var(--color-neutral-600)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {e.timespan} · {e.place}
+                    {e.timespan}{e.place ? ` · ${e.place}` : ''}
                   </div>
+                  {/* WHO (19 Sep 2026): the people on it — the plan's IN list,
+                      or the event's going count. Unsure people in brackets. */}
+                  {e.who && (
+                    <div style={{ fontSize: 9.5, color: 'var(--color-accent-700)', fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t('with')} {e.who}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

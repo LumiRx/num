@@ -265,3 +265,29 @@ describe('a venue answers a table asked for from the plan (bookdesk → tableAns
     assert.equal((await tableAnswered(env, { row: { ...row, plan_id: 'pl_gone' }, verdict: 'confirmed' })).ok, false);
   });
 });
+
+describe('the agenda: your day across every plan, with who', () => {
+  test('dated things from every plan I am on, each with the people who are IN (owner counts, OUT does not, unsure flagged)', async () => {
+    db.prepare("INSERT INTO num_plans (id, title, owner_id, starts_on, join_code) VALUES ('pl_2','Porto day','mem_sam','2026-10-05','POR001')").run();
+    db.prepare("INSERT INTO num_plan_members (plan_id, member_id, name, role, vote) VALUES ('pl_2','mem_sam','Sam','owner',NULL),('pl_2','mem_dre','Dre','member','in'),('pl_2','mem_viv','Viv','member','out')").run();
+    db.prepare("UPDATE num_plan_members SET vote='in' WHERE plan_id='pl_1' AND member_id='mem_sam'").run();
+    await addItem('mem_dre', { title: 'Ramiro', day: '2026-10-02', time: '20:00' });
+    await addItem('mem_dre', { title: 'Dropped thing', day: '2026-10-02', time: '21:00', status: 'cancelled' });
+    db.prepare("INSERT INTO num_plan_items (id, plan_id, kind, title, day, time, status) VALUES ('it_porto','pl_2','idea','Francesinha','2026-10-05','13:00','idea')").run();
+    db.prepare("INSERT INTO num_plan_items (id, plan_id, kind, title, day, time, status) VALUES ('it_far','pl_2','idea','Too far out','2026-11-05','13:00','idea')").run();
+
+    const r = await read(await get('/agenda', { me: 'mem_dre', from: '2026-10-01', to: '2026-10-10' }));
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.items.map((i) => [i.plan_title, i.title, i.day, i.time]), [['Lisbon', 'Ramiro', '2026-10-02', '20:00'], ['Porto day', 'Francesinha', '2026-10-05', '13:00']], 'cancelled and out-of-window things are not on the day');
+    const lisbon = r.body.items[0].with.map((p) => [p.name, p.sure]);
+    assert.deepEqual(lisbon, [['Dre', true], ['Sam', true], ['Viv', false]], 'owner in by definition, IN is sure, no answer is unsure');
+    const porto = r.body.items[1].with.map((p) => p.name);
+    assert.deepEqual(porto, ['Sam', 'Dre'], 'Viv said OUT — not on the day');
+  });
+
+  test('bad dates are refused; a stranger sees nothing', async () => {
+    assert.equal((await read(await get('/agenda', { me: 'mem_dre', from: 'next week', to: '2026-10-10' }))).status, 400);
+    const r = await read(await get('/agenda', { me: 'mem_stranger', from: '2026-10-01', to: '2026-10-10' }));
+    assert.deepEqual(r.body.items, []);
+  });
+});

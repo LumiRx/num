@@ -2439,12 +2439,15 @@ async function requests(env, url) {
   // Plans you are already in, where someone else has added something you have
   // not seen — the "they want you at dinner on Thursday" case.
   const { results: plans } = await env.DB.prepare(
-    `SELECT p.id, p.title, p.dest, p.starts_on,
+    `SELECT p.id, p.title, p.dest, p.starts_on, pm.vote AS my_vote, pm.role AS my_role, o.name AS owner_name,
             (SELECT COUNT(*) FROM num_plan_members x WHERE x.plan_id=p.id) members,
             (SELECT COUNT(*) FROM num_plan_items i WHERE i.plan_id=p.id AND i.status IN ('idea','proposed')) open_items,
             (SELECT summary FROM num_plan_events e WHERE e.plan_id=p.id AND e.by_id <> ?1 ORDER BY e.id DESC LIMIT 1) latest
        FROM num_plans p JOIN num_plan_members pm ON pm.plan_id=p.id
-      WHERE pm.member_id=?1 ORDER BY p.updated_at DESC LIMIT 10`,
+       LEFT JOIN num_members o ON o.id = p.owner_id
+      WHERE pm.member_id=?1 AND p.state <> 'done'
+        AND (p.starts_on IS NULL OR p.starts_on >= date('now','-1 day'))
+      ORDER BY p.updated_at DESC LIMIT 10`,
   ).bind(meId).all();
 
   // The events tables belong to events.mjs, and a member who only ever opens
@@ -3357,6 +3360,58 @@ export async function tableAnswered(env, { row, verdict, address = null }) {
   return { ok: true, item_id: itemId };
 }
 
+/**
+ * YOUR DAY, ACROSS EVERY PLAN (19 Sep 2026). What is on between two dates
+ * from every plan this member is on, with who is IN on each plan, plus the
+ * events they are going to or hosting. The calendar draws it hour by hour
+ * with the people on each card (lib/derive.ts dayTimeline). Read-only; a
+ * failed read throws and answers 503 like every other list here.
+ */
+async function agenda(env, url) {
+  const meId = clip(url.searchParams.get('me'), 40);
+  const from = clip(url.searchParams.get('from'), 10);
+  const to = clip(url.searchParams.get('to'), 10);
+  if (!meId) return json({ error: 'me required' }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from ?? '') || !/^\d{4}-\d{2}-\d{2}$/.test(to ?? '')) return json({ error: 'from and to are YYYY-MM-DD' }, 400);
+  const { results: items } = await env.DB.prepare(
+    `SELECT i.id, i.plan_id, p.title AS plan_title, i.title, i.day, i.time, i.status, i.kind, i.place, i.address, i.cost_minor, p.currency
+       FROM num_plan_items i
+       JOIN num_plans p ON p.id = i.plan_id
+       JOIN num_plan_members pm ON pm.plan_id = i.plan_id AND pm.member_id = ?1
+      WHERE i.day BETWEEN ?2 AND ?3 AND i.status <> 'cancelled'
+      ORDER BY i.day, i.time IS NULL, i.time, i.sort LIMIT 200`,
+  ).bind(meId, from, to).all();
+  const planIds = [...new Set((items ?? []).map((i) => i.plan_id))];
+  const who = {};
+  if (planIds.length) {
+    const marks = planIds.map((_, n) => `?${n + 1}`).join(',');
+    const { results: people } = await env.DB.prepare(
+      `SELECT plan_id, member_id, name, role, vote FROM num_plan_members WHERE plan_id IN (${marks}) ORDER BY role = 'owner' DESC, joined_at`,
+    ).bind(...planIds).all();
+    for (const r of people ?? []) {
+      // IN, or the owner (in by definition). MAYBE (no answer) rides along
+      // flagged, so the card can grey them; OUT is not on the day.
+      if (r.vote === 'out') continue;
+      (who[r.plan_id] ??= []).push({ member_id: r.member_id, name: r.name, sure: r.vote === 'in' || r.role === 'owner' });
+    }
+  }
+  await ensureEvents(env);
+  const { results: events } = await env.DB.prepare(
+    `SELECT e.id, e.title, e.day, e.time, e.place, e.address, e.host_id, m.name AS host_name,
+            (SELECT COUNT(*) FROM num_event_guests y WHERE y.event_id = e.id AND y.rsvp = 'yes') AS going,
+            CASE WHEN e.host_id = ?1 THEN 'host' ELSE 'guest' END AS my_part
+       FROM num_events e
+       LEFT JOIN num_members m ON m.id = e.host_id
+      WHERE e.state = 'open' AND e.day BETWEEN ?2 AND ?3
+        AND (e.host_id = ?1 OR EXISTS (SELECT 1 FROM num_event_guests g WHERE g.event_id = e.id AND g.member_id = ?1 AND g.rsvp = 'yes'))
+      ORDER BY e.day, e.time LIMIT 100`,
+  ).bind(meId, from, to).all();
+  return json({
+    items: (items ?? []).map((i) => ({ ...i, with: who[i.plan_id] ?? [] })),
+    events: events ?? [],
+  });
+}
+
 /** The computation behind /plan/fit, exported so the brain can use it too. */
 export async function groupNeeds(env, planId) {
   const { results } = await env.DB.prepare(
@@ -3451,6 +3506,7 @@ export async function handleSocial(request, env, path) {
   if (path === '/pay' && post) return await pay(env, request);
   if (path === '/respond' && post) return await respond(env, request);
   if (path === '/plans') return await planList(env, url);
+  if (path === '/agenda') return await agenda(env, url);
   if (path === '/plan' && post) return await planWrite(env, request);
   if (path === '/plan') return await planRead(env, url);
   if (path === '/plan/item' && post) return await planItem(env, request);

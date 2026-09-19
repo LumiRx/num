@@ -2,6 +2,7 @@
 import type { TabState } from './tabs';
 import type { Errand } from './errands';
 import type { TableDraft, TableRequest, TableState } from './bookdesk';
+import type { Agenda } from './agenda';
 import type { TravelDraft, TravelReferral } from './travel';
 import type { FlightOffer, FlightQuery } from './flights';
 import type { DmMessage, DmPeer } from './dm';
@@ -221,7 +222,14 @@ export interface EventGuest {
 /** Everything waiting on this member's answer. */
 export interface InboxRequests {
   connects: Array<{ id: string; a_id: string; plan_id: string | null; from_name: string | null; from_avatar: string | null; plan_title: string | null; created_at: string }>;
-  plans: Array<{ id: string; title: string; dest: string | null; members: number; open_items: number; latest: string | null }>;
+  plans: Array<{
+    id: string; title: string; dest: string | null; members: number; open_items: number; latest: string | null;
+    /** Whether I have said I'm in or out — null is "the plan needs you". */
+    my_vote?: 'in' | 'out' | null;
+    my_role?: 'owner' | 'member' | string;
+    owner_name?: string | null;
+    starts_on?: string | null;
+  }>;
   events: Array<{
     token: string; event_id: string; title: string; day: string | null; time: string | null;
     place: string | null; host_name: string | null;
@@ -656,6 +664,10 @@ export interface AppState {
    * confirmed table is announced once, not on every launch.
    */
   bookSeen?: Record<string, TableState>;
+  /** Invite sources hidden on this phone (InviteRail muteKeyOf) — hides, never declines. */
+  mutedInvites?: string[];
+  /** Every plan's dated things and the events I'm going to, three weeks around today (lib/agenda.ts). Server truth, not persisted. */
+  agenda?: Agenda | null;
 
   /**
    * A trip the concierge proposed handing to a travel agency. Non-null opens

@@ -173,9 +173,15 @@ describe('the boundary is wired', () => {
     assert.match(DATA, /old blobs on old devices outlive the code that wrote them/);
   });
 
-  test('DashView still reads the guarantee plainly, because it is now true', () => {
+  test('the inbox reader still reads the guarantee plainly, because it is now true', () => {
     // Not scattering optional chaining through the component: the store owes
-    // it a shape, and now it actually keeps that promise on both paths.
-    assert.match(DASH, /inbox\.connects\.length/);
+    // it a shape, and now it actually keeps that promise on both paths. The
+    // reader moved from DashView to InviteRail on 19 Sep 2026 (one rail, two
+    // screens); the guarantee it relies on is the same.
+    const INVITES = readFileSync(new URL('./invites.ts', import.meta.url), 'utf8');
+    assert.match(INVITES, /of inbox\.connects\)/);
+    assert.match(INVITES, /of inbox\.events\)/);
+    assert.match(INVITES, /of inbox\.plans\)/);
+    assert.match(DASH, /InviteRail variant="today"/);
   });
 });

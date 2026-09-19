@@ -8,6 +8,7 @@ import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
 import { startBookSync } from '../../lib/bookdesk';
+import { cardsOf } from '../../lib/invites';
 import { bootDm, closeDmThread, refreshDmInbox, startDmSync } from '../../lib/dm';
 import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
@@ -51,6 +52,9 @@ import { fmtDate, loadLang, pickLang, t, useI18nTick } from '../../lib/i18n';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
+  // The PLAN badge: invites and plans waiting on an answer, minus what this
+  // phone has muted (InviteRail.cardsOf is the one definition of "waiting").
+  const inviteCount = useApp((s) => (s.me ? cardsOf(s.inbox, s.mutedInvites ?? [], { newsToo: false }).length : 0));
   const stars = useApp((s) => s.stars);
   const planId = useApp((s) => s.planId);
   const nBookings = useApp((s) => s.bookings.filter((b) => b.status !== 'cancelled').length);
@@ -351,7 +355,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
           every screen instead of being one of three equal places to be. */}
       <div role="tablist" className="glass" style={{ display: 'flex', margin: '10px 10px 2px', borderRadius: 999, padding: 4, position: 'relative', zIndex: 2 }}>
         <div {...pressable(() => store.set({ view: 'dash' }), 'tab')} aria-selected={view === 'dash'} style={segStyle(view === 'dash')}><LayoutIcon size={13} />{t('TODAY')}</div>
-        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={segStyle(view === 'plan')}><RouteIcon size={13} />{t('PLAN')}</div>
+        <div {...pressable(() => store.set({ view: 'plan' }), 'tab')} aria-selected={view === 'plan'} style={{ ...segStyle(view === 'plan'), position: 'relative' }}>
+          <RouteIcon size={13} />{t('PLAN')}
+          {/* Open invites and plans that need your answer — the count on the
+              rail at the top of PLAN, so it can be seen from any tab. */}
+          {inviteCount > 0 && (
+            <span aria-label={t('{n} waiting on you', { n: inviteCount })} style={{ position: 'absolute', top: 4, right: 8, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: view === 'plan' ? '#fff' : 'var(--grad-accent)', color: view === 'plan' ? 'var(--color-accent-700)' : '#fff', fontSize: 9, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{inviteCount}</span>
+          )}
+        </div>
         <div {...pressable(() => store.set({ view: 'mem' }), 'tab')} aria-selected={view === 'mem'} style={segStyle(view === 'mem')}><SparklesIcon size={13} />{t('MEMORY')}</div>
       </div>
 

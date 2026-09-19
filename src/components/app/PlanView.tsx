@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 // SHARE actions. A plan tab opens the plan board inline (PlanBoard.tsx).
 import { store, useApp } from '../../lib/store';
 import PlanBoard from './PlanBoard';
+import InviteRail from './InviteRail';
+import { refreshRequests } from '../../lib/requests';
+import { refreshAgenda } from '../../lib/agenda';
 import { openPlan, setAttendee } from '../../lib/social';
 import { pressable } from '../../lib/a11y';
 import { tagOf, bookingMetaLine, monthName } from '../../lib/derive';
@@ -305,9 +308,16 @@ export default function PlanView() {
   const plan = tab !== 'diary' ? plans.find((p) => p.id === tab) ?? null : null;
   useEffect(() => { if (tab !== 'diary' && !plan) setTab('diary'); }, [tab, plan]);
 
+  // INVITES sit above everything on PLAN — this is where people come to feel
+  // connected, and until 19 Sep none of what friends, hosts and plans were
+  // asking showed here. Re-read on every visit to the tab.
+  const me = useApp((s) => s.me);
+  useEffect(() => { if (me) { void refreshRequests(); void refreshAgenda(); } }, [me?.id]);
+
   if (!demo && plan) {
     return (
       <div ref={scrollRef} className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
+        <InviteRail variant="plan" />
         <PlanTabs tab={tab} setTab={pick} />
         <PlanBoard plan={plan} scrollRef={scrollRef} />
       </div>
@@ -315,6 +325,7 @@ export default function PlanView() {
   }
   return (
     <div ref={scrollRef} className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
+      {!demo && <InviteRail variant="plan" />}
       {!demo && <PlanTabs tab={tab} setTab={pick} />}
       {/* YOUR DAY, at the top of your plan (18 Sep 2026). These three came off
           TODAY, which had become the concierge's screen and your diary at the

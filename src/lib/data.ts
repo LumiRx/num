@@ -107,6 +107,8 @@ function baseState() {
     bookDraft: null,
     bookRequests: [],
     bookSeen: {},
+    mutedInvites: [],
+    agenda: null,
     travelDraft: null,
     travelReferrals: [],
     tabOpen: null,
@@ -255,7 +257,7 @@ export function persistable(s: AppState) {
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.
-    bookDraft, bookRequests,
+    bookDraft, bookRequests, agenda,
     i18nTick,
     // Same reasoning for the travel pair: a referral restored from
     // localStorage would show "waiting on the agency" for an agency that
@@ -374,6 +376,8 @@ export const REPAIRED_ARRAYS = [
   'errands', 'myErrands', 'bookRequests', 'travelReferrals', 'flightOffers',
   // 18 Sep 2026: fares the guest chose to keep.
   'savedFlights',
+  // 19 Sep 2026: invite sources muted on this phone (InviteRail).
+  'mutedInvites',
 ] as const;
 
 export function repairShapes(saved: Record<string, unknown>): Record<string, unknown> {
