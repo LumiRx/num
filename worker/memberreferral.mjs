@@ -170,6 +170,39 @@ export async function linkReferral(env, { memberId, code } = {}) {
     ).bind(memberId, payee, rateFor(env), new Date().toISOString()).run();
 
     const linked = Number(res?.meta?.changes ?? 0) > 0;
+
+    /* ── TELL THEM IT HAPPENED ────────────────────────────────────────────
+     *
+     * Dre, 19 Sep 2026: "people need to know their connections are
+     * happening."
+     *
+     * Before this, the only thing that ever reached a referrer was the
+     * notification inside creditMemberReferral — which fires when their
+     * person SPENDS, weeks later, and may never fire at all. So somebody
+     * could post their link, bring in eleven people, and hear nothing for a
+     * month. The join is the moment the link is PROVEN to work and it costs
+     * nothing to say so.
+     *
+     * Only on a fresh link. An `already` is a second attempt at an
+     * attribution that exists, and announcing it would tell somebody they
+     * gained a person they gained last week.
+     *
+     * Awaited rather than fired and forgotten, because a Worker may be
+     * torn down the moment the response is returned and an un-awaited
+     * promise is a notification that sometimes arrives. Fully swallowed:
+     * see the file — nothing in it may fail a signup.
+     */
+    if (linked) {
+      try {
+        const { announceReferral } = await import('./referralannounce.mjs');
+        const who = await env.DB.prepare('SELECT name FROM num_members WHERE id = ?1')
+          .bind(String(memberId)).first().catch(() => null);
+        await announceReferral(env, { referrerId: payee, newMemberName: who?.name });
+      } catch (e) {
+        console.warn('[memberreferral announce]', e?.message ?? e);
+      }
+    }
+
     return { ok: linked, already: !linked, referrer: payee };
   } catch (e) {
     console.warn('[memberreferral link]', e?.message ?? e);

@@ -381,6 +381,7 @@ import * as QRCHECK from './qrcheck.mjs';
 import * as PAYRAILS from '../worker/payrails.mjs';
 import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
+import * as DETECT from './pos/detect.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
 import * as BILLITEMS from '../worker/billitems.mjs';
 import * as PAYTRACK from '../worker/paytrack.mjs';
@@ -422,6 +423,7 @@ import { hostSuppliers, supplierAssets } from './hostsuppliers.mjs';
 // and already pays — see that file's header, and ambassador.mjs's.
 import {
   ambJoin, ambSummary, ambProfile, ambSocial, ambOffers, ambClaim, ambDirectory,
+  ambMilestonesAdmin,
 } from './ambassador.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
@@ -1232,6 +1234,10 @@ const WORKER = {
       // Read by a HOST or a BUSINESS, never by the open web. See the module.
       if (p === "/api/amb/directory" && req.method === "GET")
         return ambDirectory(req, env, url, AMB_DEPS);
+      // Who NUM owes a mystery bonus. Admin key, not a console key — this is
+      // the list that keeps a discretionary reward from becoming silence.
+      if (p === "/api/admin/milestones")
+        return ambMilestonesAdmin(req, env, url, AMB_DEPS);
 
       if (p === "/api/host/intros") return hostIntros(req, env, url, ctx);
       if (p === "/api/host/nearby" && req.method === "GET") return hostNearby(req, env, url);
@@ -9439,17 +9445,42 @@ async function venuePayPage(req, env, url) {
   let posTile = "";
   try {
     const conn = await POS.connectionFor(env, biz.id);
+
+    /* WHICH TILL ARE THEY PROBABLY ON?
+     *
+     * Connecting a till is the step with the most drop-off in venue
+     * onboarding, and the reason is that the console asks an abstract
+     * question of somebody standing behind a bar. NUM already holds the
+     * clue — the payment target on their own sticker — so the tile leads
+     * with one prompt instead of a menu. A guess, always said as one, and
+     * the full list stays one tap below it. See growth/pos/detect.mjs. */
+    let guess = null;
+    if (!conn) {
+      const sticker = await env.DB.prepare(
+        `SELECT kind, target FROM num_paylinks
+          WHERE business_id = ?1 AND state = 'active' AND COALESCE(one_time,0) = 0
+          ORDER BY created_at DESC LIMIT 1`,
+      ).bind(biz.id).first().catch(() => null);
+      if (sticker) guess = DETECT.guessTill({ kind: sticker.kind, target: sticker.target });
+    }
+    const prompt = guess ? DETECT.tillPrompt(guess) : null;
+
     posTile = `
 <div class="tile noprint" id="pos">
   <b>Your till</b>
   ${!conn ? `
+    ${prompt ? `<p class="sub" style="margin-top:4px"><b>${esc(prompt)}</b></p>` : ""}
     <p class="sub" style="margin-top:4px">Connect your point of sale and NUM can pull an open check
     instead of a member of staff typing the figure. Optional &mdash; typing it works exactly as it does now.</p>
-    ${POS.vendors().map((v) => (POS.posReady(env, v)
+    ${POS.vendors()
+      // The guessed vendor first, when NUM can actually read it. Ordering is
+      // the whole of the nudge: nothing is pre-selected and nothing is hidden.
+      .sort((a, b) => (guess?.connect && guess.vendor === a ? -1 : guess?.connect && guess.vendor === b ? 1 : 0))
+      .map((v) => (POS.posReady(env, v)
       ? `<a class="btn" style="display:inline-block;text-decoration:none;margin-right:8px" href="/biz/pos/start?vendor=${esc(v)}&k=${k}">Connect ${esc(POS.adapterFor(v).label)}</a>`
       : `<p class="sub" style="color:var(--warn)">${esc(POS.adapterFor(v).label)} is not switched on for NUM yet (${esc(POS.posNeeds(env, v).join("; "))}).</p>`)).join("")}
     <p class="sub" style="margin-top:8px">${esc(POS.adapterFor("square").SELLER_NOTE)}</p>
-    <p class="sub">Lightspeed next; Toast needs a partner agreement.</p>`
+    <p class="sub">Lightspeed reads the check BY TABLE and brings the items with it, so a venue on it never types a bill. Toast needs a partner agreement and has no self-serve path.</p>`
   : `
     <p class="sub" style="margin-top:4px">${esc(conn.vendor)} &middot;
       ${conn.usable ? "connected" : esc(conn.state === "needs_reauth" ? "needs reconnecting" : conn.state)}

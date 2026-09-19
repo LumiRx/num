@@ -793,8 +793,11 @@ export async function markPaid(env, bookingId, paidCents) {
     // are told about the INCREASE rather than the whole figure again. This
     // function replaces rather than adds, so without the delta a second
     // instalment would credit an Expert for the first one twice.
+    // member_id is here for the referral hook below. Without it in this SELECT
+    // the hook reads undefined, never fires, and the whole member referral
+    // programme is unreachable again — silently, and with every test passing.
     const before = await env.DB.prepare(
-      'SELECT business_id, paid_cs, currency FROM num_commissions WHERE booking_id = ?1',
+      'SELECT business_id, member_id, paid_cs, currency FROM num_commissions WHERE booking_id = ?1',
     ).bind(String(bookingId)).first().catch(() => null);
 
     const res = await env.DB.prepare(
@@ -830,6 +833,57 @@ export async function markPaid(env, bookingId, paidCents) {
       } catch (e) {
         // Never let a payout programme break the recording of a payment.
         console.warn('[commission paid] revenue hook', e?.message ?? e);
+      }
+    }
+
+    /* ── THE MEMBER WHO WAS BROUGHT IN, AND WHOEVER BROUGHT THEM ─────────
+     *
+     * `creditMemberReferral` had **no callers at all** when this was written
+     * on 19 Sep 2026. It was complete, tested, documented, and unreachable —
+     * the third time this codebase has found exactly that, after
+     * `recordRevenue` and `creditBizReferral`, and the file that fixed those
+     * two says why it matters: code that is correct, tested and unreachable
+     * looks exactly like code that works, right up until somebody asks where
+     * their money is.
+     *
+     * It mattered more this time, because the ambassador programme shipped
+     * the same day telling people they earn 20% of what NUM collects. Every
+     * one of those consoles would have read a number that could only ever be
+     * zero.
+     *
+     * WHY HERE, beside the business hook rather than anywhere else:
+     *   · This is money NUM RECEIVED, not money owed. A share may only be
+     *     paid out of what actually arrived — hooking accrual would pay a
+     *     referrer for an invoice the venue has not settled.
+     *   · `num_commissions` carries `member_id`, so the booking already knows
+     *     whose activity produced it. Nothing new has to be plumbed.
+     *   · Inside markPaid rather than at its callers, so every future caller
+     *     is covered without anybody remembering — which is the failure that
+     *     left the other two unreachable for a week each.
+     *
+     * The two hooks are independent and BOTH are correct: the business hook
+     * pays whoever introduced the VENUE, this one pays whoever introduced the
+     * GUEST. Different people, different programmes, same arriving pound.
+     *
+     * Idempotent on the same ref the business hook uses, so a reconciliation
+     * run twice credits once. See creditMemberReferral — it refuses a ref it
+     * has already paid.
+     */
+    if (delta > 0 && before?.member_id) {
+      try {
+        const { creditMemberReferral } = await import('./memberreferral.mjs');
+        // Stars are whole units of 100 minor. A commission too small to make
+        // one Star credits nothing rather than rounding a payout up.
+        const stars = Math.floor(delta / 100);
+        if (stars > 0) {
+          await creditMemberReferral(env, {
+            memberId: before.member_id,
+            stars,
+            ref: `comm:${bookingId}:${Math.round(paidCents)}`,
+          });
+        }
+      } catch (e) {
+        console.warn('[commission paid] member referral hook', e?.message ?? e);
       }
     }
 

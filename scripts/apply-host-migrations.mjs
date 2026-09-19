@@ -198,6 +198,11 @@ const FILES = [
   // second pass is a no-op. The money is not in here — it was already built
   // in worker/memberreferral.mjs and this is only the door onto it.
   'worker/migrations/0051_ambassadors.sql',
+  'worker/migrations/0052_stay_bookings.sql',
+  // Sign-up milestones and the mystery bonus behind each. One table, one
+  // unique index, no ALTER. The rung a person reached is a row because a
+  // discretionary reward with no record of who is owed one is not a reward.
+  'worker/migrations/0053_ambassador_milestones.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

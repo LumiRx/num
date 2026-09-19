@@ -37,8 +37,11 @@
     "0048_business_comms.sql": "dd48dc9f02086c8eca06c2b5a0a3509c16bf49895cca17829d8a302896901f3c",
     "0049_editorial_aliases.sql": "09b027111f39128f2af2a68ae4a52ec1b9b69ca86e175e74edecdb57c27b94e1",
     "0050_mobile_venues.sql": "5e83cc2de74d54015d8f7b67083176b366a2dc66e18eadcb8dba7c2567c4c465",
-    "0051_ambassadors.sql": "de0e05374bcb67f484bcbce9cec425747f398d10ab236dafe2dd50a3ed428a47"
+    "0051_ambassadors.sql": "de0e05374bcb67f484bcbce9cec425747f398d10ab236dafe2dd50a3ed428a47",
+    "0053_ambassador_milestones.sql": "55526a46f9c3206179cad8ec5a6a4fdfacdfda9390ae9e5f69fa422c3aae18a7"
   },
   "_pending_why": "Registered migrations that production has NOT had yet. Adding a migration means adding it here; applying it moves it into sealed automatically. Every registered migration must be in exactly one of the two lists, so \"has production got this?\" is answerable from the repo rather than from memory.",
-  "pending": []
+  "pending": [
+    "0052_stay_bookings.sql"
+  ]
 }

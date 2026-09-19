@@ -62,6 +62,7 @@
  */
 import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
 import { referralSummary } from '../worker/memberreferral.mjs';
+import { TIERS, MYSTERY_LINE, nextTier, milestonesFor, recordMilestones } from './milestones.mjs';
 
 /** Matches the CHECK on num_ambassador_socials.platform. Both copies exist
  *  because SQLite will not hand the list back; a test binds them. */
@@ -217,6 +218,43 @@ export async function ambSummary(req, env, url, D) {
         ORDER BY COALESCE(followers_verified, followers_claimed, 0) DESC`,
     ).bind(amb.id).all(), 'your channels');
 
+    /* ── WHO THEY ACTUALLY BROUGHT IN ──────────────────────────────────
+     *
+     * Dre, 19 Sep 2026: "people need to know their connections are
+     * happening." A count alone does not do that — "3" is a number, and
+     * three rows with dates on them are three people.
+     *
+     * AN INITIAL, NEVER A NAME, AND NEVER CONTACT DETAILS. These people
+     * joined NUM; they did not agree to appear on somebody else's roster.
+     * "J. joined on the 14th, has not used NUM yet" carries the whole of
+     * the signal the ambassador needs — their link works, and this person
+     * has not earned them anything yet — without handing over a list of
+     * strangers' names to whoever holds a console key.
+     *
+     * `earned` is per person and it is the honest half: an ambassador
+     * looking at ten joins and zero earnings should be able to see that it
+     * is because nobody has booked anything, not because NUM is holding
+     * out on them.
+     */
+    const brought = memberId ? await rows(env.DB.prepare(
+      `SELECT m.id, m.name, m.created_at, m.referred_at,
+              (SELECT COALESCE(SUM(s.delta),0) FROM num_star_moves s
+                WHERE s.member_id = ?1 AND s.kind = 'referral' AND s.counterparty = m.id) AS earned
+         FROM num_members m
+        WHERE m.referred_by = ?1
+        ORDER BY COALESCE(m.referred_at, m.created_at) DESC LIMIT 200`,
+    ).bind(memberId).all(), 'the people you brought in') : [];
+
+    /* Milestones are recorded on every read as well as on every join, so a
+       rung passed while a notification failed — or before this existed — is
+       still recorded. The unique index means a recount tells nobody twice.
+
+       COUNTED FROM money.referred, NOT from brought.length: that list is
+       capped at 200, so the day somebody passes two hundred sign-ups the
+       cap would silently freeze their milestones for ever. */
+    if (memberId) await recordMilestones(env, { ambassadorId: amb.id, count: money.referred });
+    const reached = await milestonesFor(env, amb.id);
+
     const claims = await rows(env.DB.prepare(
       `SELECT c.id, c.state, c.post_url, c.posted_at, c.note, c.created_at,
               o.id AS offer_id, o.title, o.they_get, o.we_ask, o.ends_at
@@ -251,6 +289,21 @@ export async function ambSummary(req, env, url, D) {
         : 'Your link works and every arrival is counted — but NUM cannot pay you yet, because your share is paid into a NUM member wallet and we have not found yours. Open NUM, verify this same email address in the app, then reload this page.',
       socials,
       followers_note: 'Follower counts are what you told us, not what a platform confirmed. Every page that shows them says so.',
+      /* The people, not just the number. Initials only — see the query. */
+      brought: brought.map((m) => ({
+        initial: String(m.name || '').trim() ? String(m.name).trim()[0].toUpperCase() + '.' : 'Someone',
+        joined: m.referred_at || m.created_at,
+        earned: Number(m.earned || 0),
+      })),
+      milestones: {
+        tiers: TIERS,
+        reached,
+        next: nextTier(money.referred),
+        /* ONE SENTENCE, ONE PLACE. It must never harden into a promise on
+           one screen while staying honest on another, so every surface
+           renders this string rather than writing its own. */
+        how_it_works: MYSTERY_LINE,
+      },
       claims,
       benefits: BENEFITS,
       listed: Number(amb.listed) === 1,
@@ -757,4 +810,68 @@ Reply to this email and a person answers.
   } catch (e) {
     console.warn('[ambassador mail]', e?.message ?? e);
   }
+}
+
+/**
+ * GET  /api/admin/milestones?key=ADMIN  — who NUM owes a bonus, oldest first.
+ * POST /api/admin/milestones?key=ADMIN  — { id, state, reward_kind, reward_note }
+ *
+ * ── WHY A DISCRETIONARY REWARD NEEDS AN ENDPOINT ────────────────────────
+ *
+ * Nothing is guaranteed at a milestone — that is the design. Which means the
+ * thing that can go wrong is not NUM choosing something cheap, it is NUM
+ * choosing NOTHING because nobody knew there was a choice to make. An
+ * ambassador reaches twenty-five, hears nothing for three weeks, and tells
+ * the other ambassadors the milestones are decoration. That costs more than
+ * any prize.
+ *
+ * So this is the list, with `days_waiting` on every row, and it is the
+ * answer to "are we behind on anybody". Marking one `sent` with a note is
+ * what puts the reward on the ambassador's own screen — until then their
+ * console says "reached — NUM will be in touch", which is true, and stays
+ * true only for as long as somebody reads this list.
+ */
+export async function ambMilestonesAdmin(req, env, url, D) {
+  const { J, clean, readJSON } = D;
+  const key = url.searchParams.get('key') || '';
+  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return J({ ok: false }, 401);
+
+  const { openMilestones } = await import('./milestones.mjs');
+
+  if (req.method === 'GET') {
+    const open = await openMilestones(env);
+    return J({
+      ok: true,
+      open,
+      owed: open.length,
+      // The number worth looking at. One person waiting a month is worse
+      // than ten waiting a day, and a raw count hides that.
+      longest_wait_days: open.length ? Math.max(...open.map((r) => Number(r.days_waiting || 0))) : 0,
+      how: 'POST { id, state: chosen|sent|declined, reward_kind, reward_note }. '
+        + 'reward_note is shown to the ambassador on their own console once state is sent.',
+    });
+  }
+
+  if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
+  let b;
+  try { b = await readJSON(req, 8192); } catch { return J({ ok: false }, 400); }
+
+  const id = clean(b.id, 60);
+  const state = ['chosen', 'sent', 'declined'].includes(String(b.state)) ? String(b.state) : null;
+  if (!id || !state) return J({ ok: false, error: 'id and state' }, 400);
+
+  const res = await env.DB.prepare(
+    `UPDATE num_ambassador_milestones
+        SET state = ?2,
+            reward_kind = COALESCE(?3, reward_kind),
+            reward_note = COALESCE(?4, reward_note),
+            decided_by  = COALESCE(?5, decided_by),
+            chosen_at = CASE WHEN ?2 IN ('chosen','sent') AND chosen_at IS NULL THEN ?6 ELSE chosen_at END,
+            sent_at   = CASE WHEN ?2 = 'sent' THEN ?6 ELSE sent_at END
+      WHERE id = ?1`,
+  ).bind(id, state, clean(b.reward_kind, 40) || null, clean(b.reward_note, 200) || null,
+    clean(b.decided_by, 60) || null, nowIso()).run();
+
+  if (!Number(res?.meta?.changes ?? 0)) return J({ ok: false, error: 'no such milestone' }, 404);
+  return J({ ok: true, id, state });
 }

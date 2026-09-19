@@ -71,6 +71,12 @@ nav.tabs button[aria-selected=true]{background:var(--pri);border-color:var(--pri
 ul.plain{list-style:none;padding:0;margin:0}
 ul.plain li{border-top:1px solid var(--line);padding:13px 0}
 ul.plain li:first-child{border-top:0}
+.bar{height:9px;border-radius:999px;background:#eef2f6;overflow:hidden;margin:4px 0 12px}
+.bar span{display:block;height:100%;background:var(--pri);border-radius:999px;transition:width .5s ease}
+.rung{display:flex;gap:12px;align-items:flex-start}
+.rung .n{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:#f1f5f9;color:var(--slate);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.rung.got .n{background:var(--pri);color:#fff}
 @media(max-width:620px){.row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -158,6 +164,27 @@ ul.plain li:first-child{border-top:0}
     <p class="hint">Your share is <b id="pct">20</b>% of the commission NUM actually collected from the people you
       brought in — not a share of what they spent. It can only ever be paid out of money NUM has already been paid,
       which is why it cannot be withdrawn from you later.</p>
+  </section>
+
+  <!-- ══ WHO YOU BROUGHT IN ═════════════════════════════════════════════
+       The count is a number. These are people, with dates. Initials only —
+       they joined NUM, they did not agree to be listed by name to whoever
+       holds this console key. -->
+  <section id="broughtCard" class="card2" data-tab="people">
+    <span class="tag">Your connections</span>
+    <h2>Who has joined through your link</h2>
+    <p class="sub" id="broughtNote"></p>
+    <ul class="plain" id="broughtList"></ul>
+  </section>
+
+  <!-- ══ MILESTONES ═════════════════════════════════════════════════════ -->
+  <section id="msCard" class="card2" data-tab="people">
+    <span class="tag">Milestones</span>
+    <h2 id="msHead">Your next one</h2>
+    <div class="bar"><span id="msFill"></span></div>
+    <p class="sub" id="msNext"></p>
+    <ul class="plain" id="msList"></ul>
+    <p class="hint" id="msHow"></p>
   </section>
 
   <!-- ══ CHANNELS ═══════════════════════════════════════════════════════ -->
@@ -363,6 +390,8 @@ ul.plain li:first-child{border-top:0}
     $('moneyNote').textContent = s.money.what_earned_means;
     $('pct').textContent = s.money.pct;
 
+    paintBrought(s.brought, s.payable);
+    paintMilestones(s.milestones, s.money.referred);
     paintSocials(s.socials);
     paintBenefits(s.benefits);
     paintMine(s.claims);
@@ -377,6 +406,60 @@ ul.plain li:first-child{border-top:0}
   function tile(k, v, sub) {
     return '<div class="tile"><div class="k">' + esc(k) + '</div><div class="v tnum">' + esc(v) +
       '</div><div class="s">' + esc(sub) + '</div></div>';
+  }
+
+  function ago(iso) {
+    if (!iso) return '';
+    var d = new Date(String(iso).replace(' ', 'T'));
+    if (isNaN(d)) return '';
+    var days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days < 30) return days + ' days ago';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+
+  function paintBrought(list, payable) {
+    list = list || [];
+    $('broughtNote').textContent = list.length
+      ? 'Every one of these people joined because of you. Initials only — they joined NUM, they did not sign up to be listed by name.'
+      : (payable
+        ? 'Nobody yet. The moment somebody joins through your link you get a notification, and they appear here.'
+        : 'Nobody is counted here yet because your NUM account is not connected — see the note on Today. Arrivals are still being logged.');
+    $('broughtList').innerHTML = list.map(function (m) {
+      return '<li><b>' + esc(m.initial) + '</b> joined ' + esc(ago(m.joined)) +
+        '<div class="meta">' + (m.earned > 0
+          ? 'has earned you \u2605' + nf(m.earned)
+          : 'has not used NUM yet, so has earned you nothing so far') + '</div></li>';
+    }).join('');
+  }
+
+  function paintMilestones(ms, count) {
+    if (!ms) return;
+    var got = {};
+    (ms.reached || []).forEach(function (r) { got[r.tier] = r; });
+    var next = ms.next;
+    if (next) {
+      $('msHead').textContent = next.name + ' \u2014 ' + next.to_go + ' to go';
+      $('msFill').style.width = next.pct + '%';
+      $('msNext').textContent = next.blurb;
+    } else {
+      $('msHead').textContent = 'Every milestone reached';
+      $('msFill').style.width = '100%';
+      $('msNext').textContent = 'There are no rungs left. We will think of something.';
+    }
+    $('msList').innerHTML = (ms.tiers || []).map(function (t) {
+      var r = got[t.tier];
+      var state = !r ? ''
+        : r.state === 'sent' ? '<span class="pill on">' + esc(r.reward_note || 'sent') + '</span>'
+          : r.state === 'declined' ? '<span class="pill off">not awarded</span>'
+            : '<span class="pill">reached \u2014 NUM will be in touch</span>';
+      return '<li class="rung' + (r ? ' got' : '') + '">' +
+        '<span class="n">' + t.tier + '</span>' +
+        '<span><b>' + esc(t.name) + '</b>' + state +
+        '<div class="meta">' + esc(t.blurb) + '</div></span></li>';
+    }).join('');
+    $('msHow').textContent = ms.how_it_works;
   }
 
   function paintSocials(list) {
@@ -569,8 +652,8 @@ ul.plain li:first-child{border-top:0}
   /* ── tabs ──────────────────────────────────────────────────────────────
      Built from the data-tab attributes actually present on the page, so a
      card that is removed cannot leave a button behind that leads nowhere. */
-  var TABS = [['today', 'Today'], ['channels', 'Channels'], ['offers', 'Offers'],
-    ['benefits', 'What you can promise'], ['settings', 'Settings']];
+  var TABS = [['today', 'Today'], ['people', 'Your people'], ['channels', 'Channels'],
+    ['offers', 'Offers'], ['benefits', 'What you can promise'], ['settings', 'Settings']];
   function tabs() {
     var nav = $('tabs');
     if (nav.childNodes.length) return;
