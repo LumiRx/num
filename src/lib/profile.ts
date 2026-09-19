@@ -181,3 +181,63 @@ export async function businessOfferingVisible(businessId: string, id: string, vi
     return false;
   }
 }
+
+// ── The owner's orders, in the app they signed into ──────────────────────
+//
+// /api/delivery/business has existed since the delivery build and nothing in
+// this app ever called it, so an owner holding a phone could not see an order
+// let alone move one along. Authorisation is re-resolved server-side from the
+// ownership record on every call; a business_id here is a request, not a
+// permission.
+export interface OwnerOrder {
+  id: string; short_code: string; status: string; items: string | null;
+  total_cs: number; delivery_fee_cs: number; delivery_area: string | null; created_at: number;
+}
+export interface OwnerOrders {
+  businesses: Array<{ business_id: string; name: string }>;
+  business?: { business_id: string; name: string };
+  age_min: number;
+  id_types: string[];
+  orders: OwnerOrder[];
+  next: Record<string, string[]>;
+}
+export interface IdCheck { id_type: string; over_min: true; checked_by: string }
+
+export async function businessOrders(businessId?: string): Promise<OwnerOrders | null> {
+  const me = store.get().me;
+  if (!me) return null;
+  const q = new URLSearchParams({ me: me.id });
+  if (businessId) q.set('business', businessId);
+  try {
+    const res = await fetch(apiUrl(`/api/delivery/business?${q.toString()}`));
+    if (!res.ok) return null;
+    return (await res.json()) as OwnerOrders;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Move one along. `idCheck` is required by the server for an age-gated
+ * business before an order may become `delivered`, and the server refuses a
+ * payload carrying a licence number, a date of birth or a photograph — the
+ * record is that the check happened, never the document. See the note on
+ * idCheckRecord in worker/delivery.mjs.
+ */
+export async function businessOrderAdvance(
+  businessId: string, orderId: string, status: string, idCheck?: IdCheck,
+): Promise<{ ok: boolean; error?: string; needs_id_check?: boolean }> {
+  const me = store.get().me;
+  if (!me) return { ok: false, error: 'Sign in first.' };
+  try {
+    const res = await fetch(apiUrl('/api/delivery/business/order'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ me: me.id, business_id: businessId, order_id: orderId, status, id_check: idCheck ?? null }),
+    });
+    const out = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; needs_id_check?: boolean };
+    return { ok: !!out.ok, error: out.error, needs_id_check: out.needs_id_check };
+  } catch {
+    return { ok: false, error: 'Couldn\u2019t reach NUM just now.' };
+  }
+}

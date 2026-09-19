@@ -447,6 +447,9 @@ export interface InviteDraft {
     message: string;
     /** True = invitee is already a member: delivered app-to-app, no text needed. */
     on_num?: boolean;
+    /** True = a plan invitation is waiting in their inbox for a yes. They are
+     *  NOT on the plan until they accept — see the note in worker/social.mjs. */
+    invited?: boolean;
     sms_url: string;
     whatsapp_url: string;
     install_steps: { ios: string[]; android: string[] };

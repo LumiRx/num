@@ -819,16 +819,23 @@ export default function InviteSheet() {
               {inviteNote && <div style={{ ...helpText, color: 'var(--color-accent-700)' }}>{inviteNote}</div>}
             </div>
           ) : (minted as { on_num?: boolean }).on_num ? (
-            /* 4a — they're already on NUM: the agents handled it. The plan is
-               in their app and their phone buzzed. No text message needed —
-               offering one anyway would make delivery look like it failed. */
+            /* 4a — they're already on NUM: the agents handled it, no text
+               needed. What it does NOT say any more is that they are on the
+               plan. A plan invite waits in their inbox for a yes (see the
+               note in worker/social.mjs), and telling the sender "they have
+               it" when the other person has answered nothing is how somebody
+               turns up to dinner expecting six people. */
             <div style={{ padding: 16 }}>
-              <div style={label}>{t('DELIVERED')}</div>
+              <div style={label}>{(minted as { invited?: boolean }).invited ? t('INVITED') : t('DELIVERED')}</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 18, marginTop: 6 }}>
-                ✓ Sent app to app{draft.name ? ` — ${draft.name} has it` : ''}
+                {(minted as { invited?: boolean }).invited
+                  ? `Invite sent${draft.name ? ` to ${draft.name}` : ''}`
+                  : `✓ Sent app to app${draft.name ? ` — ${draft.name} has it` : ''}`}
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--color-neutral-600)', lineHeight: 1.55, marginTop: 8 }}>
-                They’re already on NUM, so your NUM told theirs directly: the {draft.planId ? t('plan is in their PLAN tab') : t('connection is live')} and their phone just buzzed. Nothing to text, nothing to tap.
+                {(minted as { invited?: boolean }).invited
+                  ? t('They’re already on NUM, so your NUM told theirs directly — it’s in their inbox and their phone just buzzed. They join the plan when they accept, and you’ll see them on the board.')
+                  : t('They’re already on NUM, so your NUM told theirs directly: the connection is live and their phone just buzzed. Nothing to text, nothing to tap.')}
               </div>
               <div
                 {...pressable(close)}

@@ -136,6 +136,25 @@ export const addedToPlan = ({ by, plan, at }) => trim({
   body: `${who(by) || 'Someone'} put you on this. Are you in?`,
 });
 
+/**
+ * INVITED, NOT ADDED — and the difference is the whole notification.
+ *
+ * `addedToPlan` above is true when somebody really is on a plan: they
+ * accepted, or they started it. It used to be sent to people who had done
+ * neither, because an invite to an existing member wrote them straight into
+ * num_plan_members. "Someone put you on this" was accurate about what the
+ * code had done and wrong about what should have happened.
+ *
+ * This is the one that goes out before a yes. It asks, and it names who is
+ * asking, because the first thing anybody wants to know about an invitation
+ * is who sent it.
+ */
+export const invitedToPlan = ({ by, plan, at }) => trim({
+  title: plan,
+  subtitle: when(at),
+  body: `${who(by) || 'Someone'} invited you. Have a look?`,
+});
+
 export const planTomorrow = ({ plan, at, where, heads_up }) => trim({
   title: plan,
   subtitle: [when(at), where].filter(Boolean).join(' · '),

@@ -205,6 +205,7 @@ body{top:0!important}.skiptranslate iframe{display:none!important}
     <a href="/business/">For business</a>
     <a href="/claim/">List your business</a>
     <a href="/hosts/">For hosts</a>
+    <a href="/ambassadors/">For ambassadors</a>
     <a href="/agents/">For AI agents</a>
     <p class="nv-group">Account</p>
     <a href="/signin/">Sign in</a>

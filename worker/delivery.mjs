@@ -439,13 +439,143 @@ export async function ordersFor(env, businessId, { limit = 100 } = {}) {
   return results ?? [];
 }
 
+/**
+ * ── THE ID CHECK AT THE DOOR, RECORDED — AND WHAT IS DELIBERATELY NOT ────
+ *
+ * Dre, 19 Sep 2026, on LA Cannabis Club: "we will make sure that Alfred knows
+ * to ID check and submit the picture with us on delivery."
+ *
+ * The check itself is the retailer's legal duty and always was: California
+ * requires the licensee to verify age at the point of delivery. What was
+ * missing is any RECORD of it. An order went straight to `delivered` with
+ * nothing to show a regulator, an insurer, or a court that anybody looked at
+ * an ID — which is precisely the document Alfred would need on the day it is
+ * asked for, and the day it is asked for is not the day to start keeping it.
+ *
+ * So: an age-gated business cannot mark an order delivered without one. The
+ * refusal is the point. A record that can be skipped is not a record.
+ *
+ * WHAT THIS STORES: that a check happened, what kind of document was shown,
+ * that the person met the age, and who looked at it. That is the attestation
+ * the law puts on the licensee, and it is enough to answer the question.
+ *
+ * WHAT THIS REFUSES TO STORE, BY CONSTRUCTION: the ID number, the date of
+ * birth, and any photograph of the document. Not an oversight — a decision,
+ * and `idCheckRecord` rejects a payload carrying them rather than dropping
+ * them quietly, so a future caller that tries gets an error instead of a
+ * false sense that it worked.
+ *
+ * Three reasons, in order of how much they would cost:
+ *
+ *   1. In California a driver's licence number is named in the breach statute
+ *      (Civ. Code 1798.82) and is "sensitive personal information" under the
+ *      CPRA. A shoebox of licence photographs turns an ordinary incident into
+ *      a notifiable one, for every customer at once.
+ *   2. The DCC requires the licensee to VERIFY age. It does not require, and
+ *      does not ask us to hold, an image of the document. Keeping more than
+ *      the rule asks for is liability with no matching protection.
+ *   3. NUM is in the App Store. An app that transmits photographs of
+ *      government ID for a cannabis purchase is a harder review than one
+ *      that records that a licensed retailer did their job.
+ *
+ * If a photograph is wanted on delivery, the one worth having is of the
+ * HANDOVER — the package at the door — which is what `num_host_jobs.proof_url`
+ * already does for hosts and what every courier means by proof of delivery.
+ * That is a separate, easy build and it is not this one.
+ */
+export const ID_TYPES = Object.freeze(['drivers_licence', 'state_id', 'passport', 'military_id']);
+
+/** Fields whose presence is refused outright — see the note above. */
+export const ID_FORBIDDEN = Object.freeze([
+  'id_number', 'licence_number', 'license_number', 'document_number', 'number',
+  'dob', 'date_of_birth', 'birthdate', 'birth_date',
+  'photo', 'photo_url', 'image', 'image_url', 'scan', 'front', 'back', 'selfie',
+]);
+
+export function idCheckRecord(input = {}, { ageMin = 21, at = nowS() } = {}) {
+  if (!input || typeof input !== 'object') return { ok: false, error: 'No ID check was recorded.' };
+  const carried = ID_FORBIDDEN.filter((k) => input[k] !== undefined && input[k] !== null && input[k] !== '');
+  if (carried.length) {
+    return {
+      ok: false,
+      error: `Num does not store ${carried.join(', ')} — record that the ID was checked, not the document itself.`,
+      refused: carried,
+    };
+  }
+  const type = String(input.id_type ?? '').trim();
+  if (!ID_TYPES.includes(type)) {
+    return { ok: false, error: `Say which document was checked: ${ID_TYPES.join(', ')}.` };
+  }
+  // Explicitly true, never truthy. "0", "no" and "" are answers, and each of
+  // them means the delivery should not have happened.
+  if (input.over_min !== true && input.over_min !== 'true' && input.over_min !== 1 && input.over_min !== '1') {
+    return { ok: false, error: `Confirm the customer is ${ageMin} or over. If they were not, decline the order instead.` };
+  }
+  const by = clip(input.checked_by, 60);
+  if (!by) return { ok: false, error: 'Who checked it? A record with no name answers nobody.' };
+  return {
+    ok: true,
+    record: { id_checked: true, id_type: type, age_min: Number(ageMin) || 0, over_min: true, checked_by: by, checked_at: at },
+  };
+}
+
+/**
+ * The age floor this business delivers under: its own, or its trade's.
+ *
+ * IT THROWS, AND THAT IS THE DESIGN. Written first with
+ * `.catch(() => null)` and a `return 0` — the shape used everywhere else in
+ * this file, where a failed read means one partner is missing from a list and
+ * the guest is merely offered less. Here it means the opposite: 0 is "no age
+ * limit", so a database hiccup would have waved a cannabis delivery through
+ * with no ID check at all. The first test written against it failed for
+ * exactly that reason (the fixture's `places` had no `category` column), which
+ * is a cheap way to learn it and a very expensive way not to.
+ *
+ * So a read that does not answer is not an answer. The caller refuses.
+ */
+export async function ageMinForBusiness(env, businessId) {
+  if (!env?.DB || !businessId) return 0;
+  const row = await env.DB.prepare(
+    `SELECT p.custom_fields AS custom_fields, pl.category AS category
+       FROM num_business_profiles p
+       LEFT JOIN num_place_owners o ON o.business_id = p.business_id AND o.revoked_at IS NULL
+       LEFT JOIN places pl ON pl.id = o.place_id
+      WHERE p.business_id = ?1 LIMIT 1`,
+  ).bind(String(businessId)).first();
+  if (!row) return 0;
+  const { ageMinFor } = await import('./bizoffer.mjs');
+  return ageMinFor(row.category, row.custom_fields);
+}
+
 /** The partner moves an order along. Illegal moves are refused, not coerced. */
-export async function decideOrder(env, { businessId, orderId, status, actor = 'business', reason = null }) {
+export async function decideOrder(env, { businessId, orderId, status, actor = 'business', reason = null, idCheck = null }) {
   if (!env?.DB || !businessId || !orderId) return { ok: false, error: 'order required' };
   const o = await env.DB.prepare('SELECT id, short_code, status, member_ref, business_id FROM num_orders WHERE id=?1 AND business_id=?2').bind(orderId, businessId).first().catch(() => null);
   if (!o) return { ok: false, error: 'not your order' };
   if (!(ORDER_NEXT[o.status] ?? []).includes(status)) return { ok: false, error: `an order that is ${o.status} cannot become ${status}` };
   const t = nowS();
+
+  // An age-gated delivery is not delivered until the check is on the record.
+  // Checked here rather than at the route, because this function is the only
+  // door to `delivered` and a guard on one of several callers is not a guard.
+  let meta = {};
+  let ageMin = 0;
+  if (status === 'delivered') {
+    try {
+      ageMin = await ageMinForBusiness(env, businessId);
+    } catch (e) {
+      // Fails CLOSED. Not knowing whether this delivery is age-gated is not
+      // the same as knowing it is not, and only one of those two mistakes
+      // puts cannabis in the hands of a seventeen-year-old.
+      console.warn('[delivery] age gate', e?.message ?? e);
+      return { ok: false, error: 'Could not check this shop\u2019s age rule just now. Try again in a moment — the order is still open.', needs_id_check: true };
+    }
+  }
+  if (ageMin) {
+    const check = idCheckRecord(idCheck ?? {}, { ageMin, at: t });
+    if (!check.ok) return { ok: false, error: check.error, needs_id_check: true, age_min: ageMin, refused: check.refused };
+    meta = check.record;
+  }
   // NUM's commission is written on delivery, at the business's own rate
   // (num_business_settings.commission_bp, 10% by default), on the goods only
   // — never on the delivery fee the courier earns.
@@ -459,8 +589,8 @@ export async function decideOrder(env, { businessId, orderId, status, actor = 'b
   try {
     await env.DB.batch([
       env.DB.prepare(`UPDATE num_orders SET status=?2${extra} WHERE id=?1`).bind(orderId, status, t, commission),
-      env.DB.prepare(`INSERT INTO num_order_events (id, order_id, from_status, to_status, actor, reason, metadata, created_at) VALUES (?1,?2,?3,?4,?5,?6,'{}',?7)`)
-        .bind(uid('oe'), orderId, o.status, status, actor, clip(reason, 200), t),
+      env.DB.prepare(`INSERT INTO num_order_events (id, order_id, from_status, to_status, actor, reason, metadata, created_at) VALUES (?1,?2,?3,?4,?5,?6,?8,?7)`)
+        .bind(uid('oe'), orderId, o.status, status, actor, clip(reason, 200), t, JSON.stringify(meta)),
     ]);
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
   const partner = await env.DB.prepare('SELECT name FROM businesses WHERE id=?1').bind(businessId).first().catch(() => null);
@@ -525,9 +655,18 @@ export async function handleDelivery(request, env, url) {
     const pick = wanted ? mine.find((b) => b.business_id === wanted) : mine[0];
     if (!pick) return json({ error: 'not your business' }, 403);
     const orders = await ordersFor(env, pick.business_id, { limit: 50 });
+    // The app needs the age floor to know whether to ask for the ID check
+    // BEFORE offering a Delivered button — a button the server would refuse
+    // is worse than no button. Fails closed here too: if the rule cannot be
+    // read, the app is told 21 and asks, which is the safe direction.
+    let ageMin = 0;
+    try { ageMin = await ageMinForBusiness(env, pick.business_id); }
+    catch { ageMin = 21; }
     return json({
       businesses: mine,
       business: pick,
+      age_min: ageMin,
+      id_types: ID_TYPES,
       orders,
       // What each order may become next, from the one state machine — so the
       // app cannot offer a button the server would refuse.
@@ -544,6 +683,9 @@ export async function handleDelivery(request, env, url) {
     }
     const out = await decideOrder(env, {
       businessId, orderId: clip(b.order_id, 40), status: clip(b.status, 24), actor: 'business:app',
+      // Passed whole and validated inside decideOrder, so the refusal of a
+      // licence number or a photograph happens in one place.
+      idCheck: b.id_check ?? null,
     });
     return json(out, out.ok ? 200 : 400);
   }

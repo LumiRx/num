@@ -872,8 +872,8 @@ export async function ambJoin(req, env, url, D) {
     }
     await env.DB.prepare('UPDATE num_ambassadors SET key_sent_at = ?2 WHERE id = ?1')
       .bind(existing.id, nowIso()).run().catch(() => {});
-    await mailKey(D, env, { email, name: existing.name, key: existing.console_key, code: existing.code, site, again: true });
-    return J({ ok: true, existing: true, emailed: true });
+    const sent = await mailKey(D, env, { email, name: existing.name, key: existing.console_key, code: existing.code, site, again: true });
+    return J({ ok: true, existing: true, emailed: sent });
   }
 
   /* FAILS CLOSED. This used to `.catch(() => null)` and then read the miss
@@ -928,7 +928,9 @@ export async function ambJoin(req, env, url, D) {
 
   // If they are already a member, the link is payable from this second.
   const linked = await connectMember(env, { id: ambId, email, member_id: null });
-  await mailKey(D, env, { email, name, key: consoleKey, code, site, payable: Boolean(linked) });
+  const emailed = await mailKey(D, env, {
+    email, name, key: consoleKey, code, site, payable: Boolean(linked), socials, niches,
+  });
 
   return J({
     ok: true,
@@ -936,7 +938,10 @@ export async function ambJoin(req, env, url, D) {
     link: site + '/r/' + code,
     console: site + '/amb/?k=' + consoleKey,
     payable: Boolean(linked),
-    emailed: true,
+    // Honest, not hopeful. The console link is the entire account and is never
+    // put on a page, so "emailed: true" after a failed send is the difference
+    // between an ambassador and a stranded row.
+    emailed,
     socials: socials.length,
     niches,
   });
@@ -950,18 +955,27 @@ export async function ambJoin(req, env, url, D) {
  * Failure to send is swallowed — an application that is already written must
  * not be reported as failed because a mail provider was slow.
  */
-async function mailKey(D, env, { email, name, key, code, site, again = false, payable = false }) {
-  if (!D?.sendBatch) return;
+async function mailKey(D, env, { email, name, key, code, site, again = false, payable = false, socials = [], niches = [] }) {
+  if (!D?.sendBatch) return false;
   const first = String(name || '').split(' ')[0] || 'there';
   const link = site + '/r/' + code;
   const console_ = site + '/amb/?k=' + key;
+  /* Read back what they typed. Somebody who filled in three channels and six
+   * niches and then got an email mentioning none of them cannot tell whether
+   * any of it arrived — and the one moment they will fix a typo'd handle is
+   * the minute after they sent it. */
+  const nicheLabel = new Map(NICHES.map((n) => [n.key, n.label]));
+  const summary = again ? '' : [
+    ...socials.map((x) => `  ${x.platform} @${x.handle}${x.followers ? ` — about ${Number(x.followers).toLocaleString('en-GB')}, as you declared it` : ''}`),
+    niches.length ? `  You post about: ${niches.map((k) => nicheLabel.get(k) ?? k).join(', ')}` : '',
+  ].filter(Boolean).join('\n');
   try {
     await D.sendBatch(env, [{
       to: [email],
       subject: again ? 'Your NUM ambassador link, again' : 'Your NUM ambassador link',
       text: `${first},
 
-${again ? 'Here is your link and console again — nothing has changed and nothing was created twice.' : 'You are in. Two things, and they are both below.'}
+${again ? 'Here is your link and console again — nothing has changed and nothing was created twice.' : 'Your link works from right now. A person reads every application, and being accepted is what opens the offers and lets businesses find you — we will come back to you on that. Two things in the meantime, both below.'}
 
 YOUR LINK
 ${link}
@@ -973,15 +987,33 @@ That link IS your account — there is no password. Keep it, and do not post it.
 ${payable ? '' : `
 ONE THING FIRST: your share is paid into a NUM member wallet and we could not find yours. Open NUM, verify this same email address in the app, and your link can pay. Until then it counts arrivals and pays nobody, and we would rather say so now than let you find out in three months.
 `}
-What is real today: the free concierge in 39 countries, venue perks, activities and tickets, luggage storage, and the Friday giveaway. What is not yet: hotels, car hire, and the VIP host services — they are built and not switched on, so please do not promise them.
+${summary ? `WHAT YOU TOLD US
+${summary}
+If any of that is wrong, fix it in your console — it is what we match offers against.
+
+` : ''}What is real today: the free concierge in 39 countries, venue perks, activities and tickets, luggage storage, and the Friday giveaway. What is not yet: hotels, car hire, and the VIP host services — they are built and not switched on, so please do not promise them.
 
 Reply to this email and a person answers.
 
 — NUM`,
       tags: [{ name: 'kind', value: 'amb_key' }],
     }]);
+    return true;
   } catch (e) {
+    /* ── A SWALLOWED FAILURE HERE LOCKS SOMEBODY OUT ──────────────────
+     *
+     * This email IS the account: the console link is the whole credential
+     * and is deliberately never shown on a page. So a send that fails and
+     * is only console.warn'd leaves a person with an ambassador row, a
+     * referral code and no way to reach either — while the response tells
+     * them it was emailed. Num's own bounce rate on itsnum.com was 20.9%
+     * the day before this was written, so this is not a rare branch.
+     *
+     * The send still must not fail the application — the row is already
+     * written and reporting it as failed would have them apply twice. What
+     * changes is that the caller learns the truth and can say so. */
     console.warn('[ambassador mail]', e?.message ?? e);
+    return false;
   }
 }
 

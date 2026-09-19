@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   deliverySettings, saveDelivery, orderable, partnersNear, allowedFor, deliveryBlock,
   createOrder, ordersFor, decideOrder, memberOrders, handleDelivery, ORDER_NEXT, jurisdictionOf,
+  idCheckRecord, ageMinForBusiness, ID_TYPES, ID_FORBIDDEN,
 } from './delivery.mjs';
 
 function reorder(sql, args) {
@@ -37,7 +38,7 @@ function fresh() {
   db.exec(`CREATE TABLE num_business_settings (business_id TEXT PRIMARY KEY, f_delivery INTEGER DEFAULT 0, delivery_fee_cs INTEGER DEFAULT 500, delivery_radius_m INTEGER DEFAULT 5000, commission_bp INTEGER DEFAULT 1000, updated_at INTEGER, updated_by TEXT)`);
   db.exec(`CREATE TABLE num_business_profiles (business_id TEXT PRIMARY KEY, custom_fields TEXT DEFAULT '{}', city TEXT, area TEXT, lat REAL, lng REAL, timezone TEXT, updated_at INTEGER)`);
   db.exec(`CREATE TABLE num_place_owners (place_id TEXT PRIMARY KEY, business_id TEXT, revoked_at TEXT)`);
-  db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, lat REAL, lng REAL, dest TEXT)`);
+  db.exec(`CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT, lat REAL, lng REAL, dest TEXT, category TEXT)`);
   db.exec(`CREATE TABLE num_business_offerings (id TEXT PRIMARY KEY, business_id TEXT, place_id TEXT, section TEXT, name TEXT, description TEXT, price_minor INTEGER, price_note TEXT, currency TEXT, unit TEXT DEFAULT 'item', available TEXT, position INTEGER DEFAULT 0, active INTEGER DEFAULT 1)`);
   db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, identity_verified INTEGER DEFAULT 0)`);
   db.exec(`CREATE TABLE num_orders (id TEXT PRIMARY KEY, short_code TEXT UNIQUE, business_id TEXT, member_ref TEXT, subtotal_cs INTEGER, delivery_fee_cs INTEGER, platform_fee_cs INTEGER, total_cs INTEGER, commission_cs INTEGER, fulfilment TEXT, delivery_addr_enc TEXT, delivery_area TEXT, status TEXT, channel TEXT, created_at INTEGER, accepted_at INTEGER, delivered_at INTEGER, CHECK (total_cs = subtotal_cs + delivery_fee_cs + platform_fee_cs))`);
@@ -52,7 +53,7 @@ function fresh() {
   db.exec(`INSERT INTO num_business_settings (business_id,f_delivery,delivery_fee_cs,delivery_radius_m,commission_bp) VALUES ('biz_lacc',1,700,8000,1000)`);
   db.exec(`INSERT INTO num_business_profiles (business_id,custom_fields) VALUES ('biz_lacc','{"licence":"C9-0000123-LIC","age_min":21,"delivery_hours":"10:00-21:00"}')`);
   db.exec(`INSERT INTO num_place_owners VALUES ('p_lacc','biz_lacc',NULL)`);
-  db.exec(`INSERT INTO places VALUES ('p_lacc','LA Cannabis Club',34.0443,-118.2507,'los-angeles')`);
+  db.exec(`INSERT INTO places VALUES ('p_lacc','LA Cannabis Club',34.0443,-118.2507,'los-angeles','Cannabis Delivery')`);
   db.exec(`INSERT INTO num_business_offerings (id,business_id,place_id,section,name,description,price_minor,currency,unit,position) VALUES
     ('of_1','biz_lacc','p_lacc','Flower','Eighth — Blue Dream','3.5 g',4500,'USD','item',1),
     ('of_2','biz_lacc','p_lacc','Edibles','Gummies 10-pack','100 mg total',2200,'USD','item',2),
@@ -205,7 +206,13 @@ test('the partner moves the order along; illegal moves are refused; the member h
   assert.equal((await decideOrder(env, { businessId: 'biz_lacc', orderId: id, status: 'delivered' })).ok, false, 'pending cannot jump to delivered');
   assert.equal((await decideOrder(env, { businessId: 'biz_lacc', orderId: id, status: 'accepted' })).ok, true);
   assert.equal((await decideOrder(env, { businessId: 'biz_lacc', orderId: id, status: 'out_for_delivery' })).ok, true);
-  assert.equal((await decideOrder(env, { businessId: 'biz_lacc', orderId: id, status: 'delivered' })).ok, true);
+  // 19 Sep 2026: this line used to close the order with nothing recorded. LA
+  // Cannabis Club is 21+, so the ID check is now part of what "delivered"
+  // means for it — see the ID-check tests at the foot of this file.
+  assert.equal((await decideOrder(env, {
+    businessId: 'biz_lacc', orderId: id, status: 'delivered',
+    idCheck: { id_type: 'drivers_licence', over_min: true, checked_by: 'Alfredo' },
+  })).ok, true);
   const o = env._db.prepare('SELECT * FROM num_orders WHERE id=?').get(id);
   assert.equal(o.status, 'delivered'); assert.ok(o.accepted_at); assert.ok(o.delivered_at);
   assert.equal(o.commission_cs, 450, '10% of the $45 eighth — not of the delivery fee');
@@ -230,4 +237,156 @@ test('HTTP: /near is coarse and hides an age-restricted partner\'s items; /reque
   assert.equal(r.status, 200); const body = await r.json(); assert.equal(body.total_cs, 6600 + 700);
   const mine = await (await handleDelivery(new Request('https://app.itsnum.com/api/delivery/mine?me=mem_v'), env, new URL('https://app.itsnum.com/api/delivery/mine?me=mem_v'))).json();
   assert.equal(mine.orders.length, 1);
+});
+
+// ── THE ID CHECK AT THE DOOR ─────────────────────────────────────────────
+//
+// Dre, 19 Sep 2026: Alfred checks ID on delivery and the check reaches Num.
+// The retailer's legal duty was always to look; what was missing was any
+// record that they did. These pin both halves — that an age-gated order
+// cannot close without one, and that the record is an attestation rather
+// than a copy of somebody's driving licence.
+const GOOD = { id_type: 'drivers_licence', over_min: true, checked_by: 'Alfredo' };
+
+const placed = async (env, db) => {
+  db.exec("INSERT INTO num_members VALUES ('mem_a',1)");
+  const o = await createOrder(env, {
+    businessId: 'biz_lacc', memberId: 'mem_a',
+    items: [{ id: 'of_1', qty: 1 }], address: '1 Main St', channel: 'web',
+  });
+  assert.ok(o.ok, o.error);
+  await decideOrder(env, { businessId: 'biz_lacc', orderId: o.id, status: 'accepted' });
+  await decideOrder(env, { businessId: 'biz_lacc', orderId: o.id, status: 'out_for_delivery' });
+  return o;
+};
+
+test('an age-gated order cannot be marked delivered with no ID check', async () => {
+  const env = fresh(); const db = env._db;
+  const o = await placed(env, db);
+  const out = await decideOrder(env, { businessId: 'biz_lacc', orderId: o.id, status: 'delivered' });
+  assert.equal(out.ok, false);
+  assert.equal(out.needs_id_check, true);
+  assert.equal(out.age_min, 21);
+  assert.equal(db.prepare('SELECT status FROM num_orders WHERE id=?').get(o.id).status, 'out_for_delivery',
+    'the order closed anyway');
+});
+
+test('with the check, it delivers and the attestation is on the event', async () => {
+  const env = fresh(); const db = env._db;
+  const o = await placed(env, db);
+  const out = await decideOrder(env, { businessId: 'biz_lacc', orderId: o.id, status: 'delivered', idCheck: GOOD });
+  assert.equal(out.ok, true, out.error);
+  const ev = db.prepare("SELECT metadata FROM num_order_events WHERE order_id=? AND to_status='delivered'").get(o.id);
+  const meta = JSON.parse(ev.metadata);
+  assert.equal(meta.id_checked, true);
+  assert.equal(meta.id_type, 'drivers_licence');
+  assert.equal(meta.age_min, 21);
+  assert.equal(meta.checked_by, 'Alfredo');
+  assert.ok(Number.isFinite(meta.checked_at));
+});
+
+test('the document itself is refused, not quietly dropped', async () => {
+  // A caller that sends a licence number or a photo must get an error. Dropping
+  // it silently teaches the next client that sending it was fine.
+  for (const field of ['id_number', 'dob', 'photo_url', 'selfie']) {
+    const out = idCheckRecord({ ...GOOD, [field]: 'x' });
+    assert.equal(out.ok, false, `${field} was accepted`);
+    assert.deepEqual(out.refused, [field]);
+    assert.match(out.error, /does not store/);
+  }
+  // and nothing forbidden can reach the database through decideOrder either
+  const env = fresh(); const db = env._db;
+  const o = await placed(env, db);
+  const blocked = await decideOrder(env, { businessId: 'biz_lacc', orderId: o.id, status: 'delivered', idCheck: { ...GOOD, id_number: 'D1234567' } });
+  assert.equal(blocked.ok, false);
+  const rows = db.prepare('SELECT metadata FROM num_order_events').all();
+  for (const r of rows) assert.equal(/D1234567/.test(r.metadata), false, 'a licence number reached the database');
+});
+
+test('"they were not old enough" is an answer, and it is not a delivery', async () => {
+  for (const v of [false, 'false', 0, '0', undefined, null, 'no']) {
+    assert.equal(idCheckRecord({ ...GOOD, over_min: v }).ok, false, `over_min=${String(v)} passed`);
+  }
+  assert.equal(idCheckRecord({ ...GOOD, over_min: true }).ok, true);
+});
+
+test('the record names a document and a person, or it is not a record', () => {
+  assert.equal(idCheckRecord({ ...GOOD, id_type: 'vibes' }).ok, false);
+  assert.equal(idCheckRecord({ ...GOOD, id_type: '' }).ok, false);
+  assert.equal(idCheckRecord({ ...GOOD, checked_by: '  ' }).ok, false);
+  for (const t of ID_TYPES) assert.equal(idCheckRecord({ ...GOOD, id_type: t }).ok, true, t);
+  assert.ok(ID_FORBIDDEN.includes('photo_url') && ID_FORBIDDEN.includes('id_number'));
+});
+
+test('an ordinary business closes an order exactly as before', async () => {
+  // The gate must not reach a bakery. A florist asking a customer for ID is
+  // the failure mode of a rule applied where it does not belong.
+  const env = fresh(); const db = env._db;
+  db.exec("INSERT INTO businesses VALUES ('biz_cafe','Cafe','Cafe','active')");
+  db.exec("INSERT INTO num_business_profiles (business_id,custom_fields) VALUES ('biz_cafe','{}')");
+  db.exec("INSERT INTO num_place_owners VALUES ('p_cafe','biz_cafe',NULL)");
+  db.exec("INSERT INTO places VALUES ('p_cafe','Cafe',34.0443,-118.2507,'los-angeles','Cafe')");
+  assert.equal(await ageMinForBusiness(env, 'biz_cafe'), 0);
+  assert.equal(await ageMinForBusiness(env, 'biz_lacc'), 21);
+  db.exec(`INSERT INTO num_orders (id,short_code,business_id,member_ref,subtotal_cs,delivery_fee_cs,platform_fee_cs,total_cs,commission_cs,fulfilment,status,channel,created_at)
+    VALUES ('ord_c','C001','biz_cafe','mem_a',500,0,0,500,0,'delivery','out_for_delivery','web',1)`);
+  const out = await decideOrder(env, { businessId: 'biz_cafe', orderId: 'ord_c', status: 'delivered' });
+  assert.equal(out.ok, true, out.error);
+});
+
+test('a trade is 21+ even when nobody typed an age into the profile', async () => {
+  // The template decides it. A dispensary that left the field blank is not a
+  // dispensary with no age limit.
+  const env = fresh(); const db = env._db;
+  db.exec("UPDATE num_business_profiles SET custom_fields='{\"licence\":\"C9-0000123-LIC\"}' WHERE business_id='biz_lacc'");
+  assert.equal(await ageMinForBusiness(env, 'biz_lacc'), 21);
+});
+
+test('a read that does not answer refuses the delivery, it does not wave it through', async () => {
+  // The age gate must fail closed. 0 means "no age limit", so an error that
+  // returned 0 would close a cannabis order with no ID check.
+  const env = fresh(); const db = env._db;
+  const o = await placed(env, db);
+  db.exec('DROP TABLE num_business_profiles');
+  const out = await decideOrder(env, { businessId: 'biz_lacc', orderId: o.id, status: 'delivered', idCheck: GOOD });
+  assert.equal(out.ok, false, 'a broken read delivered an age-gated order');
+  assert.equal(db.prepare('SELECT status FROM num_orders WHERE id=?').get(o.id).status, 'out_for_delivery');
+});
+
+test('the owner route tells the app the age floor, so it asks before offering the button', async () => {
+  const env = fresh();
+  env._db.exec("CREATE TABLE num_members_x (x TEXT)"); // no-op, keeps the fixture honest
+  const url = new URL('https://app.itsnum.com/api/delivery/business?me=mem_v');
+  const res = await handleDelivery(new Request(url), env, url);
+  const body = await res.json();
+  // mem_v owns nothing, so this is the empty shape — the point is the route
+  // answers rather than 500s, and the fields the app reads exist when it does.
+  assert.ok('businesses' in body);
+});
+
+test('the app is wired to the route, not merely able to be', () => {
+  // /api/delivery/business existed for days with nothing in the app calling
+  // it, so Alfredo could not see an order at all. This is the guard.
+  const PROFILE = readFileSync(new URL('../src/lib/profile.ts', import.meta.url), 'utf8');
+  const SHEET = readFileSync(new URL('../src/components/app/BusinessSheet.tsx', import.meta.url), 'utf8');
+  assert.match(PROFILE, /apiUrl\(`\/api\/delivery\/business\?/);
+  assert.match(PROFILE, /apiUrl\('\/api\/delivery\/business\/order'\)/);
+  assert.match(SHEET, /function Orders\(\{ businessId \}/);
+  assert.match(SHEET, /<Orders businessId=\{p\.business_id\} \/>/);
+  // the ID step is asked for BEFORE the server has to refuse
+  assert.match(SHEET, /status === 'delivered' && data\.age_min > 0 && checking !== orderId/);
+  // And the form collects no document. Comments are stripped first: the block
+  // below EXPLAINS that it does not take a photograph, and a guard that cannot
+  // tell code from its own explanation gets the explanation deleted — which is
+  // the third time that has happened in this repo, so it is written down here.
+  const form = SHEET.slice(SHEET.indexOf('function Orders'), SHEET.indexOf('export default function BusinessSheet'))
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+    .replace(/\{t\((['"])(?:[^'"\\]|\\.)*\1\)\}/g, ' ')
+    .replace(/\{['"](?:[^'"\\]|\\.)*['"]\}/g, ' ');
+  for (const bad of ['id_number', 'date_of_birth', 'camera', 'capture', 'type="file"', 'FileReader']) {
+    assert.equal(new RegExp(bad, 'i').test(form), false, `the ID form collects ${bad}`);
+  }
+  // the payload it builds carries exactly three fields, and none is a document
+  assert.match(SHEET, /\{ id_type: idType, over_min: true as const, checked_by: by\.trim\(\) \}/);
 });

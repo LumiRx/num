@@ -6,9 +6,9 @@ import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { CheckIcon, StarIcon, XIcon } from '../../lib/icons';
-import { businessOverview, businessUpdate, businessOfferings, businessOfferingSave, businessOfferingVisible } from '../../lib/profile';
+import { businessOverview, businessUpdate, businessOfferings, businessOfferingSave, businessOfferingVisible, businessOrders, businessOrderAdvance } from '../../lib/profile';
 import { nativePlatform } from '../../lib/native';
-import type { BusinessOverview, OfferingsPage } from '../../lib/profile';
+import type { BusinessOverview, OfferingsPage, OwnerOrders } from '../../lib/profile';
 import { t } from '../../lib/i18n';
 
 const label: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 };
@@ -102,6 +102,112 @@ function Offerings({ businessId }: { businessId: string }) {
         </div>
         {err && <div style={{ fontSize: 11, color: 'var(--danger, #c0392b)' }}>{err}</div>}
       </div>
+    </div>
+  );
+}
+
+const STEP: Record<string, string> = {
+  accepted: 'ACCEPT', declined: 'DECLINE', preparing: 'PREPARING',
+  out_for_delivery: 'ON ITS WAY', delivered: 'DELIVERED', cancelled: 'CANCEL',
+};
+const ID_LABEL: Record<string, string> = {
+  drivers_licence: "Driver's licence", state_id: 'State ID', passport: 'Passport', military_id: 'Military ID',
+};
+
+/**
+ * ORDERS, ON THE OWNER'S PHONE — AND THE ID CHECK BEFORE ONE CLOSES.
+ *
+ * `/api/delivery/business` was built with Alfredo in mind and nothing in this
+ * app ever called it, so an owner holding a phone could not see an order, let
+ * alone move one along. This is that call.
+ *
+ * For an age-gated shop, DELIVERED opens the check first. What it collects is
+ * what the law puts on the licensee — that they looked, at what kind of
+ * document, and who they are. It does not collect the licence number, the
+ * date of birth or a photograph of the document, and the server refuses a
+ * payload carrying any of them rather than dropping them quietly. If a photo
+ * is wanted on delivery it should be of the handover, not of somebody's ID.
+ */
+function Orders({ businessId }: { businessId: string }) {
+  const [data, setData] = useState<OwnerOrders | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [idType, setIdType] = useState('drivers_licence');
+  const [by, setBy] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => { void businessOrders(businessId).then(setData); };
+  useEffect(load, [businessId]);
+  if (!data || !data.orders.length) return null;
+
+  const go = async (orderId: string, status: string) => {
+    if (busy) return;
+    if (status === 'delivered' && data.age_min > 0 && checking !== orderId) {
+      setChecking(orderId); setErr(null); return;
+    }
+    setBusy(true); setErr(null);
+    const check = status === 'delivered' && data.age_min > 0
+      ? { id_type: idType, over_min: true as const, checked_by: by.trim() }
+      : undefined;
+    const out = await businessOrderAdvance(businessId, orderId, status, check);
+    setBusy(false);
+    if (!out.ok) { setErr(out.error ?? 'That did not go through.'); return; }
+    setChecking(null); setBy('');
+    load();
+  };
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--ink-08)' }}>
+      <div style={{ ...label, color: 'var(--ink-60)' }}>{t('ORDERS')}</div>
+      {data.orders.map((o) => (
+        <div key={o.id} className="glass" style={{ marginTop: 8, padding: 11, borderRadius: 'var(--r-md)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>{o.short_code}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--ink-60)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{o.status.replace(/_/g, ' ')}</div>
+            <div style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700 }}>${(o.total_cs / 100).toFixed(2)}</div>
+          </div>
+          {o.items && <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>{o.items}</div>}
+          {o.delivery_area && <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 2 }}>{o.delivery_area}</div>}
+
+          {checking === o.id ? (
+            <div style={{ marginTop: 9, display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-60)', lineHeight: 1.5 }}>
+                {t('Check their ID before you hand it over.')} {data.age_min}+.{' '}
+                {t('Num records that you checked and what you looked at — never the number on it, and never a photo of it.')}
+              </div>
+              <select style={{ ...field, appearance: 'auto' }} value={idType} onChange={(e) => setIdType(e.target.value)}>
+                {data.id_types.map((k) => <option key={k} value={k}>{ID_LABEL[k] ?? k}</option>)}
+              </select>
+              <input style={field} placeholder={t('Who checked it')} value={by} onChange={(e) => setBy(e.target.value)} />
+              <div {...pressable(() => { void go(o.id, 'delivered'); })} style={{ ...primary, opacity: by.trim() ? 1 : 0.5 }}>
+                {busy ? '\u2026' : `${t('CONFIRMED')} ${data.age_min}+ \u2014 ${t('DELIVERED')}`}
+              </div>
+              <div {...pressable(() => { setChecking(null); setErr(null); })} style={{ cursor: 'pointer', textAlign: 'center', fontSize: 11, color: 'var(--ink-60)', minHeight: 32, paddingTop: 8 }}>
+                {t('Back')}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 9 }}>
+              {(data.next[o.id] ?? []).map((nxt) => (
+                <div
+                  key={nxt}
+                  {...pressable(() => { void go(o.id, nxt); })}
+                  style={{
+                    cursor: 'pointer', minHeight: 40, padding: '0 14px', borderRadius: 999,
+                    display: 'flex', alignItems: 'center', fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em',
+                    background: nxt === 'delivered' ? 'var(--grad-accent)' : 'transparent',
+                    color: nxt === 'delivered' ? '#fff' : 'var(--ink)',
+                    border: nxt === 'delivered' ? 'none' : '1px solid var(--ink-12)',
+                  }}
+                >
+                  {STEP[nxt] ?? nxt.toUpperCase()}
+                </div>
+              ))}
+            </div>
+          )}
+          {err && checking === o.id && <div style={{ fontSize: 11, color: 'var(--danger, #c0392b)', marginTop: 7 }}>{err}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -228,6 +334,7 @@ export default function BusinessSheet() {
             </div>
             <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>{t('These are the details NUM quotes to travellers. Changing the phone here does not change what verified you — that stays tied to the number we already reached you on.')}</div>
             {p.business_id && <Offerings businessId={p.business_id} />}
+            {p.business_id && <Orders businessId={p.business_id} />}
           </div>
         ))}
 

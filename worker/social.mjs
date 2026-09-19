@@ -24,7 +24,7 @@ import {
   normaliseEmail, ensureContact, issueEmailCode, NEED_CONTACT, BAD_EMAIL, hasVerifiedContact,
 } from './membercontact.mjs';
 import { notify } from './push.mjs';
-import { addedToPlan } from './notifycopy.mjs';
+import { addedToPlan, invitedToPlan } from './notifycopy.mjs';
 import { isBlocked } from './account.mjs';
 import { answerEventInvite, ensureEvents } from './events.mjs';
 import { INVITE_POLICIES, DEFAULT_INVITE_POLICY, ensurePermissions, memberPolicy, setInvitePolicy } from './permissions.mjs';
@@ -1371,28 +1371,47 @@ async function invite(env, req) {
     (toPhone
       ? await env.DB.prepare('SELECT id, name FROM num_members WHERE phone=?1').bind(toPhone).first()
       : null);
+  /* ── AN INVITE IS AN INVITATION, NOT AN ENROLMENT ─────────────────────
+   *
+   * Dre, 19 Sep 2026: "dont auto add people to new plans it risks sharing to
+   * them, each plan is fresh start."
+   *
+   * This block used to write the invitee straight into `num_plan_members`.
+   * The reasoning was sound as far as it went — both people are on Num, the
+   * sender addressed them by their own number, so skip the ceremony — and it
+   * fixed a real day-one problem where an existing member was asked to sign
+   * up again. But it skipped the wrong half. Membership of a plan is READ
+   * ACCESS: every idea on the board, every comment in the thread, every
+   * other member's name and vote. Somebody who has not answered yet had all
+   * of it, and the first they knew was a push saying they had been "put on"
+   * something.
+   *
+   * So the plan now waits for a yes. The `num_links` row below stays PENDING
+   * whenever an invite carries a plan, which is what puts it in their inbox,
+   * and `respond({ kind: 'connect', action: 'accept' })` — which already
+   * exists, and already inserts the membership row — is the only way in.
+   *
+   * A friend-connect with no plan attached is unchanged and still activates
+   * on the spot. Connecting is mutual and reveals nothing but a name; a plan
+   * is a room with other people's things in it. Those are different asks and
+   * they get different answers.
+   */
   if (existing && plan) {
-    await env.DB.prepare('INSERT OR IGNORE INTO num_plan_members (plan_id, member_id, name) VALUES (?1,?2,?3)')
-      .bind(plan.id, existing.id, existing.name ?? toName).run();
-    // 'joined' kind deliberately: it doesn't broadcast-push (see event()), and
-    // the invitee gets their own targeted buzz below instead.
-    await event(env, plan.id, { id: from, name: senderName }, 'joined',
-      `${existing.name || toName || 'A friend'} was added by ${senderName} — the plan is in their app.`);
-    // Copy comes from notifycopy so the invite sounds like everything else NUM
-    // sends. The old line here told them to "open Num to see it" — the tap
-    // already does that, and it spent the one line that could have said what
-    // the plan IS.
     await notify(env, {
       memberId: existing.id, kind: 'plan',
-      ...addedToPlan({ by: senderName, plan: plan.title, at: [plan.starts_on, plan.starts_time].filter(Boolean).join(' ') }),
-      url: '/?app', tag: `plan:${plan.id}`,
+      ...invitedToPlan({ by: senderName, plan: plan.title, at: [plan.starts_on, plan.starts_time].filter(Boolean).join(' ') }),
+      // Lands on the inbox, because there is something to answer. `/?app`
+      // would open the board they are not on yet.
+      url: '/?app&go=inbox', tag: `invite:${plan.id}`,
     }).catch(() => {});
   }
 
   const message =
     clip(b.message, 300) ||
     (existing && plan
-      ? `${toName ? toName + ' — ' : ''}it's ${senderName}. “${plan.title}” is already waiting in your NUM app — open Num and you're in. (Link if you need it: ${link})`
+      // Was "already waiting in your NUM app — open Num and you're in", which
+      // described the auto-add. It is an invitation again, so the words are.
+      ? `${toName ? toName + ' — ' : ''}it's ${senderName}. I've invited you to “${plan.title}” on NUM — it's waiting in your app to accept. (Link if you need it: ${link})`
       : plan
       ? `${toName ? toName + ' — ' : ''}it's ${senderName}. I started “${plan.title}” on NUM — my concierge app. Join and we can plan it together, it books the tables and cars for us: ${link}`
       : `${toName ? toName + ' — ' : ''}it's ${senderName}. I use NUM as my concierge — one thread books dinner, cars, tables, everything. Here's my invite: ${link}`);
@@ -1403,16 +1422,24 @@ async function invite(env, req) {
   ).bind(token, sender.ref_code, from, senderName, toPhone, toName, message, clip(b.channel, 20) ?? 'share').run();
 
   // The friendship. For a STRANGER it stays pending until they open the link
-  // — consent by action. For an EXISTING member it activates immediately:
-  // both people are on Num, the sender addressed them by their own number,
-  // and the recipient's phone buzzes with who connected — the agents talk to
-  // each other, no text message in the loop. (This is the fix for Dre↔Vivian
-  // day one: she was a member, yet her invite behaved like a cold signup.)
+  // — consent by action. For an EXISTING member with NO PLAN attached it
+  // activates immediately: both people are on Num, the sender addressed them
+  // by their own number, and the recipient's phone buzzes with who connected
+  // — the agents talk to each other, no text message in the loop. (This is
+  // the fix for Dre↔Vivian day one: she was a member, yet her invite behaved
+  // like a cold signup.)
+  //
+  // AN INVITE CARRYING A PLAN IS PENDING EVEN FOR A MEMBER. That row is the
+  // invitation: it is what `requests()` returns in their inbox and what
+  // `respond(accept)` turns into a membership. Activating it here would leave
+  // nothing to accept — the plan would be reachable only from the texted
+  // link, which is exactly the dead end this whole file exists to close.
+  const instant = !!existing && !plan;
   await env.DB.prepare(
     "INSERT INTO num_links (id, a_id, b_id, b_phone, b_name, token, plan_id, state, accepted_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
   ).bind(
     uid('lnk'), from, existing?.id ?? null, toPhone, toName, token, planId,
-    existing ? 'active' : 'pending', existing ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+    instant ? 'active' : 'pending', instant ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
   ).run();
   if (existing && !plan) {
     // Plan invites already notified above; a pure friend-connect buzzes too.
@@ -1426,9 +1453,13 @@ async function invite(env, req) {
     token,
     link,
     message,
-    // Already a member — the plan is in their app and their phone buzzed.
-    // The client shows "delivered" instead of pretending a signup is needed.
+    // Already a member — their phone buzzed and it is in their inbox. The
+    // client shows "invited" rather than pretending a signup is needed, and
+    // rather than claiming they are already in, which they are not until they
+    // say so.
     on_num: !!existing,
+    invited: !!(existing && plan),
+    joined: false,
     to_name: toName,
     // Send-from-your-own-phone payloads — these work today, no SMS provider needed.
     sms_url: `sms:${toPhone ?? ''}${/iphone|ipad|mac/i.test(req.headers.get('User-Agent') ?? '') ? '&' : '?'}body=${encodeURIComponent(message)}`,

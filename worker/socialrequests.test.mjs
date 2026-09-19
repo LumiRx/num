@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS num_event_guests (token TEXT PRIMARY KEY, event_id TE
 `;
 db.exec(EVENT_TABLES);
 
+// num_invite_links lives in claim/schema.sql, not in social.mjs's ensure(),
+// so the harness has to build it or /invite 500s on a missing table.
+db.exec(`CREATE TABLE IF NOT EXISTS num_invite_links (token TEXT PRIMARY KEY, code TEXT NOT NULL,
+  sender_id TEXT NOT NULL, sender_name TEXT, to_phone TEXT, to_name TEXT, message TEXT, channel TEXT,
+  sent_at TEXT, opened_at TEXT, signed_up_at TEXT, signup_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')));`);
+
 const get = async (query) =>
   handleSocialSafe(new Request(`https://app.itsnum.com/api/social/requests?${query}`), env, '/requests');
 
@@ -81,8 +88,12 @@ const member = (id, name, phone) =>
   db.prepare('INSERT INTO num_members (id, name, phone) VALUES (?,?,?)').run(id, name, phone);
 
 beforeEach(() => {
-  for (const t of ['num_members', 'num_links', 'num_events', 'num_event_guests']) {
-    db.prepare(`DELETE FROM ${t}`).run();
+  // The plan tables are built lazily by social.mjs's ensure(), so on the first
+  // few tests they do not exist yet. Clearing what is there beats ordering the
+  // file by which test happens to create what.
+  for (const t of ['num_members', 'num_links', 'num_events', 'num_event_guests',
+    'num_plans', 'num_plan_members', 'num_plan_events', 'num_invite_links']) {
+    try { db.prepare(`DELETE FROM ${t}`).run(); } catch { /* not built yet */ }
   }
 });
 
@@ -200,5 +211,103 @@ describe('the inbox on a database with everything', () => {
 
     const { body } = await read(await get('me=mem_you'));
     assert.deepEqual(body.events, []);
+  });
+});
+
+/* ── AN INVITE IS AN INVITATION, NOT AN ENROLMENT ───────────────────────
+ *
+ * Dre, 19 Sep 2026: "dont auto add people to new plans it risks sharing to
+ * them, each plan is fresh start."
+ *
+ * Inviting an existing member to a plan used to write them straight into
+ * num_plan_members. Membership is READ ACCESS — every idea on the board,
+ * every comment, every other member's name and vote — so somebody who had
+ * answered nothing could already see all of it, and found out from a push
+ * saying they had been "put on" something.
+ */
+describe('inviting someone to a plan', () => {
+  const post = (path, body) =>
+    handleSocialSafe(new Request(`https://app.itsnum.com/api/social${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }), env, path);
+
+  // invite() refuses a sender with no ref_code, so these members need one.
+  const sender = (id, name, phone) => {
+    member(id, name, phone);
+    db.prepare('UPDATE num_members SET ref_code=? WHERE id=?').run(id.toUpperCase().slice(-6), id);
+  };
+
+  const plan = async (owner) => {
+    sender(owner, 'Dre', '+13105550000');
+    const res = await post('/plan', { me: owner, title: 'Lisbon', dest: 'lisbon' });
+    return (await res.json()).plan;
+  };
+
+  const members = (planId) =>
+    db.prepare('SELECT member_id FROM num_plan_members WHERE plan_id=? ORDER BY member_id').all(planId).map((r) => r.member_id);
+
+  test('the invitee is NOT on the plan until they accept', async () => {
+    const p = await plan('mem_dre');
+    member('mem_viv', 'Viv', '+13105551111');
+    const { body } = await read(await post('/invite', { from: 'mem_dre', to_id: 'mem_viv', plan_id: p.id }));
+    assert.equal(body.on_num, true, 'she is a member, so this is still app-to-app');
+    assert.equal(body.invited, true);
+    assert.equal(body.joined, false);
+    assert.deepEqual(members(p.id), ['mem_dre'], 'she was put on the plan without answering');
+  });
+
+  test('the invitation is waiting in her inbox, which is how she answers it', async () => {
+    const p = await plan('mem_dre');
+    member('mem_viv', 'Viv', '+13105551111');
+    await post('/invite', { from: 'mem_dre', to_id: 'mem_viv', plan_id: p.id });
+    const { body } = await read(await get('me=mem_viv'));
+    assert.equal(body.connects.length, 1, 'nothing to accept — the plan is reachable only from the texted link');
+    assert.equal(body.connects[0].plan_id, p.id);
+    assert.equal(body.connects[0].plan_title, 'Lisbon');
+    assert.deepEqual(body.plans, [], 'the plan is listed as hers before she has joined it');
+  });
+
+  test('accepting is what joins her, and it still works', async () => {
+    const p = await plan('mem_dre');
+    member('mem_viv', 'Viv', '+13105551111');
+    await post('/invite', { from: 'mem_dre', to_id: 'mem_viv', plan_id: p.id });
+    const { body: inbox } = await read(await get('me=mem_viv'));
+    const { body } = await read(await post('/respond', {
+      me: 'mem_viv', id: inbox.connects[0].id, kind: 'connect', action: 'accept',
+    }));
+    assert.equal(body.state, 'active');
+    assert.equal(body.plan.id, p.id);
+    assert.deepEqual(members(p.id), ['mem_dre', 'mem_viv']);
+  });
+
+  test('declining leaves her off it, and off it stays', async () => {
+    const p = await plan('mem_dre');
+    member('mem_viv', 'Viv', '+13105551111');
+    await post('/invite', { from: 'mem_dre', to_id: 'mem_viv', plan_id: p.id });
+    const { body: inbox } = await read(await get('me=mem_viv'));
+    await post('/respond', { me: 'mem_viv', id: inbox.connects[0].id, kind: 'connect', action: 'decline' });
+    assert.deepEqual(members(p.id), ['mem_dre']);
+  });
+
+  test('a friend-connect with no plan still activates on the spot', async () => {
+    // Connecting is mutual and reveals a name. A plan is a room with other
+    // people's things in it. Different asks, different answers — and the
+    // day-one fix (a member being asked to sign up again) must not regress.
+    sender('mem_dre', 'Dre', '+13105550000');
+    member('mem_viv', 'Viv', '+13105551111');
+    const { body } = await read(await post('/invite', { from: 'mem_dre', to_id: 'mem_viv' }));
+    assert.equal(body.on_num, true);
+    assert.equal(body.invited, false);
+    const link = db.prepare('SELECT state FROM num_links WHERE a_id=? AND b_id=?').get('mem_dre', 'mem_viv');
+    assert.equal(link.state, 'active');
+  });
+
+  test('the text does not claim she is already in', async () => {
+    const p = await plan('mem_dre');
+    member('mem_viv', 'Viv', '+13105551111');
+    const { body } = await read(await post('/invite', { from: 'mem_dre', to_id: 'mem_viv', plan_id: p.id }));
+    assert.equal(/already waiting in your NUM app|you're in/i.test(body.message), false,
+      `the message still says she is on it: ${body.message}`);
+    assert.match(body.message, /invited you/i);
   });
 });

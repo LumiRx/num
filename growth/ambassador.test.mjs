@@ -828,3 +828,59 @@ test('the public form asks both questions, and its lists agree with the server',
     assert.deepEqual(cleanNiches([k]), [k], `the server does not know the niche "${k}"`);
   }
 });
+
+test('a failed send is reported as one — the email IS the account', async () => {
+  // The console link is the whole credential and is never put on a page, so
+  // "emailed: true" after a failed send leaves a person with a referral code
+  // and no way to reach it. itsnum.com was bouncing 20.9% the day before this
+  // was written; this is not a rare branch.
+  const db = freshDb();
+  const d = { ...deps(db), sendBatch: async () => { throw new Error('550 mailbox unavailable'); } };
+  const { body } = await join(db, { name: 'Ana', email: 'ana@example.com' }, d);
+  assert.equal(body.ok, true, 'the application itself must still be written');
+  assert.equal(body.emailed, false);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM num_ambassadors').get().n, 1);
+});
+
+test('the welcome email reads back what they declared', async () => {
+  // Somebody who filled in three channels and got an email mentioning none of
+  // them cannot tell whether any of it arrived — and the minute after sending
+  // is the only moment they will fix a typo'd handle.
+  const db = freshDb();
+  let sent = null;
+  const d = { ...deps(db), sendBatch: async (_e, msgs) => { sent = msgs[0]; return { ok: true }; } };
+  const { body } = await join(db, {
+    name: 'Ana', email: 'ana@example.com',
+    socials: [{ platform: 'instagram', handle: '@anatravels', followers: 41200 }],
+    niches: ['food', 'nightlife'],
+  }, d);
+  assert.equal(body.emailed, true);
+  assert.match(sent.text, /instagram @anatravels/);
+  assert.match(sent.text, /41,200/);
+  assert.match(sent.text, /as you declared it/, 'a claimed figure must say it is claimed');
+  assert.match(sent.text, /Food and restaurants, Nightlife and bars/);
+});
+
+test('the email does not tell them they are accepted, because they are not', async () => {
+  // status is 'applied'. The link works immediately; the offers and the
+  // directory open on acceptance, and "You are in" read as both.
+  const db = freshDb();
+  let sent = null;
+  const d = { ...deps(db), sendBatch: async (_e, msgs) => { sent = msgs[0]; return { ok: true }; } };
+  await join(db, { name: 'Ana', email: 'ana@example.com' }, d);
+  assert.equal(db.prepare('SELECT status FROM num_ambassadors WHERE email=?').get('ana@example.com').status, 'applied');
+  assert.equal(/^You are in\./m.test(sent.text), false);
+  assert.match(sent.text, /Your link works from right now/);
+  assert.match(sent.text, /being accepted is what opens the offers/i);
+});
+
+test('the site links to the sign-up, on every page that carries the nav', async () => {
+  // /ambassadors/ went live and NOTHING on itsnum.com pointed at it, so it
+  // could only be found by being sent the URL. The shared nav is the fix;
+  // this is the guard that it stays there.
+  const { NAV } = await import('../scripts/nav.mjs');
+  assert.match(NAV, /href="\/ambassadors\/"[^>]*>For ambassadors</);
+  // and it must not link the key-gated console by mistake, exactly as
+  // /hosts/ and /host/ divide
+  assert.equal(/href="\/amb\/"/.test(NAV), false, 'the nav links the PRIVATE ambassador console');
+});
