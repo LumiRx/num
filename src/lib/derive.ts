@@ -271,7 +271,9 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
         : e.kind === 'event'
           ? { label: 'EVENT', st: mtgTag }
           : e.kind === 'group'
-            ? { label: (e.planTitle ?? 'PLAN').toUpperCase().slice(0, 14), st: tagOf(e as Booking).st }
+            // The plan's name, quietly — the card is about the thing, the tag
+            // says which plan it belongs to. Never the loud HOLD gradient.
+            ? { label: (e.planTitle ?? 'PLAN').toUpperCase().slice(0, 14), st: { ...mtgTag, background: 'rgba(14,164,131,.12)', color: 'var(--color-accent-700)', border: '1px solid rgba(14,164,131,.22)', maxWidth: '48%', overflow: 'hidden', textOverflow: 'ellipsis', flex: 'none' } }
             : tagOf(e as Booking);
     return {
       key: e.id,

@@ -140,8 +140,8 @@ export default function CalendarSheet() {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'baseline' }}>
-                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</span>
-                    <span style={e.tag.st}>{e.tag.label}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</span>
+                    <span style={{ flex: 'none', ...e.tag.st }}>{e.tag.label}</span>
                   </div>
                   <div style={{ fontSize: 9.5, color: 'var(--color-neutral-600)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {e.timespan}{e.place ? ` · ${e.place}` : ''}

@@ -44,6 +44,7 @@ const errors = [];
 // itsnum.com/api/ev refuses the workers.dev preview origin with a 403 — known, not the board.
 page.on('console', (m) => { if (m.type() === 'error' && !/status of 403/.test(m.text())) errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
+page.on('response', (r) => { if (r.status() >= 500) console.log('5xx', r.request().method(), r.url()); });
 
 let reorders = 0;
 await page.route('**/api/social/**', async (route) => {
@@ -51,7 +52,12 @@ await page.route('**/api/social/**', async (route) => {
   const p = url.pathname.replace(/^.*\/api\/social/, '');
   const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   if (p === '/plans') return json({ plans: [plan] });
-  if (p === '/plan' && route.request().method() === 'GET') return json({ plan, members, items, events, money, cursor: 3, ask_link: null });
+  if (p === '/plan' && route.request().method() === 'GET') {
+    // Honour `since` like the server does, or every 8-second poll re-delivers
+    // the history and the app narrates it into the thread each time.
+    const since = Number(url.searchParams.get('since') ?? 0) || 0;
+    return json({ plan, members, items, events: events.filter((e) => e.id > since), money, cursor: 3, ask_link: null });
+  }
   if (p === '/plan/reorder') {
     reorders++;
     const b = route.request().postDataJSON();
@@ -151,13 +157,15 @@ const cal = page.locator('text=FULL CALENDAR').first();
 if (await cal.count()) { await cal.click(); await page.waitForTimeout(500); }
 // Step the month forward until an "2" cell of October shows, then tap it.
 for (let i = 0; i < 2; i++) {
-  const oct = await page.evaluate(() => document.body.innerText.includes('October') || document.body.innerText.includes('OCT'));
+  const oct = await page.evaluate(() => /OCTOBER 2026/.test(document.body.innerText));
   if (oct) break;
-  const next = page.locator('[aria-label="Next month"]:visible').first();
-  if (await next.count()) { await next.click(); await page.waitForTimeout(300); } else break;
+  // Synthetic clicks: the Close button overlaps the month arrow at this width.
+  const clicked = await page.evaluate(() => { const el = document.querySelector('[aria-label="Next month"]'); if (!el) return false; el.click(); return true; });
+  if (!clicked) break;
+  await page.waitForTimeout(300);
 }
-const day2 = page.locator('[data-day="10-2"]:visible').first();
-if (await day2.count()) { await day2.click(); await page.waitForTimeout(400); }
+await page.evaluate(() => { document.querySelector('[data-day="10-2"]')?.click(); });
+await page.waitForTimeout(400);
 const withLines = await page.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.textContent || '').filter((t) => /^with /.test(t.trim())).slice(0, 6));
 console.log('with:', JSON.stringify(withLines));
 await page.screenshot({ path: `${out}/07-calendar.png` });
