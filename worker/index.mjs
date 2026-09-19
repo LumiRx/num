@@ -1426,6 +1426,7 @@ export async function handleNum(request, env, ctx, hooks = null) {
     // message that will actually be sent, links and all.
     {
       let resolved = resolvePicks(result.picks, grounding?.partners ?? []);
+      result = { ...result, _modelPicks: (result.picks ?? []).map((pk) => pk?.name).filter(Boolean), _dropped: resolved.dropped };
       // THE NAMES ARE IN THE PROSE AND THE PICKS ARE EMPTY (19 Sep 2026).
       // The bulk lane does this on most recommendation turns: three real rows
       // from the block, written as a paragraph, `picks: []`. Every partner the
@@ -1716,7 +1717,17 @@ export async function handleNum(request, env, ctx, hooks = null) {
     // answer without ever seeing num_asks.id: which lane and brain produced
     // it. Three short strings; no cost, no secret. worker/reactions.mjs.
     const turn = { lane: answeredLane, brain: result._brain ?? null, model: result._model ?? null };
-    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, turn, ...(_degraded ? { degraded: true, brain: _brain } : {}), ...(wantsDebug ? { _timing: timing } : {}) });
+    // With x-num-debug the caller also sees what the model was given to
+    // choose from and what happened to its picks — public directory names,
+    // no secrets. This is how "why is there no card" gets answered in one
+    // request instead of a tail nobody can hold.
+    const _ground = wantsDebug ? {
+      partners: (grounding?.partners ?? []).map((p) => p?.name).filter(Boolean).slice(0, 40),
+      picks_from_model: Array.isArray(result._modelPicks) ? result._modelPicks : null,
+      picks_from_prose: result._picksFromProse ?? 0,
+      dropped: result._dropped ?? [],
+    } : null;
+    return json(200, { ...clean, place: grounding.place ? grounding.place.name : null, turn, ...(_degraded ? { degraded: true, brain: _brain } : {}), ...(wantsDebug ? { _timing: timing, _ground } : {}) });
   } catch (err) {
     console.error('[num-ai]', err);
     // A ReferenceError or TypeError is OUR bug, not an outage. The two look
