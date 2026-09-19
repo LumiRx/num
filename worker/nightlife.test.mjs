@@ -69,7 +69,7 @@ describe('the mode', () => {
 
 describe('the screen', () => {
   test('it is a door on TODAY that opens a screen, not a question', () => {
-    assert.match(FEATURES, /id: 'nightlife', kicker: 'NIGHTLIFE'/);
+    assert.match(FEATURES, /id: 'nightlife', kicker: T\('NIGHTLIFE'\)/);
     assert.match(FEATURES, /opens: \(\) => store\.set\(\{ featureOpen: null, nightlifeOpen: true \}\)/);
   });
 
