@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.389 — 2026-09-19 16:41 UTC
+
+reminders — say it, NUM keeps it and buzzes at the hour
+
+- commit `53da732`
+
 ## 0.8.388 — 2026-09-19 01:42 UTC
 
 invites rail on PLAN, your day with who
