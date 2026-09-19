@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.381 — 2026-09-19 00:33 UTC
+
+the plan board (0.8.381)
+
+- commit `3dc89ad`
+
+## 0.8.380 — 2026-09-19 00:23 UTC
+
+the plan board: days, hours, drag, comments, lock, money
+
+- commit `da63000`
+
 ## 0.8.379 — 2026-09-18 23:51 UTC
 
 what's-on feeds fetched side by side
