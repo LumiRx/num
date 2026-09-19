@@ -7,6 +7,7 @@ import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
+import { startBookSync } from '../../lib/bookdesk';
 import { bootDm, closeDmThread, refreshDmInbox, startDmSync } from '../../lib/dm';
 import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
@@ -101,9 +102,13 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     serveIdentityToWorker();
     const stopPlan = startPlanSync();
     const stopDm = startDmSync();
+    // A venue's CONFIRM lands on the diary and in the thread whichever screen
+    // is open — not only while the booking sheet is (lib/bookdesk.ts).
+    const stopBook = startBookSync(45_000);
     return () => {
       stopPlan();
       stopDm();
+      stopBook();
     };
   }, []);
 

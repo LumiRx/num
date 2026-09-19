@@ -464,6 +464,21 @@ export async function handleBooking(request, env, path) {
         : null;
       await sendBookingMail(env, { row, verdict, place: addr });
 
+      // THE PLAN (19 Sep 2026). The request carried plan_id since the day
+      // it shipped and nothing ever read it: the push below has said "It's
+      // in your plan" to every confirmed guest, and it was not. A confirmed
+      // table is now a BOOKED card on the group's board the moment the venue
+      // taps; a declined one is a line in the group chat. Best effort — the
+      // venue's answer is already saved, and a plan hiccup must not undo it.
+      if (row.plan_id) {
+        try {
+          const { tableAnswered } = await import('./social.mjs');
+          await tableAnswered(env, { row, verdict, address: addr?.address ?? null });
+        } catch (err) {
+          console.warn('[bookdesk] plan mirror', err?.message ?? err);
+        }
+      }
+
       const { notify } = await import('./push.mjs');
       reached = await notify(env, {
         memberId: row.member_id,
@@ -472,7 +487,7 @@ export async function handleBooking(request, env, path) {
           ? `${row.venue_name} — confirmed ✓`
           : `${row.venue_name} couldn’t take it`,
         body: verdict === 'confirmed'
-          ? `Table for ${row.party_size}${row.on_date ? `, ${row.on_date}` : ''}${row.at_time ? ` at ${row.at_time}` : ''}. It’s in your plan.`
+          ? `Table for ${row.party_size}${row.on_date ? `, ${row.on_date}` : ''}${row.at_time ? ` at ${row.at_time}` : ''}. It’s on your PLAN tab${row.plan_id ? ' and the group’s board' : ''}.`
           : 'Want me to find you somewhere just as good?',
         url: '/?go=plan',
         tag: `book:${id}`,
@@ -499,7 +514,10 @@ export async function handleBooking(request, env, path) {
     const me = clip(url.searchParams.get('me'), 40);
     if (!me) return json({ requests: [] });
     const { results } = await env.DB.prepare(
-      'SELECT id, venue_name, party_size, on_date, at_time, state, created_at, answered_at FROM num_booking_requests WHERE member_id=?1 ORDER BY created_at DESC LIMIT 20',
+      // plan_id, place_id, venue_phone and note ride along (19 Sep 2026) so
+      // the client can put a confirmed table on the diary and the plan
+      // board without a second question.
+      'SELECT id, venue_name, venue_phone, party_size, on_date, at_time, note, plan_id, place_id, state, created_at, answered_at FROM num_booking_requests WHERE member_id=?1 ORDER BY created_at DESC LIMIT 20',
     ).bind(me).all();
     return json({ requests: results ?? [] });
   }

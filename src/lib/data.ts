@@ -106,6 +106,7 @@ function baseState() {
     errandDraft: null,
     bookDraft: null,
     bookRequests: [],
+    bookSeen: {},
     travelDraft: null,
     travelReferrals: [],
     tabOpen: null,

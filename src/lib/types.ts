@@ -1,7 +1,7 @@
 // Domain model for NUM — ported from the Concierge.dc.html prototype state.
 import type { TabState } from './tabs';
 import type { Errand } from './errands';
-import type { TableDraft, TableRequest } from './bookdesk';
+import type { TableDraft, TableRequest, TableState } from './bookdesk';
 import type { TravelDraft, TravelReferral } from './travel';
 import type { FlightOffer, FlightQuery } from './flights';
 import type { DmMessage, DmPeer } from './dm';
@@ -650,6 +650,12 @@ export interface AppState {
   bookDraft: TableDraft | null;
   /** Table requests and what the venues said. Server truth, display only. */
   bookRequests: TableRequest[];
+  /**
+   * Which state of each table request has already been carried into the
+   * diary and the thread (lib/bookdesk.ts landAnswers) — persisted, so a
+   * confirmed table is announced once, not on every launch.
+   */
+  bookSeen?: Record<string, TableState>;
 
   /**
    * A trip the concierge proposed handing to a travel agency. Non-null opens

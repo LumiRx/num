@@ -3319,6 +3319,44 @@ async function planShare(env, req) {
  */
 const FIT_FIELDS = ['dietary', 'budget', 'vibe', 'mobility', 'arrive'];
 
+/**
+ * A venue answered a table request that was made from a plan (bookdesk.mjs
+ * /answer). Confirmed → a BOOKED card on the board, in the hour the table
+ * is for, with the party size in the note; declined → a line in the group
+ * chat so the group knows to pick again. The lock is not consulted: this is
+ * not a member moving things, it is the world answering. Idempotent on the
+ * request id (the item id is derived from it), so a replayed answer cannot
+ * put two cards on the board.
+ */
+export async function tableAnswered(env, { row, verdict, address = null }) {
+  if (!row?.plan_id || !row?.member_id) return { ok: false, reason: 'no plan' };
+  await ensure(env);
+  const plan = await env.DB.prepare('SELECT id, title FROM num_plans WHERE id=?1').bind(row.plan_id).first();
+  if (!plan) return { ok: false, reason: 'unknown plan' };
+  const mem = await memberOf(env, row.plan_id, row.member_id);
+  const by = { id: row.member_id, name: mem?.name ?? null };
+  const who = by.name || 'Someone';
+  const when = [row.on_date, row.at_time].filter(Boolean).join(' ');
+  if (verdict !== 'confirmed') {
+    await event(env, row.plan_id, by, 'declined',
+      `${row.venue_name} couldn’t take ${who}’s table for ${row.party_size}${when ? ` (${when})` : ''} — pick again?`);
+    return { ok: true, declined: true };
+  }
+  const itemId = `itm_tbl_${String(row.id).slice(-24)}`;
+  const time = row.at_time && /^\d{2}:\d{2}$/.test(row.at_time) ? row.at_time : null;
+  const day = row.on_date && /^\d{4}-\d{2}-\d{2}$/.test(row.on_date) ? row.on_date : null;
+  const ins = await env.DB.prepare(
+    `INSERT OR IGNORE INTO num_plan_items (id, plan_id, kind, title, place, address, day, time, status, note, by_id, by_name, sort)
+     VALUES (?1,?2,'booking',?3,?4,?5,?6,?7,'confirmed',?8,?9,?10,0)`,
+  ).bind(itemId, row.plan_id, clip(row.venue_name, 120), clip(row.venue_name, 120), clip(address, 200), day, time,
+    `Table for ${row.party_size} — confirmed by the venue through NUM.`, row.member_id, by.name).run();
+  if (!ins.meta?.changes) return { ok: true, already: true, item_id: itemId };
+  const item = await env.DB.prepare('SELECT * FROM num_plan_items WHERE id=?1').bind(itemId).first();
+  await event(env, row.plan_id, by, 'booked',
+    `${row.venue_name} confirmed ${who}’s table for ${row.party_size}${when ? ` — ${when}` : ''}. It’s on the board.`, item, itemId);
+  return { ok: true, item_id: itemId };
+}
+
 /** The computation behind /plan/fit, exported so the brain can use it too. */
 export async function groupNeeds(env, planId) {
   const { results } = await env.DB.prepare(

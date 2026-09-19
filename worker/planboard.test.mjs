@@ -9,7 +9,7 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { handleSocialSafe } from './social.mjs';
+import { handleSocialSafe, tableAnswered } from './social.mjs';
 
 function d1(db) {
   const shape = (sql, args) => ({
@@ -219,5 +219,49 @@ describe('comments on an item', () => {
     const onItem = p.events.filter((e) => e.kind === 'comment' && e.item_id === it.id);
     assert.equal(onItem.length, 2);
     assert.equal(p.events.filter((e) => e.kind === 'comment').length, 3, 'item comments are in the one feed too');
+  });
+});
+
+describe('a venue answers a table asked for from the plan (bookdesk → tableAnswered)', () => {
+  const row = { id: 'req_abc123', member_id: 'mem_sam', venue_name: 'Cervejaria Ramiro', party_size: 4, on_date: '2026-10-02', at_time: '20:00', plan_id: 'pl_1' };
+
+  test('confirmed → one BOOKED card in that hour, one feed line on the item; a replay adds nothing', async () => {
+    const r = await tableAnswered(env, { row, verdict: 'confirmed', address: 'Av. Almirante Reis 1' });
+    assert.equal(r.ok, true);
+    const p = await readPlan('mem_dre');
+    const card = p.items.find((i) => i.id === r.item_id);
+    assert.ok(card, 'the table is on the board');
+    assert.deepEqual([card.kind, card.status, card.day, card.time, card.address, card.by_id], ['booking', 'confirmed', '2026-10-02', '20:00', 'Av. Almirante Reis 1', 'mem_sam']);
+    assert.match(card.note, /Table for 4/);
+    const ev = db.prepare("SELECT kind, summary, item_id FROM num_plan_events WHERE plan_id='pl_1' ORDER BY id DESC LIMIT 1").get();
+    assert.equal(ev.kind, 'booked');
+    assert.equal(ev.item_id, r.item_id);
+    assert.match(ev.summary, /Cervejaria Ramiro confirmed Sam’s table for 4 — 2026-10-02 20:00/);
+
+    const again = await tableAnswered(env, { row, verdict: 'confirmed', address: 'Av. Almirante Reis 1' });
+    assert.equal(again.already, true);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM num_plan_items WHERE plan_id='pl_1'").get().n, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM num_plan_events WHERE kind='booked'").get().n, 1);
+  });
+
+  test('confirmed lands even on a locked plan — the world answering is not a member moving things', async () => {
+    await post('/plan', { me: 'mem_dre', id: plan, lock: true });
+    const r = await tableAnswered(env, { row: { ...row, id: 'req_locked' }, verdict: 'confirmed' });
+    assert.equal(r.ok, true);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM num_plan_items WHERE plan_id='pl_1' AND status='confirmed'").get().n, 1);
+  });
+
+  test('declined → a line in the group chat, no card', async () => {
+    const r = await tableAnswered(env, { row: { ...row, id: 'req_no' }, verdict: 'declined' });
+    assert.equal(r.declined, true);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM num_plan_items WHERE plan_id='pl_1'").get().n, 0);
+    const ev = db.prepare("SELECT kind, summary FROM num_plan_events WHERE plan_id='pl_1' ORDER BY id DESC LIMIT 1").get();
+    assert.equal(ev.kind, 'declined');
+    assert.match(ev.summary, /couldn’t take Sam’s table for 4 \(2026-10-02 20:00\) — pick again\?/);
+  });
+
+  test('a request with no plan, or a plan that is gone, is a quiet no', async () => {
+    assert.equal((await tableAnswered(env, { row: { ...row, plan_id: null }, verdict: 'confirmed' })).ok, false);
+    assert.equal((await tableAnswered(env, { row: { ...row, plan_id: 'pl_gone' }, verdict: 'confirmed' })).ok, false);
   });
 });
