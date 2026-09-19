@@ -186,8 +186,15 @@ export async function hostFind(req, env, url, D) {
       // page. A host handing work to another host is about to quote their
       // client, and the fee is part of the number they quote.
       how_money_works: 'They invoice you, you bill your client as normal. NUM never appears to your client and never charges them.',
+      /* TWO DIFFERENT EMPTIES. Asked nothing and shown nothing means the
+       * network is empty; asked something and shown nothing means this
+       * search found nobody. Telling a host to "widen it" when they typed
+       * nothing to widen is the kind of sentence that teaches people the
+       * product is not listening. */
       note: (hosts.length || assets.length) ? null
-        : 'Nobody in the network matches that yet. Widen it, or ask NUM — a request with nobody to send it to is still worth logging.',
+        : ((q || city || country || service || kind)
+          ? 'Nobody in the network matches that yet. Widen it, or ask NUM — a request with nobody to send it to is still worth logging.'
+          : 'Nobody else has listed themselves in the network yet. You will see them here as they do, and you can list yourself with the switch above.'),
     });
   } catch (e) {
     if (isReadFailed(e)) return readFailedResponse(J, e);

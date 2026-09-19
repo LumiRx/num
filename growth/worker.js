@@ -2557,6 +2557,20 @@ ${consoleUrl}
 
 Keep that link private. It opens your account without a password.
 
+Three things worth doing in your first five minutes, and the console
+lists them for you when you open it:
+
+  1. Tick what you do and say what it costs. Until that is saved we
+     cannot quote you to anyone. "Agreed per request" is a valid
+     answer — an invented number is one your client will hold you to.
+  2. Put the people you already look after in. Each one gets a file:
+     what they like, what they will NOT have, allergies, their
+     calendar (send us the .ics and we will read it), their bookings
+     and what is still owed.
+  3. If you let anything out — a car, a boat, a jet, a villa — drop
+     the photographs in and we read what we can off them. Nothing
+     goes live until you have read it back and said so.
+
 Your clients stay yours. NUM does not become their concierge, does not
 charge them anything, and does not take a commission from what they
 spend with you. We are the back office, not the front desk.

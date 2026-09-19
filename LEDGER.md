@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 01:14 UTC from 39 entries._
+_Built 2026-09-19 01:38 UTC from 40 entries._
 
 ## Deployed right now
 
@@ -16,9 +16,9 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-console | 🔴 **STALE** — 3 files changed since it shipped |
+| num-console | 🟢 up to date (2026-09-19 01:37) |
 | num-app | 🔴 **STALE** — 3 files changed since it shipped |
-| num-growth | 🟢 up to date (2026-09-19 00:54) |
+| num-growth | 🟢 up to date (2026-09-19 01:27) |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -76,6 +76,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-15 16:32_
 - 🟢 **host console** — Tabs (Today/Clients/Work/Fleet/Products/Network/Money/Settings) built additively over the existing 1,500-line console JS; host identity fields editable; client country+languages; fleet country+notes.
   _claude, 2026-09-18 07:31_
+- 🟢 **host launch check** — Signed up as a real host through the live form and opened the console in a browser, desktop and phone. Found and fixed: the Fleet tab opened on somebody else's suppliers because the tab module renders in DOM order; EVERY .price block in the console was centring its text because shared site.css styles .price as a centred pricing box and the console's own rule never reset text-align; a new host landed on eight empty tabs with no next step, so Today now carries a three-step START HERE that reads it
+  _claude, 2026-09-19 01:38_
 - 🟢 **host search** — GET /api/host/find: one question across hosts, their listable assets and their areas. Ranked connection > service > place > has-inventory. LIKE wildcards escaped. No email, no phone, no registration - assets go through clientView. 21 tests.
   _claude, 2026-09-18 07:31_
 - 🟢 **host system audit** — Pre-launch double-check found four. TWO WERE HOLES I OPENED: a draft could be made listable (intake approves the host's own uploads, which satisfied the only gate - a model's guess would have reached a booker unread; now refused with still_a_draft) and every host saw every other host's unfiled uploads in their photo queue and could attach one to their own boat (the queue's 'supplier_id IS NULL' arm meant 'a text we could not place' until uploads also arrived with no supplier; now scoped to own u

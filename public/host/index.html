@@ -63,7 +63,17 @@ textarea{min-height:96px;resize:vertical;line-height:1.55}
 .svc input{margin:0}
 .svc label:has(input:checked){border-color:var(--pri);background:var(--pri-xl);color:var(--pri-d)}
 
-.price{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;background:#fff}
+/* THE CONSOLE'S OWN .price, AND THE LINE THAT WAS MISSING FROM IT.
+   /assets/site.css — loaded above this block, shared with the marketing
+   pages — defines .price as a centred pricing box: gradient, 22px radius,
+   text-align center. This rule overrode the background, the border and the
+   radius and said nothing about alignment, so EVERY .price in this console
+   silently inherited centred text: the pricing rows, the coverage areas, the
+   fleet drafts, the search results. Forms whose labels sit over centred
+   inputs read as broken, and nobody had looked at this page in a browser
+   since the class was borrowed. */
+.price{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;background:#fff;
+  text-align:left}
 .price .top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .price .top b{font-size:15px}
 .price .grid{display:grid;grid-template-columns:1.4fr .9fr .9fr 1.1fr;gap:10px}
@@ -174,6 +184,22 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <p class="hint" style="margin-top:16px">Lost it? Email <a href="mailto:info@itsnum.com">info@itsnum.com</a>
       from the address you signed up with and we will resend it.</p>
   </div>
+</section>
+
+<!-- ── WHILE IT OPENS ───────────────────────────────────────────────────
+     The console paints after two round trips, and until they land this page
+     rendered NOTHING: no header, no message, an empty grey screen. On a phone
+     on hotel wifi that is several seconds of looking broken, and it is the
+     first thing a new host ever sees. Whoever tests this will mistake it for a
+     crash — during the launch check on 19 Sep 2026 it was mistaken for one
+     three times, by the person who wrote it.
+
+     Removed by boot() on success and by showGate() on failure, so it can never
+     be left on top of a working console. -->
+<section id="booting" class="card2" style="max-width:440px;margin:60px auto;text-align:center">
+  <span class="tag">Host console</span>
+  <h2 style="margin-bottom:6px">Opening your console</h2>
+  <p class="sub" style="margin:0 auto">Reading your clients, your prices and the work coming in.</p>
 </section>
 
 <!-- ── CONSOLE ────────────────────────────────────────────────────────── -->
@@ -353,6 +379,23 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
        The agenda below reads the same rows the .ics feed publishes, so this
        page and the calendar a host actually lives in cannot disagree. -->
+  <!-- ── THE FIRST FIVE MINUTES ─────────────────────────────────────────
+       A new host lands on eight tabs and nothing in any of them. Every card
+       here is built to be useful once there is something in it, and on day
+       one there is nothing in any of them — so the console was, at the exact
+       moment it had to earn somebody's attention, a list of empty tables.
+
+       Three steps, in the order that makes the next one worth doing, each
+       reading its state from data the console has already loaded. It removes
+       itself when all three are done and never comes back. -->
+  <section class="card2 hide" id="startCard">
+    <span class="tag">Start here</span>
+    <h2>Three things, and NUM can work for you</h2>
+    <p class="sub">Nothing below takes more than a minute, and until the first one is done we cannot quote you to
+      anybody — a host with no prices is a host NUM has nothing to say about.</p>
+    <div id="startSteps"></div>
+  </section>
+
   <section class="card2" id="weekCard">
     <span class="tag">Today</span>
     <h2 id="weekHead">Your week</h2>
@@ -650,60 +693,6 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   </section>
 
   <!-- ── SUPPLIERS ────────────────────────────────────────────────────── -->
-  <section class="card2" id="supCard">
-    <span class="tag">Who does the work</span>
-    <h2>Your suppliers</h2>
-    <p class="sub">The marina that preps the boat. The driver who delivers the car. The crew who meet your guests.
-      <b>They need no app and no account</b> — a phone number is the whole setup, and from that moment they can text
-      photographs of anything they look after straight to NUM.</p>
-
-    <div class="note warn on">
-      <b>You pay them. We do not.</b> NUM records the job, the instructions and the receipt so nothing is argued about
-      later, and never sits between you and the person doing the work. Adding someone <b>tells them</b> — by email
-      where you give one — and they can stop it in one word.
-    </div>
-
-    <div class="note bad" id="supErr"></div>
-
-    <details style="margin:0 0 16px">
-      <summary style="cursor:pointer;font-weight:600">Add a supplier</summary>
-      <form id="supForm" style="margin-top:14px">
-        <div class="row2">
-          <div class="field"><label for="sp_name">Name <span class="hint">what you will recognise in a list</span></label>
-            <input id="sp_name" type="text" required placeholder="Marco at Royal Phuket"></div>
-          <div class="field"><label for="sp_kind">What they do</label><select id="sp_kind">
-            <option value="marina">Marina or boatyard</option>
-            <option value="driver">Driver</option>
-            <option value="crew">Crew</option>
-            <option value="concierge">Concierge</option>
-            <option value="caterer">Caterer or provisioning</option>
-            <option value="agency">Agency</option>
-            <option value="other">Something else</option>
-          </select></div>
-        </div>
-        <div class="row2">
-          <div class="field"><label for="sp_phone">Mobile <span class="hint">with the country code, like +66…</span></label>
-            <input id="sp_phone" type="tel" placeholder="+66812345678"></div>
-          <div class="field"><label for="sp_email">Email</label><input id="sp_email" type="email"></div>
-        </div>
-        <div class="field"><label for="sp_business">Business name <span class="hint">optional</span></label>
-          <input id="sp_business" type="text"></div>
-        <div class="field"><label for="sp_about">What they look after <span class="hint">for your own notes</span></label>
-          <textarea id="sp_about" rows="2"></textarea></div>
-        <p class="hint">The mobile is what lets them text photos in, so it is worth getting. The country code is not
-          optional — without it we cannot tell a Thai number from a British one, and a photo could land on the wrong
-          person's listing.</p>
-        <button class="btn pri" type="submit" id="supBtn">Add supplier</button>
-      </form>
-    </details>
-
-    <div class="scroll"><table>
-      <thead><tr><th>Name</th><th>What they do</th><th>Reachable on</th><th>Holds</th><th>Photos</th><th></th></tr></thead>
-      <tbody id="supRows"></tbody>
-    </table></div>
-  </section>
-
-  <!-- ── THE FLEET ────────────────────────────────────────────────────── -->
   <section class="card2" id="fleetCard">
     <span class="tag">Yachts, boats, jets, cars</span>
     <h2>Your fleet</h2>
@@ -825,6 +814,60 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   </section>
 
   <!-- ── OTHER HOSTS ──────────────────────────────────────────────────── -->
+  <section class="card2" id="supCard">
+    <span class="tag">Who does the work</span>
+    <h2>Your suppliers</h2>
+    <p class="sub">The marina that preps the boat. The driver who delivers the car. The crew who meet your guests.
+      <b>They need no app and no account</b> — a phone number is the whole setup, and from that moment they can text
+      photographs of anything they look after straight to NUM.</p>
+
+    <div class="note warn on">
+      <b>You pay them. We do not.</b> NUM records the job, the instructions and the receipt so nothing is argued about
+      later, and never sits between you and the person doing the work. Adding someone <b>tells them</b> — by email
+      where you give one — and they can stop it in one word.
+    </div>
+
+    <div class="note bad" id="supErr"></div>
+
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;font-weight:600">Add a supplier</summary>
+      <form id="supForm" style="margin-top:14px">
+        <div class="row2">
+          <div class="field"><label for="sp_name">Name <span class="hint">what you will recognise in a list</span></label>
+            <input id="sp_name" type="text" required placeholder="Marco at Royal Phuket"></div>
+          <div class="field"><label for="sp_kind">What they do</label><select id="sp_kind">
+            <option value="marina">Marina or boatyard</option>
+            <option value="driver">Driver</option>
+            <option value="crew">Crew</option>
+            <option value="concierge">Concierge</option>
+            <option value="caterer">Caterer or provisioning</option>
+            <option value="agency">Agency</option>
+            <option value="other">Something else</option>
+          </select></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="sp_phone">Mobile <span class="hint">with the country code, like +66…</span></label>
+            <input id="sp_phone" type="tel" placeholder="+66812345678"></div>
+          <div class="field"><label for="sp_email">Email</label><input id="sp_email" type="email"></div>
+        </div>
+        <div class="field"><label for="sp_business">Business name <span class="hint">optional</span></label>
+          <input id="sp_business" type="text"></div>
+        <div class="field"><label for="sp_about">What they look after <span class="hint">for your own notes</span></label>
+          <textarea id="sp_about" rows="2"></textarea></div>
+        <p class="hint">The mobile is what lets them text photos in, so it is worth getting. The country code is not
+          optional — without it we cannot tell a Thai number from a British one, and a photo could land on the wrong
+          person's listing.</p>
+        <button class="btn pri" type="submit" id="supBtn">Add supplier</button>
+      </form>
+    </details>
+
+    <div class="scroll"><table>
+      <thead><tr><th>Name</th><th>What they do</th><th>Reachable on</th><th>Holds</th><th>Photos</th><th></th></tr></thead>
+      <tbody id="supRows"></tbody>
+    </table></div>
+  </section>
+
+  <!-- ── THE FLEET ────────────────────────────────────────────────────── -->
   <section class="card2" id="netCard">
     <span class="tag">The network</span>
     <h2>Other hosts</h2>
@@ -1050,6 +1093,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   var pricing = {};
 
   function showGate(msg) {
+    var b = $('booting');
+    if (b) b.classList.add('hide');
     $('gate').classList.remove('hide');
     $('app').classList.add('hide');
     if (msg) note($('gateErr'), msg, 'bad');
@@ -1170,6 +1215,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     if (p.in_network !== undefined) $('netSwitch').checked = !!p.in_network;
     if (p.blurb !== undefined) $('netBlurb').value = p.blurb || '';
     $('savedAt').textContent = p.profile_updated_at ? 'Last saved ' + p.profile_updated_at : 'Never saved';
+    // A profile is "priced" when it has been saved AND has at least one
+    // service ticked. Saved-but-empty is the state a host reaches by opening
+    // the form and pressing save, and it quotes nobody.
+    START.priced = !!p.profile_updated_at && (p.services || []).length > 0;
+    startPaint();
     if (p.calendar_url) {
       $('calUrl').innerHTML = 'Subscribe to this URL in Google Calendar, Apple Calendar or Outlook:<br>' +
         '<span class="mono">' + esc(p.calendar_url) + '</span>';
@@ -1361,6 +1411,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
   function paintClients(d) {
     CLIENTS = d.clients || [];
+    START.clients = CLIENTS.length;
+    startPaint();
     paintPlan(d.plan);
     $('clRows').innerHTML = CLIENTS.length ? CLIENTS.map(function (c) {
       var how = { host_added: 'You added them', num_offer: 'Introduced by NUM', self_joined: 'Joined themselves' }[c.source] || c.source;
@@ -2233,6 +2285,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
   function paintFleet(d) {
     FLEET = d.assets || [];
+    START.fleet = FLEET.length;
+    startPaint();
 
     $('flRows').innerHTML = FLEET.length ? FLEET.map(function (a) {
       var pend = a.photos_pending ? ' <span class="hint">(' + a.photos_pending + ' waiting)</span>' : '';
@@ -2535,15 +2589,39 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
   function boot(quiet) {
     if (!K) return showGate();
-    Promise.all([
-      fetch('/api/host/summary?k=' + encodeURIComponent(K)).then(function (r) { return r.json(); }),
-      fetch('/api/host/profile?k=' + encodeURIComponent(K)).then(function (r) { return r.json(); })
-    ]).then(function (res) {
+    /* THE STATUS IS CARRIED, NOT THROWN AWAY.
+     *
+     * This used to read `r.json()` and nothing else, so every unsuccessful
+     * answer looked identical to the code below — and the code below deleted
+     * the host's stored key and told them it was not recognised. A 500 from a
+     * cold worker, a deploy in flight, a D1 blip: all of them logged the host
+     * out and blamed their credential. Seen live on 19 Sep 2026 while
+     * redeploying: summary and profile both 500ed for a few seconds, and the
+     * console did exactly that.
+     *
+     * A key is only wrong when the server SAYS it is wrong. */
+    var read = function (path) {
+      return fetch(path + '?k=' + encodeURIComponent(K)).then(function (r) {
+        return r.json().then(
+          function (j) { j.__status = r.status; return j; },
+          function () { return { ok: false, __status: r.status }; }
+        );
+      });
+    };
+
+    Promise.all([read('/api/host/summary'), read('/api/host/profile')]).then(function (res) {
       var sum = res[0], prof = res[1];
       if (!sum.ok) {
-        sessionStorage.removeItem('num_host_k');
-        return showGate('That key was not recognised, or your account has ended. Check the link in your welcome email.');
+        if (sum.__status === 401 || sum.__status === 403) {
+          sessionStorage.removeItem('num_host_k');
+          return showGate('That key was not recognised, or your account has ended. Check the link in your welcome email.');
+        }
+        // Anything else is ours. The key stays put, and so does the host.
+        return showGate('NUM could not open your console just then — that is us, not your key. '
+          + 'Try again in a moment and it will be here.');
       }
+      var boot_el = $('booting');
+      if (boot_el) boot_el.classList.add('hide');
       $('gate').classList.add('hide');
       $('app').classList.remove('hide');
       paintSummary(sum);
@@ -3128,6 +3206,75 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
   cfTabsBuild();
 
+
+  /* ── START HERE ───────────────────────────────────────────────────────
+     Reads its state from what the console has already fetched rather than
+     asking the server anything: prices come from the profile, the book from
+     the clients call, the fleet from the assets call. So it cannot disagree
+     with the tabs it is pointing at, and it costs no round trip.
+
+     THE ORDER IS THE ARGUMENT. Prices first, because until a host has them
+     NUM cannot quote them to anybody and every other feature is decoration.
+     Their book second, because that is the thing they already own and the
+     reason they signed up. The fleet third, because it is optional — plenty
+     of hosts book tables and never let out a boat. */
+  var START = { priced: false, clients: 0, fleet: 0, ready: false };
+
+  function startPaint() {
+    var el = $('startCard');
+    if (!el) return;
+
+    var steps = [
+      {
+        done: START.priced,
+        title: 'Tick what you do, and say what it costs',
+        why: 'Until this is saved NUM cannot quote you to anyone. Prices can be "agreed per request" — an invented number is one your client will hold you to.',
+        go: 'settings', label: 'Set your services'
+      },
+      {
+        done: START.clients > 0,
+        title: 'Put the people you already look after in',
+        why: 'They are never charged by NUM, no plan limits how many you can have, and each one gets a file: what they like, what they will not have, their calendar, what is owed.',
+        go: 'clients', label: 'Add your first client'
+      },
+      {
+        done: START.fleet > 0,
+        title: 'If you let anything out, photograph it',
+        why: 'Drop the pictures in and we read what we can off them — a car, a boat, a jet. Optional: plenty of hosts book tables and never let out a hull.',
+        go: 'fleet', label: 'Drop in photographs'
+      }
+    ];
+
+    var left = steps.filter(function (x) { return !x.done; });
+    // Done is done. It goes away and does not come back to congratulate anybody.
+    if (!left.length) { el.classList.add('hide'); return; }
+    el.classList.remove('hide');
+
+    $('startSteps').innerHTML = steps.map(function (x, i) {
+      return '<div class="price" style="display:flex;gap:14px;align-items:flex-start;margin-bottom:10px' +
+        (x.done ? ';opacity:.55' : '') + '">' +
+        '<div style="flex:0 0 26px;height:26px;border-radius:50%;display:flex;align-items:center;' +
+          'justify-content:center;font-weight:700;font-size:13px;' +
+          (x.done ? 'background:var(--pri);color:#fff' : 'background:var(--bg);color:var(--slate);border:1px solid var(--line)') +
+          '">' + (x.done ? '✓' : (i + 1)) + '</div>' +
+        '<div style="flex:1">' +
+          '<b style="display:block;font-size:15px' + (x.done ? ';text-decoration:line-through' : '') + '">' +
+            esc(x.title) + '</b>' +
+          '<p class="hint" style="margin:3px 0 0">' + esc(x.why) + '</p>' +
+          (x.done ? '' : '<button class="btn pri" type="button" data-start="' + x.go +
+            '" style="margin-top:10px">' + esc(x.label) + '</button>') +
+        '</div></div>';
+    }).join('');
+
+    each($('startSteps').querySelectorAll('[data-start]'), function (b) {
+      b.onclick = function () {
+        // The tab module owns navigation; this asks it rather than reaching
+        // into it, so the hash, the highlight and the scroll stay its job.
+        location.hash = b.getAttribute('data-start');
+      };
+    });
+  }
+
   boot();
 })();
 </script>
@@ -3160,7 +3307,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
      to be. Today first because it is the only tab that answers "what now";
      Settings last because it is the only one nobody opens twice. */
   var TABS = [
-    { key: 'today',    label: 'Today',    ids: ['weekCard', 'introCard'] },
+    { key: 'today',    label: 'Today',    ids: ['startCard', 'weekCard', 'introCard'] },
     { key: 'clients',  label: 'Clients',  ids: ['clientsCard', 'cfCard', 'rmCard', 'inviteCard'] },
     { key: 'work',     label: 'Work',     ids: ['reqCard', 'thCard'] },
     { key: 'fleet',    label: 'Fleet',    ids: ['fleetCard', 'supCard'] },
@@ -3201,13 +3348,44 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       el.classList.toggle('t-off', el.getAttribute('data-tab') !== key);
     });
     Array.prototype.slice.call(nav.children).forEach(function (b) {
-      b.setAttribute('aria-selected', String(b.dataset.key === key));
+      var on = b.dataset.key === key;
+      b.setAttribute('aria-selected', String(on));
+      /* ON A PHONE THE STRIP SCROLLS, AND THE ACTIVE TAB CAN BE OFF THE END
+       * OF IT. Eight tabs do not fit in 375px, so a host returning to a
+       * remembered Settings tab saw a settings form under a row of tabs where
+       * none was highlighted — the page looked like it had lost its place.
+       * Scrolling the live one into view is what makes the strip agree with
+       * the content below it. */
+
     });
+    keepActiveVisible();
     try { localStorage.setItem('num_host_tab', key); } catch (e) {}
     if (push) {
       try { history.replaceState(null, '', '#' + key); } catch (e) {}
     }
   }
+
+  /* THE LIVE TAB HAS TO BE ON SCREEN, AND THIS TOOK THREE GOES.
+   *
+   * Eight tabs do not fit in 375px, so the strip scrolls. A host returning to
+   * a remembered Settings tab saw a settings form under a row of tabs where
+   * nothing was highlighted — the page looked like it had lost its place.
+   *
+   * scrollIntoView did nothing: called while the page was still laying out,
+   * the strip had not yet overflowed, so there was nothing to scroll.
+   * Computing scrollLeft arithmetically was correct but ran at the same too
+   * early moment and computed it against a width that was about to change.
+   *
+   * So it is a function, and it is called again after layout has settled and
+   * whenever the window changes size. Cheap, idempotent, and it stops being a
+   * guess about when the browser is ready. */
+  function keepActiveVisible() {
+    var b = nav.querySelector('[aria-selected="true"]');
+    if (!b || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollLeft = Math.max(0, b.offsetLeft - (nav.clientWidth - b.offsetWidth) / 2);
+  }
+  window.addEventListener('resize', keepActiveVisible);
+  [0, 300, 1200].forEach(function (ms) { setTimeout(keepActiveVisible, ms); });
 
   live.forEach(function (t) {
     var b = document.createElement('button');
