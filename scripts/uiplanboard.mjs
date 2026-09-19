@@ -62,7 +62,19 @@ await page.route('**/api/social/**', async (route) => {
   if (p === '/plan/comment') return json({ ok: true });
   if (p === '/stars') return json({ balance: 42, moves: [] });
   if (p === '/friends') return json({ friends: [] });
-  if (p === '/requests') return json({ requests: [] });
+  if (p === '/requests') return json({
+    connects: [{ id: 'lnk_1', a_id: 'mem_ana', plan_id: 'pl_x', from_name: 'Ana', from_avatar: null, plan_title: 'Porto day', created_at: 't' }],
+    events: [{ token: 'tok_1', event_id: 'ev_1', title: 'Viv’s birthday', day: '2026-10-03', time: '20:00', place: 'Pensão Amor', host_name: 'Viv', via: 'agent' }],
+    plans: [
+      { id: 'pl_demo', title: 'Lisbon weekend', dest: 'Lisbon', members: 3, open_items: 3, latest: 'Sam added Pastéis de Belém.', my_vote: 'in', my_role: 'owner', owner_name: 'Dre', starts_on: '2026-10-02' },
+      { id: 'pl_y', title: 'Sam’s boat day', dest: null, members: 4, open_items: 1, latest: null, my_vote: null, my_role: 'member', owner_name: 'Sam', starts_on: '2026-10-09' },
+      { id: 'pl_z', title: 'Viv’s hike', dest: null, members: 2, open_items: 0, latest: null, my_vote: null, my_role: 'member', owner_name: 'Viv', starts_on: '2026-10-11' },
+    ],
+  });
+  if (p === '/agenda') return json({
+    items: items.filter((i) => i.day).map((i) => ({ id: i.id, plan_id: 'pl_demo', plan_title: 'Lisbon weekend', title: i.title, day: i.day, time: i.time, status: i.status, kind: i.kind, place: i.place ?? null, address: i.address ?? null, cost_minor: i.cost_minor ?? null, currency: 'USD', with: [{ member_id: 'mem_preview', name: 'Dre', sure: true }, { member_id: 'mem_sam', name: 'Sam', sure: true }, { member_id: 'mem_viv', name: 'Viv', sure: false }] })),
+    events: [{ id: 'ev_1', title: 'Viv’s birthday', day: '2026-10-03', time: '20:00', place: 'Pensão Amor', address: null, host_id: 'mem_viv', host_name: 'Viv', going: 6, my_part: 'guest' }],
+  });
   return json({ ok: true });
 });
 
@@ -119,6 +131,38 @@ if (h) {
   console.log('reorder calls:', reorders, 'it_2 now at', items.find((i) => i.id === 'it_2').time);
   await page.screenshot({ path: `${out}/05-dropped.png` });
 } else console.log('drag: handle not found');
+
+// The invite rail: folded past three, badge on the tab.
+await page.evaluate(() => { document.querySelector('.no-scrollbar')?.scrollTo(0, 0); });
+await page.waitForTimeout(300);
+const railInfo = await page.evaluate(() => ({
+  invites: document.body.innerText.includes('INVITES'),
+  more: (document.body.innerText.match(/AND \d+ MORE/) || [null])[0],
+  badge: document.querySelector('[aria-label$="waiting on you"]')?.textContent ?? null,
+}));
+console.log('rail:', JSON.stringify(railInfo));
+await page.screenshot({ path: `${out}/06-invites.png` });
+
+// MY DIARY → Fri 2 Oct on the calendar → the day by the hour, with who.
+await page.locator('[role="tab"]:has-text("MY DIARY")').first().click();
+await page.waitForTimeout(400);
+// Open the calendar (the FULL CALENDAR chip on the week strip), then pick 2 Oct.
+const cal = page.locator('text=FULL CALENDAR').first();
+if (await cal.count()) { await cal.click(); await page.waitForTimeout(500); }
+// Step the month forward until an "2" cell of October shows, then tap it.
+for (let i = 0; i < 2; i++) {
+  const oct = await page.evaluate(() => document.body.innerText.includes('October') || document.body.innerText.includes('OCT'));
+  if (oct) break;
+  const next = page.locator('[role="dialog"] [aria-label="Next month"], [aria-label="Next month"]').first();
+  if (await next.count()) { await next.click(); await page.waitForTimeout(300); } else break;
+}
+const day2 = page.locator('[role="dialog"] [data-day="10-2"], [data-day="10-2"]').first();
+if (await day2.count()) { await day2.click(); await page.waitForTimeout(400); }
+const withLines = await page.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.textContent || '').filter((t) => /^with /.test(t.trim())).slice(0, 6));
+console.log('with:', JSON.stringify(withLines));
+await page.screenshot({ path: `${out}/07-calendar.png` });
+const close = page.locator('[aria-label="Close"]:visible').last();
+if (await close.count()) await close.click();
 
 // Full-page census of the board.
 const census = await page.evaluate(() => {

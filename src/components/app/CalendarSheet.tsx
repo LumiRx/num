@@ -21,6 +21,8 @@ function DayCell({ d }: { d: CalCell }) {
   return (
     <div
       {...pressable(() => store.set({ selDay: d.dayKey }))}
+      data-day={d.dayKey}
+      aria-label={t('Day {n}', { n: d.n })}
       style={{ minHeight: 34, textAlign: 'center', fontSize: 11.5, cursor: 'pointer' }}
     >
       <span
