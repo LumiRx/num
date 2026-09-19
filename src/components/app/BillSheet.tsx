@@ -12,8 +12,8 @@ import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
 import { XIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
-import { loadBill, startRail, tryAutoPay, autoPayNote, type BillView, type BillRail } from '../../lib/bill';
-import { openTab } from '../../lib/tabs';
+import { loadBill, startRail, splitShares, tryAutoPay, autoPayNote, type BillView, type BillRail, type BillShare } from '../../lib/bill';
+import { openTab, loadTab, type TabState } from '../../lib/tabs';
 
 const BADGE: Record<string, string> = {
   apple_pay: ' Pay', google_pay: 'G Pay', card: 'CARD', link: 'Link', cashapp: '$', amazon_pay: 'a',
@@ -33,10 +33,18 @@ export default function BillSheet() {
   // once per opened bill and shows whichever answer comes back.
   const [auto, setAuto] = useState<'trying' | 'paid' | null>(null);
   const [autoNote, setAutoNote] = useState<string | null>(null);
+  // Splitting happens in two steps, deliberately. Opening a tab gets a code
+  // for friends to join with; only once they are on it does anybody's share
+  // get minted, because a share minted for a person who is not there is a
+  // live bill code nobody is going to pay.
+  const [tab, setTab] = useState<TabState | null>(null);
+  const [shares, setShares] = useState<BillShare[] | null>(null);
+  const [splitErr, setSplitErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
     setView(null); setErr(null); setBusy(null); setAuto(null); setAutoNote(null);
+    setTab(null); setShares(null); setSplitErr(null);
     let alive = true;
     void loadBill(token).then(async (r) => {
       if (!alive) return;
@@ -65,14 +73,40 @@ export default function BillSheet() {
   const rails = (view?.rails ?? []).filter((r) => r.ready && r.source !== 'app');
   const amount = bill?.amount ? `${bill.currency} ${bill.amount}` : null;
 
-  const go = (r: BillRail) => { setBusy(r.id); startRail(r); };
-  const split = async () => {
+  const go = (r: BillRail) => { setBusy(r.id); startRail(r, me?.id); };
+
+  /** Step one: a tab, and a code the others read off this screen. */
+  const startSplit = async () => {
     if (!bill) return;
-    setBusy('tab');
+    setBusy('tab'); setSplitErr(null);
     const st = await openTab(bill.label ? `${bill.venue} · ${bill.label}` : bill.venue, bill.venue);
     setBusy(null);
-    if (st) store.set({ billOpen: null });
+    if (st) setTab(st); else setSplitErr(t('Could not open a tab just now.'));
   };
+
+  const refreshTab = async () => {
+    if (!tab) return;
+    const st = await loadTab(tab.tab.id);
+    if (st) setTab(st);
+  };
+
+  /** Step two: one real bill code each, sent to their NUM. */
+  const sendShares = async () => {
+    if (!bill || !tab) return;
+    setBusy('shares'); setSplitErr(null);
+    const people = tab.members.map((m) => ({ member_id: m.member_id, name: m.name }));
+    const out = await splitShares(bill.token, people, me?.id ?? null);
+    setBusy(null);
+    if (!out.ok) { setSplitErr(out.error); return; }
+    setShares(out.shares);
+    // Re-read: this screen now shows a bill that has been split, and it should
+    // say so because the server says so, not because we just asked it to.
+    const again = await loadBill(bill.token);
+    if (again.ok) setView(again.view);
+  };
+
+  /** The share that was minted for whoever is looking at this screen. */
+  const mine = shares?.find((sh) => sh.member_id && sh.member_id === me?.id) ?? null;
 
   return (
     <div ref={ref} className="glass-strong sheet-in" style={{ ...sheetBase, visibility: 'visible', transform: 'translateY(0)', maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}>
@@ -88,12 +122,56 @@ export default function BillSheet() {
         {bill?.label && <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 2 }}>{bill.label}</div>}
         {amount && <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 32, marginTop: 10 }}>{amount}</div>}
 
+        {/* WHAT YOU ARE PAYING FOR, when the venue itemised it. The lines add
+            up to the figure above because the server minted the bill FROM
+            them — there is no second total anywhere that could disagree. */}
+        {!!bill?.items?.length && (
+          <div style={{ marginTop: 12, borderTop: '1px solid var(--ink-12)', paddingTop: 10 }}>
+            {bill.items.map((it, i) => (
+              <div key={`${it.name}-${i}`} style={{ display: 'flex', gap: 10, fontSize: 13, lineHeight: 1.9, color: 'var(--ink-60)' }}>
+                <div style={{ flex: 'none', width: 28, fontVariantNumeric: 'tabular-nums' }}>{it.qty}&times;</div>
+                <div style={{ flex: 1, minWidth: 0 }}>{it.name}</div>
+                <div style={{ flex: 'none', fontVariantNumeric: 'tabular-nums' }}>{(it.line_minor / 100).toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {err && <div style={{ fontSize: 13, color: 'var(--ink-60)', marginTop: 10, lineHeight: 1.55 }}>{err}</div>}
+
+        {/* Once the shares are out, this screen's job is to hand the person
+            who split it their own one. Theirs is a bill like any other — it
+            opens in the same sheet, with the same rails. */}
+        {mine && (
+          <div style={{ marginTop: 14, borderRadius: 16, border: '1.5px solid var(--color-accent)', padding: 14 }}>
+            <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('YOUR SHARE')}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 26, marginTop: 6 }}>
+              {bill?.currency} {mine.amount}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 6, lineHeight: 1.5 }}>
+              {t('Everyone else has theirs in their NUM.')}
+            </div>
+            <div
+              {...pressable(() => store.set({ billOpen: mine.token }))}
+              role="button"
+              className="press"
+              style={{ cursor: 'pointer', marginTop: 10, minHeight: 44, boxSizing: 'border-box', borderRadius: 999, border: '1px solid var(--ink-12)', padding: '13px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, letterSpacing: '.06em' }}
+            >
+              {t('PAY YOUR SHARE')}
+            </div>
+          </div>
+        )}
 
         {bill && bill.state === 'paid' && (
           <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink-60)' }}>
             {t('Paid — thank you.')} {t('Show this to staff if asked. Nothing further is owed on this code.')}
             <div style={{ marginTop: 6, fontWeight: 700, letterSpacing: '.06em' }}>{bill.token}</div>
+          </div>
+        )}
+
+        {bill && bill.state === 'split' && !mine && (
+          <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink-60)' }}>
+            {t('This bill was split. Everyone pays their own share, and each share was sent to their NUM.')}
           </div>
         )}
 
@@ -143,13 +221,55 @@ export default function BillSheet() {
               ))}
             </div>
 
-            {me && (
+            {me && !tab && (
               <div
-                {...pressable(split)}
+                {...pressable(startSplit)}
                 role="button"
                 style={{ cursor: 'pointer', marginTop: 12, minHeight: 44, boxSizing: 'border-box', borderRadius: 999, border: '1px dashed var(--ink-12)', padding: '13px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, letterSpacing: '.06em', opacity: busy === 'tab' ? 0.6 : 1 }}
               >
-                {busy === 'tab' ? t('OPENING A TAB…') : t('SPLIT IT WITH FRIENDS ON A TAB')}
+                {busy === 'tab' ? t('OPENING A TAB…') : t('SPLIT IT WITH FRIENDS')}
+              </div>
+            )}
+
+            {/* The tab is open: friends join with the code, then everyone gets
+                a real bill code of their own. Nobody's money passes through
+                anybody else — four shares are four charges on the venue's own
+                account, which is the only way NUM can do this at all. */}
+            {me && tab && (
+              <div style={{ marginTop: 12, borderRadius: 16, border: '1px solid var(--ink-12)', padding: 14 }}>
+                <div style={{ fontSize: 10, letterSpacing: '.14em', color: 'var(--color-accent)', fontWeight: 700 }}>{t('SPLITTING THIS BILL')}</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.55 }}>
+                  {t('Read this code to the others — they open NUM and join.')}
+                </div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 26, letterSpacing: '.14em', marginTop: 6 }}>{tab.tab.code}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 10 }}>
+                  {tab.members.length === 1
+                    ? t('Just you so far.')
+                    : tab.members.map((m) => m.name || t('Someone')).join(', ')}
+                </div>
+                <div
+                  {...pressable(refreshTab)}
+                  role="button"
+                  style={{ cursor: 'pointer', marginTop: 10, minHeight: 44, boxSizing: 'border-box', borderRadius: 999, border: '1px solid var(--ink-12)', padding: '13px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, letterSpacing: '.06em' }}
+                >
+                  {t('WHO IS ON IT?')}
+                </div>
+                {tab.members.length > 1 && !shares && (
+                  <div
+                    {...pressable(sendShares)}
+                    role="button"
+                    className="press"
+                    style={{ cursor: 'pointer', marginTop: 8, minHeight: 44, boxSizing: 'border-box', borderRadius: 999, border: '1.5px solid var(--color-accent)', padding: '13px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, letterSpacing: '.06em', opacity: busy === 'shares' ? 0.6 : 1 }}
+                  >
+                    {busy === 'shares'
+                      ? t('SENDING…')
+                      : `${t('SEND EVERYONE THEIR SHARE')} (${tab.members.length})`}
+                  </div>
+                )}
+                {splitErr && <div style={{ fontSize: 12.5, color: 'var(--ink-60)', marginTop: 8, lineHeight: 1.5 }}>{splitErr}</div>}
+                <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
+                  {t('Each share is its own bill, paid straight to the venue. NUM never moves money between you.')}
+                </div>
               </div>
             )}
 

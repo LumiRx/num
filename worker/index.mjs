@@ -64,6 +64,8 @@ import { handlePay, payMode } from './pay.mjs';
 import { handleBill, handleConnectWebhook } from './billpay.mjs';
 import { handleWallet } from './privy.mjs';
 import { handleAutopay } from './autopay.mjs';
+import { handleSplit } from './billsplit.mjs';
+import { handleBills } from './billhistory.mjs';
 import { handlePlacePhotos } from './placephotos.mjs';
 import { handleGiveaways } from './giveaways.mjs';
 import { handleVoice, voiceReady } from './voice.mjs';
@@ -2978,7 +2980,24 @@ export default {
       return res;
     }
 
+    // A member's own history: what they have paid and which tabs they were on.
+    // Plural on purpose — '/api/bill/history' would be read as a bill code
+    // called HISTORY by the matcher below, which takes any word of 4 to 40
+    // characters.
+    if (url.pathname === '/api/bills' || url.pathname.startsWith('/api/bills/')) {
+      const res = await handleBills(request, env, url.pathname.slice('/api/bills'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     if (url.pathname.startsWith('/api/bill/')) {
+      // Splitting first: it is a POST to a sub-path handleBill does not know,
+      // and an unknown sub-path there is a 404 rather than a fall-through.
+      const split = await handleSplit(request, env, url.pathname);
+      if (split) {
+        Object.entries(cors).forEach(([k, v]) => split.headers.set(k, v));
+        return split;
+      }
       const res = await handleBill(request, env, url.pathname.slice('/api/bill'.length) || '/');
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;

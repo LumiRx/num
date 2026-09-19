@@ -13,6 +13,7 @@ import type { Pack } from '../../lib/wallet';
 import MembershipCard from './MembershipCard';
 import { apiUrl } from '../../lib/apibase';
 import { loadMemberWallet, createMemberWallet, shortAddress, type MemberWallet } from '../../lib/memberwallet';
+import { loadHistory, type PaidBill } from '../../lib/bill';
 import { t } from '../../lib/i18n';
 
 // No PACKS constant here on purpose. The wallet used to carry its own copy of
@@ -30,6 +31,10 @@ export default function WalletSheet() {
   // total nobody can check the number.
   const [coin, setCoin] = useState<MemberWallet | null>(null);
   const [coinBusy, setCoinBusy] = useState(false);
+  // What they have actually paid through NUM. Bills only — Stars on a tab and
+  // money on a bill are different units, and a single total would be a number
+  // that means nothing.
+  const [paid, setPaid] = useState<PaidBill[]>([]);
   const [coinErr, setCoinErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(open, ref);
@@ -45,6 +50,7 @@ export default function WalletSheet() {
     if (!open) return;
     void fetch(apiUrl('/api/pay/status')).then((r) => r.json()).then(setPay).catch(() => setPay(null));
     if (account?.id) void loadMemberWallet(account.id).then(setCoin);
+    if (account?.id) void loadHistory(account.id).then((h) => setPaid(h.bills));
     // Pulled on every open. A wallet is read precisely when someone doubts
     // what it says, so a cached one is worth very little.
     void refreshActivity();
@@ -250,6 +256,30 @@ export default function WalletSheet() {
         </div>
       )}
       <div style={{ padding: '0 16px 14px' }}>
+        {/* WHAT YOU HAVE PAID.
+            Only bills that actually settled, and only ones this member was
+            signed in for. A bill paid in a browser by somebody not signed in
+            belongs to nobody and appears here for nobody — half the value of
+            a history is trusting that what is in it is yours. */}
+        {!!paid.length && (
+          <div className="glass lift" style={{ borderRadius: 14, padding: '12px 13px', marginBottom: 14 }}>
+            <div style={{ fontSize: 9.5, letterSpacing: '.14em', color: 'var(--ink-40)', fontWeight: 700 }}>{t('BILLS YOU HAVE PAID')}</div>
+            {paid.slice(0, 8).map((b) => (
+              <div key={b.token} style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginTop: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.venue}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 1 }}>
+                    {new Date(b.paid_at).toLocaleDateString()}
+                    {b.share_of ? ` · ${t('your share')}` : ''}
+                  </div>
+                </div>
+                <div style={{ flex: 'none', fontWeight: 700, fontSize: 13.5, fontVariantNumeric: 'tabular-nums' }}>
+                  {b.currency} {b.amount}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <TabStarter />
         <div
           {...pressable(() => store.set({ walletOpen: false, errandsOpen: true }))}

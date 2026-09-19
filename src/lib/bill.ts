@@ -20,13 +20,32 @@ export interface BillRail {
   disputes?: boolean;
 }
 
+export interface BillItem {
+  name: string;
+  qty: number;
+  unit_minor: number;
+  line_minor: number;
+}
+
 export interface BillView {
   bill: {
     token: string; venue: string; label: string | null; amount: string | null; currency: string;
-    state: 'open' | 'paid' | 'revoked' | string; fixed: boolean; settled_at: string | null;
+    /** 'split' means this bill was divided — its shares are the bills now. */
+    state: 'open' | 'paid' | 'split' | 'revoked' | string; fixed: boolean; settled_at: string | null;
+    /** What was on it. Empty is the normal case: most bills are a total. */
+    items?: BillItem[];
+    split_parent?: string | null;
   };
   venue: { id: string; name: string; country: string | null };
   rails: BillRail[];
+}
+
+export interface BillShare {
+  token: string;
+  member_id: string | null;
+  name: string | null;
+  amount: string;
+  amount_minor: number;
 }
 
 /** app.itsnum.com/pay/<TOKEN> → open the sheet; the path is then tidied away. */
@@ -59,8 +78,66 @@ export async function loadBill(token: string): Promise<{ ok: true; view: BillVie
  * rail is the pay page's own single-rail view. Either way it is a navigation,
  * not a fetch — the card never touches this app.
  */
-export function startRail(rail: BillRail): void {
+export function startRail(rail: BillRail, meId?: string | null): void {
+  // Who is paying, carried to the server so the bill can end up in this
+  // member's history. Only on a NUM rail — a venue's own payment page is
+  // theirs and gets nothing of ours appended to it.
+  if (meId && rail.source === 'stripe') {
+    const sep = rail.action.includes('?') ? '&' : '?';
+    window.location.assign(`${rail.action}${sep}me=${encodeURIComponent(meId)}`);
+    return;
+  }
   window.location.assign(rail.action);
+}
+
+/**
+ * Split this bill between the people on the tab.
+ *
+ * Each person gets a REAL bill code of their own, for their own share, paid
+ * straight to the venue. NUM does not move a penny between anybody — it never
+ * can, and this is the only shape of splitting that keeps that true.
+ */
+export async function splitShares(
+  token: string,
+  people: Array<{ member_id: string; name?: string | null }>,
+  by?: string | null,
+): Promise<{ ok: true; shares: BillShare[] } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(apiUrl(`/api/bill/${encodeURIComponent(token)}/split`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ people, by }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: String((body as { error?: string })?.error ?? 'Could not split that bill.') };
+    return { ok: true, shares: (body as { shares: BillShare[] }).shares };
+  } catch (e) {
+    return { ok: false, error: guestMessage(e, 'Could not split that bill just now.', 'bill') };
+  }
+}
+
+export interface PaidBill {
+  token: string; venue: string; label: string | null; amount: string; currency: string;
+  paid_at: string; via: string | null; share_of: string | null; items: number;
+}
+export interface PastTab {
+  id: string; code: string; title: string; venue: string | null; state: string;
+  people: number; stars: number; opened_at: string; closed_at: string | null;
+}
+
+/** Everything this member has paid through NUM, and the tabs they were on. */
+export async function loadHistory(meId: string): Promise<{ bills: PaidBill[]; tabs: PastTab[] }> {
+  try {
+    const r = await fetch(apiUrl(`/api/bills?me=${encodeURIComponent(meId)}`), { headers: { accept: 'application/json' } });
+    if (!r.ok) return { bills: [], tabs: [] };
+    const body = await r.json();
+    return { bills: body.bills ?? [], tabs: body.tabs ?? [] };
+  } catch {
+    // An empty history and a history we could not read look the same to this
+    // function on purpose; the screen says "nothing yet" either way rather
+    // than showing somebody an error about their own spending.
+    return { bills: [], tabs: [] };
+  }
 }
 
 /**
