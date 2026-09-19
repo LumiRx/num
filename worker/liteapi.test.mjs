@@ -176,6 +176,41 @@ describe('intel', () => {
   });
 });
 
+describe('the second public-price reference', () => {
+  const [refundable] = normalizeRates(RATES_RS); // total 271.40, publicTotal 312
+
+  test('with no second reference, nothing changes — one_sided, and the rate payload stands', () => {
+    const i = intel(refundable);
+    assert.equal(i.publicRefVerdict, 'one_sided');
+    assert.equal(i.publicUsed, 312);
+    assert.equal(i.savingCs, 4060);
+  });
+
+  test('a second reference that agrees firms it up, and the higher one is used', () => {
+    const i = intel(refundable, { publicRef: 305 });
+    assert.equal(i.publicRefVerdict, 'agreed');
+    assert.equal(i.publicUsed, 312, 'overstating a saving is the worse error');
+  });
+
+  test('a second reference that disagrees shrinks the claim rather than hiding it', () => {
+    const i = intel(refundable, { publicRef: 180 });
+    assert.equal(i.publicRefVerdict, 'disagreed');
+    assert.equal(i.publicUsed, 180);
+    // 180 − 271.40 is negative: on the conservative reference this room is NOT
+    // below the public price, and NUM must stop saying it is.
+    assert.equal(i.belowPublic, false,
+      'a disputed reference must not be allowed to keep a saving claim alive');
+    assert.ok(i.publicRefGapPct > 40);
+  });
+
+  test('offer() threads the references through by hotel id', () => {
+    const out = offer(normalizeRates(RATES_RS), {
+      signedIn: true, nights: 3, publicRefs: new Map([['lp1a2b3', 180]]),
+    });
+    assert.equal(out.length, 2, 'a disputed reference changes the claim, not the inventory');
+  });
+});
+
 /* ── 4. THE WALL ──────────────────────────────────────────────────────── */
 
 describe('nothing from the cross-check reaches a guest', () => {

@@ -222,6 +222,7 @@ const FILES = [
   // num_resources plus an index. An ADD COLUMN is never a no-op on a
   // second pass -- a re-run stops there and changes nothing.
   'worker/migrations/0057_till_tables.sql',
+  'worker/migrations/0058_stay_evidence.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

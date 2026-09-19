@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import {
   refusePaymentFields, hold, confirm, fail, cancelled, forMember, auditFor, newClientReference,
+  recordEvidence, disagreements,
 } from './staybookings.mjs';
 
 let db; let env;
@@ -154,6 +155,54 @@ describe('held → confirmed', () => {
     await cancelled(env, id, { refund: 271.4 });
     assert.equal(db.prepare('SELECT status FROM num_stay_bookings WHERE id = ?').get(id).status, 'cancelled');
     assert.ok(db.prepare('SELECT 1 FROM num_stay_bookings WHERE id = ?').get(id));
+  });
+});
+
+/* ── 2b. the evidence trail (0058) ────────────────────────────────────── */
+
+describe('the evidence behind a stay', () => {
+  const evidenceCols = () => db.exec(`
+    ALTER TABLE num_stay_bookings ADD COLUMN public_ref_cs INTEGER;
+    ALTER TABLE num_stay_bookings ADD COLUMN public_ref_verdict TEXT;
+    ALTER TABLE num_stay_bookings ADD COLUMN public_ref_gap_pct REAL;
+    ALTER TABLE num_stay_bookings ADD COLUMN hotel_chain TEXT;
+    ALTER TABLE num_stay_bookings ADD COLUMN loyalty_disclosed INTEGER;
+    ALTER TABLE num_stay_bookings ADD COLUMN checkin_from TEXT;
+    ALTER TABLE num_stay_bookings ADD COLUMN checkout_before TEXT;
+    ALTER TABLE num_stay_bookings ADD COLUMN place_resolution TEXT;`);
+
+  test('a disagreement between the two references is recorded, not resolved away', async () => {
+    const { id } = await hold(env, {
+      memberId: 'm1', clientReference: newClientReference(), prebook: PRE, option: OPTION, query: QUERY,
+    });
+    evidenceCols();
+    await recordEvidence(env, id, {
+      publicRefCs: 18000, publicRefVerdict: 'disagreed', publicRefGapPct: 42.3,
+      hotelChain: 'Hilton', loyaltyDisclosed: true, checkinFrom: '15:00', checkoutBefore: '11:00',
+    });
+    const row = db.prepare('SELECT * FROM num_stay_bookings WHERE id = ?').get(id);
+    assert.equal(row.public_ref_verdict, 'disagreed');
+    assert.equal(row.public_ref_cs, 18000);
+    assert.equal(row.loyalty_disclosed, 1);
+    assert.equal(row.checkin_from, '15:00');
+    assert.equal((await disagreements(env)).length, 1);
+  });
+
+  test('an undisclosed chain booking is a 0, and NULL only when it was not a chain', async () => {
+    const a = await hold(env, { memberId: 'm1', clientReference: newClientReference(), prebook: PRE, option: OPTION, query: QUERY });
+    const b = await hold(env, { memberId: 'm1', clientReference: newClientReference(), prebook: PRE, option: OPTION, query: QUERY });
+    evidenceCols();
+    await recordEvidence(env, a.id, { hotelChain: 'Marriott', loyaltyDisclosed: false });
+    await recordEvidence(env, b.id, {}); // independent — the question never arose
+    assert.equal(db.prepare('SELECT loyalty_disclosed d FROM num_stay_bookings WHERE id=?').get(a.id).d, 0,
+      'a chain booking where the warning was not shown must be findable');
+    assert.equal(db.prepare('SELECT loyalty_disclosed d FROM num_stay_bookings WHERE id=?').get(b.id).d, null);
+  });
+
+  test('evidence is a follow-up, so a missing second reference never costs the booking row', async () => {
+    const { id } = await hold(env, { memberId: 'm1', clientReference: newClientReference(), prebook: PRE, option: OPTION, query: QUERY });
+    assert.equal(db.prepare('SELECT status FROM num_stay_bookings WHERE id=?').get(id).status, 'held',
+      'the row that proves NUM tried must not depend on a second supplier call');
   });
 });
 

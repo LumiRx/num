@@ -331,9 +331,22 @@ export const nightsBetween = (checkin, checkout) => {
  * @returns {{savingCs:number, savingPct:number|null, belowPublic:boolean,
  *            direct:boolean, feesExcluded:number, verdict:string}}
  */
-export function intel(rate, { directKnown = false } = {}) {
+export function intel(rate, { directKnown = false, publicRef = null } = {}) {
   const total = rate?.total ?? null;
-  const pub = rate?.publicTotal ?? null;
+
+  // TWO references, not one. `publicTotal` is suggestedSellingPrice from the
+  // rate payload; `publicRef` is the price-index figure for the same property
+  // by a different route (worker/staydata.mjs). Everything NUM says about a
+  // member rate used to rest on the first alone — one field, one call, and no
+  // way to know if it was wrong.
+  //
+  // agreement() picks which to trust and refuses to average them, because
+  // averaging two numbers when one is wrong produces a third wrong number
+  // that looks more considered.
+  const ref = publicRef == null
+    ? { verdict: 'one_sided', usable: rate?.publicTotal ?? null, gapPct: null }
+    : agreementOf(rate?.publicTotal ?? null, publicRef);
+  const pub = ref.usable;
   const saving = total != null && pub != null ? pub - total : null;
   const savingPct = saving != null && pub > 0 ? (saving / pub) * 100 : null;
 
@@ -351,6 +364,11 @@ export function intel(rate, { directKnown = false } = {}) {
     direct: !!directKnown,
     feesExcluded: rate?.feesExcluded ?? 0,
     verdict,
+    // Kept so a disagreement between the two references is visible in the
+    // ledger rather than silently deciding a price.
+    publicRefVerdict: ref.verdict,
+    publicRefGapPct: ref.gapPct,
+    publicUsed: pub,
   };
 }
 
@@ -365,10 +383,13 @@ export function intel(rate, { directKnown = false } = {}) {
  * Weights are deliberately blunt and deliberately in one place. Tuning them is
  * a product decision somebody should have to make on purpose.
  */
-export function rank(rates, { directKnownIds = new Set() } = {}) {
+export function rank(rates, { directKnownIds = new Set(), publicRefs = new Map() } = {}) {
   return rates
     .map((r) => {
-      const i = intel(r, { directKnown: directKnownIds.has(r.hotelId) });
+      const i = intel(r, {
+        directKnown: directKnownIds.has(r.hotelId),
+        publicRef: publicRefs.get(r.hotelId) ?? null,
+      });
       let score = 0;
       if (r.refundable === true) score += 30;
       if (r.refundable === null) score -= 5; // unknown is worse than known-rigid
@@ -486,8 +507,8 @@ export function floorToPublic(ranked) {
 }
 
 /** Everything the guest sees, in one call, with the wall enforced. */
-export function offer(rates, { signedIn, nights = null, directKnownIds, showSaving = false, take = 3 } = {}) {
-  const ranked = rank(rates, { directKnownIds });
+export function offer(rates, { signedIn, nights = null, directKnownIds, publicRefs, showSaving = false, take = 3 } = {}) {
+  const ranked = rank(rates, { directKnownIds, publicRefs });
   const priced = signedIn ? ranked : ranked.map(floorToPublic);
   return priced.slice(0, take).map((r) => {
     assertPublicSafe(r, { signedIn });
@@ -738,6 +759,7 @@ export async function cancelBooking(env, bookingId, { fetchImpl } = {}) {
    visible and reconcilable. The other way round is a guest holding a
    reservation NUM denies.
 */
+import { agreement as agreementOf } from './staydata.mjs';
 import { hold, confirm as recordConfirm, fail as recordFail, cancelled as recordCancelled, forMember, byId, newClientReference } from './staybookings.mjs';
 
 export async function handleStays(request, env, path, { session = null, fetchImpl } = {}) {

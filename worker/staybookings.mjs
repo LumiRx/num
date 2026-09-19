@@ -194,6 +194,68 @@ export async function cancelled(env, stayId, detail) {
 }
 
 /**
+ * The evidence behind a stay, written after the hold.
+ *
+ * Separate from hold() on purpose. hold() must land the moment a prebook
+ * succeeds — it is the row that proves NUM tried — and it must not grow a
+ * dependency on a second supplier call that might be slow or absent. So the
+ * evidence is a follow-up UPDATE: if the price-index lookup or the content
+ * fetch fails, the booking is still recorded and the columns stay NULL, which
+ * reads correctly as "we did not have a second reference" rather than as a
+ * reference that agreed.
+ *
+ * `loyaltyDisclosed` is the one worth being strict about. NULL means the
+ * question never arose because it was not a chain property; 0 means it WAS a
+ * chain and the warning was not shown, which is a row somebody should be
+ * unhappy about.
+ */
+export async function recordEvidence(env, stayId, {
+  publicRefCs = null, publicRefVerdict = null, publicRefGapPct = null,
+  hotelChain = null, loyaltyDisclosed = null,
+  checkinFrom = null, checkoutBefore = null, placeResolution = null,
+} = {}) {
+  await env.DB.prepare(
+    `UPDATE num_stay_bookings
+        SET public_ref_cs = COALESCE(?2, public_ref_cs),
+            public_ref_verdict = COALESCE(?3, public_ref_verdict),
+            public_ref_gap_pct = COALESCE(?4, public_ref_gap_pct),
+            hotel_chain = COALESCE(?5, hotel_chain),
+            loyalty_disclosed = COALESCE(?6, loyalty_disclosed),
+            checkin_from = COALESCE(?7, checkin_from),
+            checkout_before = COALESCE(?8, checkout_before),
+            place_resolution = COALESCE(?9, place_resolution),
+            updated_at = datetime('now')
+      WHERE id = ?1`,
+  ).bind(
+    stayId,
+    publicRefCs, publicRefVerdict, publicRefGapPct, hotelChain,
+    loyaltyDisclosed == null ? null : (loyaltyDisclosed ? 1 : 0),
+    checkinFrom, checkoutBefore, placeResolution,
+  ).run();
+  return { id: stayId };
+}
+
+/**
+ * Every stay where the two public-price references disagreed.
+ *
+ * The report that answers "is our saving claim sound". A steady trickle is
+ * normal — these are two caches of a moving number. A cluster on one chain or
+ * one market is a data problem, and it is cheaper to find here than in a
+ * complaint.
+ */
+export async function disagreements(env, { limit = 50 } = {}) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, hotel_name, hotel_chain, checkin, currency, total_cs,
+            public_total_cs, public_ref_cs, public_ref_gap_pct, created_at
+       FROM num_stay_bookings
+      WHERE public_ref_verdict = 'disagreed'
+      ORDER BY public_ref_gap_pct DESC
+      LIMIT ?1`,
+  ).bind(Math.min(200, Math.max(1, limit))).all();
+  return results ?? [];
+}
+
+/**
  * What the wallet shows.
  *
  * NOT `.catch(() => ({ results: [] }))`. A failed read here would render as

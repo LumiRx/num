@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import {
   HELD_IS_NOT_BOOKED, PRICE_EXPIRES, NO_INVENTED_COMPARISON, SAY_THE_TERMS,
   HUMAN_CONFIRMS, WHAT_YOU_CAN_DO, MEMBER_RATE_LINE, WHAT_COUNTS_AS_A_STAY,
-  NO_SUPPLIER, stayBlock,
+  NO_SUPPLIER, LOYALTY_POINTS, stayBlock,
 } from './staysprompt.mjs';
 
 describe('the refusals survive rewording', () => {
@@ -69,6 +69,19 @@ describe('the refusals survive rewording', () => {
     assert.match(NO_SUPPLIER, /never estimate/i);
     assert.match(NO_SUPPLIER, /"from"/i);
     assert.match(NO_SUPPLIER, /direct to the hotel/i);
+  });
+});
+
+describe('the loyalty disclosure', () => {
+  test('it is the line that costs NUM the booking, which is why it is worth having', () => {
+    assert.match(LOYALTY_POINTS, /does not earn/i);
+    assert.match(LOYALTY_POINTS, /before they book/i);
+    assert.match(LOYALTY_POINTS, /hotel's own|hotel’s own/i);
+  });
+
+  test('it only appears for a chain property — an independent has no points to lose', () => {
+    assert.ok(stayBlock({ canBook: true, chainProperty: true }).includes(LOYALTY_POINTS));
+    assert.ok(!stayBlock({ canBook: true, chainProperty: false }).includes(LOYALTY_POINTS));
   });
 });
 

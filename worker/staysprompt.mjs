@@ -115,6 +115,31 @@ export const MEMBER_RATE_LINE =
   + 'invite them to sign in, but NEVER say the member figure, the saving, or a percentage. '
   + 'That number can only be shown to a member — it is a supplier term, not a marketing choice.';
 
+/**
+ * A room booked this way is not a room booked with the hotel.
+ *
+ * Not a LiteAPI quirk — it is how wholesale distribution works everywhere. A
+ * third-party booking does not earn the chain's points, and Marriott withdrew
+ * elite benefits from online travel agency reservations outright. So a Bonvoy
+ * Titanium booking a Marriott through NUM can lose the upgrade, the breakfast
+ * and the points on one stay.
+ *
+ * For most travellers that is worth less than the money. For some it is worth
+ * far more, and those are the guests NUM most wants. The rule is therefore
+ * neither to hide it nor to lead with it: say it where it applies, which is a
+ * chain property, and offer the hotel's own page — which NUM already holds for
+ * the properties in worker/booking.mjs — as a real alternative.
+ *
+ * The full text and the chain test live in worker/staydata.mjs, next to the
+ * data that decides when it applies.
+ */
+export const LOYALTY_POINTS =
+  'IF THIS IS A CHAIN HOTEL AND THEY HOLD STATUS WITH THAT CHAIN, SAY SO FIRST: a room booked through '
+  + 'NUM does not earn the chain\'s own points, and some chains no longer give elite benefits on '
+  + 'bookings made this way at all. Say it BEFORE they book, and offer to send them to the hotel\'s own '
+  + 'page instead. Losing a night\'s upgrade to save eleven dollars is not a saving, and being the one '
+  + 'who told them is worth more than the booking.';
+
 /** The kinds of stay NUM may offer unasked. Mirrors staykind.mjs. */
 export const WHAT_COUNTS_AS_A_STAY =
   'A hotel or a serviced apartment is what "somewhere to stay" means. A hostel is a fine answer when '
@@ -128,7 +153,7 @@ export const WHAT_COUNTS_AS_A_STAY =
  * refusals. A prompt that opens with what NOT to do produces a model that
  * hedges.
  */
-export function stayBlock({ signedIn = false, canBook = false } = {}) {
+export function stayBlock({ signedIn = false, canBook = false, chainProperty = false } = {}) {
   const lines = [
     canBook ? WHAT_YOU_CAN_DO : null,
     WHAT_COUNTS_AS_A_STAY,
@@ -136,6 +161,7 @@ export function stayBlock({ signedIn = false, canBook = false } = {}) {
     PRICE_EXPIRES,
     NO_INVENTED_COMPARISON,
     MEMBER_RATE_LINE,
+    chainProperty ? LOYALTY_POINTS : null,
     canBook ? HELD_IS_NOT_BOOKED : null,
     canBook ? HUMAN_CONFIRMS : null,
     signedIn ? null : 'This person is NOT signed in. Every price you have is a public price.',
