@@ -229,35 +229,51 @@ export async function bundleFor(env, lang, strings, { defer = null } = {}) {
 
   // Translate what is new and remember it: the model in batches first, and
   // m2m100 one at a time for anything the model left out.
+  //
+  // SAVED AS EACH BATCH LANDS (19 Sep 2026), not at the end. The deferred
+  // half of a big request runs in ctx.waitUntil, which Workers stop about
+  // thirty seconds after the response — and a thousand-line Thai catalogue
+  // takes minutes. Rows that were only inserted at the end were never
+  // inserted at all: Mongolian sat at 237 lines through three rounds while
+  // the model translated the same 240 every time. Now each finished batch is
+  // in D1 before the next begins, and what a killed task did is kept.
   const now = Date.now();
-  const rows = [];
   const idOf = new Map(missing);
+  const save = async (pairs, engine) => {
+    for (const [s, t] of pairs) {
+      map[s] = t;
+      try {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO num_translations
+             (id, entity_type, entity_id, field, locale, text, source, engine, source_locale, source_hash, status, created_at, updated_at)
+           VALUES (?1, 'locale_string', ?2, 'text', ?3, ?4, 'machine', ?5, 'en', ?6, 'machine', ?7, ?7)`,
+        ).bind(`ls_${locale}_${idOf.get(s)}`, idOf.get(s), locale, t, engine, idOf.get(s), now).run();
+      } catch (err) { console.warn('[i18n] save failed', err?.message ?? err); }
+    }
+  };
   const todo = missing.filter(([s]) => isTranslatable(s)).map(([s]) => s);
-  const BATCH = 40;
+  // Smaller batches than before (40): a Thai or Mongolian batch of forty ran
+  // long enough to be cut off, and a cut batch is forty English lines.
+  const BATCH = 24;
   const batches = [];
   for (let i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATCH));
-  const got = await Promise.all(batches.map((b) => translateBatch(env, b, lang)));
-  for (const g of got) for (const [s, t] of Object.entries(g)) { map[s] = t; rows.push([`ls_${locale}_${idOf.get(s)}`, idOf.get(s), locale, t, MODEL_ENGINE, now]); }
+  let bi = 0;
+  await Promise.all(Array.from({ length: Math.min(6, batches.length) }, async () => {
+    while (bi < batches.length) {
+      const b = batches[bi++];
+      const g = await translateBatch(env, b, lang);
+      await save(Object.entries(g), MODEL_ENGINE);
+    }
+  }));
   const left = todo.filter((s) => !(s in map));
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, left.length) }, async () => {
     while (cursor < left.length) {
       const s = left[cursor++];
       const t = await translateOne(env, s, lang);
-      if (!t) continue;
-      map[s] = t;
-      rows.push([`ls_${locale}_${idOf.get(s)}`, idOf.get(s), locale, t, ENGINE, now]);
+      if (t) await save([[s, t]], ENGINE);
     }
   }));
-  for (const r of rows) {
-    try {
-      await env.DB.prepare(
-        `INSERT OR IGNORE INTO num_translations
-           (id, entity_type, entity_id, field, locale, text, source, engine, source_locale, source_hash, status, created_at, updated_at)
-         VALUES (?1, 'locale_string', ?2, 'text', ?3, ?4, 'machine', ?5, 'en', ?6, 'machine', ?7, ?7)`,
-      ).bind(r[0], r[1], r[2], r[3], r[4], r[1], r[5]).run();
-    } catch (err) { console.warn('[i18n] save failed', err?.message ?? err); }
-  }
   return map;
 }
 
