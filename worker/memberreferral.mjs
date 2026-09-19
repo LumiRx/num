@@ -246,19 +246,71 @@ export async function creditMemberReferral(env, { memberId, stars, ref } = {}) {
 
     // Idempotent on the caller's ref — a retried settle must not pay twice.
     const moveId = `memref:${ref}`;
+
+    /* ── IS THIS ONE PERSON PAYING THEMSELVES? ────────────────────────────
+     *
+     * Flagged in the 19 Sep review. The one-hop self-referral check above
+     * only catches the same ACCOUNT. Two accounts belonging to one human —
+     * sign the second up through your own link, book everything from it —
+     * is a permanent, uncapped 20% rebate on your own spending, in cashable
+     * Stars, and no anti-farming rule touches it because both accounts are
+     * genuinely real, verified and active.
+     *
+     * HELD, NOT REFUSED. A husband referring his wife is exactly what this
+     * programme is for, and from the outside it looks identical: two
+     * accounts, one sofa, one router. A wrongly refused payment is somebody's
+     * money taken silently by a rule they cannot see, which is worse than a
+     * wrongly counted referral. So the money is recorded with its reason and
+     * a person decides — see worker/migrations/0060. */
+    const risk = await sameHumanRisk(env, { memberId: String(memberId), referrerId: String(m.referred_by) });
+    if (risk) {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO num_referral_holds
+           (id, ref, referrer_id, member_id, stars, pct, reason, state, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,'held',?8)`,
+      ).bind(`hold:${ref}`, String(ref), String(m.referred_by), String(memberId),
+        cut, pct, risk, new Date().toISOString()).run().catch(() => {});
+      return { credited: 0, held: cut, why: risk };
+    }
+
+    /* ── ONE BATCH, OR NOTHING ────────────────────────────────────────────
+     *
+     * These three used to run as three separate statements with the ledger
+     * insert LAST, behind a read that failed open. One read hiccup on a
+     * retried settle and the balance was incremented, the ledger insert then
+     * threw on the duplicate key, the outer catch swallowed it, and the
+     * caller was told nothing was paid — leaving cashable Stars in a wallet
+     * with no ledger row to explain them, permanently.
+     *
+     * A D1 batch is a transaction. The MOVE GOES FIRST so that a duplicate
+     * primary key aborts the whole thing before any balance moves: the
+     * ledger row is what makes the payment real, and it is now the thing
+     * that guards it. The pre-check below is kept only to return a tidy
+     * `duplicate` without relying on an exception. */
     const already = await env.DB.prepare('SELECT id FROM num_star_moves WHERE id = ?1')
       .bind(moveId).first().catch(() => null);
     if (already) return { credited: 0, duplicate: true };
 
-    await env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)')
-      .bind(m.referred_by).run();
-    await env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1')
-      .bind(m.referred_by, cut).run();
-    // Kind 'referral' is in cashout.mjs EARNED_KINDS — money they worked for,
-    // so it is cashable like any other earning.
-    await env.DB.prepare(
-      "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'referral',?4,?5)",
-    ).bind(moveId, m.referred_by, cut, `${pct}% of what Num earned from someone you brought in`, String(memberId)).run();
+    try {
+      await env.DB.batch([
+        // Kind 'referral' is in cashout.mjs EARNED_KINDS — money they worked
+        // for, so it is cashable like any other earning.
+        env.DB.prepare(
+          "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'referral',?4,?5)",
+        ).bind(moveId, m.referred_by, cut, `${pct}% of what Num earned from someone you brought in`, String(memberId)),
+        env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)')
+          .bind(m.referred_by),
+        env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1')
+          .bind(m.referred_by, cut),
+      ]);
+    } catch (e) {
+      // The batch is atomic, so nothing was paid and nothing was recorded.
+      // Reported as a duplicate rather than a failure when that is what it
+      // was, because a retried settle is not an error.
+      const dup = /UNIQUE|PRIMARY KEY|constraint/i.test(String(e?.message ?? e));
+      if (dup) return { credited: 0, duplicate: true };
+      throw e;
+    }
 
     await notify(env, {
       memberId: m.referred_by,
@@ -274,6 +326,181 @@ export async function creditMemberReferral(env, { memberId, stars, ref } = {}) {
     console.warn('[memberreferral credit]', e?.message ?? e);
     return { credited: 0 };
   }
+}
+
+/**
+ * Does this look like one person paying themselves?
+ *
+ * Returns a REASON STRING when it does, and null when it does not. The string
+ * is written to the hold row and read by whoever decides, so it has to say
+ * what was actually seen rather than "suspicious".
+ *
+ * ── THE HARD PART IS NOT THE FRAUD, IT IS THE COUPLE ─────────────────────
+ *
+ * A husband referring his wife, who then books dinners, is exactly what this
+ * programme is for. One person running two accounts is the thing it must not
+ * pay. From the outside they are identical: two accounts, one sofa, one
+ * router, sometimes one tablet.
+ *
+ * Only one signal truly separates them. /verify/5arz refuses to link one 5arz
+ * identity to two Num accounts, so two real people can BOTH verify and one
+ * person cannot. Everything else is circumstantial:
+ *
+ *   both 5arz-verified, different ids  → two people. Never held, whatever
+ *                                        else they share. This is the rule
+ *                                        that lets a real couple be paid.
+ *   the same 5arz id                   → impossible through the app, so if it
+ *                                        is ever seen it is data corruption
+ *                                        or a bypass. Held either way.
+ *   the same verified phone            → signup refuses duplicate numbers, so
+ *                                        this should not happen either.
+ *   the same device id                 → circumstantial. Held for a person to
+ *                                        look at, not refused.
+ *
+ * NOTHING HERE IS DECIDED ON IP. Production on 19 Sep: 156 members behind 61
+ * addresses. Holding a payment because two people share a router would hold
+ * most honest referrals in the product.
+ *
+ * Fails CLOSED-ish on error: if the signals cannot be read the credit is held
+ * rather than paid, because an unverifiable payment is the one to look at
+ * twice. A held payment is recoverable; a paid one is not.
+ */
+export async function sameHumanRisk(env, { memberId, referrerId } = {}) {
+  if (!env?.DB || !memberId || !referrerId) return null;
+  if (String(memberId) === String(referrerId)) return 'the same account';
+
+  let a; let b;
+  try {
+    a = await env.DB.prepare(
+      'SELECT id, phone, phone_verified, identity_verified, bio FROM num_members WHERE id = ?1',
+    ).bind(String(memberId)).first();
+    b = await env.DB.prepare(
+      'SELECT id, phone, phone_verified, identity_verified, bio FROM num_members WHERE id = ?1',
+    ).bind(String(referrerId)).first();
+  } catch {
+    return 'could not check whether these are two people';
+  }
+  if (!a || !b) return null;
+
+  const idA = fiveId(a);
+  const idB = fiveId(b);
+
+  // TWO VERIFIED PEOPLE ARE TWO PEOPLE. Checked before anything else, so a
+  // couple who share a tablet and have both verified are paid without a
+  // human ever having to look.
+  if (idA && idB && idA !== idB) return null;
+
+  if (idA && idB && idA === idB) return 'both accounts are linked to one 5arz identity';
+
+  if (Number(a.phone_verified) === 1 && Number(b.phone_verified) === 1
+    && a.phone && b.phone && a.phone === b.phone) {
+    return 'both accounts verified the same phone number';
+  }
+
+  let sa; let sb;
+  try {
+    sa = await env.DB.prepare('SELECT device_id FROM num_identity_signals WHERE member_id = ?1')
+      .bind(String(memberId)).first();
+    sb = await env.DB.prepare('SELECT device_id FROM num_identity_signals WHERE member_id = ?1')
+      .bind(String(referrerId)).first();
+  } catch {
+    return 'could not check whether these are two people';
+  }
+  if (sa?.device_id && sb?.device_id && sa.device_id === sb.device_id) {
+    return 'both accounts were created on the same device';
+  }
+
+  return null;
+}
+
+/** The 5arz id recorded when this member consented. Mirrors linked5arzId in
+ *  worker/air.mjs and five5arzId in growth/entryquality.mjs — never parsed
+ *  from a request, only read back out of our own row. */
+function fiveId(row) {
+  if (!row?.bio) return null;
+  try {
+    const bio = typeof row.bio === 'string' ? JSON.parse(row.bio) : row.bio;
+    const id = bio?.['5arz_id'];
+    return typeof id === 'string' && id ? id : null;
+  } catch { return null; }
+}
+
+/**
+ * Release a held payment, or refuse it.
+ *
+ * MONEY HELD WITH NO WAY TO RELEASE IT IS JUST MONEY TAKEN, slowly, by a
+ * queue nobody reads. This is the other half of the hold and it shipped in
+ * the same commit for that reason.
+ *
+ * Releasing replays the ORIGINAL ref, so the star move id is the one that
+ * would have been written at settlement time — the payment therefore happens
+ * exactly once even if release is clicked twice, and even if the original
+ * settle is somehow retried afterwards.
+ */
+export async function decideHold(env, { ref, release, by = 'ops' } = {}) {
+  if (!env?.DB || !ref) return { ok: false, why: 'which hold' };
+  const row = await env.DB.prepare('SELECT * FROM num_referral_holds WHERE ref = ?1')
+    .bind(String(ref)).first().catch(() => null);
+  if (!row) return { ok: false, why: 'no such hold' };
+  if (row.state !== 'held') return { ok: true, already: row.state };
+
+  const now = new Date().toISOString();
+
+  if (!release) {
+    await env.DB.prepare(
+      "UPDATE num_referral_holds SET state='refused', decided_by=?2, decided_at=?3 WHERE ref=?1",
+    ).bind(String(ref), String(by), now).run();
+    return { ok: true, state: 'refused' };
+  }
+
+  const moveId = `memref:${row.ref}`;
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO num_star_moves (id, member_id, delta, kind, note, counterparty) VALUES (?1,?2,?3,'referral',?4,?5)",
+      ).bind(moveId, row.referrer_id, row.stars,
+        `${row.pct ?? rateFor(env)}% of what Num earned from someone you brought in`, row.member_id),
+      env.DB.prepare('INSERT OR IGNORE INTO num_star_balances (member_id, stars) VALUES (?1, 0)')
+        .bind(row.referrer_id),
+      env.DB.prepare('UPDATE num_star_balances SET stars = stars + ?2 WHERE member_id = ?1')
+        .bind(row.referrer_id, row.stars),
+    ]);
+  } catch (e) {
+    // Already paid — mark it released so the queue agrees with the ledger
+    // rather than offering it again for ever.
+    const dup = /UNIQUE|PRIMARY KEY|constraint/i.test(String(e?.message ?? e));
+    if (!dup) return { ok: false, why: 'could not pay that just now' };
+  }
+
+  await env.DB.prepare(
+    "UPDATE num_referral_holds SET state='released', decided_by=?2, decided_at=?3 WHERE ref=?1",
+  ).bind(String(ref), String(by), now).run();
+
+  await notify(env, {
+    memberId: row.referrer_id,
+    kind: 'referral',
+    title: `You earned ★${row.stars}`,
+    body: 'Someone you brought to Num used it — your share is in your wallet.',
+    url: '/?app',
+    tag: `memref:${row.referrer_id}`,
+  }).catch(() => {});
+
+  return { ok: true, state: 'released', credited: row.stars };
+}
+
+/** Everything waiting on a person, oldest first. */
+export async function openHolds(env, limit = 200) {
+  if (!env?.DB) return [];
+  try {
+    const { results = [] } = await env.DB.prepare(
+      `SELECT h.*, CAST(julianday('now') - julianday(h.created_at) AS INTEGER) AS days_waiting,
+              (SELECT identity_verified FROM num_members WHERE id = h.referrer_id) AS referrer_verified,
+              (SELECT identity_verified FROM num_members WHERE id = h.member_id)   AS member_verified
+         FROM num_referral_holds h
+        WHERE h.state = 'held' ORDER BY h.created_at ASC LIMIT ?1`,
+    ).bind(limit).all();
+    return results;
+  } catch { return []; }
 }
 
 /** What one member has brought in. For their own screen, and for influencers. */

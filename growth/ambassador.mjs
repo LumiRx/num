@@ -1078,3 +1078,45 @@ export async function tokyoAdmin(req, env, url, D) {
 
   return J({ ok: false, error: 'action' }, 400);
 }
+
+/**
+ * GET  /api/admin/holds?key=ADMIN  — referral money waiting on a person.
+ * POST /api/admin/holds?key=ADMIN  — { ref, release: true|false, by }
+ *
+ * The queue that makes the hold honest. `referrer_verified` and
+ * `member_verified` are on every row because they are the question: two
+ * 5arz-verified accounts are two people and the money should be released;
+ * one verified and one not, on one device, is the case the hold exists for.
+ */
+export async function holdsAdmin(req, env, url, D) {
+  const { J, clean, readJSON } = D;
+  const key = url.searchParams.get('key') || '';
+  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return J({ ok: false }, 401);
+
+  const { openHolds, decideHold } = await import('../worker/memberreferral.mjs');
+
+  if (req.method === 'GET') {
+    const held = await openHolds(env);
+    return J({
+      ok: true,
+      held,
+      owed: held.length,
+      stars_held: held.reduce((n, h) => n + Number(h.stars || 0), 0),
+      longest_wait_days: held.length ? Math.max(...held.map((h) => Number(h.days_waiting || 0))) : 0,
+      how: "POST { ref, release: true } pays it under the original settlement ref, so it cannot pay twice. "
+        + "release: false refuses it. Two 5arz-verified accounts are two people — release those.",
+      note: held.length ? null : 'Nothing is being held.',
+    });
+  }
+
+  if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
+  let b;
+  try { b = await readJSON(req, 8192); } catch { return J({ ok: false }, 400); }
+  const ref = clean(b.ref, 200);
+  if (!ref) return J({ ok: false, error: 'ref' }, 400);
+  if (typeof b.release !== 'boolean') {
+    return J({ ok: false, error: 'release', why: 'Say release: true or release: false. There is no default for somebody\'s money.' }, 400);
+  }
+  const r = await decideHold(env, { ref, release: b.release, by: clean(b.by, 60) || 'ops' });
+  return J(r, r.ok ? 200 : 404);
+}

@@ -383,6 +383,8 @@ import * as CONNECT from './connect.mjs';
 import * as POS from './pos/index.mjs';
 import * as DETECT from './pos/detect.mjs';
 import * as VENUEPAY from '../worker/venuepayout.mjs';
+import * as LEDGER from '../worker/ledger.mjs';
+import { senderFor as mailSenderFor, MAIL_KIND } from '../worker/mailer.mjs';
 import * as TILLBILL from '../worker/tillbill.mjs';
 import * as BILLPHOTO from '../worker/billphoto.mjs';
 import * as BILLITEMS from '../worker/billitems.mjs';
@@ -429,7 +431,7 @@ import { hostSuppliers, supplierAssets } from './hostsuppliers.mjs';
 // and already pays — see that file's header, and ambassador.mjs's.
 import {
   ambJoin, ambSummary, ambProfile, ambSocial, ambOffers, ambClaim, ambDirectory,
-  ambMilestonesAdmin, tokyoAdmin,
+  ambMilestonesAdmin, tokyoAdmin, holdsAdmin,
 } from './ambassador.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
@@ -1248,6 +1250,10 @@ const WORKER = {
       // The trip: the field, the draw, and the postal free entry.
       if (p === "/api/admin/tokyo")
         return tokyoAdmin(req, env, url, AMB_DEPS);
+      // Referral money held because it might be one person paying themselves.
+      // Money held with no way to release it is just money taken.
+      if (p === "/api/admin/holds")
+        return holdsAdmin(req, env, url, AMB_DEPS);
 
       if (p === "/api/host/intros") return hostIntros(req, env, url, ctx);
       if (p === "/api/host/nearby" && req.method === "GET") return hostNearby(req, env, url);
@@ -1419,13 +1425,16 @@ const WORKER = {
         // /p/<token>/promptpay  the venue's PromptPay sticker view
         // /p/<token>/crypto     the venue's USDC address view
         // /p/<token>/bill      raise the table's live till check as a bill
+        // /p/<token>/receipt   send the guest their own copy, to an address
+        //                       they type in after paying
         const rest = p.slice(3);
-        const m = rest.match(/^([^/]+)(?:\/(go|promptpay|crypto|bill))?\/?$/);
+        const m = rest.match(/^([^/]+)(?:\/(go|promptpay|crypto|bill|receipt))?\/?$/);
         if (!m) return payLanding(req, env, rest);
         if (m[2] === "go") return payGo(req, env, m[1]);
         // A POST, deliberately. Minting a payable code is a thing a guest
         // DOES, not something that happens because a page was drawn.
         if (m[2] === "bill") return payRaiseBill(req, env, m[1]);
+        if (m[2] === "receipt") return payReceipt(req, env, m[1]);
         return payLanding(req, env, m[1], m[2] || "auto");
       }
       if (p === "/biz/connect/start") return connectStart(req, env, url);
@@ -2397,7 +2406,7 @@ async function sendClaimWelcome(env, c) {
   return sendBatch(env, [{
     // One receipt per claim, even if the form is submitted twice.
     __idem: "claimwelcome-" + lc(c.email) + "-" + (c.dest || "x"),
-    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    from: txFrom(env),
     to: [c.email],
     reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject,
@@ -2506,7 +2515,7 @@ async function hostJoin(req, env, ctx) {
     // still needs to be told their existing code rather than shown an error.
     ctx.waitUntil(sendBatch(env, [{
       __idem: "hostrelink-" + existing.id + "-" + new Date().toISOString().slice(0, 10),
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: [email],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "Your NUM host console — " + existing.code,
@@ -2610,7 +2619,7 @@ Reply to this email and a person answers.`,
   // the programme otherwise.
   ctx.waitUntil(sendBatch(env, [{
     __idem: "hostwelcome-" + hostId,
-    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    from: txFrom(env),
     to: [email],
     reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: "Your NUM host account — " + code,
@@ -3878,7 +3887,7 @@ async function notifyHostOfRequest(env, ctx, host, req, clientName) {
   const site = env.SITE || "https://itsnum.com";
   ctx.waitUntil(sendBatch(env, [{
     __idem: "reqnew-" + req.id,
-    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    from: txFrom(env),
     to: [host.email],
     reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: (clientName ? clientName + ": " : "New request: ") + req.title,
@@ -3912,7 +3921,7 @@ async function notifyClientOfConfirm(env, ctx, host, req, client) {
     ? "\n  " + (req.currency || "GBP") + " " + (req.price_minor / 100).toFixed(2) : "";
   ctx.waitUntil(sendBatch(env, [{
     __idem: "reqconf-" + req.id,
-    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    from: txFrom(env),
     to: [client.email],
     reply_to: [host.email || env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: "Confirmed — " + req.title,
@@ -3950,7 +3959,7 @@ async function postMessage(env, ctx, opts) {
   const mail = author === "host"
     ? (client && client.email ? {
         __idem: "msg-" + id,
-        from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+        from: txFrom(env),
         to: [client.email],
         reply_to: [host.email || env.MAIL_REPLY_TO || "info@itsnum.com"],
         subject: "Re: " + request.title,
@@ -3959,7 +3968,7 @@ async function postMessage(env, ctx, opts) {
       } : null)
     : (host.email ? {
         __idem: "msg-" + id,
-        from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+        from: txFrom(env),
         to: [host.email],
         reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
         subject: (client ? client.name + " replied" : "Reply") + " — " + request.title,
@@ -4246,7 +4255,7 @@ async function endClient(env, ctx, opts) {
   if (endedBy === "member" && host.email) {
     mails.push({
       __idem: "sep-host-" + sepId,
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: [host.email],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: firstName + " has left your book",
@@ -4274,7 +4283,7 @@ NUM, by 5arz · ${LEGAL_LINE}`,
       : `${host.name} has removed you from their NUM client list.`;
     mails.push({
       __idem: "sep-member-" + sepId,
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: [row.email],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "Your VIP host has changed",
@@ -4679,7 +4688,7 @@ async function hostClose(req, env, url, ctx) {
   if (host.email) {
     ctx.waitUntil(sendBatch(env, [{
       __idem: "hostclosed-" + host.id,
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: [host.email],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "Your NUM host account is closed",
@@ -4997,7 +5006,7 @@ async function hostIntro(req, env, ctx) {
   if (host.email) {
     ctx.waitUntil(sendBatch(env, [{
       __idem: "hostintro-" + clientId,
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: [host.email],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: "A NUM member near you is asking for a host",
@@ -5210,7 +5219,7 @@ async function drainQueue(env, budget, hostId) {
     const first = (c.host_name || "").split(" ")[0] || c.host_name || "your host";
     return {
       __idem: "hostinv-" + c.id,
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: [c.email],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: first + " sent you their little black book",
@@ -7015,7 +7024,7 @@ async function venueIssueKey(req, env, ctx) {
   const managerUrl = `${site}/biz/codes?k=${ck}`;
   ctx.waitUntil(sendBatch(env, [{
     __idem: "venuekey-" + bizId + "-" + (minted ? "mint" : "resend"),
-    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    from: txFrom(env),
     to: [to],
     reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: `Your table codes for ${biz.name}`,
@@ -7313,7 +7322,7 @@ async function securitySweep(env) {
   if (fresh.length) {
     await sendBatch(env, [{
       __idem: "secsweep-" + day + "-" + fresh.length,
-      from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+      from: txFrom(env),
       to: ["info@5arz.com"],
       reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
       subject: `[NUM security] ${fresh.length} new finding(s) — ${fresh.map(f => f.kind).join(", ")}`,
@@ -9582,6 +9591,55 @@ async function venuePayPage(req, env, url) {
     moneyTile = "";
   }
 
+  /* ── EVERY LINE, IN ORDER ──────────────────────────────────────────────
+   * The tile above is two aggregates and aggregates cannot be checked. This
+   * is the lines they are made of, so a venue that thinks a figure is wrong
+   * can find the one that is.
+   *
+   * It leads with the double-charge list rather than burying it. While
+   * `growth/money.mjs:invoiceVenue` bills every accrued commission line
+   * regardless of what Stripe already took at source, a bill can carry both
+   * charges — and the venue is the party who loses by it, so the venue is
+   * shown it first, in their own console, rather than finding it on a
+   * statement. When that is fixed this list is empty and the box disappears.
+   * See worker/ledger.mjs:chargedTwice. */
+  let ledgerTile = "";
+  try {
+    const L = await LEDGER.ledgerFor(env, { actor: LEDGER.ACTOR.BUSINESS, id: biz.id, days: 90 });
+    const cash = (minor, cur) => esc(cur || "") + " " + (Number(minor) / 100).toFixed(2);
+    const warn = (L.charged_twice || []).length
+      ? `<div class="tile" style="border-color:#b4552d;margin-top:0">
+          <b style="color:#b4552d">${L.charged_twice.length} bill${L.charged_twice.length === 1 ? " has" : "s have"} been charged our fee twice</b>
+          <p class="sub">Stripe took it out of the payment at source, and it is also sitting on a statement.
+          You owe it once. Reply to any NUM email quoting the bill code and it comes off.</p>
+          <table style="margin-top:6px">${L.charged_twice.map((c) => `<tr>
+            <td>${esc(c.bill)}</td>
+            <td>${cash(c.at_source_minor, c.currency)} at source</td>
+            <td class="r">${cash(c.invoiced_minor, c.currency)} ${esc(c.invoiced_state)}</td>
+          </tr>`).join("")}</table>
+        </div>`
+      : "";
+    const rows = L.entries.length
+      ? `<table style="margin-top:8px">${L.entries.slice(0, 60).map((e) => `<tr>
+          <td>${esc(String(e.at || "").slice(0, 10))}</td>
+          <td>${esc(e.what)}${e.ref ? ` <span class="muted">${esc(e.ref)}</span>` : ""}</td>
+          <td class="r${e.state !== "settled" ? " muted" : ""}">${e.direction === "out" ? "&minus;" : "+"}${cash(e.amount_minor, e.currency)}${e.state === "settled" ? "" : ` <span class="muted">${esc(e.state)}</span>`}</td>
+        </tr>`).join("")}</table>`
+      : `<p class="sub" style="margin-top:8px">Nothing yet. Every bill, fee and payout appears here as it happens.</p>`;
+    ledgerTile = `
+${warn}
+<div class="tile noprint" id="ledger">
+  <b>Every line</b>
+  <p class="sub">The last 90 days, newest first. Money in is what a guest paid you; money out is
+  our fee and your own Stripe payouts. Nothing on this list is added across currencies, and
+  anything not yet settled says so rather than counting.</p>
+  ${rows}
+</div>`;
+  } catch (e) {
+    console.warn("[biz/pay] ledger tile", e && e.message);
+    ledgerTile = "";
+  }
+
   let posTile = "";
   try {
     const conn = await POS.connectionFor(env, biz.id);
@@ -9716,6 +9774,7 @@ details summary{cursor:pointer;margin-top:10px;font-size:13px}
 
 ${railsTile}
 ${moneyTile}
+${ledgerTile}
 ${posTile}
 <div class="tile noprint">
   <b>Add a payment QR</b>
@@ -10517,7 +10576,12 @@ async function qrLoginStart(req, env) {
   const link = (env.SITE || "https://itsnum.com") + "/biz/login?t=" + out.token;
   const who = out.user;
   await sendBatch(env, [{
-    from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+    // A sign-in link is the most transactional message in the product: if it
+    // is filtered nobody can get in at all. It used a different quote style
+    // from its fifteen neighbours and was missed by the first sweep onto the
+    // transactional sender, which is exactly how one address gets left behind
+    // on a domain a cold list is burning.
+    from: txFrom(env),
     to: b.email,
     subject: "Sign in to " + (who.business_name || "your NUM console"),
     html:
@@ -10853,6 +10917,25 @@ async function qrBillSettle(req, env, url, ctx) {
  * Created on first use, like num_commissions. Never throws: a logging failure
  * must not turn a sent email into a failed settle.
  */
+/**
+ * Where a transactional message leaves from.
+ *
+ * Every send in this file used `env.MAIL_FROM` directly, which meant the
+ * sender split built in worker/mailer.mjs on 19 Sep 2026 protected nothing:
+ * `MAIL_FROM_OUTREACH` moves cold outreach off the domain, but a host console
+ * code, a booking confirmation and a settled-bill receipt all still read
+ * whatever `MAIL_FROM` happened to be, so there was no address to protect
+ * them ON. A split only one half of the product uses is not a split.
+ *
+ * These are all messages somebody asked for and is waiting on: if one is
+ * filtered, the product does not work. So they take the transactional sender,
+ * which falls back to MAIL_FROM exactly as before — nothing changes today,
+ * and setting MAIL_FROM_TRANSACTIONAL moves all of them at once.
+ */
+function txFrom(env) {
+  return mailSenderFor(env, MAIL_KIND.TRANSACTIONAL) || "NUM <info@itsnum.com>";
+}
+
 async function logMailAttempt(env, { kind, ref, to, ok, detail }) {
   try {
     await env.DB.prepare(
@@ -10966,7 +11049,7 @@ async function mailBillSettled(env, who, token, out) {
   const sent = await sendBatch(env, [{
     // One receipt per bill, whatever happens upstream of this call.
     __idem: "billsettled-" + bill.token,
-    from: env.MAIL_FROM || "NUM <info@itsnum.com>",
+    from: txFrom(env),
     to: [bill.venue_email],
     reply_to: [env.MAIL_REPLY_TO || "info@itsnum.com"],
     subject: "Bill settled — " + money + (bill.label ? " · " + bill.label : ""),

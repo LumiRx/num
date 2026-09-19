@@ -227,6 +227,9 @@ const FILES = [
   // route cannot be used to mail-bomb somebody with their own credential.
   // One ALTER.
   'worker/migrations/0059_resend_cooldown.sql',
+  // Referral earnings that were not paid automatically, and why. One table,
+  // two indexes, IF NOT EXISTS, no ALTER.
+  'worker/migrations/0060_referral_holds.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

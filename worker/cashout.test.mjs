@@ -99,7 +99,18 @@ test('the boundary is declared one-way', () => {
  */
 const CREDIT_SITES = {
   'errands.mjs': 2, 'social.mjs': 5, 'pay.mjs': 1, 'cashout.mjs': 1,
-  'bizreferral.mjs': 1, 'starmembership.mjs': 1, 'memberreferral.mjs': 1,
+  'bizreferral.mjs': 1, 'starmembership.mjs': 1,
+  /* TWO in memberreferral.mjs since 19 Sep 2026, and the second is not a new
+   * way to earn — it is the same referral share, paid late.
+   *
+   * `creditMemberReferral` now HOLDS a credit when the two accounts look like
+   * one person (the 20% self-rebate: refer your own second account, book
+   * everything from it). `decideHold` is what a person clicks to release one
+   * that was a real couple after all. It replays the ORIGINAL settlement ref,
+   * so the star move id is the one the settle would have written and the
+   * money cannot be paid twice — a test in referralholds.test.mjs asserts
+   * exactly that. Still Num-internal, still nothing inbound from 5arz. */
+  'memberreferral.mjs': 2,
   'placephotos.mjs': 1,
 };
 
