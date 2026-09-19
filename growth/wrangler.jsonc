@@ -269,6 +269,12 @@
     { "pattern": "itsnum.com/api/growth*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/host/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/api/admin/*", "zone_name": "itsnum.com" },
+    // A venue that moves. WITHOUT THIS LINE the handler in worker.js is
+    // unreachable and itsnum.com/api/mobile/near falls through to the static
+    // asset worker, which answers the 404 page — checked on 19 Sep 2026,
+    // after a deploy that looked entirely successful. A dynamic apex path
+    // needs a handler AND a route pattern; this is the second half.
+    { "pattern": "itsnum.com/api/mobile/*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/num-capture.js*", "zone_name": "itsnum.com" },
     // Top-level on purpose. These go in emails and get read down the phone.
     // "/r/*" does not collide with "/referral*"; "/go/*" does not collide
