@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.399 — 2026-09-19 20:54 UTC
+
+(no note given)
+
+- commit `3e51c57`
+
 ## 0.8.398 — 2026-09-19 20:50 UTC
 
 white base, the theme everywhere, answers in up to three bubbles with a grid of places and their pictures
