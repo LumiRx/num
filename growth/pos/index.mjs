@@ -42,8 +42,9 @@
 
 import * as square from './square.mjs';
 import * as clover from './clover.mjs';
+import * as lightspeed from './lightspeed.mjs';
 
-export const ADAPTERS = Object.freeze({ square, clover });
+export const ADAPTERS = Object.freeze({ square, clover, lightspeed });
 
 export const vendors = () => Object.keys(ADAPTERS);
 export const adapterFor = (vendor) => ADAPTERS[String(vendor ?? '').toLowerCase()] ?? null;

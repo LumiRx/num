@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 19:46 UTC from 43 entries._
+_Built 2026-09-19 20:09 UTC from 44 entries._
 
 ## Deployed right now
 
@@ -16,11 +16,11 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-console | 🟢 up to date (2026-09-19 01:37) |
-| num-app | 🔴 **STALE** — 1 file changed since it shipped |
-| num-growth | 🟢 up to date (2026-09-19 19:34) |
+| num-console | 🔴 **STALE** — 5 files changed since it shipped |
+| num-app | 🔴 **STALE** — 12 files changed since it shipped |
+| num-growth | 🔴 **STALE** — 4 files changed since it shipped |
 | num-ai | ⚪ never recorded from this machine |
-| num-accounts | 🟢 up to date (2026-09-19 19:45) |
+| num-accounts | 🟢 up to date (2026-09-19 19:47) |
 | num-payouts | ⚪ never recorded from this machine |
 | num-claim | ⚪ never recorded from this machine |
 | num-agents | 🟢 up to date (2026-09-17 19:40) |
@@ -53,8 +53,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
-- 🟡 **qr bill pay** — Unblocked npm test for everyone, and clearing the gate showed what it had been hiding. coverage-claims runs BEFORE any test and was aborting the whole suite. Another session had fixed three of the four stale claims; the last was public/guides/index.html saying 'across 77 destinations' against a list of 106. I checked what 77 meant before changing it - the sentence is about the DIRECTORY, not about how many guides exist (there are none yet besides the index), so 106 is right. Its place count was 
-  _claude, 2026-09-19 19:46_
+- 🟡 **qr bill pay** — QR pay: third till, and NUM now guesses which one a venue runs. LIGHTSPEED K-SERIES (growth/pos/lightspeed.mjs, 13 tests) is the adapter worth having and the reason is a hole Square and Clover share: neither exposes the table. Square has no table field at all, Clover hides its Dining map in a private schema, so on both a human matches the check. K-Series is keyed BY TABLE - GET /o/op/1/order/table/{n}/getCheck - and the check carries salesEntries, the actual lines with names, quantities and unit
+  _claude, 2026-09-19 20:09_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre
