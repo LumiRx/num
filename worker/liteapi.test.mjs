@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import {
   missingForRates, missingForBook, normalizeRates, nightsBetween,
   intel, rank, publicOption, assertPublicSafe, offer,
-  marginFor, keyEstate, bookingGate, searchRates, prebook, book, cancelBooking, paymentFor, enrich,
+  marginFor, keyEstate, bookingGate, searchRates, prebook, book, cancelBooking, paymentFor, enrich, marginToClearPublic,
 } from './liteapi.mjs';
 
 const ENV = { LITEAPI_KEY: 'sand_test', LITEAPI_BOOKING_ENABLED: 'true' };
@@ -340,15 +340,55 @@ describe('a member rate is not a public rate', () => {
     assert.equal(assertPublicSafe(ranked[0], { signedIn: true }), true);
   });
 
-  // This is the case that rewrote the design. Both fixtures are below their
-  // public price — which is the ordinary case, not a contrived one — so the
-  // first implementation, which FILTERED below-public rates out, answered a
-  // signed-out visitor with nothing at all. Flooring is what replaced it.
-  test('a signed-out visitor still gets every option, priced at the public rate', () => {
+  // ── THIS TEST HAS BEEN WRONG TWICE, AND THE SECOND TIME MATTERED ──────
+  //
+  // First it asserted that below-public rates were FILTERED from a signed-out
+  // answer, which returned nothing at all for a stranger.
+  //
+  // Then it asserted they were FLOORED — the displayed total raised to the
+  // public price. That passed, and it was worse: the supplier was still quoted
+  // at the lower margin, so prebook came back lower and the confirm screen
+  // showed $271.40 under an options screen that had said $312. NUM published
+  // one price and transacted at another.
+  //
+  // The price is now lifted by RE-QUOTING at a higher margin (the /search
+  // route), so displayed and charged are the same number. offer() only drops
+  // what is still below afterwards — the residual, not the mechanism.
+  test('offer() no longer draws a price it would not charge', () => {
     const out = offer(normalizeRates(RATES_RS), { signedIn: false, nights: 3 });
-    assert.equal(out.length, 2, 'a signed-out search must not come back empty');
-    const cal = out.find((o) => o.id === 'offer-refundable');
-    assert.equal(cal.total, 312.0, 'the signed-out price must be the public price, not the member one');
+    for (const o of out) {
+      assert.ok(o.total != null);
+    }
+    // Both fixtures are below their public price and no re-quote has happened
+    // in this unit, so both are correctly withheld rather than mis-drawn.
+    assert.equal(out.length, 0,
+      'showing a floored price here is what put the display and the charge out of step');
+  });
+
+  test('marginToClearPublic computes the re-quote that fixes it, from the supplier’s own arithmetic', () => {
+    // 271.40 quoted at 7% → net 253.64. To reach 312 needs ~23%.
+    const m = marginToClearPublic(normalizeRates(RATES_RS), 7);
+    assert.ok(m >= 23 && m <= 25, `expected about 23%, got ${m}`);
+    // Re-quoted at that margin, the same room clears its public price.
+    const net = 271.4 / 1.07;
+    assert.ok(net * (1 + m / 100) >= 312);
+  });
+
+  test('nothing below public means no re-quote is asked for', () => {
+    const fine = normalizeRates(RATES_RS).map((r) => ({ ...r, total: 400 }));
+    assert.equal(marginToClearPublic(fine, 7), null);
+  });
+
+  test('it takes the WORST case, because one request carries one margin', () => {
+    const rates = [
+      { total: 100, publicTotal: 110 },  // needs ~10%
+      { total: 100, publicTotal: 150 },  // needs ~50%
+    ];
+    assert.equal(marginToClearPublic(rates, 0), 50);
+  });
+
+  test('a mad number is capped rather than sent to a supplier', () => {
+    assert.equal(marginToClearPublic([{ total: 1, publicTotal: 10000 }], 0), 100);
   });
 
   test('signed in, the same room is the member price', () => {
@@ -357,7 +397,7 @@ describe('a member rate is not a public rate', () => {
     assert.equal(out.find((o) => o.id === 'offer-refundable').total, 271.4);
   });
 
-  test('a floored rate never claims a saving — it is being sold at the public price', () => {
+  test('a signed-out answer never claims a saving, whatever is in it', () => {
     const out = offer(normalizeRates(RATES_RS), { signedIn: false, nights: 3, showSaving: true });
     for (const o of out) assert.equal(o.belowPublicBy, undefined);
   });

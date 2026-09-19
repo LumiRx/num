@@ -220,7 +220,9 @@ export async function searchRates(env, q = {}, { member = false, fetchImpl } = {
     guestNationality: q.guestNationality,
     checkin: q.checkin,
     checkout: q.checkout,
-    margin: marginFor(env, { member }),
+    // `_forceMargin` is the re-quote path only (see the /search route). A
+    // caller cannot reach it — the route sets it, never a request body.
+    margin: q._forceMargin != null ? q._forceMargin : marginFor(env, { member }),
     roomMapping: true,
     includeHotelData: true,
     maxRatesPerHotel: Math.min(10, Math.max(1, Number(q.maxRatesPerHotel) || 4)),
@@ -514,10 +516,67 @@ export function floorToPublic(ranked) {
   };
 }
 
+/**
+ * The margin that would make NUM's own price clear the public price.
+ *
+ * ── THE BUG THIS EXISTS TO FIX (19 Sep 2026) ──────────────────────────────
+ *
+ * floorToPublic() raised the DISPLAYED total to the public price for a
+ * signed-out visitor. The supplier was still quoted at the lower margin, so
+ * prebook came back with the real, lower number and the confirm screen showed
+ * it. A stranger saw $312 on the options screen and $271.40 on the next one.
+ *
+ * Two things wrong with that, and the second is the serious one:
+ *
+ *   · The price fell between screens, which reads as a trick even though it
+ *     was in the guest's favour.
+ *   · NUM published one price and transacted at another. The supplier's term
+ *     is about the price NUM PUBLISHES in a public channel. Displaying $312
+ *     while charging $271.40 is not what that rule intends, whatever a close
+ *     reading might allow.
+ *
+ * And the root error is the one this file already called out once today:
+ * flooring the display treats a PRICING problem as a DISPLAY problem. The fix
+ * is to change the price, which means changing the margin — it is the only
+ * lever the supplier gives, and it is per-request.
+ *
+ * Their retail is `net × (1 + m/100)`. Given a total quoted at margin `m` and
+ * a public price to clear:
+ *
+ *     net  = total / (1 + m/100)
+ *     m'   = 100 × ( public × (1 + m/100) / total − 1 )
+ *
+ * Taken as the worst case across every rate below public, because one request
+ * carries one margin. That does mean a hotel already near its public price
+ * gets a fatter margin than it needed — which is more earnings, not fewer, and
+ * is what every other seller on that shelf is doing anyway.
+ *
+ * @returns {number|null} null when nothing is below public and no re-quote is needed.
+ */
+export function marginToClearPublic(rates, currentMargin = 0) {
+  const factor = 1 + (Number(currentMargin) || 0) / 100;
+  let needed = null;
+  for (const r of rates) {
+    if (r?.total == null || r?.publicTotal == null || r.total <= 0) continue;
+    if (r.total >= r.publicTotal) continue;
+    const m = 100 * ((r.publicTotal * factor) / r.total - 1);
+    if (needed == null || m > needed) needed = m;
+  }
+  if (needed == null) return null;
+  // Ceil to a whole point so the re-quote lands ABOVE rather than exactly on
+  // the line, and cap it: a margin over 100% is a bad number, not a good one.
+  return Math.min(100, Math.ceil(needed));
+}
+
 /** Everything the guest sees, in one call, with the wall enforced. */
 export function offer(rates, { signedIn, nights = null, directKnownIds, publicRefs, content, showSaving = false, take = 3 } = {}) {
   const ranked = rank(rates, { directKnownIds, publicRefs });
-  const priced = signedIn ? ranked : ranked.map(floorToPublic);
+  // Signed out, anything STILL below the public price after the route's
+  // re-quote is dropped rather than displayed at a price NUM would not charge.
+  // That is the residual case — a re-quote that failed or could not lift this
+  // one rate — and showing it would put the display and the charge back out of
+  // step, which is the bug this replaced.
+  const priced = signedIn ? ranked : ranked.filter((r) => !(r.publicTotal != null && r.total < r.publicTotal));
   return priced.slice(0, take).map((r) => {
     assertPublicSafe(r, { signedIn });
     // A floored rate is being sold AT the public price, so there is no saving
@@ -847,7 +906,27 @@ export async function handleStays(request, env, path, { session = null, fetchImp
       const missing = missingForRates(q);
       if (missing.length) return json({ error: 'missing', missing }, 400);
       const rs = await searchRates(env, q, { member: signedIn, fetchImpl });
-      const rates = normalizeRates(rs);
+      let rates = normalizeRates(rs);
+
+      // Signed out, NUM's own price has to clear the public price — and it has
+      // to do it by being that price, not by being drawn as it. One re-quote,
+      // only when something is actually below, and only for strangers.
+      let marginUsed = marginFor(env, { member: signedIn });
+      if (!signedIn) {
+        const lift = marginToClearPublic(rates, marginUsed);
+        if (lift != null && lift > marginUsed) {
+          try {
+            const again = await searchRates(env, { ...q, _forceMargin: lift }, { member: false, fetchImpl });
+            const lifted = normalizeRates(again);
+            if (lifted.length) { rates = lifted; marginUsed = lift; }
+          } catch (err) {
+            // The original rates stand and offer() drops whatever is still
+            // below public. A failed re-quote costs options, never honesty.
+            console.warn('[stays] public re-quote failed', err?.message ?? err);
+          }
+        }
+      }
+
       const nights = nightsBetween(q.checkin, q.checkout);
       const { publicRefs, content, anyChain } = await enrich(env, rates, {
         checkin: q.checkin, checkout: q.checkout, currency: q.currency, fetchImpl,
