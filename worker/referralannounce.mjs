@@ -96,10 +96,29 @@ export async function announceReferral(env, { referrerId, newMemberName } = {}) 
   } catch { /* the table may not exist on an older database — that is fine */ }
   if (!amb) return { ...out, count };
 
+  /* ── MILESTONES USE THE COUNTED FIGURE, NOT `count` ───────────────────
+   *
+   * Found in review, 19 Sep 2026. `count` above is a raw COUNT(*) of
+   * everyone with referred_by set — right for the notification, which is
+   * about somebody joining, and WRONG for a milestone, which awards a real
+   * prize. growth/ambassador.mjs was fixed to use the counted figure on the
+   * console read; this path silently undid it, and this is the path that
+   * runs on EVERY signup rather than only when a console is opened.
+   *
+   * So twenty-five signups that verify nothing and never use NUM would show
+   * zero draw entries on the Tokyo card while quietly banking rungs 1, 5, 10
+   * and 25, emailing "you reached twenty-five", and landing four rows in the
+   * bonus queue. A reward the anti-gaming rules do not govern is a reward
+   * they do not govern. */
   try {
     const { recordMilestones } = await import('../growth/milestones.mjs');
-    out.milestones = await recordMilestones(env, { ambassadorId: amb.id, count });
+    const { qualityFor } = await import('../growth/tokyodraw.mjs');
+    const q = await qualityFor(env, String(referrerId));
+    out.counted = q.counted;
+    out.milestones = await recordMilestones(env, { ambassadorId: amb.id, count: q.counted });
   } catch (e) {
+    // A milestone that cannot be judged is NOT recorded. Falling back to the
+    // raw count here would reintroduce the whole bug on every read failure.
     console.warn('[announce milestones]', e?.message ?? e);
   }
 

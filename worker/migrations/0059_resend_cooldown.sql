@@ -1,0 +1,12 @@
+-- 0059 — when an ambassador's console key was last sent to them.
+--
+-- The resend branch of /api/amb/join used to send before any throttle ran, so
+-- anybody who knew an ambassador's address could POST it in a loop and put one
+-- email per request into that person's inbox — each carrying their console
+-- key, which is their whole account. It costs the victim their inbox and costs
+-- NUM its sending reputation, which this product has already had to halt once.
+--
+-- A per-IP limit is no answer on its own: asking for somebody ELSE's key to be
+-- resent can be done from anywhere, so the cooldown has to live on the
+-- account being mailed. One column, one ALTER, no rebuild.
+ALTER TABLE num_ambassadors ADD COLUMN key_sent_at TEXT;

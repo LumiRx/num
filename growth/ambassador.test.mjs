@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import {
   ambSummary, ambProfile, ambSocial, ambOffers, ambClaim, ambDirectory,
-  connectMember, publicAmbassador, mintAmbCode, PLATFORMS, OFFER_STATES, BENEFITS,
+  connectMember, publicAmbassador, mintAmbCode, ambJoin, PLATFORMS, OFFER_STATES, BENEFITS,
 } from './ambassador.mjs';
 import { linkReferral, __resetSchema } from '../worker/memberreferral.mjs';
 
@@ -41,6 +41,12 @@ function freshDb() {
   // 0053 brings the milestone table, 0055 the niche columns and free
    // entries. A fixture a migration behind tests a schema nobody runs.
   for (const f of ['0053_ambassador_milestones.sql']) {
+    const m = load(f).split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+    for (const stmt of m.split(';').map((x) => x.trim()).filter(Boolean)) {
+      try { db.exec(stmt + ';'); } catch { /* not for this fixture */ }
+    }
+  }
+  for (const f of ['0059_resend_cooldown.sql']) {
     const m = load(f).split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
     for (const stmt of m.split(';').map((x) => x.trim()).filter(Boolean)) {
       try { db.exec(stmt + ';'); } catch { /* not for this fixture */ }
@@ -109,6 +115,14 @@ const deps = (db, { host = null, biz = null } = {}) => ({
   hostAuth: async () => host,
   bizAuth: async () => biz,
   sendBatch: async () => ({ ok: true }),
+  // The join endpoint's own helpers. The fake ipHash is constant so the
+  // per-network throttle behaves like one network, which is what the
+  // mail-bomb tests are exercising.
+  ipHash: async () => 'iphash_test',
+  token: (n) => 't'.repeat(n * 2),
+  e164: (v) => (v ? String(v) : null),
+  country: () => 'GB',
+  badOrigin: () => false,
 });
 
 const KEY = 'k'.repeat(30);
@@ -598,4 +612,66 @@ test('milestones run on the COUNTED figure, so a farm cannot buy a bonus', async
   const tiers = db.prepare('SELECT tier FROM num_ambassador_milestones ORDER BY tier').all().map((r) => r.tier);
   assert.deepEqual(tiers, [1], 'a farm bought milestone rungs: ' + tiers.join(','));
   assert.equal(j.milestones.next.tier, 5);
+});
+
+/* ══ THE REVIEW FINDINGS, 19 SEP 2026 ═════════════════════════════════ */
+
+test('the resend route cannot be used to mail-bomb somebody with their own key', async () => {
+  // Found in review: the resend branch ran — and SENT — before any throttle,
+  // so anybody who knew an ambassador's address could put one email per
+  // request into their inbox, each carrying their console key. It costs the
+  // victim their inbox and NUM its sending reputation.
+  const db = freshDb();
+  addAmb(db, { email: 'victim@example.com' });
+  let sent = 0;
+  const d = { ...deps(db), sendBatch: async () => { sent += 1; return { ok: true }; } };
+  const url = new URL('https://itsnum.com/api/amb/join');
+  const hit = () => ambJoin(new Request(url, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'x', email: 'victim@example.com' }),
+  }), env(db), url, d);
+
+  const first = await (await hit()).json();
+  assert.equal(first.existing, true);
+  for (let i = 0; i < 25; i++) await hit();
+  assert.equal(sent, 1, `${sent} emails went out for 26 requests`);
+});
+
+test('a throttled resend is indistinguishable from a sent one', async () => {
+  // Saying "too soon" would confirm the address belongs to an ambassador
+  // just as loudly as sending would.
+  const db = freshDb();
+  addAmb(db, { email: 'victim@example.com' });
+  const d = { ...deps(db), sendBatch: async () => ({ ok: true }) };
+  const url = new URL('https://itsnum.com/api/amb/join');
+  const hit = async () => (await ambJoin(new Request(url, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'x', email: 'victim@example.com' }),
+  }), env(db), url, d)).json();
+  assert.deepEqual(await hit(), await hit());
+});
+
+test('twenty channels is the ceiling, because the directory sorts on their sum', async () => {
+  // One console key could add rows without limit, each with a claimed
+  // follower count, and publicAmbassador SUMS them into the figure the
+  // business directory ranks on.
+  const db = freshDb();
+  addAmb(db, {});
+  for (let i = 0; i < 20; i++) {
+    const r = await post(ambSocial, db, { platform: 'other', handle: 'h' + i, followers: 2000000000 });
+    assert.equal(r.ok, true, 'refused at ' + i);
+  }
+  const over = await post(ambSocial, db, { platform: 'other', handle: 'h99', followers: 1 });
+  assert.equal(over.ok, false);
+  assert.equal(over.error, 'too_many');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM num_ambassador_socials').get().n, 20);
+});
+
+test('updating a channel already listed is not blocked by the ceiling', async () => {
+  const db = freshDb();
+  addAmb(db, {});
+  for (let i = 0; i < 20; i++) await post(ambSocial, db, { platform: 'other', handle: 'h' + i });
+  const again = await post(ambSocial, db, { platform: 'other', handle: 'h3', followers: 500 });
+  assert.equal(again.ok, true, 'a person could not correct a number they had already given');
+  assert.equal(again.updated, true);
 });

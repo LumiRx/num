@@ -21,6 +21,34 @@
  * Together they remove the payoff twice over, which is the only way this
  * ever holds: any single check can be worked around by somebody patient.
  *
+ * ── WHICH SIGNALS ARE EVIDENCE, AND WHICH ARE CLAIMS ────────────────────
+ *
+ * Found in review, 19 Sep 2026, and it mattered: `device_id` is taken from
+ * the SIGNUP REQUEST BODY (worker/social.mjs, ctxSignals) and `ua_hash` is a
+ * hash of the User-Agent header. Both are set by whoever is signing up. Until
+ * today the device field also fell back to the new member's own id when
+ * absent, so simply omitting it minted a unique device per account and the
+ * cluster rule below could never fire — the farm defence was switched off by
+ * sending nothing.
+ *
+ * So the signals are now ranked by who controls them:
+ *
+ *   ip_hash    Cloudflare sets CF-Connecting-IP. The attacker cannot choose
+ *              it without real infrastructure. TRUSTWORTHY ORIGIN, weak
+ *              meaning — see the paragraph below.
+ *   device_id  a string the client sent. Useful, because a casual farmer does
+ *              not think to vary it, and NULL now honestly means "we have no
+ *              evidence" instead of a fabricated unique value. Never treated
+ *              as proof on its own.
+ *   ua_hash    a header. Same status as device_id.
+ *
+ * The honest consequence, stated rather than hidden: somebody who varies the
+ * device string, varies the User-Agent, verifies an email and sends one
+ * message per account can still accrue entries. What they cannot do is
+ * collect — a winner must pass 5arz verification, and /verify/5arz refuses to
+ * link one identity to two accounts. The counting rules raise the cost; the
+ * claim gate removes the prize.
+ *
  * ── WHY IP ALONE IS NOT EVIDENCE OF ANYTHING ─────────────────────────────
  *
  * Measured on production, 19 Sep 2026: 156 members across **104 devices and
@@ -74,7 +102,13 @@ export const RULES = Object.freeze([
     key: 'cluster',
     label: 'several signups from one device',
     why: 'Several of your signups came from one device. One of them counts and the rest do not.',
-    severity: 'strong',
+    severity: 'claimed-signal',
+  },
+  {
+    key: 'ip_cluster',
+    label: 'many signups from one internet connection',
+    why: 'A lot of your signups came from a single internet connection. A few people on one wifi is normal and counts — this was more than a household. If you signed people up at an event, tell us and we will look.',
+    severity: 'trustworthy-origin',
   },
   {
     key: 'no_contact',
@@ -103,6 +137,23 @@ export const ruleByKey = (k) => RULES.find((r) => r.key === k) || null;
  *
  * Returns { counted, rejected: [{ member_id, rule }], tally: { rule: n } }.
  */
+/**
+ * How many signups may share ONE internet connection before the rest stop
+ * counting.
+ *
+ * Six, and the number is a judgement rather than a measurement. A household
+ * is two to five people and must not be punished — production on 19 Sep had
+ * 156 members behind 61 IPs, so shared connections are the norm, not the
+ * exception. Twenty-five accounts behind one is not a family.
+ *
+ * The honest cost: an ambassador who signs twenty people up on one venue's
+ * wifi at an event loses the excess. That is a real case and it is rare, the
+ * rejection says so in words, and the ops queue exists for them to ask. The
+ * alternative — no limit on the one signal an attacker cannot forge — leaves
+ * the whole ladder open to anybody with a scripted signup.
+ */
+export const MAX_PER_IP = 6;
+
 export function assess({ referrerId, referrerSignals = null, rows = [] } = {}) {
   const rejected = [];
   const tally = {};
@@ -115,12 +166,13 @@ export function assess({ referrerId, referrerSignals = null, rows = [] } = {}) {
   // the referrals. A farm on a second phone shares nothing with the referrer
   // and everything with itself, which the per-row checks below cannot see.
   const seenDevice = new Map();
+  const seenIp = new Map();
   for (const r of rows) {
-    const d = r.device_id || null;
-    if (!d) continue;
-    seenDevice.set(d, (seenDevice.get(d) || 0) + 1);
+    if (r.device_id) seenDevice.set(r.device_id, (seenDevice.get(r.device_id) || 0) + 1);
+    if (r.ip_hash) seenIp.set(r.ip_hash, (seenIp.get(r.ip_hash) || 0) + 1);
   }
   const keptFromDevice = new Set();
+  const keptPerIp = new Map();
 
   let counted = 0;
   for (const r of rows) {
@@ -144,6 +196,14 @@ export function assess({ referrerId, referrerSignals = null, rows = [] } = {}) {
     if (r.device_id && seenDevice.get(r.device_id) > 1) {
       if (keptFromDevice.has(r.device_id)) { reject(id, 'cluster'); continue; }
       keptFromDevice.add(r.device_id);
+    }
+
+    /* THE ONE AN ATTACKER CANNOT SIMPLY OMIT. Applied after the device
+       checks so that the clearer explanation wins when both would fire. */
+    if (r.ip_hash && seenIp.get(r.ip_hash) > MAX_PER_IP) {
+      const used = keptPerIp.get(r.ip_hash) || 0;
+      if (used >= MAX_PER_IP) { reject(id, 'ip_cluster'); continue; }
+      keptPerIp.set(r.ip_hash, used + 1);
     }
 
     if (!(Number(r.phone_verified) === 1 || Number(r.email_verified) === 1)) {

@@ -172,6 +172,16 @@ ul.plain li:first-child{border-top:0}
       which is why it cannot be withdrawn from you later.</p>
   </section>
 
+  <!-- ══ SOMETHING TO POST ══════════════════════════════════════════════
+       The blank page is the hard part of this job. -->
+  <section id="postCard" class="card2" data-tab="today">
+    <span class="tag">If you are stuck</span>
+    <h2>Something to post</h2>
+    <p class="sub">Starting points, not scripts — every one of these is true today. Say it in your own
+      words; a line written by us, pasted as-is, reads like an advert.</p>
+    <ul class="plain" id="postList"></ul>
+  </section>
+
   <!-- ══ WHO YOU BROUGHT IN ═════════════════════════════════════════════
        The count is a number. These are people, with dates. Initials only —
        they joined NUM, they did not agree to be listed by name to whoever
@@ -438,6 +448,7 @@ ul.plain li:first-child{border-top:0}
     $('pct').textContent = s.money.pct;
 
     paintBrought(s.brought, s.payable);
+    paintPostLines(s.post_lines);
     paintTokyo(s.tokyo);
     paintPool(s.reward_pool);
     paintNiches(s.niches);
@@ -467,6 +478,25 @@ ul.plain li:first-child{border-top:0}
     if (days === 1) return 'yesterday';
     if (days < 30) return days + ' days ago';
     return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+
+  function paintPostLines(lines) {
+    if (!lines || !lines.length) { $('postCard').classList.add('hide'); return; }
+    $('postCard').classList.remove('hide');
+    $('postList').innerHTML = lines.map(function (l, i) {
+      return '<li><div id="pl' + i + '">' + esc(l.text) + '</div>' +
+        '<button class="btn sm" data-copy="' + i + '" type="button" style="margin-top:8px">Copy</button></li>';
+    }).join('');
+    Array.prototype.forEach.call($('postList').querySelectorAll('[data-copy]'), function (b) {
+      b.onclick = function () {
+        var t = $('pl' + b.getAttribute('data-copy')).textContent;
+        if (!navigator.clipboard) return;
+        navigator.clipboard.writeText(t).then(function () {
+          b.textContent = 'Copied';
+          setTimeout(function () { b.textContent = 'Copy'; }, 1600);
+        });
+      };
+    });
   }
 
   function paintTokyo(t) {

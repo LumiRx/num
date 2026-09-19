@@ -25,12 +25,19 @@ function freshDb() {
       university_id TEXT, reward_cs INTEGER, reward_referee_cs INTEGER, max_conversions INTEGER,
       max_reward_total_cs INTEGER, active INTEGER DEFAULT 1, expires_at INTEGER, created_at INTEGER);
     CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, email TEXT, email_verified INTEGER DEFAULT 0,
+      phone TEXT, phone_verified INTEGER DEFAULT 0, identity_verified INTEGER DEFAULT 0, bio TEXT,
       created_at TEXT DEFAULT '2026-09-01', referred_by TEXT, referred_pct INTEGER, referred_at TEXT);
     CREATE TABLE num_star_moves (id TEXT PRIMARY KEY, member_id TEXT, delta INTEGER, kind TEXT,
       note TEXT, counterparty TEXT);
     CREATE TABLE num_star_balances (member_id TEXT PRIMARY KEY, stars INTEGER DEFAULT 0);
     CREATE TABLE num_notifications (id TEXT PRIMARY KEY, member_id TEXT, kind TEXT, title TEXT,
       subtitle TEXT, body TEXT, url TEXT, tag TEXT);
+    -- The quality rules read these. announceReferral judges a milestone on
+    -- the COUNTED figure since 19 Sep, so a fixture without them tests a
+    -- milestone path nobody runs.
+    CREATE TABLE num_identity_signals (member_id TEXT PRIMARY KEY, device_id TEXT,
+      ip_hash TEXT, ua_hash TEXT, country TEXT);
+    CREATE TABLE num_messages (id TEXT PRIMARY KEY, member_ref TEXT, body TEXT);
   `);
   for (const f of ['0051_ambassadors.sql', '0053_ambassador_milestones.sql']) {
     const sql = load(f).split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
@@ -74,8 +81,17 @@ function seedAmbassador(db, { id = 'a1', code = 'RAEK7M2Q', member = 'm_rae' } =
               VALUES (?,'Rae Wilder','rae@x.com',?,?,'active',0,'2026-09-01')`).run(id, code, member);
   return { id, code, member };
 }
-const joiner = (db, id, name) =>
-  db.prepare('INSERT INTO num_members (id,name) VALUES (?,?)').run(id, name) && id;
+/** A joiner who is real by every rule in entryquality.mjs: verified, active,
+ *  and on their own device. Milestones now run on the counted figure, so a
+ *  bare row no longer earns one — which is the point. */
+const joiner = (db, id, name) => {
+  db.prepare('INSERT INTO num_members (id,name,email,email_verified) VALUES (?,?,?,1)')
+    .run(id, name, id + '@example.com');
+  db.prepare('INSERT INTO num_identity_signals (member_id,device_id,ip_hash,ua_hash) VALUES (?,?,?,?)')
+    .run(id, 'dev_' + id, 'ip_' + id, 'ua_' + id);
+  db.prepare('INSERT INTO num_messages (id,member_ref,body) VALUES (?,?,?)').run('msg_' + id, id, 'hi');
+  return id;
+};
 
 /* ── the chain ─────────────────────────────────────────────────────────── */
 

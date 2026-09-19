@@ -1,8 +1,9 @@
 // Can somebody farm a trip out of this?
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  RULES, RULE_KEYS, ruleByKey, assess, explain, identityKey, five5arzId, canClaim,
+  RULES, RULE_KEYS, ruleByKey, assess, explain, identityKey, five5arzId, canClaim, MAX_PER_IP,
 } from './entryquality.mjs';
 
 /** A referred member who passes everything, so each test can spoil one thing. */
@@ -174,4 +175,70 @@ test('claiming needs BOTH the verified flag and a real 5arz link', () => {
   assert.equal(canClaim({ identity_verified: 1, bio: null }), false);
   assert.equal(canClaim({ identity_verified: 0, bio: JSON.stringify({ '5arz_id': 'mem_x' }) }), false);
   assert.equal(canClaim(null), false);
+});
+
+/* ══ THE REVIEW FINDINGS, 19 SEP 2026 ═════════════════════════════════
+   An adversarial pass found the device signals were client-supplied and the
+   old fallback minted a unique one per account, so the cluster rule could be
+   switched off by sending nothing. These hold the fixes down. */
+
+test('signups with NO device evidence do not silently pass the cluster rule', () => {
+  // The old ctxSignals fallback wrote the member's own id when the request
+  // omitted `device`, which made every account look like its own device. A
+  // farm that sent nothing was invisible. Null is now stored, and null must
+  // not be treated as a distinct device either.
+  const rows = Array.from({ length: 20 }, (_, i) =>
+    good('n' + i, { device_id: null, ip_hash: 'one_ip', ua_hash: 'ua' + i }));
+  const r = assess({ referrerId: 'me', referrerSignals: me, rows });
+  assert.ok(r.counted <= MAX_PER_IP,
+    `${r.counted} of 20 no-device signups counted — the one signal they cannot forge did not bite`);
+  assert.ok(r.tally.ip_cluster > 0);
+});
+
+test('varying the device string does not defeat the count', () => {
+  // The attack the review described: a random device per signup, one phone.
+  const rows = Array.from({ length: 30 }, (_, i) =>
+    good('v' + i, { device_id: 'rand_' + i, ip_hash: 'one_ip', ua_hash: 'ua_' + i }));
+  const r = assess({ referrerId: 'me', referrerSignals: me, rows });
+  assert.equal(r.counted, MAX_PER_IP, 'spoofed devices bought ' + r.counted + ' referrals');
+});
+
+test('a household on one connection is not a farm', () => {
+  // Four people, one router, their own phones. MAX_PER_IP exists so this
+  // case survives — rejecting it would punish the honest referral hardest.
+  const rows = Array.from({ length: 4 }, (_, i) =>
+    good('h' + i, { ip_hash: 'home', ua_hash: 'ua' + i, device_id: 'phone' + i }));
+  const r = assess({ referrerId: 'me', referrerSignals: me, rows });
+  assert.equal(r.counted, 4);
+  assert.equal(r.tally.ip_cluster, undefined);
+});
+
+test('the IP rule keeps the first few and rejects only the excess', () => {
+  const rows = Array.from({ length: 10 }, (_, i) =>
+    good('x' + i, { ip_hash: 'shared', ua_hash: 'ua' + i, device_id: 'd' + i }));
+  const r = assess({ referrerId: 'me', referrerSignals: me, rows });
+  assert.equal(r.counted, MAX_PER_IP);
+  assert.equal(r.tally.ip_cluster, 10 - MAX_PER_IP);
+});
+
+test('members with no IP recorded are not rejected by the IP rule', () => {
+  const rows = Array.from({ length: 20 }, (_, i) => good('o' + i, { ip_hash: null }));
+  const r = assess({ referrerId: 'me', referrerSignals: me, rows });
+  assert.equal(r.counted, 20, 'absent evidence was treated as guilt');
+});
+
+test('the IP rule explains itself, and names the case it might get wrong', () => {
+  const r = ruleByKey('ip_cluster');
+  assert.ok(r, 'the rule was removed');
+  assert.match(r.why, /one wifi is normal/i);
+  // An ambassador who signed people up at an event needs to know what to do.
+  assert.match(r.why, /tell us/i);
+});
+
+test('the code says out loud which signals a client controls', () => {
+  // The header is load-bearing: the next person to add a rule needs to know
+  // that device_id and ua_hash are request fields, not observations.
+  const src = readFileSync(new URL('./entryquality.mjs', import.meta.url), 'utf8');
+  assert.match(src, /device_id.*SIGNUP REQUEST BODY|taken from\n \* the SIGNUP REQUEST BODY/s);
+  assert.match(src, /Cloudflare sets CF-Connecting-IP/);
 });

@@ -180,8 +180,11 @@ export async function standings(env) {
        FROM num_members m
        LEFT JOIN num_identity_signals s ON s.member_id = m.id`,
   ).all(), 'the people in the draw');
-  if (!members.length) return [];
 
+  /* NO EARLY RETURN ON AN EMPTY MEMBER LIST. It used to bail here, which
+     skipped the free-entry read below — so a draw whose only entrants came
+     in by post would have reported nobody at all. The people the lawful
+     route exists for are exactly the ones with no account. */
   const byId = new Map(members.map((m) => [String(m.id), m]));
   const groups = new Map();
   for (const m of members) {
@@ -198,15 +201,41 @@ export async function standings(env) {
     if (e > 0) byMember.set(referrer, { referred: a.counted, joined: rows.length, earned: e, free: 0 });
   }
 
-  const { results: free = [] } = await env.DB.prepare(
-    `SELECT member_id, SUM(entries) AS n FROM num_draw_free_entries
-      WHERE campaign = ?1 AND member_id IS NOT NULL GROUP BY member_id`,
-  ).bind(CAMPAIGN).all().catch(() => ({ results: [] }));
+  /* ── THE FREE ROUTE, INCLUDING THE PEOPLE WITH NO ACCOUNT ─────────────
+   *
+   * Found in review, 19 Sep 2026, and it was the worst bug in the draw.
+   *
+   * This filtered `member_id IS NOT NULL`, so every entry granted by hand to
+   * somebody who wrote in — the postal route that clause 3 of the Official
+   * Rules advertises, the route that makes this a sweepstake rather than a
+   * lottery — was recorded, acknowledged with ok:true, and then **silently
+   * excluded from the draw**. Those people had a zero chance of winning while
+   * every surface told them they were entered. A free route that cannot win
+   * is not a free route, and the legal position rests on it being real.
+   *
+   * Email-only rows now enter under their own key. They have no referrals, so
+   * one entry each, which is exactly what the rules promise them.
+   *
+   * mustRead, not a silent empty: a failed read here would have quietly drawn
+   * a winner from the referral tickets alone with the entire lawful-entry
+   * population missing, and reported success. */
+  const free = await mustRead(env.DB.prepare(
+    `SELECT member_id, email, SUM(entries) AS n FROM num_draw_free_entries
+      WHERE campaign = ?1 GROUP BY COALESCE(member_id, 'email:' || email)`,
+  ).bind(CAMPAIGN).all(), 'the free entries');
   for (const f of free) {
-    const id = String(f.member_id);
-    const cur = byMember.get(id) || { referred: 0, joined: 0, earned: 0, free: 0 };
-    cur.free = Number(f.n || 0);
-    byMember.set(id, cur);
+    if (f.member_id) {
+      const id = String(f.member_id);
+      const cur = byMember.get(id) || { referred: 0, joined: 0, earned: 0, free: 0 };
+      cur.free = Number(f.n || 0);
+      byMember.set(id, cur);
+    } else if (f.email) {
+      // No NUM account. Their own entrant, keyed on the address they wrote
+      // in from, so they cannot be merged with anybody and cannot be lost.
+      byMember.set('email:' + f.email, {
+        referred: 0, joined: 0, earned: 0, free: Number(f.n || 0), postal: true, email: f.email,
+      });
+    }
   }
 
   /* ── ONE HUMAN, ONE ENTRANT ───────────────────────────────────────────
@@ -314,6 +343,37 @@ export async function runTokyoDraw(env, { seed = null, winners = 1, now = new Da
   }
 
   const id = `${CAMPAIGN}-${now.toISOString().slice(0, 10)}`;
+
+  /* ── A DRAW RUNS ONCE, AND A SECOND ATTEMPT RETURNS THE FIRST RESULT ──
+   *
+   * Found in review, 19 Sep 2026. `INSERT OR IGNORE` on this table does stop
+   * a second RESULT row — but num_giveaway_claims is keyed on
+   * (draw_id, entrant_key), so a second run with a fresh seed produced a
+   * DIFFERENT winner and inserted them alongside the first under the same
+   * draw id. Two people are then shown "you won" in the app, for one trip.
+   * A double-click was enough.
+   *
+   * Worse with a caller-supplied seed: an insider could run it repeatedly
+   * and read winners out of the response until they liked one, while the
+   * stored row kept the first seed — so the seed clause 8 invites anybody to
+   * check against would not reproduce the published winner.
+   *
+   * So the recorded result is authoritative. If one exists for today, it is
+   * returned as-is and nothing new is drawn or claimed. */
+  const already = await env.DB.prepare(
+    'SELECT id, seed, winners, eligible_count FROM num_giveaway_results WHERE id = ?1',
+  ).bind(id).first().catch(() => null);
+  if (already) {
+    let prior = [];
+    try { prior = JSON.parse(already.winners || '[]'); } catch { prior = []; }
+    return {
+      ok: true, id, seed: already.seed, winners: prior, already: true,
+      people: rows.length, tickets: Number(already.eligible_count || 0),
+      note: 'This draw has already been run. The recorded result stands — '
+        + 'rerunning it would hand a second person the same prize.',
+    };
+  }
+
   await env.DB.prepare(
     `INSERT OR IGNORE INTO num_giveaway_results
        (id, week_start, drawn_at, seed, eligible_count, winners, note, campaign)

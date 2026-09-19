@@ -170,3 +170,55 @@ export function rotateReward(ambassadorId, tier) {
   for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
   return pool[(h >>> 0) % pool.length];
 }
+
+
+/* ══ SOMETHING TO POST ══════════════════════════════════════════════════
+ *
+ * The whole job of an ambassador is to say something, and the hardest part
+ * of saying something is the blank page. A console that shows a link and
+ * expects the person to invent the sentence is asking them to do the one bit
+ * they find difficult.
+ *
+ * EVERY LINE HERE HAS TO BE TRUE ON THE DAY IT IS COPIED. These are drawn
+ * only from BENEFITS.live — the free concierge, venue perks, activities and
+ * tickets, luggage storage, the Friday draw. Nothing about hotels, cars or
+ * VIP services, because those are not switched on and an ambassador who
+ * pastes a line NUM wrote and gets caught out will never paste another.
+ *
+ * They are starting points, not scripts. A line in somebody else's voice
+ * posted verbatim reads like an advert, which is the one thing an
+ * ambassador's audience is there to avoid — so the console says so.
+ */
+export const POST_LINES = Object.freeze([
+  { key: 'concierge', niche: null,
+    text: 'Genuinely useful travel thing: NUM gives you a real concierge, free, in 39 countries. Ask it for a table, a driver, a doctor at 2am — it answers. {link}' },
+  { key: 'luggage', niche: null,
+    text: 'The thing nobody tells you about a long layover: you can leave your bags somewhere safe for the day. NUM sorts it. {link}' },
+  { key: 'draw', niche: null,
+    text: 'NUM runs a giveaway every Friday — ten winners a week. Free to enter, takes a second. {link}' },
+  { key: 'food', niche: 'food',
+    text: 'I stopped researching restaurants. I ask NUM, it books the table, and if the place has a perk on it I get that too. {link}' },
+  { key: 'nightlife', niche: 'nightlife',
+    text: 'Being somewhere new on a Friday used to mean guessing. Now I ask NUM where to go and it just tells me. {link}' },
+  { key: 'family', niche: 'family',
+    text: 'Travelling with kids: NUM will find the thing that is actually open, actually close, and will actually take a pushchair. {link}' },
+  { key: 'budget', niche: 'budget',
+    text: 'The concierge is free. Not a trial, not a tier — free, in 39 countries. That is the whole pitch. {link}' },
+  { key: 'culture', niche: 'culture',
+    text: 'Ask NUM what is on this week wherever you are and it comes back with things worth going to, not the top ten list. {link}' },
+  { key: 'business', niche: 'business',
+    text: 'Landing late, meeting at nine, nothing booked. One message to NUM and it is handled. {link}' },
+  { key: 'wellness', niche: 'wellness',
+    text: 'NUM finds the spa that is open now and books it, instead of me reading eleven reviews. {link}' },
+]);
+
+/** Lines worth showing this person: their own niches first, then the general
+ *  ones, so somebody who posts about food is not handed a nightlife line. */
+export function postLinesFor(mine = [], link = '') {
+  const m = Array.isArray(mine) ? mine : [];
+  const mineFirst = POST_LINES.filter((l) => l.niche && m.includes(l.niche));
+  const general = POST_LINES.filter((l) => !l.niche);
+  return [...mineFirst, ...general]
+    .slice(0, 5)
+    .map((l) => ({ key: l.key, text: l.text.replace('{link}', link) }));
+}

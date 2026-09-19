@@ -223,6 +223,10 @@ const FILES = [
   // second pass -- a re-run stops there and changes nothing.
   'worker/migrations/0057_till_tables.sql',
   'worker/migrations/0058_stay_evidence.sql',
+  // When an ambassador's console key was last emailed to them, so the resend
+  // route cannot be used to mail-bomb somebody with their own credential.
+  // One ALTER.
+  'worker/migrations/0059_resend_cooldown.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

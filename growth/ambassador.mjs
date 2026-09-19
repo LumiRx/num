@@ -63,7 +63,7 @@
 import { rows, readFailedResponse, isReadFailed } from './readfail.mjs';
 import { referralSummary } from '../worker/memberreferral.mjs';
 import { TIERS, MYSTERY_LINE, nextTier, milestonesFor, recordMilestones } from './milestones.mjs';
-import { NICHES, readNiches, cleanNiches, offerFit, REWARD_POOL } from './niches.mjs';
+import { NICHES, readNiches, cleanNiches, offerFit, REWARD_POOL, postLinesFor } from './niches.mjs';
 import { CAMPAIGN as TOKYO, standingFor as tokyoStandingFor } from './tokyodraw.mjs';
 
 /** Matches the CHECK on num_ambassador_socials.platform. Both copies exist
@@ -184,9 +184,20 @@ export async function connectMember(env, amb) {
     // One member account per ambassador. If the same person applied twice we
     // would rather the second application sit unpayable and visible than
     // silently divert the first one's earnings.
-    const taken = await env.DB.prepare(
-      'SELECT id FROM num_ambassadors WHERE member_id = ?1 AND id <> ?2',
-    ).bind(m.id, amb.id).first().catch(() => null);
+    /* FAILS CLOSED, because this decides whose wallet gets paid. It used to
+       `.catch(() => null)`, which reads a failed check as "nobody has
+       claimed this member" and links anyway — handing one ambassador's
+       earnings edge to another on a single read hiccup. The comment above
+       says the intent is for a second application to sit unpayable and
+       VISIBLE; not linking is exactly that. */
+    let taken;
+    try {
+      taken = await env.DB.prepare(
+        'SELECT id FROM num_ambassadors WHERE member_id = ?1 AND id <> ?2',
+      ).bind(m.id, amb.id).first();
+    } catch {
+      return null;
+    }
     if (taken) return null;
     await env.DB.prepare(
       'UPDATE num_ambassadors SET member_id = ?2, updated_at = ?3 WHERE id = ?1',
@@ -308,6 +319,9 @@ export async function ambSummary(req, env, url, D) {
         joined: m.referred_at || m.created_at,
         earned: Number(m.earned || 0),
       })),
+      /* Starting points, not scripts — and only ever about things that are
+         actually switched on. See POST_LINES. */
+      post_lines: postLinesFor(readNiches(amb.niches_json), site + '/r/' + amb.code),
       niches: {
         mine: readNiches(amb.niches_json),
         all: NICHES,
@@ -459,6 +473,26 @@ export async function ambSocial(req, env, url, D) {
   const existing = await env.DB.prepare(
     'SELECT id FROM num_ambassador_socials WHERE ambassador_id=?1 AND platform=?2 AND handle=?3',
   ).bind(amb.id, platform, handle).first().catch(() => null);
+
+  /* ── A CEILING, BECAUSE reach_claimed IS A SUM ────────────────────────
+   *
+   * The unique index is on (ambassador, platform, handle), and handle is
+   * free text — so one console key could add rows without limit, each
+   * carrying a claimed follower count, and publicAmbassador SUMS them into
+   * the figure the business directory sorts on. Twenty rows of two billion
+   * pins somebody at the top of that list for ever, and the directory runs
+   * one social query per ambassador, so it degrades for every host too.
+   *
+   * Twenty channels is far more than any real person has. */
+  if (!existing?.id) {
+    const have = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM num_ambassador_socials WHERE ambassador_id = ?1',
+    ).bind(amb.id).first().catch(() => ({ n: MAX_SOCIALS }));
+    if (Number(have?.n ?? MAX_SOCIALS) >= MAX_SOCIALS) {
+      return J({ ok: false, error: 'too_many',
+        why: `That is ${MAX_SOCIALS} channels, which is already more than anybody posts on. Remove one to add another.` }, 409);
+    }
+  }
 
   if (existing?.id) {
     await env.DB.prepare(
@@ -718,6 +752,9 @@ export async function ambDirectory(req, env, url, D) {
  *  a friend is two; twenty is a script. Same shape as the host guardrail. */
 export const AMB_JOINS_PER_NETWORK_PER_DAY = 5;
 
+/** Channels one ambassador may list. See the ceiling check in ambSocial. */
+export const MAX_SOCIALS = 20;
+
 /**
  * POST /api/amb/join — apply.
  *
@@ -746,25 +783,58 @@ export async function ambJoin(req, env, url, D) {
     return J({ ok: false, error: 'name_email' }, 400);
   }
 
+  /* ── THE THROTTLE COMES FIRST, BEFORE ANY EMAIL ───────────────────────
+   *
+   * Found in review, 19 Sep 2026. The resend branch below used to run — and
+   * SEND — before this check, so anybody who knew an ambassador's address
+   * could POST it in a loop and put one email per request into that person's
+   * inbox, each one carrying their console key, at whatever rate they liked.
+   *
+   * It costs the victim their inbox and it costs NUM its sending reputation,
+   * which this project has already had to halt once. The send is the
+   * expensive, irreversible half of this endpoint, so nothing reaches it
+   * until the caller has been counted. */
+  const iph = await ipHash(req);
+
   // Applying twice is a person who lost their link, not a new ambassador.
   // Send the console key again rather than minting a second code against the
   // same audience — two codes for one person splits their own earnings.
   const existing = await env.DB.prepare(
-    'SELECT id, code, console_key, name FROM num_ambassadors WHERE LOWER(email) = ?1',
+    'SELECT id, code, console_key, name, key_sent_at FROM num_ambassadors WHERE LOWER(email) = ?1',
   ).bind(email).first().catch(() => null);
 
   const site = env.SITE || 'https://itsnum.com';
   if (existing?.console_key) {
+    /* A PER-ACCOUNT COOLDOWN, not just a per-IP one. The IP limit alone is
+       no defence here: the attack is distributed by nature — any machine can
+       ask for somebody else's key to be resent. One resend an hour is
+       generous for a person who lost a link and useless as a weapon. */
+    const last = existing.key_sent_at ? Date.parse(existing.key_sent_at) : 0;
+    if (Number.isFinite(last) && Date.now() - last < 60 * 60 * 1000) {
+      // The SAME answer as a successful resend. Saying "too soon" would
+      // confirm the address belongs to an ambassador just as loudly.
+      return J({ ok: true, existing: true, emailed: true });
+    }
+    await env.DB.prepare('UPDATE num_ambassadors SET key_sent_at = ?2 WHERE id = ?1')
+      .bind(existing.id, nowIso()).run().catch(() => {});
     await mailKey(D, env, { email, name: existing.name, key: existing.console_key, code: existing.code, site, again: true });
     return J({ ok: true, existing: true, emailed: true });
   }
 
-  const iph = await ipHash(req);
-  const madeToday = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM num_ambassadors
-      WHERE agreed_ip = ?1 AND created_at > datetime('now','-1 day')`,
-  ).bind(iph).first().catch(() => null);
-  if ((madeToday?.n ?? 0) >= AMB_JOINS_PER_NETWORK_PER_DAY) {
+  /* FAILS CLOSED. This used to `.catch(() => null)` and then read the miss
+     as zero, so one bad read disabled the only limit on how many ambassador
+     accounts one network could mint. A throttle that switches itself off
+     when the database is unhappy is not a throttle. */
+  let madeToday;
+  try {
+    madeToday = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM num_ambassadors
+        WHERE agreed_ip = ?1 AND created_at > datetime('now','-1 day')`,
+    ).bind(iph).first();
+  } catch {
+    return J({ ok: false, error: 'try_again' }, 503);
+  }
+  if (Number(madeToday?.n ?? Infinity) >= AMB_JOINS_PER_NETWORK_PER_DAY) {
     return J({ ok: false, error: 'slow_down' }, 429);
   }
 

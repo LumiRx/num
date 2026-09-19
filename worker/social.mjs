@@ -338,7 +338,17 @@ async function ctxSignals(env, memberId, req, body) {
      ON CONFLICT(member_id) DO UPDATE SET ip_hash=excluded.ip_hash, ua_hash=excluded.ua_hash, country=excluded.country`,
   ).bind(
     memberId,
-    clip(body?.device, 64) ?? memberId,
+    /* ── NULL WHEN THERE IS NO DEVICE, NEVER THE MEMBER'S OWN ID ─────────
+     *
+     * This used to fall back to `memberId`, which FABRICATES a unique device
+     * per account out of nothing. Anything downstream asking "did several
+     * signups come from one device" then gets a guaranteed no — and
+     * growth/entryquality.mjs asks exactly that to spot a farm. Omitting the
+     * field, which costs an attacker nothing, silently disabled the rule.
+     *
+     * Null is the honest answer: we have no evidence. A rule can reason about
+     * absent evidence; it cannot reason about invented evidence. */
+    clip(body?.device, 64) ?? null,
     ip ? await sha12(ip) : null,
     await sha12(req.headers.get('User-Agent') ?? ''),
     req.headers.get('CF-IPCountry') ?? null,

@@ -369,3 +369,82 @@ test('an ambassador can see how many counted and why the rest did not', async ()
   assert.equal(cluster.n, 19);
   assert.ok(cluster.why.length > 25);
 });
+
+/* ══ THE REVIEW FINDINGS, 19 SEP 2026 ═════════════════════════════════ */
+
+test('a postal free entry actually enters the draw — it was write-only', () => {
+  // The worst bug in the draw. standings() filtered `member_id IS NOT NULL`,
+  // so every entry granted by hand to somebody who wrote in was recorded,
+  // acknowledged, and then excluded — a zero chance of winning while every
+  // surface said they were entered. The legal position rests on this route
+  // being real.
+  const db = freshDb();
+  db.prepare(`INSERT INTO num_draw_free_entries (id,campaign,email,name,entries,source,created_at)
+              VALUES ('f1',?,'writer@example.com','A Writer',1,'post','2026-09-19')`).run(CAMPAIGN);
+  return standings(env(db)).then((s) => {
+    assert.equal(s.length, 1, 'the postal entrant is not in the draw');
+    assert.equal(s[0].entries, 1);
+    assert.equal(s[0].postal, true);
+  });
+});
+
+test('a postal entrant can actually be drawn as the winner', async () => {
+  const db = freshDb();
+  db.prepare(`INSERT INTO num_draw_free_entries (id,campaign,email,entries,source,created_at)
+              VALUES ('f1',?,'writer@example.com',1,'post','2026-09-19')`).run(CAMPAIGN);
+  const r = await runTokyoDraw(env(db), { seed: 's' });
+  assert.equal(r.ok, true);
+  assert.equal(r.winners.length, 1);
+  assert.match(r.winners[0], /^email:writer@example\.com/);
+  // And they must still verify, like anybody else.
+  assert.equal(r.claimable[0].can_claim, false);
+});
+
+test('a postal entrant is not merged with anybody else', async () => {
+  const db = freshDb();
+  bring(db, 'm_amb', 30);
+  for (const e of ['a@x.com', 'b@x.com']) {
+    db.prepare(`INSERT INTO num_draw_free_entries (id,campaign,email,entries,source,created_at)
+                VALUES (?,?,?,1,'post','2026-09-19')`).run('f_' + e, CAMPAIGN, e);
+  }
+  const s = await standings(env(db));
+  assert.equal(s.length, 3, 'postal entrants collapsed into one another');
+  assert.equal(s.filter((r) => r.postal).length, 2);
+});
+
+test('running the draw twice does not crown a second winner', async () => {
+  // num_giveaway_claims is keyed on (draw_id, entrant_key), so a second run
+  // with a fresh seed used to insert a DIFFERENT winner under the same draw
+  // id — two people told they had won one trip. A double-click was enough.
+  const db = freshDb();
+  bring(db, 'm_a', 30);
+  bring(db, 'm_b', 60, 500);
+  const first = await runTokyoDraw(env(db), { seed: 'seed-one' });
+  const second = await runTokyoDraw(env(db), { seed: 'a-different-seed' });
+
+  assert.equal(second.already, true);
+  assert.deepEqual(second.winners, first.winners, 'a second run picked a different winner');
+  assert.equal(second.seed, first.seed, 'the published seed changed under the recorded result');
+  const claims = db.prepare("SELECT COUNT(*) n FROM num_giveaway_claims WHERE state='won'").get();
+  assert.equal(claims.n, 1, claims.n + ' people were told they won one trip');
+});
+
+test('a seed handed in cannot be ground against a recorded draw', async () => {
+  const db = freshDb();
+  bring(db, 'm_a', 30);
+  bring(db, 'm_b', 30, 500);
+  const first = await runTokyoDraw(env(db), { seed: 's0' });
+  for (const s of ['s1', 's2', 's3', 's4', 's5']) {
+    const again = await runTokyoDraw(env(db), { seed: s });
+    assert.deepEqual(again.winners, first.winners, 'seed ' + s + ' changed the winner');
+  }
+});
+
+test('a broken read of the free-entry table stops the draw rather than quietly excluding it', async () => {
+  const db = freshDb();
+  bring(db, 'm_a', 30);
+  db.exec('DROP TABLE num_draw_free_entries');
+  // The old code caught this into an empty list, drew a winner from referral
+  // tickets alone with every lawful entrant missing, and reported success.
+  await assert.rejects(() => standings(env(db)));
+});

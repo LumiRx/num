@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   NICHES, NICHE_KEYS, readNiches, cleanNiches, offerFit,
-  REWARD_POOL, readyRewards, rotateReward,
+  REWARD_POOL, readyRewards, rotateReward, POST_LINES, postLinesFor,
 } from './niches.mjs';
 
 /* ── THE ONE THAT IS NOT IN THE POOL ───────────────────────────────────── */
@@ -124,4 +124,48 @@ test('the niche columns exist in the migration that ships them', () => {
   for (const stmt of sql.split(';')) {
     assert.ok((stmt.match(/ALTER\s+TABLE/gi) || []).length <= 1, 'two ALTERs in one statement');
   }
+});
+
+/* ── something to post ─────────────────────────────────────────────────── */
+
+test('every suggested line is true today — none promise a thing that is off', () => {
+  // The rewards NUM cannot source yet are named in REWARD_POOL with ready
+  // false; nothing a person is invited to POST may lean on one of them.
+  const notReady = REWARD_POOL.filter((r) => !r.ready).map((r) => r.key);
+  assert.ok(notReady.includes('room') && notReady.includes('flight') && notReady.includes('car'));
+  const all = POST_LINES.map((l) => l.text.toLowerCase()).join(' ');
+  // An ambassador who pastes a line NUM wrote and gets caught out will never
+  // paste another one.
+  for (const word of ['hotel', 'flight', 'car hire', 'rental car', 'yacht', 'jet', 'villa', 'chauffeur']) {
+    assert.equal(all.includes(word), false, `a suggested post mentions "${word}", which is not live`);
+  }
+});
+
+test('the coverage claim in the lines matches the rest of the product', () => {
+  // 39 countries, checked by scripts/coverage-claims.mjs everywhere else.
+  const all = POST_LINES.map((l) => l.text).join(' ');
+  assert.equal(/\b38 countries\b/.test(all), false, 'a post line says 38 countries');
+  assert.ok(/\b39 countries\b/.test(all));
+});
+
+test('every line carries the ambassador\'s own link', () => {
+  for (const l of POST_LINES) assert.match(l.text, /\{link\}/, l.key + ' has no link in it');
+  const out = postLinesFor([], 'https://itsnum.com/r/ABC');
+  for (const l of out) {
+    assert.match(l.text, /https:\/\/itsnum\.com\/r\/ABC/);
+    assert.equal(l.text.includes('{link}'), false, 'a placeholder was left in');
+  }
+});
+
+test('somebody who posts about food is not handed a nightlife line first', () => {
+  const out = postLinesFor(['food'], 'L');
+  assert.equal(out[0].key, 'food');
+  // And they still get the general ones, so the list is never thin.
+  assert.ok(out.length >= 4);
+});
+
+test('an ambassador with no niche still gets something', () => {
+  const out = postLinesFor([], 'L');
+  assert.ok(out.length >= 3);
+  for (const l of out) assert.ok(l.text.length > 40);
 });
