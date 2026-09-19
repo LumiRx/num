@@ -90,11 +90,11 @@ export default function CalendarSheet() {
         {cells.map((d) => <DayCell key={d.key} d={d} />)}
       </div>
       <div style={{ borderTop: '1px solid var(--ink-08)', borderBottom: '1px solid var(--ink-08)', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--field-bg)' }}>
-        <span style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 9.5, letterSpacing: '.1em', fontWeight: 700, color: 'var(--color-neutral-600)' }}><CalendarIcon size={12} />{gcal ? 'GOOGLE CALENDAR · CONNECTED · 2-WAY' : 'NUM CALENDAR · GOOGLE NOT CONNECTED'}</span>
-        <span style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 9.5, letterSpacing: '.06em', color: 'var(--color-neutral-600)' }}>
+        <span style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 9.5, letterSpacing: '.1em', fontWeight: 700, color: 'var(--color-neutral-600)' }}><CalendarIcon size={12} />{gcal ? t('GOOGLE · 2-WAY') : t('NUM CALENDAR')}</span>
+        <span style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 9.5, letterSpacing: '.06em', color: 'var(--color-neutral-600)', whiteSpace: 'nowrap', flex: 'none' }}>
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-accent)' }} />{t('PLANS')}</span>
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-text)' }} />{t('MEETINGS')}</span>
-          <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-accent)', opacity: .5 }} />{t('WITH FRIENDS')}</span>
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--color-accent)', opacity: .5 }} />{t('FRIENDS')}</span>
         </span>
       </div>
       <div className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>

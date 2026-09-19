@@ -153,10 +153,10 @@ if (await cal.count()) { await cal.click(); await page.waitForTimeout(500); }
 for (let i = 0; i < 2; i++) {
   const oct = await page.evaluate(() => document.body.innerText.includes('October') || document.body.innerText.includes('OCT'));
   if (oct) break;
-  const next = page.locator('[role="dialog"] [aria-label="Next month"], [aria-label="Next month"]').first();
+  const next = page.locator('[aria-label="Next month"]:visible').first();
   if (await next.count()) { await next.click(); await page.waitForTimeout(300); } else break;
 }
-const day2 = page.locator('[role="dialog"] [data-day="10-2"], [data-day="10-2"]').first();
+const day2 = page.locator('[data-day="10-2"]:visible').first();
 if (await day2.count()) { await day2.click(); await page.waitForTimeout(400); }
 const withLines = await page.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.textContent || '').filter((t) => /^with /.test(t.trim())).slice(0, 6));
 console.log('with:', JSON.stringify(withLines));
