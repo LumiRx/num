@@ -3490,26 +3490,54 @@ export default {
     // broken digest never takes health monitoring down with it.
     ctx.waitUntil(
       (async () => {
-        const { autoApproveAll, staleDigest } = await import('./bizapproval.mjs');
+        // Even the import. A module that throws on load takes every job in
+        // this closure with it, and the two it defines are not needed by the
+        // crawlers further down.
+        let autoApproveAll = null, staleDigest = null;
+        try {
+          ({ autoApproveAll, staleDigest } = await import('./bizapproval.mjs'));
+        } catch (e) { console.warn('[cron] bizapproval import', e?.message ?? e); }
         // EVERY business gets an account and a dashboard, immediately.
         // Verification is a separate badge earned by proof (bizverify.mjs) —
         // refusing an account until then costs a real business and protects
         // nothing, since the dashboard only ever edits that listing's own
         // hours, phone and address.
-        await autoApproveAll(env);
+        // WRAPPED, AND THE REASON IS WORTH THE THREE LINES.
+        //
+        // 19 Sep 2026: the booking crawler wrote 40 rows every five minutes
+        // without a gap and then stopped dead at 20:16 for over two hours.
+        // The cron was firing the whole time — num_health wrote every tick.
+        // What died was everything BELOW this line: hoursbackfill,
+        // bookingbackfill and consensus are each carefully wrapped in their
+        // own try/catch, and all three sit behind two awaits that had none.
+        // One throw up here and the three guarded jobs never run, silently,
+        // for as long as the cause persists.
+        //
+        // A guarded step behind an unguarded one is not guarded.
+        try {
+          if (autoApproveAll) await autoApproveAll(env);
+        } catch (e) { console.warn('[cron] autoApproveAll', e?.message ?? e); }
         // Approving is not telling. autoApproveAll never called sendOnboarding
         // — only the manual admin route did — so eight businesses sat approved
         // and uninformed. This sweep re-reads the world every tick, so one
         // approved while the mailer is down is told when it comes back. It is
         // gated on BIZ_ONBOARD_EMAIL, which stays off until you switch it on.
-        const { onboardApproved } = await import('./bizonboard.mjs');
-        const told = await onboardApproved(env);
+        let told = { failed: 0, repeated: false, errors: [] };
+        try {
+          const { onboardApproved } = await import('./bizonboard.mjs');
+          told = (await onboardApproved(env)) ?? told;
+        } catch (e) { console.warn('[cron] onboardApproved', e?.message ?? e); }
         // `repeated` means this exact failure was already reported. alert()
         // fans out to webhook, SMS and email with no throttle of its own, and
         // this runs every five minutes.
+        // Also wrapped: alert() fans out to webhook, SMS and email, which is
+        // three network calls, any of which can fail. Telling somebody about a
+        // problem must never become the reason the next three jobs do not run.
         if (told.failed && !told.repeated) {
-          const { alert } = await import('./health.mjs');
-          await alert(env, `[biz] ${told.failed} onboarding email(s) failed: ${(told.errors ?? []).join(' | ')}`);
+          try {
+            const { alert } = await import('./health.mjs');
+            await alert(env, `[biz] ${told.failed} onboarding email(s) failed: ${(told.errors ?? []).join(' | ')}`);
+          } catch (e) { console.warn('[cron] biz alert', e?.message ?? e); }
         }
         // The directory reading its own notes: hours text → weekly mask, a
         // few hundred rows per tick, until 124,117 more places can say
@@ -3591,24 +3619,30 @@ export default {
         // you the moment your listing is live". Promoting it wrote the places
         // row and told the admin who pressed the button. This keeps the other
         // half of that promise. Same switch as the onboarding email.
-        const { goLiveSweep } = await import('./bizgolive.mjs');
-        const live = await goLiveSweep(env);
-        if (live.failed) {
-          const { alert } = await import('./health.mjs');
-          await alert(env, `[biz] ${live.failed} go-live email(s) failed: ${(live.errors ?? []).join(' | ')}`);
-        }
-        const digest = await staleDigest(env);
-        if (digest) {
-          const { alert } = await import('./health.mjs');
-          await alert(env, digest.text);
-        }
+        try {
+          const { goLiveSweep } = await import('./bizgolive.mjs');
+          const live = await goLiveSweep(env);
+          if (live.failed) {
+            const { alert } = await import('./health.mjs');
+            await alert(env, `[biz] ${live.failed} go-live email(s) failed: ${(live.errors ?? []).join(' | ')}`);
+          }
+        } catch (e) { console.warn('[cron] go-live sweep', e?.message ?? e); }
+        try {
+          const digest = staleDigest ? await staleDigest(env) : null;
+          if (digest) {
+            const { alert } = await import('./health.mjs');
+            await alert(env, digest.text);
+          }
+        } catch (e) { console.warn('[cron] stale digest', e?.message ?? e); }
         // The business's own weekly note. Sends only to owners who opted in,
         // only when the week actually held something, and at most once every
         // seven days — see biznotify.weeklySweep. An empty digest is how a
         // sender becomes spam, so it simply does not go.
         if (env.BIZ_WEEKLY_EMAIL === 'on') {
-          const { weeklySweep } = await import('./biznotify.mjs');
-          await weeklySweep(env);
+          try {
+            const { weeklySweep } = await import('./biznotify.mjs');
+            await weeklySweep(env);
+          } catch (e) { console.warn('[cron] weekly digest', e?.message ?? e); }
         }
       })().catch((e) => console.error('[bizapproval]', e?.message ?? e)),
     );

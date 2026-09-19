@@ -296,6 +296,75 @@ function checkSms(env) {
  * month. It is about the cliff: when this hit the cap the whole product went
  * read-only, and the directory grows without anyone deciding to grow it.
  */
+/**
+ * ARE THE BACKGROUND SWEEPS STILL BREATHING?
+ *
+ * 19 Sep 2026: the booking crawler wrote 40 rows every five minutes without a
+ * gap, stopped dead at 20:16, and stayed stopped for over two hours. Every
+ * check in this file was green the whole time. The cron was firing, D1 was
+ * writing, the site was up, the brains answered — and the one job that fills
+ * the directory's booking data was doing nothing at all, with 339,356 venues
+ * still queued. It was found by somebody querying the table for an unrelated
+ * reason.
+ *
+ * A monitor that watches the front door and none of the machinery behind it
+ * will keep reporting a healthy product while the product quietly stops
+ * improving. So: the crawler stamps every row it touches, and this reads that
+ * stamp.
+ *
+ * TWO CONDITIONS, BOTH REQUIRED, and the second one is the point. Going quiet
+ * is only a fault if there was work to do — a crawler that has finished the
+ * queue is supposed to fall silent, and an alarm that fires on success is an
+ * alarm people switch off.
+ *
+ * The window is deliberately loose. At one tick per five minutes, 45 minutes
+ * is nine missed ticks: long enough that a deploy, a D1 hiccup or a slow
+ * batch never cries wolf, short enough that nobody loses a night's crawling.
+ */
+const SWEEP_STALE_MIN = 45;
+
+export async function checkSweeps(env) {
+  try {
+    const r = await env.DB.prepare(
+      `SELECT (SELECT MAX(checked_at) FROM num_booking_scan) AS last_scan,
+              EXISTS (
+                SELECT 1 FROM places p
+                 WHERE p.website IS NOT NULL AND p.website <> ''
+                   AND (p.booking_platform IS NULL OR p.booking_platform = '')
+                   AND NOT EXISTS (SELECT 1 FROM num_booking_scan s WHERE s.place_id = p.id)
+                 LIMIT 1
+              ) AS work_left`,
+    ).first();
+
+    const last = r?.last_scan ? Date.parse(`${r.last_scan}Z`) : null;
+    const workLeft = !!Number(r?.work_left ?? 0);
+
+    // Never run at all is not stale — it is a new database, or a crawler that
+    // has not had its first tick yet. Saying "stalled" about something that
+    // has never started sends somebody looking for a fault that is not there.
+    if (!last) return { ok: true, booking_sweep: 'never run', work_left: workLeft };
+
+    const quietMin = Math.round((Date.now() - last) / 60000);
+    if (workLeft && quietMin > SWEEP_STALE_MIN) {
+      return {
+        ok: false,
+        booking_sweep: 'stalled',
+        quiet_minutes: quietMin,
+        last_scan: r.last_scan,
+        remedy: `The booking crawler has written nothing for ${quietMin} minutes and the queue is not empty. `
+          + 'The cron fires independently of this job, so a green cron proves nothing: check the '
+          + 'bizapproval closure in worker/index.mjs, where every step now carries its own try/catch '
+          + 'precisely because one unguarded throw used to take the three sweeps behind it down silently. '
+          + '`npx wrangler tail -c wrangler.app.jsonc --search backfill` shows a live tick.',
+      };
+    }
+    return { ok: true, booking_sweep: workLeft ? 'running' : 'queue empty', quiet_minutes: quietMin };
+  } catch (e) {
+    // A failed read is not a stalled sweep, and must not be reported as one.
+    return { ok: true, booking_sweep: 'unknown', note: String(e?.message ?? e).slice(0, 120) };
+  }
+}
+
 async function checkStorage(env) {
   try {
     // Ask D1 how big it is instead of counting the directory. The previous
@@ -646,6 +715,7 @@ export async function runHealth(env) {
     sms: checkSms(env),
     push: await checkPush(env),
     cashout: checkCashout(env),
+    sweeps: await checkSweeps(env),
     storage: await checkStorage(env),
   };
   const failing = Object.entries(checks).filter(([, v]) => !v.ok).map(([k]) => k);
