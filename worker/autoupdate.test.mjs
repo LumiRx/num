@@ -51,6 +51,8 @@ test('the version check bypasses every cache', () => {
   const au = src('src/lib/autoupdate.ts');
   // Wrapped in apiUrl() on 15 Aug so the native shell reaches production
   // rather than its own bundle; the cache option is the part under test.
-  assert.match(au, /apiUrl\('\/api\/version'\), \{ cache: 'no-store' \}/,
+  // 19 Sep: the probe now says which build is asking (?client=…&platform=…),
+  // so the server can count who is on what; still no-store.
+  assert.match(au, /apiUrl\(`\/api\/version\?client=\$\{encodeURIComponent\(VERSION\)\}&platform=\$\{nativePlatform\(\)\}`\), \{ cache: 'no-store' \}/,
     'the version probe can be served from cache');
 });
