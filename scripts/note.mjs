@@ -36,12 +36,23 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
-const LOG = join(REPO, 'RUNS.log');
+// NOTE_LOG exists so the test can drive the real CLI against a scratch file
+// instead of appending to the ledger. The first version of this script was
+// shipped without a test and its argument parsing was broken on the ordinary
+// call — a command nobody can run is worse than no command, because the next
+// session assumes the convention is being followed.
+const LOG = process.env.NOTE_LOG || join(REPO, 'RUNS.log');
 
 const argv = process.argv.slice(2);
 const whoFlag = argv.indexOf('--who');
 const who = whoFlag !== -1 ? argv[whoFlag + 1] : null;
-const message = argv.filter((a, i) => i !== whoFlag && i !== whoFlag + 1).join(' ').trim();
+// The absent flag is index -1, so -1 + 1 is 0 — and the first version of this
+// filtered out index 0 whenever --who was omitted, which is every ordinary
+// call. A message passed as one quoted argument IS index 0, so the whole
+// thing vanished and the script printed its own usage. Build the skip set
+// only when the flag is actually there.
+const skip = whoFlag === -1 ? new Set() : new Set([whoFlag, whoFlag + 1]);
+const message = argv.filter((_, i) => !skip.has(i)).join(' ').trim();
 
 if (!message) {
   console.error('Say what changed:\n  npm run note -- "what changed, and what it means for anyone else in here"');

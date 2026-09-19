@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.405 — 2026-09-19 22:49 UTC
+
+cron chain guards + sweep heartbeat
+
+- commit `47cd61a`
+
 ## 0.8.404 — 2026-09-19 21:39 UTC
 
 NUM picks from both its memory and the directory; builds report their version
