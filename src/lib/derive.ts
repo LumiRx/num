@@ -34,6 +34,7 @@ export function tagOf(b: Booking | TagKind): Tag {
     bill: { label: 'BILL · DUE', st: { ...tagBase, background: 'var(--grad-accent)', color: '#fff', boxShadow: '0 2px 8px rgba(236,48,19,.3)' } },
     paid: { label: 'PAID', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
     shared: { label: 'SHARED', st: { ...tagBase, background: 'var(--grad-ink)', color: '#fff' } },
+    reminder: { label: 'REMINDER', st: { ...tagBase, background: 'rgba(214,158,46,.16)', color: '#9a6a12', border: '1px solid rgba(214,158,46,.3)' } },
   };
   return map[status] ?? map.confirmed;
 }
@@ -175,7 +176,7 @@ export const TL_PPM = 0.6; // pixels per minute
 
 export interface TimelineEvent {
   key: string;
-  kind: 'plan' | 'meet' | 'group' | 'event';
+  kind: 'plan' | 'meet' | 'group' | 'event' | 'reminder';
   title: string;
   place: string;
   timespan: string;
@@ -228,6 +229,26 @@ function agendaOnDay(s: AppState, selDay: string) {
   return { items, events, shadowed };
 }
 
+/**
+ * My live reminders due on this day (lib/reminders.ts), as fifteen-minute
+ * blocks. Local time — a reminder said at "six" is six where the phone is.
+ */
+function remindersOnDay(s: AppState, selDay: string) {
+  return (s.reminders ?? [])
+    .filter((r) => !r.cancelled_at)
+    .map((r) => {
+      const d = new Date(r.due_at);
+      return { r, d, key: d.getMonth() + 1 + '-' + d.getDate() };
+    })
+    .filter((x) => x.key === selDay && !Number.isNaN(x.d.getTime()))
+    .map(({ r, d }) => ({
+      id: 'rem_' + r.id, mo: d.getMonth() + 1, day: d.getDate(),
+      time: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
+      dur: 15, place: '', title: r.text, grp: 'BKK' as const, status: 'confirmed' as BookingStatus, note: '', cost: '',
+      kind: 'reminder' as const, who: undefined as string | undefined, planId: r.plan_id ?? undefined, planTitle: undefined as string | undefined,
+    }));
+}
+
 const toMin = (t: string) => {
   const p = t.split(':');
   return +p[0] * 60 + +p[1];
@@ -247,6 +268,7 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
       .map((m) => ({ ...m, kind: 'meet' as const, dur: m.dur || 45, who: undefined as string | undefined, planId: undefined as string | undefined, planTitle: undefined as string | undefined })),
     ...ag.items.map((i) => ({ ...i })),
     ...ag.events.map((e) => ({ ...e, planId: undefined as string | undefined, planTitle: undefined as string | undefined })),
+    ...remindersOnDay(s, s.selDay),
   ].sort((a, b) => a.time.localeCompare(b.time));
 
   // Greedy lane packing: place each event in the first lane free at its start.
@@ -270,6 +292,8 @@ export function dayTimeline(s: AppState): TimelineEvent[] {
         ? { label: (e as Meeting & { kind: 'meet' }).src === 'NUM' ? 'NUM' : 'GCAL', st: mtgTag }
         : e.kind === 'event'
           ? { label: 'EVENT', st: mtgTag }
+          : e.kind === 'reminder'
+          ? tagOf('reminder')
           : e.kind === 'group'
             // The plan's name, quietly — the card is about the thing, the tag
             // says which plan it belongs to. Never the loud HOLD gradient.

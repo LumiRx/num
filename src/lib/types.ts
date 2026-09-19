@@ -3,6 +3,7 @@ import type { TabState } from './tabs';
 import type { Errand } from './errands';
 import type { TableDraft, TableRequest, TableState } from './bookdesk';
 import type { Agenda } from './agenda';
+import type { Reminder } from './reminders';
 import type { TravelDraft, TravelReferral } from './travel';
 import type { FlightOffer, FlightQuery } from './flights';
 import type { DmMessage, DmPeer } from './dm';
@@ -37,7 +38,7 @@ export type CityGroup = 'BKK' | 'HKT' | 'SIN' | 'KP';
 export type BookingStatus = 'confirmed' | 'hold' | 'deposit' | 'rebooked' | 'cancelled';
 
 /** Everything tagOf() can label — booking statuses plus card-only tags. */
-export type TagKind = BookingStatus | 'meeting' | 'memory' | 'bill' | 'paid' | 'shared';
+export type TagKind = BookingStatus | 'meeting' | 'memory' | 'bill' | 'paid' | 'shared' | 'reminder';
 
 export interface Booking {
   id: string;
@@ -668,6 +669,10 @@ export interface AppState {
   mutedInvites?: string[];
   /** Every plan's dated things and the events I'm going to, three weeks around today (lib/agenda.ts). Server truth, not persisted. */
   agenda?: Agenda | null;
+  /** My upcoming reminders (lib/reminders.ts). Server truth, not persisted. */
+  reminders?: Reminder[];
+  /** Reminder ids already spoken in the thread at their hour — persisted, so a due reminder lands once. */
+  remindersShown?: string[];
 
   /**
    * A trip the concierge proposed handing to a travel agency. Non-null opens

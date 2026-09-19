@@ -860,7 +860,7 @@ export default function ThreadView() {
             </div>
           ) : (
             <div
-              {...pressable(openVoice)}
+              {...pressable(() => openVoice())}
               aria-label={t('Talk to NUM')}
               className="press glow"
               style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}

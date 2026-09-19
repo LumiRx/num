@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable, useDialogFocus } from '../../lib/a11y';
 import { sheetBase, grabberStyle } from '../../lib/derive';
-import { CheckIcon, SparklesIcon, XIcon } from '../../lib/icons';
+import { CheckIcon, MicIcon, SparklesIcon, XIcon } from '../../lib/icons';
 import { addPlanItem, commentOnPlan, confirmPlanItem, createPlan, openPlan, schedulePlan, startInvite, syncPlan, votePlan, removePlan, planFit, shareWithPlan } from '../../lib/social';
-import { askNum } from '../../lib/concierge';
+import { askNum, openVoice } from '../../lib/concierge';
 import { calendarUrl } from '../../lib/calendar';
 import { t } from '../../lib/i18n';
 import { loadDraft, saveDraft, clearDraft, NEW } from '../../lib/plandraft';
@@ -497,7 +497,22 @@ export default function PartySheet() {
                   onChange={(e) => typeSay(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void sendComment(); }}
                 />
-                <div {...pressable(sendComment)} style={{ ...primary, padding: '12px 18px', opacity: busy || !say.trim() ? 0.6 : 1 }}>{t('SEND')}</div>
+                {say.trim() ? (
+                  <div {...pressable(sendComment)} style={{ ...primary, padding: '12px 18px', opacity: busy ? 0.6 : 1 }}>{t('SEND')}</div>
+                ) : (
+                  // Voice note to the group: what was heard lands IN the box,
+                  // so a mishearing is read before it is sent — never posted
+                  // straight from the microphone.
+                  <div
+                    {...pressable(() => openVoice((heard) => typeSay(heard)))}
+                    aria-label={t('Say it by voice')}
+                    className="press glow"
+                    style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}
+                    title={t('Say it by voice')}
+                  >
+                    <MicIcon size={17} />
+                  </div>
+                )}
               </div>
             </div>
           </div>

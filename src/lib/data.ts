@@ -109,6 +109,8 @@ function baseState() {
     bookSeen: {},
     mutedInvites: [],
     agenda: null,
+    reminders: [],
+    remindersShown: [],
     travelDraft: null,
     travelReferrals: [],
     tabOpen: null,
@@ -258,6 +260,9 @@ export function persistable(s: AppState) {
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.
     bookDraft, bookRequests, agenda,
+    // Reminders are re-read from the server on open; a phone must never show a
+    // reminder the member cancelled from another device.
+    reminders,
     i18nTick,
     // Same reasoning for the travel pair: a referral restored from
     // localStorage would show "waiting on the agency" for an agency that
@@ -378,6 +383,8 @@ export const REPAIRED_ARRAYS = [
   'savedFlights',
   // 19 Sep 2026: invite sources muted on this phone (InviteRail).
   'mutedInvites',
+  // 19 Sep 2026: reminders already spoken in the thread at their hour.
+  'remindersShown',
 ] as const;
 
 export function repairShapes(saved: Record<string, unknown>): Record<string, unknown> {

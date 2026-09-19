@@ -8,6 +8,7 @@ import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
 import { bootSocial, startPlanSync } from '../../lib/social';
 import { startBookSync } from '../../lib/bookdesk';
+import { startReminderSync } from '../../lib/reminders';
 import { cardsOf } from '../../lib/invites';
 import { bootDm, closeDmThread, refreshDmInbox, startDmSync } from '../../lib/dm';
 import { restoreTab } from '../../lib/tabs';
@@ -109,10 +110,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     // A venue's CONFIRM lands on the diary and in the thread whichever screen
     // is open — not only while the booking sheet is (lib/bookdesk.ts).
     const stopBook = startBookSync(45_000);
+    // A reminder said to NUM lands in the thread at its hour while the app is
+    // open, and on the calendar meanwhile (lib/reminders.ts).
+    const stopRem = startReminderSync(45_000);
     return () => {
       stopPlan();
       stopDm();
       stopBook();
+      stopRem();
     };
   }, []);
 

@@ -1874,6 +1874,14 @@ export default {
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
+    // A member's own reminders — "remind me at six to call the hotel".
+    // worker/reminders.mjs; the cron below sends the due ones by push.
+    if (url.pathname.startsWith('/api/reminders')) {
+      const { handleReminders } = await import('./reminders.mjs');
+      const res = await handleReminders(request, env, url.pathname.slice('/api/reminders'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
 
     // The claim magic link — opened from the business's own inbox, so it must
     // be a real page and must not require the app.
@@ -3234,6 +3242,15 @@ export default {
     // first eleven minutes live never ran once: num_whatson_fetch stayed
     // empty. A step that waits its turn behind other people's network is a
     // step that does not run; the six-hour cadence is enforced inside.
+    // REMINDERS a member set for themselves — due ones go by push, once.
+    // Own lane for the same reason what's-on has one: a step that waits its
+    // turn behind other people's network is a step that does not run.
+    ctx.waitUntil(
+      import('./reminders.mjs')
+        .then((m) => m.sendDueReminders(env))
+        .then((r) => { if (r?.sent) console.log(`[reminders] ${r.sent} sent`); })
+        .catch((e) => console.warn('[cron] reminders', e?.message ?? e)),
+    );
     ctx.waitUntil(
       import('./whatson.mjs')
         .then((m) => m.refreshWhatsOn(env))

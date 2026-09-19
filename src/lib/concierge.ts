@@ -7,7 +7,8 @@ import { store } from './store';
 import { currentLang } from './i18n';
 import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
 import { demoState } from './data';
-import { addPlanItem, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
+import { addPlanItem, commentOnPlan, createPlan, pushBookingToPlan, pushBookingUpdateToPlan, startInvite, syncPlan } from './social';
+import { addReminder, cancelReminder, parseReminder, parseTellGroup, whenLine } from './reminders';
 import { offerService } from './services';
 import { runFlightSearch, type FlightQuery } from './flights';
 import { createEvent } from './events';
@@ -168,9 +169,14 @@ let rec: MediaRecorder | null = null;
 let recStream: MediaStream | null = null;
 let recChunks: Blob[] = [];
 let recCap: ReturnType<typeof setTimeout> | null = null;
+/** Where the next transcript goes. The thread by default; a plan chat's mic sets its own. */
+let onTranscript: ((text: string) => void) | null = null;
+/** True for the one askNum() turn that came from the mic — the reply then reads back what was heard. */
+let voiceTurn = false;
 
-export async function openVoice() {
+export async function openVoice(onText?: (text: string) => void) {
   if (rec) return closeVoice(); // second tap while recording = stop & send
+  onTranscript = onText ?? null;
   // Talking is sending. Asked BEFORE the microphone prompt, not after: there
   // is no sense in taking a permission, recording 45 seconds and paying for a
   // transcription only to stop at the same gate askNum would apply.
@@ -217,8 +223,10 @@ async function submitVoice() {
     const d = await r.json();
     const text = (d?.text ?? d?.transcript ?? '').trim();
     store.set({ voice: 0 });
-    if (text) void askNum(text);
-    else push({ who: 'c', text: 'I couldn’t make that out — try again a little closer to the mic?' });
+    const to = onTranscript; onTranscript = null;
+    if (!text) push({ who: 'c', text: 'I couldn’t make that out — try again a little closer to the mic?' });
+    else if (to) to(text);
+    else { voiceTurn = true; void askNum(text); }
   } catch {
     store.set({ voice: 0 });
     push({ who: 'c', text: 'The transcription hiccuped — say it once more?' });
@@ -627,6 +635,9 @@ function shownPicks(msgs: Msg[]): string[] {
 }
 
 export async function askNum(text: string) {
+  // Whether this turn was spoken — taken and cleared first, so an early return
+  // below can never leave the flag lit for the next typed question.
+  const fromVoice = voiceTurn; voiceTurn = false;
   // A reply is already in flight — a double-tap must not double-send.
   if (store.get().typing) return;
 
@@ -668,6 +679,44 @@ export async function askNum(text: string) {
   // is no code path where a guest's words are lost.
   observeUserMessage(text);
   push({ who: 'u', text });
+
+  // ── TWO THINGS NUM DOES WITHOUT THINKING (19 Sep 2026) ────────────────
+  //
+  // "Remind me at six to call the hotel" and "tell the group I'm running
+  // late" are read here, deterministically, before anything reaches the
+  // brain. A reminder that fires at the wrong hour because a model guessed
+  // is worse than one that asks, so the parser is strict (lib/reminders.ts):
+  // whatever it cannot read with confidence falls through to NUM as an
+  // ordinary question. The card says "heard: …" so a mishearing (this is
+  // the voice path too) is caught while it still costs nothing.
+  const rem = parseReminder(text);
+  if (rem) {
+    try {
+      const r = await addReminder(rem.text, rem.due, fromVoice ? 'voice' : 'text', { plan_id: store.get().planId ?? null });
+      push({
+        who: 'c',
+        text: `Set — I’ll remind you ${whenLine(rem.due)}: ${rem.text}${fromVoice ? `\n\nHeard: “${rem.heard}”` : ''}\n\nIt’s on your day too. Say “cancel that reminder” if I misheard.`,
+        card: { title: rem.text, meta: whenLine(rem.due), tag: 'reminder' },
+      });
+      void r;
+    } catch (err) {
+      push({ who: 'c', text: (err as Error).message || 'I couldn’t set that reminder just now.' });
+    }
+    return;
+  }
+  if (/^\s*cancel (?:that|the|my) (?:last )?reminder\b/i.test(text)) {
+    const last = [...(store.get().reminders ?? [])].filter((r) => !r.sent_at && !r.cancelled_at).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (last) { await cancelReminder(last.id).catch(() => false); push({ who: 'c', text: `Cancelled — no reminder for “${last.text}”.` }); }
+    else push({ who: 'c', text: 'There’s no reminder waiting to cancel.' });
+    return;
+  }
+  const say = parseTellGroup(text);
+  if (say && store.get().planId) {
+    const ok = await commentOnPlan(say);
+    push({ who: 'c', text: ok ? `Told the group: “${say}”.` : 'That didn’t reach the group — try once more?' });
+    return;
+  }
+
   // A new question retires the last provider tray — it belonged to the old one.
   store.set({ typing: true, thinkingLine: null, chips: [], handoff: null });
 
