@@ -12,6 +12,7 @@ import {
   connectMember, publicAmbassador, mintAmbCode, ambJoin, PLATFORMS, OFFER_STATES, BENEFITS,
 } from './ambassador.mjs';
 import { linkReferral, __resetSchema } from '../worker/memberreferral.mjs';
+import { NICHES, cleanNiches } from './niches.mjs';
 
 const load = (f) => readFileSync(new URL('../worker/migrations/' + f, import.meta.url), 'utf8');
 const T = '2026-09-01 00:00:00';
@@ -674,4 +675,156 @@ test('updating a channel already listed is not blocked by the ceiling', async ()
   const again = await post(ambSocial, db, { platform: 'other', handle: 'h3', followers: 500 });
   assert.equal(again.ok, true, 'a person could not correct a number they had already given');
   assert.equal(again.updated, true);
+});
+
+/* ── THE SIGN-UP ASKS THE TWO QUESTIONS THAT DECIDE ACCEPTANCE ───────────
+ *
+ * Dre, 19 Sep 2026: ask the social and niche questions at sign-up "so we can
+ * get them best signed up". Before this, reach arrived as a sentence in
+ * applied_note and niches were not asked at all, so the queue could not be
+ * sorted by reach or matched to a specialism.
+ */
+const join = async (db, body, d) => {
+  const url = new URL('https://itsnum.com/api/amb/join');
+  const res = await ambJoin(new Request(url, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }), env(db), url, d ?? { ...deps(db), sendBatch: async () => ({ ok: true }) });
+  return { res, body: await res.json() };
+};
+
+test('channels declared at sign-up land in columns, not in a paragraph', async () => {
+  const db = freshDb();
+  const { body } = await join(db, {
+    name: 'Ana', email: 'ana@example.com', country: 'PT',
+    socials: [
+      { platform: 'instagram', handle: '@anatravels', followers: '41,200', url: 'https://instagram.com/anatravels' },
+      { platform: 'tiktok', handle: 'anatravels', followers: 12000 },
+    ],
+    niches: ['food', 'budget'],
+  });
+  assert.equal(body.ok, true);
+  assert.equal(body.socials, 2);
+  assert.deepEqual(body.niches, ['food', 'budget']);
+  const rows = db.prepare('SELECT platform, handle, followers_claimed, followers_verified, url FROM num_ambassador_socials ORDER BY platform').all();
+  assert.equal(rows.length, 2);
+  assert.deepEqual({ ...rows[0] }, { platform: 'instagram', handle: 'anatravels', followers_claimed: 41200, followers_verified: null, url: 'https://instagram.com/anatravels' });
+  assert.equal(rows[1].handle, 'anatravels', 'the @ was not stripped, so the unique index cannot catch a duplicate');
+  assert.equal(rows[1].followers_claimed, 12000);
+  const amb = db.prepare('SELECT niches_json FROM num_ambassadors WHERE email=?').get('ana@example.com');
+  assert.deepEqual(JSON.parse(amb.niches_json), ['food', 'budget']);
+});
+
+test('the sign-up cannot declare a VERIFIED follower count', async () => {
+  // The split between claimed and verified is the whole honesty of the
+  // number. A public endpoint must not be able to reach the verified column.
+  const db = freshDb();
+  await join(db, {
+    name: 'Ana', email: 'ana@example.com',
+    socials: [{ platform: 'instagram', handle: 'ana', followers: 100, followers_verified: 9_000_000, verified_by: 'oauth', verified_at: '2026-01-01' }],
+  });
+  const row = db.prepare('SELECT followers_claimed, followers_verified, verified_by FROM num_ambassador_socials').get();
+  assert.equal(row.followers_claimed, 100);
+  assert.equal(row.followers_verified, null);
+  assert.equal(row.verified_by, null);
+});
+
+test('an application with nothing to declare is still an application', async () => {
+  // Demanding a channel would turn away the quiet ones who bring ten friends
+  // each, and they are not the worst ambassadors.
+  const db = freshDb();
+  const { body } = await join(db, { name: 'Quiet', email: 'quiet@example.com' });
+  assert.equal(body.ok, true);
+  assert.equal(body.socials, 0);
+  assert.deepEqual(body.niches, []);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM num_ambassador_socials').get().n, 0);
+});
+
+test('a bad channel is refused whole — no half-written application', async () => {
+  const db = freshDb();
+  for (const bad of [
+    { platform: 'myspace', handle: 'x' },
+    { platform: 'instagram', handle: 'x', followers: 'lots' },
+    { platform: 'instagram', handle: 'x', followers: -5 },
+  ]) {
+    const { res, body } = await join(db, { name: 'A', email: `a${Math.random()}@example.com`, socials: [bad] });
+    assert.equal(res.status, 400, JSON.stringify(bad));
+    assert.match(body.error, /^social_/);
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM num_ambassadors').get().n, 0, 'a refused application was written anyway');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM num_referral_codes').get().n, 0, 'a code was minted for a refused application');
+});
+
+test('empty rows, duplicates and unknown niches are dropped rather than refused', async () => {
+  // A form with three blank channel rows is one channel, not an error.
+  const db = freshDb();
+  const { body } = await join(db, {
+    name: 'Ana', email: 'ana@example.com',
+    socials: [
+      { platform: 'instagram', handle: 'ana' },
+      { platform: 'instagram', handle: '@ANA' },
+      { platform: 'tiktok', handle: '   ' },
+      {},
+    ],
+    niches: ['food', 'food', 'astrology', 'nightlife'],
+  });
+  assert.equal(body.socials, 1, 'the same channel twice became two channels');
+  assert.deepEqual(body.niches, ['food', 'nightlife']);
+});
+
+test('six niches is the cap, however many are ticked', async () => {
+  const db = freshDb();
+  const { body } = await join(db, {
+    name: 'Everything', email: 'e@example.com',
+    niches: ['food', 'nightlife', 'luxury', 'budget', 'family', 'adventure', 'wellness', 'fashion'],
+  });
+  assert.equal(body.niches.length, 6, 'an ambassador for everything matches every offer');
+});
+
+test('twenty channels is the ceiling at sign-up too, not only in the console', async () => {
+  const db = freshDb();
+  const many = Array.from({ length: 30 }, (_, i) => ({ platform: 'instagram', handle: `h${i}`, followers: 2_000_000_000 }));
+  const { body } = await join(db, { name: 'A', email: 'a@example.com', socials: many });
+  assert.equal(body.ok, true);
+  assert.ok(body.socials <= 20, `${body.socials} channels got in`);
+});
+
+test('the public form asks both questions, and its lists agree with the server', () => {
+  // The page is where a person actually answers. A server that accepts niches
+  // and a form that never offers them is the same as not having them.
+  //
+  // HTML comments are stripped before matching. The page COMMENT explains
+  // that reach used to be a free-text box and quotes the old placeholder, so
+  // a guard reading the raw file finds the string it is asserting is gone and
+  // fails on the explanation. That is the fourth time a guard in this repo has
+  // flagged its own documentation, hence this paragraph.
+  const raw = readFileSync(new URL('../public/ambassadors/index.html', import.meta.url), 'utf8');
+  const html = raw.replace(/<!--[\s\S]*?-->/g, ' ');
+
+  assert.match(html, /id="socials"/);
+  assert.match(html, /id="niches"/);
+  assert.match(html, /body\.socials = readSocials\(\)/);
+  assert.match(html, /body\.niches = readNiches\(\)/);
+  assert.equal(/Instagram @yourname, about 40k/.test(html), false, 'reach is still asked for as a sentence');
+
+  // Every platform the page offers must be one the server stores, and every
+  // niche one cleanNiches keeps — otherwise a person ticks a box that is
+  // silently dropped after they press Apply.
+  const listOf = (name) => {
+    const from = html.indexOf(`var ${name} = [`);
+    const block = html.slice(from, html.indexOf('];', from));
+    return [...block.matchAll(/\['([a-z]+)'/g)].map((m) => m[1]);
+  };
+  const pagePlatforms = listOf('PLATFORMS');
+  const pageNiches = listOf('NICHES');
+
+  assert.deepEqual(pagePlatforms.slice().sort(), [...PLATFORMS].sort(),
+    'the form and the server disagree about which platforms exist');
+  assert.equal(pageNiches.length, NICHES.length,
+    `the form lists ${pageNiches.length} niches, the server knows ${NICHES.length}`);
+  assert.deepEqual(cleanNiches(pageNiches).slice().sort(), pageNiches.slice(0, 6).slice().sort(),
+    'the form offers a niche the server would drop');
+  for (const k of pageNiches) {
+    assert.deepEqual(cleanNiches([k]), [k], `the server does not know the niche "${k}"`);
+  }
 });

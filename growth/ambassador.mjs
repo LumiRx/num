@@ -420,6 +420,42 @@ export async function ambProfile(req, env, url, D) {
 }
 
 /**
+ * One social channel, normalised — the rules that decide whether a row is
+ * storable, in one place.
+ *
+ * Pulled out of `ambSocial` on 19 Sep 2026 so the SIGN-UP can write channels
+ * too. Before that, the application form asked for reach in a free-text box
+ * ("Instagram @yourname, about 40k. TikTok @yourname, about 12k.") and every
+ * word of it landed in `applied_note`, where nothing could read it: the
+ * directory could not sort on it, an offer could not be matched against it,
+ * and no verification could ever be attached to it. A person told us their
+ * reach and Num filed it as prose.
+ *
+ * It returns a row or a reason. It never returns a half-built one, and it
+ * cannot set `followers_verified` — that column has exactly one writer and it
+ * is not any endpoint a person can reach.
+ */
+export function socialRow(input = {}, clean, cleanUrl) {
+  const platform = PLATFORMS.includes(String(input.platform)) ? String(input.platform) : null;
+  if (!platform) return { ok: false, error: 'platform', allowed: PLATFORMS };
+  // Handles are written with and without the @ by the same person on the same
+  // day. Stored one way so the unique index actually catches a duplicate.
+  const handle = clean(String(input.handle || '').replace(/^@+/, ''), 80);
+  if (!handle) return { ok: false, error: 'handle' };
+  const url = cleanUrl(input.url, 300);
+  // A follower count is a number or it is absent. An empty box means "I did
+  // not say", which is a different fact from zero and must not become one.
+  let followers = null;
+  const raw = input.followers;
+  if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+    const n = Math.floor(Number(String(raw).replace(/[,\s]/g, '')));
+    if (!Number.isFinite(n) || n < 0 || n > 2_000_000_000) return { ok: false, error: 'followers' };
+    followers = n;
+  }
+  return { ok: true, row: { platform, handle, url, followers } };
+}
+
+/**
  * POST /api/amb/social?k=KEY — add, update or remove a channel.
  *
  * `{ action:'save', platform, handle, url, followers }` or
@@ -450,25 +486,9 @@ export async function ambSocial(req, env, url, D) {
     return J({ ok: true, removed: true });
   }
 
-  const platform = PLATFORMS.includes(String(b.platform)) ? String(b.platform) : null;
-  if (!platform) return J({ ok: false, error: 'platform', allowed: PLATFORMS }, 400);
-  // Handles are written with and without the @ by the same person on the same
-  // day. Stored one way so the unique index actually catches a duplicate.
-  const handle = clean(String(b.handle || '').replace(/^@+/, ''), 80);
-  if (!handle) return J({ ok: false, error: 'handle' }, 400);
-
-  const link = cleanUrl(b.url, 300);
-  // A follower count is a number or it is absent. An empty box means "I did
-  // not say", which is a different fact from zero and must not become one.
-  const raw = b.followers;
-  let followers = null;
-  if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
-    const n = Math.floor(Number(String(raw).replace(/[,\s]/g, '')));
-    if (!Number.isFinite(n) || n < 0 || n > 2_000_000_000) {
-      return J({ ok: false, error: 'followers' }, 400);
-    }
-    followers = n;
-  }
+  const parsed = socialRow(b, clean, cleanUrl);
+  if (!parsed.ok) return J({ ok: false, error: parsed.error, allowed: parsed.allowed }, 400);
+  const { platform, handle, url: link, followers } = parsed.row;
 
   const existing = await env.DB.prepare(
     'SELECT id FROM num_ambassador_socials WHERE ambassador_id=?1 AND platform=?2 AND handle=?3',
@@ -770,7 +790,7 @@ export const MAX_SOCIALS = 20;
  * directory wait for acceptance, which is the only thing acceptance gates.
  */
 export async function ambJoin(req, env, url, D) {
-  const { J, clean, readJSON, badOrigin, token, e164, country, ipHash } = D;
+  const { J, clean, cleanUrl, readJSON, badOrigin, token, e164, country, ipHash } = D;
   if (badOrigin(req)) return J({ ok: false }, 403);
   if (req.method !== 'POST') return J({ ok: false, error: 'method' }, 405);
 
@@ -782,6 +802,41 @@ export async function ambJoin(req, env, url, D) {
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return J({ ok: false, error: 'name_email' }, 400);
   }
+
+  /* ── CHANNELS AND NICHES, ASKED AT THE DOOR ───────────────────────────
+   *
+   * Dre, 19 Sep 2026: "lets add that with all the social media and niche
+   * questions so we can get them best signed up."
+   *
+   * Both used to be asked AFTER acceptance, in the console — and the form
+   * asked for reach as a sentence ("Instagram @yourname, about 40k"), which
+   * landed in `applied_note` where nothing could read it. So every
+   * application arrived carrying the two facts that decide whether to accept
+   * it, and neither in a column: nobody could sort the queue by reach, match
+   * an offer to a specialism, or tell a 200k food creator from a blank form.
+   *
+   * Validated HERE, before the throttle and long before the send, so a
+   * malformed channel costs nothing and a good application is never half
+   * written. Niches cap at six inside cleanNiches — an ambassador for
+   * everything matches every offer, which makes the field useless to the
+   * businesses it exists to serve.
+   *
+   * Both are optional. Somebody with no channel to declare is still an
+   * application, and demanding one would turn away the quiet ones who bring
+   * ten friends each. */
+  const socials = [];
+  const sent = Array.isArray(b.socials) ? b.socials.slice(0, MAX_SOCIALS) : [];
+  const seen = new Set();
+  for (const raw of sent) {
+    if (!raw || !String(raw.handle ?? '').trim()) continue; // an empty row is not an answer
+    const parsed = socialRow(raw, clean, cleanUrl);
+    if (!parsed.ok) return J({ ok: false, error: 'social_' + parsed.error, allowed: parsed.allowed }, 400);
+    const key = parsed.row.platform + ':' + parsed.row.handle.toLowerCase();
+    if (seen.has(key)) continue; // the same channel twice is one channel
+    seen.add(key);
+    socials.push(parsed.row);
+  }
+  const niches = cleanNiches(b.niches);
 
   /* ── THE THROTTLE COMES FIRST, BEFORE ANY EMAIL ───────────────────────
    *
@@ -857,11 +912,18 @@ export async function ambJoin(req, env, url, D) {
     env.DB.prepare(
       `INSERT INTO num_ambassadors
          (id,name,email,phone,country,city,code,bio,status,listed,console_key,
-          terms_version,agreed_at,agreed_ip,applied_note,created_at,updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'applied',0,?9,?10,?11,?12,?13,?11,?11)`,
+          terms_version,agreed_at,agreed_ip,applied_note,niches_json,created_at,updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'applied',0,?9,?10,?11,?12,?13,?14,?11,?11)`,
     ).bind(ambId, name, email, e164(b.phone), clean(b.country, 80) || country(req),
       clean(b.city, 80), code, clean(b.bio, 400), consoleKey,
-      AMB_TERMS_VERSION, ts, iph, clean(b.note, 600)),
+      AMB_TERMS_VERSION, ts, iph, clean(b.note, 600), JSON.stringify(niches)),
+    // The channels they declared. `followers_claimed` only — this endpoint
+    // cannot reach `followers_verified`, and that is the point of the split.
+    ...socials.map((r) => env.DB.prepare(
+      `INSERT INTO num_ambassador_socials
+         (id, ambassador_id, platform, handle, url, followers_claimed, claimed_at, created_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?7)`,
+    ).bind(id('soc'), ambId, r.platform, r.handle, r.url, r.followers, ts)),
   ]);
 
   // If they are already a member, the link is payable from this second.
@@ -875,6 +937,8 @@ export async function ambJoin(req, env, url, D) {
     console: site + '/amb/?k=' + consoleKey,
     payable: Boolean(linked),
     emailed: true,
+    socials: socials.length,
+    niches,
   });
 }
 

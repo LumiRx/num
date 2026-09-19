@@ -61,6 +61,16 @@ textarea{min-height:90px;resize:vertical}
 .note.bad{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
 .hint{font-size:13px;color:var(--slate);margin:6px 0 0;line-height:1.55}
 @media(max-width:900px){.grid2,.row{grid-template-columns:1fr}}
+.socialrow{display:flex;gap:7px;margin-bottom:7px;align-items:center}
+.socialrow select{flex:0 0 auto;min-width:118px}
+.socialrow input{min-width:0}
+.socialrow input:nth-of-type(1){flex:1 1 auto}
+.socialrow input:nth-of-type(2){flex:0 1 110px}
+.socialrow .del{flex:0 0 auto;width:38px;height:38px;border-radius:999px;border:1px solid var(--line,#e0ddd4);background:transparent;cursor:pointer;font-size:17px;line-height:1;color:var(--ink2)}
+.niches{display:flex;flex-wrap:wrap;gap:7px}
+.niche{display:flex;align-items:center;gap:7px;border:1px solid var(--line,#e0ddd4);border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer;min-height:40px}
+.niche input{width:16px;height:16px;margin:0}
+@media(max-width:520px){.socialrow{flex-wrap:wrap}.socialrow select{flex:1 1 100%}.socialrow input:nth-of-type(2){flex:1 1 90px}}
 </style>
 <script src="/assets/refcarry.js" defer></script>
 </head>
@@ -204,11 +214,28 @@ textarea{min-height:90px;resize:vertical}
         <label for="bio">One line about you</label>
         <textarea id="bio" name="bio" maxlength="400" placeholder="Slow travel, small places, mostly Portugal and Spain."></textarea>
       </div>
+      <!-- CHANNELS, IN COLUMNS RATHER THAN IN A SENTENCE.
+           This was one textarea reading "Instagram @yourname, about 40k".
+           Every word of it went into applied_note, where nothing could read
+           it: the queue could not be sorted by reach and no offer could ever
+           be matched to a channel. Same questions, answers we can use. -->
       <div class="field">
-        <label for="note">Where do you post, and roughly how many people follow you?</label>
-        <textarea id="note" name="note" maxlength="600" placeholder="Instagram @yourname, about 40k. TikTok @yourname, about 12k."></textarea>
-        <p class="hint">Rough is fine. You add your channels properly in your console, and we always show
-          follower counts as self-declared until a platform confirms them.</p>
+        <label>Where do you post?</label>
+        <p class="hint" style="margin-top:0">Add the ones that matter. Follower counts are rough and
+          self-declared — we show them that way, in those words, until a platform confirms them.</p>
+        <div id="socials"></div>
+        <button type="button" class="btn" id="addsocial"
+          style="margin-top:8px;padding:9px 16px;font-size:14px">Add another channel</button>
+      </div>
+      <div class="field">
+        <label>What do you mostly post about?</label>
+        <p class="hint" style="margin-top:0">Up to six. This is what matches you to offers, so pick the ones
+          you would actually post about — an ambassador for everything matches everything, which helps nobody.</p>
+        <div id="niches" class="niches"></div>
+      </div>
+      <div class="field">
+        <label for="note">Anything else we should know?</label>
+        <textarea id="note" name="note" maxlength="600" placeholder="Optional."></textarea>
       </div>
       <button class="btn pri" type="submit" id="go">Apply</button>
       <p class="hint" style="margin-top:14px">We email your link and your console straight away. There is no
@@ -229,6 +256,92 @@ textarea{min-height:90px;resize:vertical}
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
+
+  var PLATFORMS = [
+    ['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['youtube', 'YouTube'], ['x', 'X'],
+    ['facebook', 'Facebook'], ['twitch', 'Twitch'], ['blog', 'Blog or site'], ['other', 'Somewhere else']
+  ];
+  // Mirrors NICHES in growth/niches.mjs. The server is the authority — it
+  // drops anything it does not know — so a drift here costs a tick box, not
+  // a wrong row.
+  var NICHES = [
+    ['food', 'Food and restaurants'], ['nightlife', 'Nightlife and bars'], ['luxury', 'Luxury travel'],
+    ['budget', 'Budget and backpacking'], ['family', 'Family travel'], ['adventure', 'Adventure and outdoors'],
+    ['wellness', 'Wellness and spa'], ['fashion', 'Fashion and style'], ['beauty', 'Beauty and make-up'],
+    ['business', 'Business travel'], ['culture', 'Culture, art and museums'], ['nomad', 'Remote work and long stays']
+  ];
+  var MAX_SOCIALS = 20, MAX_NICHES = 6;
+
+  function socialRow() {
+    var wrap = document.createElement('div');
+    wrap.className = 'socialrow';
+    var sel = document.createElement('select');
+    sel.setAttribute('aria-label', 'Platform');
+    PLATFORMS.forEach(function (p) {
+      var o = document.createElement('option');
+      o.value = p[0]; o.textContent = p[1]; sel.appendChild(o);
+    });
+    var handle = document.createElement('input');
+    handle.type = 'text'; handle.placeholder = '@yourname'; handle.setAttribute('aria-label', 'Handle');
+    var reach = document.createElement('input');
+    reach.type = 'text'; reach.inputMode = 'numeric'; reach.placeholder = 'followers';
+    reach.setAttribute('aria-label', 'Followers, roughly');
+    var del = document.createElement('button');
+    del.type = 'button'; del.className = 'del'; del.textContent = '\u00d7';
+    del.setAttribute('aria-label', 'Remove this channel');
+    del.onclick = function () {
+      wrap.parentNode.removeChild(wrap);
+      if (!$('socials').children.length) $('socials').appendChild(socialRow());
+    };
+    wrap.appendChild(sel); wrap.appendChild(handle); wrap.appendChild(reach); wrap.appendChild(del);
+    return wrap;
+  }
+
+  function readSocials() {
+    var out = [];
+    var rows = $('socials').children;
+    for (var i = 0; i < rows.length; i++) {
+      var f = rows[i].getElementsByTagName('input');
+      var handle = (f[0].value || '').trim();
+      if (!handle) continue; // a blank row is not an answer, and not an error
+      out.push({
+        platform: rows[i].getElementsByTagName('select')[0].value,
+        handle: handle,
+        followers: (f[1].value || '').trim()
+      });
+    }
+    return out;
+  }
+
+  function readNiches() {
+    var out = [];
+    var boxes = $('niches').getElementsByTagName('input');
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(boxes[i].value);
+    return out;
+  }
+
+  function buildForm() {
+    $('socials').appendChild(socialRow());
+    $('addsocial').onclick = function () {
+      if ($('socials').children.length >= MAX_SOCIALS) return;
+      $('socials').appendChild(socialRow());
+    };
+    NICHES.forEach(function (n) {
+      var lab = document.createElement('label');
+      lab.className = 'niche';
+      var box = document.createElement('input');
+      box.type = 'checkbox'; box.value = n[0];
+      box.onchange = function () {
+        // Six is the cap the server enforces. Stopping the seventh tick here
+        // is kinder than silently dropping it after they pressed Apply.
+        if (readNiches().length > MAX_NICHES) { box.checked = false; }
+      };
+      lab.appendChild(box);
+      lab.appendChild(document.createTextNode(' ' + n[1]));
+      $('niches').appendChild(lab);
+    });
+  }
+  buildForm();
   function note(msg, kind) {
     var el = $('msg');
     el.className = 'note ' + kind + (msg ? ' show' : '');
@@ -243,12 +356,20 @@ textarea{min-height:90px;resize:vertical}
     ['name', 'email', 'city', 'country', 'bio', 'note'].forEach(function (k) {
       body[k] = ($(k).value || '').trim();
     });
+    body.socials = readSocials();
+    body.niches = readNiches();
     fetch('/api/amb/join', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
     }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.ok) {
         go.disabled = false; go.textContent = 'Apply';
         if (j.error === 'slow_down') return note('That is several applications from one connection today. Email info@itsnum.com and a person will sort it.', 'bad');
+        // A channel the server refused is a specific, fixable thing. Saying
+        // "check your name and email" for it sends people hunting the wrong
+        // field, which is how a form gets abandoned.
+        if (j.error === 'social_platform') return note('Pick a platform for every channel you added.', 'bad');
+        if (j.error === 'social_handle') return note('One of your channels has no handle. Fill it in or remove the row.', 'bad');
+        if (j.error === 'social_followers') return note('A follower count has to be a plain number — or leave it empty.', 'bad');
         return note('Check your name and email address — one of them did not come through.', 'bad');
       }
       if (j.existing) {
