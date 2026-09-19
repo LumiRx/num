@@ -113,12 +113,41 @@ export async function handleClaimClick(env, url, req) {
           WHERE token = ?1`
       ).bind(token, human ? 1 : 0).run();
       const row = await env.DB.prepare(
-        'SELECT lead_id, business_name FROM num_invites WHERE token = ?'
+        'SELECT lead_id, business_name, dest FROM num_invites WHERE token = ?'
       ).bind(token).first();
       if (row) {
+        /* THE PARAMETER NAMES HAVE TO MATCH WHAT THE PAGE READS.
+         *
+         * /claim/ reads exactly three things off the query string:
+         *   qp("t") || qp("ref") || qp("token")   -> the invite token
+         *   qp("d") || qp("dest")                 -> the destination
+         *   qp("p")                               -> the place id
+         *
+         * This handler used to send `ref`, `b` and `lead`. Two of those land;
+         * `lead` is read by nothing. So an invited business arrived with no
+         * destination and no place, and the listing picker begins:
+         *
+         *     if (!dest || q.length < 3) return hideList();
+         *
+         * — it never even calls /api/claims/lookup, which applies the same
+         * guard itself. No listing can be picked, so place_id stays null, so
+         * /api/claims/start refuses with "place_id required". A claim could
+         * not be started from an invite by anybody. Between 29 Aug, when the
+         * picker shipped, and 7 Sep, 74 people reached that page; no listing
+         * was ever picked, claim_place_picked has never once fired, and all
+         * four rows in num_claims were created by hand from the admin side.
+         *
+         * Both values were already in the row. `dest` is a column on
+         * num_invites, set on all 3,538 sends, and `lead_id` IS a place id —
+         * every one of the 3,538 matches a row in `places`. Sending them under
+         * the names the page reads turns this into the ?p= path the lookup's
+         * own comment calls "exact and costs no query at all": the owner lands
+         * with their listing already bound and types nothing.
+         */
         const p = new URLSearchParams({ ref: token });
         if (row.business_name) p.set('b', row.business_name);
-        if (row.lead_id) p.set('lead', row.lead_id);
+        if (row.lead_id) p.set('p', row.lead_id);
+        if (row.dest) p.set('d', row.dest);
         dest = `${SITE}/claim/?${p.toString()}`;
       }
     } catch (e) { /* fall through to the plain claim page */ }
