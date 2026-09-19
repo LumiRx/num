@@ -183,3 +183,150 @@ test('the attempt log is queryable by bill, which is how it gets read', () => {
   // `ref` is the bill token. Without it the log says a send failed but not for what.
   assert.match(fn, /ref \? String\(ref\)\.slice\(0, 64\) : null/);
 });
+
+/* ── THE GUEST'S OWN COPY, AND WHERE THEY ARE ASKED FOR AN ADDRESS ────────
+ *
+ * Everything above is the VENUE's settled-bill email, which has existed since
+ * 12 Sep. The guest got nothing, and not for want of a template: on 19 Sep
+ * 2026 the live database held one member email address across 156 members,
+ * none verified, and no push token anywhere. There was nowhere to send it.
+ *
+ * So the address is asked for on the confirmation itself — the one screen
+ * where a person has a reason to type one. These guard that the box is
+ * reachable, that it works without JavaScript, and that it never claims to be
+ * more than an addition to a page that is already the receipt.
+ *
+ * The sending logic is tested against a real database in
+ * worker/billreceipt.test.mjs. What is left here is wiring, which is what
+ * actually breaks: payLanding never selected `resource_id` and the whole
+ * till-bill path was dead with every unit test green.
+ */
+
+test('the receipt endpoint is routed, and the paid page can reach it', () => {
+  assert.match(worker, /\(go\|promptpay\|crypto\|bill\|receipt\)/,
+    'the /p/ matcher does not know the word, so the form posts into a 404');
+  assert.match(worker, /if \(m\[2\] === "receipt"\) return payReceipt\(req, env, m\[1\]\);/,
+    'a handler written and never routed looks exactly like one that works');
+});
+
+test('the box is rendered on the paid page, not merely written', () => {
+  const branch = worker.match(/if \(o\.state === "paid"\) return payShell\(`[\s\S]*?"Paid — " \+ o\.venue/)[0];
+  assert.match(branch, /\$\{receiptBox\(o\)\}/,
+    'built and never placed on the page — the payLanding failure exactly');
+});
+
+test('the page is handed what it needs to draw the box honestly', () => {
+  const branch = worker.match(/if \(link\.settled_at\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(branch, /canSend: RECEIPT\.channelsAvailable\(env\)/,
+    'without this the page offers a box that cannot work');
+  assert.match(branch, /say: RECEIPT\.sayFor\(new URL\(req\.url\)\.searchParams\.get\("said"\)\)/,
+    'the outcome must survive the redirect, and as a CODE mapped to fixed copy \u2014 '
+    + 'a sentence carried in a query string is a phishing message in NUM\u2019s own voice on NUM\u2019s own page');
+});
+
+test('the box needs no JavaScript', () => {
+  const fn = worker.match(/function receiptBox\(o\) \{[\s\S]*?\n\}/)[0];
+  assert.match(fn, /<form method="post" action="\/p\/\$\{esc\(o\.token\)\}\/receipt"/);
+  assert.doesNotMatch(fn, /fetch\(/,
+    'this page is opened by a camera on a stranger’s phone on a venue’s wifi');
+  assert.doesNotMatch(fn, /onclick=/);
+});
+
+test('one field, because a guest should not classify their own address', () => {
+  const fn = worker.match(/function receiptBox\(o\) \{[\s\S]*?\n\}/)[0];
+  const inputs = fn.match(/<input /g) || [];
+  assert.equal(inputs.length, 1);
+  assert.doesNotMatch(fn, /type="radio"/);
+});
+
+test('no configured channel means no box, not a dead one', () => {
+  const fn = worker.match(/function receiptBox\(o\) \{[\s\S]*?\n\}/)[0];
+  assert.match(fn, /if \(!can\.email && !can\.sms\) return said;/,
+    'a guest typing into a field that goes nowhere is worse than no offer at all');
+});
+
+test('the box says it is optional and that the receipt stays either way', () => {
+  const fn = worker.match(/function receiptBox\(o\) \{[\s\S]*?\n\}/)[0];
+  assert.match(fn, /Optional/);
+  assert.match(fn, /stays on this page whether or not you/);
+  assert.match(fn, /does not use it to sign you up/,
+    'an address asked for one purpose and used for another is why people stop giving them');
+});
+
+test('sending a receipt can never break the page it was offered on', () => {
+  const fn = worker.match(/async function payReceipt\(req, env, tok\) \{[\s\S]*?\n\}/)[0];
+  assert.match(fn, /\.catch\(\(e\) => \{/, 'a throw here would 500 a guest who has already paid');
+  assert.match(fn, /return back\(out\.code\)/, 'the page takes a code, never a sentence');
+  // Every exit is a redirect back to the receipt.
+  assert.equal((fn.match(/return back\(/g) || []).length, 3);
+});
+
+test('a GET on the receipt endpoint just returns the page', () => {
+  const fn = worker.match(/async function payReceipt\(req, env, tok\) \{[\s\S]*?\n\}/)[0];
+  assert.match(fn, /if \(req\.method !== "POST"\) return back\(null\);/,
+    'a crawler following this URL must not be able to trigger a send');
+});
+
+/* ── it actually renders ─────────────────────────────────────────────────
+ * Source assertions catch a missing call. They do not catch a template that
+ * throws, produces broken markup, or leaks a value unescaped — and the box
+ * sits on a page a guest reaches with a camera, where a blank screen is
+ * indistinguishable from a venue that lost their money. So the real function
+ * is extracted and run.
+ */
+function renderBox(o) {
+  const src = `
+    ${worker.match(/function receiptBox\(o\) \{[\s\S]*?\n\}/)[0]}
+    return receiptBox;
+  `;
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  // eslint-disable-next-line no-new-func
+  return new Function('esc', src)(esc)(o);
+}
+
+test('the rendered box posts to this bill and asks for one thing', () => {
+  const html = renderBox({ token: 'PAID1', canSend: { email: true, sms: true } });
+  assert.match(html, /action="\/p\/PAID1\/receipt"/);
+  assert.match(html, /name="to"/);
+  assert.match(html, /email address or mobile number/);
+  assert.match(html, /Include the country code/);
+});
+
+test('it offers only what is configured', () => {
+  const mailOnly = renderBox({ token: 'PAID1', canSend: { email: true, sms: false } });
+  assert.match(mailOnly, /placeholder="email address"/);
+  assert.doesNotMatch(mailOnly, /country code/,
+    'offering a text on a worker with no Twilio is a promise it cannot keep');
+
+  const textOnly = renderBox({ token: 'PAID1', canSend: { email: false, sms: true } });
+  assert.match(textOnly, /placeholder="mobile number"/);
+});
+
+test('with nothing configured it renders nothing at all', () => {
+  assert.equal(renderBox({ token: 'PAID1', canSend: { email: false, sms: false } }), '');
+  assert.equal(renderBox({ token: 'PAID1' }), '', 'a page that forgot to pass canSend must not draw a dead box');
+});
+
+test('the outcome of the last attempt is shown, even when the box is gone', () => {
+  const said = renderBox({ token: 'PAID1', canSend: { email: false, sms: false }, say: 'Sent — it should arrive in a moment.' });
+  assert.match(said, /Sent — it should arrive in a moment\./,
+    'a guest who pressed the button and is told nothing presses it again');
+});
+
+test('nothing a guest can influence reaches the page unescaped', () => {
+  // `say` comes back off the query string, which anybody can write.
+  const html = renderBox({
+    token: 'PAID1',
+    canSend: { email: true, sms: true },
+    say: '<script>alert(1)</script>',
+  });
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test('the input is 16px, or an iPhone zooms the receipt out from under them', () => {
+  const html = renderBox({ token: 'PAID1', canSend: { email: true, sms: true } });
+  assert.match(html, /font-size:16px/);
+});
