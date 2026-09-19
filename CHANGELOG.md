@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.404 — 2026-09-19 21:39 UTC
+
+NUM picks from both its memory and the directory; builds report their version
+
+- commit `56611b0`
+
 ## 0.8.403 — 2026-09-19 21:10 UTC
 
 the verified block is back — the ring query had thrown on every ask since the editorial layer; white base; three-bubble answers with a grid of places

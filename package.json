@@ -1,7 +1,13 @@
 {
   "name": "num-concierge",
   "private": true,
-  "version": "0.8.403",
+  "version": "0.8.404",
+  "contributors": [
+    {
+      "name": "Claude (Anthropic)",
+      "url": "https://claude.ai"
+    }
+  ],
   "engines": {
     "node": ">=20"
   },
