@@ -317,6 +317,91 @@ Disallow: /api/
 Disallow: /console/
 Disallow: /signin/
 
+# ── SEO CRAWLERS, NAMED (19 Sep 2026) ────────────────────────────────────
+#
+# These already had access: an unnamed agent falls through to "User-agent: *"
+# below, which allows everything except the six paths listed there. Naming
+# them changes nothing about what they can fetch.
+#
+# It is here because "it falls through to the wildcard" is not something a
+# vendor's support desk or a compliance review can see. When a Site Audit
+# comes back empty the first question asked is "are we in your robots.txt",
+# and the honest answer needs to be visible rather than inferred.
+#
+# WHAT THIS DOES NOT DO: backlinks pointing AT itsnum.com are discovered by
+# Semrush crawling the sites that link to us, not by crawling us. Nothing in
+# this file affects whether a backlink campaign is found or counted. What it
+# affects is Site Audit, On Page SEO Checker and Backlink Audit reading our
+# own pages.
+#
+# The disallow list is identical to the wildcard block on purpose. /api/ is
+# an endpoint surface with no content to index; /console/ and /signin/ are
+# private; /app-preview/ and /claim/ are transient. A crawler that fetched
+# them would report them as thin-content errors we would then be asked to fix.
+
+User-agent: SemrushBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: SiteAuditBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: SemrushBot-BA
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: SemrushBot-SI
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: SemrushBot-SWA
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: SemrushBot-OCOB
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
+User-agent: SplitSignalBot
+Allow: /
+Disallow: /api/
+Disallow: /console/
+Disallow: /app-preview/
+Disallow: /claim/
+Disallow: /signin/
+Disallow: /assets/vendor/
+
 User-agent: *
 Allow: /
 Disallow: /api/
