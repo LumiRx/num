@@ -307,6 +307,16 @@ const ASSET_DEPS = { J, clean, readJSON, badOrigin, hostAuth };
 // supplier TELLS them, and that notification is the consent step, not a nicety.
 const SUPPLIER_DEPS = { J, clean, readJSON, badOrigin, hostAuth, sendBatch };
 
+/* The ambassador endpoints. Wider than ASSET_DEPS because joining mints a
+ * referral code and emails a console key, and because the directory is read
+ * by hosts AND businesses — two different auths, both passed in rather than
+ * re-implemented inside the module. `sameSecret` is in here so the key
+ * comparison stays constant-time-ish in the one place it is done. */
+const AMB_DEPS = {
+  J, clean, cleanUrl, readJSON, badOrigin, sendBatch, hostAuth, bizAuth,
+  mintCode, token, e164, country, ipHash, sameSecret,
+};
+
 /* --------------------------------------------------------- abuse guardrail */
 
 // Per-isolate token bucket. Not a distributed rate limiter — it is a cheap
@@ -408,6 +418,11 @@ import { hostFind } from './hostfind.mjs';
 // what is owed.
 import { hostClient, hostClientWrite, hostClientImport } from './clientfile.mjs';
 import { hostSuppliers, supplierAssets } from './hostsuppliers.mjs';
+// Ambassadors. A door onto worker/memberreferral.mjs, which was already built
+// and already pays — see that file's header, and ambassador.mjs's.
+import {
+  ambJoin, ambSummary, ambProfile, ambSocial, ambOffers, ambClaim, ambDirectory,
+} from './ambassador.mjs';
 import { BOOKING_FEE_MINOR } from '../worker/servicefee.mjs';
 import { integrityReport } from '../worker/hostintegrity.mjs';
 // The screen after the table. worker/aftertable.mjs had rate(), tip() and
@@ -1197,6 +1212,27 @@ const WORKER = {
       // bytes for nothing.
       if (p === "/api/host/client-import" && req.method === "POST")
         return hostClientImport(req, env, url, ASSET_DEPS);
+      /* ── AMBASSADORS ───────────────────────────────────────────────────
+       * The money these endpoints report is not computed here and not
+       * computed in ambassador.mjs either: it is read out of
+       * worker/memberreferral.mjs, which has paid 20% of collected commission
+       * since 13 Sep. These are a door, not a second programme. */
+      if (p === "/api/amb/join" && req.method === "POST")
+        return ambJoin(req, env, url, AMB_DEPS);
+      if (p === "/api/amb/summary" && req.method === "GET")
+        return ambSummary(req, env, url, AMB_DEPS);
+      if (p === "/api/amb/profile" && req.method === "POST")
+        return ambProfile(req, env, url, AMB_DEPS);
+      if (p === "/api/amb/social" && req.method === "POST")
+        return ambSocial(req, env, url, AMB_DEPS);
+      if (p === "/api/amb/offers" && req.method === "GET")
+        return ambOffers(req, env, url, AMB_DEPS);
+      if (p === "/api/amb/claim" && req.method === "POST")
+        return ambClaim(req, env, url, AMB_DEPS);
+      // Read by a HOST or a BUSINESS, never by the open web. See the module.
+      if (p === "/api/amb/directory" && req.method === "GET")
+        return ambDirectory(req, env, url, AMB_DEPS);
+
       if (p === "/api/host/intros") return hostIntros(req, env, url, ctx);
       if (p === "/api/host/nearby" && req.method === "GET") return hostNearby(req, env, url);
       if (p === "/api/host/intro" && req.method === "POST") return hostIntro(req, env, ctx);
@@ -5223,12 +5259,23 @@ async function referral(req, env, url, rawCode) {
   if (!code) return Response.redirect(site + "/", 302);
 
   const row = await env.DB.prepare(
-    "SELECT code, active FROM num_referral_codes WHERE code = ?"
+    "SELECT code, active, owner_type FROM num_referral_codes WHERE code = ?"
   ).bind(code).first();
 
   // A dead link goes to the front door rather than to an error. The person
   // holding it did nothing wrong.
   if (!row || !row.active) return Response.redirect(site + "/", 302);
+
+  /* WHO SENT THEM, NOT "HOST". This defaulted to the literal string "host"
+     for every code of every kind, so from 19 Sep — when ambassadors started
+     minting codes — every ambassador arrival would have been counted as host
+     traffic in the funnel, and the one report that decides where the next ad
+     pound goes would have been quietly wrong about a whole channel. The
+     code's own owner_type is the answer and it was already in the row. */
+  const source = clean(url.searchParams.get("utm_source"), 60)
+    || (row.owner_type === "ambassador" ? "ambassador"
+      : row.owner_type === "member" ? "member"
+        : row.owner_type === "business" ? "business" : "host");
 
   const vid = await visitorId(req, env);
   await env.DB.prepare(
@@ -5236,7 +5283,7 @@ async function referral(req, env, url, rawCode) {
        (visitor_id,event,page,ref_code,utm_source,utm_medium,utm_campaign,referrer,country,device,created_at)
      VALUES (?,'ref_arrival','r',?,?,'referral',?,?,?,?,?)`
   ).bind(
-    vid, code, clean(url.searchParams.get("utm_source"), 60) || "host", code,
+    vid, code, source, code,
     String(req.headers.get("referer") || "").slice(0, 200), country(req), device(req), now()
   ).run();
 
@@ -5246,7 +5293,7 @@ async function referral(req, env, url, rawCode) {
   const dest = DESTS[clean(url.searchParams.get("d"), 20).toLowerCase()] || "/";
   const to = new URL(site + dest);
   to.searchParams.set("ref", code);
-  to.searchParams.set("utm_source", "host");
+  to.searchParams.set("utm_source", source);
   to.searchParams.set("utm_medium", "referral");
   to.searchParams.set("utm_campaign", code);
   return Response.redirect(to.toString(), 302);

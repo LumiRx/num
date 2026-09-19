@@ -40,6 +40,7 @@ const NO_TRANSLATE = {
   'desk/index.html': 'the internal business desk — nobody lands on it and no traveller ever sees it',
   'here/index.html': 'the driver’s parking page — reached only from their own signed link, never browsed to',
   'host/index.html': 'the private host console, key-gated and noindex',
+  'amb/index.html': 'the private ambassador console, key-gated and noindex',
   'app-preview/index.html': 'team-only prototype, noindex, linked from nowhere public',
 };
 

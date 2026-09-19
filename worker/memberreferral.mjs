@@ -118,22 +118,59 @@ export async function linkReferral(env, { memberId, code } = {}) {
     if (!clean) return { ok: false, why: 'not a code' };
 
     const owner = await env.DB.prepare(
-      `SELECT owner_id FROM num_referral_codes
-        WHERE UPPER(code) = ?1 AND active = 1 AND owner_type = 'member'`,
+      `SELECT owner_id, owner_type FROM num_referral_codes
+        WHERE UPPER(code) = ?1 AND active = 1 AND owner_type IN ('member','ambassador')`,
     ).bind(clean).first().catch(() => null);
     if (!owner?.owner_id) return { ok: false, why: 'unknown code' };
 
+    /* ── ONE HOP, FOR AMBASSADOR CODES ONLY ───────────────────────────────
+     *
+     * Added 19 Sep 2026 with the ambassador programme. Until then this query
+     * read `owner_type = 'member'` and nothing else, which meant an
+     * ambassador's code redirected at /r/CODE, logged the arrival, carried
+     * ?ref= all the way into signup — and then wrote no edge at all. Every
+     * visible part of it worked. Somebody could have posted that link to an
+     * audience for six months, earned nothing, and had no error anywhere to
+     * tell them why.
+     *
+     * The share is credited to a MEMBER — that is where the Star balance and
+     * the cash-out live — so an ambassador is paid through their member
+     * account or not at all. This resolves the code to that account. When
+     * there is not one yet it REFUSES with a reason rather than falling
+     * through to some default, and the ambassador console says the same thing
+     * in words on their own screen.
+     *
+     * This is a resolution, not a second level: it finds who the one referrer
+     * IS, it does not walk a chain. The single-level rule in the header is
+     * untouched, and the test that asserts it still passes.
+     */
+    let payee = String(owner.owner_id);
+    if (owner.owner_type === 'ambassador') {
+      const amb = await env.DB.prepare(
+        "SELECT member_id, status FROM num_ambassadors WHERE id = ?1",
+      ).bind(payee).first().catch(() => null);
+      if (!amb) return { ok: false, why: 'unknown code' };
+      if (amb.status === 'ended') return { ok: false, why: 'ambassador has ended' };
+      if (!amb.member_id) return { ok: false, why: 'ambassador has no NUM account yet' };
+      payee = String(amb.member_id);
+    }
+
     // Paying somebody for bringing in themselves is not growth, it is a bug
     // with a payout attached.
-    if (String(owner.owner_id) === String(memberId)) return { ok: false, why: 'self-referral' };
+    if (payee === String(memberId)) return { ok: false, why: 'self-referral' };
 
     const res = await env.DB.prepare(
       `UPDATE num_members SET referred_by = ?2, referred_pct = ?3, referred_at = ?4
         WHERE id = ?1 AND referred_by IS NULL`,
-    ).bind(memberId, owner.owner_id, rateFor(env), new Date().toISOString()).run();
+      // `payee`, NEVER `owner.owner_id`. For a member code they are the same
+      // string; for an ambassador code owner_id is the AMBASSADOR row's id,
+      // and writing that here would put a value in referred_by that matches
+      // no member, so creditMemberReferral would find no referrer and pay
+      // nothing — the exact silent failure this whole change exists to end.
+    ).bind(memberId, payee, rateFor(env), new Date().toISOString()).run();
 
     const linked = Number(res?.meta?.changes ?? 0) > 0;
-    return { ok: linked, already: !linked, referrer: owner.owner_id };
+    return { ok: linked, already: !linked, referrer: payee };
   } catch (e) {
     console.warn('[memberreferral link]', e?.message ?? e);
     return { ok: false, why: 'could not link' };

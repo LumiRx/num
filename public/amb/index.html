@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your ambassador console — NUM</title>
+<!-- Never indexed: every URL here carries a console key in the query string. -->
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+:root{ --gap:20px }
+body{background:var(--bg);color:var(--ink);font-family:var(--body)}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+.tnum{font-variant-numeric:tabular-nums}
+header.top{background:var(--card);border-bottom:1px solid var(--line);padding:18px 0;margin-bottom:30px}
+header.top .wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-family:var(--disp);font-weight:700;font-size:19px;color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:9px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--pri);display:inline-block}
+.spacer{flex:1}
+.who{font-size:14px;color:var(--slate)}
+.who b{color:var(--ink);font-weight:650}
+.card2{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:var(--shadow);margin-bottom:var(--gap)}
+h1{font-family:var(--disp);font-size:27px;margin:0 0 6px;letter-spacing:-.02em;text-wrap:balance}
+h2{font-family:var(--disp);font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--slate);font-size:14.5px;margin:0 0 18px;max-width:64ch;line-height:1.6}
+.tag{display:inline-block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--pri-d);font-weight:700;margin-bottom:8px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:var(--gap)}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+.tile .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--slate);font-weight:700}
+.tile .v{font-family:var(--disp);font-size:26px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em;line-height:1}
+.tile .s{font-size:12.5px;color:var(--slate)}
+label{display:block;font-size:13px;font-weight:650;color:var(--ink2);margin:0 0 5px}
+.hint{font-size:12.5px;color:var(--slate);margin:5px 0 0;line-height:1.5}
+input[type=text],input[type=tel],input[type=email],input[type=url],input[type=number],select,textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14.5px;
+  background:#fff;color:var(--ink);box-sizing:border-box}
+textarea{min-height:82px;resize:vertical}
+.field{margin-bottom:14px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn{display:inline-block;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:650;
+  font-size:14.5px;padding:10px 16px;border-radius:10px;cursor:pointer;text-decoration:none}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.sm{padding:7px 12px;font-size:13.5px}
+.note{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;margin:0 0 14px;display:none}
+.note.show{display:block}
+.note.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46}
+.note.bad{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+.note.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;display:block}
+.gate{max-width:440px;margin:60px auto}
+.hide{display:none!important}
+.t-off{display:none!important}
+nav.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:var(--gap);padding-bottom:4px;-webkit-overflow-scrolling:touch}
+nav.tabs button{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--slate);font:inherit;font-weight:650;
+  font-size:14px;padding:9px 15px;border-radius:999px;cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected=true]{background:var(--pri);border-color:var(--pri);color:#fff}
+.linkbox{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#f8fafc;border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.linkbox code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14.5px;word-break:break-all;color:var(--ink)}
+.item{border-top:1px solid var(--line);padding:16px 0}
+.item:first-of-type{border-top:0}
+.item h3{font-family:var(--disp);font-size:16px;margin:0 0 4px}
+.meta{font-size:13px;color:var(--slate);margin:0}
+.pill{display:inline-block;font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;
+  background:#f1f5f9;color:var(--slate);margin-left:6px}
+.pill.on{background:#ecfdf5;color:#065f46}
+.pill.off{background:#fef2f2;color:#991b1b}
+.claimed{font-size:12.5px;color:var(--slate)}
+ul.plain{list-style:none;padding:0;margin:0}
+ul.plain li{border-top:1px solid var(--line);padding:13px 0}
+ul.plain li:first-child{border-top:0}
+@media(max-width:620px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="dot"></span> NUM</a>
+    <span class="spacer"></span>
+    <span class="who" id="who"></span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ── GATE ─────────────────────────────────────────────────────────────
+     There is no password. The console key IS the credential, exactly as it is
+     for hosts and Experts. This box is for the person who lost the tab and
+     pasted the key instead of the link. -->
+<section id="gate" class="gate hide">
+  <div class="card2">
+    <span class="tag">Ambassador console</span>
+    <h1>Open your console</h1>
+    <p class="sub">Paste the key from your email, or open the link we sent you. There is no password —
+      that link is the key, so keep it to yourself.</p>
+    <div class="note bad" id="gateErr"></div>
+    <form id="gateForm">
+      <div class="field">
+        <label for="k">Console key</label>
+        <input id="k" type="text" autocomplete="off" spellcheck="false" required
+               placeholder="the long code after ?k= in your email">
+      </div>
+      <button class="btn pri" type="submit">Open console</button>
+    </form>
+    <p class="hint" style="margin-top:16px">Lost it? Email <a href="mailto:info@itsnum.com">info@itsnum.com</a>
+      from the address you applied with and we will send it again.</p>
+  </div>
+</section>
+
+<!-- Painted immediately so the page is never a blank grey screen while two
+     round trips land. The host console shipped without this and it was
+     mistaken for a crash three times in one afternoon. -->
+<section id="booting" class="card2" style="max-width:440px;margin:60px auto;text-align:center">
+  <span class="tag">Ambassador console</span>
+  <h2 style="margin-bottom:6px">Opening your console</h2>
+  <p class="sub" style="margin:0 auto">Reading your link, your channels and what you have earned.</p>
+</section>
+
+<main id="app" class="hide">
+  <h1 id="hello">Your console</h1>
+  <p class="sub">Everything below is read from the database. Nothing here is an estimate.</p>
+
+  <div class="tiles" id="tiles"></div>
+  <nav class="tabs" id="tabs"></nav>
+
+  <!-- ══ TODAY ══════════════════════════════════════════════════════════ -->
+  <section id="linkCard" class="card2" data-tab="today">
+    <span class="tag">Your link</span>
+    <h2>This is the whole programme</h2>
+    <p class="sub">Everyone who joins NUM through this link is yours. You earn a share of what NUM earns from
+      them, for as long as you are both active, paid into your NUM wallet as Stars you can cash out.</p>
+    <div class="linkbox">
+      <code id="link">…</code>
+      <button class="btn sm" id="copyLink" type="button">Copy</button>
+    </div>
+    <p class="hint">Your code is <b id="code">…</b>. Put the link anywhere — bio, story, description. It is the
+      same link everywhere and it never expires.</p>
+  </section>
+
+  <!-- ── THE WARNING THAT MUST NOT BE SOFTENED ────────────────────────────
+       A link that counts arrivals and pays nobody, sat next to an earnings
+       figure of zero, reads as "nobody has used it yet". It is not the same
+       thing and the difference is months of somebody's work. -->
+  <section id="payCard" class="card2 hide" data-tab="today" style="border-color:#fde68a">
+    <span class="tag" style="color:#92400e">Read this first</span>
+    <h2>Your link cannot pay you yet</h2>
+    <p class="sub" id="payNote"></p>
+    <button class="btn pri" id="recheck" type="button">I have done that — check again</button>
+  </section>
+
+  <section id="moneyCard" class="card2" data-tab="today">
+    <span class="tag">What you have earned</span>
+    <h2>Paid, not projected</h2>
+    <p class="sub" id="moneyNote"></p>
+    <p class="hint">Your share is <b id="pct">20</b>% of the commission NUM actually collected from the people you
+      brought in — not a share of what they spent. It can only ever be paid out of money NUM has already been paid,
+      which is why it cannot be withdrawn from you later.</p>
+  </section>
+
+  <!-- ══ CHANNELS ═══════════════════════════════════════════════════════ -->
+  <section id="socCard" class="card2" data-tab="channels">
+    <span class="tag">Where you post</span>
+    <h2>Your channels</h2>
+    <p class="sub">Add the places you post and roughly how many people follow you there. A business browsing the
+      directory sees these — and sees, in words, that the numbers are yours rather than a platform's.</p>
+    <div class="note" id="socMsg"></div>
+    <ul class="plain" id="socList"></ul>
+    <form id="socForm" style="margin-top:18px">
+      <div class="row">
+        <div class="field">
+          <label for="sPlat">Platform</label>
+          <select id="sPlat">
+            <option value="instagram">Instagram</option>
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+            <option value="x">X</option>
+            <option value="facebook">Facebook</option>
+            <option value="twitch">Twitch</option>
+            <option value="blog">Blog or newsletter</option>
+            <option value="other">Somewhere else</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sHandle">Handle</label>
+          <input id="sHandle" type="text" placeholder="yourname" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="sUrl">Link (optional)</label>
+          <input id="sUrl" type="url" placeholder="https://…" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="sFollowers">Followers</label>
+          <input id="sFollowers" type="text" inputmode="numeric" placeholder="leave blank if you would rather not say">
+          <p class="hint">We show this as self-declared, because that is what it is. Leaving it empty is not
+            the same as putting zero, and we do not treat it as zero.</p>
+        </div>
+      </div>
+      <button class="btn pri" type="submit">Save channel</button>
+    </form>
+  </section>
+
+  <!-- ══ OFFERS ═════════════════════════════════════════════════════════ -->
+  <section id="offCard" class="card2" data-tab="offers">
+    <span class="tag">On the table</span>
+    <h2>Offers you can take up</h2>
+    <p class="sub">Take one up, post it, and paste the link back here. Offers are extra — your link and your
+      share work whether or not any of these exist.</p>
+    <div class="note" id="offMsg"></div>
+    <div id="offList"></div>
+  </section>
+
+  <section id="mineCard" class="card2" data-tab="offers">
+    <span class="tag">Yours</span>
+    <h2>What you have taken up</h2>
+    <div id="mineList"></div>
+  </section>
+
+  <!-- ══ WHAT YOU CAN PROMISE ═══════════════════════════════════════════
+       Two lists, and the second one is the point. An ambassador's entire
+       worth is that their audience believes them, and the fastest way to
+       spend that is to hand them a benefits list with three things on it
+       they cannot actually deliver. -->
+  <section id="benCard" class="card2" data-tab="benefits">
+    <span class="tag">Real today</span>
+    <h2>What you can promise</h2>
+    <p class="sub">All of this works right now. Say any of it and it will be true when somebody turns up.</p>
+    <ul class="plain" id="benLive"></ul>
+  </section>
+
+  <section id="soonCard" class="card2" data-tab="benefits">
+    <span class="tag" style="color:#92400e">Not yet — please do not promise these</span>
+    <h2>Built, not switched on</h2>
+    <p class="sub">We would rather tell you than let a follower find out. The moment any of these go live you
+      will see it here and we will email you.</p>
+    <ul class="plain" id="benSoon"></ul>
+  </section>
+
+  <!-- ══ SETTINGS ═══════════════════════════════════════════════════════ -->
+  <section id="profCard" class="card2" data-tab="settings">
+    <span class="tag">You</span>
+    <h2>Your details</h2>
+    <div class="note" id="profMsg"></div>
+    <form id="profForm">
+      <div class="row">
+        <div class="field"><label for="pName">Name</label><input id="pName" type="text"></div>
+        <div class="field"><label for="pCity">City</label><input id="pCity" type="text" placeholder="where you mostly are"></div>
+      </div>
+      <div class="field"><label for="pCountry">Country</label><input id="pCountry" type="text"></div>
+      <div class="field">
+        <label for="pBio">One line about you</label>
+        <textarea id="pBio" maxlength="400" placeholder="Slow travel, small places, mostly Portugal and Spain."></textarea>
+        <p class="hint">This is what a business reads first.</p>
+      </div>
+      <button class="btn pri" type="submit">Save</button>
+    </form>
+  </section>
+
+  <section id="dirCard" class="card2" data-tab="settings">
+    <span class="tag">The directory</span>
+    <h2>Being found by businesses</h2>
+    <p class="sub" id="dirNote"></p>
+    <p style="margin:0 0 14px"><label style="display:flex;gap:10px;align-items:flex-start;font-weight:500">
+      <input type="checkbox" id="pListed" style="width:auto;margin-top:3px">
+      <span>List me. A host or business on NUM looking for ambassadors can see my name, city, bio and the
+        reach I have declared.</span></label></p>
+    <button class="btn" id="saveListed" type="button">Save this setting</button>
+    <p class="hint" style="margin-top:14px">Never your email address and never your phone number. Businesses reach
+      you by posting an offer, not by being handed your contact details.</p>
+  </section>
+</main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
+  function note(el, msg, kind) {
+    if (!el) return;
+    el.className = 'note ' + (kind || 'good') + (msg ? ' show' : '');
+    el.textContent = msg || '';
+  }
+  var nf = function (n) { return Number(n || 0).toLocaleString(); };
+
+  /* The key travels in the query string because that is the link the email
+     sends. Moved into sessionStorage and wiped from the address bar on
+     arrival, so it does not sit in history, get screenshotted, or leak
+     through a Referer header on an outbound click. */
+  var q = new URLSearchParams(location.search);
+  var K = q.get('k') || sessionStorage.getItem('num_amb_k') || '';
+  if (q.get('k')) {
+    sessionStorage.setItem('num_amb_k', K);
+    history.replaceState(null, '', '/amb/');
+  }
+  var state = {};
+
+  function showGate(msg) {
+    var b = $('booting'); if (b) b.classList.add('hide');
+    $('gate').classList.remove('hide');
+    $('app').classList.add('hide');
+    if (msg) note($('gateErr'), msg, 'bad');
+  }
+  $('gateForm').onsubmit = function (e) {
+    e.preventDefault();
+    var v = $('k').value.trim();
+    // Somebody WILL paste the whole link. Refusing it teaches them nothing.
+    var m = v.match(/[?&]k=([^&\s]+)/);
+    if (m) v = decodeURIComponent(m[1]);
+    if (v.length < 20) return note($('gateErr'), 'That key looks too short — it is about 40 characters.', 'bad');
+    sessionStorage.setItem('num_amb_k', v); K = v; boot();
+  };
+
+  /* Carries the HTTP status through, because "we could not read that" and
+     "that key is wrong" need opposite responses: one keeps the key, the
+     other throws it away. The host console deleted a host's key on a
+     transient 500 until this was fixed. */
+  function read(path) {
+    return fetch(path + (path.indexOf('?') === -1 ? '?' : '&') + 'k=' + encodeURIComponent(K))
+      .then(function (r) {
+        return r.json().then(
+          function (j) { j.__status = r.status; return j; },
+          function () { return { ok: false, __status: r.status }; }
+        );
+      });
+  }
+  function send(path, body) {
+    return fetch(path + '?k=' + encodeURIComponent(K), {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+    }).then(function (r) { return r.json().catch(function () { return { ok: false }; }); });
+  }
+
+  /* ── render ────────────────────────────────────────────────────────── */
+
+  function paint(s) {
+    state = s;
+    $('who').innerHTML = 'Signed in as <b>' + esc(s.you.name) + '</b>';
+    $('hello').textContent = (String(s.you.name || '').split(' ')[0] || 'Your') + "'s console";
+    $('link').textContent = s.link;
+    $('code').textContent = s.code;
+
+    $('tiles').innerHTML =
+      tile('People you brought in', nf(s.money.referred), s.money.referred ? 'signed up through your link' : 'nobody yet — the link is live') +
+      tile('Earned', '★' + nf(s.money.earned), 'paid into your wallet') +
+      tile('Your share', s.money.pct + '%', 'of what NUM collects from them') +
+      tile('Status', esc(s.status), s.status === 'active' ? 'offers are open to you' : 'your link and share already work');
+
+    // The warning, or nothing at all. Never a softened version of it.
+    if (s.payable) {
+      $('payCard').classList.add('hide');
+    } else {
+      $('payCard').classList.remove('hide');
+      $('payNote').textContent = s.payable_note;
+    }
+    $('moneyNote').textContent = s.money.what_earned_means;
+    $('pct').textContent = s.money.pct;
+
+    paintSocials(s.socials);
+    paintBenefits(s.benefits);
+    paintMine(s.claims);
+
+    $('pName').value = s.you.name || '';
+    $('pCity').value = s.you.city || '';
+    $('pCountry').value = s.you.country || '';
+    $('pBio').value = s.you.bio || '';
+    $('pListed').checked = !!s.listed;
+    $('dirNote').textContent = s.listed_note;
+  }
+  function tile(k, v, sub) {
+    return '<div class="tile"><div class="k">' + esc(k) + '</div><div class="v tnum">' + esc(v) +
+      '</div><div class="s">' + esc(sub) + '</div></div>';
+  }
+
+  function paintSocials(list) {
+    if (!list.length) {
+      $('socList').innerHTML = '<li class="meta">Nothing added yet. A business cannot find you without at least one.</li>';
+      return;
+    }
+    $('socList').innerHTML = list.map(function (s) {
+      /* THE LABEL IS NOT OPTIONAL. A figure somebody typed and a figure a
+         platform confirmed are different facts, and a page that shows one
+         while implying the other is lying on the ambassador's behalf. */
+      var n = s.followers_verified != null
+        ? nf(s.followers_verified) + ' followers <span class="pill on">confirmed</span>'
+        : (s.followers_claimed != null
+          ? nf(s.followers_claimed) + ' followers <span class="pill">as declared by you</span>'
+          : '<span class="claimed">no follower count given</span>');
+      return '<li><b>' + esc(s.platform) + '</b> · @' + esc(s.handle) +
+        '<div class="meta">' + n + '</div>' +
+        '<button class="btn sm" data-del="' + esc(s.id) + '" type="button" style="margin-top:8px">Remove</button></li>';
+    }).join('');
+    Array.prototype.forEach.call($('socList').querySelectorAll('[data-del]'), function (b) {
+      b.onclick = function () {
+        send('/api/amb/social', { action: 'remove', id: b.getAttribute('data-del') }).then(refresh);
+      };
+    });
+  }
+
+  function paintBenefits(b) {
+    $('benLive').innerHTML = b.live.map(function (x) {
+      return '<li><b>' + esc(x.what) + '</b><div class="meta">' + esc(x.how) + '</div></li>';
+    }).join('');
+    $('benSoon').innerHTML = b.soon.map(function (x) {
+      return '<li><b>' + esc(x.what) + '</b> <span class="pill off">not yet</span>' +
+        '<div class="meta">' + esc(x.why) + '</div></li>';
+    }).join('');
+  }
+
+  function paintMine(claims) {
+    if (!claims.length) {
+      $('mineList').innerHTML = '<p class="meta">Nothing yet.</p>';
+      return;
+    }
+    $('mineList').innerHTML = claims.map(function (c) {
+      var can = c.state === 'claimed' || c.state === 'posted';
+      return '<div class="item"><h3>' + esc(c.title) + '<span class="pill">' + esc(c.state) + '</span></h3>' +
+        '<p class="meta">' + esc(c.they_get) + '</p>' +
+        (c.post_url ? '<p class="meta">Posted: <a href="' + esc(c.post_url) + '" rel="noopener nofollow" target="_blank">' + esc(c.post_url) + '</a></p>' : '') +
+        (can ? '<div class="row" style="margin-top:10px"><div class="field" style="margin:0">' +
+          '<input type="url" placeholder="https://… link to your post" data-url="' + esc(c.offer_id) + '"></div>' +
+          '<div><button class="btn sm" data-posted="' + esc(c.offer_id) + '" type="button">Save link</button> ' +
+          '<button class="btn sm" data-wd="' + esc(c.offer_id) + '" type="button">Step back</button></div></div>' : '') +
+        '</div>';
+    }).join('');
+    wireClaims($('mineList'));
+  }
+
+  function paintOffers(j) {
+    if (!j.offers || !j.offers.length) {
+      $('offList').innerHTML = '<p class="meta">' + esc(j.note || 'Nothing on the table this week.') + '</p>';
+      return;
+    }
+    $('offList').innerHTML = j.offers.map(function (o) {
+      var taken = o.slots != null ? (o.taken + ' of ' + o.slots + ' taken') : (o.taken + ' taken');
+      return '<div class="item"><h3>' + esc(o.title) +
+        (o.mine ? '<span class="pill on">' + esc(o.mine) + '</span>' : (o.full ? '<span class="pill off">full</span>' : '')) + '</h3>' +
+        '<p class="meta"><b>You get:</b> ' + esc(o.they_get) + '</p>' +
+        '<p class="meta"><b>We ask:</b> ' + esc(o.we_ask) + '</p>' +
+        '<p class="meta">' + esc([o.city, o.country].filter(Boolean).join(', ')) + ' · ' + esc(taken) +
+        (o.ends_at ? ' · until ' + esc(o.ends_at) : '') + '</p>' +
+        (o.mine || o.full ? '' : '<button class="btn pri sm" data-claim="' + esc(o.id) + '" type="button" style="margin-top:10px">Take this up</button>') +
+        '</div>';
+    }).join('');
+    wireClaims($('offList'));
+  }
+
+  function wireClaims(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-claim]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        send('/api/amb/claim', { action: 'claim', offer_id: b.getAttribute('data-claim') }).then(function (r) {
+          if (!r.ok) note($('offMsg'), r.why || 'Could not take that one up.', 'bad');
+          refresh();
+        });
+      };
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-posted]'), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute('data-posted');
+        var box = root.querySelector('[data-url="' + id + '"]');
+        send('/api/amb/claim', { action: 'posted', offer_id: id, post_url: box ? box.value.trim() : '' })
+          .then(function (r) {
+            if (!r.ok) note($('offMsg'), r.why || 'That link did not look like a link.', 'bad');
+            refresh();
+          });
+      };
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-wd]'), function (b) {
+      b.onclick = function () {
+        send('/api/amb/claim', { action: 'withdraw', offer_id: b.getAttribute('data-wd') }).then(refresh);
+      };
+    });
+  }
+
+  /* ── forms ─────────────────────────────────────────────────────────── */
+
+  $('socForm').onsubmit = function (e) {
+    e.preventDefault();
+    var body = {
+      platform: $('sPlat').value,
+      handle: $('sHandle').value.trim(),
+      url: $('sUrl').value.trim(),
+      followers: $('sFollowers').value.trim()
+    };
+    if (!body.handle) return note($('socMsg'), 'Which handle?', 'bad');
+    send('/api/amb/social', body).then(function (r) {
+      if (!r.ok) return note($('socMsg'), r.error === 'followers'
+        ? 'That follower count did not read as a number.' : 'Could not save that channel.', 'bad');
+      $('sHandle').value = ''; $('sUrl').value = ''; $('sFollowers').value = '';
+      note($('socMsg'), 'Saved.', 'good');
+      refresh();
+    });
+  };
+
+  $('profForm').onsubmit = function (e) {
+    e.preventDefault();
+    saveProfile(function (r) {
+      note($('profMsg'), r.ok ? 'Saved.' : 'Could not save that.', r.ok ? 'good' : 'bad');
+    });
+  };
+  $('saveListed').onclick = function () {
+    saveProfile(function (r) {
+      note($('profMsg'), r.ok ? (r.listed ? 'You are in the directory.' : 'You are not in the directory.') : 'Could not save that.',
+        r.ok ? 'good' : 'bad');
+    });
+  };
+  function saveProfile(done) {
+    send('/api/amb/profile', {
+      name: $('pName').value.trim(), city: $('pCity').value.trim(),
+      country: $('pCountry').value.trim(), bio: $('pBio').value.trim(),
+      listed: $('pListed').checked
+    }).then(function (r) { done(r); refresh(); });
+  }
+
+  $('copyLink').onclick = function () {
+    var t = $('link').textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () {
+      $('copyLink').textContent = 'Copied';
+      setTimeout(function () { $('copyLink').textContent = 'Copy'; }, 1600);
+    });
+  };
+  $('recheck').onclick = function () { refresh(); };
+
+  /* ── boot ──────────────────────────────────────────────────────────── */
+
+  function refresh() {
+    return Promise.all([read('/api/amb/summary'), read('/api/amb/offers')])
+      .then(function (r) {
+        if (r[0].ok) paint(r[0]);
+        if (r[1].ok) paintOffers(r[1]);
+      });
+  }
+
+  function boot() {
+    if (!K) return showGate();
+    Promise.all([read('/api/amb/summary'), read('/api/amb/offers')]).then(function (res) {
+      var s = res[0];
+      if (!s.ok) {
+        /* A WRONG KEY AND A BROKEN SERVER ARE OPPOSITE PROBLEMS. Throwing the
+           key away on a transient 500 logs somebody out of an account that
+           was fine, and the only copy they have is in an email they may have
+           deleted. Only 401 and 403 mean the key itself is wrong. */
+        if (s.__status === 401 || s.__status === 403) {
+          sessionStorage.removeItem('num_amb_k');
+          return showGate('That key was not recognised, or your account has ended. Check the link in your email.');
+        }
+        return showGate('NUM could not open your console just then — that is us, not your key. '
+          + 'Your key has been kept. Try again in a moment.');
+      }
+      var b = $('booting'); if (b) b.classList.add('hide');
+      $('gate').classList.add('hide');
+      $('app').classList.remove('hide');
+      paint(s);
+      if (res[1].ok) paintOffers(res[1]);
+      tabs();
+    }).catch(function () {
+      showGate('Could not reach NUM just now. Your key is fine — try again in a moment.');
+    });
+  }
+
+  /* ── tabs ──────────────────────────────────────────────────────────────
+     Built from the data-tab attributes actually present on the page, so a
+     card that is removed cannot leave a button behind that leads nowhere. */
+  var TABS = [['today', 'Today'], ['channels', 'Channels'], ['offers', 'Offers'],
+    ['benefits', 'What you can promise'], ['settings', 'Settings']];
+  function tabs() {
+    var nav = $('tabs');
+    if (nav.childNodes.length) return;
+    var have = {};
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (el) {
+      have[el.getAttribute('data-tab')] = true;
+    });
+    var shown = TABS.filter(function (t) { return have[t[0]]; });
+    nav.innerHTML = shown.map(function (t, i) {
+      return '<button type="button" data-go="' + t[0] + '" aria-selected="' + (i === 0) + '">' + t[1] + '</button>';
+    }).join('');
+    function go(key) {
+      Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (el) {
+        el.classList.toggle('t-off', el.getAttribute('data-tab') !== key);
+      });
+      Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
+        b.setAttribute('aria-selected', String(b.getAttribute('data-go') === key));
+      });
+      keepActiveVisible();
+    }
+    /* On a phone the strip scrolls, and the selected tab can sit off-screen
+       with nothing to say the page changed. Measured AFTER layout settles —
+       a single call on click runs before the browser has finished, which is
+       why there are three, and why scrollIntoView is not used (it drags the
+       whole page). */
+    function keepActiveVisible() {
+      var b = nav.querySelector('[aria-selected="true"]');
+      if (!b || nav.scrollWidth <= nav.clientWidth) return;
+      nav.scrollLeft = Math.max(0, b.offsetLeft - (nav.clientWidth - b.offsetWidth) / 2);
+    }
+    Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
+      b.onclick = function () { go(b.getAttribute('data-go')); };
+    });
+    window.addEventListener('resize', keepActiveVisible);
+    go(shown.length ? shown[0][0] : 'today');
+    [0, 300, 1200].forEach(function (ms) { setTimeout(keepActiveVisible, ms); });
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

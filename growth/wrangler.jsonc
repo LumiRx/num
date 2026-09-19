@@ -336,6 +336,13 @@
     // promotion that cannot legally run.
     { "pattern": "itsnum.com/friday-rules*", "zone_name": "itsnum.com" },
     { "pattern": "itsnum.com/a/*", "zone_name": "itsnum.com" },
-    { "pattern": "itsnum.com/api/after/*", "zone_name": "itsnum.com" }
+    { "pattern": "itsnum.com/api/after/*", "zone_name": "itsnum.com" },
+    // A HANDLER IS NOT A ROUTE — the third time this file has had to say it.
+    // The ambassador endpoints answer inside num-growth and every one of their
+    // tests passed, and without this line the zone hands /api/amb/… to
+    // num-console, which serves the 404 page. An ambassador console that
+    // cannot read its own summary shows the gate, so the failure would have
+    // looked like "my key does not work" to the first person who tried it.
+    { "pattern": "itsnum.com/api/amb/*", "zone_name": "itsnum.com" }
   ]
 }

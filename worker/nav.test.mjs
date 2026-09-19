@@ -56,6 +56,9 @@ const NO_NAV = {
   'here/index.html': 'the driver’s one-tap parking page — opened from a signed link in a truck, noindex',
   'app-preview/index.html': 'team-only prototype, noindex, linked from nowhere public',
   'host/index.html': 'the private host console, key-gated and noindex',
+  // /ambassadors/ (plural) is the public page and carries the nav. /amb/ is
+  // the console behind the key, exactly as /hosts/ and /host/ divide.
+  'amb/index.html': 'the private ambassador console, key-gated and noindex',
   // Rehomed from num-biz-site on 12 Sep 2026 because that worker was serving a
   // pricing page whose <title> read "10% Only on Completed Bookings" — a rate we
   // stopped charging that day — and its source exists nowhere we can deploy. Kept

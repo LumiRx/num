@@ -327,9 +327,22 @@ async function refCode(env, req) {
   const ownerType = ['member', 'ambassador', 'university', 'business', 'agent', 'placement'].includes(b.owner_type)
     ? b.owner_type : 'member';
 
-  const existing = await env.DB.prepare(
-    'SELECT code FROM num_referral_codes WHERE owner_id=?1 AND owner_type=?2 AND active=1 LIMIT 1',
-  ).bind(ownerId, ownerType).first();
+  /* Asking twice must return the same code, never mint a second one — two
+   * codes for one person splits their own earnings in half.
+   *
+   * For an ambassador the lookup goes through num_ambassadors, because the
+   * caller passes the MEMBER's ref and the code is now owned by the
+   * ambassador row (see the block below). Matching owner_id against the
+   * member ref would miss every time and mint a fresh code on every call. */
+  const existing = ownerType === 'ambassador'
+    ? await env.DB.prepare(
+      `SELECT c.code FROM num_ambassadors a
+         JOIN num_referral_codes c ON c.code = a.code AND c.active = 1
+        WHERE a.member_id = ?1 LIMIT 1`,
+    ).bind(ownerId).first()
+    : await env.DB.prepare(
+      'SELECT code FROM num_referral_codes WHERE owner_id=?1 AND owner_type=?2 AND active=1 LIMIT 1',
+    ).bind(ownerId, ownerType).first();
   if (existing) return json({ code: existing.code, link: `${APP}/?ref=${existing.code}` });
 
   let code = friendlyCode();
@@ -338,23 +351,52 @@ async function refCode(env, req) {
     if (!clash) break;
     code = friendlyCode();
   }
+
+  /* ── WHAT AN AMBASSADOR CODE'S owner_id MEANS ─────────────────────────
+   *
+   * For owner_type 'ambassador' it is the num_ambassadors ROW ID. Always,
+   * everywhere, both writers.
+   *
+   * Until 19 Sep 2026 this function did the opposite: it minted the code with
+   * owner_id = the member's ref, then wrote the ambassador row under a fresh
+   * id of its own and put the member's ref in member_ref. So the code pointed
+   * at a member and the ambassador row pointed at nothing the code knew about.
+   *
+   * That was harmless only because nothing read it. It stopped being harmless
+   * the day `linkReferral` started resolving ambassador codes by looking up
+   * `num_ambassadors.id = owner_id` to find who to pay: a code minted the old
+   * way resolves to no ambassador, so it would have redirected, logged the
+   * arrival, carried ?ref= into signup and then paid nobody, silently.
+   *
+   * Nothing had ever been minted this way — 0 rows, 0 codes, 0 universities,
+   * measured before the change — so the id is decided up front and the code
+   * carries it. See worker/migrations/0051_ambassadors.sql.
+   */
+  const ambId = ownerType === 'ambassador' ? uid('amb') : null;
+
+  // CODE FIRST, ROW SECOND. num_ambassadors.code is a foreign key onto
+  // num_referral_codes, so writing the ambassador first fails the constraint.
+  // The id is decided above rather than by the insert, which is what lets the
+  // code carry it while still being written first.
   await env.DB.prepare(
     `INSERT INTO num_referral_codes (code, owner_type, owner_id, university_id, reward_cs, reward_referee_cs,
                                      max_conversions, max_reward_total_cs, active, created_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1,unixepoch())`,
   ).bind(
-    code, ownerType, ownerId, b.university_id ?? null,
+    code, ownerType, ambId ?? ownerId, b.university_id ?? null,
     Number(b.reward_cs ?? 500), Number(b.reward_referee_cs ?? 500),
     // Uncapped codes are uncapped liability — the schema says so and we honour it.
     Number(b.max_conversions ?? 200), Number(b.max_reward_total_cs ?? 200000),
   ).run();
 
-  if (ownerType === 'ambassador') {
+  if (ambId) {
     await env.DB.prepare(
-      `INSERT OR IGNORE INTO num_ambassadors (id, name, email, university_id, member_ref, status, created_at)
-       VALUES (?1,?2,?3,?4,?5,'active',unixepoch())`,
-    ).bind(uid('amb'), String(b.name || 'Ambassador'), b.email ?? null, b.university_id ?? null, ownerId).run();
+      `INSERT INTO num_ambassadors (id, name, email, university_id, member_id, code, status, listed, created_at)
+       VALUES (?1,?2,?3,?4,?5,?6,'active',0,?7)`,
+    ).bind(ambId, String(b.name || 'Ambassador'), b.email ?? null,
+      b.university_id ?? null, ownerId, code, new Date().toISOString()).run();
   }
+
   return json({ code, link: `${APP}/?ref=${code}` });
 }
 

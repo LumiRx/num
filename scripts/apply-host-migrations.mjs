@@ -193,6 +193,11 @@ const FILES = [
   // (with the expiry that makes it safe to say), and every pitch it has taken.
   // Three tables and one index, all IF NOT EXISTS, no ALTER.
   'worker/migrations/0050_mobile_venues.sql',
+  // Ambassadors: who they are, what they reach, what is on offer and who took
+  // it. Four tables and their indexes, all IF NOT EXISTS, no ALTER, so a
+  // second pass is a no-op. The money is not in here — it was already built
+  // in worker/memberreferral.mjs and this is only the door onto it.
+  'worker/migrations/0051_ambassadors.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
