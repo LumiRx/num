@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 16:48 UTC from 41 entries._
+_Built 2026-09-19 19:11 UTC from 42 entries._
 
 ## Deployed right now
 
@@ -17,8 +17,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 | Worker | State |
 |---|---|
 | num-console | 🟢 up to date (2026-09-19 01:37) |
-| num-app | 🔴 **STALE** — 3 files changed since it shipped |
-| num-growth | 🔴 **STALE** — 5 files changed since it shipped |
+| num-app | 🟢 up to date (2026-09-19 18:37) |
+| num-growth | 🟢 up to date (2026-09-19 17:49) |
 | num-ai | ⚪ never recorded from this machine |
 | num-accounts | 🟢 up to date (2026-09-17 04:51) |
 | num-payouts | ⚪ never recorded from this machine |
@@ -53,8 +53,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-18 04:06_
 - 🟡 **num-expert-wallet** — 0034: num_scout_milestones (UNIQUE scout_id+key = awarded once ever) and the last free widening of earnings kind for 'milestone'. scoutmilestones.mjs: six milestones, every bonus_cents 0 — recognition now, cash is one number later. Milestones count 'activated' (real revenue), never signatures. nextGate names the venue closest to its gate and what it still needs. Wallet on the dashboard says what is blocking payment instead of letting 'earned' read as 'arriving Friday'. 17 tests, 5800 green.
   _claude, 2026-09-18 05:07_
-- 🟡 **qr bill pay** — CORRECTION to the entry above, same session. I said FIVEARZ_API_KEY is NOT set on num-app. It IS. worker/index.mjs line 2392 publishes connected.verify_5arz as !!env.FIVEARZ_API_KEY, and /api/version on 0.8.382 returns verify_5arz true - and I had already fetched that exact field earlier in the session and read past it. I guessed from the absence of the key in any feature's needs list rather than checking the signal that was already in front of me. What this means: the bindTransaction call on a 
-  _claude, 2026-09-19 01:14_
+- 🟡 **qr bill pay** — QR pay: covered the two surfaces I had built and not tested. growth/paychooser.test.mjs gains six request-level tests driven through the real Worker: an itemised bill shows its lines and they ADD UP to the figure above them (36.00 + 34.50 + 14.00 = 84.50, checked by summing the rendered cells, because that is the entire reason for showing lines); a bill with no lines grows no empty box; the page still renders 200 when 0045 has not run, which is the state a deploy passes through; a split parent r
+  _claude, 2026-09-19 19:11_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre
