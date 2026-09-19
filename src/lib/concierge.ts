@@ -18,6 +18,7 @@ import type { ServiceHandoff, AppState } from './types';
 import type { Booking, Chip, Meeting, Msg, Pick } from './types';
 import { apiUrl } from '../lib/apibase';
 import { readNumReply } from './numreply';
+import { classify, SAY, BANNER, confirmDown, type Outage } from './outage';
 import { holdAndAsk, mayAsk } from './gate';
 
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
@@ -783,6 +784,10 @@ export async function askNum(text: string) {
   // never fired by the app until 2 Sep 2026.
   webEventOnce('first-message', 'first_message_sent');
 
+  // Held outside the try so the catch can see it. A 500 is a RESPONSE, not a
+  // rejection, and without this the catch could only ever guess from the
+  // thrown parse error — which is how every outage became "check your wifi".
+  let failedRes: Response | null = null;
   try {
     const res = await fetch(apiUrl('/api/num'), {
       method: 'POST',
@@ -809,6 +814,7 @@ export async function askNum(text: string) {
         messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs), lang: currentLang(),
       }),
     });
+    failedRes = res;
     // The server's own send gate (worker/sendgate.mjs). The app checks first,
     // so this is the path for a bundle older than the gate, a second tab that
     // signed out, or an account whose verification was withdrawn — all of
@@ -854,6 +860,10 @@ export async function askNum(text: string) {
     }
     store.set((prev) => ({
       typing: false,
+      // An answer arrived, so whatever was wrong is over. The banner clears
+      // itself rather than waiting for a reload — a stale outage warning is
+      // its own kind of wrong.
+      outage: null,
       // Unread only counts while the thread is closed — the dot carries it.
       unread: prev.threadOpen ? 0 : prev.unread + 1,
       msgs: [...prev.msgs, { who: 'c', text: out.reply, ...(out.card ? { card: out.card } : {}), ...(out.picks?.length ? { picks: out.picks } : {}), ...(out.turn ? { turn: out.turn } : {}) }],
@@ -866,20 +876,34 @@ export async function askNum(text: string) {
     }));
   } catch (err) {
     console.error('[num-ai]', err);
+    // ── WHOSE FAULT IT IS (19 Sep 2026) ──────────────────────────────
+    //
+    // One sentence used to cover every failure here, and it said "looks
+    // like we've dropped the line" — which a guest reads as THEIR line. The
+    // comment above it claimed this only fired when the request never left
+    // the device; that was never true. `fetch` resolves on a 500, and the
+    // parse is what threw, so our own outages arrived dressed as the
+    // guest's bad wifi. Somebody in a foreign city reads that and goes and
+    // buys a data pass.
+    //
+    // lib/outage.ts names the one thing we actually know, and says so
+    // plainly when that thing is "we cannot tell".
+    const kind: Outage = classify(failedRes, err);
     store.set((prev) => ({
       typing: false,
-      msgs: [
-        ...prev.msgs,
-        {
-          who: 'c',
-          // Never blame the guest for the kitchen. This fires when the request
-          // did not leave the device at all, so it is the one case where the
-          // connection genuinely is the cause — and it still reads as ours.
-          text: 'I didn’t manage to get that — looks like we’ve dropped the line. I’ll be right here when it’s back; just send it again.',
-        },
-      ],
+      outage: kind,
+      msgs: [...prev.msgs, { who: 'c', text: SAY[kind] }],
       chips: defChips(),
     }));
+    // Not awaited, and never on the answer's path: this only decides whether
+    // a banner stays up. If our health endpoint is fine then our server is
+    // up, so whatever broke was between us — and claiming an outage we can
+    // disprove is the same lie in the other direction.
+    if (kind === 'down') {
+      void confirmDown(apiUrl).then((stillDown) => {
+        if (!stillDown) store.set({ outage: 'unreachable' });
+      }).catch(() => { /* the message is already on screen */ });
+    }
   } finally {
     // Always clears — a stuck flag would block auto-update forever, which is
     // the failure mode that let a phone run days-old code in the first place.

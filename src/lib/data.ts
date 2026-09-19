@@ -147,6 +147,7 @@ function baseState() {
     eventOpen: false,
     // Deep research. `research` survives a reload so a run started before the
     // app was closed can be picked up again — see resumeResearch().
+    outage: null,
     researchOpen: false,
     research: null,
     researchBusy: false,
@@ -255,7 +256,7 @@ export function persistable(s: AppState) {
     // researchBusy and researchError are this launch's business for the same
     // reason a spinner restored from yesterday spins forever. The RUN itself
     // (research) is deliberately kept — see resumeResearch().
-    researchOpen, researchBusy, researchError, contactOpen, deleteOpen,
+    researchOpen, researchBusy, researchError, contactOpen, deleteOpen, outage,
     // A table request restored from localStorage would show "waiting on the
     // venue" for a venue that answered yesterday. It is server truth and it is
     // re-read on open; a proposal nobody sent is not worth surviving a reload.

@@ -648,6 +648,8 @@ export interface AppState {
   flightOffers: { query: FlightQuery; offers: FlightOffer[] } | null;
   flightSearching: boolean;
   flightError: string | null;
+  /** Whose fault the last failed ask was, when we know. lib/outage.ts. */
+  outage: import('./outage').Outage | null;
   /** An errand the concierge proposed — pre-fills the sheet, never posts. */
   errandDraft: { title: string; detail?: string | null; where_from?: string | null; deliver_to: string; bounty: number; spend_cap: number } | null;
 

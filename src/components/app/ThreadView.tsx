@@ -23,6 +23,7 @@ import { REACTIONS, react } from '../../lib/prefs';
 import { KIND_LABEL, dismissService, openService } from '../../lib/services';
 import type { Msg } from '../../lib/types';
 import { T, t, currentLang } from '../../lib/i18n';
+import { BANNER } from '../../lib/outage';
 import { dropKeyboard, gateOpen, mayAsk } from '../../lib/gate';
 import { canOfferSubscription } from '../../lib/native';
 import { openPlans, shouldNudge, useTier } from '../../lib/tier';
@@ -633,7 +634,7 @@ export default function ThreadView() {
   // The fix is the standard one and it is about intent: follow the bottom
   // only while the reader is ALREADY there. The moment they scroll up they
   // have said "I am reading this", and nothing may move them until they ask.
-  const { msgs, typing, chips, demo, place, me } = useApp((s) => s);
+  const { msgs, typing, chips, demo, place, me, outage } = useApp((s) => s);
   const flights = useApp((s) => s.flights);
   useEffect(() => { if (me) void refreshFlights(); }, [me]);
   // One implementation, shared with DmSheet — see src/lib/stickyscroll.ts for
@@ -683,6 +684,34 @@ export default function ThreadView() {
           WebkitOverflowScrolling: 'touch',
         }}
       >
+        {/* ── WHEN IT IS OURS, SAY SO AT THE TOP ────────────────────────
+            A guest whose question just failed will retype it. If the fault
+            is ours they will retype it into the same wall, and the only
+            thing they can change is their network — so they change their
+            network, on roaming data, in a city they do not know. This sits
+            above the thread so the answer is there before the second try.
+            Shown ONLY for the two states we can actually stand behind
+            (lib/outage.ts BANNER); `unreachable` gets no banner, because a
+            banner asserting an outage we cannot prove is the same lie
+            pointing the other way. */}
+        {outage && BANNER[outage] && (
+          <div
+            role="status"
+            className="glass"
+            style={{
+              margin: '0 12px 4px', borderRadius: 14, padding: '10px 13px',
+              fontSize: 12.5, lineHeight: 1.45, fontWeight: 600,
+              color: 'var(--warn, #9a3412)', display: 'flex', gap: 8, alignItems: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true" style={{ flex: 'none' }}>
+              <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M10 6v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <circle cx="10" cy="14.2" r="1.1" fill="currentColor" />
+            </svg>
+            <span>{t(BANNER[outage]!)}</span>
+          </div>
+        )}
         {/* A watched flight lives at the top of the thread while it is live —
             the one thing that moves everything else. */}
         {flights.length > 0 && (

@@ -72,7 +72,12 @@ test('no screen renders a raw error message any more', () => {
   for (const f of files) {
     const src = readFileSync(f, 'utf8');
     // `err instanceof Error ? err.message : '…'` — the pattern that shipped it.
-    if (/(err|e|error)\s+instanceof\s+Error\s*\?\s*\1\.message/.test(src)) {
+    // Comments first. A file that QUOTES the dangerous pattern in order to
+    // explain why it is dangerous — lib/outage.ts does, at length — is doing
+    // the opposite of shipping it, and a guard that cannot tell the two apart
+    // punishes the explanation and rewards silence.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    if (/(err|e|error)\s+instanceof\s+Error\s*\?\s*\1\.message/.test(code)) {
       offenders.push(f.slice(HERE.length - 3));
     }
   }
