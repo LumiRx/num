@@ -89,7 +89,7 @@ export interface StayDraft {
   option: StayOption;
   query: StayQuery;
   hold: StayHold | null;
-  holder: { firstName: string; lastName: string; email: string };
+  holder: { firstName: string; lastName: string; email: string; phone: string };
   guests: StayGuest[];
   step: 'guests' | 'confirm' | 'done';
   receipt: StayReceipt | null;
@@ -165,9 +165,13 @@ export async function bookStay(
     holder: draft.holder,
     guests: draft.guests,
     // The guest pays through the supplier's SDK on this device. NUM never sees
-    // a card, so there is no card field to send — only the session reference
-    // that prebook minted.
-    payment: { method: 'TRANSACTION_ID', transactionId: draft.hold?.transactionId },
+    // a card, so there is no card field to send.
+    //
+    // The METHOD is not chosen here. worker/liteapi.mjs paymentFor() picks it
+    // from the key's estate, because ACC_CREDIT_CARD simulates a charge and a
+    // client that could ask for it could take a real room without paying. All
+    // this sends is the session reference prebook minted, if there is one.
+    payment: draft.hold?.transactionId ? { transactionId: draft.hold.transactionId } : {},
   });
 }
 
@@ -198,7 +202,7 @@ export const openStayBooking = (option: StayOption, query: StayQuery) =>
       option,
       query,
       hold: null,
-      holder: { firstName: '', lastName: '', email: '' },
+      holder: { firstName: '', lastName: '', email: '', phone: '' },
       guests: [{ occupancyNumber: 1, firstName: '', lastName: '' }],
       step: 'guests',
       receipt: null,

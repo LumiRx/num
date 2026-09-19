@@ -571,8 +571,10 @@ export function missingForBook(p = {}) {
       if (g?.[k] == null || g[k] === '') missing.push(`guests[${i}].${k}`);
     }
   });
-  if (p.payment && !p.payment.method) missing.push('payment.method');
-  if (p.payment?.method === 'TRANSACTION_ID' && !p.payment.transactionId) missing.push('payment.transactionId');
+  // NOT checked here any more: which method, and whether a transactionId is
+  // present. paymentFor() decides both from the estate, so a check here would
+  // be a second opinion that can disagree with the one that matters.
+  if (p.payment && typeof p.payment !== 'object') missing.push('payment');
   return [...new Set(missing)];
 }
 
@@ -596,6 +598,54 @@ export function bookingGate(env) {
   return { ok: true, estate: keyEstate(env) };
 }
 
+/**
+ * Which payment method actually travels, decided HERE and not by the caller.
+ *
+ * ── THE HOLE THIS CLOSES ──────────────────────────────────────────────────
+ *
+ * `ACC_CREDIT_CARD` is their sandbox method: it simulates a charge and moves
+ * no money, which is exactly what makes a booking rehearsable. It is also,
+ * against a production key, a way to take a real room out of inventory without
+ * anybody paying for it.
+ *
+ * So if the client chose the method, a client could choose that one. The app
+ * is not the only thing that can post to this route — anything holding a
+ * member id can — and "the app would never send that" is not a control.
+ *
+ * The estate decides instead: a simulated charge is refused outright on a
+ * prod_ key, and a real session reference is what a live booking must carry.
+ */
+export function paymentFor(env, requested = {}) {
+  const estate = keyEstate(env);
+  const method = requested?.method ?? null;
+
+  if (method === 'ACC_CREDIT_CARD') {
+    if (estate !== 'sandbox') {
+      const err = new Error(
+        'ACC_CREDIT_CARD simulates a charge and may only be used against a sandbox key. '
+        + 'On a production key it would take a real room out of inventory with nothing paid.',
+      );
+      err.status = 400;
+      err.code = 'simulated_payment_refused';
+      throw err;
+    }
+    return { method: 'ACC_CREDIT_CARD' };
+  }
+
+  if (requested?.transactionId) {
+    return { method: 'TRANSACTION_ID', transactionId: requested.transactionId };
+  }
+
+  // Nothing usable was sent. In a sandbox that is a rehearsal and simulating is
+  // the right answer; anywhere else it is a booking with no way to pay, and
+  // saying so beats letting the supplier reject it with its own wording.
+  if (estate === 'sandbox') return { method: 'ACC_CREDIT_CARD' };
+  const err = new Error('A live booking needs the transactionId that prebook minted.');
+  err.status = 400;
+  err.code = 'no_payment_session';
+  throw err;
+}
+
 export async function book(env, payload = {}, { fetchImpl } = {}) {
   const gate = bookingGate(env);
   if (!gate.ok) {
@@ -617,6 +667,11 @@ export async function book(env, payload = {}, { fetchImpl } = {}) {
       firstName: payload.holder.firstName,
       lastName: payload.holder.lastName,
       email: payload.holder.email,
+      // Their own documented sample carries holder.phone. It was held back
+      // until 19 Sep only because it was unverified, and inventing a field is
+      // how an integration breaks quietly — the opposite mistake is a hotel
+      // with no way to reach a guest whose flight is late.
+      ...(payload.holder.phone ? { phone: String(payload.holder.phone) } : {}),
     },
     guests: payload.guests.map((g) => ({
       occupancyNumber: g.occupancyNumber,
@@ -625,7 +680,7 @@ export async function book(env, payload = {}, { fetchImpl } = {}) {
       ...(g.email ? { email: g.email } : {}),
       ...(g.remarks ? { remarks: g.remarks } : {}),
     })),
-    payment: payload.payment,
+    payment: paymentFor(env, payload.payment),
     // Idempotency. Without it a retried tap is a second room.
     ...(payload.clientReference ? { clientReference: payload.clientReference } : {}),
   }, { fetchImpl });

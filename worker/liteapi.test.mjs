@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import {
   missingForRates, missingForBook, normalizeRates, nightsBetween,
   intel, rank, publicOption, assertPublicSafe, offer,
-  marginFor, keyEstate, bookingGate, searchRates, prebook, book, cancelBooking,
+  marginFor, keyEstate, bookingGate, searchRates, prebook, book, cancelBooking, paymentFor,
 } from './liteapi.mjs';
 
 const ENV = { LITEAPI_KEY: 'sand_test', LITEAPI_BOOKING_ENABLED: 'true' };
@@ -312,7 +312,11 @@ describe('the booking contract', () => {
     assert.ok(missing.includes('holder.lastName'));
     assert.ok(missing.includes('holder.email'));
     assert.ok(missing.includes('guests[0].lastName'));
-    assert.ok(missing.includes('payment.transactionId'));
+    // payment.transactionId is deliberately NOT listed. paymentFor() decides
+    // the method and whether a session reference is needed, from the key's
+    // estate; a second check here could disagree with the one that matters,
+    // and in a sandbox it would demand something a rehearsal never has.
+    assert.ok(!missing.some((m) => m.startsWith('payment')));
   });
 
   test('an email that is not an email is a missing email', () => {
@@ -332,6 +336,55 @@ describe('the booking contract', () => {
       guests: [{ occupancyNumber: 1, firstName: 'A', lastName: 'B' }],
       payment: { method: 'ACC_CREDIT_CARD' },
     }), []);
+  });
+});
+
+/* ── 8b. THE PAYMENT METHOD IS NOT THE CALLER'S TO CHOOSE ─────────────── */
+
+describe('a simulated charge cannot reach production', () => {
+  const SAND = { LITEAPI_KEY: 'sand_x' };
+  const PROD = { LITEAPI_KEY: 'prod_x' };
+
+  test('ACC_CREDIT_CARD is refused against a production key', () => {
+    // This is the hole. ACC_CREDIT_CARD moves no money, so against a prod key
+    // it is a way to take a real room out of inventory with nothing paid — and
+    // anything holding a member id can post to the book route, so "the app
+    // would never send that" is not a control.
+    assert.throws(
+      () => paymentFor(PROD, { method: 'ACC_CREDIT_CARD' }),
+      (err) => err.code === 'simulated_payment_refused' && err.status === 400,
+    );
+  });
+
+  test('and is the right answer in a sandbox, which is what makes a rehearsal possible', () => {
+    assert.deepEqual(paymentFor(SAND, { method: 'ACC_CREDIT_CARD' }), { method: 'ACC_CREDIT_CARD' });
+    assert.deepEqual(paymentFor(SAND, {}), { method: 'ACC_CREDIT_CARD' },
+      'an empty payment in a sandbox is a rehearsal, not an error');
+  });
+
+  test('a real session reference wins in either estate', () => {
+    for (const env of [SAND, PROD]) {
+      assert.deepEqual(paymentFor(env, { transactionId: 'tx_9' }), { method: 'TRANSACTION_ID', transactionId: 'tx_9' });
+    }
+  });
+
+  test('a live booking with no session reference is refused, in NUM’s words not the supplier’s', () => {
+    assert.throws(() => paymentFor(PROD, {}), (err) => err.code === 'no_payment_session');
+  });
+
+  test('a caller cannot smuggle the simulated method past a prod key through book()', async () => {
+    await assert.rejects(
+      () => book(
+        { LITEAPI_KEY: 'prod_x', LITEAPI_BOOKING_ENABLED: 'true', LITEAPI_BOOKING_LIVE: 'true' },
+        {
+          prebookId: 'pb', holder: { firstName: 'A', lastName: 'B', email: 'a@b.com' },
+          guests: [{ occupancyNumber: 1, firstName: 'A', lastName: 'B' }],
+          payment: { method: 'ACC_CREDIT_CARD' },
+        },
+        { fetchImpl: async () => { throw new Error('the supplier should never have been called'); } },
+      ),
+      /sandbox key/,
+    );
   });
 });
 
@@ -385,7 +438,7 @@ describe('a whole booking, against a fake supplier', () => {
     // charge and moves no money, which is what makes this rehearsable.
     const confirmed = await book(ENV, {
       prebookId: pre.prebookId,
-      holder: { firstName: 'Dre', lastName: 'Tester', email: 'dre@example.com' },
+      holder: { firstName: 'Dre', lastName: 'Tester', email: 'dre@example.com', phone: '0200923695' },
       guests: [{ occupancyNumber: 1, firstName: 'Dre', lastName: 'Tester' }],
       payment: { method: 'ACC_CREDIT_CARD' },
       clientReference: 'num-stay-abc',
@@ -405,6 +458,9 @@ describe('a whole booking, against a fake supplier', () => {
         `${c.url} committed against the search host — that 404s and reads like a missing booking`);
     }
     assert.equal(calls[0].headers['X-API-Key'], 'sand_test');
+    // Their own documented sample carries holder.phone; ours must too.
+    assert.equal(calls[2].body.holder.phone, '0200923695');
+    assert.equal(calls[2].body.payment.method, 'ACC_CREDIT_CARD', 'the sandbox estate should have picked the simulated charge');
     assert.equal(calls[3].method, 'PUT', 'cancel must be a PUT on the booking, not a POST');
   });
 

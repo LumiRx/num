@@ -161,7 +161,10 @@ export default function StayBookSheet() {
               <input style={{ ...field, marginTop: 8 }} type="email" inputMode="email" placeholder={t('Email for the confirmation')}
                 value={draft.holder.email}
                 onChange={(e) => set({ holder: { ...draft.holder, email: e.target.value } })} />
-              <div style={quiet}>{t('The confirmation goes here. NUM never asks for card details — you pay the hotel’s payment provider directly.')}</div>
+              <input style={{ ...field, marginTop: 8 }} type="tel" inputMode="tel" placeholder={t('Phone (optional)')}
+                value={draft.holder.phone}
+                onChange={(e) => set({ holder: { ...draft.holder, phone: e.target.value } })} />
+              <div style={quiet}>{t('The confirmation goes here. The phone is only so the hotel can reach you if your plans change — NUM never asks for card details, and you pay the hotel’s payment provider directly.')}</div>
             </div>
 
             <div style={{ marginTop: 16 }}>
