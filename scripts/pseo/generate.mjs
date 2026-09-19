@@ -35,6 +35,11 @@
  *                                  scaled-content-abuse policy describes.
  *   7. THREE INTERNAL LINKS      — a page nothing links to and which links
  *                                  nowhere is a doorway, whatever is on it.
+ *   8. NOT A FRANCHISE ROLL-UP    — no single signboard may be 40% of the set.
+ *                                  The top-scoring candidates in the whole
+ *                                  directory were luggage-storage sets that
+ *                                  are 88-97% one franchise, because the
+ *                                  score rewards exactly what a chain has.
  *
  * A set that fails any of these is REPORTED, not silently skipped, and no file
  * is written for it. There is no --force.
@@ -54,6 +59,50 @@ const PUBLIC = ROOT + 'public/';
 export const MIN_PICKS = 3;
 export const MIN_KNOW = 200;
 export const MIN_LINKS = 3;
+
+/**
+ * 8. NOT A FRANCHISE ROLL-UP.
+ *
+ * The seven gates above all ask about the WRITING. This one asks about the
+ * data, and it was added 19 Sep 2026 after checking what the scorer thought
+ * the best sets were:
+ *
+ *   berlin/luggage-storage    78 places,  3 distinct names, 97% one name
+ *   athens/luggage-storage    52 places,  4 names,          94%
+ *   bangkok/luggage-storage   60 places,  7 names,          88%
+ *   london bike-rental       335 places, 18 names,          95%
+ *   munich EV charging       249 places,  9 names,          96%
+ *
+ * Every one of those scored in the TOP band, because the score rewards place
+ * count and website coverage and a franchise has perfect contact data for
+ * every pin. "Radical Storage" fifty-three times is a complete, well-linked,
+ * high-confidence set and a worthless page — and it is the page you would
+ * build first, because it sits at the top of the list.
+ *
+ * One Bangkok row's website even pointed at Rome, which is what a bulk
+ * affiliate import looks like from the inside.
+ *
+ * 40% is deliberately generous. Two or three branches of a real local chain
+ * in a small set is normal and fine; half the page being one signboard is
+ * not. The check runs on LIVE directory rows at build time rather than on the
+ * candidates.json snapshot, because the data moves and the snapshot does not.
+ */
+export const MAX_ONE_NAME = 0.4;
+
+export function franchiseShare(places = []) {
+  if (!places.length) return { share: 0, name: null, count: 0 };
+  const byName = new Map();
+  for (const p of places) {
+    // Fold case and trailing branch punctuation: "Stasher Luggage Storage -
+    // Iconsiam" and "Stasher Luggage Storage - Bangkok" are one signboard.
+    const key = String(p.name ?? '').toLowerCase().split(/\s+[-–—|·]\s+/)[0].trim();
+    if (!key) continue;
+    byName.set(key, (byName.get(key) ?? 0) + 1);
+  }
+  let name = null, count = 0;
+  for (const [k, v] of byName) if (v > count) { name = k; count = v; }
+  return { share: count / places.length, name, count };
+}
 
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
@@ -93,6 +142,11 @@ export function gate(candidate, { places, take, dupes, linkCount }) {
   }
   if (linkCount < MIN_LINKS) {
     reasons.push(`${linkCount} internal links, needs ${MIN_LINKS} — a page that links nowhere is a doorway`);
+  }
+  const roll = franchiseShare(places);
+  if (roll.share >= MAX_ONE_NAME) {
+    reasons.push(`${Math.round(roll.share * 100)}% of this set is "${roll.name}" `
+      + `(${roll.count} of ${places.length}) — a roll-up, not a shortlist`);
   }
   return { ok: reasons.length === 0, reasons, take };
 }

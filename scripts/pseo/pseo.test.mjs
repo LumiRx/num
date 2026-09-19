@@ -10,14 +10,14 @@
 // rankings and not helping users", and whose canonical shape is pages that
 // swap a city name with nothing else changed. Every check below maps to one
 // specific way of ending up there.
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CATEGORY_SETS, NEVER, setsBySlug, MIN_SET, MAX_SET } from './taxonomy.mjs';
 import { overlap, shingles, tooSimilar, MAX_OVERLAP } from './take.mjs';
 import { localNameFor, detectScript, scriptFor } from './localname.mjs';
-import { gate, relatedFor, MIN_PICKS, MIN_KNOW, MIN_LINKS } from './generate.mjs';
+import { gate, relatedFor, MIN_PICKS, MIN_KNOW, MIN_LINKS, franchiseShare, MAX_ONE_NAME } from './generate.mjs';
 import { renderSet, esc } from './template.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
@@ -423,4 +423,54 @@ test('the client set links to its siblings', () => {
   for (const o of CLIENTS.slice(1, 4)) {
     assert.ok(h.includes(`/agents/${o.slug}/`), `no link to ${o.slug}`);
   }
+});
+
+// ── GATE 8: NOT A FRANCHISE ROLL-UP ──────────────────────────────────────
+//
+// 19 Sep 2026. The candidate scorer's top band was luggage-storage sets that
+// are 88-97% a single franchise, because the score rewards place count and
+// website coverage and a chain has perfect contact data for every pin. The
+// page you would build FIRST, following the score, is "Radical Storage" fifty
+// -three times. That is Google's scaled-content-abuse example with a map.
+describe('a set that is mostly one signboard is not a shortlist', () => {
+  const many = (n, name) => Array.from({ length: n }, (_, i) => ({ name: name ?? `Real Place ${i}` }));
+
+  test('the real Bangkok set is caught', () => {
+    // 53 of 60 rows named "Radical Storage", measured in D1 on 19 Sep.
+    const { share, name, count } = franchiseShare([...many(53, 'Radical Storage'), ...many(7)]);
+    assert.equal(count, 53);
+    assert.equal(name, 'radical storage');
+    assert.ok(share >= MAX_ONE_NAME, `${share} should trip the gate`);
+  });
+
+  test('branch suffixes fold — one chain is one name however it signs each door', () => {
+    const p = [{ name: 'Stasher Luggage Storage - Iconsiam' },
+      { name: 'Stasher Luggage Storage — Bangkok' },
+      { name: 'Stasher Luggage Storage · Silom' },
+      { name: 'Somewhere Else' }];
+    assert.equal(franchiseShare(p).count, 3, 'the separator changed and the chain slipped through');
+  });
+
+  test('a healthy set passes — 26 Rome metro stations, all distinct', () => {
+    assert.ok(franchiseShare(many(26)).share < MAX_ONE_NAME);
+  });
+
+  test('two branches of a local chain in a small set is fine, not a roll-up', () => {
+    // The threshold is generous on purpose: this must not punish a city with
+    // two branches of one good bakery in a set of eight.
+    assert.ok(franchiseShare([...many(2, 'Local Bakery'), ...many(6)]).share < MAX_ONE_NAME);
+  });
+
+  test('an empty set does not divide by zero', () => {
+    assert.deepEqual(franchiseShare([]), { share: 0, name: null, count: 0 });
+    assert.deepEqual(franchiseShare(), { share: 0, name: null, count: 0 });
+  });
+
+  test('the gate reports it as a reason rather than skipping silently', () => {
+    const take = { picks: [{ key: 'Radical Storage' }, { key: 'A' }, { key: 'B' }], sub: 'x'.repeat(60), know: 'y'.repeat(250) };
+    const places = [...many(53, 'Radical Storage'), { name: 'A' }, { name: 'B' }];
+    const out = gate({ dest: 'bangkok', slug: 'luggage-storage' }, { places, take, dupes: [], linkCount: 5 });
+    assert.equal(out.ok, false);
+    assert.ok(out.reasons.some((r) => /roll-up/.test(r)), out.reasons.join(' | '));
+  });
 });
