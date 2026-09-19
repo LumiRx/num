@@ -174,6 +174,20 @@ const FILES = [
   // migration — and nothing is changed by it. Check with
   // pragma_table_info('num_paylinks') before concluding anything else.
   'worker/migrations/0045_bill_items_and_split.sql',
+  // The editorial authority layer: critics' judgements, dated and revocable,
+  // so the ranking can tell an adequate restaurant from a great one. Two
+  // tables, both CREATE IF NOT EXISTS, no ALTER — safe to re-run.
+  'worker/migrations/0046_editorial.sql',
+  // Every step of a bill, not just the scan: which rail, who, and why a
+  // refusal refused. Four nullable ALTERs on num_pay_events, each its own
+  // statement, plus one index. An ADD COLUMN is never a no-op on a second
+  // pass -- a re-run stops at the first one and changes nothing.
+  'worker/migrations/0047_pay_funnel.sql',
+  // The conversation with a business: a thread per contact, every message in
+  // both directions, and which one-time follow-ups have been sent. Three
+  // tables and their indexes, all IF NOT EXISTS, no ALTER, so a second pass
+  // is a no-op.
+  'worker/migrations/0048_business_comms.sql',
 ];
 
 const DRY = process.argv.includes('--dry');
