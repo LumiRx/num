@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.402 — 2026-09-19 21:06 UTC
+
+ring query fix, flagged answers never cached, ungamable draw, drift guard
+
+- commit `708e752`
+
 ## 0.8.401 — 2026-09-19 21:05 UTC
 
 the verified block is back — the ring query had thrown on every ask since the editorial layer; white base; three-bubble answers with a grid of places
