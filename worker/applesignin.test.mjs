@@ -107,7 +107,7 @@ test('4.8 — Apple sign-in is offered where an account actually begins', () => 
   const sheet = root('src/components/app/InviteSheet.tsx');
   assert.match(sheet, /<AppleSignIn onDone=\{close\} \/>/, 'the first-run screen lost the Apple button');
   const apple = sheet.indexOf('<AppleSignIn');
-  const nameField = sheet.indexOf("placeholder={sending ? 'Your name'");
+  const nameField = sheet.indexOf("placeholder={sending ? t('Your name')");
   assert.ok(apple > 0 && apple < nameField,
     'Apple sign-in renders below the name/number form — 4.8 asks for at least equal prominence');
 });
