@@ -78,6 +78,28 @@ This is advisory: nothing stops a session that does not check. That is still
 most of the fix, because the failure above was not two people ignoring each
 other — it was two people with no way to find out.
 
+## After you commit: leave the next session a line
+
+```bash
+npm run note -- "what changed, and what it means for anyone else in here"
+```
+
+One line into `RUNS.log`, stamped with the time, the commit you are on, and
+the name from your edit claim. It also records how many files were sitting
+uncommitted in the tree, because a ship from this worktree carries whatever
+else is on disk and the log has had to say so by hand every time.
+
+**Per commit, not per ship.** RUNS.log has always been written at deploy time,
+which means that between deploys — usually several hours, across several
+sessions — nobody can see what landed. A commit is the unit that changes the
+ground under somebody else's feet, so that is the unit worth recording.
+
+Write the line for the person who arrives next, not for a changelog. The
+entries in there that have earned their place are the ones that say what to
+avoid: *"in this shell always prefix npm installs with NODE_ENV=development"*,
+written by a session that had just pruned every devDependency and spent an
+hour restoring them. Nobody has made that mistake twice.
+
 ## Commit messages carry no Claude attribution
 
 **Never add `Co-Authored-By: Claude ...` or `Claude-Session: ...` to a commit
@@ -94,6 +116,13 @@ cleanup to start unasked. What every session *can* do is stop adding new ones.
 
 Claude's involvement belongs in the project docs and `RUNS.log`, not in the
 commit trailer.
+
+**The credit already exists, once, where it belongs.** `package.json` lists
+`contributors: [{ name: "Claude (Anthropic)" }]` — the repo's overall key,
+recorded a single time rather than restated on every deployment. That is the
+arrangement Dre asked for. A session that feels the urge to add a trailer "to
+give credit" should know the credit is already there and leave the commit
+alone.
 
 ## Non-negotiables
 

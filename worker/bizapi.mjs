@@ -581,8 +581,20 @@ async function addToGroup(env, auth, request) {
   if (!other || other.revoked_at) return err('bad_key', 'That key is not recognised, or it has been revoked.', 400);
   if (other.business_id === auth.businessId) return err('same_listing', 'That is this listing\u2019s own key.', 400);
 
-  const { groupForBusiness, createGroup, addSite } = await import('./bizgroup.mjs');
+  const { groupForBusiness, createGroup, addSite, sitesFor: siteList } = await import('./bizgroup.mjs');
   let group = await groupForBusiness(env, auth.businessId);
+
+  // The plan's location ceiling, applied on the door that actually attaches a
+  // site. Counted from the group, because that is where multi-location lives.
+  // An existing group of N is at N; a business with no group yet holds one
+  // site (itself) and is about to make it two.
+  const { canAddLocation } = await import('./bizbilling.mjs');
+  const held = group ? (await siteList(env, group.id)).length : 1;
+  const roomToAdd = await canAddLocation(env, auth.businessId, { count: held });
+  if (!roomToAdd.ok) {
+    return err('at_location_limit',
+      `${roomToAdd.reason} Adding this one needs a plan that covers more.`, 402);
+  }
   if (!group) {
     const name = String(b.name ?? '').trim().slice(0, 120);
     if (!name) return err('no_group', 'Start the group first: POST /v1/group with a name.', 409);

@@ -46,9 +46,14 @@ import { conversation, threadById, replyAddress, record, markSent } from './bizt
  */
 export const PRICE_FACTS = Object.freeze([
   'Listing is free. No signup fee, no monthly fee, no card.',
-  'A completed table booking costs a flat $2.00 (£1.50, €2.00, ฿70), whatever the bill.',
-  'Rooms and appointments are 15%, activities 20%, delivery 10% — only when sold and paid through NUM.',
-  'Nothing is charged for a no-show, for a guest who came on their own, or for the venue’s own regulars.',
+  // Commission on a booking NUM completed, a flat fee on one it did not.
+  // These two were the wrong way round until 19 Sep 2026: this block said a
+  // completed table was $2.00 flat, while billpay.mjs charged 10% and the
+  // pricing page said 10%. This block is what the reply guard enforces, so
+  // the venue was being quoted a price the ledger never charges.
+  'A booking NUM completes costs a share of the bill: 10% on a table, 15% on a room or appointment, 20% on an activity or tour, 10% on a delivery order.',
+  'A guest NUM did not send, who settles through NUM’s code, costs a flat $2.00 (£1.50, €2.00, ฿70) — never a percentage of their bill.',
+  'Nothing is charged for a no-show, for a declined request, or for a guest who came on their own and did not settle through NUM.',
 ]);
 
 const ALLOWED_LINKS = [

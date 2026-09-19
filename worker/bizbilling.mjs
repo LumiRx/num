@@ -290,13 +290,23 @@ export async function lapseBizBySub(env, subId) {
  * function that answers the question, `listLocations` reports its answer
  * honestly, and whoever builds that door calls this before attaching.
  */
-export async function canAddLocation(env, businessId) {
+export async function canAddLocation(env, businessId, { count: given = null } = {}) {
   const ent = await bizEntitlements(env, businessId);
   const max = ent?.multi_location_max;
-  const { results } = await env.DB.prepare(
-    'SELECT place_id FROM num_place_owners WHERE business_id=?1 AND revoked_at IS NULL',
-  ).bind(businessId).all().catch(() => ({ results: [] }));
-  const count = (results ?? []).length;
+  // COUNT IS PASSED IN BY THE CALLER THAT HAS IT, LIKE may() AND plans_max.
+  //
+  // The query below counts owner rows against ONE business_id, and the note
+  // above records why that is always 1: every claim door mints a fresh
+  // businesses row, so a second owner row has never been written. A group's
+  // real size lives in num_business_group_sites. A caller holding the group
+  // passes sitesFor(group.id).length and gets a true answer; one that does
+  // not keeps the old behaviour.
+  const { results } = given == null
+    ? await env.DB.prepare(
+      'SELECT place_id FROM num_place_owners WHERE business_id=?1 AND revoked_at IS NULL',
+    ).bind(businessId).all().catch(() => ({ results: [] }))
+    : { results: null };
+  const count = given == null ? (results ?? []).length : Number(given);
   if (max == null) return { ok: true, count, max: null, reason: null };
   if (count < max) return { ok: true, count, max, reason: null };
   return {

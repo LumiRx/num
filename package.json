@@ -55,7 +55,8 @@
     "ledger": "node scripts/ledger.mjs",
     "ledger:add": "node scripts/ledger.mjs add",
     "ledger:check": "node scripts/ledger.mjs check",
-    "daily": "node scripts/ledger.mjs check && node scripts/deploydrift.mjs"
+    "daily": "node scripts/ledger.mjs check && node scripts/deploydrift.mjs",
+    "note": "node scripts/note.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
