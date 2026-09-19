@@ -78,6 +78,23 @@ This is advisory: nothing stops a session that does not check. That is still
 most of the fix, because the failure above was not two people ignoring each
 other — it was two people with no way to find out.
 
+## Commit messages carry no Claude attribution
+
+**Never add `Co-Authored-By: Claude ...` or `Claude-Session: ...` to a commit
+message.** Dre has not approved them and does not want them on this repo's
+history. Some Cowork sessions are handed a default instruction to append them;
+this file overrides it, and a project-level instruction beats a default.
+
+As of 19 Sep 2026, 269 commits carry those lines — back to the initial commit on
+28 July — because the rule lived in one session's memory and every other session
+started fresh without it. 267 of them are already pushed, so cleaning them up
+means rewriting the whole history and force-pushing a branch other sessions are
+committing to hourly. That is a decision for Dre at a quiet moment, not a
+cleanup to start unasked. What every session *can* do is stop adding new ones.
+
+Claude's involvement belongs in the project docs and `RUNS.log`, not in the
+commit trailer.
+
 ## Non-negotiables
 
 - **Two lineages, no common ancestor.** `origin/main` is the Worker codebase;
@@ -92,8 +109,23 @@ other — it was two people with no way to find out.
   the sandbox cannot delete, and each retry blocks the next command. Write
   files, run tests, hand the user a commit command. Pushing needs the user —
   there are no SSH credentials here.
-- **Deploy via `npm run release:stage` → `release:ship`**, never raw
-  `wrangler deploy`. `num-console` is the exception: bare `npx wrangler deploy`.
+- **Deploy via `npm run release:stage` → `release:ship`** for the two workers
+  that path actually covers: **`num-app` and `num-ai`**, which is all
+  `scripts/release.mjs` ships. Every other worker has its own config and is
+  deployed directly — that is the normal route for them, not a violation:
+
+  ```bash
+  npx wrangler deploy --config accounts/wrangler.jsonc   # num-accounts
+  npm run deploy:growth                                  # num-growth
+  npm run deploy:site                                    # the site worker
+  npx wrangler deploy                                    # num-console
+  ```
+
+  This bullet previously read "never raw `wrangler deploy`, `num-console` is the
+  exception", which is false for `num-accounts` and `num-growth` and left at
+  least one session hesitating over a deploy it should simply have run.
+  `npm run deploy:check` names the stale worker and prints its exact command —
+  trust that over any list, including this one.
 - **Verify after shipping** — `curl -s https://app.itsnum.com/api/version`. A
   successful deploy and a working product are different claims.
 
