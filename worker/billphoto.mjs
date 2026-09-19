@@ -45,6 +45,7 @@
 
 import { parseAmount } from './billqr.mjs';
 import { currencyForCountry } from './commission.mjs';
+import { track } from './paytrack.mjs';
 
 export const PHOTO_MODEL = 'claude-haiku-4-5-20251001';
 export const photoReady = (env) => !!env?.ANTHROPIC_API_KEY;
@@ -259,8 +260,19 @@ export async function confirmProposal(env, businessId, proposalId, { amount = nu
     out.token, by,
   ).run().catch(() => null);
 
+  // Recorded here and not when the photo was READ, because a read that nobody
+  // confirmed never became a bill — and `corrected` is the honest half of it:
+  // how often a human had to change the model's figure is the measure of
+  // whether this feature is worth keeping.
+  const corrected = row.amount_minor != null && row.amount_minor !== amt.minor;
+  await track(env, {
+    token: out.token, businessId, kind: 'photo_read', rail: 'photo',
+    memberId: null, amountMinor: amt.minor,
+    detail: corrected ? 'staff corrected the figure the model read' : 'staff confirmed the figure the model read',
+  });
+
   return { ok: true, token: out.token, url: out.url, amount: amt.display, currency: row.currency,
-           corrected: row.amount_minor != null && row.amount_minor !== amt.minor };
+           corrected };
 }
 
 /**
