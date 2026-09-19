@@ -21,6 +21,8 @@
  * strategy is working or quietly earning a penalty.
  */
 
+import { NAV, NAV_HEAD, TRANSLATE } from '../nav.mjs';
+
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -84,7 +86,7 @@ ${c.rows.map((r) => `    <li><a href="${esc(r.path)}">${esc(r.title[0].toUpperCa
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NUM guides — every one we have mapped in full</title>
-<meta name="description" content="Complete, counted lists from NUM's directory of ${Number(2529721).toLocaleString('en-GB')} places — every beach, every viewpoint, every luggage locker in a city, with coordinates.">
+<meta name="description" content="Complete, counted lists from NUM's directory — every beach, every viewpoint, every luggage locker in a city, with coordinates. ${total} guide${total === 1 ? '' : 's'}, ${places.toLocaleString('en-GB')} places counted.">
 <link rel="canonical" href="${SITE}/guides/">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta property="og:type" content="website"><meta property="og:site_name" content="NUM">
@@ -93,21 +95,39 @@ ${c.rows.map((r) => `    <li><a href="${esc(r.path)}">${esc(r.title[0].toUpperCa
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">${JSON.stringify({
+  '@context': 'https://schema.org',
+  '@graph': [{
+    '@type': 'CollectionPage',
+    '@id': `${SITE}/guides/#webpage`,
+    url: `${SITE}/guides/`,
+    name: 'NUM guides — every one we have mapped in full',
+    description: `Complete, counted lists from NUM's directory. ${total} guide${total === 1 ? '' : 's'}, ${places} places counted.`,
+    isPartOf: { '@id': `${SITE}/#website` },
+    publisher: { '@id': `${SITE}/#organization` },
+    inLanguage: 'en',
+    dateModified: today,
+    // The guides themselves, so a crawler reading the hub learns the set
+    // without having to follow every link to find out what is here.
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: total,
+      itemListElement: built.map((b, i) => ({
+        '@type': 'ListItem', position: i + 1,
+        url: `${SITE}${b.path}`,
+        name: `${b.title[0].toUpperCase()}${b.title.slice(1)} — ${dests.get(b.dest)?.name ?? b.dest}`,
+      })),
+    },
+  }],
+})}</script>
 <script src="/num-capture.js" data-page="guides" defer></script>
+${NAV_HEAD}
 <style>.prose{max-width:72ch}.also{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0;padding:0;list-style:none}
 .also a{font-size:14px;text-decoration:none;border:1px solid var(--line,#e0ddd4);border-radius:999px;padding:6px 14px}
 .also .geo{color:var(--ink2);font-size:12px}.prose h2{margin-top:34px;font-size:19px}</style>
 </head>
 <body>
-<nav class="nav"><div class="wrap row">
-  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
-  <div class="navlinks">
-    <a href="/what-we-do/">What we do</a><a href="/app/">Get the app</a>
-    <a href="/how-it-works/">How it works</a><a href="/destinations/">Destinations</a>
-    <a class="btn pri" href="/get/" style="padding:10px 18px;font-size:14px">Ask NUM</a>
-  </div>
-  <button class="menu-btn" aria-label="Menu">&#9776;</button>
-</div></nav>
+${NAV}
 <header class="wrap" style="padding-top:56px;padding-bottom:8px">
   <span class="pill">&#10022; From NUM's directory</span>
   <h1 class="h1" style="margin-top:18px;max-width:20ch">Mapped in full.</h1>
@@ -118,7 +138,7 @@ ${c.rows.map((r) => `    <li><a href="${esc(r.path)}">${esc(r.title[0].toUpperCa
 <section class="wrap prose">
 ${body}
   <h2 style="margin-top:44px">Why these and not everything</h2>
-  <p>NUM's directory holds 2,529,721 places across 77 destinations. Only some of that
+  <p>NUM's directory covers ${dests.size.toLocaleString('en-GB')} destinations. Only some of that
   makes a guide worth publishing: the set has to be small enough to list completely, so the
   count in the headline is something you can check by scrolling, and somebody here has to have
   something worth saying about it. Where we have the places but not the judgement, there is no
@@ -130,6 +150,7 @@ ${body}
   <a href="/destinations/">All destinations</a> &nbsp;&middot;&nbsp;
   <a href="/how-it-works/">How NUM works</a>
 </footer>
+${TRANSLATE}
 </body>
 </html>
 `;

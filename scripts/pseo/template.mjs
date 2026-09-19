@@ -24,6 +24,7 @@
  */
 
 import { localNameFor } from './localname.mjs';
+import { NAV, NAV_HEAD, TRANSLATE } from '../nav.mjs';
 
 export const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -153,18 +154,6 @@ export function renderSet({ dest, set, take, places, related, today }) {
   }
 
   const k = (s) => esc(s);
-  const nav = `<nav class="nav"><div class="wrap row">
-  <a class="brand" href="/"><span class="dot"></span>NUM <small>travel concierge</small></a>
-  <div class="navlinks">
-    <a href="/what-we-do/">What we do</a>
-    <a href="/app/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/destinations/">Destinations</a>
-    <a href="/business/">For business</a>
-    <a class="btn pri" href="/get/" style="padding:10px 18px;font-size:14px">Ask NUM</a>
-  </div>
-  <button class="menu-btn" aria-label="Menu">&#9776;</button>
-</div>
-<div class="mobile"><a href="/app/">Get the app</a><a href="/how-it-works/">How it works</a><a href="/destinations/">Destinations</a><a href="/business/">For business</a></div>
-</nav>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -183,10 +172,11 @@ export function renderSet({ dest, set, take, places, related, today }) {
 <link rel="stylesheet" href="/assets/site.css">
 <script type="application/ld+json">${jsonld({ '@context': 'https://schema.org', '@graph': graph })}</script>
 <script src="/num-capture.js" data-page="set-${k(dest.slug)}-${k(set.slug)}" defer></script>
+${NAV_HEAD}
 <style>.prose{max-width:72ch}.prose li{margin:10px 0;line-height:1.6}.th{color:var(--ink2);font-size:.92em}.geo{color:var(--ink2);font-size:.85em;font-family:ui-monospace,monospace}.prose h2{margin-top:40px}.also{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0;padding:0;list-style:none}.also a{font-size:14px;text-decoration:none;border:1px solid var(--line,#e0ddd4);border-radius:999px;padding:6px 14px}</style>
 </head>
 <body>
-${nav}
+${NAV}
 <header class="wrap" style="padding-top:56px;padding-bottom:8px">
   <span class="pill">&#10022; From NUM's directory &middot; updated ${k(today)}</span>
   <h1 class="h1" style="margin-top:18px;max-width:22ch">${k(title)}.</h1>
@@ -219,6 +209,7 @@ ${related.map((r) => `  <li><a href="${esc(r.path)}">${esc(r.title[0].toUpperCas
   <a href="/destinations/">All destinations</a> &nbsp;&middot;&nbsp;
   <a href="/how-it-works/">How NUM works</a>
 </footer>
+${TRANSLATE}
 </body>
 </html>
 `;

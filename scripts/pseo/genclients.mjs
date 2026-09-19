@@ -20,6 +20,7 @@ import { CLIENTS, MCP_URL, SIGNUP, CHECKED } from './clients.mjs';
 // and the footer of every page disagreed with the page listing the cities.
 // scripts/coverage-claims.mjs is the guard that caught it; TRUTH is its source.
 import { TRUTH } from '../coverage-claims.mjs';
+import { NAV as nav, NAV_HEAD } from '../nav.mjs';
 
 const COVERAGE = `${TRUTH.destinations} destinations in ${TRUTH.countries} countries`;
 // A floor, not a count. The exact figure moves every import and no page that
@@ -46,44 +47,9 @@ const TOOLS = [
   ['num_list_submissions', 'what you sent and what a reviewer decided'],
 ];
 
-// ONE NAVIGATION, EVERY PAGE — worker/nav.test.mjs is the guard, and it caught
-// this generator still emitting the old `.nav`/`.navlinks` markup months after
-// the rest of the site moved to `.nv`. Kept byte-identical to the shared nav;
-// if it drifts, that test fails rather than the difference shipping.
-const nav = `<nav class="nv">
-  <div class="nv-bar">
-    <a class="nv-brand" href="/"><span class="nv-dot"></span>NUM <small>travel concierge</small></a>
-    <div class="nv-links">
-      <a href="/what-we-do/">What we do</a>
-      <a href="/how-it-works/">How it works</a>
-      <a href="/destinations/">Destinations</a>
-      <span class="nv-sep"></span>
-      <a href="/business/">For business</a>
-      <a href="/hosts/">For hosts</a>
-      <a href="/agents/">For AI agents</a>
-    </div>
-    <div class="nv-end">
-      <a class="nv-signin" id="navAuth" href="/signin/">Sign in</a>
-      <a class="nv-cta" href="https://app.itsnum.com/?app=1">Get NUM</a>
-    </div>
-    <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
-  </div>
-  <div class="nv-menu" hidden>
-    <p class="nv-group">Travellers</p>
-    <a href="/what-we-do/">What we do</a>
-    <a href="/how-it-works/">How it works</a>
-    <a href="/destinations/">Destinations</a>
-    <a href="/perks/">Perks</a>
-    <p class="nv-group">Partners</p>
-    <a href="/business/">For business</a>
-    <a href="/claim/">List your business</a>
-    <a href="/hosts/">For hosts</a>
-    <a href="/agents/">For AI agents</a>
-    <p class="nv-group">Account</p>
-    <a href="/signin/">Sign in</a>
-    <a href="/contact/">Contact</a>
-  </div>
-</nav>`;
+// ONE NAVIGATION, EVERY PAGE. scripts/nav.mjs is the only copy now; this
+// generator used to hold its own, which is how it kept the pre-September
+// markup long after the rest of the site moved off it.
 
 const CSS = `<style>.prose{max-width:74ch}.prose h2{margin-top:40px}
 pre.code{background:#0d1b24;color:#d8e6ee;border-radius:14px;padding:18px;overflow-x:auto;
@@ -147,8 +113,7 @@ function clientPage(c, others) {
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
-<link rel="stylesheet" href="/assets/nav.css">
-<script src="/assets/nav.js" defer></script>
+${NAV_HEAD}
 <script type="application/ld+json">${jsonld({ '@context': 'https://schema.org', '@graph': graph })}</script>
 <script src="/num-capture.js" data-page="agents-${esc(c.slug)}" defer></script>
 <!-- Nine languages. Every public page carries this; worker/translate.test.mjs

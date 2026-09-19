@@ -72,13 +72,52 @@ export const CLAIMS = [
   { re: /\b([\d,]+)\s+(?:destinations|cities)\s+(?:in|across)\s+[\d,]+\s+countries/gi, key: 'destinations' },
   { re: /\b(?:in|across)\s+([\d,]+)\s+countries\b/gi, key: 'countries' },
   { re: /\bCoverage:\s*[\d,]+\s+places,\s*([\d,]+)\s+destinations/gi, key: 'destinations' },
+  // 19 Sep 2026 — TWO HOLES, BOTH FOUND WITH A WRONG NUMBER ALREADY IN THEM.
+  //
+  // 1. The Coverage line above extracts the DESTINATIONS number and stops.
+  //    The countries number sits on the same line, two words later, and
+  //    nothing looked at it. llms.txt shipped
+  //      "Coverage: 2,686,795 places, 106 destinations, 38 countries."
+  //    while the very same file said 39 countries seven lines above, in the
+  //    prose summary. One file, two numbers, and this guard green.
+  //
+  // 2. /destinations/ renders its headline as a pill —
+  //      "104 destinations · 38 countries"
+  //    — where the separator is a middot rather than "in" or "across", so
+  //    neither of the patterns above matched. Both figures were wrong, on
+  //    the one page whose entire job is to list the destinations. The header
+  //    of this file describes the original 2026 failure as "Only
+  //    /destinations/ had been updated". It had since become the stale one.
+  //
+  // The lesson is the same both times: a claim is a number next to a noun,
+  // and the thing between them is not always a preposition.
+  { re: /\bCoverage:\s*[\d,]+\s+places,\s*[\d,]+\s+destinations,\s*([\d,]+)\s+countries/gi, key: 'countries' },
+  { re: /\b([\d,]+)\s+destinations\s*[·|,/–—-]\s*[\d,]+\s+countries\b/gi, key: 'destinations' },
+  { re: /\b[\d,]+\s+destinations\s*[·|,/–—-]\s*([\d,]+)\s+countries\b/gi, key: 'countries' },
 ];
 
 const walk = (dir, out = []) => {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(html|txt|md)$/i.test(name)) out.push(p);
+    // .py as well as the published files. 19 Sep 2026: every generator under
+    // scripts/ still had "77 destinations in 38 countries" hard-typed into it
+    // -- pages_agents, pages_company, pages_travel, pages_more, build_pages,
+    // patch_heads -- 15 literals in all, from September 2025. public/ was
+    // correct because the OUTPUT had been hand-fixed, so this guard was green
+    // while the next `python3 scripts/build.py` would have written 77 and 38
+    // back over every corrected page. A guard that only reads the output
+    // cannot see a regression that has not happened yet.
+    // .mjs too. scripts/pseo/hub.mjs claimed "2,529,721 places across 77
+    // destinations" twice, in a generated page about counting things, and
+    // nothing saw it because the walk stopped at .py. A coverage claim is a
+    // coverage claim whatever the file extension.
+    // A TEST'S FIXTURES ARE NOT THE SITE'S CLAIMS. head-price-lint.test.mjs
+    // feeds "104 destinations in 38 countries" to its linter on purpose, to
+    // prove the linter catches it. Flagging that would mean the only way to
+    // test a guard is to stop testing it.
+    else if (/\.test\.(mjs|js)$/i.test(name)) continue;
+    else if (/\.(html|txt|md|py|mjs)$/i.test(name)) out.push(p);
   }
   return out;
 };
@@ -89,10 +128,30 @@ const walk = (dir, out = []) => {
  * A number is only judged when it is attached to one of the words above —
  * "104 destinations" is a claim, "$104" and "104 Main St" are not.
  */
+/**
+ * A comment that RECORDS the bug is not the bug.
+ *
+ * Extending this guard to scripts/ immediately flagged the explanations
+ * written beside the fixes — "it said 77 destinations across 38 countries,
+ * the database held 106" is the note that stops the next person re-typing
+ * it. A guard that forbids describing the failure teaches everyone to fix
+ * things silently, which is how the number got to 77 in the first place.
+ *
+ * Only whole-line comments are stripped, and only for the source formats.
+ * Prose in an .html or .txt page is content a reader sees, so it is judged.
+ */
+function decomment(file, text) {
+  if (/\.py$/i.test(file)) return text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  if (/\.mjs$|\.js$/i.test(file)) {
+    return text.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  }
+  return text;
+}
+
 export function drift(root = 'public') {
   const bad = [];
   for (const file of walk(root)) {
-    const text = readFileSync(file, 'utf8');
+    const text = decomment(file, readFileSync(file, 'utf8'));
     for (const { re, key } of CLAIMS) {
       for (const m of text.matchAll(new RegExp(re.source, re.flags))) {
         const n = Number(String(m[1]).replace(/,/g, ''));
@@ -106,7 +165,7 @@ export function drift(root = 'public') {
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
-  const bad = drift();
+  const bad = [...drift('public'), ...drift('scripts')];
   if (!bad.length) {
     console.log(`[coverage] ok — ${TRUTH.destinations} destinations, ${TRUTH.countries} countries, site agrees`);
   } else {

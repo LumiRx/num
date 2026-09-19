@@ -18,6 +18,7 @@ import { CATEGORY_SETS, NEVER, setsBySlug, MIN_SET, MAX_SET } from './taxonomy.m
 import { overlap, shingles, tooSimilar, MAX_OVERLAP } from './take.mjs';
 import { localNameFor, detectScript, scriptFor } from './localname.mjs';
 import { gate, relatedFor, MIN_PICKS, MIN_KNOW, MIN_LINKS, franchiseShare, MAX_ONE_NAME } from './generate.mjs';
+import { hubPage } from './hub.mjs';
 import { renderSet, esc } from './template.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
@@ -472,5 +473,59 @@ describe('a set that is mostly one signboard is not a shortlist', () => {
     const out = gate({ dest: 'bangkok', slug: 'luggage-storage' }, { places, take, dupes: [], linkCount: 5 });
     assert.equal(out.ok, false);
     assert.ok(out.reasons.some((r) => /roll-up/.test(r)), out.reasons.join(' | '));
+  });
+});
+
+// ── THE HUB CARRIES ITS OWN STRUCTURED DATA ──────────────────────────────
+//
+// 19 Sep 2026: /guides/ was given JSON-LD by hand in public/, and the very
+// next `generate.mjs` run overwrote the file and wiped it — caught within the
+// hour only because scripts/crawlability.mjs happened to exist by then.
+//
+// That is the whole generator-versus-output trap in miniature: a fix applied
+// to the artefact survives exactly until the thing that makes the artefact
+// runs again. It belongs here, in the code that writes the page.
+describe('the guides hub is machine-readable by construction', () => {
+  const built = [
+    { dest: 'rome', title: 'fountains', path: '/rome/fountains/', places: 10 },
+    { dest: 'rome', title: 'metro stations', path: '/rome/metro-stations/', places: 26 },
+  ];
+  const dests = new Map([['rome', { name: 'Rome' }]]);
+  const html = hubPage(built, [], dests, '2026-09-19');
+  const ld = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+  const node = ld['@graph'][0];
+
+  test('it emits JSON-LD at all', () => {
+    assert.equal(node['@type'], 'CollectionPage');
+    assert.match(html, /<link rel="canonical"/);
+    assert.match(html, /name="description"/);
+  });
+
+  test('the list names every guide that was built, in order', () => {
+    assert.equal(node.mainEntity.numberOfItems, 2);
+    assert.deepEqual(node.mainEntity.itemListElement.map((x) => x.name),
+      ['Fountains — Rome', 'Metro stations — Rome']);
+    assert.deepEqual(node.mainEntity.itemListElement.map((x) => x.position), [1, 2]);
+  });
+
+  test('it resolves the city NAME, not the slug', () => {
+    // b.destName does not exist on a built row; the name lives in the dests
+    // map. The first draft of this read the missing field and every guide in
+    // the list would have been titled "— rome".
+    assert.ok(node.mainEntity.itemListElement.every((x) => /Rome$/.test(x.name)),
+      'a slug leaked into a public title');
+  });
+
+  test('the counts are derived, never typed', () => {
+    // The description used to hard-code 2,529,721 places. The directory holds
+    // 2,715,566, and the hub is the page that claims to count things.
+    assert.doesNotMatch(html, /2,?529,?721/, 'the hard-coded place count is back');
+    assert.match(html, /2 guides, 36 places counted/);
+  });
+
+  test('one guide reads as singular', () => {
+    const solo = hubPage([built[0]], [], dests, '2026-09-19');
+    assert.match(solo, /1 guide, 10 places counted/);
+    assert.doesNotMatch(solo, /1 guides/);
   });
 });
