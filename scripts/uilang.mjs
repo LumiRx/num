@@ -20,7 +20,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.goto(base + '/?app', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(2500);
 // The sign-in door sits in the header when there is no account.
-await page.getByLabel('Sign in').first().click();
+await page.getByLabel('Sign in').last().click();
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${outdir}/01-signin-en.png` });
 

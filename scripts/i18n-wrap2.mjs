@@ -17,7 +17,10 @@ const DIRS = [join(ROOT, 'src/components/app'), join(ROOT, 'src/lib')];
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');
 const only = args.find((a) => !a.startsWith('--'));
-const SKIP_FILES = /^(i18n|i18nmark|store|apibase|track|types|AdminView|native|push|themes|textsize|a11y|icons|data|features|ThreadView|concierge|outage)\.tsx?$/;
+// --mark: every wrap is T('…') — for a registry file whose entries carry arrow
+// functions (the body heuristic would say t) but are evaluated once at import.
+const forceMark = args.includes('--mark');
+const SKIP_FILES = /^(i18n|i18nmark|store|apibase|track|types|AdminView|native|push|themes|textsize|a11y|icons|data|ThreadView|concierge|outage)\.tsx?$/;
 
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -100,7 +103,7 @@ for (const dir of DIRS) for (const file of walk(dir)) {
     // this literal belongs to: a `function`/`=>` before the literal means a body.
     const stmt = src.slice(statementStart(m.index), m.index);
     const inBody = /\bfunction\b|=>/.test(stmt);
-    const fn = inBody ? 't' : 'T';
+    const fn = forceMark || !inBody ? 'T' : 't';
     // JSX attribute: placeholder="…" → placeholder={t('…')}. Everything else: 'x' → t('x').
     const attr = /\b([\w-]+)=$/.exec(bt);
     const lit = `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;

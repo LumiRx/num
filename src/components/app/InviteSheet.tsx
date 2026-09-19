@@ -106,9 +106,13 @@ function AddToHomeScreen() {
 
 /** The language strip on the first screen: every language NUM speaks, in its own script. */
 function LanguageRow() {
+  // Subscribed, so the chip moves the moment it is tapped — the words follow
+  // when the map lands (loadLang), which on a cold language can be seconds.
+  useApp((s) => s.lang);
   const chosen = pickLang();
   return (
-    <div role="radiogroup" aria-label={t('Language')} className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', margin: '0 -16px 12px', padding: '0 16px', scrollSnapType: 'x proximity' }}>
+    // Right padding clears the sheet's × button, which sits over this corner.
+    <div role="radiogroup" aria-label={t('Language')} className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', margin: '0 -16px 12px', padding: '0 64px 0 16px', scrollSnapType: 'x proximity' }}>
       {(Object.keys(LANGS) as Lang[]).map((code) => {
         const on = code === chosen;
         return (
