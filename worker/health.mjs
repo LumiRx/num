@@ -191,6 +191,48 @@ async function checkBillPay(env) {
 }
 
 /**
+ * Is the funnel actually recording anything?
+ *
+ * ── THE LIMIT THIS EXISTS TO COVER ───────────────────────────────────────
+ *
+ * features.mjs evaluates `ready` SYNCHRONOUSLY, so a feature whose only real
+ * precondition is a migration cannot check its own precondition: it can read
+ * env, and it cannot ask the database whether a column arrived. `paytrack`
+ * therefore reports `on` the moment the code is deployed, which is true about
+ * the code and says nothing about the schema.
+ *
+ * On 19 Sep that reading happened to be correct, and "happened to be" is the
+ * problem. It is the same shape as the Connect webhook: a signal that cannot
+ * see the thing it is claiming about. So the claim is checked here instead,
+ * where a check may be async, and features.mjs says plainly that it defers to
+ * this.
+ *
+ * It only complains once a venue can actually take bill payments. Before that
+ * there is nothing to record and nothing to be wrong.
+ */
+async function checkBillTracking(env) {
+  const live = await env.DB.prepare(
+    'SELECT COUNT(*) n FROM num_business_rails WHERE stripe_account_id IS NOT NULL AND stripe_charges_enabled = 1',
+  ).first().catch(() => null);
+  if (!Number(live?.n ?? 0)) return { ok: true, note: 'no venue takes bill payments yet — nothing to record' };
+
+  const col = await env.DB.prepare(
+    "SELECT COUNT(*) n FROM pragma_table_info('num_pay_events') WHERE name IN ('rail','member_id','detail','amount_minor')",
+  ).first().catch(() => null);
+  const have = Number(col?.n ?? 0);
+  if (have === 4) return { ok: true, columns: have };
+
+  return {
+    ok: false,
+    columns: have,
+    remedy:
+      'Bills can be paid but migration 0047 has not run, so every step after the scan — which rail, whether the '
+      + 'payment page opened, whether the till closed — is dropped on the floor. The registry reports paytrack as on '
+      + 'because it can only see the code. Run 0047_pay_funnel.sql.',
+  };
+}
+
+/**
  * Push, the most silent failure of all. Nothing else notices it: every send is
  * fire-and-forget, wake() swallows rejections into a `fails` counter nobody
  * reads, and notify() reports how many it TRIED, not how many landed. A member
@@ -600,6 +642,7 @@ export async function runHealth(env) {
     failures: await checkFailures(env),
     payments: checkPay(env),
     bill_pay: await checkBillPay(env),
+    bill_tracking: await checkBillTracking(env),
     sms: checkSms(env),
     push: await checkPush(env),
     cashout: checkCashout(env),

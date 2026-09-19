@@ -162,3 +162,56 @@ test('checkBillPay is wired into runHealth', async () => {
   // caught it being written and then left out of the checks object.
   assert.match(src, /bill_pay:\s*await checkBillPay\(env\)/);
 });
+
+/* ── the funnel's own precondition ─────────────────────────────────────── */
+
+function loadCheckBillTracking() {
+  const start = src.indexOf('async function checkBillTracking(');
+  const end = src.indexOf('async function checkPush(');
+  assert.ok(start > 0 && end > start, 'checkBillTracking not found in health.mjs');
+  const factory = new Function(`${src.slice(start, end)}; return checkBillTracking;`);
+  return factory();
+}
+
+const envWith = (venues, cols) => ({
+  DB: {
+    prepare(sql) {
+      return {
+        bind: () => ({
+          async first() {
+            return { n: /num_business_rails/.test(sql) ? venues : cols };
+          },
+        }),
+        async first() { return { n: /num_business_rails/.test(sql) ? venues : cols }; },
+      };
+    },
+  },
+});
+
+test('a venue taking payments with migration 0047 missing is a FAILURE', async () => {
+  // features.mjs evaluates ready synchronously and cannot ask the database
+  // whether a column arrived, so paytrack reports `on` from the code alone.
+  // That claim is checked here instead.
+  const check = loadCheckBillTracking();
+  const out = await check(envWith(1, 0));
+  assert.equal(out.ok, false);
+  assert.match(out.remedy, /0047/);
+  assert.match(out.remedy, /can only see the code/);
+});
+
+test('all four columns present is ok, and a partial migration is not', async () => {
+  const check = loadCheckBillTracking();
+  assert.equal((await check(envWith(2, 4))).ok, true);
+  assert.equal((await check(envWith(2, 3))).ok, false, 'three of four columns is a half-run migration');
+});
+
+test('no venue taking payments is a not-yet, not a failure', async () => {
+  const check = loadCheckBillTracking();
+  const out = await check(envWith(0, 0));
+  assert.equal(out.ok, true);
+  assert.match(out.note, /nothing to record/);
+});
+
+test('checkBillTracking is wired into runHealth', () => {
+  assert.match(src, /bill_tracking:\s*await checkBillTracking\(env\)/);
+});
