@@ -196,7 +196,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
       },
       partners: annotated,
       /** How the location was read and whether the row search failed — for x-num-debug only. */
-      _trace: { source: loc.source, dest: loc.dest.slug, label: loc.label ?? null, lat: loc.lat ?? null, lng: loc.lng ?? null, rows: baseRows.length, named: named.length, error: nearbyError ?? null },
+      _trace: { source: loc.source, dest: loc.dest.slug, label: loc.label ?? null, lat: loc.lat ?? null, lng: loc.lng ?? null, rows: baseRows.length, named: named.length, widened: !!widened, error: nearbyError ?? null },
       // TRUE when the rows came from the whole destination rather than from
       // anywhere near the guest — the never-empty floor in nearbyPlaces fired.
       // The prompt turns this into "these are across town", because presenting

@@ -716,6 +716,7 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null, 
   // True when the rows below came from the whole destination rather than from
   // anywhere near the guest. The prompt MUST say so — see the floor below.
   let widened = false;
+  let error = null;
   try {
     for (const radiusKm of rings) {
       const distWeight = (near ? 2.5 : 1.25) / radiusKm;
@@ -760,7 +761,28 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null, 
       ).bind(loc.dest.slug, limit).all();
       rows = results || [];
     }
-  } catch (e) { console.log('nearbyPlaces', String(e)); }
+  } catch (e) {
+    // Kept, not only logged: a thrown ring is the single most expensive
+    // silent failure in the product (no rows → no verified block → the
+    // model answers from memory with names nothing can link). It travels
+    // out as `error` so x-num-debug can show it.
+    error = String(e?.message ?? e).slice(0, 300);
+    console.log('nearbyPlaces', String(e));
+  }
+  // The floor belongs OUTSIDE the ring try: a ring that THROWS must still
+  // fall to the whole destination, not to an empty block.
+  if (!rows.length && loc?.dest?.slug) {
+    try {
+      widened = true;
+      const { results } = await env.DB.prepare(
+        `SELECT ${SELECT_COLS} FROM places
+          WHERE dest = ?1 AND alive IS NOT 0
+          ORDER BY (rating IS NULL), rating DESC, reviews DESC
+          LIMIT ?2`,
+      ).bind(loc.dest.slug, limit).all();
+      rows = results || [];
+    } catch (e) { error = (error ? error + ' | ' : '') + 'floor: ' + String(e?.message ?? e).slice(0, 200); console.log('nearbyPlaces floor', String(e)); }
+  }
 
   // ── NOT THE SAME THREE AGAIN ─────────────────────────────────────────
   //
@@ -813,7 +835,7 @@ export async function nearbyPlaces(env, loc, text, limit = 8, topicHint = null, 
     rows = await hideExpired(env, rows);
   } catch (e) { console.log('nearbyPlaces mobile', String(e).slice(0, 160)); }
 
-  return { cat, rows: withOpenState(rows, loc?.dest?.tz), near, widened };
+  return { cat, rows: withOpenState(rows, loc?.dest?.tz), near, widened, error };
 }
 
 /**
