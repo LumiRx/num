@@ -50,6 +50,7 @@
  */
 import { pickWinners, newSeed } from '../worker/fridaydraw.mjs';
 import { assess, explain, identityKey, canClaim } from './entryquality.mjs';
+import { rows as mustRead } from './readfail.mjs';
 
 /**
  * One person's referrals, with everything the quality rules need to judge
@@ -61,15 +62,19 @@ import { assess, explain, identityKey, canClaim } from './entryquality.mjs';
  * assume otherwise.
  */
 async function referralRows(env, referrerId) {
-  const { results = [] } = await env.DB.prepare(
+  /* NOT `.catch(() => [])`. A failed read here would return "you referred
+   * nobody", which is indistinguishable from the truth and is the exact
+   * failure worked/fridaydraw.mjs records in its own header: a broken query
+   * that looked like a quiet week. On a page that tells somebody how close
+   * they are to a prize, a silent empty is the worst available answer. */
+  return mustRead(env.DB.prepare(
     `SELECT m.id, m.phone_verified, m.email_verified,
             s.device_id, s.ip_hash, s.ua_hash,
             (SELECT COUNT(*) FROM num_messages x WHERE x.member_ref = m.id) AS activity
        FROM num_members m
        LEFT JOIN num_identity_signals s ON s.member_id = m.id
       WHERE m.referred_by = ?1`,
-  ).bind(String(referrerId)).all().catch(() => ({ results: [] }));
-  return results;
+  ).bind(String(referrerId)).all(), 'the people you brought in');
 }
 
 async function signalsFor(env, memberId) {
@@ -160,16 +165,37 @@ export const memberOfTicket = (t) => String(t).split('#')[0];
  */
 export async function standings(env) {
   if (!env?.DB) return [];
-  const byMember = new Map();
 
-  const { results: refs = [] } = await env.DB.prepare(
-    `SELECT referred_by AS member_id, COUNT(*) AS n
-       FROM num_members WHERE referred_by IS NOT NULL
-      GROUP BY referred_by`,
-  ).all().catch(() => ({ results: [] }));
-  for (const r of refs) {
-    const e = entriesFor(r.n);
-    if (e > 0) byMember.set(String(r.member_id), { referred: Number(r.n), earned: e, free: 0 });
+  /* ── ONE PASS OVER EVERY SIGNAL, THEN JUDGE IN MEMORY ─────────────────
+   *
+   * The per-person query in qualityFor is right for one console. Running it
+   * once per referrer at draw time would be one round trip per entrant, so
+   * the whole field is pulled once and assessed locally — same rules, same
+   * function, no second implementation that can disagree with the first. */
+  const members = await mustRead(env.DB.prepare(
+    `SELECT m.id, m.referred_by, m.phone, m.phone_verified, m.email_verified,
+            m.identity_verified, m.bio,
+            s.device_id, s.ip_hash, s.ua_hash,
+            (SELECT COUNT(*) FROM num_messages x WHERE x.member_ref = m.id) AS activity
+       FROM num_members m
+       LEFT JOIN num_identity_signals s ON s.member_id = m.id`,
+  ).all(), 'the people in the draw');
+  if (!members.length) return [];
+
+  const byId = new Map(members.map((m) => [String(m.id), m]));
+  const groups = new Map();
+  for (const m of members) {
+    if (!m.referred_by) continue;
+    const k = String(m.referred_by);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  }
+
+  const byMember = new Map();
+  for (const [referrer, rows] of groups) {
+    const a = assess({ referrerId: referrer, referrerSignals: byId.get(referrer) ?? null, rows });
+    const e = entriesFor(a.counted);
+    if (e > 0) byMember.set(referrer, { referred: a.counted, joined: rows.length, earned: e, free: 0 });
   }
 
   const { results: free = [] } = await env.DB.prepare(
@@ -178,13 +204,45 @@ export async function standings(env) {
   ).bind(CAMPAIGN).all().catch(() => ({ results: [] }));
   for (const f of free) {
     const id = String(f.member_id);
-    const cur = byMember.get(id) || { referred: 0, earned: 0, free: 0 };
+    const cur = byMember.get(id) || { referred: 0, joined: 0, earned: 0, free: 0 };
     cur.free = Number(f.n || 0);
     byMember.set(id, cur);
   }
 
-  return [...byMember.entries()]
-    .map(([member_id, v]) => ({ member_id, ...v, entries: v.earned + v.free }))
+  /* ── ONE HUMAN, ONE ENTRANT ───────────────────────────────────────────
+   *
+   * Dre's whole ask. Two accounts belonging to one person are collapsed to
+   * a single row keyed on the strongest identity evidence available — a
+   * verified 5arz id first, which /verify/5arz already refuses to attach to
+   * two Num accounts.
+   *
+   * Entries are MERGED rather than summed and rather than taking the max:
+   * summing would reward the second account, and taking the max would make
+   * the second account free. Merged on the referral COUNT, so somebody who
+   * split thirty referrals across two logins gets what thirty referrals are
+   * worth once, which is the honest answer. */
+  const people = new Map();
+  for (const [id, v] of byMember) {
+    const m = byId.get(id);
+    const key = identityKey(m ? { ...m, device_id: m.device_id } : { id });
+    const cur = people.get(key);
+    if (!cur) {
+      people.set(key, { key, member_id: id, ...v, accounts: 1 });
+      continue;
+    }
+    cur.accounts += 1;
+    cur.referred += v.referred;
+    cur.joined += v.joined;
+    // The free entry does not double either.
+    cur.free = Math.max(cur.free, v.free);
+    cur.earned = entriesFor(cur.referred);
+    // The claimable account is the one that carries the trip, so prefer a
+    // verified one when the same person holds both.
+    if (canClaim(byId.get(id)) && !canClaim(byId.get(cur.member_id))) cur.member_id = id;
+  }
+
+  return [...people.values()]
+    .map((r) => ({ ...r, entries: r.earned + r.free, can_claim: canClaim(byId.get(r.member_id)) }))
     .filter((r) => r.entries > 0)
     .sort((a, b) => b.entries - a.entries || a.member_id.localeCompare(b.member_id));
 }
@@ -264,15 +322,49 @@ export async function runTokyoDraw(env, { seed = null, winners = 1, now = new Da
     tickets.length, JSON.stringify(won),
     `${rows.length} people, ${tickets.length} tickets`, CAMPAIGN).run();
 
+  /* ── THE CLAIM GATE ───────────────────────────────────────────────────
+   *
+   * Dre's ask: verification through 5arz. It sits HERE, on the winner,
+   * rather than on entry — measured 19 Sep 2026, only 2 of 156 members are
+   * 5arz-verified, so a gate on entry would have closed the draw to 154
+   * people to stop a farm that the counting rules already remove.
+   *
+   * On the winner it costs nothing and removes the entire payoff: somebody
+   * who beat every counting rule with twenty real-looking accounts still has
+   * to put a verified identity behind the one that won, and /verify/5arz
+   * refuses to attach one 5arz account to two Num accounts.
+   *
+   * The state is 'won' either way. A winner who has not verified YET has not
+   * forfeited anything — they are told, and clause 9 gives them the same
+   * fourteen days everybody else gets. `needs_verification` is what the ops
+   * console reads to know which conversation to have. */
+  /* The WINNERS' own rows — not the people they referred. Fetched after the
+     shuffle, so it is one small query for one or two ids rather than a scan
+     of the whole membership before anybody has won anything. */
+  const byIdForClaim = new Map();
   for (const m of won) {
+    const row = await env.DB.prepare(
+      'SELECT id, identity_verified, bio FROM num_members WHERE id = ?1',
+    ).bind(m).first().catch(() => null);
+    if (row) byIdForClaim.set(String(row.id), row);
+  }
+
+  const claimable = [];
+  for (const m of won) {
+    const who = byIdForClaim.get(m) ?? null;
+    const ok = canClaim(who);
+    claimable.push({ member_id: m, can_claim: ok });
     await env.DB.prepare(
       `INSERT OR IGNORE INTO num_giveaway_claims
-         (draw_id, entrant_key, member_id, state, campaign) VALUES (?1,?2,?3,'won',?4)`,
-    ).bind(id, m, m, CAMPAIGN).run().catch(() => {});
+         (draw_id, entrant_key, member_id, state, campaign, reason) VALUES (?1,?2,?3,'won',?4,?5)`,
+    ).bind(id, m, m, CAMPAIGN,
+      ok ? null : 'awaiting 5arz verification before the prize can be released').run().catch(() => {});
   }
 
   return {
     ok: true, id, seed: s, winners: won,
+    claimable,
+    needs_verification: claimable.filter((c) => !c.can_claim).map((c) => c.member_id),
     people: rows.length, tickets: tickets.length,
     // Handed back so whoever runs it can publish the two things that make
     // the result checkable, rather than having to go and find them.

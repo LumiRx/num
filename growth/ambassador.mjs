@@ -238,6 +238,12 @@ export async function ambSummary(req, env, url, D) {
      * is because nobody has booked anything, not because NUM is holding
      * out on them.
      */
+    /* Resolved before the milestone write below, which now reads its
+       counted figure. */
+    const tokyo = memberId
+      ? await tokyoStandingFor(env, memberId)
+      : { referred: 0, earned: 0, free: 0, entries: 0, joined: 0, not_counted: 0, reasons: [] };
+
     const brought = memberId ? await rows(env.DB.prepare(
       `SELECT m.id, m.name, m.created_at, m.referred_at,
               (SELECT COALESCE(SUM(s.delta),0) FROM num_star_moves s
@@ -247,14 +253,19 @@ export async function ambSummary(req, env, url, D) {
         ORDER BY COALESCE(m.referred_at, m.created_at) DESC LIMIT 200`,
     ).bind(memberId).all(), 'the people you brought in') : [];
 
-    /* Milestones are recorded on every read as well as on every join, so a
-       rung passed while a notification failed — or before this existed — is
-       still recorded. The unique index means a recount tells nobody twice.
-
-       COUNTED FROM money.referred, NOT from brought.length: that list is
-       capped at 200, so the day somebody passes two hundred sign-ups the
-       cap would silently freeze their milestones for ever. */
-    if (memberId) await recordMilestones(env, { ambassadorId: amb.id, count: money.referred });
+    /* ── MILESTONES RUN ON THE COUNTED FIGURE, NOT THE RAW ONE ─────────
+     *
+     * Caught by looking at a live console on 19 Sep: the Tokyo card
+     * correctly showed 11 of 30 signups counting, while the milestone
+     * ladder beside it had awarded "Twenty-five" on the raw 30. Milestones
+     * carry real prizes, so a farm that cannot buy a draw entry could still
+     * buy a mystery bonus — the anti-gaming rules have to govern every
+     * reward on the page or they govern none of it.
+     *
+     * NOT brought.length either: that list is capped at 200, so the day
+     * somebody passes two hundred signups the cap would silently freeze
+     * their milestones for ever. */
+    if (memberId) await recordMilestones(env, { ambassadorId: amb.id, count: tokyo.referred });
     const reached = await milestonesFor(env, amb.id);
 
     const claims = await rows(env.DB.prepare(
@@ -306,14 +317,11 @@ export async function ambSummary(req, env, url, D) {
          the next one will be would turn a mystery into a promise, which is
          the one thing the milestone copy may not do. */
       reward_pool: REWARD_POOL.map((r) => ({ key: r.key, label: r.label, blurb: r.blurb, ready: r.ready })),
-      tokyo: {
-        campaign: TOKYO,
-        ...(memberId ? await tokyoStandingFor(env, memberId) : { referred: 0, earned: 0, free: 0, entries: 0 }),
-      },
+      tokyo: { campaign: TOKYO, ...tokyo },
       milestones: {
         tiers: TIERS,
         reached,
-        next: nextTier(money.referred),
+        next: nextTier(tokyo.referred),
         /* ONE SENTENCE, ONE PLACE. It must never harden into a promise on
            one screen while staying honest on another, so every surface
            renders this string rather than writing its own. */
@@ -871,9 +879,39 @@ export async function ambMilestonesAdmin(req, env, url, D) {
 
   if (req.method === 'GET') {
     const open = await openMilestones(env);
+
+    /* ── WHAT THE ROW SAYS versus WHAT COUNTS TODAY ───────────────────────
+     *
+     * A milestone row records the rung as it was when it fired. The
+     * anti-gaming rules landed on 19 Sep, so a rung banked before them — or
+     * one banked on signups that have since been found to share a device —
+     * can name a number that no longer holds.
+     *
+     * Rather than rewrite history, every row in the queue is shown beside a
+     * FRESH count. Whoever is about to send somebody a trip sees "reached
+     * 25, counts 11 today" and asks the obvious question. A queue that
+     * cannot be checked is how a discretionary reward gets handed to a farm. */
+    const { qualityFor } = await import('./tokyodraw.mjs');
+    for (const row of open) {
+      const m = await env.DB.prepare('SELECT member_id FROM num_ambassadors WHERE id = ?1')
+        .bind(row.ambassador_id).first().catch(() => null);
+      if (!m?.member_id) { row.counts_today = null; row.check = 'no NUM account linked'; continue; }
+      try {
+        const q = await qualityFor(env, m.member_id);
+        row.counts_today = q.counted;
+        row.joined_total = q.joined;
+        row.check = q.counted >= row.tier ? null
+          : `reached ${row.tier}, but only ${q.counted} of ${q.joined} signups count today — check before sending anything`;
+      } catch {
+        row.counts_today = null;
+        row.check = 'could not recount just now';
+      }
+    }
+
     return J({
       ok: true,
       open,
+      needs_a_look: open.filter((r) => r.check).length,
       owed: open.length,
       // The number worth looking at. One person waiting a month is worse
       // than ten waiting a day, and a raw count hides that.

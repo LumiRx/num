@@ -206,6 +206,10 @@ ul.plain li:first-child{border-top:0}
         <div class="s">more people</div></div>
     </div>
     <ul class="plain" id="tkLadder"></ul>
+    <!-- WHY A NUMBER IS LOWER THAN EXPECTED. "30 joined, 2 count" with no
+         explanation is how an ambassador decides NUM is stealing from them,
+         and they say so to every other ambassador. -->
+    <div id="tkCount"></div>
     <p class="hint" id="tkFree"></p>
   </section>
 
@@ -471,6 +475,24 @@ ul.plain li:first-child{border-top:0}
     $('tkSplit').textContent = (t.free ? t.free + ' free' : 'none free')
       + ' · ' + nf(t.earned || 0) + ' earned';
     $('tkNext').textContent = t.to_next == null ? '—' : nf(t.to_next);
+    /* Counted versus joined, with the reason for every one that did not. */
+    if (t.joined != null && t.not_counted > 0) {
+      var rs = (t.reasons || []).map(function (r) {
+        return '<li><b>' + nf(r.n) + '</b> — ' + esc(r.label) +
+          '<div class="meta">' + esc(r.why) + '</div></li>';
+      }).join('');
+      $('tkCount').innerHTML =
+        '<div class="note warn" style="display:block">' +
+        '<b>' + nf(t.referred) + ' of your ' + nf(t.joined) + ' signups count towards entries.</b> ' +
+        'The rest are listed below with the reason — most of them start counting on their own, ' +
+        'without you doing anything.</div>' +
+        '<ul class="plain">' + rs + '</ul>';
+    } else if (t.joined) {
+      $('tkCount').innerHTML = '<p class="meta">All ' + nf(t.joined) +
+        ' of your signups count towards entries.</p>';
+    } else {
+      $('tkCount').innerHTML = '';
+    }
     var L = t.ladder || {};
     $('tkLadder').innerHTML =
       '<li><b>' + nf(L.first) + ' people</b> — one entry</li>' +
@@ -481,7 +503,9 @@ ul.plain li:first-child{border-top:0}
     $('tkFree').innerHTML = 'No purchase necessary, and no referrals necessary — you can enter free '
       + 'from the Giveaways tab in the NUM app, or by emailing '
       + '<a href="mailto:info@itsnum.com">info@itsnum.com</a>. '
-      + '<a href="/tokyo-rules" target="_blank" rel="noopener">Official Rules</a>.';
+      + '<a href="/tokyo-rules" target="_blank" rel="noopener">Official Rules</a>. '
+      + 'A winner verifies their identity with 5arz before the prize is released — free, inside NUM, '
+      + 'and only for the person who wins.';
   }
 
   function paintPool(pool) {

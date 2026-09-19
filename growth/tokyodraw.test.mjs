@@ -14,7 +14,12 @@ const load = (f) => readFileSync(new URL('../worker/migrations/' + f, import.met
 function freshDb() {
   const db = new DatabaseSync(':memory:');
   db.exec(`
-    CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, referred_by TEXT);
+    CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, referred_by TEXT,
+      phone TEXT, phone_verified INTEGER DEFAULT 0, email_verified INTEGER DEFAULT 0,
+      identity_verified INTEGER DEFAULT 0, bio TEXT);
+    CREATE TABLE num_identity_signals (member_id TEXT PRIMARY KEY, device_id TEXT,
+      ip_hash TEXT, ua_hash TEXT, country TEXT);
+    CREATE TABLE num_messages (id TEXT PRIMARY KEY, member_ref TEXT, body TEXT);
     CREATE TABLE num_giveaway_results (id TEXT PRIMARY KEY, week_start INTEGER NOT NULL,
       drawn_at TEXT NOT NULL, seed TEXT NOT NULL, eligible_count INTEGER NOT NULL,
       winners TEXT NOT NULL, note TEXT, campaign TEXT);
@@ -52,10 +57,27 @@ const env = (db) => ({
     },
   },
 });
-function bring(db, referrer, n, from = 0) {
+/**
+ * Bring in `n` people who are REAL by every rule in entryquality.mjs: their
+ * own device, a verified phone, and something done in NUM.
+ *
+ * The fixture has to be this specific since 19 Sep. Before the quality rules
+ * a bare row counted, which is exactly the hole a farm walked through — so a
+ * test fixture that still produced bare rows would be testing a draw nobody
+ * ships.
+ */
+function bring(db, referrer, n, from = 0, opts = {}) {
   for (let i = 0; i < n; i++) {
-    db.prepare('INSERT INTO num_members (id,referred_by) VALUES (?,?)').run(`${referrer}_f${from + i}`, referrer);
+    const id = `${referrer}_f${from + i}`;
+    db.prepare(`INSERT INTO num_members (id,referred_by,phone,phone_verified) VALUES (?,?,?,1)`)
+      .run(id, referrer, '+4477' + from + i);
+    db.prepare('INSERT INTO num_identity_signals (member_id,device_id,ip_hash,ua_hash) VALUES (?,?,?,?)')
+      .run(id, opts.device || 'dev_' + id, 'ip_' + id, 'ua_' + id);
+    db.prepare('INSERT INTO num_messages (id,member_ref,body) VALUES (?,?,?)')
+      .run('msg_' + id, id, 'hello');
   }
+  // The referrer needs a row of their own to be an entrant.
+  db.prepare('INSERT OR IGNORE INTO num_members (id) VALUES (?)').run(referrer);
 }
 
 /* ── the ladder ────────────────────────────────────────────────────────── */
@@ -211,4 +233,139 @@ test('standings rank by entries and are computed, never stored', async () => {
   assert.deepEqual(s.map((r) => r.entries), [4, 2, 1]);
   // Nothing was written to get that answer.
   assert.equal(db.prepare('SELECT COUNT(*) n FROM num_draw_free_entries').get().n, 0);
+});
+
+/* ══ IS IT GAMABLE? ═══════════════════════════════════════════════════
+   Dre, 19 Sep 2026. These run the whole thing — counting, dedupe and the
+   claim gate — against the attacks somebody would actually try. */
+
+function farm(db, referrer, n, device = 'one_phone') {
+  // Twenty accounts on one handset. Verified, active, plausible — and all
+  // from the same device, which is the only thing that gives them away.
+  for (let i = 0; i < n; i++) {
+    const id = `${referrer}_farm${i}`;
+    db.prepare('INSERT INTO num_members (id,referred_by,phone,phone_verified) VALUES (?,?,?,1)')
+      .run(id, referrer, '+4499' + i);
+    db.prepare('INSERT INTO num_identity_signals (member_id,device_id,ip_hash,ua_hash) VALUES (?,?,?,?)')
+      .run(id, device, 'ip_farm', 'ua_farm');
+    db.prepare('INSERT INTO num_messages (id,member_ref,body) VALUES (?,?,?)').run('m' + id, id, 'hi');
+  }
+  db.prepare('INSERT OR IGNORE INTO num_members (id) VALUES (?)').run(referrer);
+}
+
+test('a hundred accounts on one phone do not buy a single entry', async () => {
+  const db = freshDb();
+  farm(db, 'm_cheat', 100);
+  const s = await standings(env(db));
+  assert.deepEqual(s, [], 'the farm got into the draw');
+  const r = await runTokyoDraw(env(db), { seed: 's' });
+  assert.equal(r.ok, false);
+});
+
+test('a real ambassador beside a farm still wins their entries', async () => {
+  // The farm must not be stopped by rejecting everybody.
+  const db = freshDb();
+  bring(db, 'm_real', 30);
+  farm(db, 'm_cheat', 100);
+  const s = await standings(env(db));
+  assert.deepEqual(s.map((x) => x.member_id), ['m_real']);
+  assert.equal(s[0].entries, 1);
+});
+
+test('one person with two accounts gets what one person earns, not two', async () => {
+  const db = freshDb();
+  bring(db, 'm_one', 30);
+  bring(db, 'm_two', 30, 100);
+  // Both accounts carry the SAME verified 5arz identity, which /verify/5arz
+  // would refuse — this is the belt to that braces.
+  const bio = JSON.stringify({ '5arz_id': 'mem_sameperson' });
+  for (const id of ['m_one', 'm_two']) {
+    db.prepare('UPDATE num_members SET bio=?, identity_verified=1 WHERE id=?').run(bio, id);
+  }
+  const s = await standings(env(db));
+  assert.equal(s.length, 1, 'two accounts stayed two entrants');
+  assert.equal(s[0].accounts, 2);
+  // 60 counted referrals between them: two entries, not one-plus-one from
+  // each side of a split that would have been worth the same anyway.
+  assert.equal(s[0].referred, 60);
+  assert.equal(s[0].entries, entriesFor(60));
+});
+
+test('splitting referrals across accounts is never better than keeping them together', async () => {
+  const together = freshDb();
+  bring(together, 'm_solo', 60);
+  const a = await standings(env(together));
+
+  const split = freshDb();
+  bring(split, 'm_a', 30);
+  bring(split, 'm_b', 30, 100);
+  const bio = JSON.stringify({ '5arz_id': 'mem_same' });
+  for (const id of ['m_a', 'm_b']) {
+    split.prepare('UPDATE num_members SET bio=?, identity_verified=1 WHERE id=?').run(bio, id);
+  }
+  const b = await standings(env(split));
+  assert.equal(b[0].entries, a[0].entries, 'splitting changed the answer, so there is an incentive to split');
+});
+
+test('two accounts cannot take the free entry twice', async () => {
+  const db = freshDb();
+  const bio = JSON.stringify({ '5arz_id': 'mem_same' });
+  for (const id of ['m_a', 'm_b']) {
+    db.prepare('INSERT INTO num_members (id,bio,identity_verified) VALUES (?,?,1)').run(id, bio);
+    db.prepare(`INSERT INTO num_draw_free_entries (id,campaign,member_id,entries,source,created_at)
+                VALUES (?,?,?,1,'form','2026-09-19')`).run('f_' + id, CAMPAIGN, id);
+  }
+  const s = await standings(env(db));
+  assert.equal(s.length, 1, 'one person held two free entries');
+  assert.equal(s[0].entries, 1);
+});
+
+/* ── the claim gate ────────────────────────────────────────────────────── */
+
+test('an unverified winner is told to verify, and has not forfeited', async () => {
+  const db = freshDb();
+  bring(db, 'm_win', 30);
+  const r = await runTokyoDraw(env(db), { seed: 's' });
+  assert.deepEqual(r.winners, ['m_win']);
+  assert.equal(r.claimable[0].can_claim, false);
+  assert.deepEqual(r.needs_verification, ['m_win']);
+  const claim = db.prepare('SELECT * FROM num_giveaway_claims').get();
+  // Still 'won'. Verification is a step before release, not a disqualification.
+  assert.equal(claim.state, 'won');
+  assert.match(claim.reason, /5arz verification/);
+});
+
+test('a 5arz-verified winner can claim outright', async () => {
+  const db = freshDb();
+  bring(db, 'm_win', 30);
+  db.prepare("UPDATE num_members SET identity_verified=1, bio=? WHERE id='m_win'")
+    .run(JSON.stringify({ '5arz_id': 'mem_real' }));
+  const r = await runTokyoDraw(env(db), { seed: 's' });
+  assert.equal(r.claimable[0].can_claim, true);
+  assert.deepEqual(r.needs_verification, []);
+  assert.equal(db.prepare('SELECT reason FROM num_giveaway_claims').get().reason, null);
+});
+
+test('the standings say who could claim, so nobody finds out at the end', async () => {
+  const db = freshDb();
+  bring(db, 'm_x', 30);
+  const s = await standings(env(db));
+  assert.equal(s[0].can_claim, false);
+});
+
+/* ── and the ambassador is told why their number is what it is ─────────── */
+
+test('an ambassador can see how many counted and why the rest did not', async () => {
+  const db = freshDb();
+  bring(db, 'm_amb', 10);
+  farm(db, 'm_amb', 20, 'shared_phone');
+  const st = await standingFor(env(db), 'm_amb');
+  assert.equal(st.joined, 30);
+  // Ten real, plus one kept from the shared device: nineteen rejected.
+  assert.equal(st.referred, 11);
+  assert.equal(st.not_counted, 19);
+  const cluster = st.reasons.find((r) => r.key === 'cluster');
+  assert.ok(cluster, 'no reason was given for nineteen missing signups');
+  assert.equal(cluster.n, 19);
+  assert.ok(cluster.why.length > 25);
 });

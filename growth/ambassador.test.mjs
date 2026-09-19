@@ -23,7 +23,11 @@ function freshDb() {
       university_id TEXT, reward_cs INTEGER, reward_referee_cs INTEGER, max_conversions INTEGER,
       max_reward_total_cs INTEGER, active INTEGER DEFAULT 1, expires_at INTEGER, created_at INTEGER);
     CREATE TABLE num_members (id TEXT PRIMARY KEY, name TEXT, email TEXT, email_verified INTEGER DEFAULT 0,
+      phone TEXT, phone_verified INTEGER DEFAULT 0, identity_verified INTEGER DEFAULT 0, bio TEXT,
       created_at TEXT, referred_by TEXT, referred_pct INTEGER, referred_at TEXT);
+    CREATE TABLE num_identity_signals (member_id TEXT PRIMARY KEY, device_id TEXT, ip_hash TEXT,
+      ua_hash TEXT, country TEXT);
+    CREATE TABLE num_messages (id TEXT PRIMARY KEY, member_ref TEXT, body TEXT);
     CREATE TABLE num_star_moves (id TEXT PRIMARY KEY, member_id TEXT, delta INTEGER, kind TEXT,
       note TEXT, counterparty TEXT);
     CREATE TABLE num_hosts (id TEXT PRIMARY KEY, name TEXT, status TEXT DEFAULT 'active', console_key TEXT);
@@ -34,6 +38,14 @@ function freshDb() {
   for (const stmt of sql.split(';').map((x) => x.trim()).filter(Boolean)) db.exec(stmt + ';');
   // The columns 0055 adds. Applied here too, because a fixture that is a
   // schema behind tests a table production does not have.
+  // 0053 brings the milestone table, 0055 the niche columns and free
+   // entries. A fixture a migration behind tests a schema nobody runs.
+  for (const f of ['0053_ambassador_milestones.sql']) {
+    const m = load(f).split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+    for (const stmt of m.split(';').map((x) => x.trim()).filter(Boolean)) {
+      try { db.exec(stmt + ';'); } catch { /* not for this fixture */ }
+    }
+  }
   const later = load('0055_niches_and_tokyo.sql').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
   for (const stmt of later.split(';').map((x) => x.trim()).filter(Boolean)) {
     try { db.exec(stmt + ';'); } catch { /* the giveaway tables are not part of this fixture */ }
@@ -559,4 +571,31 @@ test('a javascript: or data: URL is never stored as a post', async () => {
     const j = await post(ambClaim, db, { action: 'posted', offer_id: 'o1', post_url: u });
     assert.equal(j.ok, false, u + ' was accepted');
   }
+});
+
+test('milestones run on the COUNTED figure, so a farm cannot buy a bonus', async () => {
+  // Found by looking at a live console on 19 Sep: the Tokyo card correctly
+  // showed 11 of 30 counting while the milestone ladder beside it had
+  // awarded "Twenty-five" on the raw 30. A reward the anti-gaming rules do
+  // not govern is a reward the rules do not govern.
+  const db = freshDb();
+  addAmb(db, { member: 'm_rae' });
+  addMember(db, { id: 'm_rae' });
+  // Thirty signups, all from one phone, all verified and active — the farm
+  // that looks perfect on every field except the one that gives it away.
+  for (let i = 0; i < 30; i++) {
+    db.prepare(`INSERT INTO num_members (id,email,email_verified,created_at,referred_by)
+                VALUES (?,?,1,?,'m_rae')`).run('m_f' + i, `f${i}@x.com`, T);
+    db.prepare('INSERT INTO num_identity_signals (member_id,device_id,ip_hash,ua_hash) VALUES (?,?,?,?)')
+      .run('m_f' + i, 'ONE_PHONE', 'ip', 'ua');
+    db.prepare('INSERT INTO num_messages (id,member_ref,body) VALUES (?,?,?)').run('mm' + i, 'm_f' + i, 'hi');
+  }
+
+  const j = await get(ambSummary, db);
+  assert.equal(j.tokyo.joined, 30);
+  assert.equal(j.tokyo.referred, 1, 'the farm counted for more than one');
+  // One counted signup is the first rung and NOT the twenty-five rung.
+  const tiers = db.prepare('SELECT tier FROM num_ambassador_milestones ORDER BY tier').all().map((r) => r.tier);
+  assert.deepEqual(tiers, [1], 'a farm bought milestone rungs: ' + tiers.join(','));
+  assert.equal(j.milestones.next.tier, 5);
 });

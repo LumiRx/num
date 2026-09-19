@@ -105,7 +105,8 @@ export const LIVE = Object.freeze([
       + `${TOKYO_LADDER.second} is two, then one more for every ${TOKYO_LADDER.step} after that`,
     who: `${RULES.countries.join(' and ')}, ${RULES.minAge}+ · free to enter · no purchase necessary`,
     rules_url: `https://${RULES.site}/tokyo-rules`,
-    note: 'Entries are counted from real signups. Free entry needs no referrals at all.',
+    note: 'Entries are counted from real signups. Free entry needs no referrals at all. '
+      + 'A winner verifies their identity with 5arz before the prize is released — free, and inside NUM.',
     // Not the Friday week. Without this the card would tell everybody the
     // trip closes this Sunday.
     closesAt: '2026-12-31T23:59:59.000Z',

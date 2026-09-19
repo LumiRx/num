@@ -85,8 +85,16 @@ additional entries: <strong>${LADDER.first}</strong> people is one additional en
 <strong>${LADDER.step}</strong> people after that.</p>
 <p>Only people who complete signup on ${esc(r.product)} are counted, and each person is counted once,
 for whoever brought them in first. Entries are computed from those signups at the moment of the
-draw and are not stored, so they can be recounted by anyone with access to the figures. Accounts
-created to inflate a count are removed, along with any entries derived from them.</p>
+draw and are not stored, so they can be recounted by anyone with access to the figures.</p>
+<p>A signup does <strong>not</strong> count if it came from the same device as the person who
+referred it, if several signups came from one device (one of those counts and the rest do not), if
+the person has not verified a phone number or an email address, or if they have not yet used
+${esc(r.product)} for anything. Sharing a wifi network is not by itself a reason for a signup not to
+count. A referrer can see, in their own console, how many of their signups counted and the reason
+for each one that did not.</p>
+<p><strong>One person, one set of entries.</strong> Where the Sponsor can tell that two accounts
+belong to the same person, they are treated as one entrant and their entries are merged rather than
+added together.</p>
 
 <h2><span class="n">5</span><span>Entry period</span></h2>
 <p>Entries are accepted until 23:59 UTC on 31 December 2026. The draw takes place within fourteen
@@ -111,10 +119,16 @@ so feeding the same seed and the same list back in produces the same winner — 
 time. The Sponsor will provide the seed and the entry list on request, so the result can be checked
 rather than taken on trust. The seed is never derived from the entry list.</p>
 
-<h2><span class="n">9</span><span>Notification and claim</span></h2>
+<h2><span class="n">9</span><span>Notification, verification and claim</span></h2>
 <p>The winner is contacted on the details held by ${esc(r.product)} within seven days of the draw.
 A winner who cannot be reached, or who does not respond within fourteen days, forfeits the prize and
 a replacement is drawn from the same recorded entry list using a new recorded seed.</p>
+<p><strong>Before the prize is released, the winner must complete identity verification with 5arz,
+the Sponsor.</strong> This is free, it is done inside ${esc(r.product)}, and it exists so that a
+prize of this size goes to a real person who entered once. One 5arz identity may be linked to only
+one ${esc(r.product)} account. A winner who declines to verify, or whose verification shows the
+account to be a duplicate of one already entered, forfeits, and a replacement is drawn in the same
+way. Verification is not required to enter or to hold entries — only to receive the prize.</p>
 
 <h2><span class="n">10</span><span>Your information</span></h2>
 <p>Entry details are used to run the draw and to contact a winner, and for nothing else. They are not
