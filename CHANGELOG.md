@@ -2,6 +2,36 @@
 
 Every version that has been live, newest first.
 
+## 0.8.394 — 2026-09-19 18:32 UTC
+
+your language from the first screen — picker on sign-in, 690 more lines translated, cities and titles follow
+
+- commit `c493204`
+
+## 0.8.393 — 2026-09-19 18:26 UTC
+
+your language from the first screen — picker on sign-in, 690 more lines translated, cities and titles follow
+
+- commit `419de9b`
+
+## 0.8.392 — 2026-09-19 18:23 UTC
+
+your language from the first screen — picker on sign-in, 690 more lines translated, cities and titles follow
+
+- commit `6769900`
+
+## 0.8.391 — 2026-09-19 18:17 UTC
+
+your language from the first screen — picker on sign-in, 680 more lines translated, cities and titles follow
+
+- commit `29bd44c`
+
+## 0.8.390 — 2026-09-19 18:05 UTC
+
+your language from the first screen — picker on sign-in, 520 more lines translated, cities and titles follow
+
+- commit `566481a`
+
 ## 0.8.389 — 2026-09-19 16:41 UTC
 
 reminders — say it, NUM keeps it and buzzes at the hour
