@@ -97,3 +97,43 @@ test('the Cloudflare rail is never used for someone outside the company', () => 
   assert.match(code, /accept and discard/,
     'and the refusal must explain itself to whoever reads the error');
 });
+
+/* ── WHICH SENDER, AND WHY IT IS NO LONGER READ OFF MAIL_FROM ─────────────
+ *
+ * worker/mailer.mjs split the sender on 19 Sep 2026 so a cold list bouncing
+ * at a quarter cannot take the sign-in codes down with it. The split
+ * protected nothing here, because every send in growth/worker.js read
+ * `env.MAIL_FROM` directly: a host console code, a booking confirmation and a
+ * settled-bill receipt had no protected address to sit on. A split only one
+ * half of the product uses is not a split.
+ *
+ * These guard the routing, not the address. Nothing changes today —
+ * `senderFor` falls back to MAIL_FROM — and setting MAIL_FROM_TRANSACTIONAL
+ * moves all of them at once, which is the whole point.
+ */
+
+test('growth sends go through the transactional sender, not MAIL_FROM directly', () => {
+  const src = readFileSync(join(HERE, 'worker.js'), 'utf8');
+  const direct = [...src.matchAll(/from:\s*env\.MAIL_FROM/g)];
+  assert.equal(direct.length, 0,
+    `${direct.length} send(s) still read env.MAIL_FROM directly — they cannot be moved off the outreach domain`);
+  assert.match(src, /function txFrom\(env\)/, 'the helper is gone and every call site is on its own again');
+  assert.match(src, /mailSenderFor\(env, MAIL_KIND\.TRANSACTIONAL\)/,
+    'txFrom no longer asks the mailer which sender a transactional message takes');
+});
+
+test('the settled-bill receipt is transactional — a venue is waiting on it', () => {
+  const src = readFileSync(join(HERE, 'worker.js'), 'utf8');
+  const fn = src.match(/async function mailBillSettled\([\s\S]*?\n\}/)[0];
+  assert.match(fn, /from: txFrom\(env\)/,
+    'a receipt on the outreach domain inherits whatever a cold list built');
+});
+
+test('a thread records the address the message actually left from', () => {
+  // It recorded MAIL_FROM while the send used senderFor(OUTREACH), so once the
+  // split is configured the thread would show a reply going to an address the
+  // business never saw.
+  const cron = readFileSync(join(HERE, 'invitecron.mjs'), 'utf8');
+  assert.match(cron, /from: senderFor\(env, MAIL_KIND\.OUTREACH\)/);
+  assert.doesNotMatch(cron, /from: env\.MAIL_FROM \|\|/);
+});

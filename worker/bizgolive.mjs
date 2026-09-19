@@ -164,9 +164,16 @@ export async function goLiveSweep(env, { limit = 10, mailer } = {}) {
     });
 
     const send = mailer ?? (await import('./mailer.mjs')).send;
+    const { senderFor, MAIL_KIND } = await import('./mailer.mjs');
     const out = await send(env, {
       to: sub.email,
-      from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+      // senderFor, not MAIL_FROM. worker/mailer.mjs split the sender on 19 Sep
+      // 2026 so cold outreach bouncing at a quarter cannot take the messages
+      // people are waiting on down with it. A call site that reads MAIL_FROM
+      // directly is a message with no protected address to sit on, and the
+      // split does nothing for it. Falls back to MAIL_FROM either way, so
+      // nothing changes until MAIL_FROM_TRANSACTIONAL is set.
+      from: senderFor(env, MAIL_KIND.BUSINESS),
       subject,
       text,
       headers: {

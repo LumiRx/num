@@ -173,8 +173,15 @@ export async function weeklySweep(env, { send, now = Date.now(), limit = 25 } = 
     if (!digest) continue;
 
     const mail = send ?? (await import('./mailer.mjs')).send;
+    const { senderFor, MAIL_KIND } = await import('./mailer.mjs');
     const out = await mail(env, {
-      to: pref.email, from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+      // senderFor, not MAIL_FROM. worker/mailer.mjs split the sender on 19 Sep
+      // 2026 so cold outreach bouncing at a quarter cannot take the messages
+      // people are waiting on down with it. A call site that reads MAIL_FROM
+      // directly is a message with no protected address to sit on, and the
+      // split does nothing for it. Falls back to MAIL_FROM either way, so
+      // nothing changes until MAIL_FROM_TRANSACTIONAL is set.
+      to: pref.email, from: senderFor(env, MAIL_KIND.TRANSACTIONAL),
       subject: digest.subject, text: digest.text,
     }).catch(() => ({ ok: false }));
 

@@ -297,13 +297,19 @@ export function confirmations(booking, issued) {
  * and collapsing them into a single boolean loses the difference.
  */
 export async function deliver(env, booking, issued, { sendSms = null } = {}) {
-  const { send, recordSend } = await import('./mailer.mjs');
+  const { send, recordSend, senderFor, MAIL_KIND } = await import('./mailer.mjs');
   const out = confirmations(booking, issued);
 
   const email = out.email.to
     ? await send(env, {
       to: out.email.to,
-      from: env?.MAIL_FROM || 'Num <info@itsnum.com>',
+      // senderFor, not MAIL_FROM. worker/mailer.mjs split the sender on 19 Sep
+      // 2026 so cold outreach bouncing at a quarter cannot take the messages
+      // people are waiting on down with it. A call site that reads MAIL_FROM
+      // directly is a message with no protected address to sit on, and the
+      // split does nothing for it. Falls back to MAIL_FROM either way, so
+      // nothing changes until MAIL_FROM_TRANSACTIONAL is set.
+      from: senderFor(env, MAIL_KIND.TRANSACTIONAL),
       replyTo: 'info@itsnum.com',
       subject: out.email.subject,
       text: out.email.text,

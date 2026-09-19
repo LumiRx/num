@@ -462,3 +462,48 @@ test('a split that is only half configured reports itself as not done', () => {
   assert.equal(out.isolated, false);
   assert.match(out.why, /both on itsnum\.com/);
 });
+
+/* ── EVERY SENDER GOES THROUGH senderFor ──────────────────────────────────
+ *
+ * The split is only worth what the call sites do with it. `senderFor` and
+ * `MAIL_FROM_OUTREACH` existed on 19 Sep 2026 while sixteen sends in
+ * growth/worker.js and four in worker/ read `env.MAIL_FROM` straight — a
+ * sign-in link, a flight confirmation, a settled-bill receipt and a member
+ * notification among them. Moving outreach off the domain would have
+ * protected none of them, because they had no protected address to sit on.
+ *
+ * A file-level guard rather than a per-message one: the failure is a NEW call
+ * site written the old way, and a test that names today's call sites cannot
+ * see tomorrow's.
+ */
+test('no worker send picks its address out of MAIL_FROM by hand', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const here = new URL('.', import.meta.url).pathname;
+  const offenders = [];
+  for (const f of readdirSync(here)) {
+    if (!f.endsWith('.mjs') || f.includes('.test.')) continue;
+    // mailer.mjs is where the fallback is DEFINED; it is the one file allowed
+    // to name MAIL_FROM as an address.
+    if (f === 'mailer.mjs') continue;
+    const src = readFileSync(here + f, 'utf8');
+    for (const m of src.matchAll(/from:\s*(env\??\.MAIL_FROM\b[^,\n]*)/g)) {
+      offenders.push(`${f}: ${m[1].trim()}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'these sends cannot be moved off the outreach domain — route them through senderFor(env, MAIL_KIND.…)');
+});
+
+test('the four that were fixed took the kind that matches who is waiting', async () => {
+  const { readFileSync } = await import('node:fs');
+  const here = new URL('.', import.meta.url).pathname;
+  const kindOf = (f) => readFileSync(here + f, 'utf8').match(/from: senderFor\(env, MAIL_KIND\.(\w+)\)/)?.[1];
+  // A traveller waiting on a flight confirmation and a member who asked to be
+  // notified are both transactional: if one is filtered the product does not
+  // work.
+  assert.equal(kindOf('flightconfirm.mjs'), 'TRANSACTIONAL');
+  assert.equal(kindOf('biznotify.mjs'), 'TRANSACTIONAL');
+  // A venue in an ongoing conversation knows who we are.
+  assert.equal(kindOf('bizgolive.mjs'), 'BUSINESS');
+  assert.equal(kindOf('bizonboard.mjs'), 'BUSINESS');
+});

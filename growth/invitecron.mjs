@@ -525,7 +525,10 @@ export async function drainInvites(env, event = {}) {
     await record(env, t.id, {
       direction: 'out',
       to: lead.email,
-      from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+      // The sender the message ACTUALLY left from. This read MAIL_FROM, so
+      // once MAIL_FROM_OUTREACH is set the thread would record a reply going
+      // to an address the business never saw.
+      from: senderFor(env, MAIL_KIND.OUTREACH),
       subject: draft.subject,
       body: draft.text,
       providerId: res.ids[i] || null,
