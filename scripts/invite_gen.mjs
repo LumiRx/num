@@ -245,8 +245,112 @@ const EXCLUDE = [
     re: /life coach|astrologer|meditation cent|food consultant|language school|music school|driving school|recruit|staffing|marketing agency|law firm|solicitor/i },
 ];
 
+/* CHAINS, GROUPS AND PUBLIC BODIES, BY EMAIL DOMAIN.
+ *
+ * Every rule above reads the category and the name, and neither says anything
+ * useful about occonnellt@dominos.com — "Domino's Pizza / Pizza restaurant"
+ * trips nothing. That is how eleven Domino's staff came to be invited to claim
+ * a NUM listing, along with KFC, Jollibee and a UCLA medical address. That
+ * bucket bounced at 25%, the worst of any we measured.
+ *
+ * Derived from the database, not imagined, by two rules — and it takes both,
+ * because a chain shows up in one of two completely different shapes.
+ *
+ *   GROUP     10+ distinct business names on one domain. Hotel groups,
+ *             councils, museums: many venues, all named differently, one head
+ *             office. accor.com carries 95, hilton.com 80.
+ *
+ *   FRANCHISE 5+ leads carrying 2 or fewer distinct names. Every branch is
+ *             called the same thing, so the group rule is blind to it:
+ *             chipotle.com is 45 leads under ONE name, tacobell.com 27 under
+ *             one, dominos.com 28 under two.
+ *
+ * The first version of this list had only the group rule, which is the joke
+ * worth recording: this whole exercise began because eleven Domino's staff
+ * were emailed, and a rule counting distinct names would not have caught
+ * Domino's. Nor Chipotle, McDonald's, KFC, Subway, Costa, Lidl or Aldi.
+ *
+ * The thresholds exist to protect the customers this list is FOR. At three to
+ * nine distinct names sit genuine small operators — mokumbootverhuur.nl is one
+ * Amsterdam boat-rental business with six moorings, athens-smartstay.com a
+ * host with five apartments — and excluding those to avoid Marriott is a bad
+ * trade. The franchise rule cannot eat them either: a real operator names its
+ * venues differently, which is exactly what makes them separate claimable
+ * listings. Regenerate with ~/NUM/outreach/chain_domains.mjs.
+ *
+ * Judgement calls on top of the generated list, worth stating because the next
+ * regeneration will surface them again:
+ *   - sbcglobal.net, att.net, earthlink.net and btconnect.com were proposed as
+ *     chains. They are shared consumer and business ISPs — many independents
+ *     behind one domain looks identical to a head office. They are in
+ *     FREEMAIL_DOMAINS instead.
+ *   - gamil.com is a misspelling of gmail.com, not a company.
+ *   - getimel.com holds 14 businesses across Greece and Nicaragua and nobody
+ *     has established what it is. Left IN the list rather than excluded on a
+ *     hunch; 14 leads is a cheap price for not guessing.
+ *   - Added by hand from the 8-9 band after reading them: the large pub and
+ *     hotel companies (Stonegate, Fuller's, Maldron, Leonardo, ILUNION), EDEKA
+ *     and SATS, and the public bodies (bcn.cat, ville-issy.fr, bath.ac.uk,
+ *     gll.org). NOT added: 1933group.com, eight differently-named Los Angeles
+ *     bars, which is a local operator of the kind we want, not a corporate.
+ */
+const CHAIN_DOMAINS = new Set([
+  // Hotels and hospitality groups
+  'accor.com', 'hilton.com', 'ihg.com', 'marriott.com', 'melia.com',
+  'hyatt.com', 'radissonblu.com', 'nh-hotels.com', 'scandichotels.com',
+  'motel-one.com', 'petitpalace.com', 'hotelbb.com', 'vinccihoteles.com',
+  'chicandbasic.com', 'onefamhostels.com', 'whitbread.com', 'maldronhotels.com',
+  'leonardo-hotels.com', 'ilunionhotels.com',
+
+  // Fast food and restaurant franchises
+  'chipotle.com', 'pizzahut.com', 'dominos.com', 'tacobell.com',
+  'mcdonalds.com', 'mcdonalds-sacreg.com', 'restaurant.at.mcd.com',
+  'chick-fil-a.com', 'subway.com', 'bkcfm.com', 'cpk.com', 'fatburger.com',
+  'panerabread.com', 'elpolloloco.com', 'eplfranchisee.com', 'wksusa.com',
+  'kentuckyfriedchicken.com', 'daveshotchicken.com', 'blazepizza.com',
+  'bigmamaspizza.com', 'cornerbakerycafe.com', 'groundworkcoffee.com',
+  'pancakestoday.com', 'tacos1986.com', 'bevmo.com', 'nata7.com',
+  'losteria.de', 'hansimglueck-burgergrill.de', 'deananddavid.com',
+  'pommes-freunde.de', 'vanille-marille.de', 'baeckerei-neulinger.de',
+  'bastardburgers.se', 'texaslonghorn.se', 'brodsalt.se', 'vetekatten.se',
+  'brothers.se', 'pizzame.hu', 'bambamarha.hu', 'cafefrei.hu',
+  'depizzabakkers.nl', 'bbrood.nl', 'bagelsbeans.nl', 'grapedistrict.nl',
+  'thebreakfastclub.nl', 'cafecito.nl', 'ijscuypje.nl', 'annemax.nl',
+  'fabrique.shop', 'bb.cz', 'malvon.es', 'tortilla.co.uk', 'costacoffee.co.uk',
+  'maison-kayser.com', 'multari.fr', 'nicolas.com', 'oberlaa-wien.at',
+  'bortolotti.at', 'solinca.pt',
+
+  // Pub and bar companies, contract caterers
+  'greeneking.co.uk', 'youngs.co.uk', 'fullers.co.uk', 'stonegatepubs.com',
+  'zfv.ch',
+
+  // Supermarkets, retail, pharmacy, fitness
+  'hemkop.se', 'akademibokhandeln.se', 'formfactory.cz', 'privategym.cz',
+  'grupo-holon.pt', 'drmax.cz', 'benu.cz', 'ahold.cz', 'billa.cz', 'lidl.cz',
+  'lidl.hu', 'penny.hu', 'penny.de', 'pepco.eu', 'ccc.eu', 'aldi.pt',
+  'aldi.ie', 'mercadona.com', 'dunnesstores.com', 'majestic.co.uk',
+  'naturalia.fr', 'ekoplaza.nl', 'spar.at', 'spar.ch', 'despar.info',
+  'okmarkets.gr', 'bonus.is', 'kronan.is', 'krambudin.is', 'lyfja.is',
+  'vinbudin.is', 'worldclass.is', 'starbucks.pt', 'ikks.com', 'moncler.com',
+  'bsbfashion.com', 'kieser-training.com', 'sats.com', 'minden.edeka.de',
+  'clinicadermasana.com', 'mrstaxinc.com',
+
+  // Municipal, cultural, academic — not businesses that can claim a listing
+  'emel.pt', 'beryl.cc', 'madrid.es', 'cm-lisboa.pt', 'beniculturali.it',
+  'swm.de', 'bcn.cat', 'ville-issy.fr', 'bath.ac.uk', 'gll.org',
+]);
+
+/** The domain of a lead's email, lowercased, or '' when there isn't one. */
+function domainOf(lead) {
+  const email = String(lead && lead.email || '').toLowerCase().trim();
+  const at = email.lastIndexOf('@');
+  return at === -1 ? '' : email.slice(at + 1);
+}
+
 /** Should this lead be invited at all? Returns null to invite, or a reason. */
 function excludeReason(lead) {
+  const domain = domainOf(lead);
+  if (domain && CHAIN_DOMAINS.has(domain)) return 'chain head office';
   const category = String(lead && lead.category || '');
   const both     = `${category} ${lead && lead.name || ''}`;
   for (const e of EXCLUDE) if (e.re.test(e.cat ? category : both)) return e.why;
@@ -589,8 +693,49 @@ export const FREEMAIL = new Set([
   'naver','daum','hanmail','qq','163','126','sina','foxmail','bigpond','xtra',
 ]);
 
-/** gmail.com, hotmail.co.uk, t-online.de → true. accor.com, auchan.pt → false. */
-export const isFreemail = (d) => FREEMAIL.has(String(d || '').toLowerCase().split('.')[0]);
+/* MATCHED WHOLE, NOT BY FIRST LABEL.
+ *
+ * The set above is matched on the first label, which is what makes it work
+ * across every country at once: hotmail.co.uk, yahoo.fr and t-online.de all
+ * reduce to a label that is in it. American consumer ISP mail does not survive
+ * that trick — sbcglobal.net reduces to "sbcglobal", att.net to "att" — so it
+ * was all being read as private company mail.
+ *
+ * Found 19 Sep while hunting chain domains by "one domain, many different
+ * business names". sbcglobal.net came back with 39, att.net 21, earthlink.net
+ * 10, and the businesses behind them are 777 Motor Inn, Jim Burgers, Juanita's
+ * Cafe, El Compadre — independents on their home ISP address, which is the
+ * exact customer this list exists to find. Nearly 90 leads, most of them in
+ * Los Angeles.
+ *
+ * They go here rather than in the label set because their labels are ordinary
+ * English words and this is a TRAVEL directory. "charter" as a first label
+ * would read a yacht-charter company as freemail; "cox", "frontier" and
+ * "shaw" have the same problem. Matching the whole domain costs nothing and
+ * cannot misfire. Checked against the database first: no lead currently uses
+ * any charter./att./cox./frontier. domain other than the ISPs below.
+ */
+const FREEMAIL_DOMAINS = new Set([
+  'sbcglobal.net', 'att.net', 'earthlink.net', 'pacbell.net', 'verizon.net',
+  'comcast.net', 'bellsouth.net', 'roadrunner.com', 'prodigy.net', 'juno.com',
+  'netzero.net', 'ameritech.net', 'swbell.net', 'windstream.net',
+  'centurylink.net', 'embarqmail.com', 'optonline.net', 'cox.net',
+  'charter.net', 'frontier.com', 'rcn.com', 'cableone.net', 'suddenlink.net',
+  // Canada
+  'rogers.com', 'shaw.ca', 'sympatico.ca', 'telus.net', 'videotron.ca',
+  // BT's business ISP mail. Surfaced by the chain hunt with eight different
+  // guest houses behind it — which is the signature of a shared provider, not
+  // of a head office. 'btinternet' is already in the label set; this is the
+  // business-facing sibling and was missing.
+  'btconnect.com',
+]);
+
+/** gmail.com, hotmail.co.uk, t-online.de, sbcglobal.net → true.
+ *  accor.com, auchan.pt → false. */
+export const isFreemail = (d) => {
+  const dom = String(d || '').toLowerCase().trim();
+  return FREEMAIL_DOMAINS.has(dom) || FREEMAIL.has(dom.split('.')[0]);
+};
 
 /* ── the "back to the website" link ───────────────────────────────────── */
 
