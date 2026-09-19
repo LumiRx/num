@@ -204,16 +204,68 @@ export async function clientCalendar(env, t) {
   t = String(t ?? '');
   if (!env?.DB || t.length < 16 || t.length > 80) return null;
   const client = await env.DB.prepare(
-    `SELECT c.id, c.name, c.member_token, h.name AS host_name FROM num_host_clients c JOIN num_hosts h ON h.id = c.host_id
+    `SELECT c.id, c.name, c.member_token, c.portal_trips, h.name AS host_name
+       FROM num_host_clients c JOIN num_hosts h ON h.id = c.host_id
       WHERE c.member_token = ?1 AND c.status <> 'removed'`,
   ).bind(t).first().catch(() => null);
   if (!client || !sameSecret(client.member_token, t)) return null;
+
+  /* ONE SWITCH, BOTH SURFACES.
+   *
+   * `portal_trips` turns the trip list off on /my-host/. Before 18 Sep 2026 it
+   * governed only that page, so a host who switched it off would still have
+   * been publishing every booking into a calendar their client had already
+   * subscribed to — the product saying two different things about the same
+   * question depending on which door you came through.
+   *
+   * An EMPTY calendar rather than a 404: a feed that starts erroring makes the
+   * client's calendar app show a broken subscription, which is a support
+   * question for the host about a setting they chose on purpose. */
+  if (client.portal_trips === 0) {
+    return calendar({ name: `${client.host_name} — for ${client.name || 'you'}`, events: [] });
+  }
   const { results } = await env.DB.prepare(
     `SELECT id, title, detail, city, starts_at, ends_at, status, updated_at, created_at
        FROM num_host_requests WHERE client_id = ?1 AND status IN ('confirmed','done')
         AND starts_at IS NOT NULL AND starts_at <> '' ORDER BY starts_at DESC LIMIT 300`,
   ).bind(client.id).all().catch(() => ({ results: [] }));
   const events = [];
+
+  /* WHAT THEY ADDED FOR YOU, but never what you sent them.
+   *
+   * num_client_events holds two kinds of thing. Entries the HOST typed — an
+   * anniversary dinner they are quietly arranging — belong in this feed: the
+   * client does not have them yet, which is the whole reason to publish.
+   *
+   * Entries that came from an .ics THE CLIENT SENT must never go back. They
+   * are already in the calendar this feed is subscribed by, so republishing
+   * them would show every flight and meeting twice in the client's own app,
+   * and the host would be blamed for it. Imports travel one way. */
+  const own = await env.DB.prepare(
+    `SELECT id, title, detail, location, starts_at, ends_at, all_day
+       FROM num_client_events
+      WHERE client_id = ?1 AND source = 'host'
+        AND starts_at IS NOT NULL AND starts_at <> '' LIMIT 300`,
+  ).bind(client.id).all().catch(() => ({ results: [] }));
+
+  for (const e of own.results ?? []) {
+    const [day, time] = String(e.starts_at).replace('T', ' ').split(' ');
+    const when = floating(day, time);
+    if (!when) continue;
+    let end = null;
+    if (e.ends_at) {
+      const [d2, t2] = String(e.ends_at).replace('T', ' ').split(' ');
+      end = floating(d2, t2)?.value ?? null;
+    }
+    events.push(vevent({
+      uid: `client-event-${e.id}`, start: when.value, end,
+      allDay: e.all_day === 1 || when.allDay,
+      summary: e.title,
+      description: [e.detail, `Added by ${client.host_name} through NUM.`].filter(Boolean).join('\n'),
+      location: e.location ?? undefined,
+    }));
+  }
+
   for (const r of results ?? []) {
     const [day, time] = String(r.starts_at).replace('T', ' ').split(' ');
     const when = floating(day, time);

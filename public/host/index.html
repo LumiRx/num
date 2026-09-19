@@ -90,6 +90,33 @@ td{padding:10px 12px 10px 0;border-bottom:1px solid var(--line);color:var(--ink2
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--bg);
   border:1px solid var(--line);border-radius:7px;padding:3px 7px;word-break:break-all}
 .hide{display:none!important}
+
+/* ── TABS ────────────────────────────────────────────────────────────────
+   This console was fourteen cards on one scroll. A host looking for the boat
+   they listed on Tuesday scrolled past their clients, their suppliers and a
+   card about closing their account to find it. Tabs are not decoration here:
+   they are the difference between a page you read once and a console you work
+   in every day.
+
+   The mechanism is deliberately additive. `hide` is still the existing JS's
+   switch and nothing about it changed; `t-off` is the tab system's, and a
+   section shows only when it carries neither. That is why a 1,500-line file of
+   working behaviour did not have to be touched to get navigation. */
+.tabs{position:sticky;top:0;z-index:30;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px;margin:0 0 var(--gap);
+  box-shadow:var(--shadow)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;border:0;background:transparent;color:var(--slate);font:inherit;font-weight:650;
+  font-size:14px;padding:9px 14px;border-radius:10px;cursor:pointer;white-space:nowrap;display:flex;
+  align-items:center;gap:7px}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected=true]{background:var(--pri);color:#fff}
+.tabs .cnt{font-size:11px;font-weight:700;background:rgba(0,0,0,.08);border-radius:999px;padding:1px 7px;
+  font-variant-numeric:tabular-nums}
+.tabs button[aria-selected=true] .cnt{background:rgba(255,255,255,.22)}
+.tabs .cnt.due{background:#B4232B;color:#fff}
+.t-off{display:none!important}
+@media(max-width:620px){.tabs{border-radius:0;margin-left:-20px;margin-right:-20px;border-left:0;border-right:0}}
 </style>
 <!-- Meta Pixel Code -->
 <script>
@@ -157,8 +184,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
   <div class="tiles" id="tiles"></div>
 
+  <!-- Built by the tab module at the foot of this file, from the section ids
+       it finds. An empty <nav> here rather than hardcoded buttons because a
+       button for a card that is not on the page is a dead end a host taps. -->
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Your console"></nav>
+
   <!-- SERVICES + PRICING -->
-  <section class="card2">
+  <section class="card2" id="profCard">
     <span class="tag">What you offer</span>
     <h2>Your services and what they cost</h2>
     <p class="sub">Tick what you take. For each one, say how you charge and whether you deliver or go to them.
@@ -169,6 +201,40 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <div class="note bad" id="profErr"></div>
 
     <form id="profForm">
+
+      <!-- WHO YOU ARE.
+           Collected once on the join form and, until now, correctable only by
+           emailing us. These are the fields most likely to be wrong — a name
+           typed on a phone, a company that changed, a mobile written down in
+           a hurry — and they are the ones a client sees. -->
+      <div class="field">
+        <label>Your details</label>
+        <div class="row2">
+          <div class="field" style="margin-bottom:10px">
+            <label for="h_name">Your name</label>
+            <input id="h_name" type="text" autocomplete="name" maxlength="120">
+          </div>
+          <div class="field" style="margin-bottom:10px">
+            <label for="h_company">Company <span class="hint">optional</span></label>
+            <input id="h_company" type="text" autocomplete="organization" maxlength="120">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field" style="margin-bottom:10px">
+            <label for="h_phone">Your number</label>
+            <input id="h_phone" type="tel" autocomplete="tel" placeholder="+44 7…">
+          </div>
+          <div class="field" style="margin-bottom:10px">
+            <label for="h_country">Country</label>
+            <input id="h_country" type="text" maxlength="2" placeholder="GB" style="text-transform:uppercase">
+          </div>
+        </div>
+        <p class="hint">Your email is <b id="h_email">—</b>. It is not editable here: this console has no password,
+          the link is the key, and a form that could move the address would let anyone holding that link move the
+          whole account somewhere you cannot read. To change it, email
+          <a href="mailto:info@itsnum.com">info@itsnum.com</a> from the address we have.</p>
+      </div>
+
       <div class="field">
         <label>Services</label>
         <div class="svc" id="svc"></div>
@@ -316,6 +382,15 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
           <div class="field"><label for="cl_phone">Mobile <span class="hint">optional</span></label><input id="cl_phone" type="tel"></div>
           <div class="field"><label for="cl_city">Where they are based</label><input id="cl_city" type="text" placeholder="Edinburgh"></div>
         </div>
+        <!-- Both of these columns have existed since 0014 and neither had a
+             box. A client's country decides which emergency number, which
+             currency and which side of a border a request falls on; the
+             language they prefer decides what NUM writes to them in. Held and
+             never asked for is the worst of both. -->
+        <div class="row2">
+          <div class="field"><label for="cl_country">Country</label><input id="cl_country" type="text" placeholder="United Kingdom" maxlength="60"></div>
+          <div class="field"><label for="cl_langs">Languages <span class="hint">how they prefer to be written to</span></label><input id="cl_langs" type="text" placeholder="English, French" maxlength="120"></div>
+        </div>
         <div class="field">
           <label for="cl_notes">What NUM needs to know about them</label>
           <textarea id="cl_notes" rows="2" placeholder="e.g. Always aisle. Hates being called before 9. Same driver in Dubai every time — Rashid."></textarea>
@@ -335,6 +410,108 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       <thead><tr><th>Name</th><th>Where</th><th>How they arrived</th><th>Status</th><th></th></tr></thead>
       <tbody id="clRows"></tbody>
     </table></div>
+  </section>
+
+  <!-- ── ONE CLIENT ───────────────────────────────────────────────────
+       Everything a host keeps in their head about one person, in the order
+       they need it: who they are, what they like, what is coming, what has
+       been, and what is owed. Hidden until a name is clicked — a console that
+       opens on somebody's file is a console showing a stranger's allergies to
+       whoever is looking over the shoulder. -->
+  <section class="card2 hide" id="cfCard">
+    <span class="tag">Their file</span>
+    <h2 id="cfName">Client</h2>
+    <p class="sub" id="cfWho"></p>
+    <div class="note bad" id="cfErr"></div>
+    <div class="note ok" id="cfNote"></div>
+
+    <nav class="tabs" id="cfTabs" role="tablist" aria-label="This client" style="position:static"></nav>
+
+    <div data-cf="about">
+      <div class="row2">
+        <div class="field"><label for="cf_likes">What they like</label>
+          <textarea id="cf_likes" rows="3" placeholder="Corner tables. Burgundy. The same driver in Dubai — Rashid."></textarea></div>
+        <div class="field"><label for="cf_dislikes">What they will not have</label>
+          <textarea id="cf_dislikes" rows="3" placeholder="No boats. Never before 9am. Not the Ritz."></textarea>
+          <p class="hint">Its own box on purpose. A "no" buried in a paragraph about favourite hotels is a no somebody misses.</p></div>
+      </div>
+      <div class="field"><label for="cf_interests">Interests <span class="hint">short tags, separated by commas</span></label>
+        <input id="cf_interests" type="text" placeholder="opera, diving, wine, Formula 1">
+        <p class="hint">Tags rather than a sentence, so you can answer &ldquo;which of my people would want to know about this&rdquo;.</p></div>
+      <div class="row2">
+        <div class="field"><label for="cf_dietary">Allergies and anything they cannot eat</label>
+          <textarea id="cf_dietary" rows="2" placeholder="Shellfish — anaphylactic. Carries an EpiPen."></textarea>
+          <p class="hint">Kept apart from what they like for a reason. A wrong wine is a bad evening.</p></div>
+        <div class="field"><label for="cf_access">What they need to get around comfortably</label>
+          <textarea id="cf_access" rows="2" placeholder="Step-free. Aisle seat, front of cabin."></textarea></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="cf_company">Where they work</label><input id="cf_company" type="text"></div>
+        <div class="field"><label for="cf_birthday">Birthday <span class="hint">as they gave it</span></label>
+          <input id="cf_birthday" type="text" placeholder="14 March, or 1974-03-14"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="cf_city">Based in</label><input id="cf_city" type="text"></div>
+        <div class="field"><label for="cf_country">Country</label><input id="cf_country" type="text"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="cf_langs">Languages</label><input id="cf_langs" type="text"></div>
+        <div class="field"><label for="cf_notes">Anything else NUM should know</label>
+          <textarea id="cf_notes" rows="2"></textarea></div>
+      </div>
+      <button class="btn pri" type="button" id="cfSave">Save their file</button>
+    </div>
+
+    <div data-cf="calendar">
+      <p class="sub">What is happening to them, not just what you are doing for them — the flight they booked
+        themselves, the board meeting, the birthday. So you do not put a dinner on top of it.</p>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff;margin-bottom:14px">
+        <b style="display:block;margin-bottom:6px">Import a calendar they sent you</b>
+        <p class="hint" style="margin:0 0 10px">A .ics from Apple Calendar, Google, Outlook or their agent. Send the
+          same trip again later and it updates rather than doubling up. Repeating events are shown once and marked
+          &mdash; we do not expand a recurrence we cannot get right.</p>
+        <input id="cf_ics" type="file" accept=".ics,text/calendar">
+      </div>
+      <form id="cfEvForm" style="display:grid;grid-template-columns:2fr 1.2fr 1.2fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px">
+        <div><label class="hint">What</label><input id="cf_ev_title" type="text" placeholder="Anniversary dinner"></div>
+        <div><label class="hint">Where</label><input id="cf_ev_where" type="text" placeholder="Rome"></div>
+        <div><label class="hint">Starts</label><input id="cf_ev_start" type="datetime-local"></div>
+        <div><label class="hint">Ends</label><input id="cf_ev_end" type="datetime-local"></div>
+        <button class="btn" type="submit">Add</button>
+      </form>
+      <div id="cfCal"></div>
+    </div>
+
+    <div data-cf="bookings"><div id="cfBookings"></div></div>
+    <div data-cf="history"><div id="cfHistory"></div></div>
+
+    <div data-cf="money">
+      <div class="tiles" id="cfMoneyTiles"></div>
+      <p class="sub">Every confirmed booking is a line. NUM does not invent an invoice number &mdash; your own
+        system already has a sequence, and a second one of ours against the same client is how a payment gets
+        applied to the wrong thing. Put your reference in and mark it as it moves.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>What</th><th>When</th><th>Amount</th><th>Your ref</th><th>State</th><th></th></tr></thead>
+        <tbody id="cfInvoices"></tbody>
+      </table></div>
+    </div>
+
+    <div data-cf="portal">
+      <p class="sub">Their own page. It already exists for every client &mdash; it is how they see who holds their
+        details and how they leave, and neither of those is switchable.</p>
+      <p class="hint" id="cfPortalUrl"></p>
+      <label class="choice" style="margin-top:12px">
+        <input type="checkbox" id="cf_portal_trips">
+        <b>Show them their trips</b>
+        <span>Their confirmed bookings and the calendar you hold for them appear on their page, and go into the
+          calendar feed they subscribed to. Off, both stop &mdash; the feed keeps working and simply carries
+          nothing, so their calendar app does not show a broken subscription. The page still tells them who holds
+          their details and still lets them leave.</span>
+      </label>
+      <button class="btn" type="button" id="cfPortalSave">Save</button>
+    </div>
+
+    <p style="margin-top:18px"><button class="btn" type="button" id="cfClose">Close their file</button></p>
   </section>
 
   <!-- ── INTRODUCTIONS ────────────────────────────────────────────────
@@ -542,6 +719,23 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
     <div class="note bad" id="flErr"></div>
 
+    <!-- ── PHOTOGRAPHS FIRST ─────────────────────────────────────────────
+         The form below this asks for eleven fields before anything exists to
+         look at, which is most of the reason this table is empty. A host has
+         the photographs already. Drop them here and we read what we can off
+         them, put the pictures of the same car together, and hand back a draft
+         to correct — which is a different job from typing one from nothing. -->
+    <div id="flDrop" style="border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;
+         background:#fff;margin:0 0 16px;cursor:pointer">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Drop your photographs here</b>
+      <span class="hint" style="display:block;max-width:46ch;margin:0 auto">
+        Or tap to choose them. Up to twelve at a time, JPEG, PNG, WebP or HEIC. Pictures of the same car, boat or
+        aircraft are put together — and nothing goes live until you have read it back.</span>
+      <input id="flFiles" type="file" accept="image/*" multiple style="display:none">
+    </div>
+    <div id="flUp"></div>
+    <div id="flDrafts"></div>
+
     <details style="margin:0 0 16px">
       <summary style="cursor:pointer;font-weight:600">Add something to the fleet</summary>
       <form id="flForm" style="margin-top:14px">
@@ -568,6 +762,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         <div class="row2">
           <div class="field"><label for="fl_port">Home port or base</label><input id="fl_port" type="text" placeholder="Royal Phuket Marina"></div>
           <div class="field"><label for="fl_city">City</label><input id="fl_city" type="text" placeholder="Phuket"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fl_country">Country</label><input id="fl_country" type="text" placeholder="Thailand" maxlength="80"></div>
+          <div class="field"><label for="fl_notes">What a booker should know
+            <span class="hint">shown with the listing</span></label>
+            <input id="fl_notes" type="text" maxlength="1000" placeholder="Captain and deckhand included. No shoes aboard."></div>
         </div>
         <div class="row2">
           <div class="field"><label for="fl_guests">Guests</label><input id="fl_guests" type="number" min="0" max="500"></div>
@@ -603,8 +803,9 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     </table></div>
 
     <h3 style="margin:22px 0 6px;font-size:15px">Photos waiting on you</h3>
-    <p class="hint" style="margin:0 0 10px">Texted in by a supplier. Pick which one it belongs to, or bin it.
-      Nothing here is visible to a client yet.</p>
+    <p class="hint" style="margin:0 0 10px">Texted in by a supplier, or one of yours that did not get filed.
+      Pick which one it belongs to, or bin it. Nothing here is visible to a client yet, and nothing here is
+      anyone else's &mdash; another host's photographs never appear in your queue.</p>
     <div id="flQueue"></div>
 
     <h3 style="margin:22px 0 6px;font-size:15px">The calendar</h3>
@@ -644,10 +845,34 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     </div>
 
     <div class="note bad" id="ntErr"></div>
+
+    <!-- ── FINDING SOMEONE ───────────────────────────────────────────────
+         Your client wants a car in Bangkok on Thursday and you do not have one
+         there. Before this, the answer was to read a list of every host in the
+         network, newest first. This asks the question instead — and it
+         searches the things hosts have actually listed as well as the hosts
+         themselves, because "who can do this" and "what is there" are the same
+         question when a client is waiting. -->
+    <h3 style="margin:20px 0 8px;font-size:15px">Find someone for your client</h3>
+    <form id="fdForm" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px">
+      <div><label class="hint">What you need</label>
+        <input id="fd_q" type="text" placeholder="driver, Sunseeker, airport"></div>
+      <div><label class="hint">Service</label><select id="fd_service"><option value="">Any</option></select></div>
+      <div><label class="hint">City</label><input id="fd_city" type="text" placeholder="Bangkok"></div>
+      <div><label class="hint">Kind</label><select id="fd_kind"><option value="">Any</option></select></div>
+      <button class="btn pri" type="submit">Search</button>
+    </form>
+    <p class="hint" style="margin:0 0 12px">Nobody's email or number appears here, and neither does yours.
+      You ask, they accept, and only then do you have each other.</p>
+    <div id="fdOut" style="margin-bottom:18px"></div>
+
     <h3 style="margin:20px 0 8px;font-size:15px">Your connections</h3>
     <div id="ntLinks"></div>
-    <h3 style="margin:20px 0 8px;font-size:15px">Hosts you can ask</h3>
-    <div id="ntDir"></div>
+    <!-- "Hosts you can ask" used to be a second list right here: the same
+         hosts the search above returns when you ask it nothing, with the same
+         Ask-to-connect button. One tab, two lists of one thing, and no way to
+         tell which was authoritative. The search is the door now, and it runs
+         empty on open so this tab is never blank. -->
   </section>
 
   <!-- ── YOUR PLAN ────────────────────────────────────────────────────
@@ -727,7 +952,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   </section>
 
   <!-- CONTACTS -->
-  <section class="card2">
+  <section class="card2" id="inviteCard">
     <span class="tag">Your book</span>
     <h2>Invite the people you already look after</h2>
     <p class="sub">Paste them below, one per line: <b>name, email, phone</b>. We send one message each, with your
@@ -763,7 +988,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   </section>
 
   <!-- EARNINGS -->
-  <section class="card2">
+  <section class="card2" id="earnCard">
     <span class="tag">Ledger</span>
     <h2>What you have earned</h2>
     <p class="sub">Every row is a real booking. Cancelled bookings are shown and never counted in the headline.</p>
@@ -929,6 +1154,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     if (r) r.checked = true;
     $('notify_phone').value = p.notify_phone || '';
     $('smsopt').checked = !!p.sms_opt_in;
+    if ($('h_name')) {
+      $('h_name').value = p.name || '';
+      $('h_company').value = p.company || '';
+      $('h_phone').value = p.phone || '';
+      $('h_country').value = p.country || '';
+      $('h_email').textContent = p.email || 'not on file';
+    }
     renderServices(p.services || []);
     renderPrices();
     AREAS = (p.areas || []).slice();
@@ -971,7 +1203,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         accepts_intros: $('introSwitch').checked,
         in_network: $('netSwitch').checked, blurb: $('netBlurb').value,
         charge_mode: (document.querySelector('input[name=charge]:checked') || {}).value || 'own',
-        notify_phone: $('notify_phone').value, sms_opt_in: $('smsopt').checked
+        notify_phone: $('notify_phone').value, sms_opt_in: $('smsopt').checked,
+        name: $('h_name') ? $('h_name').value : undefined,
+        company: $('h_company') ? $('h_company').value : undefined,
+        phone: $('h_phone') ? $('h_phone').value : undefined,
+        country: $('h_country') ? $('h_country').value : undefined
       })
     }).then(function (r) { return r.json(); }).then(function (d) {
       $('saveBtn').disabled = false;
@@ -1128,7 +1364,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     paintPlan(d.plan);
     $('clRows').innerHTML = CLIENTS.length ? CLIENTS.map(function (c) {
       var how = { host_added: 'You added them', num_offer: 'Introduced by NUM', self_joined: 'Joined themselves' }[c.source] || c.source;
-      return '<tr><td><b>' + esc(c.name) + '</b>' +
+      return '<tr><td><b><a href="#" data-file="' + esc(c.id) + '">' + esc(c.name) + '</a></b>' +
         (c.turn ? '<br>' + turnLabel(c) : '') +
         (c.next ? '<br><span class="hint">Next: ' + esc(when(c.next.starts_at)) + ' &middot; '
           + esc(c.next.title || '') + '</span>' : '') +
@@ -1143,6 +1379,10 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         (c.status === 'active' ? 'Pause' : 'Resume') + '</button> ' +
         '<button class="btn" data-rm="' + c.id + '" data-nm="' + esc(c.name) + '">Remove</button></td></tr>';
     }).join('') : '<tr><td colspan="5" style="color:var(--slate)">Nobody yet. Add the first person you look after.</td></tr>';
+
+    Array.prototype.forEach.call($('clRows').querySelectorAll('[data-file]'), function (a) {
+      a.onclick = function (e) { e.preventDefault(); cfOpen(a.getAttribute('data-file')); };
+    });
 
     Array.prototype.forEach.call($('clRows').querySelectorAll('[data-cl]'), function (b) {
       b.onclick = function () {
@@ -1194,6 +1434,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     api('clients', {
       action: 'add', name: $('cl_name').value, email: $('cl_email').value,
       phone: $('cl_phone').value, home_city: $('cl_city').value,
+      home_country: $('cl_country').value, languages: $('cl_langs').value,
       notes: $('cl_notes').value, consent_text: consent
     }).then(function (d) {
       $('clBtn').disabled = false;
@@ -1207,7 +1448,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         if (d.plan) paintPlan(d.plan);
         return note($('clErr'), why || ('That did not save: ' + esc(d.error || 'unknown')), 'bad');
       }
-      ['cl_name', 'cl_email', 'cl_phone', 'cl_city', 'cl_notes'].forEach(function (i) { $(i).value = ''; });
+      ['cl_name', 'cl_email', 'cl_phone', 'cl_city', 'cl_country', 'cl_langs', 'cl_notes']
+        .forEach(function (i) { if ($(i)) $(i).value = ''; });
       paintClients(d);
     }).catch(function () {
       $('clBtn').disabled = false;
@@ -1468,7 +1710,10 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
     var linked = {};
     links.forEach(function (l) { linked[l.host_id] = l.status; });
-    $('ntDir').innerHTML = (d.directory || []).length ? d.directory.map(function (h) {
+    // The directory element was removed when the search replaced it. Guarded
+    // rather than deleted: /api/host/network still returns `directory`, and a
+    // console build that still has the element keeps working.
+    if ($('ntDir')) $('ntDir').innerHTML = (d.directory || []).length ? d.directory.map(function (h) {
       var already = linked[h.host_id];
       return '<div class="choice" style="display:block"><b>' + esc(h.name) +
         (h.company ? ' — ' + esc(h.company) : '') + '</b>' +
@@ -1479,7 +1724,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
           : '<button class="btn" data-conn="' + h.host_id + '">Ask to connect</button>') + '</div></div>';
     }).join('') : '<p class="hint">Nobody else has listed themselves yet. When they do, they appear here.</p>';
 
-    Array.prototype.forEach.call($('ntDir').querySelectorAll('[data-conn]'), function (b) {
+    Array.prototype.forEach.call($('ntDir') ? $('ntDir').querySelectorAll('[data-conn]') : [], function (b) {
       b.onclick = function () {
         api('network', { action: 'connect', host_id: b.getAttribute('data-conn') })
           .then(function (d) { if (d.ok) paintNetwork(d); else note($('ntErr'), esc(d.error), 'bad'); });
@@ -1991,9 +2236,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
 
     $('flRows').innerHTML = FLEET.length ? FLEET.map(function (a) {
       var pend = a.photos_pending ? ' <span class="hint">(' + a.photos_pending + ' waiting)</span>' : '';
+      // A draft is in this table because it IS in the fleet — it is simply not
+      // one the host has read back yet, and a row that does not say so reads
+      // as a listing they made.
+      var draft = a.draft ? '<span class="tag" style="color:#8A5A12">Draft</span><br>' : '';
       return '<tr>' +
         '<td>' + esc(a.kind) + '</td>' +
-        '<td><b>' + esc(a.name) + '</b>' +
+        '<td>' + draft + '<b>' + esc(a.name) + '</b>' +
           (a.make || a.model ? '<br><span class="hint">' + esc([a.make, a.model, a.year].filter(Boolean).join(' ')) + '</span>' : '') +
         '</td>' +
         '<td>' + esc(a.home_port || a.home_city || '—') +
@@ -2185,6 +2434,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     $('fl_reg').value = a.registration || '';
     $('fl_port').value = a.home_port || '';
     $('fl_city').value = a.home_city || '';
+    if ($('fl_country')) $('fl_country').value = a.home_country || '';
+    if ($('fl_notes')) $('fl_notes').value = a.notes || '';
     $('fl_guests').value = a.guests == null ? '' : a.guests;
     $('fl_crew').value = a.crew == null ? '' : a.crew;
     // Shown back in MAJOR units because that is what was typed in.
@@ -2215,6 +2466,8 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       registration: $('fl_reg').value,
       home_port: $('fl_port').value,
       home_city: $('fl_city').value,
+      home_country: $('fl_country') ? $('fl_country').value : '',
+      notes: $('fl_notes') ? $('fl_notes').value : '',
       guests: $('fl_guests').value,
       crew: $('fl_crew').value,
       rate_minor: $('fl_rate').value,
@@ -2297,6 +2550,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       loadBook();
       loadSuppliers();
       loadFleet();
+      /* Asked nothing, the search IS the directory — ranked by who you already
+       * work with rather than by who signed up last. It runs HERE rather than
+       * when the script parses: at parse time a host sitting at the gate has no
+       * key yet, so it fired a guaranteed 401 on every visit and left the
+       * failure message sitting behind the gate for when they got in. */
+      if (typeof fdSearch === 'function') fdSearch();
       // The profile endpoint is newer than the console key. A host whose
       // account predates it still gets a working page rather than a blank one.
       if (prof.ok) paintProfile(prof);
@@ -2306,7 +2565,733 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     });
   }
 
+
+  /* ── A FLEET FROM A CAMERA ROLL ───────────────────────────────────────
+     One upload per request, on purpose: a Worker body has a limit and a CPU
+     budget, and twelve 4MB photographs in one POST is where this breaks on the
+     first host with a decent camera. One at a time also means a row can go
+     green as each lands, and a failure costs that photograph rather than the
+     whole drag.
+
+     Nothing here lists anything. The batch comes back as DRAFTS, the host
+     reads them, and `confirm` is a button a person presses. */
+  var FLMAX = 12;
+
+  function flDropSetup() {
+    var zone = $('flDrop'), input = $('flFiles');
+    if (!zone || !input) return;
+
+    zone.onclick = function () { input.click(); };
+    input.onchange = function () { flTake(input.files); input.value = ''; };
+
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.style.borderColor = 'var(--pri)';
+        zone.style.background = 'var(--pri-xl)';
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.style.borderColor = 'var(--line)';
+        zone.style.background = '#fff';
+      });
+    });
+    zone.addEventListener('drop', function (e) {
+      if (e.dataTransfer && e.dataTransfer.files) flTake(e.dataTransfer.files);
+    });
+  }
+
+  function flTake(fileList) {
+    var files = Array.prototype.slice.call(fileList || []).filter(function (f) {
+      return /^image\//.test(f.type || '');
+    });
+    if (!files.length) return note($('flErr'), 'Those were not photographs we can read.', 'bad');
+
+    var over = files.length > FLMAX;
+    files = files.slice(0, FLMAX);
+    note($('flErr'), '', '');
+
+    $('flUp').innerHTML = '<div class="note warn on" id="flUpNote">Uploading ' + files.length +
+      ' photograph' + (files.length === 1 ? '' : 's') + '…' +
+      (over ? ' Twelve at a time — send the rest straight after.' : '') + '</div>' +
+      '<div id="flUpRows" style="margin-bottom:14px"></div>';
+
+    var rows = $('flUpRows');
+    var done = [];
+    var failed = 0;
+
+    // Sequential rather than parallel. Twelve concurrent multi-megabyte POSTs
+    // from a phone on hotel wifi is how the last three time out.
+    var i = 0;
+    (function next() {
+      if (i >= files.length) return flIdentify(done, failed);
+      var f = files[i]; i += 1;
+      var row = document.createElement('div');
+      row.className = 'hint';
+      row.textContent = '… ' + f.name;
+      rows.appendChild(row);
+
+      fetch('/api/host/fleet-upload?k=' + encodeURIComponent(K), {
+        method: 'POST',
+        headers: { 'content-type': f.type, 'x-num-filename': f.name.slice(0, 120) },
+        body: f
+      }).then(function (r) { return r.json(); }).then(function (r) {
+        if (r.ok) { done.push(r.media_id); row.textContent = '✓ ' + f.name; }
+        else { failed += 1; row.textContent = '✕ ' + f.name + ' — ' + (r.says || r.error || 'refused'); }
+        next();
+      }).catch(function () {
+        failed += 1;
+        row.textContent = '✕ ' + f.name + ' — could not reach NUM';
+        next();
+      });
+    }());
+  }
+
+  function flIdentify(mediaIds, failed) {
+    if (!mediaIds.length) {
+      return note($('flErr'), 'Nothing uploaded' + (failed ? ' — all ' + failed + ' were refused.' : '.'), 'bad');
+    }
+    $('flUpNote').textContent = 'Reading ' + mediaIds.length + ' photograph' +
+      (mediaIds.length === 1 ? '' : 's') + '…';
+
+    api('fleet-intake', { media_ids: mediaIds }).then(function (r) {
+      $('flUp').innerHTML = '';
+      if (!r.ok) return note($('flErr'), r.says || ('Could not read those: ' + (r.error || 'unknown')), 'bad');
+      flPaintDrafts(r.drafts || [], r.says);
+      loadFleet();
+    }).catch(function () {
+      $('flUp').innerHTML = '';
+      note($('flErr'), 'Your photographs are saved, but we could not read them just then. Reload and they are waiting.', 'bad');
+    });
+  }
+
+  function flPaintDrafts(drafts, says) {
+    if (!drafts.length) { $('flDrafts').innerHTML = ''; return; }
+    var CONF = { high: 'We are fairly sure', medium: 'Worth a look', low: 'A guess' };
+
+    $('flDrafts').innerHTML = '<div class="note ok on">' + esc(says || '') + '</div>' +
+      drafts.map(function (d) {
+        var pics = (d.photos || []).map(function (pid) {
+          return '<img src="/api/host/asset-image?k=' + encodeURIComponent(K) + '&id=' + encodeURIComponent(pid) +
+            '" alt="" style="width:92px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">';
+        }).join(' ');
+
+        return '<div class="price" data-draft="' + esc(d.id) + '" style="margin-bottom:12px">' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">' + pics + '</div>' +
+          '<div class="row2">' +
+            '<div class="field" style="margin-bottom:8px"><label>What a client reads</label>' +
+              '<input type="text" data-f="name" value="' + esc(d.name || '') + '"></div>' +
+            '<div class="field" style="margin-bottom:8px"><label>What it is</label>' +
+              '<select data-f="kind">' +
+                ['yacht', 'boat', 'jet', 'helicopter', 'car', 'villa', 'other'].map(function (k) {
+                  return '<option value="' + k + '"' + (d.kind === k ? ' selected' : '') + '>' +
+                    k.charAt(0).toUpperCase() + k.slice(1) + '</option>';
+                }).join('') + '</select></div>' +
+          '</div>' +
+          '<div class="row2">' +
+            '<div class="field" style="margin-bottom:8px"><label>Make</label>' +
+              '<input type="text" data-f="make" value="' + esc(d.make || '') + '"></div>' +
+            '<div class="field" style="margin-bottom:8px"><label>Model</label>' +
+              '<input type="text" data-f="model" value="' + esc(d.model || '') + '"></div>' +
+          '</div>' +
+          '<p class="hint" style="margin:0 0 10px">' +
+            (d.identified
+              ? esc(CONF[d.confidence] || 'A guess') + ' this is right. ' +
+                (d.unsure ? 'We could not tell: ' + esc(d.unsure) + '. ' : '') +
+                'Correct anything and say go.'
+              : 'We could not read this one. Give it a name and say go.') +
+            (d.registration
+              ? '<br>Plate or tail number <b>' + esc(d.registration) + '</b> kept on file. It is never sent to a client.'
+              : '') +
+          '</p>' +
+          '<button class="btn pri" type="button" data-ok="' + esc(d.id) + '">Yes, that is it</button> ' +
+          '<button class="btn" type="button" data-no="' + esc(d.id) + '">Not this</button>' +
+          '</div>';
+      }).join('');
+
+    each($('flDrafts').querySelectorAll('[data-ok]'), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute('data-ok');
+        var card = $('flDrafts').querySelector('[data-draft="' + id + '"]');
+        var g = function (n) { var e = card.querySelector('[data-f=' + n + ']'); return e ? e.value : ''; };
+        b.disabled = true;
+        // Two calls on purpose: the corrections go through the SAME save path
+        // every other asset uses, so a draft cannot end up with a shape that
+        // the normal editor cannot produce. Then it stops being a draft.
+        api('assets', {
+          action: 'save', id: id, kind: g('kind'), name: g('name'),
+          make: g('make'), model: g('model')
+        }).then(function (r) {
+          if (!r.ok) { b.disabled = false; return note($('flErr'), r.says || 'Could not save that.', 'bad'); }
+          return api('fleet-draft', { action: 'confirm', id: id }).then(function () {
+            card.innerHTML = '<b>' + esc(g('name')) + '</b> is in your fleet. ' +
+              '<span class="hint">Add a rate and a base under Edit, then put it on your shelf.</span> ' +
+              '<button class="btn" type="button" data-shelf="' + esc(id) + '">Put it on my shelf</button>';
+            each(card.querySelectorAll('[data-shelf]'), function (sb) {
+              sb.onclick = function () {
+                sb.disabled = true;
+                api('fleet-draft', { action: 'product', id: sb.getAttribute('data-shelf') }).then(function (pr) {
+                  sb.disabled = false;
+                  if (!pr.ok) return note($('flErr'), pr.says || ('Could not do that: ' + pr.error), 'bad');
+                  sb.outerHTML = '<span class="hint">' + esc(pr.says) + '</span>';
+                  api('products').then(function (pd) { if (pd.ok) paintProducts(pd); });
+                });
+              };
+            });
+            loadFleet();
+          });
+        }).catch(function () { b.disabled = false; note($('flErr'), 'Could not reach NUM just then.', 'bad'); });
+      };
+    });
+
+    each($('flDrafts').querySelectorAll('[data-no]'), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute('data-no');
+        b.disabled = true;
+        api('fleet-draft', { action: 'discard', id: id }).then(function () {
+          var card = $('flDrafts').querySelector('[data-draft="' + id + '"]');
+          if (card) card.parentNode.removeChild(card);
+          loadFleet();
+        });
+      };
+    });
+  }
+
+  flDropSetup();
+
+
+  /* ── FIND A HOST ──────────────────────────────────────────────────────
+     Read-only. The only thing a result can do is ask for a connection, which
+     goes through the same /api/host/network action the directory already
+     used — so there is one way two hosts become connected, not two. */
+  var FDSERVICES = ['car', 'reservation', 'stay', 'activity', 'appointment', 'delivery', 'yacht', 'jet', 'provisioning'];
+  var FDKINDS = ['yacht', 'boat', 'jet', 'helicopter', 'car', 'villa', 'other'];
+
+  function fdSetup() {
+    if (!$('fdForm')) return;
+    var title = function (k) { return k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '); };
+    FDSERVICES.forEach(function (k) {
+      var o = document.createElement('option'); o.value = k;
+      o.textContent = (typeof LABEL !== 'undefined' && LABEL[k]) ? LABEL[k] : title(k);
+      $('fd_service').appendChild(o);
+    });
+    FDKINDS.forEach(function (k) {
+      var o = document.createElement('option'); o.value = k; o.textContent = title(k);
+      $('fd_kind').appendChild(o);
+    });
+    $('fdForm').onsubmit = function (e) { e.preventDefault(); fdSearch(); };
+  }
+
+  function fdSearch() {
+    var qs = [];
+    [['q', 'fd_q'], ['service', 'fd_service'], ['city', 'fd_city'], ['kind', 'fd_kind']].forEach(function (p) {
+      var v = ($(p[1]).value || '').trim();
+      if (v) qs.push(p[0] + '=' + encodeURIComponent(v));
+    });
+    $('fdOut').innerHTML = '<p class="hint">Looking…</p>';
+    fetch('/api/host/find?k=' + encodeURIComponent(K) + (qs.length ? '&' + qs.join('&') : ''))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          // A failed read is said out loud rather than shown as "nobody found",
+          // which would be a different and wrong answer.
+          $('fdOut').innerHTML = '<div class="note bad on">' +
+            esc(d.says || 'That search could not be run just now. Nothing is wrong with your query.') + '</div>';
+          return;
+        }
+        fdPaint(d);
+      })
+      .catch(function () {
+        $('fdOut').innerHTML = '<div class="note bad on">Could not reach NUM just then.</div>';
+      });
+  }
+
+  function fdPaint(d) {
+    if (!d.hosts.length && !d.assets.length) {
+      $('fdOut').innerHTML = '<p class="hint">' + esc(d.note || 'Nothing matched.') + '</p>';
+      return;
+    }
+
+    var hosts = d.hosts.map(function (h) {
+      var svc = (h.services || []).map(function (k) {
+        return '<span class="tag" style="margin:0 6px 0 0">' +
+          esc((typeof LABEL !== 'undefined' && LABEL[k]) ? LABEL[k] : k) + '</span>';
+      }).join('');
+      var where = [h.city, h.country].filter(Boolean).join(', ');
+      var action = h.connected
+        ? '<span class="tag">Connected</span>'
+        : (h.asked
+          ? '<span class="hint">Asked — waiting on them</span>'
+          : '<button class="btn" type="button" data-ask="' + esc(h.host_id) + '">Ask to connect</button>');
+      return '<div class="price" style="margin-bottom:8px">' +
+        '<div class="top"><b>' + esc(h.name) + '</b>' +
+          (h.company ? '<span class="hint">' + esc(h.company) + '</span>' : '') +
+          (where ? '<span class="hint">· ' + esc(where) + '</span>' : '') +
+          (h.assets ? '<span class="hint">· ' + h.assets + ' listed</span>' : '') +
+        '</div>' +
+        (h.blurb ? '<p class="hint" style="margin:0 0 8px">' + esc(h.blurb) + '</p>' : '') +
+        '<div style="margin-bottom:8px">' + svc + '</div>' + action +
+        '</div>';
+    }).join('');
+
+    var assets = d.assets.map(function (a) {
+      var pic = (a.photos && a.photos[0])
+        ? '<img src="' + esc(a.photos[0].url) + '" alt="" style="width:110px;height:78px;object-fit:cover;' +
+          'border-radius:8px;border:1px solid var(--line);float:left;margin:0 12px 6px 0">'
+        : '';
+      var rate = a.rate_unit === 'quote' || !a.rate_minor
+        ? 'Price on the trip'
+        : money(a.rate_minor, a.currency) + ' / ' + a.rate_unit;
+      return '<div class="price" style="margin-bottom:8px;overflow:hidden">' + pic +
+        '<b>' + esc(a.name) + '</b>' +
+        '<p class="hint" style="margin:2px 0 0">' +
+          esc([a.make, a.model, a.year].filter(Boolean).join(' ')) +
+          (a.home_port || a.home_city ? ' · ' + esc(a.home_port || a.home_city) : '') +
+          (a.guests ? ' · ' + a.guests + ' guests' : '') + '</p>' +
+        '<p class="hint" style="margin:2px 0 0">' + esc(rate) + ' · ' + esc(a.host_name) + '</p>' +
+        '</div>';
+    }).join('');
+
+    $('fdOut').innerHTML =
+      (hosts ? '<h4 style="font-size:13px;margin:0 0 8px;color:var(--slate)">Hosts</h4>' + hosts : '') +
+      (assets ? '<h4 style="font-size:13px;margin:14px 0 8px;color:var(--slate)">Things they have listed</h4>' + assets : '') +
+      '<p class="hint" style="margin-top:10px">' + esc(d.how_money_works || '') + '</p>';
+
+    each($('fdOut').querySelectorAll('[data-ask]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('network', { action: 'connect', host_id: b.getAttribute('data-ask') }).then(function (r) {
+          b.disabled = false;
+          if (!r.ok) return note($('ntErr'), r.says || ('Could not ask them: ' + (r.error || 'unknown')), 'bad');
+          b.outerHTML = '<span class="hint">Asked — waiting on them</span>';
+          paintNetwork(r);
+        }).catch(function () { b.disabled = false; note($('ntErr'), 'Could not reach NUM just then.', 'bad'); });
+      };
+    });
+  }
+
+  fdSetup();
+
+
+  /* ── ONE CLIENT'S FILE ────────────────────────────────────────────────
+     Loaded in ONE request. A page that fills from five calls shows a host five
+     different half-answers on a bad connection, and the half they act on is
+     whichever landed first. */
+  var CF = null;
+
+  var CFTABS = [
+    { key: 'about', label: 'About them' },
+    { key: 'calendar', label: 'Calendar' },
+    { key: 'bookings', label: 'Bookings' },
+    { key: 'history', label: 'History' },
+    { key: 'money', label: 'Invoices' },
+    { key: 'portal', label: 'Their page' }
+  ];
+
+  function cfTab(key) {
+    each($('cfCard').querySelectorAll('[data-cf]'), function (el) {
+      el.classList.toggle('hide', el.getAttribute('data-cf') !== key);
+    });
+    each($('cfTabs').children, function (b) {
+      b.setAttribute('aria-selected', String(b.dataset.key === key));
+    });
+  }
+
+  function cfTabsBuild() {
+    $('cfTabs').innerHTML = '';
+    CFTABS.forEach(function (t) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.dataset.key = t.key; b.setAttribute('role', 'tab');
+      b.innerHTML = '<span>' + t.label + '</span>';
+      b.onclick = function () { cfTab(t.key); };
+      $('cfTabs').appendChild(b);
+    });
+  }
+
+  function cfOpen(id) {
+    note($('cfErr'), ''); note($('cfNote'), '');
+    $('cfCard').classList.remove('hide');
+    $('cfName').textContent = 'Loading…';
+    $('cfCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    fetch('/api/host/client?k=' + encodeURIComponent(K) + '&id=' + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          $('cfName').textContent = 'Their file';
+          return note($('cfErr'), d.says || 'That file could not be opened.', 'bad');
+        }
+        CF = d;
+        cfPaint(d);
+      })
+      .catch(function () {
+        $('cfName').textContent = 'Their file';
+        note($('cfErr'), 'Could not reach NUM just then.', 'bad');
+      });
+  }
+
+  function cfPaint(d) {
+    var c = d.client;
+    $('cfName').textContent = c.name;
+    $('cfWho').textContent = [c.company, [c.home_city, c.home_country].filter(Boolean).join(', '),
+      c.email, c.phone].filter(Boolean).join(' · ');
+
+    $('cf_likes').value = c.likes || '';
+    $('cf_dislikes').value = c.dislikes || '';
+    $('cf_interests').value = (c.interests || []).join(', ');
+    $('cf_dietary').value = c.dietary || '';
+    $('cf_access').value = c.access_needs || '';
+    $('cf_company').value = c.company || '';
+    $('cf_birthday').value = c.birthday || '';
+    $('cf_city').value = c.home_city || '';
+    $('cf_country').value = c.home_country || '';
+    $('cf_langs').value = c.languages || '';
+    $('cf_notes').value = c.notes || '';
+
+    cfCalendar(d.calendar);
+    cfWork('cfBookings', d.bookings, 'Nothing booked ahead for them yet.');
+    cfWork('cfHistory', d.history, 'Nothing behind them yet.');
+    cfMoney(d.money);
+
+    if (d.portal) {
+      $('cf_portal_trips').checked = !!d.portal.trips;
+      $('cfPortalUrl').innerHTML = 'Their page: <span class="mono">' + esc(d.portal.url) + '</span>' +
+        '<br>Their calendar feed: <span class="mono">' + esc(d.portal.calendar) + '</span>';
+    } else {
+      $('cfPortalUrl').textContent = 'This client has no page yet.';
+    }
+    cfTab('about');
+  }
+
+  function cfCalendar(cal) {
+    var row = function (e) {
+      var when = e.all_day ? String(e.starts_at).slice(0, 10) : when_(e.starts_at);
+      var from = { import: 'from their calendar', host: 'you added it', request: 'a booking' }[e.source] || e.source;
+      return '<div class="price" style="margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">' +
+        '<div style="flex:1"><b>' + esc(e.title) + '</b>' +
+          (e.repeats ? ' <span class="tag">Repeats</span>' : '') +
+          '<p class="hint" style="margin:2px 0 0">' + esc(when) +
+            (e.location ? ' · ' + esc(e.location) : '') +
+            (e.tz ? ' · ' + esc(e.tz) : '') + ' · ' + esc(from) + '</p></div>' +
+        (e.source === 'request' ? '' :
+          '<button class="btn" type="button" data-evdel="' + esc(e.id) + '">Remove</button>') +
+        '</div>';
+    };
+    var ahead = (cal.ahead || []).map(row).join('');
+    var past = (cal.past || []).slice(-12).reverse().map(row).join('');
+    $('cfCal').innerHTML =
+      '<h3 style="font-size:14px;margin:0 0 8px">Ahead</h3>' +
+      (ahead || '<p class="hint">Nothing ahead. Import the trip they sent you, or add something.</p>') +
+      (past ? '<h3 style="font-size:14px;margin:18px 0 8px">Behind them</h3>' + past : '');
+
+    each($('cfCal').querySelectorAll('[data-evdel]'), function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('client', { action: 'event-delete', id: CF.client.id, event_id: b.getAttribute('data-evdel') })
+          .then(function (r) {
+            if (!r.ok) { b.disabled = false; return note($('cfErr'), 'Could not remove that.', 'bad'); }
+            cfOpen(CF.client.id);
+          });
+      };
+    });
+  }
+
+  // `when` is taken by the page's own date formatter; this is the same thing
+  // under a name that does not shadow it.
+  function when_(v) { return when(v); }
+
+  function cfWork(into, list, empty) {
+    $(into).innerHTML = (list && list.length) ? '<div class="scroll"><table>' +
+      '<thead><tr><th>What</th><th>When</th><th>Where</th><th>Price</th><th>State</th></tr></thead><tbody>' +
+      list.map(function (w) {
+        return '<tr><td><b>' + esc(w.title) + '</b>' +
+          (w.detail ? '<br><span class="hint">' + esc(w.detail) + '</span>' : '') + '</td>' +
+          '<td>' + esc(w.starts_at ? when(w.starts_at) : '—') + '</td>' +
+          '<td>' + esc(w.city || '—') + '</td>' +
+          '<td>' + (w.price_minor ? esc(money(w.price_minor, w.currency)) : '<span class="hint">on the request</span>') + '</td>' +
+          '<td>' + esc(w.status) + '</td></tr>';
+      }).join('') + '</tbody></table></div>'
+      : '<p class="hint">' + esc(empty) + '</p>';
+  }
+
+  function cfMoney(m) {
+    $('cfMoneyTiles').innerHTML =
+      '<div class="tile"><div class="k">Confirmed</div><div class="v tnum">' + esc(money(m.confirmed_minor, m.currency)) + '</div>' +
+        '<div class="s">across every confirmed booking</div></div>' +
+      '<div class="tile"><div class="k">Not yet paid</div><div class="v tnum">' + esc(money(m.unpaid_minor, m.currency)) + '</div>' +
+        '<div class="s">' + m.unpaid_count + ' line' + (m.unpaid_count === 1 ? '' : 's') + '</div></div>';
+
+    $('cfInvoices').innerHTML = m.invoices.length ? m.invoices.map(function (i) {
+      var label = { unbilled: 'Not billed yet', sent: 'Sent', paid: 'Paid' }[i.state];
+      return '<tr data-inv="' + esc(i.id) + '">' +
+        '<td>' + esc(i.title) + '</td>' +
+        '<td>' + esc(i.when ? when(i.when) : '—') + '</td>' +
+        '<td class="tnum">' + esc(money(i.price_minor, i.currency)) + '</td>' +
+        '<td><input type="text" data-ref="' + esc(i.id) + '" value="' + esc(i.invoice_ref || '') +
+          '" placeholder="INV-1042" style="max-width:130px"></td>' +
+        '<td>' + esc(label) + '</td>' +
+        '<td>' + ['unbilled', 'sent', 'paid'].filter(function (st) { return st !== i.state; })
+          .map(function (st) {
+            return '<button class="btn" type="button" data-inv-set="' + esc(i.id) + '" data-state="' + st + '">' +
+              ({ unbilled: 'Un-bill', sent: 'Mark sent', paid: 'Mark paid' })[st] + '</button>';
+          }).join(' ') + '</td></tr>';
+    }).join('') : '<tr><td colspan="6" class="hint">Nothing confirmed for them yet, so there is nothing to bill.</td></tr>';
+
+    each($('cfInvoices').querySelectorAll('[data-inv-set]'), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute('data-inv-set');
+        var ref = $('cfInvoices').querySelector('[data-ref="' + id + '"]');
+        b.disabled = true;
+        api('client', {
+          action: 'invoice', id: CF.client.id, request_id: id,
+          state: b.getAttribute('data-state'), invoice_ref: ref ? ref.value : ''
+        }).then(function (r) {
+          b.disabled = false;
+          if (!r.ok) return note($('cfErr'), r.says || ('Could not change that: ' + (r.error || 'unknown')), 'bad');
+          cfOpen(CF.client.id);
+        }).catch(function () { b.disabled = false; note($('cfErr'), 'Could not reach NUM just then.', 'bad'); });
+      };
+    });
+  }
+
+  $('cfSave').onclick = function () {
+    if (!CF) return;
+    $('cfSave').disabled = true;
+    api('client', {
+      action: 'save', id: CF.client.id,
+      likes: $('cf_likes').value, dislikes: $('cf_dislikes').value,
+      interests: $('cf_interests').value, dietary: $('cf_dietary').value,
+      access_needs: $('cf_access').value, company: $('cf_company').value,
+      birthday: $('cf_birthday').value, home_city: $('cf_city').value,
+      home_country: $('cf_country').value, languages: $('cf_langs').value,
+      notes: $('cf_notes').value
+    }).then(function (r) {
+      $('cfSave').disabled = false;
+      if (!r.ok) return note($('cfErr'), r.says || 'That did not save.', 'bad');
+      note($('cfNote'), 'Saved.', 'ok');
+      loadClients();
+    }).catch(function () {
+      $('cfSave').disabled = false;
+      note($('cfErr'), 'Could not reach NUM. Nothing was saved.', 'bad');
+    });
+  };
+
+  $('cfEvForm').onsubmit = function (e) {
+    e.preventDefault();
+    if (!CF) return;
+    var title = $('cf_ev_title').value.trim();
+    var start = $('cf_ev_start').value;
+    if (!title || !start) return note($('cfErr'), 'An entry needs something to call it and a date.', 'bad');
+    api('client', {
+      action: 'event', id: CF.client.id, title: title,
+      location: $('cf_ev_where').value,
+      // The input gives '2026-11-02T20:00'; the database stores seconds.
+      starts_at: start.replace('T', ' ') + ':00',
+      ends_at: $('cf_ev_end').value ? $('cf_ev_end').value.replace('T', ' ') + ':00' : ''
+    }).then(function (r) {
+      if (!r.ok) return note($('cfErr'), r.says || 'That did not save.', 'bad');
+      ['cf_ev_title', 'cf_ev_where', 'cf_ev_start', 'cf_ev_end'].forEach(function (i) { $(i).value = ''; });
+      cfOpen(CF.client.id);
+    });
+  };
+
+  $('cf_ics').onchange = function () {
+    var f = $('cf_ics').files[0];
+    if (!f || !CF) return;
+    note($('cfErr'), ''); note($('cfNote'), 'Reading their calendar…', 'ok');
+    // Sent as the file itself rather than wrapped in JSON: base64 would be a
+    // third more bytes for nothing, and the server parses text either way.
+    fetch('/api/host/client-import?k=' + encodeURIComponent(K) + '&id=' + encodeURIComponent(CF.client.id), {
+      method: 'POST', headers: { 'content-type': 'text/calendar' }, body: f
+    }).then(function (r) { return r.json(); }).then(function (r) {
+      $('cf_ics').value = '';
+      if (!r.ok) { note($('cfNote'), ''); return note($('cfErr'), r.says || 'That file could not be read.', 'bad'); }
+      note($('cfNote'), r.says, 'ok');
+      cfOpen(CF.client.id);
+    }).catch(function () {
+      note($('cfNote'), '');
+      note($('cfErr'), 'Could not reach NUM just then.', 'bad');
+    });
+  };
+
+  $('cfPortalSave').onclick = function () {
+    if (!CF) return;
+    api('client', { action: 'portal', id: CF.client.id, portal_trips: $('cf_portal_trips').checked })
+      .then(function (r) {
+        if (!r.ok) return note($('cfErr'), 'That did not save.', 'bad');
+        note($('cfNote'), r.says, 'ok');
+      });
+  };
+
+  $('cfClose').onclick = function () { $('cfCard').classList.add('hide'); CF = null; };
+
+  cfTabsBuild();
+
   boot();
+})();
+</script>
+
+<!-- ── CONSOLE NAVIGATION ─────────────────────────────────────────────────
+     Self-contained, and deliberately the LAST script on the page.
+
+     It does not own any data, any endpoint or any of the behaviour above it.
+     It reads the sections that are already here, files each one under a tab,
+     and hides the rest with its own class. That is the whole of it — which is
+     why adding navigation to a console with fourteen working cards did not
+     require editing a single line of the code that makes them work.
+
+     Two rules it must never break:
+       1. `hide` belongs to the console's own JS. This file never sets it and
+          never clears it. A card the console hid stays hidden when its tab is
+          open, because the console hid it for a reason.
+       2. A card that appears BECAUSE a host clicked something — the message
+          thread, the remove-a-client confirmation — has to be looked at. Those
+          two are watched, and when the console reveals one, its tab opens.
+          Otherwise a host clicks "Message" and the page does nothing visible.
+-->
+<script>
+(function () {
+  var app = document.getElementById('app');
+  var nav = document.getElementById('tabs');
+  if (!app || !nav) return;
+
+  /* The map is ordered the way a host's day is, not the way the HTML happens
+     to be. Today first because it is the only tab that answers "what now";
+     Settings last because it is the only one nobody opens twice. */
+  var TABS = [
+    { key: 'today',    label: 'Today',    ids: ['weekCard', 'introCard'] },
+    { key: 'clients',  label: 'Clients',  ids: ['clientsCard', 'cfCard', 'rmCard', 'inviteCard'] },
+    { key: 'work',     label: 'Work',     ids: ['reqCard', 'thCard'] },
+    { key: 'fleet',    label: 'Fleet',    ids: ['fleetCard', 'supCard'] },
+    { key: 'products', label: 'Products', ids: ['prodCard'] },
+    { key: 'network',  label: 'Network',  ids: ['netCard'] },
+    { key: 'money',    label: 'Money',    ids: ['planCard', 'earnCard'] },
+    { key: 'settings', label: 'Settings', ids: ['profCard', 'calCard', 'closeCard'] }
+  ];
+
+  var owner = {};      // section id -> tab key
+  var live = [];       // tabs that actually have a section on this page
+  TABS.forEach(function (t) {
+    var found = t.ids.filter(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return false;
+      el.setAttribute('data-tab', t.key);
+      owner[id] = t.key;
+      return true;
+    });
+    if (found.length) live.push(t);
+  });
+  if (live.length < 2) return;   // nothing to navigate between: leave the page alone
+
+  /* Anything with an id we did not file — a card added later, or the closed-
+     account replacement the console writes into #app — is left visible on every
+     tab rather than disappearing. A new card being always-on is a small wart;
+     a new card being invisible is a bug nobody finds for a month. */
+  function sections() {
+    return Array.prototype.slice.call(app.querySelectorAll('section[data-tab]'));
+  }
+
+  var current = null;
+
+  function show(key, push) {
+    if (!live.some(function (t) { return t.key === key; })) key = live[0].key;
+    current = key;
+    sections().forEach(function (el) {
+      el.classList.toggle('t-off', el.getAttribute('data-tab') !== key);
+    });
+    Array.prototype.slice.call(nav.children).forEach(function (b) {
+      b.setAttribute('aria-selected', String(b.dataset.key === key));
+    });
+    try { localStorage.setItem('num_host_tab', key); } catch (e) {}
+    if (push) {
+      try { history.replaceState(null, '', '#' + key); } catch (e) {}
+    }
+  }
+
+  live.forEach(function (t) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.key = t.key;
+    b.setAttribute('role', 'tab');
+    b.innerHTML = '<span>' + t.label + '</span><span class="cnt hide" data-cnt="' + t.key + '"></span>';
+    b.onclick = function () { show(t.key, true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    nav.appendChild(b);
+  });
+
+  /* A COUNT IS ONLY WORTH PUTTING ON A TAB IF IT MEANS SOMETHING.
+     Clients and Fleet carry a plain total. Today carries the number of people
+     waiting on THIS HOST, in red, because that is the only number on this page
+     that is a queue. The rest carry nothing rather than a decorative zero. */
+  function badge(key, n, due) {
+    var el = nav.querySelector('[data-cnt="' + key + '"]');
+    if (!el) return;
+    if (!n) { el.classList.add('hide'); return; }
+    el.classList.remove('hide');
+    el.classList.toggle('due', !!due);
+    el.textContent = n > 99 ? '99+' : String(n);
+  }
+  function rows(id) {
+    var t = document.getElementById(id);
+    if (!t) return 0;
+    // An empty table renders one "nothing here yet" row; it is not a client.
+    var tr = t.querySelectorAll('tr');
+    if (tr.length === 1 && tr[0].querySelectorAll('td').length <= 1) return 0;
+    return tr.length;
+  }
+  function counts() {
+    badge('clients', rows('clRows'));
+    badge('fleet', rows('flRows'));
+    badge('work', rows('rqRows'));
+    var owed = document.getElementById('weekOwed');
+    var due = owed ? owed.querySelectorAll('[data-owed],li,tr').length : 0;
+    badge('today', due, true);
+  }
+
+  ['clRows', 'flRows', 'rqRows', 'weekOwed'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && window.MutationObserver) {
+      new MutationObserver(counts).observe(el, { childList: true, subtree: true });
+    }
+  });
+
+  /* The two cards the console reveals itself. Watching the class attribute is
+     how this stays additive: the console keeps calling
+     classList.remove('hide') exactly as it did, and the tab follows it. */
+  ['thCard', 'rmCard', 'cfCard'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el || !window.MutationObserver) return;
+    new MutationObserver(function () {
+      if (el.classList.contains('hide')) return;
+      var key = owner[id];
+      if (key && key !== current) show(key, true);
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }).observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+
+  /* Deep links. #clients opens a tab; #planCard — which the profile card links
+     to in prose — opens whichever tab that card lives on and scrolls to it. */
+  function fromHash() {
+    var h = (location.hash || '').replace('#', '');
+    if (!h) return false;
+    if (owner[h]) {
+      show(owner[h], false);
+      var el = document.getElementById(h);
+      if (el) setTimeout(function () { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 40);
+      return true;
+    }
+    if (live.some(function (t) { return t.key === h; })) { show(h, false); return true; }
+    return false;
+  }
+  window.addEventListener('hashchange', fromHash);
+
+  var saved = null;
+  try { saved = localStorage.getItem('num_host_tab'); } catch (e) {}
+  if (!fromHash()) show(saved || live[0].key, false);
+  counts();
+  // The console paints after its fetches land; nothing tells us when, so the
+  // counts are recomputed a few times early rather than left stale at zero.
+  [400, 1200, 3000].forEach(function (ms) { setTimeout(counts, ms); });
 })();
 </script>
 </body>

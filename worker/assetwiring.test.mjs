@@ -221,12 +221,39 @@ test('the binding name does not collide with the static asset binding', () => {
 /* ──────────────── link 6: the guards can be satisfied ────────────────── */
 
 test('the go-live refusal tells the host what to do, and the thing it asks for is possible', () => {
-  const block = ASSETS.slice(ASSETS.indexOf("if (action === 'listable')"));
-  assert.match(block.slice(0, 900), /no_approved_photo/);
-  assert.match(block.slice(0, 900), /says:/, 'a refusal with no sentence reads as a broken button');
+  /* The slice ends at the NEXT action rather than at a character count. It was
+   * `block.slice(0, 900)`, which was a guess about how long the handler would
+   * stay — and on 18 Sep 2026 a second gate was added above the photo check
+   * and pushed the refusal out of the window. The test failed while the
+   * behaviour it describes was correct, which is the kind of failure that
+   * teaches people to edit tests until they go green. */
+  const from = ASSETS.indexOf("if (action === 'listable')");
+  const block = ASSETS.slice(from, ASSETS.indexOf("if (action === '", from + 20));
+
+  assert.match(block, /no_approved_photo/);
+  assert.match(block, /says:/, 'a refusal with no sentence reads as a broken button');
   // And approving a photo — the thing it asks for — is a real action here.
   assert.match(ASSETS, /if \(action === 'moderate'\)/);
   assert.match(CONSOLE, /data-pok=/, 'the console must offer the approve control the refusal asks for');
+});
+
+test('a draft is refused go-live, and confirming it is a real thing the console can do', () => {
+  /* The second gate. Intake attaches a host's own uploads already approved, so
+   * the photo check above is satisfied the moment an upload finishes — without
+   * this, "Go live" would publish a name and a description a model wrote and
+   * nobody read. Same standard as every other refusal here: it must say what
+   * to do, and that thing must exist. */
+  const from = ASSETS.indexOf("if (action === 'listable')");
+  const block = ASSETS.slice(from, ASSETS.indexOf("if (action === '", from + 20));
+
+  assert.match(block, /still_a_draft/);
+  assert.match(block, /SELECT draft FROM num_assets/);
+  assert.match(block, /says:/);
+  // Confirming is the thing it asks for. It exists on the server...
+  const intake = readFileSync(new URL('../growth/fleetintake.mjs', import.meta.url), 'utf8');
+  assert.match(intake, /action === 'confirm'/);
+  // ...and the console has the button.
+  assert.match(CONSOLE, /data-ok="/, 'the console must offer the confirm control the refusal asks for');
 });
 
 test('the console shows the refusal rather than swallowing it', () => {

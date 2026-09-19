@@ -315,7 +315,25 @@ export async function ingestMedia(env, { params, from, bucket, provider = 'twili
  * `moderation` starts at 'new' — nothing texted in reaches a booker before a
  * human has looked at it. That is the point of the column.
  */
-export async function attachToAsset(env, { mediaId, assetId, by, caption }) {
+/* `source` and `moderation` default to the texted-in case this function was
+ * written for, so every existing caller behaves exactly as before.
+ *
+ * A HOST'S OWN UPLOAD IS DIFFERENT, and the difference is not a shortcut. The
+ * moderation queue exists because a supplier texts in a photograph nobody at
+ * NUM or at the host has looked at yet — "nothing reaches a booker unseen". A
+ * host dragging files off their own camera roll HAS seen them; they chose them
+ * one by one, three seconds ago. Holding those in a queue for the same host to
+ * approve teaches people to click approve without looking, which is how the
+ * queue stops working for the photographs that actually need it.
+ *
+ * The CHECK in 0021 says an approved photo must carry who decided and when, so
+ * an approving caller supplies both or the insert is refused — which is the
+ * constraint doing its job. */
+export async function attachToAsset(env, {
+  mediaId, assetId, by, caption, source = 'mms', moderation = 'new',
+}) {
+  const src = ['mms', 'upload', 'console', 'whatsapp'].includes(source) ? source : 'mms';
+  const mod = ['new', 'ok'].includes(moderation) ? moderation : 'new';
   const med = await env.DB.prepare(
     'SELECT * FROM num_inbound_media WHERE id = ?1',
   ).bind(mediaId).first();
@@ -334,11 +352,13 @@ export async function attachToAsset(env, { mediaId, assetId, by, caption }) {
     await env.DB.prepare(
       `INSERT INTO num_asset_photos
          (id, asset_id, r2_key, content_type, bytes, source, caption, sha256,
-          moderation, position, created_at)
-       VALUES (?1,?2,?3,?4,?5,'mms',?6,?7,'new',?8,?9)`,
+          moderation, position, created_at, decided_at, decided_by)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`,
     ).bind(
       photoId, assetId, med.r2_key, med.content_type, med.bytes,
-      caption ?? null, med.sha256, pos, now(),
+      src, caption ?? null, med.sha256, mod, pos, now(),
+      mod === 'new' ? null : now(),
+      mod === 'new' ? null : (by || 'host'),
     ).run();
   } catch (e) {
     // The dedupe index on (asset_id, sha256) is the expected failure here: the

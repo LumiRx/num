@@ -32,12 +32,26 @@ const KEY = 'k_' + 'x'.repeat(30);
 function fresh() {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE num_hosts (id TEXT PRIMARY KEY, name TEXT, email TEXT, code TEXT, console_key TEXT, host_bps INTEGER, term_months INTEGER, status TEXT, tier TEXT DEFAULT 'free', plan_status TEXT DEFAULT 'none', plan_sub_id TEXT, plan_renews_at TEXT, currency TEXT DEFAULT 'GBP', services_json TEXT DEFAULT '[]', updated_at TEXT)`);
-  db.exec(`CREATE TABLE num_host_clients (id TEXT PRIMARY KEY, host_id TEXT, name TEXT, phone TEXT, member_id TEXT, member_token TEXT, status TEXT, created_at TEXT, updated_at TEXT)`);
+  // portal_trips and num_client_events arrived with 0038. It goes LAST,
+  // where an ALTER TABLE puts it in production, because the inserts below bind
+  // positionally — a column added in the middle here would pass the tests and
+  // describe a table that does not exist.
+  //
+  // A harness whose
+  // tables are thinner than production is a harness that passes on code the
+  // live database rejects — which is the whole failure this file exists to
+  // catch, so the columns go in rather than the query being softened.
+  db.exec(`CREATE TABLE num_host_clients (id TEXT PRIMARY KEY, host_id TEXT, name TEXT, phone TEXT, member_id TEXT, member_token TEXT, status TEXT, created_at TEXT, updated_at TEXT, portal_trips INTEGER NOT NULL DEFAULT 1)`);
+  db.exec(`CREATE TABLE num_client_events (id TEXT PRIMARY KEY, host_id TEXT, client_id TEXT, source TEXT, uid TEXT, title TEXT, detail TEXT, location TEXT, starts_at TEXT, ends_at TEXT, all_day INTEGER DEFAULT 0, tz TEXT, repeats INTEGER DEFAULT 0, request_id TEXT, import_id TEXT, created_at TEXT, updated_at TEXT)`);
   db.exec(`CREATE TABLE num_host_requests (id TEXT PRIMARY KEY, host_id TEXT, client_id TEXT, service_key TEXT, title TEXT, detail TEXT, city TEXT, starts_at TEXT, ends_at TEXT, party_size INTEGER, status TEXT, booking_fee_minor INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`);
   db.exec(`CREATE TABLE num_members (id TEXT PRIMARY KEY, phone TEXT, phone_verified INTEGER DEFAULT 0)`);
   db.exec(`INSERT INTO num_hosts (id,name,email,code,console_key,host_bps,term_months,status,services_json) VALUES ('h_1','Priya','priya@example.com','PRIYA1','${KEY}',300,12,'active','["car","reservation"]')`);
   db.exec(`INSERT INTO num_hosts (id,name,email,code,console_key,host_bps,term_months,status) VALUES ('h_gone','Old','old@example.com','OLD1','k_${'y'.repeat(30)}',300,12,'ended')`);
-  db.exec(`INSERT INTO num_host_clients VALUES ('hc_1','h_1','Dre','+13105550100','mem_1','tok_${'c'.repeat(20)}','active','2026-09-01 10:00:00',NULL)`);
+  // Columns named, not positional: the next migration to add one should not
+  // break this line, which is exactly what it did the first time.
+  db.exec(`INSERT INTO num_host_clients
+    (id,host_id,name,phone,member_id,member_token,status,created_at,updated_at)
+    VALUES ('hc_1','h_1','Dre','+13105550100','mem_1','tok_${'c'.repeat(20)}','active','2026-09-01 10:00:00',NULL)`);
   db.exec(`INSERT INTO num_members VALUES ('mem_1','+13105550100',1)`);
   return { DB: d1(db), _db: db, SITE: 'https://itsnum.com', STRIPE_SECRET_KEY: 'sk_test_x' };
 }
@@ -136,6 +150,42 @@ test('the client calendar feed lists confirmed and done work only, by the client
   assert.doesNotMatch(ics, /Not yet/); assert.doesNotMatch(ics, /No date/);
   assert.equal(await clientCalendar(env, 'tok_' + 'd'.repeat(20)), null);
   assert.equal(await clientCalendar(env, 'short'), null);
+});
+
+test('what the host added travels to their calendar — what the client sent never travels back', async () => {
+  /* The one-way rule, and the reason for it.
+   *
+   * An entry the host typed is something the client does not have, which is
+   * the whole point of publishing a feed. An entry that came from an .ics THE
+   * CLIENT SENT is already in the calendar subscribing to this feed, so
+   * sending it back shows every flight twice in their own app — and the host
+   * gets blamed for it. */
+  const env = fresh();
+  env._db.exec(`INSERT INTO num_client_events (id,host_id,client_id,source,title,location,starts_at,all_day,created_at) VALUES
+    ('cev1','h_1','hc_1','host','Anniversary dinner','Rome','2026-11-02 20:00:00',0,'2026-09-18'),
+    ('cev2','h_1','hc_1','import','BA009 LHR-BKK','Heathrow T5','2026-12-01 12:00:00',0,'2026-09-18')`);
+  const ics = await clientCalendar(env, 'tok_' + 'c'.repeat(20));
+  assert.match(ics, /SUMMARY:Anniversary dinner/);
+  assert.match(ics, /Added by Priya through NUM/);
+  assert.doesNotMatch(ics, /BA009/, 'an import must never be republished at the calendar it came from');
+});
+
+test('ONE SWITCH GOVERNS BOTH SURFACES — trips off empties the feed too', async () => {
+  // Before 18 Sep 2026 portal_trips governed only /my-host/, so a host who
+  // switched it off was still publishing every booking into a calendar the
+  // client had already subscribed to. Empty, not 404: a feed that starts
+  // erroring shows the client a broken subscription.
+  const env = fresh();
+  env._db.exec(`INSERT INTO num_host_requests (id,host_id,client_id,service_key,title,city,starts_at,status,created_at)
+    VALUES ('hr1','h_1','hc_1','car','Car to LHR','London','2026-09-11 06:00','confirmed','2026-09-04')`);
+  assert.match(await clientCalendar(env, 'tok_' + 'c'.repeat(20)), /Car to LHR/);
+
+  env._db.exec(`UPDATE num_host_clients SET portal_trips = 0 WHERE id = 'hc_1'`);
+  const off = await clientCalendar(env, 'tok_' + 'c'.repeat(20));
+  assert.ok(off, 'still a calendar, not an error');
+  assert.match(off, /X-WR-CALNAME:Priya — for Dre/);
+  assert.doesNotMatch(off, /Car to LHR/);
+  assert.equal((off.match(/BEGIN:VEVENT/g) ?? []).length, 0);
 });
 
 test('HTTP: /mine, the feed with bearer-safe headers, and the plan routes behind the console key', async () => {

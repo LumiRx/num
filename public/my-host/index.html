@@ -143,6 +143,17 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     <h2 style="margin-top:22px">What they have confirmed for you</h2>
     <div id="bookings"></div>
 
+    <!-- Their own trip, back to them. A client who sends their host a calendar
+         should be able to see that it landed — and the host's switch for this
+         covers the trips only. Who holds your details, and the way out, are on
+         this page whatever anybody sets. -->
+    <div id="diaryWrap" class="hide">
+      <h2 style="margin-top:22px">Your diary, as they have it</h2>
+      <p class="sub">What your host has been told is happening, so they do not put something on top of it.
+        Send them a calendar and it appears here.</p>
+      <div id="diary"></div>
+    </div>
+
     <h2 style="margin-top:22px">You can end this whenever you like</h2>
     <ul id="ifLeave"></ul>
     <p class="hint">You do not have to give a reason, and nothing here asks you to justify it.</p>
@@ -286,8 +297,26 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         (r.city ? ' · ' + esc(r.city) : '') + ' · ' + esc(price) + '</div>' +
         '<button class="btn" style="margin-top:10px" data-rep="' + esc(r.id) + '" data-t="' + esc(r.title) + '">Message about this</button>' +
         '</div>';
-    }).join('') : '<p class="hint">Nothing confirmed yet. Anything your host confirms for you appears here, and you are ' +
-      'emailed at the same time.</p>';
+    }).join('') : (d.trips_shown === false
+      // Not a silent empty list. A client who has trips and is shown none
+      // would conclude their host has done nothing for them.
+      ? '<p class="hint">Your host does not list your trips on this page. They still have them, and they are still ' +
+        'emailed to you when they are confirmed.</p>'
+      : '<p class="hint">Nothing confirmed yet. Anything your host confirms for you appears here, and you are ' +
+        'emailed at the same time.</p>');
+
+    var dy = d.diary || [];
+    if (dy.length) {
+      $('diaryWrap').classList.remove('hide');
+      $('diary').innerHTML = dy.map(function (e) {
+        var when = e.all_day ? String(e.starts_at).slice(0, 10) : String(e.starts_at);
+        return '<div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px">' +
+          '<b>' + esc(e.title) + '</b><div class="hint">' + esc(when) +
+          (e.location ? ' · ' + esc(e.location) : '') + '</div></div>';
+      }).join('');
+    } else {
+      $('diaryWrap').classList.add('hide');
+    }
 
     Array.prototype.forEach.call($('bookings').querySelectorAll('[data-rep]'), function (b) {
       b.onclick = function () {

@@ -125,13 +125,29 @@ export async function hostAssets(req, env, url, D) {
          FROM num_inbound_media m
          LEFT JOIN num_suppliers s ON s.id = m.supplier_id
         WHERE m.status IN ('new','unknown_sender')
-          AND (m.supplier_id IN (
-                SELECT supplier_id FROM num_supplier_links
-                 WHERE host_id = ?1 AND status = 'accepted' AND ended_at IS NULL)
-               OR m.supplier_id IS NULL)
+          AND (
+            -- Photographs from suppliers THIS host actually has.
+            m.supplier_id IN (
+              SELECT supplier_id FROM num_supplier_links
+               WHERE host_id = ?1 AND status = 'accepted' AND ended_at IS NULL)
+            -- Or ones this host uploaded themselves and that never got filed.
+            OR m.from_hash = ?2
+            /* Or a text from a number we could not place. THE provider TEST
+             * IS LOAD-BEARING and was added 18 Sep 2026 to close a leak.
+             *
+             * This arm used to read m.supplier_id IS NULL, which was narrow
+             * while the only way in was a text message from a stranger. Then
+             * console uploads started arriving with supplier_id NULL too — so
+             * every host's unfiled uploads appeared in every other host's
+             * queue, and since attaching only checks that the ASSET is yours,
+             * one host could have put another's photograph on their own boat.
+             *
+             * Restricted to what it always meant: a text nobody could place. */
+            OR (m.supplier_id IS NULL AND m.provider <> 'upload')
+          )
         ORDER BY m.created_at DESC
         LIMIT 60`
-    ).bind(host.id);
+    ).bind(host.id, 'host:' + host.id);
 
     // Neither read is swallowed into an empty array. A fleet card that says
     // "nothing here yet" when the truth is "this query cannot run" is the exact
@@ -422,6 +438,32 @@ export async function hostAssetPhoto(req, env, url, D) {
     if (!(await ownsAsset(assetId))) return J({ ok: false, error: 'not_your_asset' }, 403);
 
     if (on) {
+      /* A DRAFT CANNOT GO LIVE. This is the gate that makes "a model never
+       * gets the last word" true rather than merely intended.
+       *
+       * It was missing for a few hours on 18 Sep 2026 and the hole was exact:
+       * fleet intake writes a draft whose name, make, model and listing line
+       * were written by a model, and attaches the host's own uploads already
+       * approved (they chose the files, so the moderation queue would have
+       * been theatre). The photo check below was therefore satisfied the
+       * instant the upload finished — so "Go live" would have put a machine's
+       * guess about somebody's boat in front of a booker with no human having
+       * read a word of it.
+       *
+       * Two gates, two questions, and both are needed. `draft` asks whether a
+       * person has checked what we wrote down. `listable` asks whether a
+       * member may be shown it. Confirming is free and takes one click, which
+       * is the point — it is the click where someone reads the name. */
+      const d = await env.DB.prepare('SELECT draft FROM num_assets WHERE id=?1')
+        .bind(assetId).first().catch(() => null);
+      if (d && d.draft) {
+        return J({
+          ok: false,
+          error: 'still_a_draft',
+          says: 'Read this one back first and say it is right. We wrote it off your photographs, and nobody has checked it yet.',
+        }, 409);
+      }
+
       const ok = await env.DB.prepare(
         "SELECT COUNT(*) AS n FROM num_asset_photos WHERE asset_id=?1 AND moderation='ok'"
       ).bind(assetId).first().catch(() => ({ n: 0 }));
