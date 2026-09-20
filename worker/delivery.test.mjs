@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   deliverySettings, saveDelivery, orderable, partnersNear, allowedFor, deliveryBlock,
   createOrder, ordersFor, decideOrder, memberOrders, handleDelivery, ORDER_NEXT, jurisdictionOf,
-  idCheckRecord, ageMinForBusiness, ID_TYPES, ID_FORBIDDEN,
+  idCheckRecord, ageMinForBusiness, ID_TYPES, ID_FORBIDDEN, licenceProof,
 } from './delivery.mjs';
 
 function reorder(sql, args) {
@@ -80,7 +80,10 @@ test('delivery cannot be switched on without a licence number; settings round-tr
   env._db.exec(`INSERT INTO num_business_settings (business_id) VALUES ('biz_new')`);
   env._db.exec(`INSERT INTO num_business_profiles (business_id) VALUES ('biz_new')`);
   const no = await saveDelivery(env, 'biz_new', { on: true, fee_cs: 500, radius_m: 4000, licence: '', age_min: 0 });
-  assert.equal(no.ok, false); assert.match(no.error, /licence number is needed/);
+  // 19 Sep 2026: the wording gained "or a recorded in-person verification",
+  // because a licence somebody at NUM has actually seen is also proof. What
+  // this test is really about — no proof of any kind, no switch — is unchanged.
+  assert.equal(no.ok, false); assert.match(no.error, /licence number .* is needed/);
   assert.equal((await saveDelivery(env, 'biz_new', { on: true, fee_cs: 650, radius_m: 4000, licence: 'ABC-1', age_min: 21, hours: '9-5' })).ok, true);
   const s = await deliverySettings(env, 'biz_new');
   assert.equal(s.on, true); assert.equal(s.fee_cs, 650); assert.equal(s.radius_m, 4000); assert.equal(s.licence, 'ABC-1'); assert.equal(s.age_min, 21); assert.equal(s.hours, '9-5');
@@ -389,4 +392,87 @@ test('the app is wired to the route, not merely able to be', () => {
   }
   // the payload it builds carries exactly three fields, and none is a document
   assert.match(SHEET, /\{ id_type: idType, over_min: true as const, checked_by: by\.trim\(\) \}/);
+});
+
+/* ── AN IN-PERSON CHECK IS PROOF; A PLACEHOLDER IS NOT ──────────────────
+ *
+ * 19 Sep 2026: Dre had seen Alfredo's state licence in person and the number
+ * was coming by email. The gate was a single non-empty test on a free-text
+ * field, so the only way to open it was to type something into the licence
+ * box — and that box is interpolated into the sentence the concierge reads
+ * to a traveller.
+ */
+test('the number opens the gate, and so does a recorded in-person check', () => {
+  assert.equal(licenceProof({ licence: 'C9-0000123-LIC' }).ok, true);
+  assert.equal(licenceProof({ licence_verified_by: 'dre:in-person', licence_verified_at: '2026-09-19' }).ok, true);
+  assert.equal(licenceProof({}).ok, false);
+  assert.equal(licenceProof({ licence: '   ' }).ok, false, 'whitespace is not a licence');
+});
+
+test('the two bases are never confused for each other', () => {
+  const inPerson = licenceProof({ licence_verified_by: 'dre:in-person' });
+  assert.equal(inPerson.basis, 'in_person');
+  assert.equal(inPerson.number, null, 'an in-person check must not become a licence number');
+  const numbered = licenceProof({ licence: 'C9-0000123-LIC', licence_verified_by: 'dre:in-person' });
+  assert.equal(numbered.basis, 'number');
+  assert.equal(numbered.number, 'C9-0000123-LIC');
+});
+
+test('a shop verified in person is listed', async () => {
+  const env = fresh(); const db = env._db;
+  db.exec(`UPDATE num_business_profiles
+             SET custom_fields='{"licence_verified_by":"dre:in-person","licence_verified_at":"2026-09-19","age_min":21}'
+           WHERE business_id='biz_lacc'`);
+  const near = await partnersNear(env, DTLA);
+  const lacc = near.find((p) => p.business_id === 'biz_lacc');
+  assert.ok(lacc, 'a shop somebody vouched for in person is still dark');
+  assert.equal(lacc.licence, null);
+  assert.equal(lacc.licence_basis, 'in_person');
+});
+
+test('NUM never states a licence number it does not hold', async () => {
+  // deliveryBlock goes into the grounding the model reads. A placeholder in
+  // the licence field would come back out as a licence number said to a
+  // traveller — which is the whole reason the gate takes a second field.
+  const env = fresh(); const db = env._db;
+  db.exec(`UPDATE num_business_profiles
+             SET custom_fields='{"licence_verified_by":"dre:in-person","age_min":21}'
+           WHERE business_id='biz_lacc'`);
+  const near = await partnersNear(env, DTLA);
+  const block = deliveryBlock(near.filter((p) => p.business_id === 'biz_lacc'));
+  assert.match(block, /licence verified by NUM/);
+  assert.equal(/\(licence \)|\(licence undefined\)|\(licence null\)/.test(block), false,
+    `an empty licence reached the guest: ${block}`);
+  // and with a real number it still says the number
+  db.exec(`UPDATE num_business_profiles SET custom_fields='{"licence":"C9-0000123-LIC","age_min":21}' WHERE business_id='biz_lacc'`);
+  const withNum = deliveryBlock((await partnersNear(env, DTLA)).filter((p) => p.business_id === 'biz_lacc'));
+  assert.match(withNum, /\(licence C9-0000123-LIC\)/);
+});
+
+test('no proof at all is still no listing', async () => {
+  const env = fresh(); const db = env._db;
+  db.exec(`UPDATE num_business_profiles SET custom_fields='{"age_min":21}' WHERE business_id='biz_lacc'`);
+  const near = await partnersNear(env, DTLA);
+  assert.equal(near.some((p) => p.business_id === 'biz_lacc'), false);
+});
+
+test('the console cannot switch a verified shop off by saving with an empty box', async () => {
+  // The licence input is empty because the number has not arrived. Saving
+  // hours or a radius must not read that as "no licence" and refuse.
+  const env = fresh(); const db = env._db;
+  db.exec(`UPDATE num_business_profiles SET custom_fields='{"licence_verified_by":"dre:in-person","age_min":21}' WHERE business_id='biz_lacc'`);
+  const out = await saveDelivery(env, 'biz_lacc', { on: true, fee_cs: 700, radius_m: 8000, licence: '', age_min: 21, hours: '10:00-21:00' });
+  assert.equal(out.ok, true, out.error);
+  const s = await deliverySettings(env, 'biz_lacc');
+  assert.equal(s.on, true);
+  assert.equal(s.licence_basis, 'in_person');
+  assert.equal(s.licence_verified_by, 'dre:in-person');
+});
+
+test('a shop with neither still cannot be switched on', async () => {
+  const env = fresh(); const db = env._db;
+  db.exec(`UPDATE num_business_profiles SET custom_fields='{}' WHERE business_id='biz_lacc'`);
+  const out = await saveDelivery(env, 'biz_lacc', { on: true, fee_cs: 700, radius_m: 8000, licence: '', age_min: 21 });
+  assert.equal(out.ok, false);
+  assert.match(out.error, /licence number|in-person verification/);
 });

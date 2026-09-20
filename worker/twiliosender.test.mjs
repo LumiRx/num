@@ -158,3 +158,57 @@ test('health warns when a number is set but no Messaging Service is', () => {
   assert.match(check, /ok: true, warn:/, 'the missing-service case must warn, not fail');
   assert.match(check, /ok: false, remedy:/, 'a malformed SID must fail loudly');
 });
+
+/* ── THE STORY ITSELF IS A THING THAT CAN ROT ───────────────────────────
+ *
+ * "Our A2P campaign is unapproved" was written into three files while the
+ * campaign sat approved in the Twilio console. On 19 Sep 2026 it was read
+ * out of one of them and repeated to Dre as the reason NUM could not text
+ * anybody — a month and a half after the real cause (a bare `From:`) had
+ * been found and fixed.
+ *
+ * A wrong comment is not inert. This is the guard that the corrected record
+ * stays corrected.
+ */
+test('no file still claims the A2P registration is outstanding', () => {
+  // twiliosender.mjs is deliberately absent: it is the file that RECORDS the
+  // correction, and it has to be able to quote the belief it is correcting.
+  // Everywhere else, the sentence would be an assertion.
+  const FILES = ['./smsconsent.mjs', './giveaway.mjs', './orderalert.mjs', './health.mjs', './claim.mjs', './bookdesk.mjs'];
+  // The claim, in the shapes somebody would actually write it. "not approved"
+  // is excluded on purpose: it is the wording of Twilio's own 30034 message,
+  // which these files quote to explain what the error SAYS versus what it
+  // meant.
+  //
+  // Raw text, comments included, and deliberately so. Four guards in this
+  // repo have now had to learn to ignore their own documentation, and the
+  // reflex to add a fifth comment-stripper is wrong here: a false claim in a
+  // comment is exactly what caused this, and one written into a string a
+  // user reads would be worse. The fix is to describe the wrong sentence
+  // rather than write it out.
+  const WRONG = [
+    /campaign is unapproved/i,
+    /A2P (10DLC )?(is|remains) unregistered/i,
+    /registration is (still )?(pending|outstanding)/i,
+    /we are not registered for A2P/i,
+  ];
+  for (const f of FILES) {
+    const s = src(f);
+    for (const re of WRONG) {
+      assert.equal(re.test(s), false, `${f} still says ${re} — brand and campaign were approved 28 Jul 2026`);
+    }
+  }
+});
+
+test('the two workers that actually send are named, so the secret reaches both', async () => {
+  // Setting TWILIO_MESSAGING_SERVICE_SID on one worker and not the other is
+  // the same silent half-fix as the shared-source deploy problem: the texts
+  // that go through the other one keep failing and nothing says why.
+  const { WORKERS, bundleFiles } = await import('../scripts/deploydrift.mjs');
+  const senders = Object.entries(WORKERS)
+    .filter(([, w]) => [...bundleFiles(w.main)].some((f) => /twiliosender\.mjs$/.test(f)))
+    .map(([name]) => name)
+    .sort();
+  assert.deepEqual(senders, ['num-app', 'num-growth'],
+    'the set of SMS-sending workers changed — the secret has to be set on every one of them');
+});

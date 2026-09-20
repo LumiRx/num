@@ -7,9 +7,15 @@
  * draw with a single mechanism is a draw that is broken whenever that mechanism
  * is.
  *
- * That is not caution for its own sake. Num's US A2P registration has been
- * rejected once and outbound sends have been failing 30034 for most of the
- * product's life. Inbound texts arrive regardless — the block is on us REPLYING —
+ * That is not caution for its own sake. Num's US A2P registration was rejected
+ * once early on, and outbound sends failed 30034 for most of the product's
+ * life — but NOT because the registration was still outstanding: brand and
+ * campaign were approved on 28 Jul 2026, and the failures were a bare `From:`
+ * being sent instead of the Messaging Service that carries the campaign
+ * (worker/twiliosender.mjs). Two doors still earn their place: the fix
+ * depends on one secret being set correctly on every sending worker, and a
+ * draw with a single mechanism is broken whenever that mechanism is.
+ * Inbound texts arrive regardless — the block was on us REPLYING —
  * so somebody can text the keyword, be entered correctly, and receive nothing.
  * If texting were the only route, that silence would look exactly like a scam.
  * With both routes live, the entry is real whether or not the confirmation lands,

@@ -14,8 +14,21 @@
 // The UK (PECR), Thailand (PDPA) and the UAE all reach the same answer by
 // different routes.
 //
-// It also would not have worked. Num's A2P 10DLC campaign is unapproved, so
-// US carriers reject every send with 30034 before anybody reads anything.
+// It also would not have worked at the time. Every US send was coming back
+// 30034 — which reads as "A2P campaign not registered or not approved", and
+// this file and two others recorded that as a fact about NUM's registration.
+//
+// THAT WAS NEVER TRUE. Brand and campaign were both approved on 28 Jul 2026,
+// a week before the first failure. A US long code inherits campaign approval
+// through its MESSAGING SERVICE, and every call site was sending a bare
+// `From:`, which a carrier sees as an unregistered sender and rejects with
+// the identical error. See worker/twiliosender.mjs for the month that cost.
+//
+// The sentence is corrected rather than deleted because a wrong note in a
+// comment is not inert: it was read on 19 Sep 2026 and repeated as a reason
+// NUM could not text anybody, which is how a fixed problem keeps its
+// reputation. Nothing about the consent rule below depends on it — that
+// stands on the TCPA, PECR and PDPA, and would stand if SMS were perfect.
 //
 // And Num's own charter already forbade it, in words somebody chose:
 //

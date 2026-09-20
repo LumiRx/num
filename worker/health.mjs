@@ -864,7 +864,9 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
   // job is to be the thing that still works when other things do not.
   //
   //   ALERT_WEBHOOK   — not set
-  //   Twilio SMS      — A2P campaign unapproved, every send rejected 30034
+  //   Twilio SMS      — every send rejected 30034 (read at the time as the
+  //                     A2P registration being outstanding; it was not — see
+  //                     twiliosender.mjs. The sender was a bare `From:`.)
   //   Resend          — key returns 401 invalid; and this block reads
   //                     RESEND_API_KEY while the rest of the codebase sets
   //                     RESEND_KEY, so on most deployments it never ran at all

@@ -28,9 +28,11 @@
  * ── THE GATES ───────────────────────────────────────────────────────────
  *
  *   - A partner appears only inside its own delivery radius, only while
- *     `f_delivery` is on, and only when it holds a licence number on file
- *     (profile custom_fields.licence). No licence, no listing. Dre confirms
- *     the number against the state register before the switch goes on.
+ *     `f_delivery` is on, and only when its licence is PROVEN on file — the
+ *     number (custom_fields.licence), or a recorded verification by a named
+ *     person at NUM (custom_fields.licence_verified_by). No proof, no
+ *     listing, and a placeholder is not proof: see licenceProof for why the
+ *     licence field cannot hold a stand-in.
  *   - An age-restricted partner (custom_fields.age_min = 21) is offered ONLY
  *     to a member whose identity is verified (num_members.identity_verified,
  *     the 5arz check). The licensed retailer checks ID at the door as the
@@ -65,6 +67,44 @@ function fields(profile) {
   try { return JSON.parse(profile?.custom_fields || '{}') || {}; } catch { return {}; }
 }
 
+/**
+ * ── WHAT COUNTS AS A LICENCE ON FILE ─────────────────────────────────────
+ *
+ * The gate used to be `if (!f.licence) continue` — a single non-empty test on
+ * a free-text field. That is not "licensed", it is "somebody typed
+ * something", and the two came apart on 19 Sep 2026 with LA Cannabis Club:
+ * Dre had seen Alfredo's state licence in person and the number itself was
+ * coming by email later. There was no way to record a verification that had
+ * actually happened, so the only way to open the gate was to type a
+ * placeholder into the licence field.
+ *
+ * Which would have been worse than it looks. `deliveryBlock` interpolates
+ * that field straight into the grounding the concierge reads —
+ * "…(licence <value>)" — so a placeholder becomes a licence number NUM
+ * states to a traveller. A field that is a fact to the database and a
+ * sentence to a guest cannot hold a stand-in.
+ *
+ * So proof is either of two things, and they are separate fields:
+ *
+ *   licence              the number, when we have it. Checkable by anyone
+ *                        against the state register, and the only one ever
+ *                        quoted to a guest.
+ *   licence_verified_by  who at NUM saw the licence, and when. A person
+ *                        vouching, recorded as a person vouching — the same
+ *                        basis `admin_promote` already uses for a claim.
+ *
+ * Either opens the gate. Neither is invented, and the second never pretends
+ * to be the first.
+ */
+export function licenceProof(f = {}) {
+  const number = String(f.licence ?? '').trim();
+  const by = String(f.licence_verified_by ?? '').trim();
+  const at = String(f.licence_verified_at ?? '').trim();
+  if (number) return { ok: true, basis: 'number', number, verified_by: by || null, verified_at: at || null };
+  if (by) return { ok: true, basis: 'in_person', number: null, verified_by: by, verified_at: at || null };
+  return { ok: false, basis: null, number: null, verified_by: null, verified_at: null };
+}
+
 /** What the console shows: delivery settings + licence + age gate. */
 export async function deliverySettings(env, businessId) {
   if (!env?.DB || !businessId) return null;
@@ -74,6 +114,10 @@ export async function deliverySettings(env, businessId) {
   return {
     on: !!s?.f_delivery, fee_cs: s?.delivery_fee_cs ?? 500, radius_m: s?.delivery_radius_m ?? 5000,
     licence: f.licence ?? '', age_min: Number(f.age_min) || 0, hours: f.delivery_hours ?? '',
+    // So the console can say "verified in person by Dre, 19 Sep" rather than
+    // showing an empty licence box next to a shop that is live.
+    licence_basis: licenceProof(f).basis, licence_verified_by: f.licence_verified_by ?? null,
+    licence_verified_at: f.licence_verified_at ?? null,
     has_rows: !!s && !!p,
   };
 }
@@ -83,12 +127,17 @@ export async function saveDelivery(env, businessId, { on, fee_cs, radius_m, lice
   if (!env?.DB || !businessId) return { ok: false, error: 'no business' };
   const lic = clip(licence, 60) ?? '';
   const wantOn = !!on;
-  if (wantOn && !lic) return { ok: false, error: 'A licence number is needed before delivery can be switched on.' };
+  // A verification already on file counts, so a console save cannot turn off
+  // a shop somebody vouched for just because the number has not arrived yet.
+  const held = fields(await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1')
+    .bind(businessId).first().catch(() => null));
+  if (wantOn && !licenceProof({ ...held, licence: lic }).ok) {
+    return { ok: false, error: 'A licence number — or a recorded in-person verification — is needed before delivery can be switched on.' };
+  }
   const fee = Math.max(0, Math.min(Math.round(Number(fee_cs)) || 0, 10000));
   const radius = Math.max(500, Math.min(Math.round(Number(radius_m)) || 5000, 50000));
   const age = [0, 18, 21].includes(Number(age_min)) ? Number(age_min) : 0;
-  const p = await env.DB.prepare('SELECT custom_fields FROM num_business_profiles WHERE business_id=?1').bind(businessId).first().catch(() => null);
-  const f = { ...fields(p), licence: lic, age_min: age, delivery_hours: clip(hours, 80) ?? '' };
+  const f = { ...held, licence: lic, age_min: age, delivery_hours: clip(hours, 80) ?? '' };
   try {
     await env.DB.batch([
       env.DB.prepare(
@@ -272,7 +321,10 @@ export async function partnersNear(env, { lat, lng, dest = null, limit = 3 } = {
   for (const r of rows ?? []) {
     if (!Number.isFinite(Number(r.lat)) || !Number.isFinite(Number(r.lng))) continue;
     const f = fields(r);
-    if (!f.licence) continue; // no licence on file, no listing — the console says so
+    // No proof, no listing — the console says so. See licenceProof: the
+    // number OR a recorded in-person verification, never a placeholder.
+    const proof = licenceProof(f);
+    if (!proof.ok) continue;
     // The partner must be licensed where the guest is standing. A shop whose
     // own listing sits in another jurisdiction is never offered here, however
     // close the map says it is.
@@ -287,7 +339,7 @@ export async function partnersNear(env, { lat, lng, dest = null, limit = 3 } = {
       km: Math.round(km * 10) / 10, fee_cs: r.delivery_fee_cs ?? 0,
       // The jurisdiction sets the floor; a partner may be stricter, never looser.
       age_min: Math.max(Number(f.age_min) || 0, here.age_min || 0),
-      jurisdiction: here.code, licence: f.licence,
+      jurisdiction: here.code, licence: proof.number, licence_basis: proof.basis,
       hours: f.delivery_hours ?? '', items,
     });
   }
@@ -309,7 +361,7 @@ export function deliveryBlock(partners) {
   const money = (cs) => `$${(cs / 100).toFixed(2)}`;
   const lines = ['DELIVERY PARTNERS (Num partners that deliver to where the guest is — offer ONLY when the guest asks for this kind of thing; never volunteer it):'];
   for (const p of partners) {
-    lines.push(`- ${p.name} [business_id ${p.business_id}] — ${p.category || 'delivery'}, ${p.km} km away, delivery fee ${money(p.fee_cs)}${p.hours ? `, hours ${p.hours}` : ''}${p.age_min ? `, ${p.age_min}+ only, ID checked at the door by the licensed retailer (licence ${p.licence})` : ''}`);
+    lines.push(`- ${p.name} [business_id ${p.business_id}] — ${p.category || 'delivery'}, ${p.km} km away, delivery fee ${money(p.fee_cs)}${p.hours ? `, hours ${p.hours}` : ''}${p.age_min ? `, ${p.age_min}+ only, ID checked at the door by the licensed retailer${p.licence ? ` (licence ${p.licence})` : ' (licence verified by NUM)'}` : ''}`);
     for (const it of p.items) lines.push(`    · [item_id ${it.id}] ${it.name} — ${money(it.price_cs)} per ${it.unit}${it.description ? ` — ${it.description}` : ''}`);
   }
   lines.push('These partners are licensed where this guest is, and are listed here only for that reason. Never suggest one to somebody who is somewhere else, never discuss carrying anything between cities or states, and if a guest asks you to, say plainly that you can only arrange delivery from a licensed shop to an address in the same place.');
