@@ -29,7 +29,11 @@ export const muteKeyOf = (c: { kind: InviteCard['kind']; from?: string | null; i
  * seen. On PLAN the plans are already tabs, so only the ones needing an
  * answer become cards.
  */
-export function cardsOf(inbox: InboxRequests, muted: string[] = [], { newsToo = true } = {}): InviteCard[] {
+export function cardsOf(
+  inbox: InboxRequests,
+  muted: string[] = [],
+  { newsToo = true, seen = {} }: { newsToo?: boolean; seen?: Record<string, string> } = {},
+): InviteCard[] {
   const out: InviteCard[] = [];
   for (const c of inbox.connects) {
     out.push({
@@ -47,7 +51,16 @@ export function cardsOf(inbox: InboxRequests, muted: string[] = [], { newsToo = 
   }
   for (const p of inbox.plans) {
     const needsVote = p.my_vote == null && p.my_role !== 'owner';
-    if (!needsVote && !(newsToo && p.latest)) continue;
+    /* NEWS YOU HAVE READ IS NOT NEWS (20 Sep 2026).
+     *
+     * `latest` is whatever last happened in the plan, and something has
+     * always last happened — so `newsToo && p.latest` drew a card that could
+     * not be got rid of. Once you are in a plan there is no answer left to
+     * give it, and it sat on TODAY for ever. Now a news card shows only while
+     * its news differs from what this phone has recorded as read. Acting on
+     * the card records it; the next real thing that happens brings it back. */
+    const unread = !!p.latest && seen[p.id] !== p.latest;
+    if (!needsVote && !(newsToo && unread)) continue;
     out.push({
       kind: 'plan', id: p.id, from: p.owner_name ?? null, needsVote,
       title: needsVote ? t('{plan} — are you in?', { plan: p.title }) : p.title,

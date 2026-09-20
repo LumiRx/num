@@ -18,6 +18,7 @@ import { openPlan } from '../../lib/social';
 import { guestMessage } from '../../lib/saferr';
 import { t } from '../../lib/i18n';
 import { cardsOf, muteKeyOf, FOLD_AT } from '../../lib/invites';
+import type { InviteCard } from '../../lib/invites';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 13 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
@@ -31,6 +32,7 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
   const inbox = useApp((s) => s.inbox);
   const me = useApp((s) => s.me);
   const muted = useApp((s) => s.mutedInvites ?? []);
+  const seen = useApp((s) => s.seenPlanNews ?? {});
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -38,15 +40,48 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
   const [when, setWhen] = useState('');
   const [open, setOpen] = useState(false);
 
+  /**
+   * This plan's news is read. The card goes, and stays gone until something
+   * new happens in the plan. Recorded per plan rather than as a blanket
+   * "hide", so the next real change still reaches the home screen.
+   */
+  const markRead = (planId: string) => {
+    const latest = inbox.plans.find((p) => p.id === planId)?.latest;
+    if (!latest) return;
+    store.set((s) => ({ seenPlanNews: { ...(s.seenPlanNews ?? {}), [planId]: latest } }));
+  };
+
+  /**
+   * ── WHERE "I'M IN" LANDS (20 Sep 2026, Dre's call) ────────────────────
+   *
+   * "After you click I'm in it should go to plans."
+   *
+   * It used to answer the card and leave you on TODAY, looking at the same
+   * card. Saying yes to a plan IS joining it, and the thing you just joined
+   * is a tab away — so we open it and go there. `openPlan` loads the board;
+   * `view: 'plan'` is what actually moves the person. Only from TODAY: on
+   * the PLAN tab you are already there, and yanking the view would throw
+   * away whichever plan you had open.
+   */
+  const goToPlan = (planId: string) => {
+    void openPlan(planId);
+    if (variant === 'today') store.set({ view: 'plan' });
+  };
+
   const act = async (kind: 'connect' | 'plan' | 'event', id: string, action: 'accept' | 'decline' | 'propose' | 'message', extra = {}) => {
     setBusy(id);
     try {
+      // Read BEFORE the refresh: respond() re-reads the inbox, and `latest`
+      // usually changes when you answer ("Dre is in"), so recording it after
+      // would mark the new line read as well and swallow the next card.
+      if (kind === 'plan') markRead(id);
       setNote(await respond(kind, id, action, extra));
       setReplyTo(null); setDraft(''); setWhen('');
-      // Saying yes to a friend's plan makes it yours — open it.
+      if (kind === 'plan' && action === 'accept') goToPlan(id);
+      // Saying yes to a friend's plan makes it yours — open it, and go there.
       if (kind === 'connect' && action === 'accept') {
         const c = inbox.connects.find((x) => x.id === id);
-        if (c?.plan_id) void openPlan(c.plan_id);
+        if (c?.plan_id) goToPlan(c.plan_id);
       }
     } catch (err) {
       setNote(guestMessage(err, t('That didn’t go through.')));
@@ -54,9 +89,21 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
       setBusy(null);
     }
   };
-  const mute = (key: string) => store.set((s) => ({ mutedInvites: [...new Set([...(s.mutedInvites ?? []), key])] }));
+  /**
+   * × on a card. For a friend or a host this mutes the SOURCE — everything
+   * from them, until they are unmuted. For a plan that is too blunt: the ×
+   * on a news card means "I've read this", not "never tell me about this
+   * plan again", and muting the plan would hide the next real change too.
+   * So a news card is marked read and a plan still waiting on a vote is the
+   * only plan the mute key is used for.
+   */
+  const dismiss = (c: { kind: InviteCard['kind']; from?: string | null; id: string; needsVote?: boolean }) => {
+    if (c.kind === 'plan' && !c.needsVote) { markRead(c.id); return; }
+    const key = muteKeyOf(c);
+    store.set((s) => ({ mutedInvites: [...new Set([...(s.mutedInvites ?? []), key])] }));
+  };
 
-  const cards = cardsOf(inbox, muted, { newsToo: variant === 'today' });
+  const cards = cardsOf(inbox, muted, { newsToo: variant === 'today', seen });
   const pending = cards.filter((c) => c.kind !== 'plan' || c.needsVote).length;
   if (!me || cards.length === 0) return null;
   const shown = variant === 'plan' && !open && cards.length > FOLD_AT ? cards.slice(0, FOLD_AT) : cards;
@@ -93,7 +140,7 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
                 <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 3 }}>{t('Their NUM asked yours — answer here or in your messages.')}</div>
               )}
             </div>
-            <span {...pressable(() => mute(muteKeyOf(c)))} aria-label={t('Mute invites from here')} className="tap" style={{ cursor: 'pointer', flex: 'none', minWidth: 36, minHeight: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-40)', fontSize: 16, lineHeight: 1 }}>×</span>
+            <span {...pressable(() => dismiss(c))} aria-label={c.kind === 'plan' && !c.needsVote ? t('Mark as read') : t('Mute invites from here')} className="tap" style={{ cursor: 'pointer', flex: 'none', minWidth: 36, minHeight: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-40)', fontSize: 16, lineHeight: 1 }}>×</span>
           </div>
           <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
             {c.kind === 'connect' && (
@@ -110,13 +157,24 @@ export default function InviteRail({ variant }: { variant: 'today' | 'plan' }) {
                 <Btn label={t('REPLY')} quiet onClick={() => setReplyTo(replyTo === c.id ? null : c.id)} />
               </>
             )}
-            {c.kind === 'plan' && (
+            {/* A plan you are ALREADY IN does not get asked again. Until
+              * today every plan card carried I'M IN · ANOTHER TIME · CAN'T,
+              * including the news cards for plans you had joined weeks ago —
+              * three answers to a question nobody asked, and the reason the
+              * card looked broken when tapping the obvious button changed
+              * nothing on screen. News gets one action: open it. */}
+            {c.kind === 'plan' && c.needsVote && (
               <>
                 <Btn label={busy === c.id ? '…' : t('I’M IN')} primary onClick={() => void act('plan', c.id, 'accept')} />
                 <Btn label={t('ANOTHER TIME')} onClick={() => setReplyTo(replyTo === c.id ? null : c.id)} />
                 <Btn label={t('CAN’T')} onClick={() => void act('plan', c.id, 'decline')} />
-                <Btn label={t('OPEN')} quiet onClick={() => { void openPlan(c.id); if (variant === 'today') store.set({ view: 'plan' }); }} />
               </>
+            )}
+            {c.kind === 'plan' && !c.needsVote && (
+              <Btn label={t('OPEN')} primary onClick={() => { markRead(c.id); goToPlan(c.id); }} />
+            )}
+            {c.kind === 'plan' && c.needsVote && (
+              <Btn label={t('OPEN')} quiet onClick={() => { markRead(c.id); goToPlan(c.id); }} />
             )}
           </div>
           {replyTo === c.id && c.kind === 'event' && (

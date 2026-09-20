@@ -694,6 +694,18 @@ export interface AppState {
   bookSeen?: Record<string, TableState>;
   /** Invite sources hidden on this phone (InviteRail muteKeyOf) — hides, never declines. */
   mutedInvites?: string[];
+  /**
+   * The last piece of plan news this person has actually seen, per plan.
+   *
+   * WAITING ON YOU on TODAY drew a card for every plan that had any news at
+   * all, and news is never absent for long — so once you were in a plan its
+   * card sat on the home screen for ever, unanswerable, because you had
+   * already answered. Dre, 20 Sep 2026: "the plans on the home page never go
+   * away from the home page." This is what makes news a thing you can be
+   * finished with: the card shows while `latest` differs from what is
+   * recorded here, and goes when you act on it. New news brings it back.
+   */
+  seenPlanNews?: Record<string, string>;
   /** Every plan's dated things and the events I'm going to, three weeks around today (lib/agenda.ts). Server truth, not persisted. */
   agenda?: Agenda | null;
   /** My upcoming reminders (lib/reminders.ts). Server truth, not persisted. */

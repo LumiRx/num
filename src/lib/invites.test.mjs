@@ -59,7 +59,74 @@ test('the owner is never asked whether they are in; on TODAY a plan with news st
   assert.ok(!plan.some((c) => c.id === 'pl_3'), 'my own plan asks me nothing');
   assert.ok(!plan.some((c) => c.id === 'pl_4'), 'on PLAN an answered plan with news is not a card — it is a tab');
   const today = cardsOf(inbox, [], { newsToo: true });
-  assert.ok(today.some((c) => c.id === 'pl_4'), 'on TODAY the news card stays, as it always has');
+  assert.ok(today.some((c) => c.id === 'pl_4'), 'on TODAY a plan with UNREAD news is a card');
+});
+
+/* ── news you have read is not news (20 Sep 2026) ───────────────────────── */
+
+test('a news card goes once its news has been read, and stays gone', () => {
+  // Dre: "the plans on the home page never go away from the home page." They
+  // could not: `latest` is never empty for long, so the card had no end state.
+  const seen = { pl_4: 'Viv moved dinner.' };
+  const today = cardsOf(inbox, [], { newsToo: true, seen });
+  assert.ok(!today.some((c) => c.id === 'pl_4'), 'the card came back after it was read');
+});
+
+test('but NEW news brings it back — this is a read marker, not a mute', () => {
+  const seen = { pl_4: 'Viv moved dinner.' };
+  const moved = { ...inbox, plans: inbox.plans.map((p) => (p.id === 'pl_4' ? { ...p, latest: 'Viv moved it again.' } : p)) };
+  assert.ok(cardsOf(moved, [], { newsToo: true, seen }).some((c) => c.id === 'pl_4'));
+});
+
+test('reading the news never silences a plan that is still waiting on your answer', () => {
+  // pl_2 needs a vote AND has news. Marking the news read must not take the
+  // question off the screen — that is the one card that must not be losable.
+  const seen = { pl_2: 'Sam added Francesinha.' };
+  const cards = cardsOf(inbox, [], { newsToo: true, seen });
+  const pl2 = cards.find((c) => c.id === 'pl_2');
+  assert.ok(pl2, 'a plan still needing a vote disappeared when its news was read');
+  assert.equal(pl2.needsVote, true);
+});
+
+/* ── where the buttons go ───────────────────────────────────────────────── */
+
+test('"I’M IN" lands you in the plan, not back on the same card', () => {
+  const rail = readFileSync(new URL('../components/app/InviteRail.tsx', import.meta.url), 'utf8');
+  assert.match(rail, /if \(kind === 'plan' && action === 'accept'\) goToPlan\(id\);/);
+  assert.match(rail, /const goToPlan = \(planId: string\) => \{[\s\S]{0,200}?openPlan\(planId\)/);
+  assert.match(rail, /if \(variant === 'today'\) store\.set\(\{ view: 'plan' \}\);/,
+    'accepting from TODAY leaves the person on TODAY');
+  // Accepting a friend's invite to their plan is the same journey.
+  assert.match(rail, /if \(c\?\.plan_id\) goToPlan\(c\.plan_id\);/);
+});
+
+test('a plan you are already in is not asked again', () => {
+  const rail = readFileSync(new URL('../components/app/InviteRail.tsx', import.meta.url), 'utf8');
+  assert.match(rail, /c\.kind === 'plan' && c\.needsVote && \(/, 'the vote buttons are drawn unconditionally');
+  assert.match(rail, /c\.kind === 'plan' && !c\.needsVote && \(/, 'a news card has no action of its own');
+});
+
+test('the news is marked read BEFORE the answer reaches the server', () => {
+  // respond() re-reads the inbox and answering changes `latest` ("Dre is
+  // in"), so recording it afterwards would mark the new line read too and
+  // swallow the next card.
+  const rail = readFileSync(new URL('../components/app/InviteRail.tsx', import.meta.url), 'utf8');
+  const mark = rail.indexOf("if (kind === 'plan') markRead(id);");
+  const send = rail.indexOf('await respond(kind, id, action, extra)');
+  assert.ok(mark > 0 && mark < send, 'the read marker is recorded after the inbox has already moved');
+});
+
+test('× on a news card reads it; × on a friend or a host still mutes the source', () => {
+  const rail = readFileSync(new URL('../components/app/InviteRail.tsx', import.meta.url), 'utf8');
+  assert.match(rail, /if \(c\.kind === 'plan' && !c\.needsVote\) \{ markRead\(c\.id\); return; \}/,
+    'dismissing a news card mutes the whole plan, so its next real change never arrives');
+  assert.match(rail, /mutedInvites: \[\.\.\.new Set\(\[\.\.\.\(s\.mutedInvites \?\? \[\]\), key\]\)\]/);
+});
+
+test('the read markers survive a relaunch — a card dismissed today is not back tomorrow', () => {
+  const data = readFileSync(new URL('./data.ts', import.meta.url), 'utf8');
+  assert.match(data, /'seenPlanNews',/, 'seenPlanNews is not persisted');
+  assert.match(data, /seenPlanNews: \{\},/, 'seenPlanNews has no default, so the first read throws');
 });
 
 test('mute is by source — this friend, this host, this plan — and hides, never declines', () => {
@@ -69,8 +136,10 @@ test('mute is by source — this friend, this host, this plan — and hides, nev
   const cards = cardsOf(inbox, ['friend:mem_sam', 'plan:pl_2'], { newsToo: false });
   assert.deepEqual(cards.map((c) => c.id), ['tok_1']);
   const rail = readFileSync(new URL('../components/app/InviteRail.tsx', import.meta.url), 'utf8');
-  assert.match(rail, /const mute = \(key: string\) => store\.set\(/);
-  assert.doesNotMatch(rail, /const mute = [^\n]*respond\(/, 'muting never calls respond()');
+  // 20 Sep 2026: `mute` became `dismiss`, which mutes a source and marks a
+  // plan's news read — see the × test below for why the two differ.
+  assert.match(rail, /const dismiss = \(c: \{/);
+  assert.doesNotMatch(rail, /const dismiss = [^\n]*respond\(/, 'dismissing never calls respond()');
 });
 
 test('the rail folds past three; the PLAN badge counts what the rail shows', () => {

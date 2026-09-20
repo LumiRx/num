@@ -108,6 +108,7 @@ function baseState() {
     bookRequests: [],
     bookSeen: {},
     mutedInvites: [],
+    seenPlanNews: {},
     agenda: null,
     reminders: [],
     remindersShown: [],
@@ -388,6 +389,8 @@ export const REPAIRED_ARRAYS = [
   'savedFlights',
   // 19 Sep 2026: invite sources muted on this phone (InviteRail).
   'mutedInvites',
+  // 20 Sep 2026: plan news already read, so a card can be finished with.
+  'seenPlanNews',
   // 19 Sep 2026: reminders already spoken in the thread at their hour.
   'remindersShown',
 ] as const;
