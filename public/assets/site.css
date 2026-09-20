@@ -260,3 +260,68 @@ td .tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
 .vtag{font-size:9.5px;font-weight:800;color:var(--pri-d);background:var(--pri-l);padding:2px 7px;border-radius:999px;align-self:center}
 .empty{background:#fff;border:1px dashed var(--line);border-radius:16px;padding:52px 24px;text-align:center;margin-top:30px}
 .empty h2{font-size:22px}.empty p{color:var(--slate);margin:10px 0 18px}
+
+/* ═══ CTA buttons: the states the 174 of them did not have (20 Sep 2026) ═══
+   Appended rather than edited in place — every rule above here still wins
+   where it should, and these only add states that were missing. */
+
+/* DESTRUCTIVE ACTIONS HAVE TO LOOK DESTRUCTIVE.
+   `.btn.danger` was used and never defined, so it rendered as a plain button.
+   On /my-host/ the confirm screen reads:
+       <button class="btn danger">Yes, remove them</button>
+       <button class="btn">Keep my host</button>
+   — two identical buttons side by side, one of which ends a working
+   relationship. The palette had no red at all (teal --pri, --amber for
+   warnings), so one is defined here. #D92D20 on white is ~5.3:1, which
+   clears AA for the 15px bold this button uses. */
+:root{--danger:#D92D20;--danger-d:#B42318}
+.btn.danger{background:var(--danger);color:#fff;box-shadow:0 8px 22px rgba(217,45,32,.24)}
+.btn.danger:hover{background:var(--danger-d);transform:translateY(-2px);box-shadow:0 12px 26px rgba(217,45,32,.3)}
+
+/* `.btn.sm` was also used and never defined, so "small" buttons were full size. */
+.btn.sm{padding:9px 15px;font-size:13.5px;border-radius:10px}
+
+/* PRESS IS THE ONLY FEEDBACK A PHONE EVER GETS.
+   Every variant had :hover and none had :active. Hover does not exist on
+   touch, so tapping a CTA on a phone produced nothing at all until the page
+   navigated — on a site whose whole job is getting that tap. The press goes
+   DOWN, against the hover lift, so the button reads as accepting the press
+   rather than flinching from it. */
+.btn:active{transform:translateY(1px) scale(.985)}
+.btn.pri:active{background:var(--pri-d);box-shadow:0 4px 12px rgba(14,164,131,.3)}
+.btn.danger:active{background:var(--danger-d);box-shadow:0 4px 12px rgba(217,45,32,.26)}
+.btn.ghost:active{background:#f4f7f8;border-color:#cbd6da}
+.btn.light:active{background:rgba(255,255,255,.3)}
+
+/* WORKING, NOT BROKEN.
+   `.btn:disabled` drops to .5 opacity and stops, which is what a submitted
+   form's CTA looked like: greyed out, no motion, indistinguishable from an
+   unavailable control. aria-busy rather than a class, because it is the
+   attribute that already means this and assistive tech announces it. The
+   label stays put — swapping it for "Sending…" moves the button under the
+   thumb that just pressed it. */
+.btn[aria-busy="true"]{position:relative;pointer-events:none;opacity:.85}
+.btn[aria-busy="true"]::after{
+  content:"";width:14px;height:14px;border-radius:50%;
+  border:2px solid currentColor;border-top-color:transparent;
+  animation:btn-spin .6s linear infinite}
+@keyframes btn-spin{to{transform:rotate(360deg)}}
+
+/* NOTHING HERE MOVES FOR SOMEONE WHO ASKED IT NOT TO.
+   site.css had no prefers-reduced-motion block at all across 33 pages, while
+   buttons lift, cards lift, .reveal slides 12px on scroll and .step fades.
+   The app has had this since August (a global rule in src/styles/app.css);
+   the marketing site never got it.
+
+   The spinner is deliberately kept. prefers-reduced-motion is about
+   vestibular triggers — large-area movement, parallax, zoom — and a 14px
+   status indicator is not one. Removing it would leave a busy button with no
+   way at all to say it is working, which trades an accessibility win for an
+   accessibility loss. It is slowed, not stopped. */
+@media (prefers-reduced-motion:reduce){
+  .btn,.btn.pri,.btn.ghost,.btn.light,.btn.danger{transition:background .16s ease}
+  .btn:hover,.btn:active,.btn.pri:hover,.btn.ghost:hover,.btn.danger:hover{transform:none}
+  .reveal{transform:none;transition:none}
+  .step{animation:none}
+  .btn[aria-busy="true"]::after{animation-duration:1.4s}
+}

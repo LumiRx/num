@@ -462,11 +462,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   $('doLeave').onclick = function () {
     note($('leaveErr'), '');
     $('doLeave').disabled = true;
+    $('doLeave').setAttribute('aria-busy', 'true');
     fetch('/api/host/link?t=' + encodeURIComponent(T), {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'leave', reason: $('reason').value })
     }).then(function (r) { return r.json(); }).then(function (d) {
       $('doLeave').disabled = false;
+      $('doLeave').removeAttribute('aria-busy');
       if (!d.ok) return note($('leaveErr'), 'That did not go through. Nothing has changed — try again in a moment.');
       $('live').classList.add('hide');
       $('confirm').classList.add('hide');
@@ -475,6 +477,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       sessionStorage.removeItem('num_member_t');
     }).catch(function () {
       $('doLeave').disabled = false;
+      $('doLeave').removeAttribute('aria-busy');
       note($('leaveErr'), 'Could not reach NUM. Nothing has changed.');
     });
   };
