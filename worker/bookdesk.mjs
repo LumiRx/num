@@ -355,6 +355,14 @@ export async function handleBooking(request, env, path) {
         party: partySize, date: b.on_date, time: b.at_time,
       });
       if (handoff) via = 'handoff';
+    } else if (route.via === 'call') {
+      /* No page to hand over, but a number the guest can dial — the commonest
+       * shape in the directory by a distance (1.87M listings carry a phone,
+       * 1.39M carry a site). We are not booking it and we say so; what the
+       * guest gets is the number, which beats a request that joins a queue.
+       * Recorded as its own outcome so "we handed them the phone" never reads
+       * in a report as "the desk is working it". */
+      via = 'call';
     } else if (channel.via === 'sms' && venuePhone) {
       const yes = await sign(env, id, 'confirmed');
       const no = await sign(env, id, 'declined');
@@ -381,11 +389,15 @@ export async function handleBooking(request, env, path) {
         ? 'The venue has it — you’ll hear the moment they answer.'
         : handoff
           ? 'This one books on their own system — I’ve filled in what I know, tap through and it’s yours.'
-          : channel.via === 'none'
-            ? 'They don’t take bookings through me — worth calling them directly.'
-            : 'Request logged — our desk is on it, you’ll hear as soon as it’s confirmed.';
+          : via === 'call'
+            ? 'I don’t have a booking line into this one — here’s their number, they’ll sort you in a minute.'
+            : channel.via === 'none'
+              ? 'They don’t take bookings through me — worth calling them directly.'
+              : 'Request logged — our desk is on it, you’ll hear as soon as it’s confirmed.';
 
-    return json({ ok: true, id, state: 'requested', texted, emailed, via, handoff, note });
+    // `call` carries the number back so the app can render a tappable button
+    // rather than printing digits into prose somebody has to copy.
+    return json({ ok: true, id, state: 'requested', texted, emailed, via, handoff, call: route.call ?? null, note });
   }
 
   // ── Venue answers (the tapped link) ──────────────────────────────────

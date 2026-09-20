@@ -258,8 +258,26 @@ describe('the turn is actually wired', () => {
     assert.match(IDX, /health,/);
   });
 
-  test('they ride with the entry documents rather than on their own trigger', () => {
-    assert.match(IDX, /if \(entryDocs && grounding\?\.place\?\.country_code\)/);
+  test('they ride in the same turn as the entry documents — but are not GATED on them', () => {
+    // 20 Sep 2026. This asserted `if (entryDocs && ...)`, which looked like
+    // "same turn" and was actually "only for countries traveldocs covers":
+    // docsBlock() returns null for that reason and no other. Four countries
+    // where insurance is a CONDITION OF ENTRY sat in the gap — Belarus,
+    // Qatar, Ecuador, Aruba — and NUM said nothing about any of them. Qatar's
+    // rule is mustBeLocal, so the traveller who buys a good policy and ticks
+    // the box is exactly the one who gets stopped.
+    //
+    // The thing worth holding is that all three land in ONE contextBlock, so
+    // nobody hears about the visa on Monday and the yellow fever certificate
+    // on Thursday. That is asserted above and below, not here.
+    assert.doesNotMatch(IDX, /if \(entryDocs && grounding\?\.place\?\.country_code\)/,
+      'the health block is gated on traveldocs coverage again');
+    assert.match(IDX, /let health = null;\s*\n\s*if \(grounding\?\.place\?\.country_code\) \{/,
+      'a country code alone is no longer enough to ask');
+    // Same turn: both are computed above the one contextBlock that carries them.
+    const block = IDX.indexOf('const groundingBlock');
+    assert.ok(IDX.indexOf('const entryDocs = docsBlock(') < block);
+    assert.ok(IDX.indexOf('let health = null;') < block);
   });
 
   test('a failure in either one cannot take the turn down', () => {

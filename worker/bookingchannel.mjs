@@ -160,13 +160,42 @@ export function bookingUrl(raw) {
 }
 
 /**
- * Read the channel for a venue. Never invents one.
+ * Read the channel for a venue, or derive an honest one from what we hold.
  *
- * The fallback when no row exists is `sms`, which is what every venue in the
- * directory has implicitly been on since the desk was built — and, because of
- * the consent gate, means "the desk works it by hand". It is deliberately not
- * `none`: a missing row means nobody has been asked yet, not that a venue has
- * refused, and those two are different facts.
+ * ── WHY THE FALLBACK CHANGED (20 Sep 2026, Dre's call) ───────────────────
+ *
+ * The fallback used to be `{ via: 'sms', sms_to: null }` — which every venue
+ * in the directory has implicitly been on since the desk was built, and which
+ * `deliverable()` correctly reads as "no number on file". Measured against
+ * production that afternoon, that is not an edge case. It is the product:
+ *
+ *   places in the directory          2,715,565
+ *   rows in num_booking_channels             3
+ *
+ * So for 2.7 million venues — including the 1,869,622 whose PHONE NUMBER we
+ * are already holding and the 1,387,864 whose WEBSITE we are holding — the
+ * booking system's answer to "can we reach them" was "no number on file",
+ * about venues whose number is sitting one table away. 2,012,009 places have
+ * one or the other.
+ *
+ * So the default is now derived rather than blank: hand the guest the venue's
+ * own booking page, or their number to tap. `deliverable()` still answers
+ * `send: false` for it — because NUM is not sending anything — and the guest
+ * gets a path that works in seconds instead of a request that joins a manual
+ * queue. The file already says it: "a handoff that works today beats an
+ * integration that might ship."
+ *
+ * ── THE ONE RULE THIS MUST NOT BREAK ─────────────────────────────────────
+ *
+ * A derived phone number goes in `call_to` and NEVER in `sms_to`. `sms_to` is
+ * what the SMS path reads, that path is gated on `num_sms_consent`, and the
+ * gate is the reason an A2P registration is truthful and the TCPA exposure is
+ * zero. A number we scraped is a number for the GUEST to dial, never one for
+ * NUM to text. The two fields are separate so that this cannot happen by
+ * accident, and bookingchannel.test.mjs holds the line.
+ *
+ * `asked` stays false throughout. A derived handoff is what we can do for a
+ * venue nobody has spoken to — not a claim that they chose it.
  */
 export async function channelFor(env, { placeId = null, businessId = null } = {}) {
   if (!env?.DB || (!placeId && !businessId)) return null;
@@ -177,16 +206,45 @@ export async function channelFor(env, { placeId = null, businessId = null } = {}
     : await env.DB.prepare(
         'SELECT * FROM num_booking_channels WHERE business_id = ?1 ORDER BY updated_at DESC LIMIT 1',
       ).bind(String(businessId)).first().catch(() => null);
-  if (row) return { ...row, asked: true };
+  if (row) return { ...row, asked: true, call_to: row.call_to ?? null };
+
+  // Nobody has ever been asked. Build the best honest route out of what the
+  // listing already holds. A failure here falls back to the old blank shape
+  // rather than throwing — a booking screen must not break because a
+  // directory read was slow.
+  const place = placeId
+    ? await env.DB.prepare('SELECT website, phone, booking_platform, booking_ref FROM places WHERE id = ?1')
+        .bind(String(placeId)).first().catch(() => null)
+    : null;
+  const url = bookingUrl(place?.website);
+  const tel = clip(place?.phone, 32);
+  /* A platform the crawler already recognised — OpenTable 1,170, SevenRooms
+   * 788, Toast 338, Resy 192, and the hotel systems behind them. It matters
+   * because ressystem.mjs can PREFILL a handoff for a system it knows: party
+   * size, date and time carried across, rather than dropping somebody on a
+   * home page to start again. */
+  const system = clip(place?.booking_platform, 40);
+
   return {
     place_id: placeId, business_id: businessId,
-    via: 'sms', sms_to: null, email_to: null,
-    system_key: null, system_name: null, booking_url: null,
-    integration: 'none',
+    // `own` when we can actually hand something over. Otherwise `sms` with no
+    // number, which is what it has always been and which `deliverable()`
+    // reports as the desk working it by hand. Never `none` — that means a
+    // venue REFUSED, and nobody has asked this one anything.
+    via: url || tel ? 'own' : 'sms',
+    sms_to: null,
+    email_to: null,
+    system_key: system,
+    system_name: null,
+    booking_url: url,
+    // For the guest to dial. Never for NUM to text — see the rule above.
+    call_to: tel,
+    integration: url ? 'handoff' : 'none',
     // The one field that is not a column. A caller that cannot tell "we asked
     // and they said text" from "nobody has ever asked" will write the first
-    // into a report and mean the second.
+    // into a report and mean the second. A derived route is still unasked.
     asked: false,
+    derived: true,
   };
 }
 
@@ -272,11 +330,27 @@ export function deliverable(channel) {
         ? { send: true, via: 'sms', to: channel.sms_to, reason: 'venue chose sms' }
         : { send: false, via: null, reason: 'no number on file' };
     case 'own':
+      if (channel.booking_url) {
+        return {
+          send: false, via: 'handoff', to: channel.booking_url,
+          call: channel.call_to ?? null,
+          reason: channel.derived
+            ? 'no channel recorded — the guest is handed the venue’s own page'
+            : 'venue books on its own system — the guest is handed the link',
+        };
+      }
+      // No page, but a number the guest can dial. This is the commonest shape
+      // in the directory by a distance: 1.87M listings carry a phone and 1.39M
+      // carry a site, so the phone is the route that reaches the most venues.
+      if (channel.call_to) {
+        return {
+          send: false, via: 'call', to: null, call: channel.call_to,
+          reason: 'no channel recorded — the guest is handed the number to call',
+        };
+      }
       return {
-        send: false, via: 'handoff', to: channel.booking_url ?? null,
-        reason: channel.booking_url
-          ? 'venue books on its own system — the guest is handed the link'
-          : 'venue books on its own system and we do not hold the link yet',
+        send: false, via: 'handoff', to: null, call: null,
+        reason: 'venue books on its own system and we do not hold the link yet',
       };
     case 'none':
       return { send: false, via: null, reason: 'venue asked not to be sent bookings' };

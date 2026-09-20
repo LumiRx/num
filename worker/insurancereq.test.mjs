@@ -158,3 +158,52 @@ describe('the route', () => {
     assert.equal(b.required, 'unverified');
   });
 });
+
+/* ── THE GATE THAT SILENCED FOUR COUNTRIES (20 Sep 2026) ─────────────────
+ *
+ * worker/index.mjs built the health block behind `if (entryDocs && ...)`, and
+ * docsBlock() returns null for exactly one reason: the country is not in
+ * traveldocs' own DOCS list. So a destination that list does not cover lost
+ * its insurance and vaccine blocks as well — suppressed by the absence of an
+ * unrelated dataset.
+ *
+ * Four countries where insurance is a CONDITION OF ENTRY sat in that gap.
+ * Qatar is the one that stings: its rule is mustBeLocal, so the traveller who
+ * buys a good policy and ticks the box is precisely the one who gets stopped.
+ */
+import { readFileSync as readSrc } from 'node:fs';
+import { COVERED } from './traveldocs.mjs';
+
+test('every country where insurance is a condition of entry can be reached', () => {
+  const covered = new Set(COVERED);
+  const required = new Set();
+  for (const [key, row] of Object.entries(REQUIRED)) {
+    if (row.countries) row.countries.forEach((c) => required.add(c));
+    else required.add(key.split('_')[0]);
+  }
+  const gap = [...required].filter((c) => !covered.has(c));
+  // The gap itself is fine and will grow — the two datasets cover different
+  // things. What must never come back is the CODE that made the gap silent.
+  assert.ok(gap.length >= 0);
+  const src = readSrc(new URL('./index.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /if \(entryDocs && grounding\?\.place\?\.country_code\)/,
+    `the health block is gated on traveldocs again — ${gap.join(', ')} lose their insurance warning`);
+  assert.match(src, /let health = null;\s*\n\s*if \(grounding\?\.place\?\.country_code\) \{/,
+    'the health block no longer asks on a country code alone');
+});
+
+test('the four that were lost are answerable on their own', () => {
+  for (const cc of ['BY', 'QA', 'EC', 'AW']) {
+    const r = insuranceFor(cc);
+    assert.ok(r, `${cc} has no answer at all`);
+    assert.ok(insuranceBlock(r, { country_name: cc }), `${cc} produces no block for the concierge`);
+  }
+});
+
+test('Qatar still says the policy has to be a Qatari one', () => {
+  // A good policy from a good insurer does not satisfy it. If this line ever
+  // goes, the warning becomes the kind that gets somebody turned around at
+  // the airport while believing they did it right.
+  const block = insuranceBlock(insuranceFor('QA'), { country_name: 'Qatar' });
+  assert.match(block, /local|Qatar/i);
+});

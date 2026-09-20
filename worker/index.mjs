@@ -1298,8 +1298,26 @@ export async function handleNum(request, env, ctx, hooks = null) {
     // — what stops you at the door — and splitting them across turns means a
     // traveller hears about the visa on Monday and the yellow fever
     // certificate on Thursday, ten days after the vaccination deadline.
+    /* ── AND NOT GATED ON THE PAPERWORK BLOCK (20 Sep 2026) ─────────────
+     *
+     * This read `if (entryDocs && ...)`, and `docsBlock` returns null for one
+     * reason only: the country is not in traveldocs' own DOCS list. So a
+     * destination that list does not cover lost its VACCINE and INSURANCE
+     * blocks too — suppressed by the absence of a third, unrelated dataset.
+     *
+     * Four countries where insurance is a CONDITION OF ENTRY fell in that
+     * gap: Belarus, Qatar, Ecuador and Aruba. Qatar is the one that stings.
+     * Its rule is `mustBeLocal` — a policy from a good insurer that is not on
+     * Qatar's own scheme does not satisfy it — so the traveller who buys
+     * insurance and ticks the box is precisely the one who gets stopped, and
+     * NUM said nothing at all.
+     *
+     * They still ride in the same TURN, which is what the note above is
+     * about: a visa on Monday and a yellow fever certificate on Thursday is
+     * the failure being avoided. A country code is enough to ask all three,
+     * and each block returns null on its own when it has nothing to say. */
     let health = null;
-    if (entryDocs && grounding?.place?.country_code) {
+    if (grounding?.place?.country_code) {
       try {
         const [{ vaccinesFor, vaccineBlock }, { insuranceFor, insuranceBlock }] = await Promise.all([
           import('./vaccines.mjs'), import('./insurancereq.mjs'),
