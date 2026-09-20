@@ -88,9 +88,61 @@ test('the board: every promise wired — drag, lock, comments, money, add people
   assert.match(b, /patchPlanItem\(it\.id, \{ paid_by: e\.target\.value \|\| '' \}\)/);
   assert.match(b, /split_with: next\.length === members\.length \? null : next/, 'everyone selected = no list, so a new member joins the split automatically');
   assert.match(b, /startInvite\(\{ planId: plan\.id, intent: 'plan', returnTo: \{ view: 'plan' \} \}\)/, 'ADD PEOPLE comes back to the board');
-  assert.match(b, /setPlanSpan\(\{ ends_on: addDays\(last, 1\) \}\)/, '+ DAY extends the plan');
+  assert.match(b, /setPlanSpan\(\{ ends_on: next \}\)/, '+ DAY extends the plan');
   assert.match(b, /settlePlan\(to, minor, via\)/);
   assert.match(b, /const usd = currency === 'USD';/, 'Stars only on a USD plan');
   assert.match(b, /\{usd && <div \{\.\.\.pressable\(\(\) => setConfirm\(key\)\)\}/, 'a Stars payment asks once before it moves money');
   assert.doesNotMatch(b, /\bfees?\b|\bwaiv/i, 'no fee talk on the board');
+});
+
+
+/* ── ADDING AND REMOVING A DAY (20 Sep 2026) ─────────────────────────────
+ *
+ * Dre: "when adding a day in plans i cant delete it or add a new day."
+ *
+ * Two different faults wearing one sentence. ADD worked and was invisible:
+ * the new chip is appended to the end of a horizontally scrolling row whose
+ * rightmost chip is "+ DAY", so on a plan already a few days long it arrived
+ * off-screen and the board changed to a day nobody could see. A state change
+ * nobody can see is a broken button. DELETE did not exist at all.
+ */
+
+test('a new day is scrolled into view, because a selection nobody can see is a dead button', () => {
+  const b = read('../components/app/PlanBoard.tsx');
+  assert.match(b, /const selectedChip = useRef<HTMLDivElement \| null>\(null\);/);
+  assert.match(b, /selectedChip\.current\?\.scrollIntoView\?\.\(\{ behavior: 'smooth', inline: 'center', block: 'nearest' \}\);/);
+  assert.match(b, /\}, \[day\]\);/, 'it watches the selected day, so every route to a new day is covered');
+  assert.match(b, /ref=\{day === d \? selectedChip : undefined\}/);
+});
+
+test('a day can be taken off — and never takes what was on it with it', () => {
+  // A booking is a real table at a real restaurant. Losing one because
+  // somebody tidied their itinerary is not a trade-off.
+  const b = read('../components/app/PlanBoard.tsx');
+  assert.match(b, /for \(const it of dayItems\(d\)\) await patchPlanItem\(it\.id, \{ day: '' \}\);/,
+    'items on a removed day are not moved to ANYTIME');
+  assert.doesNotMatch(b, /removeDay[\s\S]{0,600}?status: 'cancelled'/,
+    'removing a day cancels the things on it');
+  const body = b.slice(b.indexOf('const removeDay'), b.indexOf('const flipLock'));
+  const items = body.indexOf('patchPlanItem');
+  const span = body.indexOf('setPlanSpan');
+  assert.ok(items > 0 && items < span,
+    'the span shrinks before the items move — an item would be stranded on a day the plan no longer has');
+});
+
+test('only the two ends, because the middle of a contiguous range has no honest delete', () => {
+  // Deleting a Wednesday out of the middle would have to shift every later
+  // day back one, silently moving bookings pinned to real dates.
+  const b = read('../components/app/PlanBoard.tsx');
+  assert.match(b, /if \(d !== first && d !== last\) return;/);
+  assert.match(b, /d === days\[0\] \|\| d === days\[days\.length - 1\]/, 'the × is offered on a middle day');
+  assert.match(b, /starts_on: addDays\(d, 1\)/, 'removing the first day does not move the start');
+  assert.match(b, /ends_on: days\.length === 2 \? null : addDays\(d, -1\)/,
+    'shrinking to a single day leaves ends_on pointing at a day that is gone');
+});
+
+test('the last remaining day is not removable, and says why', () => {
+  const b = read('../components/app/PlanBoard.tsx');
+  assert.match(b, /if \(days\.length < 2\) \{ setNote\(/, 'the only day can be removed, leaving a plan with no span');
+  assert.match(b, /days\.length > 1 && \(d === days\[0\]/, 'the × shows on a one-day plan');
 });

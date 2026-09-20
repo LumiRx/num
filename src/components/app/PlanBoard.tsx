@@ -98,14 +98,81 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
   useEffect(() => { if (day !== 'any' && !days.includes(day)) setDay(days[0] ?? 'any'); }, [days, day]);
   useEffect(() => { if (day === 'any' && days.length && !undated.length) setDay(days[0]); }, [days, day, undated.length]);
 
+  /**
+   * The chip for whichever day is selected. A day added to the end of the row
+   * lands outside the scroller, and a selection nobody can see reads as a
+   * button that did nothing — which is exactly how "I can't add a new day"
+   * was reported. Every route to a new day goes through `day`, so the effect
+   * lives here rather than in addDay.
+   */
+  const selectedChip = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    selectedChip.current?.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [day]);
+
   const [showMoney, setShowMoney] = useState(false);
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  /**
+   * ── ADDING A DAY YOU CAN SEE (20 Sep 2026, Dre: "I can't add a new day") ──
+   *
+   * The call was working the whole time. The new day is appended to the END
+   * of a horizontally scrolling chip row whose rightmost chip is "+ DAY" —
+   * so on a plan already two or three days long the day arrived off-screen,
+   * `setDay` selected a chip nobody could see, and the board underneath
+   * changed to an empty day that looked like nothing had happened.
+   *
+   * A state change nobody can see is a broken button, however correct the
+   * request was. The selected chip is now scrolled into view — see the effect
+   * below, which covers every route to a new day, not just this one.
+   */
   const addDay = async () => {
     if (!plan.starts_on) return;
     const last = plan.ends_on ?? plan.starts_on;
-    if (await setPlanSpan({ ends_on: addDays(last, 1) })) setDay(addDays(last, 1));
+    const next = addDays(last, 1);
+    if (await setPlanSpan({ ends_on: next })) setDay(next);
+  };
+
+  /**
+   * ── AND TAKING ONE OFF ────────────────────────────────────────────────
+   *
+   * There was no way to. A day could be added and never removed, so a
+   * mis-tap was permanent and a trip that got shorter could not be said.
+   *
+   * Two rules, both about not destroying anything:
+   *
+   * 1. WHAT WAS ON THE DAY IS NOT DELETED. Every item moves to ANYTIME. A
+   *    booking is a real table at a real restaurant; losing one because
+   *    somebody tidied their itinerary is not a trade-off, it is a bug with a
+   *    confirmation dialog in front of it.
+   *
+   * 2. ONLY THE FIRST OR THE LAST. The span is a contiguous range — a start
+   *    and an end — so "delete the Wednesday" out of the middle does not
+   *    exist as a shape. It would have to shift every later day back one,
+   *    silently moving bookings that are pinned to real dates. The control
+   *    is only offered on the two ends, where the meaning is unambiguous:
+   *    the trip starts a day later, or finishes a day earlier.
+   */
+  const removeDay = async (d: string) => {
+    if (!canEdit || !plan.starts_on) return;
+    const first = days[0];
+    const last = days[days.length - 1];
+    if (d !== first && d !== last) return;
+    if (days.length < 2) { setNote(t('That’s the only day — change the date instead.')); return; }
+
+    // Items first. If the span change succeeds and this does not, somebody's
+    // dinner is attached to a day the plan no longer has.
+    for (const it of dayItems(d)) await patchPlanItem(it.id, { day: '' });
+
+    const ok = d === first
+      ? await setPlanSpan({ starts_on: addDays(d, 1) })
+      : await setPlanSpan({ ends_on: days.length === 2 ? null : addDays(d, -1) });
+    if (ok) {
+      setDay(d === first ? days[1] : days[days.length - 2]);
+      const n = dayItems(d).length;
+      if (n) setNote(t('{n} moved to ANYTIME — nothing was deleted.', { n }));
+    }
   };
   const flipLock = async () => { await lockPlan(!locked); };
   const addPeople = () => startInvite({ planId: plan.id, intent: 'plan', returnTo: { view: 'plan' } });
@@ -236,10 +303,22 @@ export default function PlanBoard({ plan, scrollRef }: { plan: PartyPlan; scroll
             const n = dayItems(d).length;
             const cost = spend(d);
             return (
-              <div key={d} {...pressable(() => setDay(d))} role="tab" aria-selected={day === d} className="tap" data-slot={drag ? `${d}|` : undefined}
-                style={{ ...chip(day === d), flexDirection: 'column', alignItems: 'flex-start', gap: 1, minHeight: 48, padding: '6px 14px', scrollSnapAlign: 'start', outline: drag?.over === `${d}|` ? '2px solid var(--color-accent)' : 'none' }}>
-                <span>{dayLabel(d, currentLang())}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.8 }}>{n ? `${n} ${n === 1 ? t('thing') : t('things')}` : t('empty')}{cost ? ` · ${fmtMinor(cost, currency)}` : ''}</span>
+              <div key={d} ref={day === d ? selectedChip : undefined} {...pressable(() => setDay(d))} role="tab" aria-selected={day === d} className="tap" data-slot={drag ? `${d}|` : undefined}
+                style={{ ...chip(day === d), flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, padding: '6px 14px', scrollSnapAlign: 'start', outline: drag?.over === `${d}|` ? '2px solid var(--color-accent)' : 'none' }}>
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
+                  <span>{dayLabel(d, currentLang())}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.8 }}>{n ? `${n} ${n === 1 ? t('thing') : t('things')}` : t('empty')}{cost ? ` · ${fmtMinor(cost, currency)}` : ''}</span>
+                </span>
+                {/* Only on the day you are looking at, and only at the two
+                    ends of the span — see removeDay for why the middle of a
+                    contiguous range has no honest "delete this one". */}
+                {canEdit && day === d && days.length > 1 && (d === days[0] || d === days[days.length - 1]) && (
+                  <span
+                    {...pressable((e?: { stopPropagation?: () => void }) => { e?.stopPropagation?.(); void removeDay(d); })}
+                    aria-label={t('Take this day off')}
+                    style={{ cursor: 'pointer', flex: 'none', minWidth: 28, minHeight: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, fontSize: 15, lineHeight: 1, opacity: 0.85 }}
+                  >×</span>
+                )}
               </div>
             );
           })}
