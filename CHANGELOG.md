@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.409 — 2026-09-20 21:21 UTC
+
+Widget searches work unverified, free answers for the turns that need no model, plan cards that can be finished with, install walk-through after signup
+
+- commit `4fedc6c`
+
 ## 0.8.408 — 2026-09-20 21:08 UTC
 
 Widget searches work unverified, free answers for the turns that need no model, plan cards that can be finished with, install walk-through after signup
