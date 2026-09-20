@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.315 — 2026-09-20 22:54 UTC
+
+CTA funnel + traveller plans
+
+- commit `f52169b`
+
 ## 0.8.314 — 2026-09-16 20:53 UTC
 
 welcome stars to 5, plans in wallet, desktop app, sheet backgrounds
