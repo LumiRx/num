@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-19 20:53 UTC from 47 entries._
+_Built 2026-09-20 22:47 UTC from 48 entries._
 
 ## Deployed right now
 
@@ -16,10 +16,10 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-console | 🟢 up to date (2026-09-19 20:42) |
-| num-app | 🔴 **STALE** — 11 files changed since it shipped |
-| num-growth | 🔴 **STALE** — 3 files changed since it shipped |
-| num-ai | ⚪ never recorded from this machine |
+| num-console | 🟢 up to date (2026-09-20 22:29) |
+| num-app | 🔴 **STALE** — 6 files changed since it shipped |
+| num-growth | 🔴 **STALE** — 4 files changed since it shipped |
+| num-ai | 🟢 up to date (2026-09-19 21:32) |
 | num-accounts | 🟢 up to date (2026-09-19 20:38) |
 | num-payouts | ⚪ never recorded from this machine |
 | num-claim | ⚪ never recorded from this machine |
@@ -57,6 +57,8 @@ Read from what each worker actually bundles, not from anyone's memory.
   _claude, 2026-09-19 20:53_
 - 🟡 **qr pay rails** — worker/payrails.mjs: every approved way to pay a bill, decided by venue country, ordered by guest device/language/phone; four tests as data (instant, own device, refundable, not financing); crypto HELD for TH (CRYPTO_HELD) per Dre 17 Sep. worker/billpay.mjs: Stripe Checkout as a DIRECT charge on the venue's own connected account with NUM's application fee (10% verified booking / flat floor) — GET /api/bill/<token> + /checkout, POST /api/pay/webhook/connect settles via settleBillCode and markPaid
   _claude, 2026-09-18 06:34_
+- 🟡 **sms concierge** — worker/smsconcierge.mjs: an ordinary inbound text now gets a concierge answer via handleNum, sent through the Messaging Service with a StatusCallback. Built 20 Sep, not shipped. First SM row in num_sms_delivery since 21 Aug is the proof US outbound works.
+  _claude, 2026-09-20 22:47_
 - 🟡 **wallets and till** — Privy member wallets + Square POS adapter. worker/privy.mjs: a Base wallet pregenerated from the phone number NUM already verified, idempotent on member id, four rules asserted in tests — NUM never holds the key, never funds it (a test fails if a fund/buy/transfer export appears), Stars and USDC are never one number, only a phone-verified member gets one. Read-only usdcBalance via eth_call returns null not 0 when the chain is unreachable. createBillPolicy scopes a Privy policy to one venue addre
   _claude, 2026-09-18 07:44_
 

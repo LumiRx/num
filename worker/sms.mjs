@@ -48,7 +48,11 @@ const normalise = (p) => {
   return '+' + digits;
 };
 
-export async function handleSmsInbound(request, env) {
+/**
+ * `ctx` is the Worker context (waitUntil for the concierge answer); `deps` is
+ * for tests only and is handed straight to smsconcierge.answerBySms.
+ */
+export async function handleSmsInbound(request, env, ctx = null, deps = {}) {
   if (request.method !== 'POST') return new Response('no', { status: 405 });
   const body = await request.text();
   const params = new URLSearchParams(body);
@@ -188,13 +192,13 @@ export async function handleSmsInbound(request, env) {
   // Runs after the STOP branch above, so a revocation is never mistaken for
   // an opt-in, and it swallows its own failures: a bookkeeping problem must
   // never cost somebody their answer.
-  await import('./smsconsent.mjs')
+  const consent = await import('./smsconsent.mjs')
     .then((c) => c.record(env, {
       phone: from,
       source: c.SOURCE.INBOUND_SMS,
       consentText: c.inboundConsentText(text),
     }))
-    .catch((e) => console.warn('[sms] consent record failed', e?.message ?? e));
+    .catch((e) => { console.warn('[sms] consent record failed', e?.message ?? e); return null; });
 
   // Whose world does this text belong to? Exact phone match, verified first.
   const member = await env.DB.prepare(
@@ -240,6 +244,20 @@ export async function handleSmsInbound(request, env) {
     // means this message was not fleet business and the normal path owns it.
     const reply = askWhichAsset(media, { member });
     if (reply) return xmlReply(reply);
+  }
+
+  // ── THE CONCIERGE ─────────────────────────────────────────────────────
+  //
+  // Everything above is a keyword, a kitchen, a supplier or bookkeeping. This
+  // is the product: the text gets an answer from the same brain the app uses,
+  // sent as a separate message once it exists. Until 20 Sep 2026 this line
+  // did not exist and "text NUM" ended in an inbox row. See smsconcierge.mjs
+  // — it is dark (and this returns empty TwiML exactly as before) whenever
+  // Twilio is not configured or NUM_OFF includes "sms".
+  if (text) {
+    await import('./smsconcierge.mjs')
+      .then((m) => m.answerBySms(env, ctx, { phone: from, text, firstContact: !!consent?.created }, deps))
+      .catch((e) => console.warn('[sms] concierge turn failed', e?.message ?? e));
   }
   return xmlOk();
 }

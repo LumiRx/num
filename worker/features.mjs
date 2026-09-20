@@ -862,16 +862,17 @@ export const FEATURES = Object.freeze([
     plan: 'free',
     entitlement: null,
     name: 'NUM by text',
-    does: 'The whole concierge over SMS, for a traveller with no data and no app.',
+    does: 'The whole concierge over SMS, for a traveller with no data and no app. True since 20 Sep 2026 (worker/smsconcierge.mjs); before that an ordinary text was filed to num_inbox and answered with nothing.',
     needs: ['TWILIO_SID', 'TWILIO_TOKEN', 'TWILIO_MESSAGING_SERVICE_SID'],
-    ready: (env) => has(env, 'TWILIO_SID', 'TWILIO_TOKEN')
-      || has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'),
+    ready: (env) => (has(env, 'TWILIO_SID', 'TWILIO_TOKEN')
+      || has(env, 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'))
+      && has(env, 'TWILIO_MESSAGING_SERVICE_SID'),
     surface: 'a phone number',
-    code: ['worker/sms.mjs', 'worker/twiliosender.mjs', 'worker/smsconsent.mjs'],
+    code: ['worker/sms.mjs', 'worker/smsconcierge.mjs', 'worker/twiliosender.mjs', 'worker/smsconsent.mjs'],
     sop: {
-      on: 'The Twilio trio. A2P 10DLC registration must be live or US carriers drop the messages.',
-      check: 'Text the number and expect an answer; GET /api/sms/status for delivery receipts.',
-      broken: 'Error 30034 = unregistered A2P campaign, and it fails silently from the sender\'s point of view. This is the open blocker behind the Friday-draw winner notification.',
+      on: 'The Twilio trio plus the Messaging Service SID on num-app. Brand and campaign were approved 28 Jul 2026; a US long code inherits that approval only through its Messaging Service, so every send goes via senderParams() (worker/twiliosender.mjs).',
+      check: 'Text the number and expect an answer within a minute. Then SELECT * FROM num_sms_delivery WHERE message_sid LIKE \'SM%\' ORDER BY created_at DESC — that row is the proof a carrier took it (VL rows are Verify sign-in codes, a different pipe). GET /api/admin/twilio (X-Admin-Key) confirms which Messaging Service carries the campaign and holds the number.',
+      broken: 'A 30034 on an SM row means the message left as a bare From without the Messaging Service, or the number is not in that service\'s sender pool — not that the campaign is missing. Fix the SID, not the registration. NUM_OFF=sms darkens the concierge reply and leaves inbox + push as they were.',
     },
   },
   {

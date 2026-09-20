@@ -174,7 +174,7 @@ test('no file still claims the A2P registration is outstanding', () => {
   // twiliosender.mjs is deliberately absent: it is the file that RECORDS the
   // correction, and it has to be able to quote the belief it is correcting.
   // Everywhere else, the sentence would be an assertion.
-  const FILES = ['./smsconsent.mjs', './giveaway.mjs', './orderalert.mjs', './health.mjs', './claim.mjs', './bookdesk.mjs'];
+  const FILES = ['./smsconsent.mjs', './giveaway.mjs', './orderalert.mjs', './health.mjs', './claim.mjs', './bookdesk.mjs', './features.mjs', './smsconcierge.mjs'];
   // The claim, in the shapes somebody would actually write it. "not approved"
   // is excluded on purpose: it is the wording of Twilio's own 30034 message,
   // which these files quote to explain what the error SAYS versus what it

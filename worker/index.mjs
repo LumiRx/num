@@ -2678,7 +2678,7 @@ export default {
     }
 
     // Twilio's inbound-SMS webhook and the member's inbox view of it.
-    if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+    if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env, ctx);
 
     // ── THE PHONE CALL THAT READS AN ORDER OUT ──────────────────────────
     //

@@ -14,6 +14,12 @@ _Last updated: 2026-09-18 06:30 UTC · **0.8.345 live on num-app** — all 12 TO
 
 ---
 
+## Text NUM answers back — 20 Sep 2026 (built, not shipped)
+
+The site has said "AI text-message concierge on LINE, SMS, WhatsApp" for weeks. On SMS it was not true: `worker/sms.mjs` answered STOP, HELP, PACKS, a kitchen's "Y A417" and a supplier's photograph, and filed every other text into `num_inbox` with empty TwiML. Three SMS ever reached that inbox, the last on 20 Aug. `worker/smsconcierge.mjs` is the missing turn — the WhatsApp shape, the same `handleNum`, answer sent as its own message through the Messaging Service with a StatusCallback. Dark unless Twilio and the service SID are configured; `NUM_OFF=sms` darkens it again.
+
+What the delivery table actually says (20 Sep, live): every delivered text since August is a `VL…` row — Twilio Verify, sign-in codes, a pipe exempt from A2P. Programmable Messaging (`SM…`) has not attempted a send since the nine 30034s ending 21 Aug. The Messaging Service fix has never been exercised against a carrier. The first SM row after this ships is the proof, one way or the other.
+
 ## Where things stand
 
 | Area | State |
