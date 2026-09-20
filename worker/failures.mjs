@@ -198,6 +198,72 @@ export async function held(env, kind, subject = '', judge = '') {
 /** An open alert a judge deferred to the digest. Untold on purpose; not blind. */
 const isHeld = (r) => !r.told && String(r.told_via ?? '').startsWith('held:');
 
+/**
+ * ── THE ALERT THAT COULD NOT BE SENT, ABOUT A THING THAT IS NOW FINE ──────
+ *
+ * 20 Sep 2026. Every check on /api/health was green — site 200, D1 writing,
+ * brain answering, storage at 12% of cap — and the verdict had been `down`
+ * for over a day. One row was doing it:
+ *
+ *   kind: alert · high · told: 0 · told_via: sms
+ *   "🔴 NUM IS DOWN — d1_write"        first seen 19 Sep 16:21
+ *
+ * D1 writes recovered the same evening. The row did not, because the row is
+ * not ABOUT d1_write — it is about a text message that failed to send. So
+ * `blind` stayed true, `failures` stayed not-ok, `failures` is on the DOWN
+ * list, and the product reported itself dead for thirty hours over an
+ * undelivered SMS about a problem that had already fixed itself.
+ *
+ * `summary()` above already took alerts out of `actionable` for exactly this
+ * reason — "the ledger spends forever declaring the product down because it
+ * could not send a text about the product being down. That loop ran all
+ * night." It took them out of the COUNT and left them in `blind`, which is
+ * the field the verdict actually reads. Half the loop, closed.
+ *
+ * This is the other half. An alert names the checks it was raised about, on
+ * its first line. When every one of those checks is passing again, the alert
+ * is a record of the past and it is resolved. A broken alarm channel still
+ * blinds us — that part is right and stays — but it now has an end.
+ *
+ * `failures` is deliberately ignored when reading those names: it is the
+ * ledger's own verdict, and requiring a row to prove itself innocent before
+ * it may be closed is the same loop wearing a different coat.
+ */
+const LEDGERS_OWN = new Set(['failures']);
+
+/** The checks an alert was raised about, from its first line. */
+export function alertAbout(subject) {
+  const first = String(subject ?? '').split('\n')[0];
+  const dash = first.indexOf('—');
+  if (dash < 0) return [];
+  return first.slice(dash + 1).split(',')
+    .map((x) => x.trim())
+    .filter((x) => /^[a-z][a-z0-9_]*$/.test(x) && !LEDGERS_OWN.has(x));
+}
+
+/**
+ * Close every open alert whose subject is no longer true.
+ *
+ * @param checks the check map from this health run
+ * @returns how many rows were closed
+ */
+export async function resolveClearedAlerts(env, checks = {}) {
+  const rows = (await open(env, { limit: 200 })).filter((r) => r.kind === 'alert');
+  let n = 0;
+  for (const r of rows) {
+    const names = alertAbout(r.subject);
+    // No names on the line at all — a recovery notice ("✅ Num is healthy
+    // again") that nothing carried. It is true exactly when we are healthy,
+    // and every check being ok is what that means.
+    const cleared = names.length
+      ? names.every((k) => !checks[k] || checks[k].ok)
+      : Object.entries(checks).every(([k, v]) => LEDGERS_OWN.has(k) || v?.ok);
+    if (!cleared) continue;
+    if (await resolve(env, r.kind, r.subject)) n += 1;
+  }
+  return n;
+}
+
 /** What is broken right now, worst and oldest first. */
 export async function open(env, { limit = 50 } = {}) {
   if (!env?.DB) return [];

@@ -741,7 +741,23 @@ export async function runHealth(env) {
  * everyone to ignore it, which is how the next outage gets missed.
  */
 export async function healthCron(env) {
-  const out = await runHealth(env);
+  let out = await runHealth(env);
+
+  /* ── LET A CLEARED ALERT GO ───────────────────────────────────────────
+   *
+   * An alert row is a record that a text could not be sent, not a record
+   * that the product is broken — and nothing ever closed one. On 20 Sep an
+   * undelivered "NUM IS DOWN — d1_write" from the previous afternoon held
+   * the verdict at `down` for thirty hours while D1 wrote perfectly well
+   * the whole time. See resolveClearedAlerts in failures.mjs.
+   *
+   * The second runHealth is not waste. It only happens on the one run where
+   * a row actually closes, and without it the recovery would wait for the
+   * next cron — which is five more minutes of a product calling itself dead
+   * after we have already established it is not. */
+  const { resolveClearedAlerts } = await import('./failures.mjs');
+  if (await resolveClearedAlerts(env, out.checks)) out = await runHealth(env);
+
   const prev = await env.DB?.prepare(`SELECT verdict FROM num_health WHERE ${REAL_RUN} ORDER BY id DESC LIMIT 1`)
     .first().catch(() => null);
 

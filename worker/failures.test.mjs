@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { record, resolve, told, open, summary } from './failures.mjs';
+import { record, resolve, told, open, summary, resolveClearedAlerts, alertAbout } from './failures.mjs';
 
 /** Minimal D1 shim over node:sqlite — same shape the other worker tests use. */
 function d1(db) {
@@ -53,6 +53,18 @@ function reorder(sql, args) {
 }
 
 const fresh = () => ({ DB: d1(new DatabaseSync(':memory:')) });
+
+/**
+ * Push a row's first_seen back past the ten-minute grace.
+ *
+ * `blind` deliberately ignores anything recorded in the last ten minutes — a
+ * failure seconds old may be resolving itself, and a monitor that fires on
+ * every transient is one people learn to close. So a test about blindness
+ * has to be about a row that has actually sat there.
+ */
+const age = async (env, seconds = 3600) => {
+  await env.DB.prepare('UPDATE num_failures SET first_seen = first_seen - ?1').bind(seconds).run();
+};
 
 test('a failure is written down before anybody is told', async () => {
   const env = fresh();
@@ -156,4 +168,94 @@ test('the alert is written down before it is sent, not after', () => {
   const fn = health.slice(health.indexOf('export async function alert'), health.indexOf('export async function handleHealth'));
   assert.ok(fn.indexOf('await record(env,') < fn.indexOf('ALERT_WEBHOOK'),
     'the ledger write happens after a channel attempt — if the worker dies mid-alert the failure vanishes');
+});
+
+/* ── THE THIRTY-HOUR FALSE DOWN (20 Sep 2026) ────────────────────────────
+ *
+ * Live state at 21:10 on 20 Sep: site 200, D1 writing, brain answering,
+ * storage at 12% of cap, zero actionable failures — and verdict `down`,
+ * continuously, since the previous afternoon. One row was doing it:
+ *
+ *   kind: alert · high · told: 0 · told_via: sms
+ *   "🔴 NUM IS DOWN — d1_write"                 first seen 19 Sep 16:21
+ *
+ * D1 recovered that evening. The row could not, because it is a record of a
+ * text that failed to send, and nothing ever closed one. A real outage in
+ * those thirty hours would have looked exactly like the thirty hours.
+ */
+
+test('an alert about a check that is passing again is closed', async () => {
+  const env = fresh();
+  await record(env, {
+    kind: 'alert', subject: '🔴 NUM IS DOWN — d1_write\n\n• d1_write: writes are failing',
+    detail: 'x', severity: 'high',
+  });
+  await age(env);
+  assert.equal((await summary(env)).blind, true, 'an undelivered alert must blind — that part is right');
+
+  const closed = await resolveClearedAlerts(env, { d1_write: { ok: true }, brain: { ok: true } });
+  assert.equal(closed, 1);
+  assert.equal((await open(env)).length, 0, 'the row survived the thing it was about');
+});
+
+test('an alert about a check that is STILL failing stays open and still blinds', async () => {
+  const env = fresh();
+  await record(env, { kind: 'alert', subject: '🔴 NUM IS DOWN — brain', detail: 'x', severity: 'high' });
+  await age(env);
+  assert.equal(await resolveClearedAlerts(env, { brain: { ok: false } }), 0);
+  assert.equal((await summary(env)).blind, true);
+});
+
+test('all of the named checks, not just one of them', async () => {
+  const env = fresh();
+  await record(env, { kind: 'alert', subject: '🟠 Num is degraded — sms, push', detail: 'x', severity: 'high' });
+  assert.equal(await resolveClearedAlerts(env, { sms: { ok: true }, push: { ok: false } }), 0,
+    'half-better closed the alert');
+  assert.equal(await resolveClearedAlerts(env, { sms: { ok: true }, push: { ok: true } }), 1);
+});
+
+test('the ledger is never asked to prove itself innocent', async () => {
+  // "NUM IS DOWN — failures" names the ledger's own verdict. If that counted
+  // as a check to wait on, the row would be the reason it can never close —
+  // which is the loop this whole test block exists to end. It closes on the
+  // state of everything ELSE.
+  const env = fresh();
+  await record(env, { kind: 'alert', subject: '🔴 NUM IS DOWN — failures', detail: 'x', severity: 'high' });
+  assert.deepEqual(alertAbout('🔴 NUM IS DOWN — failures'), []);
+  assert.equal(await resolveClearedAlerts(env, { failures: { ok: false }, brain: { ok: false } }), 0,
+    'closed while the brain was down');
+  assert.equal(await resolveClearedAlerts(env, { failures: { ok: false }, brain: { ok: true }, d1_write: { ok: true } }), 1);
+});
+
+test('a held recovery notice closes once we are actually healthy', async () => {
+  // "✅ Num is healthy again", held by a judge, was the sixteen-lap loop of
+  // 3–17 Sep. It names no checks; it is true exactly when nothing is failing.
+  const env = fresh();
+  await record(env, { kind: 'alert', subject: '✅ Num is healthy again.', detail: 'x', severity: 'high' });
+  assert.equal(await resolveClearedAlerts(env, { brain: { ok: false } }), 0);
+  assert.equal(await resolveClearedAlerts(env, { brain: { ok: true }, site_public: { ok: true } }), 1);
+});
+
+test('only alerts — a real product failure is never closed by a green check', async () => {
+  // The ledger's value is that it outlives the dashboard. A ratings outage or
+  // a dead mail channel is closed by somebody fixing it, not by an unrelated
+  // check going green on the same run.
+  const env = fresh();
+  await record(env, { kind: 'ratings_refused', subject: 'serpapi 429', detail: 'x', severity: 'low' });
+  await record(env, { kind: 'line_dead', subject: 'ops.alert', detail: 'x', severity: 'high' });
+  assert.equal(await resolveClearedAlerts(env, { brain: { ok: true } }), 0);
+  assert.equal((await open(env)).length, 2);
+});
+
+test('healthCron closes cleared alerts and re-judges on the spot', async () => {
+  const src = readFileSync(new URL('./health.mjs', import.meta.url), 'utf8');
+  assert.match(src, /resolveClearedAlerts/);
+  assert.match(src, /if \(await resolveClearedAlerts\(env, out\.checks\)\) out = await runHealth\(env\);/,
+    'a cleared row waits five more minutes for the verdict to catch up');
+  // Anchored inside healthCron: there is another `INSERT INTO num_health` in
+  // this file, in a different function, and indexOf would find that one.
+  const cron = src.indexOf('export async function healthCron');
+  const at = src.indexOf('resolveClearedAlerts(env, out.checks)', cron);
+  const record_ = src.indexOf('INSERT INTO num_health', cron);
+  assert.ok(at > cron && at < record_, 'the run is recorded before the stale row is let go, so it logs a false down');
 });
