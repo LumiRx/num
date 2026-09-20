@@ -34,6 +34,9 @@ import { hasVerifiedContact } from './membercontact.mjs';
 /** The site's own pages. `capacitor://localhost` is the native app, which is gated. */
 const SITE_HOSTS = new Set(['itsnum.com', 'www.itsnum.com']);
 
+/** Lookups a day for a member who has proved nothing. Generous, and finite. */
+export const BROWSE_CAP = 25;
+
 const hostOf = (v) => { try { return new URL(String(v)).hostname.toLowerCase(); } catch { return ''; } };
 
 /** True when this request came from the marketing site rather than the app. */
@@ -106,6 +109,36 @@ export async function maySend(env, request, body) {
   if (provider?.has_provider) return { ok: true, reason: 'provider' };
 
   if (reviewerRow(env, row)) return { ok: true, reason: 'review' };
+
+  /* ── LOOKING IS NOT SENDING (20 Sep 2026) ───────────────────────────────
+   *
+   * `browse` is set by the app on an ask that is a lookup — a feature-page
+   * search, "tell me about this place", a trip check. The gate above exists
+   * so that NUM never does work it cannot deliver; a search has nothing to
+   * deliver, so refusing it protects nobody and, in production, it stopped
+   * the flight and stay widgets from searching at all.
+   *
+   * THE FLAG IS SET BY THE CLIENT AND IS THEREFORE NOT A SECURITY CONTROL.
+   * Nor is anything else in this file — `fromSite()` above is one header
+   * away for anybody who wants it, and that was already true and already
+   * accepted. What actually stands between this door and abuse is the per-IP
+   * limiter in guard.mjs and the cap below: a member who has not proved a
+   * number or an address gets BROWSE_CAP lookups a day and then meets the
+   * same sheet as before. A member id is still required, so an anonymous
+   * device gains nothing.
+   *
+   * The cap fails OPEN, deliberately and in the small direction: if the ask
+   * log cannot be counted we let one lookup through rather than telling a
+   * signed-in member their search is broken because our own telemetry is. */
+  if (body?.browse === true) {
+    const spent = await env.DB
+      .prepare("SELECT COUNT(*) AS n FROM num_asks WHERE member_id = ?1 AND ts > datetime('now', '-1 day')")
+      .bind(id).first().catch(() => null);
+    const n = Number(spent?.n ?? 0);
+    if (!Number.isFinite(n) || n < BROWSE_CAP) return { ok: true, reason: 'browse' };
+    return { ok: false, reason: 'browse_cap' };
+  }
+
   return { ok: false, reason: 'unverified' };
 }
 

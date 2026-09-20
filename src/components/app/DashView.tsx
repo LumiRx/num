@@ -73,7 +73,7 @@ function DirectionsWidget() {
         </a>
         <a href={trafficUrl(next.place)} target="_blank" rel="noreferrer" className="glass press tap" style={{ textDecoration: 'none', color: 'var(--ink)', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}>{t('TRAFFIC NOW')}</a>
         <span
-          {...pressable(() => { store.set({ threadOpen: true }); void askNum(`What time should I leave for ${next.title} at ${next.place}? Account for traffic at that hour.`); })}
+          {...pressable(() => { store.set({ threadOpen: true }); void askNum(`What time should I leave for ${next.title} at ${next.place}? Account for traffic at that hour.`, { browse: true }); })}
           className="glass press tap"
           style={{ cursor: 'pointer', borderRadius: 999, padding: '9px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em' }}
         >

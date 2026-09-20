@@ -636,7 +636,7 @@ function shownPicks(msgs: Msg[]): string[] {
   return out.slice(-40);
 }
 
-export async function askNum(text: string) {
+export async function askNum(text: string, opts?: { browse?: boolean }) {
   // Whether this turn was spoken — taken and cleared first, so an early return
   // below can never leave the flag lit for the next typed question.
   const fromVoice = voiceTurn; voiceTurn = false;
@@ -659,7 +659,10 @@ export async function askNum(text: string) {
   //
   // The question is not thrown away. It is held and sent the moment the
   // number or address is proved, so nobody types it twice.
-  if (!mayAsk()) { holdAndAsk(text); return; }
+  // `browse` marks an ask that is a LOOKUP — a widget search, a "tell me
+  // about this place". Nothing is held, nothing is sent later, so there is
+  // nothing for NUM to fail to deliver. See mayBrowse in lib/gate.ts.
+  if (!mayAsk({ browse: opts?.browse })) { holdAndAsk(text); return; }
 
   // ── WHAT THE GUEST SAID GOES ON SCREEN FIRST. ALWAYS. ─────────────────
   //
@@ -813,6 +816,7 @@ export async function askNum(text: string) {
       // than asking the model nicely not to repeat them.
       body: JSON.stringify({
         messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs), lang: currentLang(),
+        ...(opts?.browse ? { browse: true } : {}),
       }),
     });
     failedRes = res;
@@ -839,7 +843,9 @@ export async function askNum(text: string) {
           pendingAsk: text,
         }));
         push({ who: 'c', text: String(why.message ?? 'Verify a number or an email and I can answer you.') });
-        store.set({ inviteOpen: {} });
+        // The account screen, not the bare draft — the bare draft opens on
+        // invite-a-friend, which is not what is being asked for here.
+        store.set({ inviteOpen: { intent: 'account' } });
         return;
       }
     }

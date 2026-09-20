@@ -84,7 +84,11 @@ describe('the words of somebody not yet reachable', () => {
     holdAndAsk('table for four at 8');
     const s = store.get();
     assert.equal(s.pendingAsk, 'table for four at 8');
-    assert.deepEqual(s.inviteOpen, {});
+    // 20 Sep 2026: `{}` and not `{ intent: 'account' }` was half of "the
+    // widget won't search unless I invite a friend" — the bare draft opens
+    // the sheet on the invite-a-friend screen, and what is wanted here is a
+    // number or an address. See src/lib/browsegate.test.mjs.
+    assert.deepEqual(s.inviteOpen, { intent: 'account' });
     assert.equal(s.threadOpen, true);
   });
 
@@ -97,7 +101,7 @@ describe('the words of somebody not yet reachable', () => {
   test('an empty hold — the mic, tapped by a visitor — opens the door and holds nothing', () => {
     holdAndAsk('   ');
     assert.equal(store.get().pendingAsk, null);
-    assert.deepEqual(store.get().inviteOpen, {});
+    assert.deepEqual(store.get().inviteOpen, { intent: 'account' });
   });
 
   test('it is not persisted: a question from Tuesday must not fire itself off on Friday', async () => {
@@ -113,7 +117,9 @@ describe('the gate is on the one door, not on some of six', () => {
   test('askNum refuses before it echoes, so nothing reaches the thread or the server', () => {
     const c = src('./concierge.ts');
     const fn = c.slice(c.indexOf('export async function askNum'));
-    const gate = fn.indexOf('if (!mayAsk())');
+    // `mayAsk({ browse })` since 20 Sep: a widget search is a lookup and is
+    // let through, and the gate is still here and still first.
+    const gate = fn.indexOf('if (!mayAsk(');
     assert.ok(gate > 0, 'askNum must carry the gate');
     assert.ok(gate < fn.indexOf('observeUserMessage(text)'), 'the gate must come before the echo');
     assert.ok(gate < fn.indexOf("fetch(apiUrl('/api/num')"), 'the gate must come before the request');

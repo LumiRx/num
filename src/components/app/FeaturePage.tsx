@@ -63,13 +63,14 @@ export default function FeaturePage() {
     for (const [k, v] of Object.entries(values)) clean[k] = v.trim();
     const ask = f.compose(clean, lane);
     store.set({ featureOpen: null, threadOpen: true, unread: 0 });
-    void askNum(ask);
+    // A widget search is a lookup, not a message — see mayBrowse in lib/gate.ts.
+    void askNum(ask, { browse: true });
   };
   const research = (sid: string) => {
     const s = saved.find((x) => x.id === sid);
     if (!s) return;
     store.set({ featureOpen: null, threadOpen: true, unread: 0 });
-    void askNum(researchAsk(s));
+    void askNum(researchAsk(s), { browse: true });
   };
 
   return (

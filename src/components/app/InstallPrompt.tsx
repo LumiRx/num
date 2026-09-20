@@ -13,6 +13,17 @@ import { pressable } from '../../lib/a11y';
 import { store } from '../../lib/store';
 
 const DISMISS_KEY = 'num-install-dismissed';
+/**
+ * The signup offer is spent once, whatever the answer.
+ *
+ * Separate from DISMISS_KEY on purpose. Somebody who waved the card away as
+ * a stranger and then went on to prove a phone number is not the same person
+ * making the same decision: they have just committed, and the walk-through
+ * is now the thing that makes what they signed up for actually work — push,
+ * one identity, storage the browser cannot evict. So a signup buys exactly
+ * ONE more showing, and this key is what stops it becoming two.
+ */
+const SIGNUP_KEY = 'num-install-after-signup';
 
 type Platform = 'ios' | 'android' | 'desktop';
 
@@ -30,6 +41,7 @@ const STEPS: Record<Platform, string[]> = {
 };
 
 import { canOfferInstall, escapeCard, isStandalone } from '../../lib/native';
+import { canSend } from '../../lib/gate';
 import { t } from '../../lib/i18n';
 import { T } from '../../lib/i18nmark';
 
@@ -62,6 +74,9 @@ export default function InstallPrompt({
 }: { suppressed?: boolean; anchor?: 'fixed' | 'absolute'; lift?: number } = {}) {
   const [show, setShow] = useState(false);
   const [open, setOpen] = useState(false);
+  // Why the card is up. A signup gets different words and the steps already
+  // unrolled, because "walk them through it" is the whole point of that one.
+  const [reason, setReason] = useState<'answer' | 'signup'>('answer');
   const [copied, setCopied] = useState(false);
   const platform = detect();
   // In an in-app browser this is a DIFFERENT card with different words. The
@@ -100,9 +115,44 @@ export default function InstallPrompt({
     // would be asking someone already in the app to get the app.
     if (!canOfferInstall()) return;
     if (isStandalone()) return;
-    try {
-      if (localStorage.getItem(DISMISS_KEY)) return;
-    } catch { /* private mode — showing it once is fine */ }
+    const flag = (k: string): boolean => { try { return !!localStorage.getItem(k); } catch { return false; } };
+    const mark = (k: string) => { try { localStorage.setItem(k, '1'); } catch { /* private mode */ } };
+
+    /* ── THE SIGNUP WALK-THROUGH (20 Sep 2026, Dre's call) ────────────────
+     *
+     * "After someone signs up in the browser we should walk them through how
+     * to add it as an app."
+     *
+     * He is right, and the reason is mechanical rather than promotional. A
+     * signup is a verified phone or address — which is to say, a promise that
+     * NUM can reach them. In a browser tab that promise is half-empty: there
+     * is no push, so a plan that moves at 6pm reaches nobody. The moment the
+     * person hands over a number is the moment the home screen stops being a
+     * nicety and starts being the thing that makes the number worth anything.
+     *
+     * It fires on the TRANSITION, not on the state, so signing in on a device
+     * that already has an account does not re-offer; and it fires once ever.
+     * The steps open with it — an offer they have to tap to read is not a
+     * walk-through. */
+    {
+      let was = canSend(store.get().me);
+      const stop = store.subscribe(() => {
+        const now = canSend(store.get().me);
+        if (now && !was && !flag(SIGNUP_KEY)) {
+          mark(SIGNUP_KEY);
+          setReason('signup');
+          setOpen(true);
+          setShow(true);
+          stop();
+        }
+        was = now;
+      });
+      // Not unsubscribed on unmount by design: this component only unmounts
+      // with the surface it lives on, and a subscription that outlives a
+      // remount is what stops a re-render eating the one signup moment.
+    }
+
+    if (flag(DISMISS_KEY)) return;
 
     // ── WHEN to ask ───────────────────────────────────────────────────────
     //
@@ -250,9 +300,9 @@ export default function InstallPrompt({
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>{t('YOU’RE IN A BROWSER')}</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15.5, marginTop: 4 }}>{t('Put NUM on your home screen')}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{t('Installed, NUM can reach you when a plan moves or a friend replies. In a tab it can’t — and your account lives only as long as the browser keeps it.')}</div>
+          <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--color-accent)' }}>{reason === 'signup' ? t('YOU’RE IN') : t('YOU’RE IN A BROWSER')}</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15.5, marginTop: 4 }}>{reason === 'signup' ? t('One more step — put NUM on your home screen') : t('Put NUM on your home screen')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 5, lineHeight: 1.5 }}>{reason === 'signup' ? t('You just gave NUM a way to reach you. A browser tab can’t use it — no notification when a plan moves or a friend replies. Installed, it can. Three taps:') : t('Installed, NUM can reach you when a plan moves or a friend replies. In a tab it can’t — and your account lives only as long as the browser keeps it.')}</div>
         </div>
         <div
           {...pressable(dismiss)}

@@ -88,9 +88,35 @@ export const gateOpen = (
   msgs: ReadonlyArray<{ who: string }> | null | undefined,
 ): boolean => canSend(me) || asksSpent(msgs) < FREE_ANSWERS;
 
+/**
+ * LOOKING IS NOT SENDING. (20 Sep 2026, Dre's call.)
+ *
+ * The gate above was written for messages, and then it caught the widgets.
+ * Dre, testing: "if you don't invite a friend it doesn't search on the
+ * widgets. I tried flights and hotels, same thing." He was right, and the bug
+ * was worse than it looked: a feature page composes its question and hands it
+ * to askNum(), so filling in a flight search WAS sending a message, the gate
+ * refused it, and the app opened the sheet whose first screen is about
+ * inviting people. Somebody who wanted a flight time was asked for a friend.
+ *
+ * So the rule keeps its own reason. The gate exists because an answer NUM
+ * cannot deliver is work that can never be finished — a table held for a
+ * stranger, a confirmation with nowhere to go. A SEARCH has nothing to
+ * deliver. It is read on the screen it was asked from and it is over. The
+ * things that do create an obligation — a booking, a bill, a plan, an invite,
+ * a reminder that has to fire — are gated at their own sheets and stay gated
+ * (BookSheet, PaySheet, TravelSheet, PartySheet, ErrandSheet all call
+ * needAccount()), so opening this door does not open those.
+ *
+ * `me` is still required. An opaque device is not a person yet, and the
+ * server refuses an ask with no member id anyway (worker/sendgate.mjs).
+ */
+export const mayBrowse = (me: Member | null | undefined): boolean => !!me?.id;
+
 /** The same question, asked of current state. */
-export const mayAsk = (): boolean => {
+export const mayAsk = (opts?: { browse?: boolean }): boolean => {
   const s = store.get();
+  if (opts?.browse && mayBrowse(s.me)) return true;
   return gateOpen(s.me, s.msgs);
 };
 
@@ -106,7 +132,11 @@ export const mayAsk = (): boolean => {
 export function holdAndAsk(text: string): void {
   const held = String(text ?? '').trim();
   dropKeyboard();
-  store.set({ pendingAsk: held || null, inviteOpen: {}, threadOpen: true });
+  // `intent: 'account'` and not a bare `{}`: the bare draft lands the person
+  // on the invite-a-friend screen, which is how "the widget won't search
+  // unless I invite a friend" came to be true. What is being asked for here
+  // is a number or an address, so that is the screen that opens.
+  store.set({ pendingAsk: held || null, inviteOpen: { intent: 'account' }, threadOpen: true });
 }
 
 /**

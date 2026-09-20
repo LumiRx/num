@@ -17,6 +17,8 @@ import { redactProfile, redactState } from './redact.mjs';
 import { readCache, writeCache, cacheable } from './answercache.mjs';
 // Gate zero: the lookups that need no model at all. See knownanswer.mjs.
 import { knownAnswer } from './knownanswer.mjs';
+// Gate zero, part two: the turns that carry no question. See autoreply.mjs.
+import { autoReply } from './autoreply.mjs';
 import { recordAsk, scrubAsk } from './asks.mjs';
 import {
   NEEDS_ACCOUNT_REPLY, entryCount, entryReply, isEntry, recordEntry,
@@ -1030,6 +1032,24 @@ export async function handleNum(request, env, ctx, hooks = null) {
 
     {
       const prevAssistant = [...history].reverse().find((m) => m?.role === 'assistant')?.content ?? '';
+
+      /* A turn with no question in it. "ok" after a statement, a four-letter
+       * typo, a trip check whose arithmetic came back clean — none of them
+       * needs a model, and each one was paying for a full system block. The
+       * rules that keep it from stealing a real turn are in autoreply.mjs. */
+      const auto = autoReply({
+        text: lastUser,
+        prevAssistant: typeof prevAssistant === 'string' ? prevAssistant : '',
+        state: parsed.state ?? {},
+        lang: acceptLang,
+      });
+      if (auto) {
+        console.log(`[num-ai] answered without a model (${auto.kind})`);
+        ctx.waitUntil(recordAsk(env, { text: lastUser, dest: grounding.place?.slug ?? null, lane: `auto:${auto.kind}`, cached: true, memberId: parsed.state?.me?.id ?? null }));
+        if (turnSubject) ctx.waitUntil(saveTurn(env, turnSubject, lastUser, auto.reply));
+        return json(200, { reply: auto.reply, card: null, chips: null, actions: [], picks: [], place: grounding.place?.name ?? null });
+      }
+
       const known = knownAnswer({
         text: lastUser,
         prevAssistant: typeof prevAssistant === 'string' ? prevAssistant : '',

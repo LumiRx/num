@@ -173,7 +173,7 @@ export function TripCheck() {
             </div>
           ))}
           <div
-            {...pressable(() => { store.set({ threadOpen: true }); void askNum(t('Run a trip check and tell me what needs me.')); })}
+            {...pressable(() => { store.set({ threadOpen: true }); void askNum(t('Run a trip check and tell me what needs me.'), { browse: true }); })}
             className="press"
             style={{ cursor: 'pointer', marginTop: 10, borderRadius: 999, background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 11, letterSpacing: '.06em', padding: '10px 14px', textAlign: 'center' }}
           >
