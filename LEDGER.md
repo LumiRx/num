@@ -8,7 +8,7 @@ Add to the ledger instead, and it appears here:
 npm run ledger:add -- --who dre --area "host console" --state in-flight --note "tabs, not eleven cards"
 ```
 
-_Built 2026-09-16 20:16 UTC from 16 entries._
+_Built 2026-09-17 08:49 UTC from 20 entries._
 
 ## Deployed right now
 
@@ -16,8 +16,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 | Worker | State |
 |---|---|
-| num-app | 🔴 **STALE** — 9 files changed since it shipped |
-| num-growth | 🟢 up to date (2026-09-16 01:50) |
+| num-app | 🔴 **STALE** — 4 files changed since it shipped |
+| num-growth | 🔴 **STALE** — 3 files changed since it shipped |
 | num-ai | 🟢 up to date (2026-09-15 08:19) |
 | num-accounts | ⚪ never recorded from this machine |
 | num-payouts | ⚪ never recorded from this machine |
@@ -60,6 +60,8 @@ Read from what each worker actually bundles, not from anyone's memory.
 
 - ⚪ **area name normalisation** — W Hollywood, N. Hollywood etc get their own centroid rows. ~28 places unmatchable. Not urgent.
   _claude, 2026-09-15 16:32_
+- ⚪ **experts** — itsnum.com/api/* has never routed anywhere - the Expert signup form 404d silently since it was written; both Experts were seeded by SQL
+  _claude, 2026-09-17 08:49_
 
 ---
 

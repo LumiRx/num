@@ -191,7 +191,13 @@ describe('a human can clear a stuck row', () => {
 
 describe('what the incident did NOT touch', () => {
   test('failures stays on the DOWN list — a blind ledger is still an outage', () => {
-    assert.match(HEALTH, /const DOWN = \['d1_write', 'brain', 'site_public', 'failures'\]/,
+    // Membership, not the exact literal. The list is meant to grow — 'sms'
+    // joined it on 20 Sep 2026 — and pinning the whole array turns every
+    // legitimate addition into a failing test, which teaches the next person
+    // to edit the assertion instead of thinking about the list.
+    const DOWN = HEALTH.match(/const DOWN = \[([^\]]*)\]/);
+    assert.ok(DOWN, 'the DOWN list must still exist');
+    assert.match(DOWN[1], /'failures'/,
       'the fix is what gets recorded at high severity, never the severity of being blind');
   });
 

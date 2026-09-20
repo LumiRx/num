@@ -17,6 +17,7 @@
     "ai": "node server/index.mjs",
     "design:check": "node scripts/design-check.mjs status",
     "check:site": "node scripts/coverage-claims.mjs && node scripts/head-price-lint.mjs && node scripts/travelspeak-lint.mjs",
+    "check:routes": "node scripts/routecheck.mjs",
     "deploy:site": "npm run check:site && npx wrangler deploy --config wrangler.jsonc",
     "deploy:growth": "npx wrangler deploy --config growth/wrangler.jsonc && node scripts/deploydrift.mjs record num-growth",
     "release": "node scripts/release.mjs",

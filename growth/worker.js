@@ -1225,6 +1225,8 @@ const WORKER = {
       // worker and every open link 404s while looking deployed.
       if (p === "/o" || p.startsWith("/o/")) return adminConsoleOpen(req, env, url);
       if (p === "/biz" || p === "/biz/") return venueHomePage(req, env, url);
+      if (p === "/biz/partners") return venuePartnersPage(req, env, url);
+      if (p === "/biz/plan") return venuePlanPage(req, env, url);
       if (p === "/biz/products") return venueProductsPage(req, env, url);
       if (p === "/biz/codes") return venueCodesPageV2(req, env, url);
       if (p === "/biz/visitors") return venueVisitorsPage(req, env, url);
@@ -1241,6 +1243,8 @@ const WORKER = {
       if (p === "/biz/pay") return venuePayPage(req, env, url);
 
       /* ── QR system: tables, bill codes, staff, agent ───────────────────── */
+      if (p === "/api/venue/intro" && req.method === "POST") return venuePartnerIntro(req, env, url);
+      if (p === "/api/venue/tour" && req.method === "POST") return venueTourDismiss(req, env, url);
       if (p === "/api/venue/products" && req.method === "POST") return venueProductSave(req, env, url);
       if (p === "/api/venue/login" && req.method === "POST") return qrLoginStart(req, env);
       if (p === "/biz/login") return qrLoginRedeem(req, env, url);
@@ -9990,6 +9994,8 @@ const BIZ_NAV = Object.freeze([
   { slug: 'statement', label: 'Statement', need: 'view' },
   { slug: 'visitors', label: 'Visitors', need: 'view' },
   { slug: 'offers', label: 'Offers', need: 'view' },
+  { slug: 'partners', label: 'Partners', need: 'view' },
+  { slug: 'plan', label: 'Plans', need: 'view' },
   { slug: 'settings', label: 'Settings', need: 'settings' },
 ]);
 
@@ -10412,6 +10418,280 @@ async function venueProductsPage(req, env, url) {
     { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
 
+/* ── PARTNERS, PLAN, AND THE FIRST-RUN TOUR ───────────────────────────────
+ *
+ * Three surfaces that share one job: a venue that has just arrived should be
+ * able to see what NUM is for, who it can work with, and what upgrading buys —
+ * within one screen of signing in, without being sold a thing that isn't there.
+ *
+ * THE RULE THAT SHAPES THE PARTNERS PAGE
+ *
+ * The directory is thin today: two VIP hosts, a handful of agent codes, no
+ * ambassadors and no influencers. Putting a locked box over an empty room and
+ * charging for the key is the fastest way to lose the one merchant who pays for
+ * it and then looks. So the FREE tier is told the truth — how many partners
+ * are near it, of what kind — and upgrading buys the names, the reach and the
+ * introduction. When there is nobody to show, the page says so plainly and
+ * offers to tell them when that changes, rather than implying a full room.
+ *
+ * Counts are the honest thing to show for free AND the only truthful reason to
+ * upgrade. Hiding them too would make the wall look bigger and the product
+ * smaller.
+ */
+
+/** Everyone a venue could work with, from the two places they actually live. */
+async function partnersNear(env, biz) {
+  const country = (await venueMoney(env, biz.id)).country;
+
+  const rows = await env.DB.prepare(
+    `SELECT id, kind, name, handle, platform, city, country, blurb, reach, contact_email
+       FROM num_partners WHERE status = 'active' ORDER BY kind, name`,
+  ).all().catch(() => null);
+
+  // Hosts are read live from their own table rather than copied — a second
+  // copy of a host is a second copy that goes stale.
+  const hosts = await env.DB.prepare(
+    `SELECT id, name, email, code FROM num_hosts ORDER BY name`,
+  ).all().catch(() => null);
+
+  if (rows === null && hosts === null) return null;   // a failed read, not an empty room
+
+  const list = [
+    ...((rows && rows.results) || []).map((r) => ({
+      ref: r.id, kind: r.kind, name: r.name, handle: r.handle, platform: r.platform,
+      where: [r.city, r.country].filter(Boolean).join(', '), blurb: r.blurb,
+      reach: r.reach, near: !country || !r.country || r.country === country,
+    })),
+    ...((hosts && hosts.results) || []).map((h) => ({
+      ref: h.id, kind: 'host', name: h.name, handle: h.code, platform: null,
+      // num_hosts has no `about` column — checked against production on
+      // 20 Sep. The 3 Sep doc says a host's "who you look after" answer is
+      // stored there; the column was never added, so that answer is still
+      // being discarded at signup. Not inventing a blurb to fill the gap.
+      where: '', blurb: null, reach: null, near: true,
+    })),
+  ];
+  return list;
+}
+
+const PARTNER_KINDS = Object.freeze({
+  host: { label: 'VIP host', why: 'Books their own clients and can send them to you.' },
+  ambassador: { label: 'Ambassador', why: 'Works a city for NUM and introduces venues to guests.' },
+  influencer: { label: 'Influencer', why: 'Has an audience where your guests already are.' },
+});
+
+async function venuePartnersPage(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return qrSignIn();
+
+  const k = url.searchParams.get('k') || '';
+  const kq = k ? '?k=' + encodeURIComponent(k) : '';
+  const { bizEntitlements, bizTierOf, bizTiers } = await import('../worker/bizbilling.mjs');
+  const ent = await bizEntitlements(env, who.business.id).catch(() => ({}));
+  const tier = await bizTierOf(env, who.business.id).catch(() => 'free');
+  const open = ent.partner_directory === true;
+
+  const list = await partnersNear(env, who.business);
+  const broke = list === null;
+  const all = list || [];
+  const counts = { host: 0, ambassador: 0, influencer: 0 };
+  for (const p of all) if (counts[p.kind] !== undefined) counts[p.kind]++;
+  const total = all.length;
+
+  const tiers = bizTiers(env);
+  const cheapest = Object.entries(tiers)
+    .filter(([, t]) => t.entitlements && t.entitlements.partner_directory)
+    .sort((a, b) => a[1].price_cents - b[1].price_cents)[0];
+
+  const money = await venueMoney(env, who.business.id);
+  const reachLine = (p) => (p.reach == null
+    ? '<span class="pill">reach not verified</span>'
+    : `<b>${esc(Number(p.reach).toLocaleString())}</b> following`);
+
+  const card = (p) => `<tr>
+    <td><b>${esc(p.name)}</b>${p.handle ? `<div class="muted" style="font-size:13px">${esc(p.handle)}${p.platform ? ' &middot; ' + esc(p.platform) : ''}</div>` : ''}
+      ${p.blurb ? `<div class="muted" style="font-size:13px">${esc(p.blurb)}</div>` : ''}</td>
+    <td><span class="pill">${esc((PARTNER_KINDS[p.kind] || {}).label || p.kind)}</span></td>
+    <td>${esc(p.where || '—')}</td>
+    <td class="r">${reachLine(p)}</td>
+    <td class="r"><form method="post" action="/api/venue/intro${kq}">
+      <input type="hidden" name="ref" value="${esc(p.ref)}">
+      <input type="hidden" name="kind" value="${esc(p.kind)}">
+      <button class="ghost" style="margin:0;padding:8px 13px;font-size:13px">Ask for an intro</button></form></td>
+  </tr>`;
+
+  // Nothing to show is a fact, not a locked door. Saying "upgrade to see 0
+  // partners" is how a merchant learns the wall is decorative.
+  const empty = total === 0;
+
+  const body = broke
+    ? `<div class="banner gone">The partner list could not be read just now — this is not an empty list. Try again in a moment.</div>`
+    : empty
+      ? `<div class="card"><h3>Nobody to introduce you to yet</h3>
+          <div class="muted">NUM is signing ambassadors, influencers and VIP hosts city by city, and ${esc(who.business.name)}'s is not covered yet. We are not going to charge you for a list with nothing on it.</div>
+          <form method="post" action="/api/venue/intro${kq}">
+            <input type="hidden" name="ref" value="waitlist"><input type="hidden" name="kind" value="waitlist">
+            <button>Tell me when there is someone</button></form></div>`
+      : open
+        ? `<div class="card"><h3>${total} ${total === 1 ? 'partner' : 'partners'} you can work with</h3>
+            <div class="muted">Ask for an introduction and NUM makes it — you are never handed a cold contact.</div>
+            <table><thead><tr><th>Who</th><th>Kind</th><th>Where</th><th class="r">Reach</th><th class="r"></th></tr></thead>
+            <tbody>${all.map(card).join('')}</tbody></table></div>`
+        : `<div class="card"><h3>Who is out there</h3>
+            <div class="muted">These are real people already working with NUM. On ${esc(tiers.free.name)} you can see how many and what kind; the names, their reach and an introduction come with a plan.</div>
+            <table><thead><tr><th>Kind</th><th>What they do</th><th class="r">Near you</th></tr></thead><tbody>
+            ${Object.entries(PARTNER_KINDS).map(([kk, v]) => `<tr>
+              <td><b>${esc(v.label)}</b></td><td class="muted">${esc(v.why)}</td>
+              <td class="r"><b>${counts[kk] || 0}</b></td></tr>`).join('')}
+            </tbody></table></div>
+           <div class="plan"><span class="lock">${esc(cheapest ? cheapest[1].name : 'Upgrade')}</span>
+             <h3>See who they are, and ask for an introduction</h3>
+             <p>${total} ${total === 1 ? 'person is' : 'people are'} on the list today. A plan shows you their names, what they reach, and lets you ask NUM to make the introduction${cheapest ? ` — from ${esc(venueAmount(cheapest[1].price_cents, money))} a month` : ''}.</p>
+             <a class="cta" href="/biz/plan${kq}">See the plans</a></div>`;
+
+  const inner = `<div class="wrap">
+    <header><div class="brand">${esc(who.business.name)}</div><div class="who">${esc(tier)} plan</div></header>
+    <h1>Partners</h1>
+    <p class="muted">Ambassadors, influencers and VIP hosts who can send people through your door. NUM makes the introduction — we never sell your details on, and we never sell theirs.</p>
+    ${url.searchParams.get('asked') ? '<div class="banner" style="background:var(--pri-l);border-color:#A7DCCB;color:var(--pri-d)">Asked. NUM will make the introduction and copy you in.</div>' : ''}
+    ${url.searchParams.get('err') === 'plan' ? '<div class="banner">Introductions come with a plan — the list above is yours to browse either way.</div>' : ''}
+    ${body}
+  </div>`;
+
+  return new Response(qrShell(inner, 'Partners', qrNav('partners', who.role, k)),
+    { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+}
+
+async function venuePartnerIntro(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: 'unauthorised' }, 401);
+  const k = url.searchParams.get('k') || '';
+  const back = (q) => new Response(null, {
+    status: 303,
+    headers: { location: '/biz/partners' + (k ? '?k=' + encodeURIComponent(k) : '') + q, 'cache-control': 'no-store' },
+  });
+  const sep = k ? '&' : '?';
+
+  let form;
+  try { form = await req.formData(); } catch (e) { return back(sep + 'err=form'); }
+  const ref = clean(form.get('ref'), 60);
+  const kind = clean(form.get('kind'), 20);
+  if (!ref || !kind) return back(sep + 'err=form');
+
+  // The waitlist is free on purpose: asking to be told when a city opens is not
+  // a feature, and charging for it would teach a venue that we count on them
+  // not reading the page.
+  if (kind !== 'waitlist') {
+    const { bizEntitlements } = await import('../worker/bizbilling.mjs');
+    const ent = await bizEntitlements(env, who.business.id).catch(() => ({}));
+    if (ent.partner_directory !== true) return back(sep + 'err=plan');
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO num_partner_intros (id,business_id,partner_ref,partner_kind,note,state,created_at)
+     VALUES (?1,?2,?3,?4,?5,'requested',?6)`,
+  ).bind('int_' + newToken(), String(who.business.id), ref, kind,
+         clean(form.get('note'), 300) || null, Math.floor(Date.now() / 1000)).run().catch(() => {});
+  return back(sep + 'asked=1');
+}
+
+/** What every plan costs and what it opens — read from the billing module so
+ *  this page can never quote a price the checkout does not charge. */
+async function venuePlanPage(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return qrSignIn();
+  const k = url.searchParams.get('k') || '';
+  const kq = k ? '?k=' + encodeURIComponent(k) : '';
+  const { bizTiers, bizTierOf } = await import('../worker/bizbilling.mjs');
+  const tiers = bizTiers(env);
+  const current = await bizTierOf(env, who.business.id).catch(() => 'free');
+  const money = await venueMoney(env, who.business.id);
+
+  const feature = (e) => [
+    `${e.analytics_days} days of analytics`,
+    e.promotions ? 'Offers NUM can mention to travellers' : null,
+    e.partner_directory ? 'The partner list, with introductions' : null,
+    e.multi_location_max === null ? 'Unlimited locations'
+      : e.multi_location_max > 1 ? `Up to ${e.multi_location_max} locations` : 'One location',
+    e.beta_features ? 'New features before anyone else' : null,
+  ].filter(Boolean);
+
+  const cards = Object.entries(tiers).map(([key, t]) => {
+    const now = key === current;
+    const e = t.entitlements || {};
+    return `<div class="card"${now ? ' style="border-color:var(--pri);border-width:2px"' : ''}>
+      <h3>${esc(t.name)} ${now ? '<span class="pill on">your plan</span>' : ''}</h3>
+      <div class="big" style="font-size:28px;margin:6px 0 2px">${t.price_cents ? esc(venueAmount(t.price_cents, money)) : 'Free'}${t.price_cents ? '<span class="muted" style="font-size:14px;font-weight:400"> / month</span>' : ''}</div>
+      <div class="muted" style="margin-bottom:14px">${esc(t.blurb)}</div>
+      <table><tbody>${feature(e).map((f) => `<tr><td>${esc(f)}</td></tr>`).join('')}</tbody></table>
+      ${now ? '' : `<form method="post" action="/api/biz/billing/checkout${kq}">
+        <input type="hidden" name="tier" value="${esc(key)}">
+        <button${t.price_cents ? '' : ' class="ghost"'}>${t.price_cents ? 'Upgrade to ' + esc(t.name) : 'Stay on ' + esc(t.name)}</button></form>`}
+    </div>`;
+  }).join('');
+
+  const inner = `<div class="wrap">
+    <header><div class="brand">${esc(who.business.name)}</div><div class="who">${esc(current)} plan</div></header>
+    <h1>Plans</h1>
+    <p class="muted">Everything needed to run one venue is free, forever. Plans add reach: longer history, offers travellers are told about, more locations, and the partner list.</p>
+    <p class="muted"><b>The 10% on a booking and the flat walk-in fee are not part of a plan.</b> They are how NUM earns whether you pay for a plan or not, and they do not change when you upgrade.</p>
+    <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(270px,1fr))">${cards}</div>
+  </div>`;
+
+  return new Response(qrShell(inner, 'Plans', qrNav('plan', who.role, k)),
+    { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+}
+
+/* ── THE FIRST-RUN TOUR ───────────────────────────────────────────────────
+ *
+ * Shown on the hub until the venue dismisses it. Not a modal and not a
+ * multi-step overlay: a panel they can read, act on, and close. An owner who
+ * opened the console to do one thing should be able to do that thing, and the
+ * tour should still be there tomorrow if they ignore it today.
+ */
+const TOUR_STEPS = Object.freeze([
+  ['Add what you sell', 'products', 'Your menu and prices. NUM can only recommend what it knows you have.'],
+  ['Print a code for each table', 'tables', 'A guest scans it to pay, and the bill links back to them — that is how a visit becomes a record instead of a guess.'],
+  ['Post an offer', 'offers', 'Free, live immediately, and NUM mentions it to travellers looking tonight.'],
+  ['See who came', 'visitors', 'Every guest NUM sent you, and who came back.'],
+  ['Find a partner', 'partners', 'Ambassadors, influencers and VIP hosts who can send people your way.'],
+]);
+
+async function tourDismissed(env, businessId) {
+  const row = await env.DB.prepare(
+    'SELECT dismissed_at FROM num_biz_tour WHERE business_id = ?1',
+  ).bind(String(businessId)).first().catch(() => null);
+  return !!(row && row.dismissed_at);
+}
+
+function tourPanel(kq) {
+  return `<div class="card" style="border-color:var(--pri);background:var(--pri-xl)">
+    <h3>Welcome — here is what this console does</h3>
+    <div class="muted">Five things, in the order most venues do them. Nothing here costs anything.</div>
+    <table><tbody>${TOUR_STEPS.map(([title, slug, why], i) => `<tr>
+      <td style="width:34px" class="muted"><b>${i + 1}</b></td>
+      <td><a href="/biz/${esc(slug)}${kq}"><b>${esc(title)}</b></a>
+        <div class="muted" style="font-size:13px">${esc(why)}</div></td></tr>`).join('')}</tbody></table>
+    <form method="post" action="/api/venue/tour${kq}">
+      <button class="ghost">I have got it — hide this</button></form>
+  </div>`;
+}
+
+async function venueTourDismiss(req, env, url) {
+  const who = await qrWho(req, env, url);
+  if (!who) return J({ ok: false, error: 'unauthorised' }, 401);
+  const k = url.searchParams.get('k') || '';
+  const t = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    `INSERT INTO num_biz_tour (business_id, dismissed_at, created_at) VALUES (?1,?2,?2)
+     ON CONFLICT(business_id) DO UPDATE SET dismissed_at = ?2`,
+  ).bind(String(who.business.id), t).run().catch(() => {});
+  return new Response(null, {
+    status: 303,
+    headers: { location: '/biz' + (k ? '?k=' + encodeURIComponent(k) : ''), 'cache-control': 'no-store' },
+  });
+}
+
 function qrShell(inner, title, nav) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -10494,6 +10774,10 @@ async function venueHomePage(req, env, url) {
     ? `A guest who was already yours and simply pays through NUM is a flat ${sym}${walkinCs % 100 ? (walkinCs / 100).toFixed(2) : String(walkinCs / 100)} — never a percentage.`
     : "Your own customers and walk-ins are never charged.";
 
+  // The tour stays until they dismiss it. An owner who opened the console to
+  // do one thing should be able to do that thing, and still find the tour
+  // tomorrow if they ignored it today.
+  const showTour = !(await tourDismissed(env, who.business.id));
   const tiles = [
     ["tables", "Tables &amp; codes", "Print a sticker for every table, put an amount on one, close a bill.", "view"],
     ["pay", "Payment QRs", "The code a guest scans to pay you. The money goes straight to your account.", "view"],
@@ -10516,6 +10800,8 @@ async function venueHomePage(req, env, url) {
 ${esc(walkinLine)} No-shows are never charged.</p>
 
 <div class="card" id="running"><span class="muted">Reading your ledger…</span></div>
+
+${showTour ? tourPanel(k ? '?k=' + encodeURIComponent(k) : '') : ''}
 
 <h2>Everything else</h2>
 <div class="tiles">${tiles}</div>

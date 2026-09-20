@@ -449,16 +449,120 @@ export async function handleScouts(request, env, path, origin) {
     const body = await request.json().catch(() => ({}));
     const ip = request.headers.get('cf-connecting-ip');
     const r = await enrol(env, { ...body, ip });
-    return json(r, r.ok ? 200 : 400);
+    if (!r.ok) return json(r, 400);
+
+    // SIGNED IN THE MOMENT THEY JOIN.
+    //
+    // The paperwork — the NDA and the tax form — is the very next thing a new
+    // Expert does, and both now require a session rather than a referral code.
+    // Without this they would fill the form in, receive a code, and then be
+    // told to go and check their email before they could sign anything.
+    //
+    // This is not a weaker door. The person just typed their own details into
+    // the form that created the account; they are at the keyboard. Every
+    // RETURNING visit goes through the emailed link.
+    const { mintExpertSession, SESSION_COOKIE } = await import('./scoutmagic.mjs');
+    const token = await mintExpertSession(env, r.id);
+    const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+    if (token) headers['Set-Cookie'] = SESSION_COOKIE(token);
+    return new Response(JSON.stringify(r), { status: 200, headers });
   }
 
+  // ── ASK FOR A SIGN-IN LINK ──────────────────────────────────────────────
+  //
+  // The reply never varies. Whether the address belongs to an Expert, to a
+  // paused one, or to nobody at all, the caller is told the same thing — or
+  // this endpoint becomes a way to ask "is this person one of Num's
+  // contractors?", which is a list worth harvesting and an answer we do not
+  // owe. A mail failure is LOUD in the logs and silent in the response, for
+  // the same reason.
+  if (p === '/login' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const { startExpertMagic } = await import('./scoutmagic.mjs');
+    const r = await startExpertMagic(env, {
+      email: body.email,
+      ip: request.headers.get('cf-connecting-ip'),
+      origin,
+    });
+    if (r.sent && !r.mailed && r.error) {
+      // Dre tried this and got nothing. If mail is refused the person waiting
+      // at the door has no way to know, so the operator must.
+      console.error('[scouts] sign-in mail refused:', r.error);
+    }
+    return json({ ok: true, sent: true });
+  }
+
+  // ── REDEEM ONE ─────────────────────────────────────────────────────────
+  //
+  // Lands from an email client, so it answers with a redirect and a cookie
+  // rather than JSON. Failure goes back to the dashboard carrying a reason,
+  // because "that link has expired" and "that link is not one we issued" send
+  // a person to two different next actions.
+  if (p === '/magic') {
+    const url = new URL(request.url);
+    const { redeemExpertMagic, mintExpertSession, SESSION_COOKIE } = await import('./scoutmagic.mjs');
+    const out = await redeemExpertMagic(env, url.searchParams.get('t'));
+    if (!out.ok) {
+      return new Response(null, {
+        status: 303,
+        headers: { Location: `/scout/?err=${encodeURIComponent(out.reason)}`, 'Referrer-Policy': 'no-referrer' },
+      });
+    }
+    const token = await mintExpertSession(env, out.scoutId);
+    if (!token) {
+      // No signing key configured. Say so rather than setting a cookie that
+      // can never verify and leaving somebody in a redirect loop.
+      console.error('[scouts] cannot mint an Expert session — ADMIN_KEY is not set');
+      return new Response(null, { status: 303, headers: { Location: '/scout/?err=sign-in%20is%20not%20configured' } });
+    }
+    return new Response(null, {
+      status: 303,
+      headers: {
+        Location: '/scout/?in=1',
+        'Set-Cookie': SESSION_COOKIE(token),
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
+  }
+
+  // ── THE DASHBOARD ──────────────────────────────────────────────────────
+  //
+  // THE CODE IS NO LONGER A KEY. Until 16 Sep 2026 this accepted
+  // `?code=FARMER` and handed back the Expert's whole record — earnings, rate
+  // card, paperwork — to anyone who typed it. That code is printed on an NFC
+  // card, read aloud across counters and public at `itsnum.com/s/FARMER`, so
+  // it authenticated nobody; it just looked like it did.
+  //
+  // Two things are accepted now. A signed session cookie from the emailed
+  // link, which is the door people use. Or a Num member id, for the Expert
+  // card inside the app — that is the same bearer model every other `?me=`
+  // route in this Worker uses, it is not printed on anything, and changing it
+  // here alone would break the in-app sheet while fixing nothing.
   if (p === '/me') {
     const url = new URL(request.url);
-    const code = normaliseCode(url.searchParams.get('code'));
+    const { expertFromRequest } = await import('./scoutmagic.mjs');
+
+    const sid = await expertFromRequest(env, request);
+    if (sid) return json(await dashboard(env, sid));
+
     const memberId = clip(url.searchParams.get('me'), 64);
-    const scout = code ? await scoutByCode(env, code) : await scoutForMember(env, memberId);
-    if (!scout) return json({ ok: false, why: 'not a Num Expert' }, 404);
+    const scout = memberId ? await scoutForMember(env, memberId) : null;
+    if (!scout) {
+      return json({ ok: false, why: 'Sign in to see your dashboard.', need_login: true }, 401);
+    }
     return json(await dashboard(env, scout.id));
+  }
+
+  // Signing out has to be as easy as signing in, and on a shared laptop it is
+  // the only way to put the earnings away again.
+  if (p === '/logout') {
+    return new Response(null, {
+      status: 303,
+      headers: {
+        Location: '/scout/',
+        'Set-Cookie': 'num_expert_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
+      },
+    });
   }
 
   if (p === '/introduce' && request.method === 'POST') {

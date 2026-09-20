@@ -147,9 +147,31 @@ test('an alert that nothing carried is recorded as critical', () => {
 });
 
 test('the health verdict goes DOWN when nobody could be told', () => {
-  assert.match(health, /const DOWN = \['d1_write', 'brain', 'site_public', 'failures'\]/,
+  // Asserted by membership rather than as an exact literal. The list is meant
+  // to grow — 'sms' joined it on 20 Sep 2026 — and a test that pins the whole
+  // array fails on every addition, which teaches the next person to edit the
+  // test instead of thinking about the list.
+  const DOWN = health.match(/const DOWN = \[([^\]]*)\]/);
+  assert.ok(DOWN, 'the DOWN list must still exist');
+  assert.match(DOWN[1], /'failures'/,
     'an unreported failure no longer pages — which is the exact month-long silence this fixes');
+  for (const must of ["'d1_write'", "'brain'", "'site_public'"]) {
+    assert.ok(DOWN[1].includes(must), `${must} must still take the verdict down`);
+  }
   assert.match(health, /failures: await checkFailures\(env\)/);
+});
+
+test('sign-in being dead takes the verdict down', () => {
+  // 20 Sep 2026: /api/health reported `sms: ok` for nine hours while 71
+  // consecutive verification codes failed and nobody could open an account.
+  // The check validated configuration, which was perfect, and never asked
+  // whether a text had gone out.
+  const DOWN = health.match(/const DOWN = \[([^\]]*)\]/);
+  assert.match(DOWN[1], /'sms'/, 'a locked front door is not a degradation');
+  assert.match(health, /sms: await checkSms\(env\)/,
+    'checkSms must be awaited, or the check object holds a Promise and every verdict is meaningless');
+  assert.match(health, /num_signin_events/,
+    'checkSms must read real send outcomes, not just configuration');
 });
 
 test('the alert is written down before it is sent, not after', () => {

@@ -98,6 +98,10 @@ const FILES = [
   'worker/migrations/0029_products.sql',
   'worker/migrations/0030_expert_docs.sql',
   'worker/migrations/0031_web_events_utm_content.sql',
+  // Partners a venue can work with, the intros they ask for, and whether
+  // they have been shown round the console. Three CREATE TABLEs and two
+  // indexes, all IF NOT EXISTS, so a second pass is a clean no-op.
+  'worker/migrations/0032_partners_and_tour.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

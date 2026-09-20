@@ -2992,6 +2992,23 @@ export default {
         .then((r) => { if (r?.sent?.length) console.warn('[brainalert]', JSON.stringify(r.sent)); })
         .catch((e) => console.error('[brainalert]', e?.message ?? e)),
     );
+    // AND NOBODY COULD SIGN IN FOR NINE HOURS WITHOUT A WORD.
+    //
+    // 20 Sep 2026: Twilio refused every request on the account from 08:34Z
+    // with error 20003. num_signin_events recorded all 71 failures as they
+    // happened. /api/health reported `sms: ok` throughout. Nothing connected
+    // the two, so the biggest traffic day in the product's life ran against a
+    // locked front door until a person happened to ask.
+    //
+    // Its own waitUntil, next to brainalert and for the same reason: an alert
+    // that can be taken down by the thing it is reporting is not an alert.
+    // See worker/smsalert.mjs.
+    ctx.waitUntil(
+      import('./smsalert.mjs')
+        .then((m) => m.alertOnSms(env))
+        .then((r) => { if (r?.sent?.length) console.warn('[smsalert]', JSON.stringify(r.sent)); })
+        .catch((e) => console.error('[smsalert]', e?.message ?? e)),
+    );
     // DID THE SIGN-IN CODES ACTUALLY ARRIVE?
     //
     // Twilio Verify has no StatusCallback, so unlike Programmable Messaging

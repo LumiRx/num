@@ -13,3 +13,7 @@
 {"id":"541a66ec","at":"2026-09-16T20:16:48.045Z","area":"subscriptions","title":"subscriptions","state":"done","note":"Plans listed in the wallet buy section; PlanNudge added, waits for 3rd ask, never on iOS"}
 {"id":"44d0d525","at":"2026-09-16T20:16:48.628Z","area":"desktop","title":"desktop","state":"done","note":"Desktop gets the app: 720 routing gate removed, launch stage moved to ?stage, content centred at 760px"}
 {"id":"2427eab3","at":"2026-09-16T20:16:49.225Z","area":"bugs","title":"bugs","state":"done","note":"WelcomePlans and ShareToSheet rendered transparent, no glass-strong; both fixed, guard test added"}
+{"id":"c3e87ad0","at":"2026-09-17T08:44:01.862Z","area":"experts","title":"experts","state":"done","note":"Expert login is now an emailed magic link; referral code no longer authenticates the dashboard, paperwork or NDA signing"}
+{"id":"ec322b0b","at":"2026-09-17T08:44:02.468Z","area":"experts","title":"experts","state":"gap","note":"Adam and Isaiah have placeholder emails in production; sql/fix/num_scout_emails_and_cap.sql waits on real addresses from Dre"}
+{"id":"cf51702a","at":"2026-09-17T08:49:44.373Z","area":"experts","title":"experts","state":"done","note":"Expert dashboard moved to app-public/scout so it shares an origin with the API; itsnum.com/scout is now a signpost"}
+{"id":"e21e32ee","at":"2026-09-17T08:49:44.972Z","area":"experts","title":"experts","state":"gap","note":"itsnum.com/api/* has never routed anywhere - the Expert signup form 404d silently since it was written; both Experts were seeded by SQL"}

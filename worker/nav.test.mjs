@@ -51,6 +51,10 @@ const NO_NAV = {
   'ask/index.html': 'the ads landing page — it carries its own two-link header instead',
   'get/index.html': 'a redirect stub, on screen for milliseconds',
   'join/index.html': 'a redirect stub',
+  // The dashboard itself moved to app-public/scout/ on 17 Sep 2026, so it is
+  // served by num-app on the same origin as the API it calls. What is left here
+  // is a signpost: itsnum.com/scout is the address on the printed cards.
+  'scout/index.html': 'a redirect stub — the Expert dashboard moved to app.itsnum.com/scout/',
   'console/index.html': 'the partner demo console, not a marketing page',
   'app-preview/index.html': 'team-only prototype, noindex, linked from nowhere public',
   'host/index.html': 'the private host console, key-gated and noindex',

@@ -321,11 +321,15 @@ export function bootSocial(): void {
         : s.msgs,
     chips: [{ id: 'signup', label: 'Tell Num who I am' }],
   }));
-  // Put the form in front of them rather than hoping they tap the chip. It
-  // lands after the first paint so the app is visibly there behind it.
-  setTimeout(() => {
-    if (!store.get().me && !store.get().inviteOpen) store.set({ threadOpen: true, inviteOpen: {} });
-  }, 900);
+  // NO SHEET HERE ANY MORE.
+  //
+  // This used to open the sign-up form 900ms after the app loaded — before the
+  // visitor had asked anything. It was a wall in front of every arrival, and on
+  // 20 Sep 2026 that meant 561 people from X met a form before they met Num.
+  //
+  // The ask now happens after Num has answered their first question, in
+  // concierge.ts → maybeAskToJoin(). The chip above stays, so anybody who
+  // wants an account before that can still say so.
 }
 
 // ── identity ───────────────────────────────────────────────────────────────

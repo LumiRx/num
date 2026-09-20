@@ -105,6 +105,7 @@ twq('config','rfbeh');
     <a href="/how-it-works/">How it works</a>
     <a href="/destinations/">Destinations</a>
     <a href="/perks/">Perks</a>
+    <a href="/plans/">Plans</a>
     <p class="nv-group">Partners</p>
     <a href="/business/">For business</a>
     <a href="/claim/">List your business</a>
@@ -163,7 +164,24 @@ document.getElementById('f').addEventListener('submit', async (ev) => {
   const err = document.getElementById('err'); err.style.display = 'none';
   const btn = ev.target.querySelector('button'); btn.disabled = true; btn.textContent = 'Issuing…';
   try {
-    const r = await fetch('/api/partner/signup', {
+    /* ABSOLUTE, and it has to be. This page is served from BOTH hosts —
+       itsnum.com/partners/ and app.itsnum.com/partners/ — but the handler
+       only exists on app.itsnum.com. From the apex a relative POST fell
+       through to num-console, the assets-only Worker, which answers with a
+       bare 405 and no body. `r.json()` then threw, the catch printed
+       "Signup failed — try again in a moment", and the partner tried again
+       and got the same thing. Every partner signup from the apex since this
+       page launched was lost, and nothing recorded that it happened.
+
+       Absolute is safe HERE because /api/partner/signup is stateless and
+       already sends CORS for this exact origin (verified: the preflight
+       answers `access-control-allow-origin: https://itsnum.com`). Do NOT
+       copy this to anything that relies on the num_session cookie — that
+       cookie is scoped to the apex and will not cross. See the note on
+       NUM.acct in public/assets/site.js.
+
+       `scripts/routecheck.mjs` probes production for this class of failure. */
+    const r = await fetch('https://app.itsnum.com/api/partner/signup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         company: document.getElementById('c').value,

@@ -177,6 +177,55 @@ export function upgradeBlock({ tier = 'free', table = {}, used = {}, earned = nu
  * Never throws: an upsell that takes a concierge answer down with it is a bad
  * trade in every direction.
  */
+/**
+ * AT MOST ONE INVITATION A DAY, PER MEMBER.
+ *
+ * The offer engine already refuses to pitch twice in a conversation. That is
+ * not the same as twice in a day: two conversations on one afternoon are two
+ * separate pitches to the same person, and the second one is the one that
+ * makes somebody stop opening the app.
+ *
+ * The cap covers the PROACTIVE reasons only — `win` and `limit`. A guest who
+ * asks the price themselves is answered every single time; refusing to quote a
+ * price to somebody who asked is not restraint, it is rudeness, and it is the
+ * one behaviour guaranteed to lose a sale that was already half made.
+ *
+ * Written to num_usage_counters with period = the DATE rather than the month.
+ * `period` is free text and the primary key is (member_id, period, key), so a
+ * daily row needs no migration and expires by simply never being read again.
+ *
+ * Marked when the offer is PERMITTED rather than when the model actually makes
+ * it. That over-counts slightly on a turn where the model chooses to stay
+ * quiet, and that is the correct direction to be wrong in: the failure it
+ * prevents (two pitches in a day) is worse than the one it causes (one missed
+ * pitch).
+ */
+const today = () => new Date().toISOString().slice(0, 10);
+const CAPPED = new Set(['win', 'limit']);
+
+export async function offeredToday(env, memberId) {
+  try {
+    const row = await env.DB.prepare(
+      'SELECT used FROM num_usage_counters WHERE member_id=?1 AND period=?2 AND key=?3',
+    ).bind(memberId, today(), 'upgrade_offer').first();
+    return Number(row?.used ?? 0) > 0;
+  } catch {
+    // An unreadable counter must not silence a legitimate offer, and must not
+    // fail an answer either. Fail OPEN here: the worst case is one extra
+    // invitation, not a broken reply.
+    return false;
+  }
+}
+
+export async function markOfferedToday(env, memberId) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO num_usage_counters (member_id, period, key, used) VALUES (?1,?2,?3,1)
+         ON CONFLICT(member_id, period, key) DO UPDATE SET used = used + 1`,
+    ).bind(memberId, today(), 'upgrade_offer').run();
+  } catch { /* bookkeeping must never break the reply */ }
+}
+
 export async function upgradeFor(env, memberId, { earned = null } = {}) {
   if (!env?.DB || !memberId) return null;
   try {
@@ -190,7 +239,13 @@ export async function upgradeFor(env, memberId, { earned = null } = {}) {
       ).bind(memberId, new Date().toISOString().slice(0, 7)).all();
       used = Object.fromEntries((results ?? []).map((r) => [r.key, r.used]));
     } catch { /* counters are colour, never a blocker */ }
-    return upgradeBlock({ tier, table, used, earned });
+    // The day's cap, applied to the proactive reasons only.
+    let allow = earned;
+    if (allow && CAPPED.has(allow) && await offeredToday(env, memberId)) allow = null;
+    const block = upgradeBlock({ tier, table, used, earned: allow });
+    // Spend the day's one invitation only when the block actually grants it.
+    if (allow && CAPPED.has(allow) && block) await markOfferedToday(env, memberId);
+    return block;
   } catch (e) {
     console.warn('[upgrade]', e?.message ?? e);
     return null;
