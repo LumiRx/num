@@ -56,6 +56,29 @@
 
   "vars": {
     "SITE": "https://itsnum.com",
+    // THE NUMBER A SUPPLIER TEXTS PHOTOGRAPHS TO.
+    //
+    // A plain var and not a secret, deliberately: it is a published phone
+    // number whose entire job is to be printed. num-app already serves it
+    // openly at GET /api/version as `sms_number`, and worker/twiliosender.mjs
+    // has carried it as a test constant since the A2P work in August.
+    //
+    // Why it has to be here at all: the host console's API is num-growth, and
+    // num-growth holds no Twilio config of any kind — every credential is on
+    // num-app. So numSmsNumber(env) returned null here and the console told a
+    // host that texting photographs in was not switched on, which is true of
+    // this worker and false of the product. Found 19 Sep 2026, when the
+    // console was found promising three times that a supplier could text
+    // photographs in without ever saying where to.
+    //
+    // NOT PROOF IT DELIVERS. STATUS.md, 20 Sep: every delivered text since
+    // August is a Twilio Verify row. Programmable Messaging has not attempted
+    // a send since the nine 30034s ending 21 Aug, so the outbound pipe is
+    // unproven against a carrier. Inbound MMS is a different direction and
+    // does not need A2P approval — but nobody has texted a photograph in and
+    // watched it land either. This makes the address printable; it does not
+    // make the round trip tested.
+    "NUM_SMS_NUMBER": "+14243460888",
     // Sender identity, and why it moved off 5arz.com on 25 Aug 2026.
     //
     // A cautious recipient runs about four checks in two seconds, and the

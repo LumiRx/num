@@ -77,10 +77,29 @@ async function writeCache(env, dest, source, events, { now = Date.now() } = {}) 
  * bonus on top of an answer, and a failed one must leave the concierge exactly
  * as capable as it was before.
  */
-export async function searchEvents(env, { dest, lat, lng, country, days = 7, now = Date.now(), radiusMiles = 25, size = 8, fetchImpl } = {}) {
+export async function searchEvents(env, {
+  dest, lat, lng, country, days = 7, now = Date.now(), radiusMiles = 25, size = 8, fetchImpl,
+  /* NIGHTLIFE asks a narrower question (20 Sep 2026): the Music segment only,
+   * over a weekend window rather than "n days from now". See the note on
+   * `search()` in events.tm.mjs for why the filter has to be in the QUESTION —
+   * twenty rows sorted by date are spent on daytime attractions otherwise.
+   *
+   * THE CACHE KEY MUST CARRY THE QUESTION. `num_event_search_cache` is keyed on
+   * `dest` alone and `dest` is a coordinate cell, so a music-only answer and a
+   * general answer for the same cell would overwrite each other — TONIGHT would
+   * start showing a music-only rail, or NIGHTLIFE a rail with the London Eye
+   * back in it, depending purely on who asked last. */
+  classificationName = null,
+  startAt = null,
+  endAt = null,
+} = {}) {
   if (!env?.DB || !dest) return null;
 
-  const cached = await readCache(env, dest, { now });
+  const key = classificationName
+    ? `${dest}|${String(classificationName).toLowerCase()}${startAt ? `|${String(startAt).slice(0, 10)}` : ''}`
+    : dest;
+
+  const cached = await readCache(env, key, { now });
   if (cached) return cached.events.length ? cached : null;
 
   try {
@@ -89,17 +108,17 @@ export async function searchEvents(env, { dest, lat, lng, country, days = 7, now
 
     const out = await tm.search(
       env,
-      { lat, lng, country, days, size, radiusMiles },
+      { lat, lng, country, days, size, radiusMiles, classificationName, startAt, endAt },
       fetchImpl ?? fetch,
     );
     if (!out?.ok) {
       // A miss is cached too, briefly. Otherwise a destination outside
       // Ticketmaster's coverage re-queries on every single ask, forever.
-      await writeCache(env, dest, 'ticketmaster', [], { now });
+      await writeCache(env, key, 'ticketmaster', [], { now });
       return null;
     }
     const events = (out.events ?? []).filter((e) => e?.name);
-    await writeCache(env, dest, 'ticketmaster', events, { now });
+    await writeCache(env, key, 'ticketmaster', events, { now });
     return events.length ? { events, source: 'ticketmaster', cached: false } : null;
   } catch {
     return null;

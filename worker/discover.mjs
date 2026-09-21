@@ -122,7 +122,16 @@ export async function placesFor(env, { dest, q, mood, lat, lng, limit = 8 }) {
 }
 
 /** Real ticketed events near the coordinate (Ticketmaster where it actually has inventory). */
-export async function eventsFor(env, { dest, lat, lng, country, fetchImpl, near = false }) {
+export async function eventsFor(env, {
+  dest, lat, lng, country, fetchImpl, near = false,
+  /* NIGHTLIFE only (20 Sep 2026). `music` asks Ticketmaster for the Music
+   * segment instead of taking whatever a date sort hands back, and `window` is
+   * a club weekend (Friday 18:00 → Monday 06:00) rather than n days. Both
+   * default off, so TONIGHT — which legitimately shows the view from a tower —
+   * behaves exactly as it did. */
+  music = false,
+  window: win = null,
+}) {
   // With the person's own position, search a tight ring around THEM rather
   // than the city's centre, cached per ~5 km cell so neighbours share a
   // lookup. "Near me" is the whole point of Tonight: a listing across town
@@ -130,7 +139,17 @@ export async function eventsFor(env, { dest, lat, lng, country, fetchImpl, near 
   const mine = near && Number.isFinite(lat) && Number.isFinite(lng);
   const key = mine ? `near_${cell(lat, lng)}` : dest;
   const found = await withTimeout(
-    searchEvents(env, { dest: key, lat, lng, country, days: mine ? 3 : 7, radiusMiles: mine ? 10 : 25, size: mine ? 14 : 8, fetchImpl }),
+    searchEvents(env, {
+      dest: key, lat, lng, country,
+      days: mine ? 3 : 7, radiusMiles: mine ? 10 : 25,
+      // Twenty is Ticketmaster's ceiling. A weekend across a city of clubs
+      // needs all of it; a "what's on near me" strip does not.
+      size: music ? 20 : (mine ? 14 : 8),
+      fetchImpl,
+      classificationName: music ? 'Music' : null,
+      startAt: win ? `${win.fromDate}T${win.fromTime}` : null,
+      endAt: win ? `${win.toDate}T${win.toTime}` : null,
+    }),
     4000, { reason: 'timeout' },
   );
   const list = found?.events ?? found?.result?.events ?? [];
@@ -145,6 +164,21 @@ export async function eventsFor(env, { dest, lat, lng, country, fetchImpl, near 
       lat: e.lat ?? null, lng: e.lng ?? null, distance_km: km == null ? null : Math.round(km * 10) / 10, label: 'Listed on Ticketmaster',
       // The genre travels so NIGHTLIFE can keep the club nights and leave the matinees.
       genre: e.genre ?? null,
+      /* And the two tiers that tell techno from house, plus who is billed.
+       * `genre` alone said "Dance/Electronic" for every electronic night in the
+       * product — see worker/nightlife.mjs. Carried for every caller because
+       * they cost nothing; only NIGHTLIFE reads them today.
+       *
+       * `name` and `date`/`time` are repeated under their own keys because
+       * nightlife.mjs works on the SHAPED Ticketmaster row, and this mapper
+       * renames them to title/starts_on for the rails. Passing the rail shape
+       * into a bucketer that expects `name` was going to be the next bug. */
+      subGenre: e.subGenre ?? null,
+      segment: e.segment ?? null,
+      acts: Array.isArray(e.acts) ? e.acts : [],
+      name: e.name ?? null,
+      date: e.date ?? null,
+      time: e.time ?? null,
     };
   });
   return Object.assign(out, { reason: found?.reason ?? (list.length ? 'ok' : 'empty') });
@@ -376,6 +410,17 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
       live: /live music|music venue|jazz club|jazz bar|concert hall|music hall|live venue/i,
     };
     let clubs = [], bars = [], live = [], tm = [];
+    /* ── THE WEEKEND, AND WHICH GENRE (20 Sep 2026) ──────────────────────
+     *
+     * `?weekend=1` swaps the single day for a club weekend — Friday 18:00 to
+     * Monday 06:00, so a headline Saturday set filed at Sunday 02:00 stays in
+     * the list it belongs to instead of being cut in half by a calendar week.
+     * `?genre=techno` narrows to one bucket. Neither is required and the
+     * default behaviour is the day, as before. */
+    const nl = await import('./nightlife.mjs');
+    const wantWeekend = g('weekend') === '1' || g('weekend') === 'true';
+    const nlWindow = wantWeekend ? nl.weekendWindow(new Date()) : null;
+    const wantBucket = nl.BUCKET_IDS.includes(String(g('genre') ?? '')) ? String(g('genre')) : null;
     try {
       const { enrichCell } = await import('./placeratings.mjs');
       // FIRE, DON'T WAIT. enrichCell is a Google search per ~1 km cell per
@@ -398,7 +443,7 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
         withTimeout(nearbyPlaces(env, loc, 'nightclub club dancing', 18, null, { memberId }), 2500, { rows: [] }),
         withTimeout(nearbyPlaces(env, loc, 'bar cocktails late night', 18, null, { memberId }), 2500, { rows: [] }),
         withTimeout(nearbyPlaces(env, loc, 'live music venue jazz', 12, null, { memberId }), 2500, { rows: [] }),
-        eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true }),
+        eventsFor(env, { dest, lat, lng, country, fetchImpl, near: true, music: true, window: nlWindow }),
       ]);
       clubs = shelf(r1?.rows ?? [], KIND.club);
       // A club is not a bar: whatever the bar search returned that is already
@@ -413,10 +458,46 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
     // The date rules are tonightPick's (a festival that opened Monday is still
     // on tonight); this only decides WHICH listings are nights. Family shows,
     // museums and the view from a tower go to TONIGHT.
-    const NIGHT = /music|dance|electronic|dj|house|techno|hip.?hop|r&b|club|party|night|festival|concert|rock|pop|latin|reggae|jazz|soul|comedy/i;
-    const nights = tonightPick([], tm.filter((e) => e.genre && NIGHT.test(e.genre)), g('day'), { limit: 8 })
+    /* THE OLD FILTER, AND WHY IT IS GONE. One regex over `genre` that matched
+     * anything vaguely musical and put it all in one flat list. It could not do
+     * the thing Dre actually asked for — tell hip hop from EDM from techno —
+     * because `genre` says "Dance/Electronic" for all three, and it let comedy
+     * through on the word "comedy". worker/nightlife.mjs reads the sub-genre and
+     * the billing instead, and refuses the daytime rows outright. */
+    const kept = nl.topNights(tm, { bucket: wantBucket, window: nlWindow, limit: 24 });
+    // The day filter still applies when no weekend was asked for: tonightPick
+    // owns the "a festival that opened Monday is still on tonight" rule and
+    // this must not start second-guessing it.
+    const nights = (nlWindow ? kept : tonightPick([], kept, g('day'), { limit: 12 }))
       .slice().sort((a, b) => (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9));
-    return json({ ok: true, mode, dest, clubs, bars, live, nights, near: mine, sources: { clubs: clubs.length, bars: bars.length, live: live.length, ticketmaster: nights.length } });
+    const chips = nl.bucketCounts(tm, { window: nlWindow });
+    /* EMPTY IS NOT ONE SENTENCE. Bangkok and Tokyo return [] from Ticketmaster
+     * because it holds no inventory there — telling somebody in Bangkok that
+     * nothing is on tonight would be a lie about one of the busiest nightlife
+     * cities on earth. `covered` is the measured coverage list, not a guess. */
+    const { covers: tmCovers, eventsReady } = await import('./events.tm.mjs');
+    const empty = nights.length ? null : nl.whyEmpty({
+      ready: eventsReady(env),
+      covered: !country || tmCovers(country),
+      fetched: tm.length,
+      kept: kept.length,
+    });
+    return json({
+      ok: true, mode, dest, clubs, bars, live, nights, near: mine,
+      genres: chips,
+      genre: wantBucket,
+      weekend: nlWindow ? { from: nlWindow.friday, to: nlWindow.sunday } : null,
+      empty,
+      sources: {
+        clubs: clubs.length, bars: bars.length, live: live.length,
+        ticketmaster: nights.length, listed: tm.length,
+        // Only on ?debug=1: the real (segment / genre / subGenre) triples with
+        // the bucket each landed in. This is how the mapping gets corrected
+        // from data instead of from an assumption about Ticketmaster's
+        // taxonomy, which is not published.
+        ...(g('debug') ? { classifications: nl.genresSeen(tm) } : {}),
+      },
+    });
   }
 
   // TONIGHT: what is on, today and soon, from NUM's own checked list and
