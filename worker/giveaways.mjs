@@ -109,8 +109,10 @@ export const LIVE = Object.freeze([
     note: 'Entries are counted from real signups. Free entry needs no referrals at all. '
       + 'A winner verifies their identity with 5arz before the prize is released — free, and inside NUM.',
     // Not the Friday week. Without this the card would tell everybody the
-    // trip closes this Sunday.
-    closesAt: '2026-12-31T23:59:59.000Z',
+    // trip closes this Sunday. The date itself lives in PRIZE, beside the
+    // one the Official Rules renders, so the two cannot name different days.
+    closesAt: TOKYO.closesAt,
+    closesLabel: TOKYO.closesLabel,
     status: tokyoStatus,
     enter: (env, member) => tokyoFreeEntry(env, { memberId: member.id, source: 'profile' }),
   }),
@@ -134,6 +136,12 @@ export async function list(env, me, nowSec = Math.floor(Date.now() / 1000)) {
       // item that knows its own end date says so, rather than inheriting a
       // week boundary that has nothing to do with it.
       closes_at: g.closesAt ?? new Date(weekEnd(start) * 1000).toISOString(),
+      // The Friday card can derive its own line — the draw always closes at
+      // 23:59 UTC and the weekday is enough. A campaign that closes on a
+      // named day in a named zone cannot be derived from an ISO string
+      // without the card re-deciding what the rules already say, so it is
+      // sent the sentence the rules use. Null means "derive it".
+      closes_label: g.closesLabel ?? null,
       draw_label: weekKeyFor(new Date(nowSec * 1000)),
       ...s,
     });

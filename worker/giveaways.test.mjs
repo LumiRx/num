@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { LIVE, FRIDAY_PACKS_ID, list, handleGiveaways } from './giveaways.mjs';
 import { RULES } from '../growth/fridayrules.mjs';
+import { PRIZE } from '../growth/tokyodraw.mjs';
+import { tokyoRulesHtml } from '../growth/tokyorules.mjs';
 import { ENTRY_CODE } from './packdraw.mjs';
 
 function fakeDb(answers) {
@@ -65,6 +67,57 @@ test('a one-off campaign keeps its own closing date, not the Friday week', () =>
   assert.ok(tokyo.closesAt, 'the trip has no end date of its own');
   assert.equal(/2026-09-2[0-9]/.test(tokyo.closesAt), false,
     'the trip inherited the Friday week boundary: ' + tokyo.closesAt);
+});
+
+test('the card and the Official Rules name ONE closing date', () => {
+  // WHY THIS EXISTS. Until 20 Sep the date was written twice — "31 December
+  // 2026" in the rules prose and '2026-12-31T23:59:59.000Z' in this file —
+  // with nothing holding them together. Two published documents naming
+  // different closing dates for the same prize draw is a question nobody
+  // wants asked in writing, so both now read PRIZE and this test fails if
+  // anybody writes a date into either one again.
+  const tokyo = LIVE.find((g) => g.id === 'tokyo-2026');
+  assert.equal(tokyo.closesAt, PRIZE.closesAt);
+  assert.equal(tokyo.closesLabel, PRIZE.closesLabel);
+  const html = tokyoRulesHtml();
+  assert.ok(html.includes(PRIZE.closesLabel),
+    'the rules page does not say when entries close');
+  assert.equal(/31 December 2026/.test(html), false,
+    'the rules page still carries a hardcoded closing date');
+});
+
+test('Halloween means Halloween where the entrants are', () => {
+  // Dre, 20 Sep 2026. The draw runs in the US and the UK, so a 23:59 UTC
+  // cutoff on the 31st would end it at 16:59 in Los Angeles and take
+  // Halloween evening off the people it is aimed at. 23:59 Pacific is 06:59
+  // UTC the following morning — and the US does not leave PDT until 1
+  // November 2026, so the offset really is -7 at that moment.
+  const d = new Date(PRIZE.closesAt);
+  assert.equal(d.toISOString(), '2026-11-01T06:59:59.000Z');
+  const laHour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
+  }).format(d));
+  const laDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', month: 'numeric', day: 'numeric',
+  }).format(d);
+  assert.equal(laDay, '10/31', 'it no longer closes on Halloween in Los Angeles');
+  assert.equal(laHour, 23, 'Los Angeles loses part of Halloween night');
+  assert.match(PRIZE.closesLabel, /31 October 2026/);
+});
+
+test('the card is told how to word a deadline it cannot derive', async () => {
+  // closesLine() in GiveawaysCard renders "23:59 UTC" from the weekday when
+  // it is given nothing else, which is right for the Friday draw and wrong
+  // for this one. The Friday item must keep sending null so it keeps
+  // deriving; the trip must send the sentence the rules use.
+  const env = { DB: fakeDb([[/COUNT\(DISTINCT entrant_key\)/, { n: 0 }]]) };
+  const d = await list(env, null, 1789689600);
+  const friday = d.giveaways.find((g) => g.id === 'friday-packs');
+  const tokyo = d.giveaways.find((g) => g.id === 'tokyo-2026');
+  assert.equal(friday.closes_label, null, 'the Friday card stopped deriving its own line');
+  assert.equal(tokyo.closes_label, PRIZE.closesLabel);
+  assert.equal(/UTC/.test(tokyo.closes_label), false,
+    'the trip closes on a Pacific clock; saying UTC here contradicts the rules');
 });
 
 test('the free route is the button, and it asks for nothing', () => {

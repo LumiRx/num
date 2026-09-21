@@ -59,7 +59,37 @@ describe('the mode', () => {
 
   test('the genre travels from Ticketmaster so the matinee can be left behind', () => {
     assert.match(bare(DISCOVER), /genre: e\.genre \?\? null,/);
-    assert.match(bare(DISCOVER), /const NIGHT = \/music\|dance\|electronic/);
+    // Was: a single regex over `genre` that matched anything vaguely musical
+    // and put it in one flat list. Replaced 20 Sep 2026 — it could not tell
+    // hip hop from EDM from techno (all three arrive as "Dance/Electronic")
+    // and it let stand-up comedy through on the word "comedy". The sub-genre
+    // and the billing now travel too, and worker/nightlife.mjs decides.
+    assert.match(bare(DISCOVER), /subGenre: e\.subGenre \?\? null,/);
+    assert.match(bare(DISCOVER), /acts: Array\.isArray\(e\.acts\)/);
+    assert.match(bare(DISCOVER), /nl\.topNights\(tm, \{ bucket: wantBucket, window: nlWindow/);
+    assert.doesNotMatch(bare(DISCOVER), /const NIGHT = \//, 'the flat regex is gone, not left as dead code');
+  });
+
+  test('the shelf asks Ticketmaster for MUSIC rather than filtering after', () => {
+    // Twenty rows is the API ceiling and it sorts by date, so a timed
+    // attraction selling a 10:00 slot every day wins forever. London's rail
+    // was the Paddington Bear Experience, Sea Life, the London Eye, the
+    // London Dungeon and Twist Museum — genre `Family`, no music at all.
+    assert.match(bare(DISCOVER), /music: true, window: nlWindow/);
+    assert.match(bare(DISCOVER), /classificationName: music \? 'Music' : null/);
+  });
+
+  test('empty says WHICH empty, and never "nothing on" in an uncovered city', () => {
+    // Bangkok and Tokyo are cached as [] — Ticketmaster holds no inventory.
+    const d = bare(DISCOVER);
+    assert.match(d, /nl\.whyEmpty\(\{/);
+    assert.match(d, /covered: !country \|\| tmCovers\(country\)/);
+  });
+
+  test('the genre chips and the weekend are on the response', () => {
+    const d = bare(DISCOVER);
+    assert.match(d, /genres: chips/);
+    assert.match(d, /weekend: nlWindow \?/);
   });
 
   test('the ratings enrichment knows what a nightclub is', () => {

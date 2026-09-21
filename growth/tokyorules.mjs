@@ -97,7 +97,7 @@ belong to the same person, they are treated as one entrant and their entries are
 added together.</p>
 
 <h2><span class="n">5</span><span>Entry period</span></h2>
-<p>Entries are accepted until 23:59 UTC on 31 December 2026. The draw takes place within fourteen
+<p>Entries are accepted until ${esc(p.closesLabel)}. The draw takes place within fourteen
 days of that date. The Sponsor will publish the result on this page.</p>
 
 <h2><span class="n">6</span><span>Prize</span></h2>

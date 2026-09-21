@@ -37,7 +37,7 @@ import { store } from './store';
 import type { FeatureId } from './features';
 
 /** Where a feature's results come from. */
-export type ListingSource = 'flights' | 'stays' | 'places';
+export type ListingSource = 'flights' | 'stays' | 'places' | 'paperwork';
 
 /**
  * The source each feature reads, or null for the ones that are genuinely a
@@ -63,6 +63,10 @@ export const SOURCE: Partial<Record<FeatureId, ListingSource>> = {
   kids: 'places',
   work: 'places',
   events: 'places',
+  /* Its own source: the answer is not a list of places or a list of fares,
+   * it is an assembled pack of documents with deadlines. /api/travel/pack
+   * already returns exactly that. */
+  paperwork: 'paperwork',
 };
 
 export const sourceFor = (id: FeatureId | null | undefined): ListingSource | null =>

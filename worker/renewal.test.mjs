@@ -23,7 +23,15 @@ test('subscribing mints a RECURRING session, not a one-off', () => {
   assert.match(sub, /requestSubscription/, '/subscribe is back on the one-off path — subscribers stop recurring');
   assert.ok(!/requestPayment/.test(sub), '/subscribe still calls requestPayment — the one-off leak is back');
   assert.match(pay, /mode: 'subscription'/, 'no checkout is ever created in subscription mode');
-  assert.match(pay, /recurring: \{ interval: 'month' \}/, 'the price is not recurring — Stripe will charge once and stop');
+  // Was a literal `interval: 'month'` until 20 Sep 2026, when a yearly plan
+  // became expressible. The guard still has the same job — the price must
+  // RECUR — so it now checks the interval is derived rather than absent, and
+  // that the derivation can only ever produce a month or a year. Anything
+  // else reaching Stripe is a twelvefold billing error in one direction or
+  // the other.
+  assert.match(pay, /recurring: \{ interval: every \}/, 'the price is not recurring — Stripe will charge once and stop');
+  assert.match(pay, /const every = String\(interval\) === 'year' \? 'year' : 'month'/,
+    'the interval is no longer clamped to month or year');
 });
 
 test('the subscription carries its own name into every future invoice', () => {

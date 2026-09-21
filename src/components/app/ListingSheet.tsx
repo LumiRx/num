@@ -28,6 +28,7 @@ import { closeListing, placeQuery } from '../../lib/listing';
 import { discover, type DiscoverItem } from '../../lib/discover';
 import { searchStays, type StayOption, type StayQuery, parseChildAges } from '../../lib/stays';
 import { runFlightSearch } from '../../lib/flights';
+import { fetchPack, routeCodes, type TravelPack, type PackItem } from '../../lib/paperwork';
 import { near } from '../../lib/near';
 import { t, currentLang } from '../../lib/i18n';
 import FlightTray from './FlightTray';
@@ -69,6 +70,7 @@ export default function ListingSheet() {
   const [places, setPlaces] = useState<DiscoverItem[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [stays, setStays] = useState<StayOption[]>([]);
+  const [pack, setPack] = useState<TravelPack | null>(null);
 
   const feature = featureById(draft?.feature);
 
@@ -78,7 +80,7 @@ export default function ListingSheet() {
   useEffect(() => {
     if (!draft) return;
     let live = true;
-    setError(null); setPlaces([]); setStays([]); setNote(null);
+    setError(null); setPlaces([]); setStays([]); setNote(null); setPack(null);
     void (async () => {
       setBusy(true);
       try {
@@ -107,6 +109,16 @@ export default function ListingSheet() {
           };
           const out = await searchStays(me, q);
           if (live) setStays(out.options);
+        } else if (draft.source === 'paperwork') {
+          const out = await fetchPack({
+            to: draft.values.to ?? '',
+            nationality: draft.values.nationality ?? null,
+            date: draft.values.date || null,
+            from: routeCodes(draft.values.from),
+          });
+          if (!live) return;
+          if (!out) setError(t('Give me the two-letter country code — TH, JP, FR — and I’ll pull the paperwork.'));
+          setPack(out);
         } else {
           const out = await discover({ mode: 'search', q: placeQuery(draft, feature?.title ?? '') });
           if (!live) return;
@@ -209,6 +221,58 @@ export default function ListingSheet() {
             </div>
           ))}
         </>
+      )}
+
+      {/* PAPERWORK — five datasets that had no door until today. Every link
+          here is an official government host; traveldocs.mjs allows nothing
+          else, because searching for any of these returns page after page of
+          copycat sites built to be mistaken for the government and to charge
+          several times the real fee. */}
+      {draft.source === 'paperwork' && !busy && pack?.ok && (
+        <>
+          <div style={{ ...rowSub, padding: '0 16px 10px' }}>
+            {pack.daysOut != null
+              ? t('{n} days out — soonest deadline first.', { n: pack.daysOut })
+              : t('In the order the deadlines fall.')}
+          </div>
+
+          {pack.items.map((i: PackItem, n: number) => (
+            <div key={`${i.kind}:${i.title}:${n}`} style={row}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={rowTitle}>{i.title}</div>
+                {i.detail && <div style={rowSub}>{i.detail}</div>}
+                {/* Never resolved for them. What somebody needs depends on
+                    their passport, their purpose and how long they stay, and
+                    the official page is the only thing that decides. */}
+                {i.appliesTo && <div style={rowSub}>{i.appliesTo}</div>}
+                {i.by && <div style={{ ...rowSub, color: 'var(--color-accent-700)', fontWeight: 700 }}>{i.by}</div>}
+              </div>
+              {i.url && (
+                <a
+                  href={i.url} target="_blank" rel="noreferrer"
+                  className="tap" style={{ ...ask, textDecoration: 'none' }}
+                >{t('OFFICIAL')}</a>
+              )}
+            </div>
+          ))}
+
+          {/* Said where a person can see it, not in a footnote. Somebody who
+              is widely told a rule that no government states deserves to
+              know which of the two they are reading. */}
+          {pack.unverified.length > 0 && (
+            <div style={{ ...rowSub, padding: '12px 16px 0', borderTop: '1px solid var(--ink-08)' }}>
+              <div style={{ ...kicker, marginBottom: 4 }}>{t('WIDELY SAID, NOT STATED ANYWHERE OFFICIAL')}</div>
+              {pack.unverified.map((u) => <div key={u}>{u}</div>)}
+            </div>
+          )}
+
+          <div style={{ ...rowSub, padding: '12px 16px 0' }}>{pack.promise}</div>
+        </>
+      )}
+      {draft.source === 'paperwork' && !busy && pack && !pack.ok && (
+        <div style={{ ...rowSub, padding: '0 16px 14px' }}>
+          {t('Nothing on file for that one yet — ask me and I’ll find the official page.')}
+        </div>
       )}
 
       <div style={{ padding: '14px 16px 20px', borderTop: '1px solid var(--ink-08)' }}>

@@ -454,7 +454,75 @@ export async function requestPayment(env, { memberId, amountCents, currency = 'u
  *   - payment_intent_data is NOT sent: Stripe rejects it in subscription
  *     mode; the subscription carries the metadata instead.
  */
-export async function requestSubscription(env, { memberId, businessId, hostId, amountCents, name, ref, successUrl, cancelUrl, currency = 'usd' }) {
+/**
+ * The email we already hold for whoever is buying — so Checkout opens with it
+ * filled in.
+ *
+ * Retyping an address you already gave is the cheapest abandonment there is,
+ * and it costs twice: the field itself, and the doubt it creates ("does this
+ * thing even know who I am?"). It also makes `after_expiration.recovery`
+ * useful — Stripe cannot email an abandoned checkout back to someone whose
+ * address it was never given.
+ *
+ * Returns null on anything unexpected. A missing email must never stop a
+ * checkout; it only means Stripe asks for one.
+ */
+async function payerEmailFor(env, { memberId, businessId, hostId }) {
+  try {
+    if (memberId) {
+      const r = await env.DB?.prepare('SELECT email FROM num_members WHERE id=?1').bind(memberId).first();
+      return r?.email || null;
+    }
+    if (hostId) {
+      const r = await env.DB?.prepare('SELECT email FROM num_hosts WHERE id=?1').bind(hostId).first();
+      return r?.email || null;
+    }
+    if (businessId) {
+      // The owner, not whoever was added last: a manager's address on the
+      // billing receipt is how a subscription ends up invisible to the person
+      // who actually pays for it.
+      const r = await env.DB?.prepare(
+        `SELECT email FROM num_business_users
+          WHERE business_id=?1 AND status='active'
+          ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END, created_at
+          LIMIT 1`,
+      ).bind(businessId).first();
+      return r?.email || null;
+    }
+  } catch { /* a lookup must never fail a sale */ }
+  return null;
+}
+
+/**
+ * Whether Checkout shows a promotion-code field, and for how many days a
+ * subscription runs free before the first charge.
+ *
+ * BOTH DEFAULT TO OFF, deliberately.
+ *
+ * The promo field is not free to show. On an account with no live codes it
+ * asks every buyer a question they cannot answer — "is there a discount I am
+ * missing?" — and the honest answer costs a tab, a search, and sometimes the
+ * sale. It should be switched on the day a real code exists and not before.
+ *
+ * A trial is a bigger decision than a flag. Under California's Automatic
+ * Renewal Law a trial that converts to a charge needs the terms stated before
+ * the card is taken and a cancel path that is no harder than joining was —
+ * /api/membership/cancel is that path and it already cancels at period end.
+ * The ceiling being raised is also not obviously a thing you trial: a free
+ * NUM member is not blocked from anything, so "try Plus free" has to mean
+ * "run more at once for a fortnight", which is only worth offering to someone
+ * already pressed against the limit.
+ *
+ * NUM_CHECKOUT_PROMO=1 turns the field on.
+ * NUM_TRIAL_DAYS=14 sets a trial; anything outside 1–30 is ignored.
+ */
+const promoOn = (env) => String(env?.NUM_CHECKOUT_PROMO ?? '') === '1';
+const trialDays = (env) => {
+  const n = Math.trunc(Number(env?.NUM_TRIAL_DAYS));
+  return Number.isFinite(n) && n >= 1 && n <= 30 ? n : 0;
+};
+
+export async function requestSubscription(env, { memberId, businessId, hostId, amountCents, name, ref, successUrl, cancelUrl, currency = 'usd', interval = 'month' }) {
   await ensure(env);
   const mode = payMode(env);
   if (mode !== 'stripe') {
@@ -478,6 +546,16 @@ export async function requestSubscription(env, { memberId, businessId, hostId, a
 
   const id = `pay_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
   const origin = env.NUM_APP_ORIGIN || 'https://app.itsnum.com';
+  // Monthly or yearly, and monthly on anything unrecognised — a typo must not
+  // quietly bill someone twelve times what they agreed to, or a twelfth.
+  // The market NUM sells into has settled on an annual plan as the default
+  // (median $34.80/yr in RevenueCat's 2026 figures, against $7.99–$9.99/mo),
+  // and NUM has never offered one. The price of a year is not decided here:
+  // this only makes one expressible.
+  const every = String(interval) === 'year' ? 'year' : 'month';
+  const email = await payerEmailFor(env, { memberId, businessId, hostId });
+  const promo = promoOn(env);
+  const trial = trialDays(env);
   const session = await stripe(
     env,
     '/checkout/sessions',
@@ -486,13 +564,19 @@ export async function requestSubscription(env, { memberId, businessId, hostId, a
       success_url: successUrl || `${origin}/?paid=${id}`,
       cancel_url: cancelUrl || `${origin}/?app`,
       client_reference_id: id,
+      // Both live checkout sessions NUM has ever had expired unpaid with
+      // nothing sent after them (20 Sep 2026). Stripe will email a link back
+      // to an abandoned session, but only when it was told who to email.
+      ...(email ? { customer_email: email } : {}),
+      ...(promo ? { allow_promotion_codes: true } : {}),
+      ...(email ? { after_expiration: { recovery: { enabled: true, allow_promotion_codes: promo } } } : {}),
       line_items: [
         {
           quantity: 1,
           price_data: {
             currency: cur,
             unit_amount: amount,
-            recurring: { interval: 'month' },
+            recurring: { interval: every },
             product_data: { name: clip(name, 120) || 'Num membership' },
           },
         },
@@ -500,6 +584,10 @@ export async function requestSubscription(env, { memberId, businessId, hostId, a
       metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(ownerId ? { [ownerMetaKey]: ownerId } : {}) },
       subscription_data: {
         metadata: { num_payment_id: id, ...(ref ? { num_ref: ref } : {}), ...(ownerId ? { [ownerMetaKey]: ownerId } : {}) },
+        // A card is collected either way (payment_method_collection defaults
+        // to 'always' in subscription mode), so a trial converts on its own
+        // and `cancel_at_period_end` still ends it cleanly.
+        ...(trial ? { trial_period_days: trial } : {}),
       },
     },
     id,

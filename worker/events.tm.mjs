@@ -104,6 +104,29 @@ export function shape(e) {
     lat: Number.isFinite(Number(venue?.location?.latitude)) ? Number(venue.location.latitude) : null,
     lng: Number.isFinite(Number(venue?.location?.longitude)) ? Number(venue.location.longitude) : null,
     genre: named(cls.genre) || named(cls.segment) || null,
+    /* ── THE TWO TIERS THIS USED TO THROW AWAY (20 Sep 2026) ────────────
+     *
+     * Ticketmaster classifies in three tiers and this read only the middle
+     * one, collapsing it with the top one on the way past. The cost was
+     * exact: every techno night, house night and trance night in the
+     * product arrived as the single string "Dance/Electronic", so the one
+     * distinction Dre asked for — hip hop against EDM against techno — was
+     * the one the data could not make, while the field that makes it was
+     * sitting unread in the same object.
+     *
+     * `segment` is kept separately as well as folded into `genre`, because
+     * "Arts & Theatre" is how you refuse a matinee without pattern-matching
+     * its title, and `genre` alone cannot tell you the segment once a genre
+     * exists to shadow it. */
+    subGenre: named(cls.subGenre) || null,
+    segment: named(cls.segment) || null,
+    /* WHO IS ACTUALLY PLAYING. "It's hard to find what DJs are playing" —
+     * and the answer was in `_embedded.attractions`, which nothing read.
+     * The event NAME is a promoter's headline ("Cheeky Monday: ANAÏS!");
+     * the attractions are the billing. Names only: the rest of an
+     * attraction object is images and links we have no use for here. */
+    acts: (Array.isArray(e?._embedded?.attractions) ? e._embedded.attractions : [])
+      .map((a) => (a?.name ? String(a.name) : null)).filter(Boolean).slice(0, 8),
     from: pr?.min ?? null,
     currency: pr?.currency ?? null,
     url: e?.url ?? null,
@@ -142,7 +165,32 @@ export function shape(e) {
  *
  * @returns {{ok:true, events:object[], total:number} | {ok:false, reason:string}}
  */
-export async function search(env, { lat, lng, country, days = 7, radiusMiles = 25, size = 10 }, fetchImpl = fetch) {
+export async function search(env, {
+  lat, lng, country, days = 7, radiusMiles = 25, size = 10,
+  /* ── ASK FOR MUSIC, DO NOT FILTER FOR IT (20 Sep 2026) ─────────────────
+   *
+   * London's nightlife rail came back as the Paddington Bear Experience, Sea
+   * Life, the London Eye, the London Dungeon and Twist Museum. Genre `Family`.
+   * Not one music event in a city with hundreds on any given night.
+   *
+   * The cause is `sort=date,asc` over an unfiltered query, and it is
+   * structural rather than unlucky: a timed attraction sells a 10:00 slot
+   * every single day of the year, so in a sort by date it is always at the
+   * top, forever, in every city that has one. Filtering afterwards cannot fix
+   * that — the twenty rows we are allowed to ask for were spent before the
+   * filter ran, so a stricter filter just empties the rail instead.
+   *
+   * `classificationName` takes the name of any segment, genre or sub-genre, so
+   * 'Music' spends those twenty rows on music. Callers that want everything
+   * (TONIGHT, which legitimately shows the view from a tower) pass nothing and
+   * behave exactly as before.
+   *
+   * `startDateTime` is also overridable now, because a weekend that begins on
+   * Friday at 18:00 cannot be expressed as "n days from now". */
+  classificationName = null,
+  startAt = null,
+  endAt = null,
+}, fetchImpl = fetch) {
   if (!eventsReady(env)) return { ok: false, reason: 'not_connected' };
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { ok: false, reason: 'no_coordinates' };
   // The measured check, not the documented one. See the coverage note above.
@@ -155,11 +203,12 @@ export async function search(env, { lat, lng, country, days = 7, radiusMiles = 2
     geoPoint: geohash(lat, lng),
     radius: String(radiusMiles),
     unit: 'miles',
-    startDateTime: tmTime(now),
-    endDateTime: tmTime(until),
+    startDateTime: startAt ? tmTime(startAt) : tmTime(now),
+    endDateTime: endAt ? tmTime(endAt) : tmTime(until),
     sort: 'date,asc',
     size: String(Math.min(Math.max(1, size), 20)),
   });
+  if (classificationName) qs.set('classificationName', String(classificationName));
 
   let res;
   try {
