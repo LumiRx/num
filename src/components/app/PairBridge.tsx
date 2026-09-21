@@ -17,6 +17,7 @@ import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { redeemPairCode } from '../../lib/social';
 import { t } from '../../lib/i18n';
+import { canOfferSubscription } from '../../lib/native';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
@@ -136,6 +137,11 @@ export default function PairBridge({ installed }: { installed: boolean }) {
   const me = useApp((s) => s.me);
   if (!installed) return code ? <PairHandoff /> : null;
   if (!me) return null;
+  // No "enter a code" field in the iOS app: App Review 3.1.1 (21 Sep 2026)
+  // rejected "code to unlock or enable content", and a reviewer cannot tell a
+  // friend-pairing code from a redeem code by looking. Friends still connect
+  // there by QR and by link, which need no code at all.
+  if (!canOfferSubscription()) return null;
   return <PairRedeem />;
 }
 

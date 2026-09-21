@@ -31,6 +31,7 @@ import { disablePush, enablePush, pushState } from '../../lib/push';
 import { apiUrl } from '../../lib/apibase';
 import { guestMessage } from '../../lib/saferr';
 import { T, t, LANGS, isLang, phoneLang, setLang, type Lang } from '../../lib/i18n';
+import { canOfferSubscription } from '../../lib/native';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
@@ -394,14 +395,16 @@ export default function ProfileView() {
         </div>
         {/* CLICK IT AND UPGRADE. The plans live on the wallet sheet — the
             full sell, with badges — so the chip opens that, not a scroll. */}
-        <div
+        {/* Not on iOS: App Review 3.1.1. The wallet there sells nothing, so a
+            chip saying UPGRADE is an advertisement for a door that is shut. */}
+        {canOfferSubscription() && <div
           {...pressable(() => store.set({ walletOpen: true }))}
           aria-label={t('Your plan')}
           className="press tap"
           style={{ cursor: 'pointer', flex: 'none', alignSelf: 'flex-start', fontSize: 10, fontWeight: 800, letterSpacing: '.1em', padding: '0 12px', minHeight: 32, display: 'flex', alignItems: 'center', borderRadius: 999, background: 'var(--grad-accent)', color: '#fff' }}
         >
           {t('UPGRADE')}
-        </div>
+        </div>}
       </div>
 
       {/* Its own block UNDER the identity row. As a third flex child it was
@@ -410,7 +413,7 @@ export default function ProfileView() {
 
       {/* 2 · THE HUB. Three tiles, one tap each. */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, margin: '10px 12px 0' }}>
-        <Tile big={`★${stars.toLocaleString()}`} label={t('STARS')} sub={t('Top up, tabs')} onTap={() => store.set({ walletOpen: true })} />
+        <Tile big={`★${stars.toLocaleString()}`} label={t('STARS')} sub={canOfferSubscription() ? t('Top up, tabs') : t('Balance, tabs')} onTap={() => store.set({ walletOpen: true })} />
         <Tile big={<QrGlyph />} label={t('MY CODE')} sub={t('Share, connect')} onTap={() => store.set({ shareOpen: true })} />
         <Tile big={friends > 0 ? String(friends) : '+'} label={t('PEOPLE')} sub={friends > 0 ? t('connected') : t('Invite a friend')} onTap={() => (friends > 0 ? document.getElementById('your-people')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : store.set({ shareOpen: true }))} />
       </div>

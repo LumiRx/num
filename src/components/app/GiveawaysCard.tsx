@@ -17,6 +17,7 @@ import { store, useApp } from '../../lib/store';
 import { apiUrl } from '../../lib/apibase';
 import { canSend, needAccount } from '../../lib/gate';
 import { t } from '../../lib/i18n';
+import { canOfferSubscription } from '../../lib/native';
 
 export interface Giveaway {
   id: string; title: string; prize: string; how: string; who: string; rules_url: string; note: string;
@@ -72,6 +73,11 @@ export default function GiveawaysCard({ heading }: { heading?: React.ReactNode }
     }
   };
 
+  // Not in the iOS app. A draw entered by sending a code is what App Review
+  // 3.1.1 (21 Sep 2026) called "code to unlock or enable content"; the server
+  // lists none to iOS either (worker/storefront.mjs). One gate, the same one
+  // the wallet and the plans use.
+  if (!canOfferSubscription()) return null;
   if (!list || !list.length) return null;
   return (
     <>

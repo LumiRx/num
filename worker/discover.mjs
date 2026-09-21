@@ -242,19 +242,21 @@ export function dealThree(ranked) {
   return out;
 }
 
-/** The closest live destination to a coordinate, or null past 150 km. */
-export async function nearestDest(env, lat, lng) {
+/** The closest live destination to a coordinate, or null past `maxKm` (150 by default). */
+export async function nearestDest(env, lat, lng, { maxKm = 150 } = {}) {
   if (!env?.DB || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   try {
-    const { results } = await env.DB.prepare('SELECT slug, country, lat, lng FROM destinations WHERE lat IS NOT NULL AND lng IS NOT NULL').all();
+    const { results } = await env.DB.prepare('SELECT slug, name, country, lat, lng, tz FROM destinations WHERE lat IS NOT NULL AND lng IS NOT NULL').all();
     let best = null;
     for (const r of results ?? []) {
       const km = haversineKm(lat, lng, r.lat, r.lng);
-      if (km != null && km <= 150 && (!best || km < best.km)) best = { ...r, km };
+      if (km != null && km <= maxKm && (!best || km < best.km)) best = { ...r, km };
     }
     return best;
   } catch { return null; }
 }
+
+const destName = (r) => String(r?.name || r?.slug || '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 /* ── Route ─────────────────────────────────────────────────────────────── */
 
@@ -316,11 +318,23 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
     const near = await nearestDest(env, Number(g('lat')), Number(g('lng')));
     if (near) { dest = near.slug; row = near; }
   }
+  // A device fix, but nowhere NUM covers within 150 km — Cupertino, where App
+  // Review sits, is 450 km from Los Angeles. "Tell NUM where you are" was the
+  // answer, and the person had just told us: tapping Surprise me again dealt
+  // the same refusal, which App Review (2.1(a), 21 Sep 2026) read as a button
+  // that does nothing. Deal from the nearest city NUM does cover and say so.
+  let farFrom = null;
+  if (!dest && g('lat') != null && g('lng') != null) {
+    const far = await nearestDest(env, Number(g('lat')), Number(g('lng')), { maxKm: Infinity });
+    if (far) { dest = far.slug; row = far; farFrom = far; }
+  }
   if (!dest) return json({ ok: false, error: 'no_place', hint: 'Tell NUM where you are first.' }, 400);
   if (!row) { try { row = await env.DB.prepare('SELECT slug, name, country, lat, lng, tz FROM destinations WHERE slug = ?1').bind(dest).first(); } catch { /* fall back to the query */ } }
   const country = String(g('country') || row?.country || '').toUpperCase().slice(0, 2);
-  const lat = g('lat') != null ? Number(g('lat')) : (row?.lat ?? null);
-  const lng = g('lng') != null ? Number(g('lng')) : (row?.lng ?? null);
+  // Out of range, the person's own coordinates would filter every row out as
+  // too far away — use the city's instead.
+  const lat = g('lat') != null && !farFrom ? Number(g('lat')) : (row?.lat ?? null);
+  const lng = g('lng') != null && !farFrom ? Number(g('lng')) : (row?.lng ?? null);
   const me = g('me'), planId = g('plan_id'), mood = MOOD_TAGS[g('mood')] ? g('mood') : null;
   if (mode === 'search' && !q) return json({ ok: false, error: 'q required for search' }, 400);
 
@@ -518,7 +532,10 @@ export async function handleDiscover(request, env, fetchImpl = fetch, ctx = null
     ok: true, mode, q: q || null, mood, dest,
     sources: { num: count('num'), ticketmaster: count('ticketmaster'), viator: count('viator'), crew: crew.length },
     items,
-    note: items.length ? null : 'Nothing new here yet. Ask me in words and I will look wider.',
+    note: farFrom
+      ? `NUM does not cover where you are yet, so these are from ${destName(farFrom)}, the nearest city it does.`
+      : items.length ? null : 'Nothing new here yet. Ask me in words and I will look wider.',
+    ...(farFrom ? { far: { dest: farFrom.slug, km: Math.round(farFrom.km) } } : {}),
     // Why a rail came back empty. Reasons only, never keys or payloads.
     ...(g('debug') ? { why: { viator: exps.reason ?? 'ok', ticketmaster: events.reason ?? 'ok' } } : {}),
   });

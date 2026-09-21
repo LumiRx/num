@@ -27,6 +27,7 @@
  *
  * Adding a giveaway: add an entry to LIVE with its own `status(env, member)`.
  */
+import { isIosApp } from './storefront.mjs';
 import { RULES } from '../growth/fridayrules.mjs';
 import { weekStart, weekEnd, entrantKey, eligibleCount, phoneForMember } from './giveaway.mjs';
 import { recordEntry, weekKeyFor, ENTRY_CODE } from './packdraw.mjs';
@@ -142,6 +143,14 @@ export async function list(env, me, nowSec = Math.floor(Date.now() / 1000)) {
 
 export async function handleGiveaways(request, env, path, url) {
   if (!env?.DB) return json({ error: 'no database' }, 503);
+  // A prize draw entered by sending a code is exactly what App Review 3.1.1
+  // (21 Sep 2026) called "code to unlock or enable content", and a sweepstake
+  // in an iOS app carries 5.3 obligations besides. The iOS app lists none and
+  // enters none — storefront.mjs.
+  if (isIosApp(request)) {
+    if (request.method === 'GET') return json({ giveaways: [] });
+    return json({ ok: false, error: 'not_on_ios' }, 403);
+  }
   if (request.method === 'GET' && (path === '/' || path === '')) {
     return json(await list(env, String(url.searchParams.get('me') ?? '').trim() || null));
   }

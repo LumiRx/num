@@ -27,6 +27,7 @@
 // for a BIN, the first six digits, which is precisely because the full number
 // is somebody else's problem on purpose.
 
+import { isIosApp, isDigitalSaleRef, IOS_NO_SALE } from './storefront.mjs';
 import { checkPayment, refusal, STAR_PACKS } from './preflight.mjs';
 import { alert } from './health.mjs';
 
@@ -1314,13 +1315,16 @@ export async function handlePay(request, env, path) {
       // Stars-for-cash is a licensing decision, not a feature flag — §8:
       // "Never sell Stars." It stays refused until Duke sets STARS_SALE_OK=1
       // on the record. Bills, tabs, bookings and bounties are unaffected.
-      stars_sale: env.STARS_SALE_OK === '1',
+      // The iOS app sells nothing digital (storefront.mjs). Answering it with
+      // `stars_sale: false` and no packs means even a stale build renders no
+      // price to tap.
+      stars_sale: env.STARS_SALE_OK === '1' && !isIosApp(request),
       stars: starPolicy(env),
       // The packs, priced HERE. The wallet used to carry its own copy of these
       // numbers, which is the $1-for-★5,000 hole in a different shirt: two
       // sources of truth for a price, and the client's is the one an attacker
       // controls. The client displays what this returns and nothing else.
-      packs: Object.entries(STAR_PACKS).map(([stars, cents]) => ({
+      packs: isIosApp(request) ? [] : Object.entries(STAR_PACKS).map(([stars, cents]) => ({
         stars: Number(stars),
         cents,
         price: `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 })}`,
@@ -1340,6 +1344,11 @@ export async function handlePay(request, env, path) {
 
   if (path === '/request' && post) {
     const b = await readBody(request);
+
+    // App Review 3.1.1, 21 Sep 2026: Stars and plans are digital content and
+    // the iOS app may not sell them outside IAP. Refused here whatever the
+    // client shows — see storefront.mjs. Bills, tabs and bookings pass.
+    if (isIosApp(request) && isDigitalSaleRef(b?.ref)) return json({ ...IOS_NO_SALE, mode: payMode(env) }, 403);
 
     // EVERY payment is checked before it exists. The verdict recomputes the
     // amount from our own price list, so a client number is a claim to be

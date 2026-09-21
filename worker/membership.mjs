@@ -57,6 +57,7 @@
 // plan costs and the server charges what it says; a client that could name its
 // own number is the $1-for-★5,000 hole again in a different shirt. Change them
 // here, or override with MEMBERSHIP_TIERS (JSON) without a deploy.
+import { isIosApp, IOS_NO_SALE } from './storefront.mjs';
 import { STAR_PACKS } from './preflight.mjs';
 import { starTiers, quote as starQuote, buyWithStars, spendable as starSpendable } from './starmembership.mjs';
 
@@ -444,6 +445,10 @@ export async function handleMembership(request, env, path) {
   // lapse silently on day 31 — every subscriber was one month of revenue.
   // Stripe now owns the recurrence; our webhook extends on invoice.paid
   // and lapses on customer.subscription.deleted, and nothing else.
+  // Neither door opens from the iOS app (App Review 3.1.1) — storefront.mjs.
+  if ((path === '/subscribe' || path === '/upgrade-with-stars') && request.method === 'POST' && isIosApp(request)) {
+    return json(IOS_NO_SALE, 403);
+  }
   if (path === '/subscribe' && request.method === 'POST') {
     const b = await request.json().catch(() => ({}));
     const me = clip(b.me, 40);

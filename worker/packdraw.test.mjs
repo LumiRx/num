@@ -168,14 +168,14 @@ describe('how it is wired into the message path', () => {
   test('the code is checked BEFORE a model is called', () => {
     // A model asked "PACKS" answers something plausible about card packs and
     // the entry is silently never recorded — the member believes they entered.
-    const entryAt = src.indexOf('if (isEntry(lastUser))');
+    const entryAt = src.indexOf('if (isEntry(lastUser)');
     const knownAt = src.indexOf('const known = knownAnswer(');
     assert.ok(entryAt > 0, 'the entry check has gone from index.mjs');
     assert.ok(entryAt < knownAt, 'the entry check must run before the answer path');
   });
 
   test('a failed write never replies "you\'re in"', () => {
-    const block = src.slice(src.indexOf('if (isEntry(lastUser))'), src.indexOf('const prevAssistant'));
+    const block = src.slice(src.indexOf('if (isEntry(lastUser)'), src.indexOf('const prevAssistant'));
     assert.match(block, /Something went wrong recording that entry/);
     assert.match(block, /entry\.ok/, 'the reply must branch on whether the write succeeded');
   });

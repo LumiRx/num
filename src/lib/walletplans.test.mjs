@@ -82,6 +82,9 @@ describe('the iOS promise is inherited, not re-decided', () => {
     const at = code.indexOf('<MembershipCard />');
     const block = code.slice(code.lastIndexOf('{open', at), at);
     assert.doesNotMatch(block, /canOfferSubscription/);
-    assert.equal((code.match(/canOfferSubscription\(\)/g) ?? []).length, 1, 'one gate in this file, on the packs');
+    // Two uses, both about SELLING, neither on the plans: the packs block, and
+    // the "Top-ups opening soon" line under payment methods (App Review 3.1.1,
+    // 21 Sep 2026 — a promise of a sale is a sale surface too).
+    assert.equal((code.match(/canOfferSubscription\(\)/g) ?? []).length, 2, 'two gates in this file: the packs and the top-ups line');
   });
 });

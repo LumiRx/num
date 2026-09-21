@@ -182,9 +182,17 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
   const planId = useApp((s) => s.planId);
   const members = useApp((s) => s.planMembers);
 
-  const deal = async (m: Mood | null) => {
+  // `tapped` is a person pressing a button, not the hand dealt on open. With
+  // no place and no device fix the server can only refuse, and dealing the
+  // same refusal again read to App Review (2.1(a), 21 Sep 2026) as a button
+  // that does nothing. A tap with nowhere to deal from goes straight to the
+  // place sheet — the one thing that makes the next tap work.
+  const deal = async (m: Mood | null, tapped = false) => {
+    const s = store.get();
+    if (tapped && !s.place && !s.here) { store.set({ discoverOpen: null, placeOpen: true }); return; }
     setBusy(true); onMsg(null);
     const r = await discover({ mode: 'surprise', mood: m });
+    if (tapped && r.error === 'no_place') { setBusy(false); store.set({ discoverOpen: null, placeOpen: true }); return; }
     setDeck(r.items); setNote(r.error === 'no_place' ? 'no_place' : r.error ? t('Couldn’t reach the shelf just now.') : r.note); setBusy(false);
   };
   useEffect(() => { void deal(null); /* first open deals a hand */ // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,13 +210,13 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
       </div>
       <div className="no-scrollbar" style={{ display: 'flex', gap: 6, marginTop: 12, overflowX: 'auto' }}>
         {MOODS.map((m) => (
-          <div key={m.id} {...pressable(() => { const next = mood === m.id ? null : m.id; setMood(next); void deal(next); })} style={pill(mood === m.id)}>
+          <div key={m.id} {...pressable(() => { const next = mood === m.id ? null : m.id; setMood(next); void deal(next, true); })} style={pill(mood === m.id)}>
             <span aria-hidden="true" style={{ marginRight: 5 }}>{m.emoji}</span>{t(m.label).toUpperCase()}
           </div>
         ))}
       </div>
       <div
-        {...pressable(() => { setMood(null); void deal(null); })}
+        {...pressable(() => { setMood(null); void deal(null, true); })}
         className="press"
         style={{ cursor: 'pointer', marginTop: 10, borderRadius: 14, padding: '13px 16px', background: 'var(--grad-accent)', color: '#fff', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}
       >
@@ -225,6 +233,9 @@ function Suggest({ onMsg }: { onMsg: (m: string | null) => void }) {
         )}
         {!busy && deck.length === 0 && note !== 'no_place' && (
           <div style={{ fontSize: 12, color: 'var(--ink-40)', lineHeight: 1.6, padding: '6px 2px' }}>{note ?? 'Nothing new here yet.'}</div>
+        )}
+        {!busy && deck.length > 0 && note && note !== 'no_place' && (
+          <div style={{ fontSize: 12, color: 'var(--ink-60)', lineHeight: 1.5, padding: '0 2px' }}>{note}</div>
         )}
         {deck.map((i) => <SuggestCard key={i.id} i={i} planId={planId} onDone={(m) => { drop(i.id); onMsg(m); }} />)}
       </div>

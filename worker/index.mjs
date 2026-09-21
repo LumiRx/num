@@ -10,6 +10,7 @@
 // (`wrangler secret put ANTHROPIC_API_KEY` in prod, .dev.vars for wrangler dev).
 // The endpoint is public, so worker/guard.mjs rate-limits and validates every
 // request before we spend a token — see DEPLOY.md § Launch hardening.
+import { isIosApp } from './storefront.mjs';
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, REPLY_SCHEMA, contextBlock, normalizeReply } from './prompt.mjs';
 import { resolvePicks, picksFromProse } from './placelink.mjs';
@@ -990,7 +991,10 @@ export async function handleNum(request, env, ctx, hooks = null) {
      * `isEntry` requires the message to BE the code, so "where can I buy packs
      * in Bangkok" still reaches the concierge and the new card-shop search
      * rather than entering somebody in a prize draw. */
-    if (isEntry(lastUser)) {
+    // Not from the iOS app: a code typed into chat that enters a prize draw is
+    // what App Review 3.1.1 (21 Sep 2026) refused. There it falls through to
+    // the concierge like any other word. See storefront.mjs.
+    if (isEntry(lastUser) && !isIosApp(request)) {
       const entry = await recordEntry(env, { memberId, source: 'app' });
       const reply = entry.needsAccount
         ? NEEDS_ACCOUNT_REPLY

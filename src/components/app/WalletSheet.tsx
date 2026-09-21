@@ -338,7 +338,7 @@ export default function WalletSheet() {
           <>
             <span style={{ fontWeight: 600 }}>{' '}{t('Apple Pay · ready')}</span>
             <span>{t('Cards via Stripe')}</span>
-            {!pay.stars_sale && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>{t('Top-ups opening soon')}</span>}
+            {!pay.stars_sale && canOfferSubscription() && <span style={{ color: 'var(--color-accent-700)', fontWeight: 600 }}>{t('Top-ups opening soon')}</span>}
           </>
         ) : (
           <span>{t('Pay rail connects soon — Stars are earned, and bills settle in person until then.')}</span>
