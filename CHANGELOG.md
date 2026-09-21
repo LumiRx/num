@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.316 — 2026-09-21 19:10 UTC
+
+(no note given)
+
+- commit `a59cd96`
+
 ## 0.8.315 — 2026-09-20 22:54 UTC
 
 CTA funnel + traveller plans
