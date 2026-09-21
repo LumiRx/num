@@ -294,6 +294,89 @@ function changelog(version, note) {
   writeFileSync(path, title + entry + (rest.length ? '\n## ' + rest.join('\n## ') : ''));
 }
 
+
+/**
+ * ── THE OTHER LAPTOP (21 Sep 2026, Dre's call) ───────────────────────────
+ *
+ * "An update from our other MacBook might have reverted some of our changes.
+ * We always need to double check to make sure that we don't revert things
+ * that are already done."
+ *
+ * Nothing in this tool had ever looked at the remote. `stage` built whatever
+ * was on the machine it ran on and `ship` put it live, so a laptop that had
+ * not pulled for a week would cheerfully deploy its own older tree over work
+ * done somewhere else — and every other guard we have would stay green while
+ * it happened:
+ *
+ *   · the tests pass, because the older tree is self-consistent
+ *   · deploydrift.mjs says "up to date", because it compares the WORKER to
+ *     the LOCAL repo, and both are stale together
+ *   · `.deploy-shipped.json` is gitignored and per-machine, so this laptop's
+ *     ledger has no idea the other one ever deployed
+ *
+ * The state that prompted this, measured on the Mac at the time: five commits
+ * ahead of origin and unpushed, and the last `git fetch` was SIX DAYS old. A
+ * week of work on one disk, invisible to the other machine and to every check
+ * in this repo.
+ *
+ * So: fetch, then refuse to stage while the branch is behind its upstream.
+ *
+ * ── WHAT IT DOES NOT DO ──────────────────────────────────────────────────
+ *
+ * It does not refuse for being AHEAD. Unpushed work is normal mid-session and
+ * blocking on it would make the tool unusable; it says so and moves on, which
+ * is the nudge that matters.
+ *
+ * It does not pretend to have checked when it could not. A fetch fails on a
+ * plane, behind a proxy, or with no key loaded — and a guard that silently
+ * passes in that case is worse than no guard, because it teaches people the
+ * check happened. It says plainly that the remote could not be reached and
+ * names what it could not rule out.
+ */
+function refuseIfBehindRemote() {
+  if (process.env.NO_REMOTE_CHECK) {
+    console.warn('\n⚠  NO_REMOTE_CHECK set — shipping without looking at the remote.\n');
+    return;
+  }
+  let upstream = null;
+  try { upstream = cap('git rev-parse --abbrev-ref --symbolic-full-name @{u}'); } catch { upstream = null; }
+  if (!upstream) {
+    console.warn('\n⚠  This branch tracks nothing, so there is no remote to compare against.');
+    console.warn('   Whatever another machine has done is invisible from here.\n');
+    return;
+  }
+
+  let fetched = true;
+  try { execSync('git fetch --quiet', { stdio: 'pipe' }); } catch { fetched = false; }
+
+  const [ahead, behind] = cap(`git rev-list --left-right --count HEAD...${upstream}`)
+    .split(/\s+/).map(Number);
+
+  if (!fetched) {
+    console.warn(`\n⚠  COULD NOT REACH THE REMOTE. The comparison below is against whatever`);
+    console.warn(`   ${upstream} looked like the last time this machine fetched, which may be`);
+    console.warn('   old. Work pushed from another machine since then is not ruled out.\n');
+  }
+
+  if (behind > 0) {
+    console.error(`\n✘ ${upstream} is ${behind} commit(s) AHEAD of this machine.`);
+    console.error('  Staging now would build a tree that is missing them, and shipping it');
+    console.error('  would put that missing work live — silently, because the tests pass and');
+    console.error('  the drift ledger only ever compares this worker to this repo.\n');
+    console.error('  Pull first:');
+    console.error('    git pull --rebase\n');
+    console.error('  Then run stage again.\n');
+    process.exit(1);
+  }
+
+  if (ahead > 0) {
+    console.warn(`\n⚠  ${ahead} commit(s) here are not on ${upstream} yet.`);
+    console.warn('   Shipping is fine — but until they are pushed they exist on this disk');
+    console.warn('   only, and the other machine will deploy over them without knowing.');
+    console.warn('     git push\n');
+  }
+}
+
 switch (cmd) {
   case 'stage': {
     // Tests BEFORE the build. A preview URL is something a person will open
@@ -312,6 +395,7 @@ switch (cmd) {
     // away for something that was true before we started. Both checks stay —
     // a lock can also appear while the tests are running.
     if (!process.env.NO_AUTOCOMMIT) refuseOnStaleLock();
+    refuseIfBehindRemote();
     sh('npm test');
 
     // ── SCHEMA BEFORE CODE ──────────────────────────────────────────────

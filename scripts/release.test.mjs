@@ -190,3 +190,63 @@ test('there is an escape hatch for a deliberate uncommitted deploy', () => {
     'a guard with no override gets worked around in worse ways',
   );
 });
+
+/* ── THE OTHER LAPTOP (21 Sep 2026) ──────────────────────────────────────
+ *
+ * Dre: "an update from our other MacBook might have reverted some of our
+ * changes... we always need to double check to make sure that we don't
+ * revert things that are already done."
+ *
+ * Nothing here had ever looked at the remote. `stage` built whatever was on
+ * the machine it ran on, and every other guard stayed green while a stale
+ * laptop shipped over newer work: the tests pass because the older tree is
+ * self-consistent, deploydrift compares the worker to the LOCAL repo so both
+ * are stale together, and `.deploy-shipped.json` is gitignored and
+ * per-machine so it cannot know the other laptop ever deployed.
+ *
+ * Measured on the Mac when this was written: five commits ahead of origin
+ * and unpushed, last fetch six days old.
+ */
+
+test('stage refuses while the branch is behind its upstream', () => {
+  const src = readFileSync(new URL('./release.mjs', import.meta.url), 'utf8');
+  assert.match(src, /function refuseIfBehindRemote\(\)/);
+  assert.match(src, /if \(behind > 0\) \{[\s\S]{0,600}?process\.exit\(1\)/,
+    'being behind no longer stops the stage');
+  // Before the tests, because the suite takes minutes and this is true
+  // before any of them run.
+  const guard = src.indexOf('refuseIfBehindRemote();');
+  const tests = src.indexOf("sh('npm test')");
+  assert.ok(guard > 0 && guard < tests, 'the remote is checked after the suite has already run');
+});
+
+test('it fetches first — a week-old cache is not an answer', () => {
+  const src = readFileSync(new URL('./release.mjs', import.meta.url), 'utf8');
+  assert.match(src, /execSync\('git fetch --quiet'/);
+  const fetchAt = src.indexOf("git fetch --quiet");
+  const countAt = src.indexOf('rev-list --left-right --count');
+  assert.ok(fetchAt > 0 && fetchAt < countAt, 'the count is taken before the fetch');
+});
+
+test('a fetch it could not do is said out loud, never passed over', () => {
+  // A guard that silently passes when it could not check is worse than no
+  // guard: it teaches people the check happened.
+  const src = readFileSync(new URL('./release.mjs', import.meta.url), 'utf8');
+  assert.match(src, /let fetched = true;/);
+  assert.match(src, /if \(!fetched\) \{/);
+  assert.match(src, /COULD NOT REACH THE REMOTE/);
+});
+
+test('being AHEAD warns but never blocks', () => {
+  // Unpushed work mid-session is normal. Blocking on it would make the tool
+  // unusable, and an unusable guard gets an env var wrapped round it.
+  const src = readFileSync(new URL('./release.mjs', import.meta.url), 'utf8');
+  const ahead = src.slice(src.indexOf('if (ahead > 0)'), src.indexOf('if (ahead > 0)') + 500);
+  assert.doesNotMatch(ahead, /process\.exit/);
+  assert.match(ahead, /git push/);
+});
+
+test('a branch that tracks nothing is reported, not assumed safe', () => {
+  const src = readFileSync(new URL('./release.mjs', import.meta.url), 'utf8');
+  assert.match(src, /tracks nothing/);
+});
