@@ -73,6 +73,7 @@ function baseState() {
     typing: false,
     thinkingLine: null,
     featureOpen: null,
+    listingOpen: null,
     eventView: null,
     nightlifeOpen: false,
     pendingAsk: null,
@@ -255,6 +256,10 @@ export function persistable(s: AppState) {
     // The turn in flight and the page that is open are this launch's business only.
     // savedFlights is NOT here: a fare somebody kept must survive closing the app.
     thinkingLine, featureOpen, eventView, pendingAsk, nightlifeOpen,
+    // A search is about a moment — a date, a price, what is open now.
+    // Restoring yesterday's list would show fares that have moved and tables
+    // that are gone, with nothing on the page saying so.
+    listingOpen,
     // Three that were missed, found by a sheet reopening itself hours later.
     // deleteOpen is the worst of them: a guest who opened "Delete my account",
     // thought better of it and closed the app came back INTO the confirmation.

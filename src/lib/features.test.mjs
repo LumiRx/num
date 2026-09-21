@@ -271,7 +271,10 @@ describe('wired, not just written', () => {
     assert.equal((app.match(/featureOpen/g) ?? []).length >= 5, true, 'featureOpen must be in sheetOpen, closeSheets (twice), overlayOpen and the back handler');
   });
   test('the fare tray can be closed, and a fare can be saved', () => {
-    const thread = read('../components/app/ThreadView.tsx');
+    // The tray moved into its own component on 20 Sep 2026 so the listing
+    // page could show the same fares without a second copy of the two-tap
+    // booking disclosure. Behaviour unchanged; only the address moved.
+    const thread = read('../components/app/FlightTray.tsx');
     assert.match(thread, /store\.set\(\{ flightOffers: null \}\)/);
     assert.match(thread, /saveOffer\(o, state\.query\)/);
   });

@@ -124,7 +124,10 @@ describe('the picker shows what is being sent', () => {
 
 describe('the two places a share can start', () => {
   test('a fare card can be shared', () => {
-    const THREAD = readFileSync(new URL('../components/app/ThreadView.tsx', import.meta.url), 'utf8');
+    // The fare tray moved to its own component on 20 Sep 2026 so the
+    // listing page could reuse it; both files are read for that reason.
+    const THREAD = readFileSync(new URL('../components/app/ThreadView.tsx', import.meta.url), 'utf8')
+      + readFileSync(new URL('../components/app/FlightTray.tsx', import.meta.url), 'utf8');
     assert.match(THREAD, /openShareCard\(\{[\s\S]{0,120}kind: 'flight'/);
   });
 

@@ -465,6 +465,13 @@ export interface AppState {
   thinkingLine: string | null;
   /** Which feature's own page is open from TODAY's grid (src/lib/features.ts). */
   featureOpen: import('./features').FeatureId | null;
+  /**
+   * The results page a feature opened into. Deliberately NOT persisted: a
+   * search is about a moment — a date, a price, what is open now — and
+   * restoring yesterday's list on launch would show prices that have moved
+   * and tables that are gone, with no sign that they had.
+   */
+  listingOpen: import('./listing').ListingDraft | null;
   /** A question typed before the sender was reachable, held across the sign-in sheet (lib/gate.ts). */
   pendingAsk: string | null;
   /** NIGHTLIFE — its own screen, nearest first (NightlifeSheet). */

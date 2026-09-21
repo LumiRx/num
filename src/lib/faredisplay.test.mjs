@@ -18,7 +18,13 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const THREAD = readFileSync(new URL('../components/app/ThreadView.tsx', import.meta.url), 'utf8');
+// 20 Sep 2026: the live-fare tray moved out of ThreadView into its own
+// component so the listing page could show the same fares without a second
+// copy of the two-tap booking disclosure. Nothing about its behaviour
+// changed, so the assertions below are unchanged — they just read both
+// files, because that is where the code now lives.
+const THREAD = readFileSync(new URL('../components/app/ThreadView.tsx', import.meta.url), 'utf8')
+  + readFileSync(new URL('../components/app/FlightTray.tsx', import.meta.url), 'utf8');
 const FLIGHTS = readFileSync(new URL('./flights.ts', import.meta.url), 'utf8');
 const CSS = readFileSync(new URL('../styles/themes.css', import.meta.url), 'utf8');
 
@@ -163,7 +169,7 @@ describe('the money colour reaches the places a price actually appears', () => {
   test('the colour is a token, so it is one decision and not fifty', () => {
     // If somebody types a hex green into a component, the next theme breaks
     // in a way nobody sees until a user in dark mode reports a blank price.
-    for (const rel of ['../components/app/PartySheet.tsx', '../components/app/PlanView.tsx', '../components/app/ThreadView.tsx']) {
+    for (const rel of ['../components/app/PartySheet.tsx', '../components/app/PlanView.tsx', '../components/app/ThreadView.tsx', '../components/app/FlightTray.tsx', '../components/app/ListingSheet.tsx']) {
       const src = read(rel);
       const greens = src.match(/#(0[a-f0-9]{2}[6-9a-f][a-f0-9]{2}[0-9a-f])/gi) ?? [];
       assert.ok(greens.length <= 2, `${rel} has hard-coded greens: ${greens.join(', ')}`);

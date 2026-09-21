@@ -8,6 +8,7 @@ import { sheetBase, grabberStyle } from '../../lib/derive';
 import { XIcon } from '../../lib/icons';
 import { featureById } from '../../lib/features';
 import { askNum } from '../../lib/concierge';
+import { openListing, sourceFor } from '../../lib/listing';
 import { forgetSaved, researchAsk } from '../../lib/savedflights';
 import { duration, stopsLabel } from '../../lib/flights';
 import { t } from '../../lib/i18n';
@@ -62,6 +63,17 @@ export default function FeaturePage() {
     const clean: Record<string, string> = {};
     for (const [k, v] of Object.entries(values)) clean[k] = v.trim();
     const ask = f.compose(clean, lane);
+    /* ── A SEARCH OPENS INTO ITS RESULTS (20 Sep 2026, Dre's call) ──────
+     *
+     * "If it's flights it'll be flights, if it's hotels it's hotels or
+     * clubs." A feature with a source has a LIST for an answer, and asking
+     * the concierge to narrate one was the long way round to a worse version
+     * of it. The composed sentence rides along, so ASK NUM TO PICK on the
+     * results page sends exactly what this page always sent — and lib/
+     * listing.ts says which features have a source and why `hire` and
+     * `pickup` deliberately do not. */
+    const source = sourceFor(f.id);
+    if (source) { openListing({ feature: f.id, source, values: clean, lane, ask }); return; }
     store.set({ featureOpen: null, threadOpen: true, unread: 0 });
     // A widget search is a lookup, not a message — see mayBrowse in lib/gate.ts.
     void askNum(ask, { browse: true });

@@ -25,7 +25,13 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const THREAD = readFileSync(new URL('../components/app/ThreadView.tsx', import.meta.url), 'utf8');
+// 20 Sep 2026: the live-fare tray moved out of ThreadView into its own
+// component so the listing page could show the same fares without a second
+// copy of the two-tap booking disclosure. Nothing about its behaviour
+// changed, so the assertions below are unchanged — they just read both
+// files, because that is where the code now lives.
+const THREAD = readFileSync(new URL('../components/app/ThreadView.tsx', import.meta.url), 'utf8')
+  + readFileSync(new URL('../components/app/FlightTray.tsx', import.meta.url), 'utf8');
 const CSS = readFileSync(new URL('../styles/app.css', import.meta.url), 'utf8');
 
 const vh = (name) => {
