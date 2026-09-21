@@ -2,6 +2,18 @@
 
 Every version that has been live, newest first.
 
+## 0.8.413 — 2026-09-21 04:07 UTC
+
+(no note given)
+
+- commit `dec1ca7`
+
+## 0.8.412 — 2026-09-21 04:04 UTC
+
+(no note given)
+
+- commit `5796e3f`
+
 ## 0.8.411 — 2026-09-21 00:47 UTC
 
 (no note given)
