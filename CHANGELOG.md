@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.317 — 2026-09-21 23:49 UTC
+
+eSIM: text ESIM to buy, listing, airport pages, checkout, fulfilment
+
+- commit `3805c4d`
+
 ## 0.8.316 — 2026-09-21 19:10 UTC
 
 (no note given)
