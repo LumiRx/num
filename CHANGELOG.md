@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.411 — 2026-09-21 00:47 UTC
+
+(no note given)
+
+- commit `e631276`
+
 ## 0.8.410 — 2026-09-21 00:34 UTC
 
 Widgets open into results pages; plan days can be added and removed
