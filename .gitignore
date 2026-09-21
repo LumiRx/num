@@ -65,3 +65,7 @@ _to_delete/
 # like .release-staged.json — committing it would make one person's deploy look
 # like everyone's. See scripts/deploydrift.mjs.
 .deploy-shipped.json
+
+# Local-only Telegram bot token, never committed
+.telegram-token
+.telegram-chat-id

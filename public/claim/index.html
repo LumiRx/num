@@ -89,6 +89,12 @@
   .newbiz-head{margin:14px 0 0;font-size:14px;line-height:1.5;color:var(--muted)}
   .optin{display:flex;gap:10px;align-items:flex-start;margin:20px 0 0;padding:13px;background:#f7f9fa;border:1px solid var(--line);border-radius:9px}
   .optin input{margin:2px 0 0;width:18px;height:18px;flex:0 0 auto;accent-color:var(--accent)}
+  /* The way into the dashboard once a listing is proved. Same accent and
+     radius as the page's other primary action; full width so it is the
+     obvious next tap on a phone, and 48px tall to clear touch-target minimums. */
+  .dash-go{display:block;margin:14px 0 0;min-height:48px;line-height:48px;text-align:center;
+    background:var(--accent);color:#fff;border-radius:9px;font-weight:700;text-decoration:none}
+  .dash-go:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
   .optin label{margin:0;font-weight:400;font-size:14px;line-height:1.45;color:var(--ink)}
   button{
     width:100%;margin-top:22px;padding:15px 16px;font-size:17px;font-weight:700;font-family:inherit;
@@ -245,7 +251,7 @@ twq('config','rfbeh');
       <ul id="m-list"></ul>
     </div>
 
-    <form id="claim-form" novalidate>
+    <form id="claim-form" method="post" novalidate>
       <div class="card">
         <h2 id="t-formhead">Two minutes and you&rsquo;re done</h2>
         <p id="scout-chip" class="scoutchip" hidden>Someone from Num introduced you.
@@ -544,7 +550,9 @@ twq('config','rfbeh');
       verifyCheck: "Confirm",
       verifySent: function (x) { return "We sent it to " + x + ". It is good for 10 minutes."; },
       verifyDomEmail: "Your address at this domain",
-      verifyDone: "Verified. This listing is yours — we will send your dashboard link to the same contact.",
+      verifyDone: "Verified. This listing is yours — we've emailed you a link to your dashboard.",
+      dashBtn: "Go to your dashboard",
+      sentTo: "Sent to",
       verifyLater: "Or skip this — a person from our team will check it by hand instead.",
       newbizHead: "We don't have a listing for you yet. Tell us where you are and we'll build one.",
       lAddress: "Address",
@@ -584,13 +592,14 @@ twq('config','rfbeh');
       priceLink: "See what each plan adds",
       errBiz: "Please tell us the business name.",
       errContact: "Please tell us your name, so we know who to ask for.",
-      errPhone: "Please give a mobile number we can reach you on — that's where bookings arrive.",
-      errEmail: "That email address doesn't look right. Leave it blank if you'd rather not.",
+      errPhone: "That mobile number doesn't look right — check the digits, or leave it blank and give us an email instead.",
+      errReach: "Please give us a mobile number or an email — whichever you prefer — so we can reach you.",
+      errEmail: "That email address doesn't look right. Leave it blank if you've given us a mobile number.",
       errSend: "That didn't send — the problem is on our side, not yours. Please try once more, or just reply to the email we sent you and a person will sort it out.",
       doneH1: "That's it — we've got it",
       nextH: "What happens next",
       doneList: [
-        "A person from our team checks the listing against public records and gets in touch on the number you gave us. Usually within one working day.",
+        "We've emailed you a copy of what you sent. A person from our team checks the listing against public records and gets in touch on the number or email you gave us — usually within one working day, with a link to your dashboard.",
         "Once it's checked, your listing goes live with a <b>Verified real</b> badge, and NUM can recommend and book into it.",
         "Bookings arrive as a text on your phone. You accept or decline."
       ],
@@ -628,6 +637,9 @@ twq('config','rfbeh');
       verifySent: function (x) { return "Sudah kami kirim ke " + x + ". Berlaku 10 menit."; },
       verifyDomEmail: "Alamat email Anda di domain ini",
       verifyDone: "Terverifikasi. Data usaha ini milik Anda — tautan dasbor kami kirim ke kontak yang sama.",
+      dashBtn: "Buka dasbor Anda",
+      sentTo: "Dikirim ke",
+      errReach: "Mohon isi nomor HP atau email — mana saja — agar kami bisa menghubungi Anda.",
       verifyLater: "Atau lewati saja — tim kami akan memeriksanya secara manual.",
       newbizHead: "Kami belum punya data usaha Anda. Beri tahu lokasinya, nanti kami buatkan.",
       lAddress: "Alamat",
@@ -702,6 +714,9 @@ twq('config','rfbeh');
       verifySent: function (x) { return "ส่งไปที่ " + x + " แล้ว ใช้ได้ 10 นาที"; },
       verifyDomEmail: "อีเมลของคุณที่โดเมนนี้",
       verifyDone: "ยืนยันแล้ว ร้านนี้เป็นของคุณ เราจะส่งลิงก์แดชบอร์ดไปที่ช่องทางเดิม",
+      dashBtn: "ไปที่แดชบอร์ดของคุณ",
+      sentTo: "ส่งไปที่",
+      errReach: "กรุณากรอกเบอร์มือถือหรืออีเมลอย่างใดอย่างหนึ่ง เพื่อให้เราติดต่อคุณได้",
       verifyLater: "หรือข้ามไปก่อนก็ได้ ทีมงานจะตรวจสอบให้เอง",
       newbizHead: "เรายังไม่มีข้อมูลร้านของคุณ บอกที่ตั้งไว้ แล้วเราจะสร้างให้",
       lAddress: "ที่อยู่",
@@ -843,6 +858,24 @@ twq('config','rfbeh');
 
   function setText(id, s) { var el = $(id); if (el) el.textContent = s; }
   function setHTML(id, s) { var el = $(id); if (el) el.innerHTML = s; }
+  // The "(optional)" marker inside a label. NULL-SAFE, and it has to be.
+  //
+  // These five lines used to read $("l-email").querySelector(".opt").textContent
+  // = T.opt. On 7 Sep 2026 email stopped being optional and phone started —
+  // the <span class="opt"> moved from the email label to the phone label in
+  // the HTML, and this script was not updated. querySelector returned null,
+  // the assignment threw, and EVERY line after it died: the language switcher,
+  // the claim_view event, and the form's submit handler. With no handler the
+  // browser submitted the form the old-fashioned way — a GET to this same
+  // page with every field, email address included, written into the URL —
+  // and reloaded it blank. The business saw its form clear and nothing
+  // happen. Nothing reached the server. For fourteen days every business
+  // signup was lost, and the only trace was a referrer header carrying a
+  // restaurant's email address into our own analytics.
+  function setOpt(id, s) {
+    var el = $(id), o = el && el.querySelector(".opt");
+    if (o) o.textContent = s;
+  }
   function fill(id, items, tag) {
     var el = $(id);
     if (!el) return;
@@ -901,7 +934,7 @@ twq('config','rfbeh');
     $("name_local").setAttribute("lang", lang);
     $("name_local").setAttribute("dir", def.dir);
     $("l-localname").firstChild.nodeValue = T.lLocalName + " ";
-    $("l-localname").querySelector(".opt").textContent = T.opt;
+    setOpt("l-localname", T.opt);
     $("name_local").placeholder = T.phLocalName;
     setText("hint-localname", T.hintLocalName);
     // In English there is no "your own language" to offer — the field would be
@@ -913,9 +946,9 @@ twq('config','rfbeh');
 
     setText("l-address", T.lAddress);
     $("l-website").firstChild.nodeValue = T.lWebsite + " ";
-    $("l-website").querySelector(".opt").textContent = T.opt;
+    setOpt("l-website", T.opt);
     $("l-category").firstChild.nodeValue = T.lCategory + " ";
-    $("l-category").querySelector(".opt").textContent = T.opt;
+    setOpt("l-category", T.opt);
     $("address").placeholder = T.phAddress;
     $("category").placeholder = T.phCategory;
 
@@ -928,9 +961,10 @@ twq('config','rfbeh');
     $("l-line").classList.toggle("hidden", !lineOn);
     $("line_id").classList.toggle("hidden", !lineOn);
     $("l-line").firstChild.nodeValue = T.lLine + " ";
-    $("l-line").querySelector(".opt").textContent = T.opt;
+    setOpt("l-line", T.opt);
     $("l-email").firstChild.nodeValue = T.lEmail + " ";
-    $("l-email").querySelector(".opt").textContent = T.opt;
+    setOpt("l-email", T.opt);
+    setOpt("l-phone", T.opt);
 
     setText("l-optin", T.optin);
     if (!sending) $("submit-btn").textContent = T.submit;
@@ -950,12 +984,21 @@ twq('config','rfbeh');
   $("legal-line").textContent = LEGAL_LINE;
 
   var sending = false;
-  apply(LANG);
+  // SAFE ON PURPOSE. apply() only relabels the page, and it runs BEFORE the
+  // submit handler is attached further down. When it threw on 7 Sep it took
+  // the whole form with it. A label that fails to translate is a cosmetic
+  // bug; a form that cannot submit is an outage. Contain the first so it can
+  // never become the second.
+  function safeApply(lang) {
+    try { apply(lang); }
+    catch (e) { try { console.error("[claim] relabel failed, form still live:", e); } catch (_) {} }
+  }
+  safeApply(LANG);
 
   $("langs").addEventListener("click", function (ev) {
     var b = ev.target.closest("button[data-lang]");
     if (!b) return;
-    apply(b.getAttribute("data-lang"));
+    safeApply(b.getAttribute("data-lang"));
     logEvent("claim_lang", { lang: b.getAttribute("data-lang") });
   });
 
@@ -1316,7 +1359,23 @@ twq('config','rfbeh');
       .then(function (j) {
         btn.disabled = false;
         if (!j || !j.ok) { vErr((j && j.error) || T.errSend); return; }
-        $("verify-ok").textContent = T.verifyDone;
+        // The server now says whether the dashboard link actually went out,
+        // and to where (masked). This used to print a fixed promise that a
+        // link was coming, over a server that sent none. Written with
+        // textContent and createElement — never innerHTML — like every other
+        // server-supplied string on this page.
+        var ok = $("verify-ok");
+        var dash = (j && j.dashboard) || {};
+        var line = T.verifyDone;
+        if (dash.sent && dash.to) line += " (" + (T.sentTo || COPY.en.sentTo) + " " + dash.to + ")";
+        else if (j.next) line = j.next;
+        ok.textContent = line;
+        var go = document.createElement("a");
+        go.href = dash.signin || "/biz";
+        go.className = "btn-primary dash-go";
+        go.textContent = T.dashBtn || COPY.en.dashBtn;
+        ok.appendChild(document.createElement("br"));
+        ok.appendChild(go);
         vShow("verify-ok", true);
         vShow("verify-code-step", false);
         vShow("verify-channels", false);
@@ -1376,8 +1435,17 @@ twq('config','rfbeh');
 
     if (!payload.business_name) return showError(T.errBiz);
     if (!payload.contact_name)  return showError(T.errContact);
-    if (payload.phone.replace(/[^\d]/g, "").length < 7) return showError(T.errPhone);
+    // A WAY TO REACH THEM, NOT A PARTICULAR WAY — the same rule the server has
+    // enforced since 7 Sep (growth/worker.js, claims()). This line used to
+    // demand a phone number unconditionally, under a label that says the
+    // phone is optional. Fixing only the crash above would have unblocked
+    // the form and then bounced every business that trusted the label.
+    var digits = payload.phone.replace(/[^\d]/g, "");
+    if (payload.phone && digits.length < 7) return showError(T.errPhone);
     if (payload.email && payload.email.indexOf("@") === -1) return showError(T.errEmail);
+    // Per-key fallback: T is chosen whole by language, so a key added only to
+    // English would render as "undefined" to a Thai owner.
+    if (!digits && !payload.email) return showError(T.errReach || COPY.en.errReach);
 
     sending = true;
     btn.disabled = true;

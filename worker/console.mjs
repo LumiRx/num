@@ -2061,12 +2061,67 @@ async function adminSubmissionPromote(env, req) {
     }
   }
 
+  /**
+   * ── TELL THEM. DO NOT LEAVE IT TO WHOEVER RAN THE SCRIPT. ──────────────
+   *
+   * Dre, 21 Sep 2026: "we need to make sure they get a confimation message
+   * and pulled into signing into the dashboard. confirmatoin email for them
+   * to log in."
+   *
+   * Until now the sign-in link above went ONE place: back to the admin, with
+   * scripts/promote-submission.mjs printing "Send it to them." If nobody
+   * copied it into an email, the business was approved and never told. And
+   * because this path never wrote num_claim_decisions, the onboarding sweep
+   * (bizonboard.onboardApproved) could not see them either.
+   *
+   * So: record the approval in the same ledger every other approval uses
+   * (decideClaim), then send the same onboarding email every other approved
+   * business gets (sendOnboarding — it mints its own one-use sign-in link and
+   * only marks them told when the provider accepts it; a failed send stays
+   * visible to the sweep and to /api/health). And give the owner a
+   * num_business_users row so the /biz email sign-in recognises them later.
+   *
+   * All after the batch, all best-effort: the listing is real whether or not
+   * the email lands, and a mail outage must never undo an approval.
+   */
+  let told = null;
+  if (asOwner) {
+    const ownerEmail = String(sub.email ?? '').trim().toLowerCase();
+    if (ownerEmail.includes('@')) {
+      try {
+        await env.DB.prepare(
+          `INSERT INTO num_business_users (id, business_id, email, name, role, status, created_at)
+           VALUES (?1,?2,?3,?4,'owner','active',?5)`,
+        ).bind(`bu_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`, businessId, ownerEmail,
+          sub.contact_name ?? null, Math.floor(Date.now() / 1000)).run();
+      } catch (e) { console.warn('[promote] owner login row', e?.message ?? e); }
+    }
+    if (sub.claim_id) {
+      try {
+        const { decideClaim } = await import('./bizapproval.mjs');
+        const d = await decideClaim(env, { id: sub.claim_id, decision: 'approved', by: `admin:${who}` });
+        if (d?.ok && !d.alreadyDecided && d.claim) {
+          const claim = { ...d.claim, email: d.claim.email || ownerEmail || null, place_id: d.claim.place_id || placeId };
+          const { sendOnboarding } = await import('./bizonboard.mjs');
+          const out = await sendOnboarding(env, claim);
+          told = { sent: !!out?.ok, reason: out?.ok ? null : (out?.skipped ?? out?.error ?? 'unknown') };
+        } else {
+          told = { sent: false, reason: d?.ok ? 'already decided' : (d?.error ?? 'no claim') };
+        }
+      } catch (e) {
+        told = { sent: false, reason: String(e?.message ?? e).slice(0, 160) };
+      }
+    } else {
+      told = { sent: false, reason: 'no claim on this submission — send them the signin_url by hand' };
+    }
+  }
+
   return json({
     ok: true,
     submission_id: id,
     place_id: placeId,
     status: 'promoted',
-    ...(asOwner ? { business_id: businessId, owner: 'admin_promote', signin_url: signinUrlOut } : {}),
+    ...(asOwner ? { business_id: businessId, owner: 'admin_promote', signin_url: signinUrlOut, told } : {}),
   });
 }
 
