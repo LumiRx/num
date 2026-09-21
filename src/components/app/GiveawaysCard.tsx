@@ -20,15 +20,24 @@ import { t } from '../../lib/i18n';
 
 export interface Giveaway {
   id: string; title: string; prize: string; how: string; who: string; rules_url: string; note: string;
-  closes_at: string; draw_label: string; entered: boolean; entries: number;
+  closes_at: string; closes_label?: string | null; draw_label: string; entered: boolean; entries: number;
   won: { draw: string; state: 'won' | 'claimed'; drawn_at: string } | null;
 }
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 const kicker: React.CSSProperties = { fontSize: 10, letterSpacing: '.14em', fontWeight: 800, color: 'var(--ink-40)' };
 
-/** "Closes Thursday 23:59 UTC" — the rules' own clock, not the phone's. */
-export function closesLine(iso: string): string {
+/** "Closes Thursday 23:59 UTC" — the rules' own clock, not the phone's.
+ *
+ *  A giveaway that carries its own `closes_label` wins, because deriving the
+ *  line from the ISO string means this card decides how the deadline reads,
+ *  and it would get it wrong for anything that does not close at 23:59 UTC.
+ *  The Tokyo trip closes 23:59 Pacific on Halloween — 06:59 UTC the next
+ *  morning — and the derived line would have called that "Closes Sunday
+ *  23:59 UTC", which is the wrong weekday, the wrong time and the wrong zone
+ *  all at once, in a place a person checks before they enter. */
+export function closesLine(iso: string, label?: string | null): string {
+  if (label) return t('Closes {when}', { when: t(label) });
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const day = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getUTCDay()];
@@ -80,7 +89,7 @@ export default function GiveawaysCard({ heading }: { heading?: React.ReactNode }
         <div key={g.id} className="glass" style={card} data-giveaway={g.id}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <div style={kicker}>{t('GIVEAWAY')}</div>
-            <div style={{ ...kicker, color: 'var(--color-accent)' }}>{closesLine(g.closes_at)}</div>
+            <div style={{ ...kicker, color: 'var(--color-accent)' }}>{closesLine(g.closes_at, g.closes_label)}</div>
           </div>
           <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, marginTop: 4 }}>{g.title}</div>
           <div style={{ fontSize: 12, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.55 }}>{g.prize}</div>

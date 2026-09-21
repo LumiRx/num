@@ -482,4 +482,28 @@ export const PRIZE = Object.freeze({
   arvUsd: '4,000-6,000',
   winners: 1,
   freeRoute: 'Tap Enter in the app, or write to info@itsnum.com. No referrals, no purchase.',
+  /* ── WHEN IT CLOSES ────────────────────────────────────────────────────
+   *
+   * Dre's call, 20 Sep 2026: Halloween, not 31 December.
+   *
+   * The date lives HERE because it is the one figure the card and the
+   * Official Rules were each carrying separately — the rules said 31
+   * December in prose, giveaways.mjs said 2026-12-31 in an ISO string, and
+   * nothing made them agree. Two documents naming different closing dates
+   * for the same draw is the kind of drift that gets asked about in
+   * writing. One object, read by both.
+   *
+   * NOT 23:59 UTC on the 31st. This draw runs in the US and the UK, and
+   * 23:59 UTC is 16:59 in Los Angeles — it would take Halloween evening
+   * away from most of the people it is aimed at. The cutoff is 23:59
+   * Pacific on 31 October, which is 06:59 UTC on 1 November (PDT, UTC-7:
+   * US clocks do not go back until 1 November 2026, so it is still PDT at
+   * that moment). The UK is on GMT by then and gets Halloween plus the
+   * small hours.
+   *
+   * `closesLabel` is what a person reads. Change the two together or the
+   * rules and the card go back to disagreeing.
+   */
+  closesAt: '2026-11-01T06:59:59.000Z',
+  closesLabel: '23:59 Pacific Time on 31 October 2026 (Halloween)',
 });
