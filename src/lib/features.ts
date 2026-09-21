@@ -25,7 +25,8 @@ import { T } from './i18nmark';
 export type FeatureId =
   | 'flights' | 'stays' | 'tables' | 'tonight' | 'nightlife' | 'charter' | 'rides'
   | 'pickup' | 'hire' | 'wellness' | 'events' | 'plans' | 'wallet'
-  | 'errands' | 'lookgood' | 'transit' | 'pets' | 'move' | 'kids' | 'work';
+  | 'errands' | 'lookgood' | 'transit' | 'pets' | 'move' | 'kids' | 'work'
+  | 'paperwork';
 
 export interface FeatureField {
   id: string;
@@ -267,6 +268,56 @@ export const FEATURES: readonly Feature[] = [
     ],
     compose: (v, lane) => `Find me somewhere for ${lane ?? 'a haircut'}${near(v.where)}${when(v.when)}.${v.notes ? ` ${v.notes}.` : ''} Real places with ratings, and whether they take walk-ins.`,
     honest: T('Booked with the salon directly; prices are the salon’s.'),
+  },
+  {
+    /* ── THE PAPERWORK DOOR (21 Sep 2026, Dre's call) ────────────────────
+     *
+     * "Here we have the section for e-visas and travelling. Let's add a
+     * widget for that."
+     *
+     * Everything behind this tile was already built and had no door. Five
+     * datasets, five live routes, and not one way into any of them from the
+     * app:
+     *
+     *   traveldocs.mjs    40 countries of entry documents, every link an
+     *                     official government host and nothing else ever
+     *   vaccines.mjs      entry vaccination rules with their sources
+     *   insurancereq.mjs  the countries where insurance is a CONDITION OF
+     *                     ENTRY, each row checked against a government page
+     *   travelpack.mjs    all three assembled, dated, in deadline order
+     *   holidays.mjs      the days the office that issues it will be shut
+     *
+     * `/api/travel/pack` already returns the assembled thing, split into what
+     * is free and what is not, with the honesty sentence attached. The widget
+     * is a door onto something finished.
+     *
+     * ── AND WHY IT IS NOT A VISA SERVICE ─────────────────────────────────
+     *
+     * Every document here is free and comes from the government. What Num
+     * sells is assembly — putting it together, checking it, dating it — and
+     * `assertSellable()` in travelpack.mjs throws if a free item is ever
+     * marked paid. Num cannot apply for anything on anyone's behalf and the
+     * page says so where the price is, not in a footnote.
+     *
+     * The FIELDS ask for nationality on purpose. It is the field that decides
+     * every answer — an American flying to Paris needs no insurance to get in
+     * and a Schengen visa applicant does — and it is the one thing the
+     * concierge's own grounding cannot see. */
+    id: 'paperwork', kicker: T('PAPERWORK'), title: T('Visas, jabs, insurance'), cover: '/covers/jet.webp', cta: T('Check what I need'),
+    blurb: T('What gets you in, and by when.'),
+    promise: T('Entry documents, vaccination rules and whether insurance is a condition of entry — each one with the government link it came from, in the order the deadlines fall.'),
+    lanes: [
+      { id: 'entry', label: T('Entry docs') }, { id: 'visa', label: T('e-Visa') },
+      { id: 'jabs', label: T('Vaccinations') }, { id: 'insurance', label: T('Insurance') },
+    ],
+    fields: [
+      { id: 'to', label: T('Where to'), placeholder: T('TH'), type: 'text', half: true },
+      { id: 'nationality', label: T('Passport'), placeholder: T('US'), type: 'text', half: true },
+      { id: 'date', label: 'When (optional)', placeholder: '', type: 'date', optional: true },
+      { id: 'from', label: T('Countries you’ve been through (optional)'), placeholder: T('BR, KE'), optional: true },
+    ],
+    compose: (v, lane) => `What do I need to get into ${v.to || 'there'} on a ${v.nationality || 'my'} passport${v.date ? ` on ${v.date}` : ''}${lane && lane !== 'entry' ? ` — ${lane} in particular` : ''}? Name the document, the deadline, and give me the official link.`,
+    honest: T('Every document is free and comes from the government. Num assembles and dates it — it is not a visa service and cannot apply for anything for you.'),
   },
   {
     id: 'transit', kicker: T('GETTING AROUND'), title: T('Trains, metro, buses, scooters'), cover: '/covers/transit.webp', cta: T('Route me'),
