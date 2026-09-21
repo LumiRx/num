@@ -19,7 +19,17 @@ import { redeemPairCode } from '../../lib/social';
 
 const card: React.CSSProperties = { margin: '10px 12px', borderRadius: 'var(--r-lg)', padding: 14 };
 
-/** Browser side: "here's the code, open Num." */
+/**
+ * Browser side, for somebody who opened a friend's link with no account here.
+ *
+ * 21 Sep 2026: most people use Num from the home screen, and on iPhone a
+ * scanned QR can only open Safari, never the home-screen app. The first
+ * version of this card only offered "carry this code across", which read as
+ * homework. Now the first button finishes the friend add right here: accounts
+ * belong to a verified number, so confirming the number in Safari IS their
+ * home-screen account, and the friend lands in the list they already use.
+ * The code stays as the second route.
+ */
 export function PairHandoff() {
   const code = useApp((s) => s.pairCode);
   const [copied, setCopied] = useState(false);
@@ -28,34 +38,44 @@ export function PairHandoff() {
     <div className="glass" style={{ ...card, border: '1px solid var(--color-accent)' }}>
       <div style={{ fontSize: 10, letterSpacing: '.14em', fontWeight: 700, color: 'var(--color-accent)' }}>ONE STEP LEFT</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 16, marginTop: 4 }}>
-        Open Num and enter this code
+        Add them to your Num
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-60)', marginTop: 4, lineHeight: 1.5 }}>
-        You’re in the browser right now, and your Num app keeps its own account. This carries the
-        connection over to where your plans actually live.
+        Confirm your number and they’re in your friends straight away, in the same account you use
+        from your home screen. New to Num? The same button signs you up.
       </div>
       <div
-        style={{
-          margin: '11px 0 9px', padding: '13px 10px', borderRadius: 12, textAlign: 'center',
-          background: 'var(--field-bg)', fontFamily: 'var(--font-heading)', fontWeight: 800,
-          fontSize: 27, letterSpacing: '.22em',
-        }}
+        {...pressable(() => store.set({ inviteOpen: {} }))}
+        className="press tap"
+        style={{ marginTop: 11, cursor: 'pointer', textAlign: 'center', borderRadius: 999, padding: '12px 14px', background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11.5, letterSpacing: '.06em' }}
       >
-        {code}
+        CONFIRM MY NUMBER
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 12, lineHeight: 1.5 }}>
+        Or open Num from your home screen, go to Profile, and enter this code:
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+        <div
+          style={{
+            flex: 1, padding: '9px 10px', borderRadius: 12, textAlign: 'center',
+            background: 'var(--field-bg)', fontFamily: 'var(--font-heading)', fontWeight: 800,
+            fontSize: 20, letterSpacing: '.22em',
+          }}
+        >
+          {code}
+        </div>
         <div
           {...pressable(() => {
             void navigator.clipboard.writeText(code).then(() => setCopied(true)).catch(() => {});
           })}
-          className="press"
-          style={{ flex: 1, cursor: 'pointer', textAlign: 'center', borderRadius: 999, padding: '11px 14px', background: 'var(--grad-accent)', color: '#fff', fontWeight: 800, fontSize: 11, letterSpacing: '.06em' }}
+          className="glass press tap"
+          style={{ cursor: 'pointer', textAlign: 'center', borderRadius: 999, padding: '10px 14px', fontWeight: 800, fontSize: 11, letterSpacing: '.06em' }}
         >
-          {copied ? 'COPIED' : 'COPY CODE'}
+          {copied ? 'COPIED' : 'COPY'}
         </div>
       </div>
       <div style={{ fontSize: 10, color: 'var(--ink-40)', marginTop: 8, lineHeight: 1.5 }}>
-        Good for 15 minutes. No Num app yet? Add this page to your home screen first — then open it and enter the code.
+        Good for 7 days. Next time, tap “Scan a friend’s code” inside Num and it’s instant.
       </div>
     </div>
   );

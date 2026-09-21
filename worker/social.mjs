@@ -1355,7 +1355,10 @@ async function invite(env, req) {
 // it gets read off one screen and typed into another, and because it lives
 // for fifteen minutes — long enough to walk between apps, short enough that a
 // screenshot in a group chat is not a standing invitation.
-const PAIR_TTL_MIN = 15;
+// A week, not fifteen minutes. The code exists to survive "download the app,
+// sign up, then enter it", and the App Store alone can eat fifteen minutes.
+// Still single-use, so a longer life does not make one code worth more.
+const PAIR_TTL_MIN = 7 * 24 * 60;
 const PAIR_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I/L/O/0/1
 
 const PAIR_SCHEMA = `

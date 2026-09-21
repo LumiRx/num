@@ -230,3 +230,46 @@ export async function registerNativePush(memberId: string | null): Promise<void>
     /* push is an enhancement — its failure is never a launch blocker */
   }
 }
+
+/**
+ * Hand every link the app is opened with to `onUrl`.
+ *
+ * A universal link (iOS) or app link (Android) opens the installed app
+ * instead of a browser tab, but the web view still starts on its own bundle,
+ * so the address that opened it never reaches `window.location`. Without
+ * this, a friend's QR opened the app and the friend add was simply dropped.
+ * Two moments to catch: the cold launch (getLaunchUrl) and a link tapped
+ * while the app is already running (appUrlOpen).
+ */
+export async function listenForOpenedLinks(onUrl: (url: string) => void): Promise<void> {
+  if (!isNativeApp()) return;
+  try {
+    const { App } = await import('@capacitor/app');
+    const launch = await App.getLaunchUrl().catch(() => undefined);
+    if (launch?.url) onUrl(launch.url);
+    await App.addListener('appUrlOpen', (e) => onUrl(e.url));
+  } catch {
+    /* plugin missing from an older build: links fall back to the browser path */
+  }
+}
+
+/**
+ * The home-screen web app's version of the same thing (Android, desktop).
+ *
+ * manifest.webmanifest sets launch_handler "focus-existing": tapping a Num
+ * link while Num is already open brings the open window forward instead of
+ * starting a second copy. But the browser then does NOT load the new
+ * address; it hands it over through `launchQueue`, and until 21 Sep 2026
+ * nothing was listening, so a friend's QR focused Num and the add vanished.
+ * iPhone has no launchQueue and never routes links into a home-screen app;
+ * that side is covered by the in-app scanner (scan.ts).
+ */
+export function listenForLaunchedLinks(onUrl: (url: string) => void): void {
+  const lq = (window as Window & {
+    launchQueue?: { setConsumer: (fn: (p: { targetURL?: string }) => void) => void };
+  }).launchQueue;
+  if (!lq) return;
+  try {
+    lq.setConsumer((p) => { if (p?.targetURL) onUrl(p.targetURL); });
+  } catch { /* an old browser with half an API: links still open normally */ }
+}

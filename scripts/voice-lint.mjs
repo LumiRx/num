@@ -38,6 +38,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * unlinted place to sound like a salesman.
  */
 export const LINTED = [
+  // The eSIM listing, pages, texts and emails a traveller reads (21 Sep).
+  'worker/esimcopy.mjs',
+  'worker/esimpages.mjs',
   'worker/specialists.mjs',
   'worker/prompt.mjs',
   'worker/brains.mjs',

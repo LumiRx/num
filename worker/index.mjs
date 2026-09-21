@@ -1725,6 +1725,13 @@ export default {
     // scrubbing, CORS and no-store behavior without duplicating this logic.
     const { json, setTravelContext } = jsonFactory(cors);
 
+    // Universal links / app links: see worker/applinks.mjs.
+    if (url.pathname.includes('app-site-association') || url.pathname === '/.well-known/assetlinks.json') {
+      const { handleAppLinks } = await import('./applinks.mjs');
+      const res = handleAppLinks(url, env);
+      if (res) return res;
+    }
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
     }
@@ -1754,7 +1761,10 @@ export default {
         // Resend delivery events, for the same reason: it retries on a non-2xx,
         // and the events a throttle would drop are precisely the bounces and
         // delivery confirmations this product spent a month unable to see.
-        || url.pathname === '/api/webhooks/resend';
+        || url.pathname === '/api/webhooks/resend'
+        // The eSIM supplier's doorbell: machine-to-machine, secret in the path,
+        // retried by the supplier. See worker/esim.mjs.
+        || url.pathname.startsWith('/api/esim/doorbell/');
       // The MCP endpoints limit themselves, and must. Everything about the
       // blanket gate is wrong for JSON-RPC:
       //   • It throttles the HANDSHAKE. initialize and tools/list are POSTs, so
@@ -1798,6 +1808,18 @@ export default {
     // that is the whole point of inviting people by text.
     if (url.pathname.startsWith('/e/')) {
       return await handleEventPage(request, env, url.pathname.slice(3).split('/')[0], url.origin);
+    }
+    // eSIM: the listing, a page per country and per airport, the pay link and
+    // the install page — plus the JSON the app and the supplier talk to.
+    // Everything is in worker/esim.mjs and answers "being set up" until
+    // migration 0033 is applied and a supplier key is set.
+    if (url.pathname === '/esim' || url.pathname.startsWith('/esim/')) {
+      const { handleEsimPage } = await import('./esim.mjs');
+      return await handleEsimPage(request, env, ctx);
+    }
+    if (url.pathname.startsWith('/api/esim/')) {
+      const { handleEsimApi } = await import('./esim.mjs');
+      return await handleEsimApi(request, env, ctx);
     }
     // The member's calendar: a confirmed table, a plan, an event, as .ics.
     // Read-only, floating local times, bearer-safe headers. worker/calendar.mjs.
@@ -2254,6 +2276,13 @@ export default {
       return await handleInstallFunnel(request, env);
     }
 
+    // The eSIM owner's door: supplier, balance, listing, orders, and the
+    // refresh / sweep / refund actions. Gated in worker/esim.mjs.
+    if (url.pathname === '/api/admin/esim') {
+      const { handleEsimAdmin } = await import('./esim.mjs');
+      return await handleEsimAdmin(request, env, ctx);
+    }
+
     // What Num can actually do where this guest is standing. One indexed D1
     // read, no model call — see suggest.mjs for why this must never cost a
     // generation.
@@ -2400,7 +2429,7 @@ export default {
     }
 
     // Twilio's inbound-SMS webhook and the member's inbox view of it.
-    if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env);
+    if (url.pathname === '/api/sms/inbound') return await handleSmsInbound(request, env, ctx);
 
     // ── THE PHONE CALL THAT READS AN ORDER OUT ──────────────────────────
     //
@@ -2847,7 +2876,7 @@ export default {
     }
 
     if (url.pathname.startsWith('/api/pay')) {
-      const res = await handlePay(request, env, url.pathname.slice('/api/pay'.length) || '/');
+      const res = await handlePay(request, env, url.pathname.slice('/api/pay'.length) || '/', ctx);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
@@ -2952,6 +2981,15 @@ export default {
   // record the verdict, and shout ONLY when the state changes.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(healthCron(env).catch((e) => console.error('[health-cron]', e?.message ?? e)));
+    // eSIM: push paid orders along (fill or refund, never silent), refresh the
+    // listing daily, warn when the prepaid supplier balance runs low. Its own
+    // failure domain. No-op until migration 0033 is applied. worker/esim.mjs.
+    ctx.waitUntil(
+      import('./esim.mjs')
+        .then((m) => m.esimCron(env))
+        .then((r) => { if (r?.sweep?.attention || r?.refresh?.ok === false) console.warn('[esim-cron]', JSON.stringify(r)); })
+        .catch((e) => console.error('[esim-cron]', e?.message ?? e)),
+    );
     // Does mail actually leave the building? For five days in August the
     // answer was no and nothing said so — the evidence was one column in
     // num_invites nobody read. Set MAIL_SELFTEST to an address and the next

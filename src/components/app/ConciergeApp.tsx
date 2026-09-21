@@ -6,10 +6,11 @@ import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
-import { bootSocial, startPlanSync } from '../../lib/social';
+import { bootSocial, handleOpenedLink, startPlanSync } from '../../lib/social';
 import { bootDm, closeDmThread, refreshDmInbox, startDmSync } from '../../lib/dm';
 import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
+import { listenForLaunchedLinks, listenForOpenedLinks } from '../../lib/native';
 import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon, UsersIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
 import ThreadView from './ThreadView';
@@ -103,6 +104,11 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     // params, so a `?dm=` arriving alongside a referral would be lost.
     bootDm();
     bootSocial();
+    // Native only: a friend's link that OPENED the app lands here, not in
+    // the URL bootSocial just read.
+    void listenForOpenedLinks(handleOpenedLink);
+    // Home-screen web app (Android/desktop): same link, delivered by the browser.
+    listenForLaunchedLinks(handleOpenedLink);
     void restoreTab();
     void refreshDmInbox();
     // A push wakes the service worker, which has no localStorage — it asks the

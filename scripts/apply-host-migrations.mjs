@@ -102,6 +102,11 @@ const FILES = [
   // they have been shown round the console. Three CREATE TABLEs and two
   // indexes, all IF NOT EXISTS, so a second pass is a clean no-op.
   'worker/migrations/0032_partners_and_tour.sql',
+  // eSIM: orders, the priced listing cache, the per-country index, text-menu
+  // state, supplier doorbell dedupe, a small key/value table and the
+  // text-concierge counter. CREATE TABLE / CREATE INDEX, all IF NOT EXISTS,
+  // so a second pass is a clean no-op. worker/esim.mjs.
+  'worker/migrations/0033_esim.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

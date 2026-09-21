@@ -1,5 +1,6 @@
 // THREAD tab — the conversation: messages, cards, typing dots, chips, input bar.
 import PickCards from './PickCards';
+import { PairHandoff } from './PairBridge';
 import { useEffect, useState } from 'react';
 import { store, useApp } from '../../lib/store';
 import { apiUrl } from '../../lib/apibase';
@@ -558,6 +559,11 @@ export default function ThreadView() {
           WebkitOverflowScrolling: 'touch',
         }}
       >
+        {/* A friend's link opened here with no account yet. The browser opens
+            straight into the thread, so the card has to live HERE: shown only
+            on the landing page behind it, it was invisible, and "it took me
+            into the chat and never added them" was the result (21 Sep 2026). */}
+        <PairHandoff />
         {msgs.map((m, i) => (
           <MsgBubble
             key={i}

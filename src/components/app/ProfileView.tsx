@@ -17,6 +17,7 @@ import { CameraIcon, CheckIcon, ChevronRightIcon, SparklesIcon, UsersIcon } from
 import { THEMES, setTheme } from '../../lib/themes';
 import { checkForUpdate, versionLine } from '../../lib/version';
 import QrCard from './QrCard';
+import { PairRedeem } from './PairBridge';
 import Verify5arz from './Verify5arz';
 import AppleSignIn from './AppleSignIn';
 import PairBridge from './PairBridge';
@@ -343,8 +344,11 @@ export default function ProfileView() {
         </div>
       </Collapsible>
 
-      <Collapsible title="YOUR CODES" summary="Scan to connect, or to pay you in Stars" defaultOpen>
+      <Collapsible title="YOUR CODES" summary="Show yours, scan a friend’s, or get paid in Stars" defaultOpen>
         <QrCard />
+        {/* The code from a link that opened in Safari. Built 12 Sep, never
+            mounted until 21 Sep, so the "enter this code" route went nowhere. */}
+        <PairRedeem />
       </Collapsible>
 
       <MembershipCard />
