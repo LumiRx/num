@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.414 — 2026-09-21 19:38 UTC
+
+App Review 1.0 (12) fixes: iOS storefront guards, Surprise me fallback
+
+- commit `e88914d`
+
 ## 0.8.413 — 2026-09-21 04:07 UTC
 
 (no note given)
