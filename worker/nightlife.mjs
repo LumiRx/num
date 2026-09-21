@@ -99,6 +99,10 @@ const NOT_NIGHT_NAME = new RegExp([
   'observation deck', 'observation wheel', 'sightseeing', 'walking tour', 'bus tour',
   'guided tour', 'boat tour', 'city tour', 'hop[- ]on hop[- ]off',
   'parking', 'premium package', 'vip package', 'matinee', 'exhibition',
+  /* `Old School R&B Brunch Live` at Melkweg reached the nightlife shelf on the
+   * staged build — a real listing, a real venue, the right genre, and a
+   * daytime meal. A brunch is not a night out whatever is playing at it. */
+  'brunch', 'afternoon tea', 'day party',
   /* NOT a bare "experience": The Jimi Hendrix Experience is a band, and the
    * attractions that use the word are all refused by their genre anyway — every
    * one of the six London rows came back Family or Miscellaneous. This list is
@@ -136,10 +140,35 @@ const GENRE = Object.freeze([
 
 /* subGenre, the tier that can actually separate techno from house. Tried
  * first, and the only place `techno` is reached from the source itself. */
+/* ── WHAT TICKETMASTER'S SUB-GENRE ACTUALLY CONTAINS ──────────────────────
+ *
+ * Measured against the staged build on 20 Sep 2026, before any traffic moved,
+ * with `genresSeen()` over London, Amsterdam and Berlin. The whole observed
+ * vocabulary was:
+ *
+ *   Music / Rock / Pop                       Music / Hip-Hop/Rap / Hip-Hop/Rap
+ *   Music / Jazz / Jazz                      Music / Latin / Latin
+ *   Music / Pop / Electro Pop                Music / Dance/Electronic / Club Dance
+ *   Music / Rock / Alternative Rock          Music / Dance/Electronic / Dance/Electronic
+ *   Music / Pop / Pop                        Miscellaneous / Family / Other
+ *
+ * NOT ONE Techno, House, Trance, Drum & Bass or Dubstep. Their electronic tier
+ * stops at "Club Dance". So the honest position, recorded here rather than
+ * left as a surprise: sub-genre separates hip-hop, Latin and electronic
+ * cleanly, and CANNOT separate techno from house. Techno therefore only ever
+ * comes from the title or the billing — which on a club listing is usually
+ * where it is stated anyway ("Hard Techno All Night", "Bassiani presents").
+ *
+ * `electro` was in this table on the first run and matched "Electro Pop",
+ * putting three London pop acts in the House & EDM bucket. Alyssa Grace at 26
+ * Leake Street is electro-pop, not EDM. Removed: the genre tier already says
+ * Dance/Electronic when it means it, and a pattern one word too greedy is the
+ * same mistake as the bare `tour` above.
+ */
 const SUB = Object.freeze([
-  ['techno', /techno|minimal|industrial/i],
-  ['house', /house|garage|disco|trance|drum ?& ?bass|dubstep|breakbeat|jungle|hardstyle|amapiano|afro ?beat|electro/i],
-  ['hiphop', /hip.?hop|rap|trap|grime|drill|r&b|dancehall/i],
+  ['techno', /\btechno\b|minimal techno|industrial techno/i],
+  ['house', /\bhouse\b|club dance|dance\/electronic|electronica|garage|nu.?disco|trance|drum ?& ?bass|dubstep|breakbeat|jungle|hardstyle|amapiano/i],
+  ['hiphop', /hip.?hop|\brap\b|trap|grime|drill|r&b|rhythm ?& ?blues|dancehall/i],
   ['latin', /latin|reggaeton|salsa|bachata|cumbia|banda|norte/i],
 ]);
 
@@ -193,15 +222,24 @@ export function isNight(e) {
 export function bucketOf(e) {
   if (!isNight(e)) return { id: null, from: null };
 
-  const bySub = first(SUB, e?.subGenre);
-  if (bySub) return { id: bySub, from: 'subgenre' };
-
-  // Techno is never assumed from the genre tier — "Dance/Electronic" is not
-  // evidence of techno — but the title and the billing can say it outright,
-  // and on a club listing they usually do. So words are tried before the
-  // genre tier for techno only, then the genre tier decides.
+  /* TECHNO IS CHECKED FIRST, and the measurement is why.
+   *
+   * The obvious order — sub-genre, then genre, then words — was the first
+   * version, and it made `techno` unreachable. Ticketmaster's only electronic
+   * sub-genres are "Club Dance" and "Dance/Electronic" (see the table above:
+   * measured, three cities, no Techno anywhere), so a listing titled "Hard
+   * Techno All Night" arrived with sub-genre "Club Dance", matched the house
+   * pattern, and returned house before the words pass ever ran.
+   *
+   * Since the source CANNOT say techno, a title or a billing that says it is
+   * strictly more information than anything the classification carries. So it
+   * goes first. This is the one place words outrank the source, and it is only
+   * because the source has been shown to have nothing to say here. */
   const byWords = first(WORDS, [e?.name, ...actsOf(e)].filter(Boolean).join(' · '));
   if (byWords === 'techno') return { id: 'techno', from: 'words' };
+
+  const bySub = first(SUB, e?.subGenre);
+  if (bySub) return { id: bySub, from: 'subgenre' };
 
   const byGenre = first(GENRE, e?.genre);
   if (byGenre) return { id: byGenre, from: 'genre' };

@@ -159,6 +159,66 @@ describe('hip hop, EDM and techno are told apart', () => {
   });
 });
 
+/* ── THE REAL TAXONOMY, MEASURED ──────────────────────────────────────────
+ *
+ * Every triple below was read off the staged build on 20 Sep 2026 via
+ * `?debug=1`, across London, Amsterdam and Berlin, before any traffic moved.
+ * This is the whole observed vocabulary — not a sample of a bigger list we
+ * guessed at, the actual distinct set those three cities returned.
+ */
+describe('Ticketmaster’s real sub-genres, as measured', () => {
+  const SEEN = [
+    ['Music', 'Rock', 'Pop', 'live'],
+    ['Music', 'Jazz', 'Jazz', 'live'],
+    ['Music', 'Pop', 'Electro Pop', 'live'],
+    ['Music', 'Rock', 'Alternative Rock', 'live'],
+    ['Music', 'Pop', 'Pop', 'live'],
+    ['Music', 'Rock', 'Rock', 'live'],
+    ['Music', 'Hip-Hop/Rap', 'Hip-Hop/Rap', 'hiphop'],
+    ['Music', 'Latin', 'Latin', 'latin'],
+    ['Music', 'Dance/Electronic', 'Club Dance', 'house'],
+    ['Music', 'Dance/Electronic', 'Dance/Electronic', 'house'],
+  ];
+
+  for (const [segment, genre, subGenre, want] of SEEN) {
+    test(`${genre} / ${subGenre} → ${want}`, () => {
+      const e = { id: 'x', name: 'Some Act Live', segment, genre, subGenre, date: '2026-09-26', time: '22:00:00', venue: 'A Room', acts: ['Some Act'] };
+      assert.equal(bucketOf(e).id, want);
+    });
+  }
+
+  test('ELECTRO POP IS NOT EDM — the bug this measurement caught', () => {
+    // The first staged build put three London pop acts in House & EDM because
+    // the sub-genre table held a bare `electro`, which "Electro Pop" matches.
+    // Alyssa Grace at 26 Leake Street is electro-pop. One word too greedy.
+    const e = { id: 'x', name: 'Alyssa Grace', segment: 'Music', genre: 'Pop', subGenre: 'Electro Pop', date: '2026-09-26', time: '20:00:00', venue: '26 Leake Street', acts: ['Alyssa Grace'] };
+    assert.equal(bucketOf(e).id, 'live');
+    assert.notEqual(bucketOf(e).id, 'house');
+  });
+
+  test('TECHNO IS NOT IN THEIR VOCABULARY, and the code must not pretend it is', () => {
+    // Measured: no Techno, House, Trance, Drum & Bass or Dubstep appeared in
+    // any sub-genre across three cities. Their electronic tier stops at "Club
+    // Dance". So nothing that arrives from the source alone may be called
+    // techno — it can only ever come from a title or a billing that says so.
+    for (const sub of ['Club Dance', 'Dance/Electronic']) {
+      const e = { id: 'x', name: 'Saturday Night', segment: 'Music', genre: 'Dance/Electronic', subGenre: sub, date: '2026-09-26', time: '23:00:00', venue: 'A Club', acts: [] };
+      assert.equal(bucketOf(e).id, 'house', `${sub} must be EDM, never techno`);
+    }
+    // And the only route to techno stays open, because club listings say it.
+    const named = { id: 'x', name: 'Hard Techno All Night', segment: 'Music', genre: 'Dance/Electronic', subGenre: 'Club Dance', date: '2026-09-26', time: '23:00:00', venue: 'A Club', acts: [] };
+    assert.equal(bucketOf(named).id, 'techno');
+    assert.equal(bucketOf(named).from, 'words');
+  });
+
+  test('A BRUNCH IS NOT A NIGHT OUT, whatever is playing at it', () => {
+    // `Old School R&B Brunch Live` at Melkweg reached the shelf on the staged
+    // build: real listing, real venue, right genre, daytime meal.
+    const e = { id: 'x', name: 'Old School R&B Brunch Live', segment: 'Music', genre: 'Hip-Hop/Rap', subGenre: 'Hip-Hop/Rap', date: '2026-09-26', time: '13:00:00', venue: 'Melkweg', acts: ['Old School R&B Brunch'] };
+    assert.equal(isNight(e), false);
+  });
+});
+
 /* ── WHAT DJs ARE PLAYING ───────────────────────────────────────────────── */
 
 describe('the billing', () => {
