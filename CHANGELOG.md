@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.410 — 2026-09-21 00:34 UTC
+
+Widgets open into results pages; plan days can be added and removed
+
+- commit `120e456`
+
 ## 0.8.409 — 2026-09-20 21:21 UTC
 
 Widget searches work unverified, free answers for the turns that need no model, plan cards that can be finished with, install walk-through after signup
