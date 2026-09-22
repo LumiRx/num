@@ -112,7 +112,11 @@ describe('what may() then decides', () => {
     assert.equal(gate.ok, false);
     assert.equal(gate.limit, 3);
     assert.equal(gate.upgrade_to, 'plus', 'and it names the cheapest plan that lifts it');
-    assert.equal(gate.upgrade_gives, 25);
+    // null is unlimited. It was 25 until 21 Sep 2026, when the two paid tiers
+    // became one: "25 instead of 3" only reads as a difference to someone
+    // already pressed against 3, and the second tier's "no ceilings" pitch
+    // was the only part anyone wanted.
+    assert.equal(gate.upgrade_gives, null);
   });
 
   test('the third plan is still allowed — the gate is off-by-one in the guest\'s favour', async () => {
@@ -122,20 +126,22 @@ describe('what may() then decides', () => {
     assert.equal(gate.left, 1);
   });
 
-  test('a paying member gets the room they paid for', async () => {
+  test('a paying member has no ceiling at all', async () => {
     db.exec(`INSERT INTO num_memberships (member_id, tier) VALUES ('mem_paid','plus')`);
-    for (let i = 0; i < 10; i++) addPlan(`p${i}`, 'mem_paid', null);
+    for (let i = 0; i < 40; i++) addPlan(`p${i}`, 'mem_paid', null);
     const gate = await may(env, 'mem_paid', 'plans_max', { count: await inFlight('mem_paid') });
-    assert.equal(gate.ok, true, 'ten is nothing on Plus');
-    assert.equal(gate.limit, 25);
+    assert.equal(gate.ok, true, 'forty is nothing on the paid plan');
+    assert.equal(gate.limit, null);
   });
 
-  test('Pro has no ceiling at all', async () => {
-    db.exec(`INSERT INTO num_memberships (member_id, tier) VALUES ('mem_pro','pro')`);
-    for (let i = 0; i < 40; i++) addPlan(`p${i}`, 'mem_pro', null);
-    const gate = await may(env, 'mem_pro', 'plans_max', { count: await inFlight('mem_pro') });
-    assert.equal(gate.ok, true);
-    assert.equal(gate.limit, null);
+  test('a row left on the tier that no longer exists reads as free, not as unlimited', async () => {
+    // The traveller Pro was removed with zero rows in num_memberships, but a
+    // stale row must fail CLOSED. tierOf() resolves an unknown tier to free.
+    db.exec(`INSERT INTO num_memberships (member_id, tier) VALUES ('mem_ghost','pro')`);
+    for (let i = 0; i < 3; i++) addPlan(`p${i}`, 'mem_ghost', null);
+    const gate = await may(env, 'mem_ghost', 'plans_max', { count: await inFlight('mem_ghost') });
+    assert.equal(gate.ok, false);
+    assert.equal(gate.limit, 3, 'an unknown tier is the free tier');
   });
 
   test('the count is passed in, never read from the monthly counter', async () => {

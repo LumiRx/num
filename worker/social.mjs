@@ -2715,7 +2715,19 @@ async function planWrite(env, req) {
   // monthly allowance, so it must never read the usage counter — a member who
   // finishes a plan gets the slot back the same minute.
   const gate = await may(env, meId, 'plans_max', { count: inFlight });
+  // THE FIRST TIME ONLY, the ceiling gives way instead of refusing.
+  //
+  // Someone making a fourth plan is organising other people's lives and NUM is
+  // working. Meeting that with a wall is how a free tier starts reading as
+  // bait; meeting it with the plan, plus one sentence about what just
+  // happened, means the next time they hit it they already know what is on the
+  // other side. `onceEver` is decided by the INSERT, so it is genuinely once.
+  let gifted = false;
   if (!gate.ok) {
+    const { onceEver } = await import('./membership.mjs');
+    gifted = await onceEver(env, meId, 'plans_max_gift');
+  }
+  if (!gate.ok && !gifted) {
     const { tiers: tierTable } = await import('./membership.mjs');
     const better = gate.upgrade_to ? tierTable(env)[gate.upgrade_to] : null;
     const lifts = gate.upgrade_gives == null
@@ -2746,7 +2758,20 @@ async function planWrite(env, req) {
   await env.DB.prepare("INSERT INTO num_plan_members (plan_id, member_id, name, role) VALUES (?1,?2,?3,'owner')")
     .bind(id, meId, self.name).run();
   await event(env, id, { id: meId, name: self.name }, 'joined', `${self.name || 'Someone'} started the plan.`);
-  return json({ plan: await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(id).first() });
+  const plan = await env.DB.prepare('SELECT * FROM num_plans WHERE id=?1').bind(id).first();
+  if (!gifted) return json({ plan });
+  // Said once, plainly, at the moment it is true — and the upgrade is named
+  // without a price, because this is the sentence that has to read as a gift
+  // rather than as the opening of a negotiation.
+  const { tiers: tierTable } = await import('./membership.mjs');
+  const better = gate.upgrade_to ? tierTable(env)[gate.upgrade_to] : null;
+  return json({
+    plan,
+    gift: 'plans_max',
+    note: `That's ${inFlight + 1} plans at once, one past the free ceiling — this one's on us.`
+      + (better ? ` ${better.name} takes the ceiling off for good.` : ''),
+    upgrade_to: gate.upgrade_to ?? null,
+  });
 }
 
 /**

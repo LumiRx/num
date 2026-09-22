@@ -98,7 +98,8 @@ describe('rule 2 — the welcome gift cannot buy a membership', () => {
     credit('mem_a', 100, 'welcome');
     const q = await quote(env, { memberId: 'mem_a', tier: 'plus' });
     assert.equal(q.affordable, false);
-    assert.equal(q.short, 9);
+    // ★5, not ★9: one paid tier at $4.99 from 21 Sep 2026.
+    assert.equal(q.short, 5);
     assert.match(q.note, /welcome gift/);
   });
 
@@ -151,7 +152,7 @@ describe('rule 3 — never charged twice for the same month', () => {
     assert.equal(a.ok, true);
     assert.equal(b.ok, true);
     assert.equal(b.repeat, true);
-    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 491);
+    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 495);
   });
 });
 
@@ -161,11 +162,11 @@ describe('what the member actually gets', () => {
     credit('mem_a', 500, 'purchase');
     const out = await buyWithStars(env, { memberId: 'mem_a', tier: 'plus', months: 3 });
     assert.equal(out.ok, true);
-    assert.equal(out.stars, 27);
+    assert.equal(out.stars, 15);
     assert.equal(out.auto_renews, false);
-    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 473);
+    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 485);
     const move = db.prepare(`SELECT delta, kind FROM num_star_moves WHERE kind='membership'`).get();
-    assert.equal(move.delta, -27);
+    assert.equal(move.delta, -15);
     assert.equal(move.kind, 'membership');
     assert.equal(await tierOf(env, 'mem_a'), 'plus');
   });
@@ -189,23 +190,28 @@ describe('what the member actually gets', () => {
     assert.equal(days(second.renews_at), 60, 'the second month stacked on the first');
   });
 
-  test('moving UP a tier does not carry cheap months onto the expensive plan', async () => {
+  test('a tier that no longer exists cannot be bought, at any balance', async () => {
+    // This was "moving UP a tier does not carry cheap months onto the
+    // expensive plan", which stopped having a subject on 21 Sep 2026 when the
+    // two paid tiers became one. What has to stay true is the other half: a
+    // tier name the table does not contain buys nothing, however many Stars
+    // are on hand — a removed plan must fail closed, not fall through.
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_a',900)`);
     credit('mem_a', 900, 'purchase');
-    await buyWithStars(env, { memberId: 'mem_a', tier: 'plus', months: 6, idem: 'a' });
-    const up = await buyWithStars(env, { memberId: 'mem_a', tier: 'pro', idem: 'b' });
-    const days = Math.round((Date.parse(`${up.renews_at}Z`) - Date.now()) / 86400_000);
-    assert.equal(days, 30, 'Pro starts today, not in six months');
+    const out = await buyWithStars(env, { memberId: 'mem_a', tier: 'pro', idem: 'b' });
+    assert.equal(out.ok, false);
+    assert.equal(db.prepare(`SELECT stars FROM num_star_balances WHERE member_id='mem_a'`).get().stars, 900,
+      'and nothing is debited for it');
   });
 
   test('a member who cannot pay is told the number, not just "no"', async () => {
-    db.exec(`INSERT INTO num_star_balances VALUES ('mem_a',5)`);
-    credit('mem_a', 5, 'purchase');
+    db.exec(`INSERT INTO num_star_balances VALUES ('mem_a',2)`);
+    credit('mem_a', 2, 'purchase');
     const out = await buyWithStars(env, { memberId: 'mem_a', tier: 'plus' });
     assert.equal(out.ok, false);
-    assert.match(out.error, /★9/);
     assert.match(out.error, /★5/);
-    assert.equal(out.short, 4);
+    assert.match(out.error, /★2/);
+    assert.equal(out.short, 3);
   });
 
   test('months are bounded — nobody buys a century in one tap', async () => {

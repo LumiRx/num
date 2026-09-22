@@ -50,8 +50,29 @@
 //
 // ── Prices ───────────────────────────────────────────────────────────────
 //
-// $8.98 and $28.98, set by Dre — no longer placeholders. Limits are still
-// first-guesses and should move once there is real usage to look at.
+// $4.99 a month, or $49 for a year — set by Dre on 21 Sep 2026, replacing
+// $8.98 / $28.98 and TWO paid tiers with one.
+//
+// Why one tier. The second tier's whole pitch was "no ceilings", which only
+// reads as a difference to someone already pressed against the first tier's
+// ceiling — and with three trips free, almost nobody is. It also collided
+// head-on with the BUSINESS Pro at $19.99: one word, two products, two
+// prices, and whoever answered a support question about "Pro" was going to
+// get it wrong. Nobody was on the traveller Pro (num_memberships held zero
+// rows on 20 Sep 2026), so removing it strands no one, and `tierOf()` reads
+// any unknown tier as free if a row ever does turn up.
+//
+// Why cheaper, against the benchmark. The 2026 subscription figures say
+// premium pricing converts BETTER (8.9% vs 4.4% download-to-trial) and earns
+// 6x the realised LTV, so $4.99 is not the revenue-maximising number. It is
+// the EVIDENCE-maximising one: NUM has never taken a payment, and twenty
+// people at $4.99 teach more than three at $8.98.
+//
+// What is behind it is capacity and depth — never a travel benefit. See the
+// §17550.27 note above: deals and "VIP treatment" on travel are the one thing
+// a paid tier may not carry unless NUM registers as a seller of travel, so
+// every deal NUM lands goes to everybody, free, and the membership sells the
+// time instead.
 //
 // These are the ONLY authority on price. The client asks the server what a
 // plan costs and the server charges what it says; a client that could name its
@@ -103,24 +124,13 @@ const DEFAULT_TIERS = {
     },
   },
   plus: {
-    name: 'Num Plus',
-    price_cents: 898,
-    blurb: 'More room, more research, the long thinking.',
-    entitlements: {
-      concierge: true, plans: true, friends: true, errands: true, tabs: true, voice: true,
-      plans_max: 25,
-      friends_max: null,
-      deep_research_monthly: 40,
-      priority_queue: true,
-      flight_search: true,
-      concierge_booking: true,
-      early_features: true,
-    },
-  },
-  pro: {
-    name: 'Num Pro',
-    price_cents: 2898,
-    blurb: 'Everything, no ceilings, and the deepest research Num can run.',
+    name: 'NUM Plus',
+    price_cents: 499,
+    // A year costs ten months. Absent means the plan cannot be bought yearly;
+    // `requestSubscription` takes the interval and the server picks the price,
+    // so a client can never name its own.
+    price_cents_year: 4900,
+    blurb: 'No ceilings. Every trip you can hold at once, research as deep as it goes.',
     entitlements: {
       concierge: true, plans: true, friends: true, errands: true, tabs: true, voice: true,
       plans_max: null,
@@ -280,6 +290,32 @@ async function usedThisPeriod(env, memberId, key) {
   return Number(r?.used ?? 0);
 }
 
+/**
+ * True exactly once in a member's life, false every time after.
+ *
+ * The first time someone meets a ceiling, they get the thing anyway and are
+ * told it was a gift. That is not softness: a limit explained by a person who
+ * has already felt what is on the other side of it converts, and a limit that
+ * first appears as a refusal is the moment people decide the free tier was
+ * bait. They have now held the fourth trip, so the ask afterwards lands on
+ * someone deciding what to keep rather than someone imagining what they might
+ * get.
+ *
+ * Stored in num_usage_counters under the reserved period 'life', so it never
+ * resets with the month and needs no table of its own. The INSERT decides it —
+ * whoever writes the row is the one who gets the gift, which is what keeps two
+ * simultaneous requests from each being handed one.
+ */
+export async function onceEver(env, memberId, key) {
+  if (!memberId || !env.DB) return false;
+  await ensure(env);
+  const r = await env.DB.prepare(
+    `INSERT INTO num_usage_counters (member_id, period, key, used) VALUES (?1,'life',?2,1)
+       ON CONFLICT(member_id, period, key) DO NOTHING`,
+  ).bind(memberId, key).run().catch(() => null);
+  return Number(r?.meta?.changes ?? 0) === 1;
+}
+
 /** Count one use of a metered capability. Call AFTER the work succeeded. */
 export async function countUse(env, memberId, key, by = 1) {
   if (!memberId || !env.DB) return;
@@ -431,6 +467,8 @@ export async function handleMembership(request, env, path) {
     return json({
       tier: t,
       name: tiers(env)[t]?.name ?? 'Num',
+      price_cents: tiers(env)[t]?.price_cents ?? 0,
+      price_cents_year: tiers(env)[t]?.price_cents_year ?? null,
       entitlements: tiers(env)[t]?.entitlements ?? {},
       since: row?.since ?? null,
       renews_at: row?.renews_at ?? null,
@@ -456,12 +494,21 @@ export async function handleMembership(request, env, path) {
     const t = tiers(env)[tier];
     if (!me || !t || t.price_cents <= 0) return json({ ok: false, error: 'Which plan?' }, 400);
 
+    // A YEAR, when the plan has a yearly price and the client asked for one.
+    // The client names the interval and NOTHING ELSE: the amount is read off
+    // this table either way, so "year" can never arrive carrying its own
+    // cheaper number. A plan with no yearly price falls back to the month
+    // rather than inventing one by division.
+    const wantsYear = String(b.interval) === 'year' && Number(t.price_cents_year) > 0;
+    const amountCents = wantsYear ? Number(t.price_cents_year) : t.price_cents;
+
     const { requestSubscription } = await import('./pay.mjs');
     const out = await requestSubscription(env, {
       memberId: me,
-      amountCents: t.price_cents,          // ours, never the client's
-      name: `${t.name} — monthly`,
+      amountCents,                         // ours, never the client's
+      name: `${t.name} — ${wantsYear ? 'a year' : 'monthly'}`,
       ref: `tier:${tier}`,
+      interval: wantsYear ? 'year' : 'month',
     });
     return json(out, out.ok ? 200 : 503);
   }
