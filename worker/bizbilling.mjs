@@ -61,6 +61,11 @@ export const DEFAULT_BIZ_TIERS = Object.freeze({
       promotions: false,
       multi_location_max: 1,
       beta_features: false,
+      // A free venue is told HOW MANY partners are near it and what kind.
+      // It is not shown who they are, and cannot ask for an introduction.
+      // Counts are honest and useful on their own — they are also the only
+      // truthful reason to upgrade, which is why they are not hidden too.
+      partner_directory: false,
     }),
   }),
   small: Object.freeze({
@@ -72,6 +77,7 @@ export const DEFAULT_BIZ_TIERS = Object.freeze({
       promotions: true,
       multi_location_max: 3,
       beta_features: false,
+      partner_directory: true,
     }),
   }),
   pro: Object.freeze({
@@ -83,6 +89,7 @@ export const DEFAULT_BIZ_TIERS = Object.freeze({
       promotions: true,
       multi_location_max: 10,
       beta_features: false,
+      partner_directory: true,
     }),
   }),
   full: Object.freeze({
@@ -96,6 +103,7 @@ export const DEFAULT_BIZ_TIERS = Object.freeze({
       // locations on Enterprise, which has no public price.
       multi_location_max: 25,
       beta_features: true,
+      partner_directory: true,
     }),
   }),
 });

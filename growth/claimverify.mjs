@@ -48,6 +48,7 @@ import {
   maskPhone, maskEmail, channelsFor, rateLimitOk, logEvent,
 } from '../claim/verify.mjs';
 import { onboardStatements } from '../claim/onboard.mjs';
+import { startLogin } from './qrsystem.mjs';
 
 /**
  * Columns the lead row gains so it can point at its own proof.
@@ -434,6 +435,34 @@ export async function claimVerify(req, env, deps) {
   ).bind(claim.place_id).first();
   const businessId = uid('biz');
 
+  // ── THE DASHBOARD, FINALLY CONNECTED ───────────────────────────────────
+  //
+  // Business sign-in (qrsystem.mjs startLogin) only recognises a row in
+  // num_business_users. Verification created the business, its owner record,
+  // its profile and its settings — and never that row. So a business could
+  // fill in the form, receive the code, prove the listing is theirs, be told
+  // "we will send your dashboard link", and then:
+  //   · no link was sent — that sentence was the whole implementation, and
+  //   · asking for one at /biz returned "sent" and sent nothing, because the
+  //     login endpoint is deliberately silent about addresses it does not
+  //     know, and it did not know theirs.
+  // num_business_users had held exactly one row in the product's life, and
+  // num_biz_sessions none. There was no path from claiming a listing to being
+  // signed in. Not a slow path — no path.
+  //
+  // Safe HERE and nowhere earlier: this line runs only after the code sent to
+  // the listing's PUBLISHED contact has been typed back. Whoever gets the
+  // login has proved control of the business. Creating it at claim time, before
+  // that proof, would let anyone who knows a restaurant's name walk into its
+  // dashboard.
+  let ownerEmail = String(claim.claimant_email || '').trim().toLowerCase();
+  if (!ownerEmail) {
+    const lead = await env.DB.prepare('SELECT email FROM claims WHERE num_claim_id=?1')
+      .bind(claim.id).first().catch(() => null);
+    ownerEmail = String(lead?.email || '').trim().toLowerCase();
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(ownerEmail)) ownerEmail = '';
+
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO businesses (id, name, kind, category, territory, status, onboarded_by, notes)
@@ -454,6 +483,11 @@ export async function claimVerify(req, env, deps) {
     env.DB.prepare("UPDATE places SET status='claimed', business_id=?2 WHERE id=?1")
       .bind(claim.place_id, businessId),
     ...(await onboardStatements(env, businessId, place, 'claim:' + claim.channel)),
+    ...(ownerEmail ? [env.DB.prepare(
+      `INSERT INTO num_business_users (id, business_id, email, name, role, status, created_at)
+       VALUES (?1,?2,?3,?4,'owner','active',?5)`,
+    ).bind(uid('bu'), businessId, ownerEmail, claim.claimant_name ?? null,
+      Math.floor(Date.now() / 1000))] : []),
   ]);
 
   // Close the loop on the lead row, so the public form's own table finally
@@ -465,11 +499,49 @@ export async function claimVerify(req, env, deps) {
 
   await logEvent(env, claim.id, 'verified', claim.channel, ip);
 
+  // Now send it. The same token and the same /biz/login URL a normal sign-in
+  // uses — one door, not a second one to keep in step. A mail failure must
+  // never undo a verification the owner has already completed: the business
+  // exists and the login row exists, so /biz sign-in works regardless.
+  const dashboard = { sent: false, to: null, signin: '/biz' };
+  if (ownerEmail) {
+    try {
+      const login = await startLogin(env, ownerEmail, { ip });
+      if (login.ok && login.sent) {
+        const link = (env.SITE || 'https://itsnum.com') + '/biz/login?t=' + login.token;
+        const r = await deps.sendMail(env, {
+          to: ownerEmail,
+          from: env.MAIL_FROM || 'NUM <info@itsnum.com>',
+          subject: `${place.name} is yours on NUM — open your dashboard`,
+          text: [
+            `Your listing for ${place.name} is verified. It is yours.`,
+            '',
+            `Open your dashboard: ${link}`,
+            '',
+            'That link works once and for 20 minutes. After that, sign in any time at',
+            `${env.SITE || 'https://itsnum.com'}/biz with this email address — no password.`,
+          ].join('\n'),
+        });
+        dashboard.sent = !(r && r.ok === false);
+        dashboard.to = maskEmail(ownerEmail);
+      }
+    } catch (e) {
+      console.error('[claim] verified, but the dashboard link did not send:', e?.message ?? e);
+    }
+  }
+
   return deps.J({
     ok: true,
     business_id: businessId,
     place: { id: place.id, name: place.name },
-    next: 'Your listing is yours. We will send your dashboard link to the same contact.',
+    dashboard,
+    // Say what happened, not what was meant to. This line used to promise a
+    // link that nothing sent.
+    next: dashboard.sent
+      ? `Your listing is yours. We've emailed your dashboard link to ${dashboard.to}.`
+      : ownerEmail
+        ? 'Your listing is yours. Sign in at itsnum.com/biz with the email you gave us.'
+        : 'Your listing is yours. Reply with an email address and we will set up your dashboard sign-in.',
   });
 }
 

@@ -233,6 +233,10 @@ const FILES = [
   // A SKU on every item on a venue's menu, and a unique index per business.
   // One ALTER (not re-runnable: 'duplicate column name: sku' on a second pass
   // means it is already applied) plus an IF NOT EXISTS index.
+  // Partners, partner introductions and the business tour. Built on the
+  // other line (app-main) and already applied to production 21 Sep. Three
+  // tables, all IF NOT EXISTS.
+  'worker/migrations/0062_partners_and_tour.sql',
   'worker/migrations/0061_product_sku.sql',
 ];
 
