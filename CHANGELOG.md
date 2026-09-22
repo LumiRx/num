@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.415 — 2026-09-22 16:36 UTC
+
+Unify the two code lines; App Store 1.0 (12) guards back in production
+
+- commit `092dcbe`
+
 ## 0.8.414 — 2026-09-21 19:38 UTC
 
 App Review 1.0 (12) fixes: iOS storefront guards, Surprise me fallback
