@@ -28,7 +28,10 @@ const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 /* Paths the Worker answers itself rather than the SPA — the public RSVP page
    and the short share links. Their 404s are meaningful ("that invite link
    isn't valid any more") and must reach the user unchanged. */
-const WORKER_PATHS = /^\/(e|r|i|c)\/|^\/claim\/confirm/;
+// /esim is the eSIM shop, rendered by the Worker; its pay link 303s to Stripe,
+// which a service worker cannot hand back for a navigation (see below).
+// /go/ is the ad-link redirect, same reason.
+const WORKER_PATHS = /^\/(e|r|i|c|go|esim)\/|^\/esim$|^\/claim\/confirm/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

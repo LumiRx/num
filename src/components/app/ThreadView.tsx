@@ -546,6 +546,13 @@ export default function ThreadView() {
 
   return (
     <>
+      {/* A friend's link opened here with no account yet. The browser opens
+          straight into the thread, so the card has to live HERE, and above
+          the scroll, not in it: the thread sticks to its newest message and
+          would slide the button out of sight. Shown only on the landing page
+          behind the thread, it was invisible, and "it took me into the chat
+          and never added them" was the result (21 Sep 2026). */}
+      <div style={{ flex: 'none' }}><PairHandoff /></div>
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -559,11 +566,6 @@ export default function ThreadView() {
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        {/* A friend's link opened here with no account yet. The browser opens
-            straight into the thread, so the card has to live HERE: shown only
-            on the landing page behind it, it was invisible, and "it took me
-            into the chat and never added them" was the result (21 Sep 2026). */}
-        <PairHandoff />
         {msgs.map((m, i) => (
           <MsgBubble
             key={i}

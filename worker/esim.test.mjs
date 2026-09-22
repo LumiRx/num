@@ -449,3 +449,25 @@ test('the success page of a late payment says "payment received", not "nothing w
   assert.match(page, /Payment received/);
   assert.doesNotMatch(page, /Nothing was charged/);
 });
+
+test('every eSIM page reaches the Worker: Cloudflare run_worker_first and the service worker both hand it over', async () => {
+  const { readFileSync } = await import('node:fs');
+  // Cloudflare's asset layer answers any path NOT listed here with the app
+  // shell before the Worker runs. Shipped once without /esim: every eSIM page,
+  // the pay link and the install link came back as the React app.
+  const cfg = readFileSync(new URL('../wrangler.app.jsonc', import.meta.url), 'utf8');
+  const list = JSON.parse(`[${/"run_worker_first":\s*\[([^\]]*)\]/.exec(cfg)[1]}]`);
+  const workerFirst = (path) => list.some((p) => (p.endsWith('/*') ? path.startsWith(p.slice(0, -1)) : path === p));
+  // The installed app's service worker must not answer these navigations
+  // either: the pay link is a 303, and a redirected response handed back for a
+  // navigation is a network error in the browser.
+  const sw = readFileSync(new URL('../app-public/sw.js', import.meta.url), 'utf8');
+  const m = /const WORKER_PATHS = \/(.+)\/;/.exec(sw);
+  assert.ok(m, 'WORKER_PATHS is where the service worker says it is');
+  const WORKER_PATHS = new RegExp(m[1]);
+  for (const path of ['/esim', '/esim/th', '/esim/airport/bkk', '/esim/region/eu', '/esim/find', '/esim/sitemap.xml', '/esim/pay/tok_abcdefghijklmnop', '/esim/o/tok_abcdefghijklmnop']) {
+    assert.ok(workerFirst(path), `${path} is not in run_worker_first: the asset layer would serve the app shell`);
+    assert.ok(WORKER_PATHS.test(path), `${path} is not in the service worker's WORKER_PATHS: installed users would get the shell or a network error`);
+  }
+  assert.equal(workerFirst('/esimx'), false);
+});

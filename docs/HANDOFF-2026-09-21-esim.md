@@ -25,6 +25,15 @@ Routes (all on num-app, `app.itsnum.com`): `/esim`, `/esim/<cc>`, `/esim/airport
 `/esim/pay/<token>` (-> Stripe), `/esim/o/<token>` (install page), `/api/esim/quote`,
 `/api/esim/plans`, `/api/esim/order/<token>`, `/api/esim/doorbell/<secret>`, `/api/admin/esim`.
 
+## 22 Sep: the first live check found the pages unreachable (fixed, needs a release)
+
+v0.8.317 shipped the eSIM code and applied 0033, but `app.itsnum.com/esim` answered with the React
+app shell: `run_worker_first` in `wrangler.app.jsonc` did not list `/esim`, so Cloudflare's asset
+layer served the SPA fallback for every eSIM page, the pay link and the install link. Now listed,
+and `app-public/sw.js` lets `/esim` (and `/go/`) navigations through to the browser. A wiring test
+in `worker/esim.test.mjs` reads both files. The live check after the next release:
+`curl -s https://app.itsnum.com/esim | grep -c "Land connected"` must print 1.
+
 ## Go live, in order
 
 1. Sign up at eSIM Access, copy the Access Code, top up the prepaid balance.

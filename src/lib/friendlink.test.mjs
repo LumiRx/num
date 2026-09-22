@@ -122,7 +122,7 @@ test('there is a button to scan, where your own code lives', () => {
 });
 
 test('the carry-across code has somewhere to go in the app', () => {
-  assert.match(profile, /<PairRedeem \/>/, 'built on 12 Sep and never mounted');
+  assert.match(profile, /<PairBridge installed/, 'the code box lives in Profile via PairBridge');
 });
 
 test("Safari's first button finishes the add, it does not set homework", () => {

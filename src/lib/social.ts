@@ -836,7 +836,12 @@ export function completePendingLinks(): Promise<void> {
       }
     }
     const left = store.get();
-    if (!left.connectTo && !left.inviteToken) clearPendingLink();
+    if (!left.connectTo && !left.inviteToken) {
+      clearPendingLink();
+      // The "one step left" card has done its job once they are signed in
+      // and the add went through; leaving it up reads as if it did not.
+      if (left.pairCode) store.set({ pairCode: null });
+    }
   })().finally(() => { completing = null; });
   return completing;
 }
