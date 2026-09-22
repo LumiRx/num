@@ -61,7 +61,7 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
     // still answers, and the ratings land for the next one.
     const catForRatings = detectCat(userText) ?? (topicHint ? detectCat(topicHint) : null);
     const ratingLat = loc.lat ?? loc.dest?.lat, ratingLng = loc.lng ?? loc.dest?.lng;
-    if (env.SERPAPI_KEY && Number.isFinite(ratingLat) && Number.isFinite(ratingLng) && (!catForRatings || ['restaurant', 'cafe', 'bar', 'seafood', 'breakfast', 'dessert', 'spa', 'attraction', 'market'].includes(catForRatings))) {
+    if (env.GOOGLE_PLACES_API_KEY && Number.isFinite(ratingLat) && Number.isFinite(ratingLng) && (!catForRatings || ['restaurant', 'cafe', 'bar', 'seafood', 'breakfast', 'dessert', 'spa', 'attraction', 'market'].includes(catForRatings))) {
       try {
         const { enrichCell } = await import('./placeratings.mjs');
         await Promise.race([

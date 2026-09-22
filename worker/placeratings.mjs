@@ -7,8 +7,8 @@
 // great" and "it keeps suggesting the same two" both meant.
 //
 // This module fills the gap where it matters: the first time a neighbourhood
-// is asked about a kind of place, ONE Google Maps search (via SerpAPI, the
-// key already on the worker) brings back the twenty best-known places there
+// is asked about a kind of place, ONE Google Maps search — Places API, direct,
+// no reseller — brings back the twenty best-known places there
 // with their rating and review count. Each is matched to our own row by name
 // and distance and the rating is written onto it. From then on the ranking
 // has something real to rank by, for everyone, for as long as the row lives.
@@ -59,16 +59,63 @@ export async function isFresh(env, cell, cat) {
   return !!row && Date.now() - Number(row.ts) < TTL_DAYS * 86400000;
 }
 
-/** One Google Maps search around the point. */
+/** Google's own Places endpoint. No reseller in the middle. */
+const PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
+
+/**
+ * One Google Maps search around the point — against Google directly.
+ *
+ * ── WHY THIS MOVED OFF SERPAPI (21 Sep 2026, Dre's call) ─────────────────
+ *
+ * "We aren't using SerpAPI right now, use Google Maps."
+ *
+ * SerpAPI was a scraper in front of Google Maps, and by the time this changed
+ * it had refused **440 searches since 18 September** — every one a 429, plan
+ * spent. Three days with no rating written anywhere, while the ranking in
+ * ai/places.js quietly fell back to distance and whether a row has a phone.
+ *
+ * `scripts/enrich_ratings.mjs` has talked to Google directly since 11 August
+ * on `GOOGLE_PLACES_API_KEY`. Two paths to the same data, one of them dead,
+ * two different keys. Now there is one key and one road.
+ *
+ * ── THE FIELD MASK IS THE BILL ───────────────────────────────────────────
+ *
+ * Places API charges by the fields asked for. These four are the Essentials
+ * + Pro tier and nothing more — `priceLevel` and `primaryType` came back from
+ * SerpAPI for free, were assigned to a variable here, and were never read by
+ * anything. Asking Google for them would move every call to a dearer SKU to
+ * populate two fields we then throw away, so they are gone.
+ */
 export async function searchMaps(env, { lat, lng, q, fetchImpl = fetch }) {
-  if (!env.SERPAPI_KEY) return [];
-  const url = `https://serpapi.com/search.json?engine=google_maps&type=search&q=${encodeURIComponent(q)}&ll=@${lat},${lng},15z&hl=en&api_key=${env.SERPAPI_KEY}`;
-  const res = await fetchImpl(url, { signal: AbortSignal.timeout(8000) });
-  if (!res.ok) throw new Error(`serpapi ${res.status}`);
+  if (!env.GOOGLE_PLACES_API_KEY) return [];
+  const res = await fetchImpl(PLACES_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY,
+      'X-Goog-FieldMask': 'places.displayName,places.rating,places.userRatingCount,places.location',
+    },
+    body: JSON.stringify({
+      textQuery: q,
+      maxResultCount: 20,
+      // A ~1.5 km circle, which is the same ground the match below covers.
+      // `locationBias` rather than `locationRestriction`: a well-known place
+      // just outside the circle is still the place somebody means.
+      locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: 1500 } },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  // The status is kept in the message because the ledger below reads it:
+  // 429 is a spent quota and 401/403 a bad key, and those are the two that
+  // need a human. Everything else is weather.
+  if (!res.ok) throw new Error(`google places ${res.status}`);
   const body = await res.json();
-  return (body?.local_results ?? []).map((r) => ({
-    name: r.title, rating: Number(r.rating) || null, reviews: Number(r.reviews) || 0,
-    lat: Number(r.gps_coordinates?.latitude), lng: Number(r.gps_coordinates?.longitude), price: r.price ?? null, type: r.type ?? null,
+  return (body?.places ?? []).map((r) => ({
+    name: r.displayName?.text ?? '',
+    rating: Number(r.rating) || null,
+    reviews: Number(r.userRatingCount) || 0,
+    lat: Number(r.location?.latitude),
+    lng: Number(r.location?.longitude),
   })).filter((r) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng) && r.rating);
 }
 
@@ -78,7 +125,7 @@ export async function searchMaps(env, { lat, lng, q, fetchImpl = fetch }) {
  * the caller should run it under waitUntil or a short timeout.
  */
 export async function enrichCell(env, { lat, lng, cat, fetchImpl = fetch }) {
-  if (!env?.DB || !env?.SERPAPI_KEY || !Number.isFinite(lat) || !Number.isFinite(lng)) return { skipped: 'no-key' };
+  if (!env?.DB || !env?.GOOGLE_PLACES_API_KEY || !Number.isFinite(lat) || !Number.isFinite(lng)) return { skipped: 'no-key' };
   const q = QUERY_FOR[cat ?? 'restaurant'] ?? 'restaurants';
   const cell = cellOf(lat, lng);
   await ensure(env);
@@ -119,8 +166,9 @@ export async function enrichCell(env, { lat, lng, cat, fetchImpl = fetch }) {
           kind: 'ratings_refused',
           subject: msg.slice(0, 80),
           detail: 'Google Maps ratings are not being fetched, so places rank on weaker signals and '
-            + 'the "Real ratings" feature is on in name only. 429 = the SerpAPI plan is spent; '
-            + '401/403 = SERPAPI_KEY is wrong or revoked. Top up or replace the key, then confirm with: '
+            + 'the "Real ratings" feature is on in name only. 429 = the Google Places quota or '
+            + 'billing is spent; 401/403 = GOOGLE_PLACES_API_KEY is wrong, revoked, or restricted '
+            + 'to the wrong API. Fix it in the Google Cloud console, then confirm with: '
             + 'SELECT cell, cat, found, matched FROM num_rating_runs ORDER BY ts DESC LIMIT 5 — '
             + 'a row newer than the incident means it is fixed. Nothing else breaks meanwhile.',
           severity: 'low',
@@ -129,6 +177,24 @@ export async function enrichCell(env, { lat, lng, cat, fetchImpl = fetch }) {
     }
     return { error: msg };
   }
+
+  /* ── A SEARCH THAT WORKED CLOSES THE ROW THAT SAID THEY DON'T ─────────
+   *
+   * The refusal row is keyed on the message, so moving provider on 21 Sep
+   * would have left `f_ratings_refused|serpapi 429` open for ever — a ledger
+   * entry about a system that no longer exists, sitting in the chores count
+   * and the morning digest, outliving the thing it described.
+   *
+   * That is the same shape as the alert row that held /api/health at DOWN
+   * for thirty hours the night before: a record of a past failure with no
+   * way to end. A search coming back is the proof, so it is what closes it —
+   * every open ratings_refused row, whatever provider raised it. */
+  try {
+    const { open: openFailures, resolve: resolveFailure } = await import('./failures.mjs');
+    for (const r of await openFailures(env, { limit: 50 })) {
+      if (r.kind === 'ratings_refused') await resolveFailure(env, r.kind, r.subject);
+    }
+  } catch { /* the ledger must never be the reason an ask fails */ }
 
   // Our rows within ~1.5 km of the point.
   const dLat = 1.5 / 111, dLng = 1.5 / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
