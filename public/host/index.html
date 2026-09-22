@@ -305,7 +305,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
                nowhere else — the card lower down. -->
           <p class="mono" id="tierNow" style="font-size:16px;font-weight:650;margin:6px 0 0">Free</p>
           <p class="hint">Every plan holds unlimited clients. What a plan buys is reach: the calendar feed and text
-            alerts, then the host network and introductions from NUM, then products and Ghost Message.
+            alerts, then the host network and introductions from NUM, then products with SKUs and barcodes.
             <a href="#planCard">Change your plan below.</a></p>
         </div>
       </div>
@@ -643,14 +643,12 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   <section class="card2" id="prodCard">
     <span class="tag">Your shelf</span>
     <h2>Products</h2>
-    <p class="sub">Three kinds, one shelf. <b>Your own</b> products — hampers, packaged experiences, anything with a
-      fixed price. <b>NUM's</b> products you can put in front of your clients. And <b>Ghost Message</b> lines: a code
-      a client texts to get something delivered.</p>
+    <p class="sub">One shelf. <b>Your own</b> products — hampers, packaged experiences, anything with a
+      fixed price — and <b>NUM's</b> products you can put in front of your clients.</p>
 
-    <div class="note warn on">
-      <b>The Ghost rule.</b> A Ghost line needs a SKU, a keyword, a photo and a real price before it can go live.
-      A code that resolves to nothing is worse than no code at all — the client texted it off a card and got silence.
-      Save an incomplete line and we keep it as a draft rather than pretending it works.
+    <div class="note on">
+      <b>Every product has a SKU.</b> Type your own — the number already on your packaging or till, 4 to 12 digits —
+      or leave it blank and NUM numbers it for you. It prints as a barcode, so you can label stock and find it fast.
     </div>
 
     <div class="note bad" id="pdErr"></div>
@@ -662,14 +660,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
           <div class="field"><label for="pd_kind">Kind</label><select id="pd_kind">
             <option value="own">Mine — something I sell</option>
             <option value="num">NUM's — I offer it to my clients</option>
-            <option value="ghost">Ghost Message — a code they text</option>
           </select></div>
           <div class="field"><label for="pd_name">Name</label><input id="pd_name" type="text" required></div>
         </div>
-        <div class="row2" id="pd_ghostRow" style="display:none">
-          <div class="field"><label for="pd_sku">SKU <span class="hint">digits</span></label><input id="pd_sku" type="text" inputmode="numeric" placeholder="6943"></div>
-          <div class="field"><label for="pd_keyword">Keyword</label><input id="pd_keyword" type="text" placeholder="roses"></div>
-        </div>
+        <div class="field"><label for="pd_sku">SKU <span class="hint">4–12 digits, or leave blank and we number it</span></label>
+          <input id="pd_sku" type="text" inputmode="numeric" maxlength="16" placeholder="auto"></div>
         <div class="field" id="pd_numRow" style="display:none">
           <label for="pd_num">Which NUM product</label>
           <select id="pd_num"><option value="tab">NUM Tab</option><option value="membership">Membership</option>
@@ -682,13 +677,13 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
         </div>
         <div class="field"><label for="pd_desc">Description</label><textarea id="pd_desc" rows="2"></textarea></div>
         <label class="choice"><input type="checkbox" id="pd_active"><b>Live</b>
-          <span>Ghost lines only go live once they resolve. Everything else goes live when you say so.</span></label>
+          <span>It goes live when you say so.</span></label>
         <button class="btn pri" type="submit" id="pdBtn">Save product</button>
       </form>
     </details>
 
     <div class="scroll"><table>
-      <thead><tr><th>Kind</th><th>Name</th><th>Code</th><th>Price</th><th>Live</th><th></th></tr></thead>
+      <thead><tr><th>Kind</th><th>Name</th><th>SKU</th><th>Price</th><th>Live</th><th></th></tr></thead>
       <tbody id="pdRows"></tbody>
     </table></div>
   </section>
@@ -1706,10 +1701,10 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   function paintProducts(d) {
     var rows = d.products || [];
     $('pdRows').innerHTML = rows.length ? rows.map(function (p) {
-      var kind = { own: 'Yours', num: 'NUM', ghost: 'Ghost' }[p.kind] || p.kind;
-      var code = p.kind === 'ghost'
-        ? '<span class="mono">1.' + esc(p.sku || '????') + ' ' + esc(p.keyword || '—') + '</span>'
-        : (p.num_product ? esc(p.num_product) : '—');
+      var kind = { own: 'Yours', num: 'NUM' }[p.kind] || 'Yours';
+      // The barcode SVG is built on the server from the SKU's digits only, so
+      // it is safe to place as markup. Anything without one shows the number.
+      var code = p.barcode ? p.barcode : (p.sku ? '<span class="mono">' + esc(p.sku) + '</span>' : '—');
       return '<tr><td>' + kind + '</td><td><b>' + esc(p.name) + '</b></td><td>' + code + '</td><td class="tnum">' +
         (p.kind === 'num' ? 'our price' : money(p.price_minor, p.currency)) + '</td><td>' +
         (p.active ? 'Live' : 'Draft') + '</td><td><button class="btn" data-pd="' + p.id + '">Delete</button></td></tr>';
@@ -1724,7 +1719,6 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
   }
 
   $('pd_kind').onchange = function () {
-    $('pd_ghostRow').style.display = $('pd_kind').value === 'ghost' ? '' : 'none';
     $('pd_numRow').style.display = $('pd_kind').value === 'num' ? '' : 'none';
     $('pd_price').disabled = $('pd_kind').value === 'num';
   };
@@ -1738,7 +1732,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
       action: 'save',
       product: {
         kind: $('pd_kind').value, name: $('pd_name').value, description: $('pd_desc').value,
-        sku: $('pd_sku').value, keyword: $('pd_keyword').value, num_product: $('pd_num').value,
+        sku: $('pd_sku').value, num_product: $('pd_num').value,
         photo_url: $('pd_photo').value, active: $('pd_active').checked,
         price_minor: isFinite(amount) ? Math.round(amount * 100) : 0,
         currency: $('currency').value || 'GBP'
@@ -1746,15 +1740,11 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     }).then(function (d) {
       $('pdBtn').disabled = false;
       if (!d.ok) {
-        return note($('pdErr'), d.error === 'duplicate_sku_or_keyword'
-          ? 'You already have a line with that SKU or keyword. Codes have to be unique or they cannot resolve.'
+        return note($('pdErr'), d.error === 'duplicate_sku'
+          ? 'You already have a product with that SKU. Each product needs its own number.'
           : 'That did not save: ' + esc(d.error || 'unknown'), 'bad');
       }
-      var saved = (d.products || []).filter(function (p) { return p.name === $('pd_name').value; })[0];
-      if (saved && saved.kind === 'ghost' && !saved.active && $('pd_active').checked) {
-        note($('pdErr'), 'Saved as a draft. A Ghost line needs a SKU, a keyword, a photo and a price above zero before it can go live.', 'warn');
-      }
-      ['pd_name', 'pd_desc', 'pd_sku', 'pd_keyword', 'pd_photo', 'pd_price'].forEach(function (i) { $(i).value = ''; });
+      ['pd_name', 'pd_desc', 'pd_sku', 'pd_photo', 'pd_price'].forEach(function (i) { $(i).value = ''; });
       $('pd_active').checked = false;
       paintProducts(d);
     }).catch(function () {
@@ -1933,7 +1923,7 @@ src="https://www.facebook.com/tr?id=1091773503496521&ev=PageView&noscript=1"
     free:  'Unlimited clients, your services and prices, every request read and drafted',
     small: 'Everything in Free, plus your calendar feed and text alerts',
     pro:   'Everything in Small, plus the host network and introductions from NUM',
-    full:  'Everything in Pro, plus products, Ghost Message and promotion'
+    full:  'Everything in Pro, plus products with SKUs and barcodes, and promotion'
   };
 
   // Status words in the product's own language, not Stripe's. `created` is a

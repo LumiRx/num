@@ -230,6 +230,10 @@ const FILES = [
   // Referral earnings that were not paid automatically, and why. One table,
   // two indexes, IF NOT EXISTS, no ALTER.
   'worker/migrations/0060_referral_holds.sql',
+  // A SKU on every item on a venue's menu, and a unique index per business.
+  // One ALTER (not re-runnable: 'duplicate column name: sku' on a second pass
+  // means it is already applied) plus an IF NOT EXISTS index.
+  'worker/migrations/0061_product_sku.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

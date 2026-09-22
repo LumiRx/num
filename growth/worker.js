@@ -442,6 +442,7 @@ import { integrityReport } from '../worker/hostintegrity.mjs';
 // this is where the scan reaches them.
 import { issueAfter, afterState, resolveAfter, tipRail } from './aftervisit.mjs';
 import { rate as afterRate, tip as afterTip } from '../worker/aftertable.mjs';
+import { cleanSku, nextSku, barcodeSvg } from './sku.mjs';
 
 /* -------------------------------------------------------------------- mail */
 
@@ -3091,7 +3092,7 @@ const HOST_TIER_FEATURES = {
   free:  ["Unlimited clients", "Your services and prices", "Requests and drafts"],
   small: ["Everything in Free", "Text alerts", "Calendar feed"],
   pro:   ["Everything in Small", "The host network", "Introductions from NUM"],
-  full:  ["Everything in Pro", "Products and Ghost Message", "Your services promoted"],
+  full:  ["Everything in Pro", "Products with SKUs and barcodes", "Your services promoted"],
 };
 
 /** WHAT A TIER ACTUALLY BUYS.
@@ -3113,7 +3114,7 @@ const FEATURE_MIN_TIER = {
 };
 const FEATURE_LABEL = {
   sms: "Text alerts", calendar: "Calendar feed", network: "The host network",
-  intros: "Introductions from NUM", products: "Products and Ghost Message",
+  intros: "Introductions from NUM", products: "Products with SKUs and barcodes",
 };
 
 function hostCan(tier, feature) {
@@ -3137,7 +3138,9 @@ function needsTier(feature) {
           "). Your clients and your prices are not affected, and nothing you already have is taken away.",
   }, 402);
 }
-const HOST_PRODUCT_KINDS = ["own", "num", "ghost"];
+// "ghost" is retired (22 Sep 2026): Ghost Message is off and no code can be
+// texted to order anything. Every product carries a SKU instead — see sku.mjs.
+const HOST_PRODUCT_KINDS = ["own", "num"];
 const NUM_PRODUCTS = ["tab", "membership", "concierge"];
 const HOST_REQ_STATUS = ["new", "drafted", "awaiting_host", "confirmed", "declined", "done", "cancelled"];
 const CLIENT_SOURCES = ["host_added", "num_offer", "self_joined"];
@@ -3426,22 +3429,21 @@ async function hostClients(req, env, url, ctx) {
 
 /* ------------------------------------------------ /api/host/products  R/W */
 
-/** One product line, normalised. The three kinds share a table because a host
- *  thinks of them as one shelf, but they do NOT share validation:
+/** One product line, normalised. Two kinds share a table because a host
+ *  thinks of them as one shelf:
  *
- *  'ghost' is the strict one. A Ghost Message code that resolves to nothing is
- *  the single failure that makes the whole primitive untrustworthy — the buyer
- *  texted a code off a card and got silence — so a ghost line cannot go active
- *  without a SKU, a keyword, a photo and a real price. That is the Resolution
- *  Rule from the Ghost spec, enforced here and again by a CHECK in 0014.
+ *  'own' — the host's own product. 'num' — a NUM product the host resells; the
+ *  price is OURS, so price_minor is forced to 0 and the live price is read from
+ *  our catalogue at display time.
  *
- *  'num' is a NUM product the host resells. The price is OURS, so the host
- *  does not get to set it: price_minor is forced to 0 and the live price is
- *  read from our catalogue at display time. A host quoting a NUM price we
- *  later change would be the one who looks wrong to their client. */
+ *  Every line has a SKU: digits the host types (the number on their packaging
+ *  or till) or, left blank, the next free one we assign. It is a label for
+ *  organising the shelf and prints as a barcode. It unlocks nothing. */
 function productLine(raw) {
   if (!raw || typeof raw !== "object") return null;
-  const kind = HOST_PRODUCT_KINDS.indexOf(String(raw.kind || "")) === -1 ? null : String(raw.kind);
+  // A retired 'ghost' line from an old client is kept as the host's own product.
+  const asked = String(raw.kind || "") === "ghost" ? "own" : String(raw.kind || "");
+  const kind = HOST_PRODUCT_KINDS.indexOf(asked) === -1 ? null : asked;
   if (!kind) return null;
   const name = clean(raw.name, 120);
   if (!name) return null;
@@ -3458,21 +3460,13 @@ function productLine(raw) {
     currency: /^[A-Za-z]{3}$/.test(String(raw.currency || "")) ? String(raw.currency).toUpperCase() : "GBP",
     unit: HOST_UNITS.indexOf(String(raw.unit || "")) === -1 ? "item" : String(raw.unit),
     photo_url: cleanUrl(raw.photo_url, 400),
-    sku: null, keyword: null, num_product: null,
+    sku: cleanSku(raw.sku), keyword: null, num_product: null,
     active: raw.active === true || raw.active === 1 ? 1 : 0,
   };
 
   if (kind === "num") {
     out.num_product = NUM_PRODUCTS.indexOf(String(raw.num_product || "")) === -1 ? "tab" : String(raw.num_product);
     out.price_minor = 0;                                  // our price, not theirs
-  }
-
-  if (kind === "ghost") {
-    out.sku = String(raw.sku || "").replace(/[^0-9]/g, "").slice(0, 12) || null;
-    out.keyword = String(raw.keyword || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24) || null;
-    // Fails CLOSED. A ghost line missing any part of what makes a code
-    // resolve is stored as a draft, never as something a client can text.
-    if (!out.sku || !out.keyword || !out.photo_url || out.price_minor <= 0) out.active = 0;
   }
 
   return out;
@@ -3484,16 +3478,17 @@ async function hostProducts(req, env, url) {
 
   const list = async () => {
     const rows = await env.DB.prepare(
-      `SELECT id,kind,sku,keyword,name,description,category,price_minor,currency,unit,
+      `SELECT id,kind,sku,name,description,category,price_minor,currency,unit,
               photo_url,num_product,moderation,active,created_at
          FROM num_host_products WHERE host_id = ? ORDER BY kind ASC, name ASC LIMIT 300`
     ).bind(host.id).all();
+    const products = ((rows && rows.results) || []).map((r) =>
+      Object.assign({}, r, { kind: r.kind === "ghost" ? "own" : r.kind, barcode: barcodeSvg(r.sku) }));
     return J({
       ok: true,
-      products: (rows && rows.results) || [],
+      products: products,
       vocabulary: { kinds: HOST_PRODUCT_KINDS, units: HOST_UNITS, num_products: NUM_PRODUCTS },
-      // Said out loud so a host is never guessing why a code is not live.
-      ghost_rule: "A Ghost Message line needs a SKU, a keyword, a photo and a price before it can go live. A code that resolves to nothing is worse than no code.",
+      sku_rule: "Every product has a SKU: type your own (4 to 12 digits) or leave it blank and NUM assigns the next one. It is how you label and find things on your shelf.",
     });
   };
 
@@ -3522,11 +3517,19 @@ async function hostProducts(req, env, url) {
   if (!p) return J({ ok: false, error: "bad_product" }, 400);
 
   const id = clean(b.id || (b.product && b.product.id), 40);
+  // A new line with no SKU gets the next free one. An edit with the box left
+  // blank keeps the SKU it already has (COALESCE below), so a label printed on
+  // a box never silently changes under it.
+  if (!p.sku && !id) {
+    const used = await env.DB.prepare("SELECT sku FROM num_host_products WHERE host_id = ? AND sku IS NOT NULL")
+      .bind(host.id).all();
+    p.sku = nextSku(((used && used.results) || []).map((r) => r.sku));
+  }
   try {
     if (id) {
       await env.DB.prepare(
         `UPDATE num_host_products
-            SET kind=?,sku=?,keyword=?,name=?,description=?,category=?,price_minor=?,
+            SET kind=?,sku=COALESCE(?,sku),keyword=?,name=?,description=?,category=?,price_minor=?,
                 currency=?,unit=?,photo_url=?,num_product=?,active=?,updated_at=?
           WHERE id = ? AND host_id = ?`
       ).bind(
@@ -3546,7 +3549,7 @@ async function hostProducts(req, env, url) {
       ).run();
     }
   } catch (e) {
-    return J({ ok: false, error: "duplicate_sku_or_keyword" }, 409);
+    return J({ ok: false, error: "duplicate_sku" }, 409);
   }
   return list();
 }
@@ -11501,6 +11504,13 @@ function minorToInput(cs) {
   return n % 1 ? n.toFixed(2) : String(n);
 }
 
+/** Every SKU a venue already uses, so the next one assigned is free. */
+async function venueSkus(env, businessId) {
+  const r = await env.DB.prepare('SELECT sku FROM num_products WHERE business_id = ?1 AND sku IS NOT NULL')
+    .bind(String(businessId)).all().catch(() => null);
+  return ((r && r.results) || []).map((x) => x.sku);
+}
+
 async function venueProductSave(req, env, url) {
   const who = await qrWho(req, env, url);
   if (!who) return J({ ok: false, error: 'unauthorised' }, 401);
@@ -11533,12 +11543,20 @@ async function venueProductSave(req, env, url) {
     // would take every new item off the menu the moment it was added.
     const stockRaw = String(form.get('stock') || '').trim();
     const stock = stockRaw === '' ? null : Math.max(0, Math.round(Number(stockRaw) || 0));
-    await env.DB.prepare(
-      `INSERT INTO num_products (id,business_id,name,blurb,category,price_cs,currency,stock,available,sort,created_at,updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1,?9,?10,?10)`,
+    // The SKU: the owner's own number, or the next free one. A typed value that
+    // is not 4–12 digits is refused rather than quietly replaced — the owner
+    // may be copying it off a box and should see it did not take.
+    const typed = String(form.get('sku') || '').trim();
+    let sku = cleanSku(typed);
+    if (typed && !sku) return back(sep + 'err=sku');
+    if (!sku) sku = nextSku(await venueSkus(env, who.business.id));
+    const ok = await env.DB.prepare(
+      `INSERT INTO num_products (id,business_id,name,blurb,category,price_cs,currency,stock,available,sort,created_at,updated_at,sku)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1,?9,?10,?10,?11)`,
     ).bind('prd_' + newToken(), String(who.business.id), name,
            clean(form.get('blurb'), 160) || null, clean(form.get('category'), 24) || null,
-           price, money.code, stock, t, t).run();
+           price, money.code, stock, t, t, sku).run().then(() => true, () => false);
+    if (!ok) return back(sep + 'err=sku_taken');
     return back(sep + 'saved=added');
   }
 
@@ -11570,6 +11588,15 @@ async function venueProductSave(req, env, url) {
     return back(sep + 'saved=price');
   }
 
+  if (act === 'sku') {
+    const sku = cleanSku(form.get('sku'));
+    if (!sku) return back(sep + 'err=sku');
+    const ok = await env.DB.prepare(
+      'UPDATE num_products SET sku = ?3, updated_at = ?4 WHERE id = ?1 AND business_id = ?2',
+    ).bind(id, String(who.business.id), sku, t).run().then(() => true, () => false);
+    return back(sep + (ok ? 'saved=sku' : 'err=sku_taken'));
+  }
+
   if (act === 'archive') {
     // Archived, never deleted. A product is on old bills and old statements,
     // and a row that vanishes takes the explanation for those figures with it.
@@ -11599,7 +11626,7 @@ async function venueProductsPage(req, env, url) {
   const owner = QR.can(who.role, 'settings');
 
   const { results } = await env.DB.prepare(
-    `SELECT id,name,blurb,category,price_cs,currency,stock,available,archived_at
+    `SELECT id,name,blurb,category,price_cs,currency,stock,available,archived_at,sku
        FROM num_products WHERE business_id = ?1
       ORDER BY archived_at IS NOT NULL, sort, name`,
   ).bind(String(who.business.id)).all().catch(() => ({ results: null }));
@@ -11619,6 +11646,8 @@ async function venueProductsPage(req, env, url) {
     : url.searchParams.get('err') === 'role' ? '<div class="banner">Only the owner can change prices or add items. You can still update stock.</div>'
     : url.searchParams.get('err') === 'price' ? '<div class="banner">That price was not a number, so nothing was changed.</div>'
     : url.searchParams.get('err') === 'name' ? '<div class="banner">An item needs a name.</div>'
+    : url.searchParams.get('err') === 'sku' ? '<div class="banner">A SKU is 4 to 12 digits. Nothing was changed.</div>'
+    : url.searchParams.get('err') === 'sku_taken' ? '<div class="banner">Another item already has that SKU. Each item needs its own.</div>'
     : url.searchParams.get('err') ? '<div class="banner">That did not save.</div>' : '';
 
   const opts = PRODUCT_CATEGORIES.map((c) => `<option>${esc(c)}</option>`).join('');
@@ -11630,7 +11659,14 @@ async function venueProductsPage(req, env, url) {
       : Number(r.stock) <= 0 ? '<span class="pill off">out of stock</span>'
       : `<b>${esc(String(r.stock))}</b> left`;
     return `<tr${gone ? ' style="opacity:.5"' : ''}>
-      <td><b>${esc(r.name)}</b>${r.blurb ? `<div class="muted" style="font-size:13px">${esc(r.blurb)}</div>` : ''}</td>
+      <td><b>${esc(r.name)}</b>${r.blurb ? `<div class="muted" style="font-size:13px">${esc(r.blurb)}</div>` : ''}
+        ${r.sku ? `<div class="sku" style="margin-top:6px">${barcodeSvg(r.sku, { height: 30, module: 1.3 })}</div>` : ''}
+        ${owner && !gone ? `<form method="post" action="/api/venue/products${kq}" style="display:flex;gap:6px;margin-top:6px;align-items:center">
+          <input type="hidden" name="act" value="sku"><input type="hidden" name="id" value="${esc(r.id)}">
+          <input name="sku" value="${esc(r.sku || '')}" inputmode="numeric" aria-label="SKU" placeholder="SKU"
+                 style="width:120px;padding:6px 8px;font-size:13px;font-family:ui-monospace,Menlo,monospace">
+          <button class="ghost" style="margin:0;padding:6px 10px;font-size:12.5px">Set SKU</button>
+        </form>` : ''}</td>
       <td>${r.category ? `<span class="pill">${esc(r.category)}</span>` : '—'}</td>
       <td class="r">${owner && !gone ? `<form method="post" action="/api/venue/products${kq}" style="display:flex;gap:6px;justify-content:flex-end">
           <input type="hidden" name="act" value="price"><input type="hidden" name="id" value="${esc(r.id)}">
@@ -11681,6 +11717,8 @@ async function venueProductsPage(req, env, url) {
             <input id="pprice" name="price" required inputmode="decimal" placeholder="12.50"></div>
           <div><label for="pstock">Stock <span class="muted" style="font-weight:400">— leave empty if you do not count it</span></label>
             <input id="pstock" name="stock" inputmode="numeric" placeholder="—"></div>
+          <div><label for="psku">SKU <span class="muted" style="font-weight:400">— 4 to 12 digits, or leave empty and we number it</span></label>
+            <input id="psku" name="sku" inputmode="numeric" maxlength="16" placeholder="auto"></div>
         </div>
         <button>Add to menu</button>
       </form></div>` : '';
@@ -11689,7 +11727,7 @@ async function venueProductsPage(req, env, url) {
     <header><div class="brand">${esc(who.business.name)}</div>
       <div class="who">${esc(who.role)}</div></header>
     <h1>Products &amp; inventory</h1>
-    <p class="muted">Your menu, your prices, and what is left. Anyone on the floor can update stock; prices are the owner's.</p>
+    <p class="muted">Your menu, your prices, and what is left. Every item has a SKU and a barcode you can print on a label. Anyone on the floor can update stock; prices and SKUs are the owner's.</p>
     ${note}
     <div class="kpis">
       <div class="kpi"><k>On the menu</k><v>${live.length}</v><s>${off.length ? esc(String(off.length)) + ' hidden from guests' : 'all visible to guests'}</s></div>
