@@ -64,7 +64,7 @@ const LEDGER = '.deploy-shipped.json';
  */
 export const WORKERS = Object.freeze({
   'num-console': { config: 'wrangler.jsonc', main: 'worker/site.mjs', ship: 'npm run deploy:site' },
-  'num-app': { config: 'wrangler.app.jsonc', main: 'worker/index.mjs', ship: 'npm run release:stage "<what changed>" && npm run release:ship' },
+  'num-app': { config: 'wrangler.app.jsonc', main: 'worker/index.mjs', client: 'src/main.tsx', ship: 'npm run release:stage "<what changed>" && npm run release:ship' },
   'num-growth': { config: 'growth/wrangler.jsonc', main: 'growth/worker.js', ship: 'npm run deploy:growth' },
   'num-ai': { config: 'ai/wrangler.jsonc', main: 'ai/worker.js', ship: 'npm run deploy:ai' },
   'num-accounts': { config: 'accounts/wrangler.jsonc', main: 'accounts/worker.js', ship: 'npx wrangler deploy --config accounts/wrangler.jsonc && node scripts/deploydrift.mjs record num-accounts' },
@@ -90,7 +90,11 @@ const DYNAMIC = /\bimport\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g;
 // this tool cannot see is a file it will report as unchanged forever.
 const BARE = /(?:^|[\s;}])import\s*['"](\.[^'"]+)['"]/g;
 
-const EXTS = ['', '.mjs', '.js', '.ts', '/index.mjs', '/index.js'];
+// .tsx and .jsx are here because the CLIENT is tracked too — without them the
+// walk stopped at src/main.tsx and reported zero client files, which is how
+// this guard was blind to every screen in the app.
+const EXTS = ['', '.mjs', '.js', '.ts', '.tsx', '.jsx',
+  '/index.mjs', '/index.js', '/index.ts', '/index.tsx'];
 
 function resolveLocal(fromFile, spec) {
   const base = join(dirname(fromFile), spec);
@@ -111,7 +115,7 @@ function resolveLocal(fromFile, spec) {
  */
 export function bundleFiles(entry, seen = new Set()) {
   if (!entry || seen.has(entry) || !existsSync(entry)) return seen;
-  if (/\.test\.(mjs|js|ts)$/.test(entry)) return seen;
+  if (/\.(test|spec)\.(mjs|js|ts|tsx|jsx)$/.test(entry)) return seen;
   seen.add(entry);
   let src = '';
   try { src = readFileSync(entry, 'utf8'); } catch { return seen; }
@@ -127,8 +131,20 @@ export function bundleFiles(entry, seen = new Set()) {
 }
 
 /** One hash over the exact bytes a worker would ship. Order-stable. */
-export function digestOf(entry) {
-  const files = [...bundleFiles(entry)].sort();
+export function digestOf(entry, client = null) {
+  // ── THE CLIENT SHIPS WITH THE WORKER, SO IT MUST BE WATCHED TOO ──────
+  //
+  // 16 Sep 2026: this file tracked ZERO src/ files. `release.mjs stage` runs
+  // `npm run build`, so the compiled app deploys alongside num-app — which
+  // means a change to a screen is a change to what is live, and the guard
+  // could not see it.
+  //
+  // It went unnoticed because that day's work also touched worker files, so
+  // the report happened to be right for the wrong reason. A client-ONLY
+  // change — a new screen, or the iOS storefront gate in lib/concierge.ts —
+  // would have read "up to date" while sitting undeployed. That is precisely
+  // the silent half-deploy this file exists to stop, reproduced inside it.
+  const files = [...bundleFiles(entry), ...(client ? bundleFiles(client) : [])].sort();
   const h = createHash('sha256');
   for (const f of files) {
     h.update(f);
@@ -157,7 +173,7 @@ const writeLedger = (l) => writeFileSync(LEDGER, JSON.stringify(l, null, 2) + '\
 export function record(name, { now = new Date() } = {}) {
   const w = WORKERS[name];
   if (!w) throw new Error(`unknown worker: ${name}`);
-  const { digest, files } = digestOf(w.main);
+  const { digest, files } = digestOf(w.main, w.client);
   const ledger = readLedger();
   ledger[name] = { digest, at: now.toISOString(), files: fileHashes(files) };
   writeLedger(ledger);
@@ -176,7 +192,7 @@ export function check({ only = null } = {}) {
   for (const [name, w] of Object.entries(WORKERS)) {
     if (only && !only.includes(name)) continue;
     if (!existsSync(w.main)) continue;
-    const { digest, files } = digestOf(w.main);
+    const { digest, files } = digestOf(w.main, w.client);
     const prev = ledger[name];
     if (!prev) { report.push({ name, state: 'unknown', ship: w.ship }); continue; }
     if (prev.digest === digest) { report.push({ name, state: 'current', at: prev.at }); continue; }
@@ -269,7 +285,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (cmd === 'files') {
     const w = WORKERS[arg];
     if (!w) { console.error(`unknown worker: ${arg}`); process.exit(1); }
-    console.log([...bundleFiles(w.main)].sort().join('\n'));
+    console.log(digestOf(w.main, w.client).files.join('\n'));
   } else {
     const report = check();
     const stale = report.filter((r) => r.state === 'stale');

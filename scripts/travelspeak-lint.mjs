@@ -40,6 +40,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Every file whose strings a traveller or the model can end up reading. */
 export const LINTED = [
+  // The eSIM listing, pages, texts and emails a traveller reads (21 Sep).
+  'worker/esimcopy.mjs',
+  'worker/esimpages.mjs',
   // The model's own instructions — the highest-leverage place to get it wrong.
   'worker/prompt.mjs',
   'worker/services.mjs',

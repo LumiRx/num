@@ -77,7 +77,7 @@ export default function ResearchSheet() {
       // the thread's messages read straight through the brief field. The glass
       // IS the background in this app; every other dialog sheet carries it.
       className="glass-strong sheet-in"
-      style={{ ...sheetBase, zIndex: 60 }}
+      style={{ ...sheetBase, zIndex: 60, maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))', overflowY: 'auto' }}
     >
       <div style={grabberStyle} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 16px 10px' }}>

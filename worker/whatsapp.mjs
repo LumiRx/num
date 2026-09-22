@@ -192,6 +192,19 @@ export async function handleWhatsAppInbound(request, env, ctx, deps = {}) {
     }
   }
 
+  // "ESIM BKK" and the numbered reply that follows buy an eSIM right here,
+  // the same way as by SMS (worker/esimtext.mjs). Anything else is the
+  // concierge's, untouched.
+  if (text) {
+    const { esimText } = await import('./esim.mjs');
+    const r = await esimText(env, { from: phone, body: text, channel: 'whatsapp' })
+      .catch((e) => { console.warn('[whatsapp] esim', e?.message ?? e); return null; });
+    if (r?.handled) {
+      await send(phone, r.reply).catch(() => false);
+      return xmlOk();
+    }
+  }
+
   const payload = askPayload({ text, member, phone });
 
   // Filed alongside texts, so the desk can see what came in even when the

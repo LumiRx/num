@@ -248,9 +248,33 @@ async function one(env, id) {
  * the assigned runner only. Putting it on the open board would let anyone
  * claim a delivery they never made.
  */
-function visible(e, meId) {
-  const mine = e.poster_id === meId;
-  const running = e.runner_id === meId;
+/* ── WHO IS ALLOWED TO SEE A HANDOFF CODE ─────────────────────────────────
+ *
+ * 19 Sep 2026. GET /api/errands answered 200 to the open internet with
+ * handoff codes in the rows. Two faults, and the first one is the kind that
+ * reads as correct:
+ *
+ *   `e.poster_id === meId` with NO `me` parameter is `null === null`, which is
+ *   TRUE. Any errand whose poster_id was null was therefore "mine" to a caller
+ *   who had identified themselves as nobody, and the code came with it.
+ *
+ * A handoff code is what a stranger says at the door to be given someone's
+ * parcel. It is a credential, and it was on a public list.
+ *
+ * `same()` requires a real id on BOTH sides. Two unknowns are not a match —
+ * that is the whole bug, and it is worth keeping as its own named function so
+ * the next ownership check cannot reintroduce it with `===`.
+ */
+const same = (a, b) => !!a && !!b && String(a) === String(b);
+
+function visible(e, meId, opts) {
+  const mine = same(e.poster_id, meId);
+  const running = same(e.runner_id, meId);
+  // A list is never the place for a credential. Even for the rows a caller
+  // claims as theirs, the code is fetched one errand at a time — `me` here is
+  // an unauthenticated query parameter, so a list that carried codes would let
+  // anyone who guesses one member id walk away with all of theirs at once.
+  const maySeeCode = (mine || running) && !(opts && opts.list);
   return {
     id: e.id,
     title: e.title,
@@ -269,7 +293,7 @@ function visible(e, meId) {
     courier: e.courier,
     is_mine: mine,
     is_running: running,
-    ...(mine || running ? { handoff_code: e.handoff_code } : {}),
+    ...(maySeeCode ? { handoff_code: e.handoff_code } : {}),
   };
 }
 
@@ -297,7 +321,7 @@ async function board(env, url) {
          WHERE e.state='open' AND (?1 IS NULL OR e.place=?1) ORDER BY e.bounty DESC, e.rowid DESC LIMIT 40`,
       ).bind(place).all();
 
-  return json({ errands: (rows.results ?? []).map((e) => visible(e, me)) });
+  return json({ errands: (rows.results ?? []).map((e) => visible(e, me, { list: true })) });
 }
 
 // ── the state machine ─────────────────────────────────────────────────────

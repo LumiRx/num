@@ -84,6 +84,11 @@ export default function ShareToSheet() {
   );
 
   return (
+    // glass-strong is the sheet's BACKGROUND — see sheetBase in lib/derive.ts
+    // ("pair with className='glass-strong'"). Found missing here on 16 Sep 2026
+    // while fixing the same omission on WelcomePlans, which had rendered
+    // completely see-through on a real phone. Guarded now by
+    // src/lib/sheetbackground.test.mjs so a third one cannot happen quietly.
     <div
       role="dialog"
       aria-modal="true"

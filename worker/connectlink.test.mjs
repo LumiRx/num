@@ -75,8 +75,10 @@ describe('both kinds of code ride the same path', () => {
   });
 
   test('an identity code is recorded as a scan, a member id as a friend', () => {
-    assert.match(SOCIAL, /if \(isIdentityCode\(connectTo\)\) void recordIdentityScan\(connectTo\);/);
-    assert.match(SOCIAL, /else void connectByCode\(connectTo\);/);
+    // Since 21 Sep 2026 a member's identity code ALSO makes a friend: the
+    // scan is recorded, then the person behind it is connected.
+    assert.match(SOCIAL, /if \(isIdentityCode\(connectTo\)\) \{\s*const out = await recordIdentityScan\(connectTo\);/);
+    assert.match(SOCIAL, /\} else \{\s*await connectByCode\(connectTo\);/);
   });
 
   test('the scan helper posts to a route the worker serves', () => {

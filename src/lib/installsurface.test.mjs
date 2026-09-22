@@ -22,12 +22,18 @@ const CONCIERGE = src('../components/app/ConciergeApp.tsx');
 const LAUNCH = src('../components/canvas/LaunchStage.tsx');
 const PROMPT = src('../components/app/InstallPrompt.tsx');
 
-test('a phone-width viewport routes to ConciergeApp, not the launch page', () => {
+test('a browser routes to ConciergeApp, not the launch page', () => {
   // If this ever stops being true the rest of the file is testing the wrong
   // component, so it is asserted rather than assumed.
-  assert.match(APP, /innerWidth < 720/);
+  //
+  // This used to assert `innerWidth < 720`, the width test that decided which
+  // product to render. It was deleted on 16 Sep 2026 — every browser now gets
+  // the app and the pitch page moved behind `?stage` — so the thing to assert
+  // is the routing itself, which is what this file actually depends on.
   assert.match(APP, /if \(standalone\)/);
   assert.match(APP, /<ConciergeApp standalone \/>/);
+  assert.match(APP, /has\('stage'\)/,
+    'the launch stage is no longer opt-in — check what the default surface became');
 });
 
 test('the install card is mounted on the app surface', () => {

@@ -146,6 +146,21 @@ export async function handleSmsInbound(request, env, ctx = null, deps = {}) {
     return xmlReply(ENTRY_REPLY);
   }
 
+  // ── TEXT ESIM ─────────────────────────────────────────────────────────
+  //
+  // "ESIM", "ESIM BKK", "esim thailand" start a purchase inside this thread:
+  // three plans, a numbered reply, a pay link, and the install link once
+  // Stripe has the money (worker/esimtext.mjs). A reply to an open eSIM
+  // question ("2", or a country) is answered here too. Everything else falls
+  // straight through — handled:false — so the concierge inbox below is
+  // untouched. Consent is recorded inside, as for PACKS: they wrote first.
+  if (text) {
+    const { esimText } = await import('./esim.mjs');
+    const r = await esimText(env, { from, body: text, channel: 'sms' })
+      .catch((e) => { console.warn('[sms] esim', e?.message ?? e); return null; });
+    if (r?.handled) return xmlReply(r.reply);
+  }
+
   // ── A VENUE ANSWERING AN ORDER ────────────────────────────────────────
   //
   // "Y A417" from the restaurant's own line accepts order A417. Handled here,
@@ -233,6 +248,16 @@ export async function handleSmsInbound(request, env, ctx = null, deps = {}) {
       url: '/?app',
       tag: `sms:${from}`,
     }).catch(() => {});
+  }
+
+  // "Your own concierge with it." Somebody who bought an eSIM from us gets
+  // the concierge answering by text. Only eSIM buyers — this number also
+  // hears from venues, drivers and suppliers, whose messages belong in the
+  // inbox, not in a chatbot. Off until SMS_CONCIERGE=on. worker/esim.mjs.
+  if (text && !numMedia) {
+    const { conciergeByText } = await import('./esim.mjs');
+    await conciergeByText(env, ctx, { from, text, member })
+      .catch((e) => console.warn('[sms] text concierge', e?.message ?? e));
   }
 
   // Always answer a photo. A supplier who hears nothing assumes it failed and

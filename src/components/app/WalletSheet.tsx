@@ -8,9 +8,9 @@ import { StarIcon, WalletIcon, XIcon } from '../../lib/icons';
 import { buyPack, requestCashout } from '../../lib/concierge';
 import { canOfferSubscription } from '../../lib/native';
 import { TabStarter } from './TabSheet';
+import MembershipCard from './MembershipCard';
 import { amountOf, refreshActivity, stateNote, whenOf } from '../../lib/wallet';
 import type { Pack } from '../../lib/wallet';
-import MembershipCard from './MembershipCard';
 import StaysCard from './StaysCard';
 import { apiUrl } from '../../lib/apibase';
 import { loadMemberWallet, createMemberWallet, shortAddress, type MemberWallet } from '../../lib/memberwallet';
@@ -82,6 +82,7 @@ export default function WalletSheet() {
       className="glass-strong sheet-in no-scrollbar"
       style={{
         ...sheetBase,
+        maxHeight: 'min(92%, calc(100% - var(--sat, 0px) - 8px))',
         visibility: open ? 'visible' : 'hidden',
         transform: open ? 'translateY(0)' : 'translateY(105%)',
         overflowY: 'auto',

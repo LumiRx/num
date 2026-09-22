@@ -1,0 +1,33 @@
+-- The column that makes a paid creative nameable.
+--
+-- WHY THIS COLUMN EXISTS
+--
+-- The Reddit flight spent $677.78 across three campaigns and several
+-- creatives, and produced exactly one install. Which creative earned it is
+-- unanswerable, and always was: every ad shared a single utm_campaign, so in
+-- our own database the creatives are one undifferentiated row. The campaign
+-- report can say what a campaign cost. Nothing anywhere can say which AD
+-- worked.
+--
+-- The X flight was designed not to repeat that. Its destination URLs carry a
+-- distinct utm_content per creative -- louvre-theft, louvre-windows,
+-- louvre-direct -- so the counted-fact formats can be read against the
+-- deliberate product-claim control, which is the entire point of running a
+-- control at all.
+--
+-- That tag was being thrown away three times over. The client tracker reads
+-- utm_content, stores it in num_campaign_v1 and carries it across to the app
+-- -- and then omitted it from the POST body. The /api/ev handler never read
+-- it. And this table had nowhere to put it. Three layers, one missing field,
+-- and the flight would have landed on day eight with the same unanswerable
+-- question as Reddit.
+--
+-- Nullable on purpose. Every row written before today has no creative to name,
+-- and backfilling a guess would be worse than the gap: "unknown" is a fact,
+-- an invented tag is not. Organic and referral traffic will keep writing NULL
+-- here forever, correctly -- a visit with no ad behind it has no creative.
+--
+-- Safe to add: every INSERT against this table names its columns explicitly,
+-- nothing does SELECT * on it, and no read accesses a row by ordinal. Checked
+-- against the deployed num-growth and num-app bundles before writing this.
+ALTER TABLE num_web_events ADD COLUMN utm_content TEXT;

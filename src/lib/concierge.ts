@@ -3,6 +3,7 @@
 // surface (sendChip, openVoice, payBill, buyPack…) is the seam where a real
 // agent backend would slot in later.
 import { anonId } from './anon';
+import { canOfferSubscription } from './native';
 import { store } from './store';
 import { currentLang } from './i18n';
 import { ensurePlaceForRecommendation, wantsLocalAdvice } from './whereami';
@@ -25,6 +26,58 @@ import { holdAndAsk, mayAsk } from './gate';
 let boughtTimer: ReturnType<typeof setTimeout> | undefined;
 let voiceT1: ReturnType<typeof setTimeout> | undefined;
 let voiceT2: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * THE JOIN ASK — AFTER THE PRODUCT HAS PROVED ITSELF, NEVER BEFORE.
+ *
+ * This used to be a sheet that opened 900ms after the app loaded, before the
+ * visitor had asked anything or seen Num do one useful thing. On 20 Sep 2026
+ * that wall stood in front of 561 arrivals from X.
+ *
+ * A form in front of a stranger is a price with nothing bought. The same form
+ * after Num has answered a real question is a natural next step, because by
+ * then there is something to keep.
+ *
+ * TWO ASKS, EVER:
+ *   1. after the first answer — the sheet, once
+ *   2. after the third question — one line and a chip, never a second wall
+ *
+ * And the moment they have an account, every join ask is off for good: a
+ * member asked to sign up is a member who thinks the app has forgotten them.
+ * Counted in localStorage, which throws in private mode — failing to 99 means
+ * the ask is skipped rather than repeated on every single load.
+ */
+const JOIN_KEY = 'num_join_asked';
+const joinAsks = (): number => {
+  try { return Number(localStorage.getItem(JOIN_KEY) ?? 0) || 0; } catch { return 99; }
+};
+const markJoinAsk = (n: number) => {
+  try { localStorage.setItem(JOIN_KEY, String(n)); } catch { /* private mode */ }
+};
+
+export function maybeAskToJoin() {
+  const s = store.get();
+  if (s.me) return;          // signed up — off, permanently
+  if (s.inviteOpen) return;  // already in front of them
+  const asked = joinAsks();
+  const turns = s.msgs.filter((m) => m.who === 'u').length;
+
+  if (turns >= 1 && asked < 1) {
+    markJoinAsk(1);
+    store.set({ threadOpen: true, inviteOpen: {} });
+    return;
+  }
+  if (turns >= 3 && asked < 2) {
+    markJoinAsk(2);
+    push({
+      who: 'c',
+      text: 'One thing before we go further — tell me who you are and I can keep this thread, remember what you like, and pick up where we left off next time. Takes a few seconds.',
+    });
+    store.set((p) => ({
+      chips: [{ id: 'signup', label: 'Tell Num who I am' }, ...p.chips.filter((c) => c.id !== 'signup')],
+    }));
+  }
+}
 
 function push(m: Msg) {
   store.set((s) => ({ msgs: [...s.msgs, m] }));
@@ -528,7 +581,39 @@ interface NumReply {
   turn?: Msg['turn'];
 }
 
+/**
+ * A WIN, FOR THE OFFER ENGINE.
+ *
+ * worker/upgrade.mjs has three reasons it may mention a paid plan — `asked`,
+ * `limit` and `win` — and until now the client sent none of them. `asked` is
+ * recovered server-side from the guest's own words, so it survived; `win` and
+ * `limit` were defined, documented, tested and connected to nothing.
+ *
+ * `win` is the good one. It means something just went right — a table held, a
+ * plan came together, an errand posted — and it is the only moment where
+ * mentioning more service reads as help rather than as a pitch. The client is
+ * the only thing that knows it happened, because it is the thing applying the
+ * action.
+ *
+ * Deliberately NOT `limit`: the ceilings are three plans and three deep
+ * researches, and nobody has come close to either. A limit nobody reaches is
+ * not a reason to ask for money.
+ *
+ * One-shot. Set when the action lands, spent on the NEXT message, and cleared
+ * as it is read so a single booking cannot justify two pitches. The server
+ * applies its own once-a-day cap on top of this.
+ */
+const WIN_ACTIONS = new Set(['add_booking', 'plan_create', 'book_table', 'create_event', 'errand']);
+let winPending = false;
+const takeWin = (): 'win' | undefined => {
+  if (!winPending) return undefined;
+  winPending = false;
+  return 'win';
+};
+
 function applyAction(a: NumAction) {
+  // Something just went right. Remember it for the next turn.
+  if (WIN_ACTIONS.has(a.type)) winPending = true;
   if (a.type === 'add_booking' && a.booking) {
     addB(a.booking);
     // If a group plan is open, the other members' Nums hear about it too —
@@ -817,6 +902,26 @@ export async function askNum(text: string, opts?: { browse?: boolean }) {
       body: JSON.stringify({
         messages, state, place: s.place, here: s.here, shown: shownPicks(s.msgs), lang: currentLang(),
         ...(opts?.browse ? { browse: true } : {}),
+        // ── MAY THE CONCIERGE MENTION A PAID PLAN AT ALL? ──────────────
+        //
+        // iOS sells nothing here. An iOS app that offers a digital
+        // subscription outside Apple's own billing is App Store guideline
+        // 3.1.1, and Num bills through Stripe — so the pricing ladder and the
+        // Star packs are already hidden on iOS (canOfferSubscription, and the
+        // two independent platform witnesses behind it in lib/native.ts).
+        //
+        // The concierge is a THIRD door into the same shop. Without this flag
+        // the server would hand the model a price list and an `upgrade`
+        // action on an iPhone, and a chat message offering a subscription is
+        // the same 3.1.1 problem as a button — arguably worse, because it is
+        // not visible to anyone reviewing the UI. The server defaults to
+        // silence, so an older build that never sends this field simply never
+        // gets an offer.
+        may_offer_subscription: canOfferSubscription(),
+        // Whether anything has just gone right for this guest. Read-and-clear,
+        // so the win is spent once. The server still decides whether to act on
+        // it, and still refuses more than one invitation a day.
+        earned: takeWin(),
       }),
     });
     failedRes = res;
@@ -895,6 +1000,8 @@ export async function askNum(text: string, opts?: { browse?: boolean }) {
         store.set((prev) => ({ typing: !last, msgs: [...prev.msgs, part], ...(last ? { chips } : {}) }));
       }, PART_GAP_MS * (i + 1));
     });
+    // An answer has landed. NOW it is fair to ask them to join.
+    maybeAskToJoin();
   } catch (err) {
     console.error('[num-ai]', err);
     // ── WHOSE FAULT IT IS (19 Sep 2026) ──────────────────────────────

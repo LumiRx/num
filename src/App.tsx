@@ -1,8 +1,10 @@
 // What a visitor gets:
-//   phone-sized viewport (or ?app) → the NUM app, full-bleed
-//   desktop                        → the app in a phone frame on the launch stage
-//   ?canvas                        → the internal prototype canvas (pitch artifact:
-//                                    poster, demo script, v0.8 release notes)
+//   any viewport, any browser → the Num app. Phones full-bleed, wider screens
+//                               centred at a readable measure (glass.css).
+//   ?stage                    → the launch pitch page, kept for the investor
+//                               material and reachable on purpose only.
+//   ?canvas                   → the internal prototype canvas (pitch artifact:
+//                               poster, demo script, v0.8 release notes)
 import { lazy, Suspense, useEffect, useState } from 'react';
 import ConciergeApp from './components/app/ConciergeApp';
 // THREE SCREENS MOST VISITORS NEVER SEE, LOADED ONLY WHEN REACHED (18 Sep
@@ -16,33 +18,46 @@ const AdminView = lazy(() => import('./components/app/AdminView'));
 import { isNativeApp } from './lib/native';
 
 function useStandalone(): boolean {
-  // THE INSTALLED APP IS ALWAYS THE APP. Never the launch stage.
+  // DESKTOP GETS THE APP. 16 Sep 2026.
   //
-  // This used to be `forced || narrow`, where narrow meant innerWidth < 720.
-  // On a phone that is true and everything worked, which is why it survived.
-  // On an iPad it is FALSE — and the bundled app has no `?app` in its URL
-  // (the origin is capacitor://localhost/), so `forced` is false too. The app
-  // fell through to `<Suspense fallback={null}><LaunchStage /></Suspense>`: a reviewer installing NUM on an iPad
-  // got the marketing pitch page and no product at all.
+  // This used to be `native || forced || narrow`, where narrow meant
+  // innerWidth < 720 — so any browser window 720px or wider was handed
+  // <LaunchStage />, the marketing pitch, instead of the product.
   //
-  // The target declares iPad, Mac (Designed for iPad) and Apple Vision as
-  // supported destinations, every one of them wider than 720, so this was not
-  // a corner case — it was three of the four devices Apple could have chosen
-  // to review on, and a guaranteed 2.1 rejection on any of them.
+  // On 16 Sep the X flight made that expensive in a way that was finally
+  // measurable. 136 people clicked through in a day; 133 of them were US
+  // desktop. Every one arrived at app.itsnum.com, was shown a page describing
+  // an app they could not open, and left. Zero asked Num anything. The ad was
+  // fine and the audience was fine — the door was locked.
   //
-  // Viewport width is a fine signal for a BROWSER, where a wide window really
-  // does mean "show the marketing site". It is meaningless inside an installed
-  // binary: somebody who downloaded the app wants the app at every width.
+  // A width test is a reasonable proxy for "is this a phone" and a terrible
+  // proxy for "does this person want the product". Somebody who clicked an ad
+  // for a concierge wants the concierge, at whatever width their window
+  // happens to be. The same mistaken proxy already cost us every iPad (the
+  // installed binary has no `?app` in its URL and iPads are all wider than
+  // 720), which is why `native` had to be bolted on in front of it.
+  //
+  // So the default flips: this surface IS the app. The launch stage is still
+  // here and still reachable at `?stage` — it is a good pitch page and the
+  // investor material links to it — it is simply no longer what a stranger
+  // gets by accident.
+  //
+  // ── AND THE RESIZE LISTENER IS GONE ────────────────────────────────────
+  //
+  // `narrow` was state, recomputed on every resize. Dragging a window or
+  // rotating an iPad across 720px tore down the entire app mid-session and
+  // replaced it with the marketing site — which is exactly what Dre hit while
+  // signing up on an iPad and described as the screen "glitching out".
+  // Nothing here depends on width any more, so there is nothing to listen to,
+  // and the app can no longer swap itself out from under someone.
+  //
+  // Width still decides LAYOUT, in glass.css, where it belongs: a media query
+  // can widen a column without unmounting the product.
   const native = isNativeApp();
-  const forced = new URLSearchParams(window.location.search).has('app');
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 720);
-  useEffect(() => {
-    if (native) return;
-    const onResize = () => setNarrow(window.innerWidth < 720);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [native]);
-  return native || forced || narrow;
+  const params = new URLSearchParams(window.location.search);
+  const forced = params.has('app');
+  const stage = params.has('stage');
+  return native || forced || !stage;
 }
 
 export default function App() {

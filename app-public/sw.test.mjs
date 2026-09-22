@@ -89,7 +89,8 @@ async function navigate(worker, url, { mode = 'navigate' } = {}) {
   let answered;
   let intercepted = false;
   await worker.onFetch({
-    request: { url, method: 'GET', mode },
+    // headers: the worker checks for a Range request before anything else.
+    request: { url, method: 'GET', mode, headers: new Headers() },
     respondWith: (p) => { intercepted = true; answered = p; },
   });
   const res = await answered;
@@ -132,7 +133,7 @@ console.log('\nshare links are left to the browser:');
 
      The fix is to not answer at all. `intercepted` is therefore the assertion
      that matters; the body is irrelevant because there is no body. */
-  for (const path of ['/r/ABC123', '/i/tok_abc', '/c/mem_abc', '/e/slug', '/claim/confirm']) {
+  for (const path of ['/r/ABC123', '/i/tok_abc', '/c/mem_abc', '/e/slug', '/claim/confirm', '/go/yt', '/esim', '/esim/th', '/esim/airport/bkk', '/esim/pay/tok_abcdefghijklmnop', '/esim/o/tok_abcdefghijklmnop']) {
     const w = boot(async () => mkRes(200, 'SHOULD NEVER BE USED', { redirected: true }));
     const got = await navigate(w, `https://app.itsnum.com${path}`);
     check(`${path} is not intercepted`, got.intercepted === false);
@@ -158,7 +159,7 @@ console.log('\noffline:');
 }
 
 console.log('\nremediation:');
-check('the cache name was bumped so poisoned shells are evicted', /num-shell-v5/.test(SRC));
+check('the cache name was bumped so poisoned shells are evicted', Number((/num-shell-v(\d+)/.exec(SRC) || [])[1]) >= 5);
 
 console.log(fail ? `\nFAIL — ${fail} assertion(s)` : '\nPASS — a bad response can never become the app');
 process.exit(fail ? 1 : 0);

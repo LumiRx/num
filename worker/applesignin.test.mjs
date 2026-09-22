@@ -162,16 +162,37 @@ test('Sign in with Apple satisfies the contact rule on its own', () => {
     'the one-tap door should be reached before the two typed ones');
 });
 
-test('4.0 — the phone frame does not follow the app onto an iPad', () => {
+test('4.0 — THERE IS NO PHONE FRAME, on any surface', () => {
   // App Review photographed 1.0(2) as a phone-shaped card floating on black on
-  // an iPad Air M3. That frame is the web launch stage leaking into a binary.
+  // an iPad Air M3. That frame was the web launch stage leaking into a binary.
+  //
+  // It used to be fixed by SCOPING: `html:not(.num-native) .app-shell` drew
+  // the 440px frame for browsers and skipped it inside the installed app. This
+  // test asserted that scoping.
+  //
+  // On 16 Sep 2026 the frame was deleted outright. Desktop browsers stopped
+  // being an audience to show the product TO and became people trying to USE
+  // it — the X flight sent 133 US desktop visitors in a day and every one got
+  // a marketing page — so a browser now gets the real app, centred at a
+  // readable measure, exactly as an iPad does.
+  //
+  // So the property to hold is no longer "the frame is scoped away from
+  // native". It is stronger and simpler: nothing anywhere draws a phone.
   const css = root('src/styles/glass.css');
-  assert.match(css, /html:not\(\.num-native\) \.app-shell \{/,
-    'the 440px phone frame is unscoped again — it will render inside the installed app');
-  assert.match(css, /html:not\(\.num-native\) \.app-shell-stage \{/,
-    'the dark launch stage is unscoped again');
-  const app = root('src/App.tsx');
-  assert.match(app, /if \(isNativeApp\(\)\) root\.classList\.add\('num-native'\)/,
-    'nothing marks the document as native — the CSS guard above can never match');
-  assert.match(app, /classList\.remove\('num-native'\)/, 'the native marker is never cleaned up');
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/width:\s*440px/.test(rules),
+    'a 440px phone frame is back in glass.css — it will render inside the installed app again');
+  // Scoped to the STAGE rule, not the whole file: `html, body` is still
+  // painted #14100e for the pitch page at ?stage, which genuinely does float a
+  // column on a dark ground. `html.num-standalone` overrides it to the app's
+  // own background everywhere the app renders, browser included.
+  const stage = /\.app-shell-stage \{[^}]*\}/.exec(rules)?.[0] ?? '';
+  assert.ok(!/#14100e/.test(stage),
+    'the opaque dark launch stage is back behind the app — on a binary that is a mockup floating on black');
+
+  // The shell fills its surface and the CONTENT is what gets centred. This is
+  // the rule that replaced the frame, and losing it would stretch a chat bubble
+  // across a 1180px iPad.
+  assert.match(rules, /\.app-shell > div \{[^}]*max-width: 760px/,
+    'the content measure is gone — the app will sprawl edge to edge on a tablet');
 });

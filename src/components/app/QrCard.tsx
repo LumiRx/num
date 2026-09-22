@@ -9,6 +9,7 @@ import { connectLink, payLink } from '../../lib/stars';
 import { shareNative } from '../../lib/services';
 import { CopyIcon, ShareIcon } from '../../lib/icons';
 import { t } from '../../lib/i18n';
+import ScanFriend from './ScanFriend';
 
 function Qr({ value }: { value: string }) {
   // Rendered as an SVG string: it scales to any screen without blurring and
@@ -84,6 +85,8 @@ export default function QrCard() {
           <CopyIcon size={13} /> {copied ? t('COPIED') : t('COPY')}
         </div>
       </div>
+
+      {tab === 'connect' && <ScanFriend />}
 
       <div style={{ fontSize: 10.5, color: 'var(--ink-40)', marginTop: 10, lineHeight: 1.5 }}>
         {tab === 'connect'

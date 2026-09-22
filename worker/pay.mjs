@@ -902,7 +902,7 @@ export async function verifyStripeSig(env, payload, header, secret = env.STRIPE_
 
 // ── routes ────────────────────────────────────────────────────────────────
 
-export async function handlePay(request, env, path) {
+export async function handlePay(request, env, path, ctx = null) {
   const post = request.method === 'POST';
 
   if (path === '/webhook' && post) {
@@ -923,6 +923,23 @@ export async function handlePay(request, env, path) {
       if (s.payment_status && s.payment_status !== 'paid') {
         console.warn('[pay] session completed but not paid:', s.payment_status);
         return json({ received: true, ignored: 'unpaid' });
+      }
+      // An eSIM. Num sells these itself, so they have their own order table
+      // and their own fulfilment (worker/esim.mjs): check the amount against
+      // the order, place the supplier order, deliver the install link — or
+      // refund. Nothing below applies to them.
+      if (s.metadata?.kind === 'esim' && s.metadata?.num_esim) {
+        const { onCheckoutCompleted } = await import('./esim.mjs');
+        const r = await onCheckoutCompleted(env, s, ctx).catch((e) => ({ error: String(e?.message ?? e) }));
+        // An error is answered with a 5xx ON PURPOSE: Stripe then retries the
+        // event (for up to three days), and every retry is safe because the
+        // order only moves once. A 200 here would tell Stripe the payment was
+        // handled when it was not — money in, no eSIM, no refund, no alarm.
+        if (r?.error) {
+          console.error('[pay] esim webhook', r.error);
+          return json({ received: false, error: 'esim not processed; retry' }, 500);
+        }
+        return json({ received: true, esim: r?.state ?? r?.ignored ?? 'ok' });
       }
       const id = s.client_reference_id || s.metadata?.num_payment_id;
       if (id) {
@@ -1528,7 +1545,11 @@ export async function handlePay(request, env, path) {
 
     // What a person would call this, not what the column says.
     const STAR_LABEL = {
-      welcome: () => 'Welcome Stars',
+      // A welcome move is normally the +grant at sign-up. It can also be the
+      // 16 Sep 2026 rebalance, which is NEGATIVE — and 'Welcome Stars −95' is
+      // a line that tells somebody their balance dropped and not one word
+      // about why. When the move carries its own note, the note IS the title.
+      welcome: (r) => (r.delta < 0 ? (r.note || 'Welcome balance adjusted') : 'Welcome Stars'),
       purchase: () => 'Bought Stars',
       refund: () => 'Refunded — Stars returned',
       pay: (r) => `Sent to ${r.other_name ?? 'someone'}`,

@@ -286,12 +286,30 @@ export async function review(env, { scoutId, kind, accept, reason = null, by = n
 
 export async function handleExpertDocs(request, env, path) {
   const p = path || '/';
-  const url = new URL(request.url);
 
-  // Resolving the Expert from their code, the same way the dashboard does.
-  const { scoutByCode, normaliseCode } = await import('./scouts.mjs');
-  const code = normaliseCode(url.searchParams.get('code'));
-  const scout = code ? await scoutByCode(env, code) : null;
+  // ── WHO THIS IS, AND WHY IT IS NO LONGER THE CODE ──────────────────────
+  //
+  // This used to resolve the Expert from `?code=`, the same way the dashboard
+  // did. On the dashboard that was a disclosure bug. HERE IT WAS WORSE: `/nda`
+  // takes a POST that SIGNS A LEGAL DOCUMENT, and `/w9` takes a POST that
+  // files a tax form. Both were reachable by anybody holding a referral code —
+  // which is printed on an NFC card, read aloud across counters, and public at
+  // `itsnum.com/s/FARMER`.
+  //
+  // An electronic signature under the ESIGN Act is valid on intent, consent
+  // and a retained record. A signature captured this way would have carried
+  // the contractor's name on a document they never saw. That is not a
+  // disclosure problem, it is a forgery surface.
+  //
+  // It is the signed Expert session now, and only that. The session is minted
+  // two ways: by the emailed sign-in link, and at enrolment — because somebody
+  // who has just filled the form in is at the keyboard, and their paperwork is
+  // the very next thing they do.
+  const { expertFromRequest } = await import('./scoutmagic.mjs');
+  const sid = await expertFromRequest(env, request);
+  const scout = sid
+    ? await env.DB.prepare('SELECT id, name, country FROM num_scouts WHERE id=?1').bind(sid).first().catch(() => null)
+    : null;
 
   if (p === '/' || p === '/pack') {
     if (!scout) return json({ ok: false, why: 'not a Num Expert' }, 404);

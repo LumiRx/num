@@ -12,6 +12,15 @@
 	     archive fails with "Provisioning profile doesn't include the
 	     com.apple.developer.applesignin entitlement", that portal step is the
 	     missing one — not this file. -->
+	<!-- Universal links: a Num link (/c/, /i/, /r/ on app.itsnum.com) opens
+	     this app instead of Safari, so scanning a friend's QR adds them in
+	     the account that actually holds your friends. Needs the Associated
+	     Domains capability ticked on the App ID and the profile regenerated,
+	     the same portal step as Sign in with Apple above. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.itsnum.com</string>
+	</array>
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>

@@ -153,30 +153,35 @@ button:disabled{opacity:.45;cursor:default;box-shadow:none}
   .kpi v{font-size:27px}
   .big{font-size:31px}
 }
-</style></head><body>
-<div class='topbar'><div class='in'><div class='mark'><b>N</b></div><div class='name'>NUM<span>Business console</span></div>
-<nav class='bnav'><a href='#'>Home</a><span class='bnav-on'>Products</span><a href='#'>Tables</a><a href='#'>Statement</a><a href='#'>Guests</a><a href='#'>Offers</a><a href='#'>Settings</a></nav></div></div>
+</style></head><body><div class='topbar'><div class='in'><div class='mark'><b>N</b></div><div class='name'>NUM<span>Business console</span></div><nav class='bnav'><a href='#'>Home</a><a href='#'>Products</a><a href='#'>Tables</a><a href='#'>Statement</a><a href='#'>Visitors</a><a href='#'>Offers</a><span class='bnav-on'>Partners</span><a href='#'>Plans</a><a href='#'>Settings</a></nav></div></div>
 <div class='wrap'>
-<header><div class='brand'>LA Cannabis Club</div><div class='who'>owner</div></header>
-<h1>Products &amp; inventory</h1>
-<p class='muted'>Your menu, your prices, and what is left. Anyone on the floor can update stock; prices are the owner's.</p>
-<div class='kpis'>
-<div class='kpi'><k>On the menu</k><v>18</v><s>2 hidden from guests</s></div>
-<div class='kpi alert'><k>Out of stock</k><v>3</v><s>guests cannot order these</s></div>
-<div class='kpi'><k>Average price</k><v>$34</v><s>across 18 priced items</s></div>
-<div class='kpi'><k>Categories</k><v>5</v><s>how guests browse your menu</s></div>
-</div>
-<div class='card'><h3>Your menu</h3><div class='muted'>18 live · 2 archived. Hidden items stay in your menu but guests do not see them.</div>
-<table><thead><tr><th>Item</th><th>Category</th><th class='r'>Price</th><th class='r'>Stock</th><th class='r'></th></tr></thead><tbody>
-<tr><td><b>Blue Dream — 3.5g</b><div class='muted' style='font-size:13px'>Sativa-dominant, citrus nose</div></td><td><span class='pill'>Flower</span></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end'><input value='45.00' style='width:92px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Set</button></div></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end;align-items:center'><input value='12' placeholder='—' style='width:74px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Save</button></div></td><td class='r'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Hide</button></td></tr>
-<tr><td><b>House pre-roll pack</b><div class='muted' style='font-size:13px'>Five half-grams, mixed strains</div></td><td><span class='pill'>Pre-rolls</span></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end'><input value='28.00' style='width:92px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Set</button></div></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end;align-items:center'><input value='' placeholder='—' style='width:74px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Save</button></div></td><td class='r'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Hide</button></td></tr>
-<tr><td><b>Dark chocolate 10mg</b><div class='muted' style='font-size:13px'>Single square, 10mg THC</div></td><td><span class='pill'>Edibles</span></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end'><input value='12.50' style='width:92px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Set</button></div></td><td class='r'><div style='display:flex;gap:6px;justify-content:flex-end;align-items:center'><input value='0' placeholder='—' style='width:74px;text-align:right;padding:7px 9px;font-size:14px'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Save</button></div></td><td class='r'><button class='ghost' style='margin:0;padding:7px 11px;font-size:13px'>Hide</button></td></tr>
+<header><div class='brand'>LA Cannabis Club</div><div class='who'>free plan</div></header>
+<h1>Partners</h1>
+<p class='muted'>Ambassadors, influencers and VIP hosts who can send people through your door. NUM makes the introduction — we never sell your details on, and we never sell theirs.</p>
+<div class='card'><h3>Who is out there</h3>
+<div class='muted'>These are real people already working with NUM. On Listed you can see how many and what kind; the names, their reach and an introduction come with a plan.</div>
+<table><thead><tr><th>Kind</th><th>What they do</th><th class='r'>Near you</th></tr></thead><tbody>
+<tr><td><b>VIP host</b></td><td class='muted'>Books their own clients and can send them to you.</td><td class='r'><b>2</b></td></tr>
+<tr><td><b>Ambassador</b></td><td class='muted'>Works a city for NUM and introduces venues to guests.</td><td class='r'><b>4</b></td></tr>
+<tr><td><b>Influencer</b></td><td class='muted'>Has an audience where your guests already are.</td><td class='r'><b>3</b></td></tr>
 </tbody></table></div>
-<div class='card'><h3>Add an item</h3><div class='muted'>Prices are in USD, because that is what LA Cannabis Club bills in.</div>
-<label>Name</label><input placeholder='House margarita'>
-<label>One line a guest reads <span class='muted' style='font-weight:400'>— optional</span></label><input placeholder="Tommy's style, mezcal float">
-<div class='row'><div><label>Category</label><select><option>Flower</option></select></div>
-<div><label>Price (USD)</label><input placeholder='12.50'></div>
-<div><label>Stock <span class='muted' style='font-weight:400'>— leave empty if you do not count it</span></label><input placeholder='—'></div></div>
-<button>Add to menu</button></div>
+<div class='plan'><span class='lock'>Small Business</span>
+<h3>See who they are, and ask for an introduction</h3>
+<p>9 people are on the list today. A plan shows you their names, what they reach, and lets you ask NUM to make the introduction — from $9.99 a month.</p>
+<a class='cta' href='#'>See the plans</a></div>
+<h2>Plans</h2>
+<div class='tiles' style='grid-template-columns:repeat(auto-fit,minmax(270px,1fr))'>
+<div class='card' style='border-color:var(--pri);border-width:2px'><h3>Listed <span class='pill on'>your plan</span></h3>
+<div class='big' style='font-size:28px;margin:6px 0 2px'>Free</div>
+<div class='muted' style='margin-bottom:14px'>Claim your listing, tell NUM what to say about you, and receive booking requests. Free, forever.</div>
+<table><tbody><tr><td>7 days of analytics</td></tr><tr><td>One location</td></tr></tbody></table></div>
+<div class='card'><h3>Small Business</h3><div class='big' style='font-size:28px;margin:6px 0 2px'>$9.99<span class='muted' style='font-size:14px;font-weight:400'> / month</span></div>
+<div class='muted' style='margin-bottom:14px'>30-day analytics, a promotion NUM can mention to travellers, and up to 3 locations.</div>
+<table><tbody><tr><td>30 days of analytics</td></tr><tr><td>Offers NUM can mention to travellers</td></tr><tr><td>The partner list, with introductions</td></tr><tr><td>Up to 3 locations</td></tr></tbody></table>
+<button>Upgrade to Small Business</button></div>
+<div class='card'><h3>Pro</h3><div class='big' style='font-size:28px;margin:6px 0 2px'>$19.99<span class='muted' style='font-size:14px;font-weight:400'> / month</span></div>
+<div class='muted' style='margin-bottom:14px'>90-day analytics and up to 10 locations.</div>
+<table><tbody><tr><td>90 days of analytics</td></tr><tr><td>Offers NUM can mention to travellers</td></tr><tr><td>The partner list, with introductions</td></tr><tr><td>Up to 10 locations</td></tr></tbody></table>
+<button>Upgrade to Pro</button></div>
+</div>
 </div></body></html>

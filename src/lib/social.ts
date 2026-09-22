@@ -4,6 +4,7 @@
 // The one rule that makes agent-to-agent sharing safe: nothing crosses between
 // two people until BOTH acted — you by sending the invite, them by opening it
 // on their own device. Until then a link is 'pending' and carries nothing.
+import { savePendingLink, readPendingLink, clearPendingLink, linkParams } from './pendinglink';
 import { store } from './store';
 import { anonId } from './anon';
 import { refreshRequests } from './requests';
@@ -234,6 +235,8 @@ export function bootSocial(): void {
   // sharer offered, the scanner accepted, so the connection is made now rather
   // than turned into a request somebody has to remember to approve.
   const connectTo = q.get('c');
+  // Written down before anything else can go wrong: see pendinglink.ts.
+  if (connectTo || token) savePendingLink({ c: connectTo, i: token });
 
   if (ref || token || connectTo) {
     store.set((s) => ({
@@ -243,7 +246,18 @@ export function bootSocial(): void {
     }));
     // Keep the launch URL clean so a refresh doesn't re-trigger the invite.
     history.replaceState(null, '', window.location.pathname);
+  } else {
+    // No link this time, but one may be waiting from before: a scan made
+    // before signing up, or before the app was installed.
+    const parked = readPendingLink();
+    if (parked) {
+      store.set((s) => ({
+        connectTo: s.connectTo ?? parked.c ?? null,
+        inviteToken: s.inviteToken ?? parked.i ?? null,
+      }));
+    }
   }
+  watchForSignIn();
 
   // ── Share target: anything, from any app, straight into the thread ──────
   //
@@ -289,7 +303,10 @@ export function bootSocial(): void {
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
-  if (!installed && (connectTo || token)) {
+  // Signed in right here? Then this IS their account (accounts belong to a
+  // verified number now, not to a browser), so the friend is added on the
+  // spot. The carry-across code is only for somebody with no account here.
+  if (!installed && (connectTo || token) && !store.get().me) {
     void fetch(apiUrl('/api/social/pair/mint'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -297,7 +314,9 @@ export function bootSocial(): void {
     })
       .then((r) => r.json())
       .then((d: { code?: string }) => {
-        if (d.code) store.set({ pairCode: d.code, connectTo: null, inviteToken: null });
+        // connectTo stays put: if they sign up in THIS browser instead of the
+        // app, the watcher below still completes the friend add.
+        if (d.code) store.set({ pairCode: d.code });
       })
       .catch(() => {});
     return;
@@ -315,11 +334,7 @@ export function bootSocial(): void {
     // a member's own code from worker/identity.mjs. Both are `?c=` by the time
     // they reach here, so the shape decides which one it is. A member id is
     // always prefixed; an identity code never is.
-    if (connectTo) {
-      if (isIdentityCode(connectTo)) void recordIdentityScan(connectTo);
-      else void connectByCode(connectTo);
-    }
-    if (token) void acceptInvite(token);
+    void completePendingLinks();
     nudgeForContact(me);
     void refreshFriends();
     void refreshPlans();
@@ -349,15 +364,15 @@ export function bootSocial(): void {
         : s.msgs,
     chips: [{ id: 'signup', label: t('Tell NUM who I am') }],
   }));
-  // Ask first. An INVITED person came here to be connected to someone, so the
-  // form lands in front of them after the first paint. Everyone else gets the
-  // app: they can ask NUM for a table anonymously, and the "Tell NUM who I am"
-  // chip is there when they want plans to travel between phones. A sign-up
-  // sheet before a single answer is the fastest way to lose a stranger.
-  if (!token && !ref) return;
-  setTimeout(() => {
-    if (!store.get().me && !store.get().inviteOpen) store.set({ threadOpen: true, inviteOpen: {} });
-  }, 900);
+  // NO SHEET HERE ANY MORE.
+  //
+  // This used to open the sign-up form 900ms after the app loaded — before the
+  // visitor had asked anything. It was a wall in front of every arrival, and on
+  // 20 Sep 2026 that meant 561 people from X met a form before they met Num.
+  //
+  // The ask now happens after Num has answered their first question, in
+  // concierge.ts → maybeAskToJoin(). The chip above stays, so anybody who
+  // wants an account before that can still say so.
 }
 
 // ── identity ───────────────────────────────────────────────────────────────
@@ -509,6 +524,7 @@ function adoptMember(m: Member): void {
   void refreshRequests();
   void refreshStars();
   resumeDm();
+  void completePendingLinks();
 }
 
 /**
@@ -619,9 +635,7 @@ export async function signUp(name: string, phone?: string, email?: string): Prom
       body: JSON.stringify({ code: refCode, token: inviteToken, signup_id: account.id }),
     }).catch(() => {});
   }
-  if (inviteToken) await acceptInvite(inviteToken);
-  const { connectTo } = store.get();
-  if (connectTo) await connectByCode(connectTo);
+  await completePendingLinks();
   // A `?dm=` link that landed before this device had an account — now it does,
   // so open the conversation they were sent here for.
   resumeDm();
@@ -829,8 +843,90 @@ export async function connectByCode(memberId: string): Promise<void> {
     }
   } catch (err) {
     console.warn('[social] connect failed', err);
+    // Nothing answered: keep the scan so the next open tries again. Any other
+    // failure is a real answer (a refusal, an unknown code) and is final.
+    const offline = String((err as Error)?.message ?? '').startsWith('Couldn\'t reach Num');
     store.set({ connectTo: null });
+    if (!offline) clearPendingLink();
   }
+}
+
+/**
+ * Finish every friend add that is waiting: from the link this app was opened
+ * with, from a scan made before signing up, or from before the install.
+ *
+ * One at a time on purpose. signUp, the sign-in watcher and boot can all
+ * arrive here within the same second, and two /connect calls racing for the
+ * same pair is how one friendship becomes two rows.
+ */
+let completing: Promise<void> | null = null;
+export function completePendingLinks(): Promise<void> {
+  if (completing) return completing;
+  completing = (async () => {
+    if (!store.get().me) return;
+    const { connectTo, inviteToken } = store.get();
+    if (inviteToken) await acceptInvite(inviteToken);
+    if (connectTo) {
+      if (isIdentityCode(connectTo)) {
+        const out = await recordIdentityScan(connectTo);
+        // A member's own identity code is still a person offering to be
+        // friends. Recording "we met" without adding them was the second
+        // half of the scan-but-no-friend bug.
+        if (out?.ok && out.connected?.type === 'member') await connectByCode(out.connected.id);
+        if (out) store.set({ connectTo: null });
+      } else {
+        await connectByCode(connectTo);
+      }
+    }
+    const left = store.get();
+    if (!left.connectTo && !left.inviteToken) {
+      clearPendingLink();
+      // The "one step left" card has done its job once they are signed in
+      // and the add went through; leaving it up reads as if it did not.
+      if (left.pairCode) store.set({ pairCode: null });
+    }
+  })().finally(() => { completing = null; });
+  return completing;
+}
+
+/**
+ * Every way into an account ends in `me` being set: signUp, a recovery code,
+ * Sign in with Apple, a profile restore. Rather than remembering to finish
+ * pending friend adds in each of them, watch for the moment it happens.
+ */
+let watching = false;
+function watchForSignIn(): void {
+  if (watching) return;
+  watching = true;
+  let had = !!store.get().me;
+  store.subscribe(() => {
+    const s = store.get();
+    const has = !!s.me;
+    if (has && !had && (s.connectTo || s.inviteToken)) void completePendingLinks();
+    had = has;
+  });
+}
+
+/**
+ * The app was opened by a link (a universal link on iOS, an app link on
+ * Android). Same outcome as the web boot: the friend is added now if we know
+ * who this is, and kept until we do if we don't.
+ */
+export function handleOpenedLink(raw: string): void {
+  const { c, i, ref } = linkParams(raw);
+  if (ref) {
+    try { if (!localStorage.getItem('num-ref')) localStorage.setItem('num-ref', ref); }
+    catch { /* fine */ }
+  }
+  if (!c && !i) return;
+  savePendingLink({ c, i });
+  store.set((s) => ({
+    connectTo: c ?? s.connectTo,
+    inviteToken: i ?? s.inviteToken,
+    refCode: ref ?? s.refCode,
+  }));
+  watchForSignIn();
+  if (store.get().me) void completePendingLinks();
 }
 
 /**
@@ -1054,6 +1150,11 @@ export async function acceptInvite(token: string): Promise<void> {
     }
   } catch (err) {
     console.warn('[social] accept failed', err);
+    // A dead or already-used invite is an answer, not a reason to retry on
+    // every open for a month. Only "nothing answered" is kept for next time.
+    if (!String((err as Error)?.message ?? '').startsWith('Couldn\'t reach Num')) {
+      store.set({ inviteToken: null });
+    }
   }
 }
 

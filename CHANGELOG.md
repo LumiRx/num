@@ -613,6 +613,41 @@ discover: real categories, Viator timeout
 Search and Suggest API (/api/discover); Full tier 25 locations
 
 - commit `d522f80`
+## 0.8.318 — 2026-09-22 16:18 UTC
+
+eSIM pages reach the worker, service worker lets them through
+
+- commit `34bbe29`
+
+## 0.8.317 — 2026-09-21 23:49 UTC
+
+eSIM: text ESIM to buy, listing, airport pages, checkout, fulfilment
+
+- commit `3805c4d`
+
+## 0.8.316 — 2026-09-21 19:10 UTC
+
+(no note given)
+
+- commit `a59cd96`
+
+## 0.8.315 — 2026-09-20 22:54 UTC
+
+CTA funnel + traveller plans
+
+- commit `f52169b`
+
+## 0.8.314 — 2026-09-16 20:53 UTC
+
+welcome stars to 5, plans in wallet, desktop app, sheet backgrounds
+
+- commit `d707a36`
+
+## 0.8.313 — 2026-09-16 19:44 UTC
+
+subscription loop, iOS gate, answer quality
+
+- commit `2d91b7a`
 
 ## 0.8.312 — 2026-09-15 16:37 UTC
 

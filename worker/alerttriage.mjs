@@ -62,6 +62,10 @@ export const TRIAGE_TIMEOUT_MS = 6000;
 export const NEVER_GATED = Object.freeze([
   'alert_undelivered',
   'brain_down',
+  // Whether anybody can sign in is not a judgement call. On 20 Sep 2026
+  // sign-in was dead for nine hours on the biggest traffic day Num has
+  // had; no model should be given the option of holding that for a digest.
+  'sms_down',
   'd1_write',
   'pay',
   // The morning digest itself. Judging a summary of things already judged
@@ -77,6 +81,7 @@ const NEVER_GATED_TEXT = [
   /could not be told|nobody was successfully told|no channel accepted/i,
   /^\[pay\]/im,
   /brain(s)?[ _-]?(down|state)/i,
+  /^\[SIGN-IN DOWN\]/im,
   /NUM IS DOWN[\s\S]*\b(d1_write|brain|site_public)\b/i,
 ];
 

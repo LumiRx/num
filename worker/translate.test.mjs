@@ -36,6 +36,10 @@ const TAG = '/assets/translate.js';
 const NO_TRANSLATE = {
   'get/index.html': 'a redirect stub, on screen for milliseconds',
   'join/index.html': 'a redirect stub',
+  // The dashboard itself moved to app-public/scout/ on 17 Sep 2026, so it is
+  // served by num-app on the same origin as the API it calls. What is left here
+  // is a signpost: itsnum.com/scout is the address on the printed cards.
+  'scout/index.html': 'a redirect stub — the Expert dashboard moved to app.itsnum.com/scout/',
   'console/index.html': 'the partner console, not a page a stranger lands on',
   'desk/index.html': 'the internal business desk — nobody lands on it and no traveller ever sees it',
   'here/index.html': 'the driver’s parking page — reached only from their own signed link, never browsed to',

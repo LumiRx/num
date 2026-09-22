@@ -607,6 +607,25 @@ function airBlock(env) {
   );
 }
 
+/**
+ * eSIMs are the one travel product Num sells itself (worker/esim.mjs). The
+ * model hears about them only once a supplier is configured, and is told to
+ * offer them only when mobile data is actually the question — an eSIM pitch
+ * in answer to "where should we eat" is exactly the upsell the voice rules
+ * exist to stop.
+ */
+export function esimBlock(place, env = {}) {
+  if (!String(env?.ESIMACCESS_ACCESS_CODE ?? '').trim() || String(env?.ESIM_SALES ?? '').trim() === 'off') return '';
+  const cc = String(place?.country_code || place?.country || '').toLowerCase();
+  const page = /^[a-z]{2}$/.test(cc) ? `https://app.itsnum.com/esim/${cc}` : 'https://app.itsnum.com/esim';
+  const num = String(env?.ESIM_TEXT_NUMBER || env?.TWILIO_FROM || '').trim();
+  return '\n\nESIM (mobile data abroad): Num sells data-only eSIMs itself. When the guest asks about a SIM card, mobile data, ' +
+    'roaming, wifi or staying online on the trip, offer it plainly in a sentence or two: ' +
+    (/^\+\d{8,15}$/.test(num) ? `they can text ESIM and the country or airport code to ${num}, or ` : 'they can ') +
+    `pick a plan at ${page}. Say it is data only, with no phone number. Never call it the cheapest and never state a price you were not given. ` +
+    'Do not bring it up when data is not the question.';
+}
+
 /** Does this ask want food brought to them, rather than a place to go? */
 export const wantsDelivery = (text) => /\b(deliver|delivery|order (me|us|some|food|dinner|lunch)|bring (it|me|us|food)|to (my|the) (room|hotel|villa|condo|apartment|office)|room service|takeaway|take-away|takeout|take out|door ?dash|uber ?eats|grab ?food|foodpanda|deliveroo)\b/i.test(String(text ?? ''));
 
@@ -649,6 +668,7 @@ export function servicesBlock(place, env = {}, { ask = null } = {}) {
     'SERVICES AVAILABLE HERE (ranked by what people actually use in this country):\n' +
     lines.join('\n') +
     airBlock(env) +
+    esimBlock(place, env) +
     '\n\nHAND-OFF rule (applies to the lines marked HAND-OFF, never to LIVE PRICES): Num has no account with these companies yet, so you CANNOT place the order yourself. ' +
     'Do not say "booked", "on its way", or "ordered" for a hand-off. Instead: pick the ONE best provider for this exact ' +
     'request, say why it is the right one here, and emit the matching action (order_ride / order_food) — the app opens it ' +

@@ -238,6 +238,11 @@ const FILES = [
   // tables, all IF NOT EXISTS.
   'worker/migrations/0062_partners_and_tour.sql',
   'worker/migrations/0061_product_sku.sql',
+  // From the app-main line, already applied to production on 21 Sep and
+  // renumbered here to sit after this line's migrations: utm_content on
+  // num_web_events (one ALTER), and the eSIM tables (all IF NOT EXISTS).
+  'worker/migrations/0063_web_events_utm_content.sql',
+  'worker/migrations/0064_esim.sql',
 ];
 
 const DRY = process.argv.includes('--dry');

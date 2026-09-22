@@ -72,13 +72,14 @@ export async function groundRequest(env, { userText, statedPlace, cf, fix = null
     }
 
     const [{ rows, widened, error: nearbyError }, guide, buzz, showtimes, events] = await Promise.all([
-      // Ten candidates, not six: enough for three good picks that are not
-      // the same three as last time (see the rotation in nearbyPlaces).
+      // 24 candidates (15 Sep 2026, from the app-main line): a pool of 6 or
+      // 10 ran dry on the second "show me others" and widened the ring until
+      // picks sat kilometres away. 24 is eight rounds of three, one D1 query.
       // A failure here is the single most expensive silent failure in the
       // product — no rows means no block, and the model answers from its own
       // memory with names nothing can link. So it is caught, but it is kept:
       // `nearbyError` travels out to the x-num-debug view.
-      nearbyPlaces(env, loc, userText, 10, topicHint, { memberId: member?.id ?? null }).catch((e) => ({ rows: [], error: String(e?.message ?? e) })),
+      nearbyPlaces(env, loc, userText, 24, topicHint, { memberId: member?.id ?? null }).catch((e) => ({ rows: [], error: String(e?.message ?? e) })),
       destinationGuide(env, loc.dest.slug).catch(() => null),
       recentBuzz(env, loc.dest.slug).catch(() => []),
       // Only on a movie ask, and dark without a SERPAPI_KEY secret — the

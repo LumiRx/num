@@ -23,6 +23,7 @@
     "ai": "node server/index.mjs",
     "design:check": "node scripts/design-check.mjs status",
     "check:site": "node scripts/coverage-claims.mjs && node scripts/head-price-lint.mjs && node scripts/travelspeak-lint.mjs",
+    "check:routes": "node scripts/routecheck.mjs",
     "deploy:site": "npm run check:site && npx wrangler deploy --config wrangler.jsonc && node scripts/deploydrift.mjs record num-console",
     "deploy:growth": "npx wrangler deploy --config growth/wrangler.jsonc && node scripts/deploydrift.mjs record num-growth",
     "release": "node scripts/release.mjs",
@@ -67,6 +68,7 @@
     "@capacitor/ios": "^8.5.0",
     "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/share": "^8.0.1",
+    "jsqr": "^1.4.0",
     "nodemailer": "^9.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

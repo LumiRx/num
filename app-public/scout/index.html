@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Num — Num Experts</title>
+<meta name="description" content="Become a Num Expert. Sign local businesses up to Num and earn from what they produce. Get a code, get a card.">
+<meta name="robots" content="index,follow">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/nav.css">
+<script src="/assets/nav.js" defer></script>
+<style>
+/* Page-specific only — palette, type and nav come from site.css and nav.css,
+   so this page cannot drift away from the rest of the site.
+
+   BUILT FOR A PHONE. An Expert reads this standing outside a shop they have
+   just signed up, on the same handset they tapped the card with. Every number
+   is legible at arm's length and every control clears 44px. */
+.wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+.kicker{font-size:10.5px;letter-spacing:.16em;color:var(--accent,#ec3013);font-weight:700;text-transform:uppercase}
+.card{border:1px solid var(--line,rgba(32,30,29,.12));border-radius:16px;padding:18px;margin:14px 0}
+.card.quiet{background:rgba(32,30,29,.025)}
+label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;opacity:.7;margin:12px 0 5px;font-weight:700}
+input{width:100%;min-height:48px;border-radius:12px;border:1px solid var(--line,rgba(32,30,29,.12));background:transparent;color:inherit;padding:0 13px;font-size:16px;font-family:inherit}
+button{width:100%;min-height:48px;border:0;border-radius:999px;background:var(--accent,#ec3013);color:#fff;font-weight:700;font-size:14px;letter-spacing:.04em;cursor:pointer;margin-top:18px}
+button.ghost{background:transparent;color:inherit;border:1px solid var(--line,rgba(32,30,29,.12))}
+button[disabled]{opacity:.5;cursor:default}
+.note{font-size:12.5px;opacity:.72;line-height:1.55}
+.err{color:var(--accent,#ec3013);font-size:13px;margin-top:10px}
+.ok{color:var(--money,#1f7a48);font-size:13px;margin-top:10px}
+[hidden]{display:none!important}
+
+/* ── money ──────────────────────────────────────────────────────────────
+   One big number, then the three states BROKEN OUT rather than blurred
+   together. "Earned" and "paid to you" are different facts and a single
+   figure that merges them is the one that starts an argument. */
+.big{font-size:38px;font-weight:800;color:var(--money,#1f7a48);letter-spacing:-.03em;line-height:1}
+.money-split{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.money-split div{border-top:1px solid var(--line,rgba(32,30,29,.12));padding-top:9px}
+.money-split b{display:block;font-size:16px;font-weight:700}
+.money-split span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.65;font-weight:700}
+
+/* ── the card link ──────────────────────────────────────────────────── */
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:26px;letter-spacing:.24em;font-weight:700}
+.linkrow{display:flex;gap:8px;align-items:center;margin-top:12px}
+.linkrow code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;
+  border:1px solid var(--line,rgba(32,30,29,.12));border-radius:10px;padding:12px 11px;background:rgba(32,30,29,.03)}
+.linkrow button{width:auto;margin:0;min-height:44px;padding:0 16px;font-size:12px;white-space:nowrap}
+
+/* ── businesses ─────────────────────────────────────────────────────────
+   Rows, not a table. A three-column table on a 390px screen truncates the
+   business name — the one column that identifies the row — and the state
+   used to live in a `title` tooltip, which does not exist on a touch screen
+   at all. The people reading this are on phones, so the state and its meaning
+   are both on the page. */
+.biz{border-top:1px solid var(--line,rgba(32,30,29,.12));padding:13px 0}
+.biz:first-child{border-top:0}
+.biz-top{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+.biz-name{font-weight:700;font-size:14.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.state{font-size:10.5px;padding:4px 10px;border-radius:999px;white-space:nowrap;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.state.introduced{background:rgba(32,30,29,.07)}
+.state.verified{background:rgba(64,90,255,.12);color:#2b3ea8}
+.state.activated{background:rgba(31,122,72,.13);color:var(--money,#1f7a48)}
+.state.rejected,.state.void{background:rgba(236,48,19,.1);color:var(--accent,#ec3013)}
+.biz-meaning{font-size:11.5px;opacity:.68;margin-top:4px;line-height:1.5}
+.tally{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 4px}
+.tally span{font-size:11px;padding:5px 11px;border-radius:999px;border:1px solid var(--line,rgba(32,30,29,.12))}
+@media(max-width:480px){
+  .wrap{padding:22px 16px 48px}
+  .big{font-size:34px}
+  .money-split{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<nav class="nv">
+  <div class="nv-bar">
+    <a class="nv-brand" href="/"><span class="nv-dot"></span>NUM <small>travel concierge</small></a>
+    <div class="nv-links">
+      <a href="/what-we-do/">What we do</a>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/destinations/">Destinations</a>
+      <span class="nv-sep"></span>
+      <a href="/business/">For business</a>
+      <a href="/hosts/">For hosts</a>
+      <a href="/agents/">For AI agents</a>
+    </div>
+    <div class="nv-end">
+      <a class="nv-signin" id="navAuth" href="/signin/">Sign in</a>
+      <a class="nv-cta" href="https://app.itsnum.com">Get the app</a>
+    </div>
+    <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
+  </div>
+  <div class="nv-menu" hidden>
+    <p class="nv-group">Travellers</p>
+    <a href="/what-we-do/">What we do</a>
+    <a href="/how-it-works/">How it works</a>
+    <a href="/destinations/">Destinations</a>
+    <a href="/perks/">Perks</a>
+    <p class="nv-group">Partners</p>
+    <a href="/business/">For business</a>
+    <a href="/claim/">List your business</a>
+    <a href="/hosts/">For hosts</a>
+    <a href="/agents/">For AI agents</a>
+    <p class="nv-group">Account</p>
+    <a href="/signin/">Sign in</a>
+    <a href="/contact/">Contact</a>
+  </div>
+</nav>
+<div class="wrap">
+
+  <div class="kicker">Num Experts</div>
+  <h1>Sign local businesses up. Earn from what they do.</h1>
+  <p>
+    You get a code and a card. Tap it at the counter, the business signs up against your name,
+    and you earn from the business they actually do through Num.
+  </p>
+
+  <div class="card quiet" id="pitch">
+    <strong>What you are paid, plainly.</strong>
+    <p style="margin-top:8px">
+      A finder&rsquo;s fee for each business, released once that business has produced its first
+      revenue to Num &mdash; not when they sign. Then a share of what Num earns on their bookings,
+      and a share of their subscription, for a fixed term.
+    </p>
+    <p class="note">
+      Nothing is paid for a signature. That is deliberate: it is what stops the programme
+      turning into a race to collect names, and it is why the businesses you bring are worth
+      something to you for years rather than once.
+    </p>
+  </div>
+
+  <!-- ── sign in ───────────────────────────────────────────────────────
+       Replaces "type your code into a prompt()". The code is printed on a
+       card and public in a URL, so it never proved anything. -->
+  <section id="signin" hidden>
+    <h2>Sign in</h2>
+    <p class="note">
+      Already a Num Expert? Put in the email you signed up with and we will send you a link.
+      No password to remember and nothing to lose.
+    </p>
+    <label for="loginEmail">Your email</label>
+    <input id="loginEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com">
+    <button type="button" id="loginBtn">Email me a sign-in link</button>
+    <div class="ok" id="loginSent" hidden></div>
+    <div class="err" id="loginErr" hidden></div>
+  </section>
+
+  <!-- ── sign up ───────────────────────────────────────────────── -->
+  <section id="join" hidden>
+    <h2>Get your code</h2>
+    <form id="form">
+      <label for="name">Your name</label>
+      <input id="name" name="name" autocomplete="name" required>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required>
+      <label for="phone">Phone (optional)</label>
+      <input id="phone" name="phone" type="tel" autocomplete="tel">
+      <label for="country">Country</label>
+      <input id="country" name="country" maxlength="2" placeholder="US" autocomplete="country">
+      <p class="note" style="margin-top:14px">
+        By continuing you agree to the Num Expert terms, which are recorded against your account with
+        the version and date. The rates you get today stay yours even if the programme changes.
+        <a href="/api/scouts/terms" style="color:var(--accent)">Read the terms</a>.
+      </p>
+      <button type="submit" id="go">Agree and get my code</button>
+      <div class="err" id="err" hidden></div>
+    </form>
+  </section>
+
+  <!-- ── the dashboard ─────────────────────────────────────────────── -->
+  <section id="dash" hidden>
+    <div class="kicker" id="who"></div>
+    <h2 style="margin-top:6px">Your round</h2>
+
+    <div class="card">
+      <div class="big" id="earned">$0.00</div>
+      <div class="note" id="moneyNote" style="margin-top:8px"></div>
+      <div class="money-split">
+        <div><b id="mAccrued">$0.00</b><span>Earned</span></div>
+        <div><b id="mPayable">$0.00</b><span>Ready to pay</span></div>
+        <div><b id="mPaid">$0.00</b><span>Paid to you</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Your card</strong>
+      <div class="code" id="code" style="margin-top:8px"></div>
+      <p class="note" style="margin-top:8px">Tap this at a counter, or send the link.</p>
+      <div class="linkrow">
+        <code id="link"></code>
+        <button type="button" id="copyBtn" class="ghost">Copy</button>
+      </div>
+    </div>
+
+    <div class="card" id="paperCard" hidden>
+      <strong>Before Num can pay you</strong>
+      <p class="note" id="paperNote" style="margin-top:6px"></p>
+    </div>
+
+    <div class="card">
+      <strong>Businesses you brought</strong>
+      <div class="tally" id="tally" style="margin-top:10px"></div>
+      <div id="rows"></div>
+      <p class="note" id="empty" hidden>Nothing yet. Tap your card at a counter.</p>
+    </div>
+
+    <div class="card quiet" id="pendingCard" hidden>
+      <strong>Also recorded</strong>
+      <p class="note" id="pendingNote" style="margin-top:6px"></p>
+    </div>
+
+    <p class="note" id="capline"></p>
+    <button type="button" id="outBtn" class="ghost">Sign out</button>
+  </section>
+
+  <!-- ── paperwork ─────────────────────────────────────────────── -->
+  <section id="docs" hidden>
+    <h2>Two things before you get paid</h2>
+    <p class="note">
+      You can start signing businesses up straight away and you keep everything you earn.
+      Num just cannot pay it out until these are done.
+    </p>
+
+    <div class="card">
+      <strong>1. The NDA</strong>
+      <p class="note" id="ndaState">Not signed yet.</p>
+      <div id="ndaBox" hidden>
+        <pre id="ndaBody" style="white-space:pre-wrap;font:12.5px/1.6 inherit;max-height:260px;overflow:auto;border:1px solid var(--line,rgba(32,30,29,.12));border-radius:12px;padding:12px"></pre>
+        <label for="sig">Type your full name to sign</label>
+        <input id="sig" autocomplete="name">
+        <button type="button" id="signBtn">Sign</button>
+      </div>
+      <button type="button" id="readNda">Read and sign it</button>
+    </div>
+
+    <div class="card">
+      <strong>2. Your tax form</strong>
+      <p class="note" id="taxState">Not sent yet.</p>
+      <p class="note" id="taxHow"></p>
+      <p class="note" id="taxWhy"></p>
+      <p class="note" id="taxPrivacy"></p>
+      <a id="taxLink" class="note" href="#" target="_blank" rel="noopener" style="color:var(--accent,#ec3013);font-weight:700" hidden>Download the form from the IRS &rarr;</a>
+      <div id="taxUpload" hidden>
+        <label for="w9">Upload the signed form</label>
+        <input id="w9" type="file" accept="application/pdf,image/*">
+        <button type="button" id="upBtn">Send it to Num</button>
+      </div>
+      <div class="err" id="docErr" hidden></div>
+    </div>
+  </section>
+
+  <p class="note" id="joinSwitch" hidden style="margin-top:26px">
+    Not a Num Expert yet? <a href="#" id="joinLink" style="color:var(--accent)">Sign up here</a>.
+  </p>
+
+</div>
+
+<script>
+(function () {
+  // ── THIS PAGE MUST RUN ON THE API'S OWN ORIGIN ────────────────────────
+  //
+  // 17 Sep 2026, and the reason Dre "tried it and didn't get it".
+  //
+  // The page is served from BOTH hosts — num-console publishes public/ at
+  // itsnum.com, and Vite copies public/ into dist/, which num-app publishes at
+  // app.itsnum.com. The API only exists on app.itsnum.com. Checked live:
+  //
+  //   itsnum.com/api/scouts/terms      404
+  //   app.itsnum.com/api/scouts/terms  200
+  //
+  // No /api path routes on the apex at all — not /api/ev, not /api/version.
+  // So every call this page made from itsnum.com/scout has been 404ing since
+  // the day it was written: the signup form, the dashboard, the paperwork.
+  // Both Experts in the database were seeded by hand with SQL. NOBODY HAS EVER
+  // SUCCESSFULLY SIGNED UP THROUGH THIS PAGE.
+  //
+  // The fix is to be on the right origin rather than to call across hosts.
+  // Calling app.itsnum.com from the apex would mean CORS plus a SameSite=None
+  // cookie — a third-party cookie, which Safari drops — to hold a contractor's
+  // sign-in. Redirecting keeps the session first-party and needs no new
+  // Cloudflare route.
+  //
+  // The query string comes along so a sign-in link that lands here still works.
+  var APP_HOST = 'app.itsnum.com';
+  if (location.hostname !== APP_HOST && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    location.replace('https://' + APP_HOST + '/scout/' + location.search);
+    return;
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var money = function (m) { return '$' + (Math.floor(Number(m) || 0) / 100).toFixed(2); };
+  function show(id, on) { var el = $(id); if (el) el.hidden = !on; }
+
+  // EVERY call carries the session cookie and NONE carries a code. The cookie
+  // is HttpOnly, so this script cannot read it — it only has to remember to
+  // send it, which is what `credentials` does. Same-origin because the page
+  // and the API share a host in production.
+  var WITH_SESSION = { credentials: 'same-origin' };
+
+  /* ── what the dashboard draws ─────────────────────────────────────── */
+
+  function render(d) {
+    show('pitch', false);
+    show('signin', false);
+    show('join', false);
+    show('joinSwitch', false);
+    show('dash', true);
+
+    $('who').textContent = d.scout.name + ' · ' + d.scout.code;
+
+    var m = d.money || {};
+    var total = (m.accrued_minor || 0) + (m.payable_minor || 0) + (m.paid_minor || 0);
+    $('earned').textContent = money(total);
+    $('moneyNote').textContent = m.note || '';
+    $('mAccrued').textContent = money(m.accrued_minor);
+    $('mPayable').textContent = money(m.payable_minor);
+    $('mPaid').textContent = money(m.paid_minor);
+
+    var link = location.origin + '/s/' + d.scout.code;
+    $('code').textContent = d.scout.code;
+    $('link').textContent = link;
+    $('copyBtn').setAttribute('data-link', link);
+
+    // Paperwork, said once, at the top, because it is the thing standing
+    // between them and their money.
+    if (d.paperwork && !d.paperwork.complete && d.paperwork.note) {
+      $('paperNote').textContent = d.paperwork.note;
+      show('paperCard', true);
+    } else {
+      show('paperCard', false);
+    }
+
+    // THE COUNTS ARE NEVER MULTIPLIED BY A RATE. Eleven introductions times a
+    // $5 finder fee is $55 and is the sum somebody will do in their head if
+    // this page invites it — while the honest answer may be zero. States are
+    // shown separately, each carrying the server's own sentence.
+    var tally = $('tally');
+    tally.textContent = '';
+    var byState = (d.businesses && d.businesses.byState) || {};
+    Object.keys(byState).forEach(function (k) {
+      if (!byState[k]) return;
+      var s = document.createElement('span');
+      s.textContent = byState[k] + ' ' + k;
+      tally.appendChild(s);
+    });
+
+    var rows = $('rows');
+    rows.textContent = '';
+    var list = (d.businesses && d.businesses.list) || [];
+    var meaning = (d.businesses && d.businesses.meaning) || {};
+    list.forEach(function (p) {
+      var wrap = document.createElement('div');
+      wrap.className = 'biz';
+
+      var top = document.createElement('div');
+      top.className = 'biz-top';
+      var nm = document.createElement('div');
+      nm.className = 'biz-name';
+      nm.textContent = p.biz_name;
+      var st = document.createElement('span');
+      st.className = 'state ' + p.state;
+      st.textContent = p.state;
+      top.appendChild(nm); top.appendChild(st);
+
+      var why = document.createElement('div');
+      why.className = 'biz-meaning';
+      // The meaning is ON THE PAGE, not in a `title` tooltip. This audience is
+      // on a phone and a touch screen has no hover, so the tooltip version was
+      // invisible to every single person it was written for.
+      why.textContent = [p.dest, meaning[p.state] || ''].filter(Boolean).join(' · ');
+
+      wrap.appendChild(top); wrap.appendChild(why);
+      rows.appendChild(wrap);
+    });
+    show('empty', !list.length);
+
+    if (d.pending && d.pending.note && (d.pending.leads || d.pending.hosts)) {
+      $('pendingNote').textContent = d.pending.note;
+      show('pendingCard', true);
+    }
+
+    if (d.cap) {
+      $('capline').textContent = d.cap.left + ' of this month’s ' + d.cap.monthly + ' introductions left.';
+    }
+    loadDocs();
+  }
+
+  /* ── signed out ───────────────────────────────────────────────────── */
+
+  function signedOut(msg) {
+    show('dash', false);
+    show('docs', false);
+    show('signin', true);
+    show('joinSwitch', true);
+    if (msg) { $('loginErr').textContent = msg; show('loginErr', true); }
+  }
+
+  function load() {
+    return fetch('/api/scouts/me', WITH_SESSION)
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.status === 200 && res.body && res.body.ok) { render(res.body); return true; }
+        signedOut(null);
+        return false;
+      })
+      .catch(function () { signedOut(null); return false; });
+  }
+
+  /* ── paperwork ────────────────────────────────────────────────────── */
+
+  function docErr(msg) { $('docErr').textContent = msg; $('docErr').hidden = !msg; }
+
+  function renderDocs(pack) {
+    if (!pack || !pack.ok) return;
+    show('docs', true);
+    var nda = pack.nda || {};
+    var tax = pack.tax || {};
+    var word = { pending: 'Not done yet.', signed: 'Signed — Num is checking it.',
+      uploaded: 'Received — Num is checking it.', accepted: 'Done.', rejected: 'Needs doing again.' };
+    $('ndaState').textContent = (word[nda.state] || '') + (nda.rejectReason ? ' ' + nda.rejectReason : '');
+    $('readNda').hidden = nda.state === 'accepted' || nda.state === 'signed';
+    $('taxState').textContent = (word[tax.state] || '') + (tax.rejectReason ? ' ' + tax.rejectReason : '');
+    $('taxHow').textContent = tax.how || '';
+    $('taxWhy').textContent = tax.why || '';
+    $('taxPrivacy').textContent = tax.privacy || '';
+    if (tax.url) { $('taxLink').href = tax.url; $('taxLink').hidden = false; $('taxUpload').hidden = false; }
+    if (pack.payable) show('docs', false);
+  }
+
+  function loadDocs() {
+    fetch('/api/expert-docs/pack', WITH_SESSION)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(renderDocs)
+      .catch(function () { /* the dashboard still works */ });
+  }
+
+  $('readNda').addEventListener('click', function () {
+    fetch('/api/expert-docs/nda', WITH_SESSION)
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        if (!b || !b.ok) return;
+        $('ndaBody').textContent = b.body;
+        $('ndaBox').hidden = false;
+        $('readNda').hidden = true;
+      })
+      .catch(function () { docErr('Could not load the NDA. Try again.'); });
+  });
+
+  $('signBtn').addEventListener('click', function () {
+    docErr('');
+    fetch('/api/expert-docs/nda', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('sig').value })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        if (!b || !b.ok) { docErr((b && b.why) || 'That did not go through.'); return; }
+        $('ndaBox').hidden = true;
+        loadDocs();
+      })
+      .catch(function () { docErr('No connection. Try again.'); });
+  });
+
+  $('upBtn').addEventListener('click', function () {
+    docErr('');
+    var f = $('w9').files && $('w9').files[0];
+    if (!f) { docErr('Pick the file first.'); return; }
+    fetch('/api/expert-docs/w9', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': f.type || 'application/pdf' }, body: f
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        if (!b || !b.ok) { docErr((b && b.why) || 'That did not go through.'); return; }
+        loadDocs();
+      })
+      .catch(function () { docErr('No connection. Try again.'); });
+  });
+
+  /* ── signing in ───────────────────────────────────────────────────── */
+
+  $('loginBtn').addEventListener('click', function () {
+    show('loginErr', false);
+    show('loginSent', false);
+    var em = ($('loginEmail').value || '').trim();
+    if (!em) { $('loginErr').textContent = 'Put your email in first.'; show('loginErr', true); return; }
+    $('loginBtn').disabled = true;
+    fetch('/api/scouts/login', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: em })
+    })
+      .then(function () {
+        $('loginBtn').disabled = false;
+        // Deliberately says nothing about whether that address is on the
+        // programme — the server does not tell us, and it should not.
+        $('loginSent').textContent =
+          'If that address is a Num Expert, a link is on its way. It works once and lasts 20 minutes.';
+        show('loginSent', true);
+      })
+      .catch(function () {
+        $('loginBtn').disabled = false;
+        $('loginErr').textContent = 'No connection. Try again in a moment.';
+        show('loginErr', true);
+      });
+  });
+
+  $('copyBtn').addEventListener('click', function () {
+    var link = $('copyBtn').getAttribute('data-link') || '';
+    var done = function () {
+      $('copyBtn').textContent = 'Copied';
+      setTimeout(function () { $('copyBtn').textContent = 'Copy'; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(done, function () { /* fall through */ });
+    } else {
+      // Older in-app browsers have no clipboard API. Selecting the text at
+      // least lets somebody copy it by hand rather than retyping a URL.
+      var r = document.createRange();
+      r.selectNodeContents($('link'));
+      var sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+  });
+
+  $('outBtn').addEventListener('click', function () { location.href = '/api/scouts/logout'; });
+  $('joinLink').addEventListener('click', function (e) {
+    e.preventDefault();
+    show('join', true);
+    show('signin', false);
+    show('joinSwitch', false);
+    $('name').focus();
+  });
+
+  /* ── signing up ───────────────────────────────────────────────────── */
+
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    show('err', false);
+    $('go').disabled = true;
+    var body = {
+      name: $('name').value, email: $('email').value,
+      phone: $('phone').value || null, country: ($('country').value || '').toUpperCase() || null
+    };
+    fetch('/api/scouts/enrol', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        $('go').disabled = false;
+        if (!b || !b.ok) {
+          $('err').textContent = (b && b.why) || 'That did not go through. Try again.';
+          show('err', true);
+          return;
+        }
+        // Enrolment sets the session cookie, so this just reads the dashboard
+        // back. No code is stored anywhere: it is not a credential.
+        load();
+      })
+      .catch(function () {
+        $('go').disabled = false;
+        $('err').textContent = 'No connection. Try again in a moment.';
+        show('err', true);
+      });
+  });
+
+  /* ── on arrival ───────────────────────────────────────────────────── */
+
+  var q = new URLSearchParams(location.search);
+  var err = q.get('err');
+  // Clean the address bar so a refresh does not replay a stale message.
+  if (err || q.get('in')) {
+    try { history.replaceState({}, '', location.pathname); } catch (x) { /* old browser */ }
+  }
+  load().then(function (inAlready) {
+    if (!inAlready && err) { $('loginErr').textContent = err; show('loginErr', true); }
+  });
+})();
+</script>
+  <script src="/assets/translate.js" defer></script>
+</body>
+</html>

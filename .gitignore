@@ -68,3 +68,7 @@ _to_delete/
 .ticketmaster_key
 .uber_*
 .aerodatabox_key
+
+# Local-only Telegram bot token, never committed
+.telegram-token
+.telegram-chat-id

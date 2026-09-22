@@ -488,6 +488,7 @@ export default function InviteSheet() {
                 style={{ ...field, flex: 1 }}
                 placeholder={t('6-digit code')}
                 inputMode="numeric"
+                autoComplete="one-time-code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
               />
@@ -585,8 +586,8 @@ export default function InviteSheet() {
           <AppleSignIn onDone={close} />
 
           <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-            <input style={field} placeholder={sending ? t('Your name') : t('What should I call you?')} value={name} onChange={(e) => setName(e.target.value)} />
-            <input style={field} placeholder={sending ? t('Their mobile') : t('Mobile number')} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input style={field} placeholder={sending ? t('Your name') : t('What should I call you?')} autoComplete={sending ? 'off' : 'name'} value={name} onChange={(e) => setName(e.target.value)} />
+            <input style={field} placeholder={sending ? t('Their mobile') : t('Mobile number')} inputMode="tel" autoComplete={sending ? 'off' : 'tel'} value={phone} onChange={(e) => setPhone(e.target.value)} />
             {phone.trim() && phoneInfo.note && (
               <div style={{ fontSize: 12, lineHeight: 1.4, opacity: phoneInfo.ok ? 0.7 : 1, color: phoneInfo.ok ? undefined : 'var(--danger)' }}>
                 {phoneInfo.note}
@@ -613,6 +614,7 @@ export default function InviteSheet() {
                   style={field}
                   placeholder={t('Email address')}
                   inputMode="email"
+                  autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
@@ -677,7 +679,7 @@ export default function InviteSheet() {
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--ink-08)' }}>
               <div style={label}>{me.phone ? t('VERIFY YOUR NUMBER') : t('VERIFY YOUR EMAIL')}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <input style={{ ...field, flex: 1 }} placeholder={t('6-digit code')} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
+                <input style={{ ...field, flex: 1 }} placeholder={t('6-digit code')} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
                 <div {...pressable(doVerify)} style={{ ...primary, padding: '12px 18px' }}>{t('CHECK')}</div>
               </div>
               {accountNote && <div style={helpText}>{accountNote}</div>}

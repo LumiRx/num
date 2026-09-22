@@ -19,6 +19,7 @@
  */
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { ensureBalance } from './social.mjs';
 
@@ -40,6 +41,18 @@ const d1 = (database) => ({
   batch: async (sts) => { for (const s of sts) await s.run(); return []; },
 });
 
+// THE GRANT IS READ FROM THE SOURCE, NEVER RETYPED HERE.
+//
+// These tests hard-coded 100 in seven places. When the grant was cut to ★5 on
+// 16 Sep 2026 every one of them failed with "5 !== 100" — noise that says
+// nothing about whether crediting still WORKS, which is the only thing this
+// file is for. A test that breaks when a business number changes is testing
+// the number, not the behaviour.
+const GRANT = Number(
+  /const WELCOME_STARS = (\d+)/.exec(readFileSync(new URL('./social.mjs', import.meta.url), 'utf8'))?.[1],
+);
+assert.ok(GRANT > 0, 'could not read WELCOME_STARS out of social.mjs');
+
 const balance = (m) => db.prepare(`SELECT stars FROM num_star_balances WHERE member_id=?`).get(m)?.stars ?? null;
 const moves = (m) => db.prepare(`SELECT COALESCE(SUM(delta),0) n FROM num_star_moves WHERE member_id=?`).get(m).n;
 
@@ -57,32 +70,32 @@ describe('the welcome grant', () => {
 
   test('a brand-new member is credited', async () => {
     await ensureBalance(env, 'mem_new');
-    assert.equal(balance('mem_new'), WELCOME);
-    assert.equal(moves('mem_new'), WELCOME);
+    assert.equal(balance('mem_new'), GRANT);
+    assert.equal(moves('mem_new'), GRANT);
   });
 
   test('THE BUG: a member who paid first is still credited', async () => {
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_paid', 500)`);
     db.exec(`INSERT INTO num_star_moves (id, member_id, delta, kind) VALUES ('buy','mem_paid',500,'purchase')`);
     await ensureBalance(env, 'mem_paid');
-    assert.equal(moves('mem_paid'), 500 + WELCOME, 'the ledger records the grant');
-    assert.equal(balance('mem_paid'), 500 + WELCOME, 'and the balance actually moved — this is what regressed');
+    assert.equal(moves('mem_paid'), 500 + GRANT, 'the ledger records the grant');
+    assert.equal(balance('mem_paid'), 500 + GRANT, 'and the balance actually moved — this is what regressed');
   });
 
   test('calling it twice never grants twice', async () => {
     await ensureBalance(env, 'mem_new');
     await ensureBalance(env, 'mem_new');
     await ensureBalance(env, 'mem_new');
-    assert.equal(balance('mem_new'), WELCOME);
-    assert.equal(moves('mem_new'), WELCOME);
+    assert.equal(balance('mem_new'), GRANT);
+    assert.equal(moves('mem_new'), GRANT);
   });
 
   test('a member who received a transfer before signing in is still credited', async () => {
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_got', 25)`);
     db.exec(`INSERT INTO num_star_moves (id, member_id, delta, kind) VALUES ('in','mem_got',25,'receive')`);
     await ensureBalance(env, 'mem_got');
-    assert.equal(balance('mem_got'), 25 + WELCOME);
-    assert.equal(moves('mem_got'), 25 + WELCOME);
+    assert.equal(balance('mem_got'), 25 + GRANT);
+    assert.equal(moves('mem_got'), 25 + GRANT);
   });
 
   test('the invariant, stated once: balance equals the sum of the moves', async () => {
@@ -120,9 +133,13 @@ describe('the source itself', () => {
  * member-to-member path debits the raw balance and that is fine.
  *
  * The moment a tab pays a VENUE, that stops being true. At the 1:1 peg the
- * welcome grant is ★100 = $100, minted for anyone who types in a phone number
- * and never verified. If that can settle a real bill, Num is wiring $100 of
- * its own money to a merchant per fake signup.
+ * welcome grant is real money, minted for anyone who types in a phone number
+ * and never verified. If that can settle a real bill, Num is wiring its own
+ * money to a merchant per fake signup.
+ *
+ * The grant was cut ★100 → ★5 on 16 Sep 2026, which makes a fake signup worth
+ * $5 rather than $100. That is a smaller hole, not a closed one: the rule below
+ * is what closes it, and it holds at any grant size.
  *
  * The mechanism to prevent it already exists and is already tested: PROMO_KINDS
  * and `spendable()`, which is how the welcome grant is kept from buying a
@@ -140,15 +157,15 @@ describe('the rule for when Stars pay a venue', () => {
     db.exec(`INSERT INTO num_star_balances VALUES ('mem_g', 0)`);
     await ensureBalance(env, 'mem_g');
     const gift = await spendable(env, 'mem_g');
-    assert.equal(gift.balance, WELCOME);
+    assert.equal(gift.balance, GRANT);
     assert.equal(gift.spendable, 0, 'a pure welcome balance can spend nothing outward');
-    assert.equal(gift.promo_locked, WELCOME);
+    assert.equal(gift.promo_locked, GRANT);
 
     db.exec(`INSERT INTO num_star_moves (id, member_id, delta, kind) VALUES ('buy','mem_g',500,'purchase')`);
-    db.exec(`UPDATE num_star_balances SET stars = ${500 + WELCOME} WHERE member_id='mem_g'`);
+    db.exec(`UPDATE num_star_balances SET stars = ${500 + GRANT} WHERE member_id='mem_g'`);
     const bought = await spendable(env, 'mem_g');
     assert.equal(bought.spendable, 500, 'bought Stars spend; the gift still does not');
-    assert.equal(bought.promo_locked, WELCOME);
+    assert.equal(bought.promo_locked, GRANT);
   });
 
   test('every place Stars are DEBITED is on the reviewed list', async () => {
@@ -165,7 +182,7 @@ describe('the rule for when Stars pay a venue', () => {
     assert.deepEqual(found, DEBIT_SITES,
       'A new way to SPEND Num Stars appeared. If it moves Stars to a venue or ' +
       'anyone outside Num it must spend `spendable`, not `balance` — otherwise ' +
-      'the ★100 welcome grant becomes $100 of real money per unverified signup. ' +
+      'the welcome grant becomes real money per unverified signup. ' +
       'Add it to DEBIT_SITES with a reason once you have checked.');
   });
 });

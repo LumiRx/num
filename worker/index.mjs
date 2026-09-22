@@ -1337,10 +1337,38 @@ export async function handleNum(request, env, ctx, hooks = null) {
       }
     }
 
+    // ── THE OFFER, AND THE PERMISSION TO MAKE IT ──────────────────────
+    //
+    // `earned` comes from the app, which is the only thing that knows a limit
+    // was hit or a booking just landed. With no signal the block says DO NOT
+    // OFFER, so silence is the default and a pitch has to be justified — the
+    // opposite of what a price list alone would produce.
+    let membership = null;
+    try {
+      const { upgradeFor } = await import('./upgrade.mjs');
+      // iOS sells nothing here — App Store 3.1.1, and Num bills through
+      // Stripe. The client says whether it may offer at all; DEFAULT IS NO,
+      // so an older build that never sends the field, or a forged one that
+      // sends nonsense, gets silence rather than a price list.
+      const maySell = parsed.may_offer_subscription === true;
+      // `asked` is detected from the guest's own words rather than trusted
+      // from the client: the server sees the text, and a guest asking "how
+      // much is Plus?" and getting nothing back is worse than any missed
+      // upsell. The client may still send `win` or `limit` — it is the only
+      // thing that knows a booking landed or a ceiling bit.
+      const { askedAboutPlans } = await import('./upgrade.mjs');
+      const claimed = ['limit', 'win', 'asked'].includes(parsed.earned) ? parsed.earned : null;
+      const earned = askedAboutPlans(lastUser) ? 'asked' : claimed;
+      membership = maySell ? await upgradeFor(env, memberId, { earned }) : null;
+    } catch (e) {
+      console.warn('[upgrade] block skipped:', e?.message ?? e);
+    }
+
     const groundingBlock = contextBlock({
       place: grounding.place,
       partners: rotation.partners,
       widened: grounding.widened,
+      membership,
       shown: rotation.block,
       entryDocs,
       essentials,
@@ -1929,6 +1957,13 @@ export default {
     // scrubbing, CORS and no-store behavior without duplicating this logic.
     const { json, setTravelContext } = jsonFactory(cors);
 
+    // Universal links / app links: see worker/applinks.mjs.
+    if (url.pathname.includes('app-site-association') || url.pathname === '/.well-known/assetlinks.json') {
+      const { handleAppLinks } = await import('./applinks.mjs');
+      const res = handleAppLinks(url, env);
+      if (res) return res;
+    }
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
     }
@@ -1959,7 +1994,10 @@ export default {
         // Resend delivery events, for the same reason: it retries on a non-2xx,
         // and the events a throttle would drop are precisely the bounces and
         // delivery confirmations this product spent a month unable to see.
-        || url.pathname === '/api/webhooks/resend';
+        || url.pathname === '/api/webhooks/resend'
+        // The eSIM supplier's doorbell: machine-to-machine, secret in the path,
+        // retried by the supplier. See worker/esim.mjs.
+        || url.pathname.startsWith('/api/esim/doorbell/');
       // The MCP endpoints limit themselves, and must. Everything about the
       // blanket gate is wrong for JSON-RPC:
       //   • It throttles the HANDSHAKE. initialize and tools/list are POSTs, so
@@ -2003,6 +2041,18 @@ export default {
     // that is the whole point of inviting people by text.
     if (url.pathname.startsWith('/e/')) {
       return await handleEventPage(request, env, url.pathname.slice(3).split('/')[0], url.origin);
+    }
+    // eSIM: the listing, a page per country and per airport, the pay link and
+    // the install page — plus the JSON the app and the supplier talk to.
+    // Everything is in worker/esim.mjs and answers "being set up" until
+    // migration 0033 is applied and a supplier key is set.
+    if (url.pathname === '/esim' || url.pathname.startsWith('/esim/')) {
+      const { handleEsimPage } = await import('./esim.mjs');
+      return await handleEsimPage(request, env, ctx);
+    }
+    if (url.pathname.startsWith('/api/esim/')) {
+      const { handleEsimApi } = await import('./esim.mjs');
+      return await handleEsimApi(request, env, ctx);
     }
     // The member's calendar: a confirmed table, a plan, an event, as .ics.
     // Read-only, floating local times, bearer-safe headers. worker/calendar.mjs.
@@ -2484,6 +2534,13 @@ export default {
     if (url.pathname === '/api/admin/install-funnel') {
       const { handleInstallFunnel } = await import('./installfunnel.mjs');
       return await handleInstallFunnel(request, env);
+    }
+
+    // The eSIM owner's door: supplier, balance, listing, orders, and the
+    // refresh / sweep / refund actions. Gated in worker/esim.mjs.
+    if (url.pathname === '/api/admin/esim') {
+      const { handleEsimAdmin } = await import('./esim.mjs');
+      return await handleEsimAdmin(request, env, ctx);
     }
 
     // What Num can actually do where this guest is standing. One indexed D1
@@ -3213,7 +3270,7 @@ export default {
     }
 
     if (url.pathname.startsWith('/api/pay')) {
-      const res = await handlePay(request, env, url.pathname.slice('/api/pay'.length) || '/');
+      const res = await handlePay(request, env, url.pathname.slice('/api/pay'.length) || '/', ctx);
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
@@ -3391,6 +3448,15 @@ export default {
         .then((r) => { if (r?.checked) console.log(`[flightwatch] checked ${r.checked}, pushed ${r.pushed}`); })
         .catch((e) => console.error('[flightwatch]', e?.message ?? e)),
     );
+    // eSIM: push paid orders along (fill or refund, never silent), refresh the
+    // listing daily, warn when the prepaid supplier balance runs low. Its own
+    // failure domain. No-op until migration 0064 is applied. worker/esim.mjs.
+    ctx.waitUntil(
+      import('./esim.mjs')
+        .then((m) => m.esimCron(env))
+        .then((r) => { if (r?.sweep?.attention || r?.refresh?.ok === false) console.warn('[esim-cron]', JSON.stringify(r)); })
+        .catch((e) => console.error('[esim-cron]', e?.message ?? e)),
+    );
     // Does mail actually leave the building? For five days in August the
     // answer was no and nothing said so — the evidence was one column in
     // num_invites nobody read. Set MAIL_SELFTEST to an address and the next
@@ -3430,6 +3496,23 @@ export default {
         .then((m) => m.alertOnBrains(env))
         .then((r) => { if (r?.sent?.length) console.warn('[brainalert]', JSON.stringify(r.sent)); })
         .catch((e) => console.error('[brainalert]', e?.message ?? e)),
+    );
+    // AND NOBODY COULD SIGN IN FOR NINE HOURS WITHOUT A WORD.
+    //
+    // 20 Sep 2026: Twilio refused every request on the account from 08:34Z
+    // with error 20003. num_signin_events recorded all 71 failures as they
+    // happened. /api/health reported `sms: ok` throughout. Nothing connected
+    // the two, so the biggest traffic day in the product's life ran against a
+    // locked front door until a person happened to ask.
+    //
+    // Its own waitUntil, next to brainalert and for the same reason: an alert
+    // that can be taken down by the thing it is reporting is not an alert.
+    // See worker/smsalert.mjs.
+    ctx.waitUntil(
+      import('./smsalert.mjs')
+        .then((m) => m.alertOnSms(env))
+        .then((r) => { if (r?.sent?.length) console.warn('[smsalert]', JSON.stringify(r.sent)); })
+        .catch((e) => console.error('[smsalert]', e?.message ?? e)),
     );
     // DID THE SIGN-IN CODES ACTUALLY ARRIVE?
     //

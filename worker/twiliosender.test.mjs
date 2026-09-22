@@ -209,6 +209,8 @@ test('the two workers that actually send are named, so the secret reaches both',
     .filter(([, w]) => [...bundleFiles(w.main)].some((f) => /twiliosender\.mjs$/.test(f)))
     .map(([name]) => name)
     .sort();
-  assert.deepEqual(senders, ['num-app', 'num-growth'],
+  // num-console joined on the merge of the two lines (22 Sep 2026): the site
+  // worker bundles the sender too, so the Messaging Service SID goes there as well.
+  assert.deepEqual(senders, ['num-app', 'num-console', 'num-growth'],
     'the set of SMS-sending workers changed — the secret has to be set on every one of them');
 });

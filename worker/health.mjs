@@ -269,7 +269,21 @@ function checkCashout(env) {
 }
 
 /** Inbound SMS with no token = an open mailbox anyone can post into. */
-function checkSms(env) {
+/**
+ * ── THIS CHECK USED TO ANSWER THE WRONG QUESTION ─────────────────────────
+ *
+ * Until 20 Sep 2026 everything below this line was the whole function: it
+ * validated CONFIGURATION. Is a Messaging Service SID set, is it shaped like
+ * an MG, is the auth token present. All useful, all cheap, and all of it
+ * answered `ok: true` throughout a nine-hour outage in which 71 consecutive
+ * verification codes failed and not one member could sign in — because the
+ * configuration was, the entire time, perfect.
+ *
+ * A check on settings tells you the phone is plugged in. It cannot tell you
+ * that nobody is answering. So the settings checks stay, and a check on
+ * REALITY now runs after them and outranks them.
+ */
+async function checkSms(env) {
   if (env.TWILIO_FROM && !env.TWILIO_TOKEN) {
     return { ok: false, remedy: 'A texting number is configured but TWILIO_TOKEN is not, so inbound signatures cannot be verified and every inbound text is rejected (403). Set TWILIO_TOKEN.' };
   }
@@ -288,7 +302,53 @@ function checkSms(env) {
   if (svc && !/^MG[0-9a-f]{32}$/i.test(svc)) {
     return { ok: false, remedy: `TWILIO_MESSAGING_SERVICE_SID is set to something that is not a Messaging Service SID (expected MG + 32 hex, got ${svc.slice(0, 4)}…). An account SID starts AC, a campaign CM, a brand BN — check which one was pasted. Every send is falling back to the bare number. GET /api/admin/twilio (X-Admin-Key) asks Twilio which service carries the approved campaign AND holds our number, and prints the exact command to set it.` };
   }
-  return { ok: true };
+  // ── AND NOW THE ONLY QUESTION A MEMBER WOULD ASK ────────────────────────
+  //
+  // Are codes actually sending? Read from num_signin_events, which both the
+  // Verify path and the legacy Messaging path write, and judged by the same
+  // function the watchdog uses — so the board and the alert can never
+  // disagree about whether sign-in is up. See worker/smsalert.mjs for why
+  // silence and bad phone numbers are excluded from the evidence.
+  try {
+    const { assess, WINDOW_MINUTES, NEEDS_HUMAN, BLOCKED_CLASS } = await import('./smsalert.mjs');
+    const { results } = await env.DB.prepare(
+      `SELECT outcome, reason, COUNT(*) AS n
+         FROM num_signin_events
+        WHERE stage = 'send'
+          AND via <> 'email'
+          AND ts >= datetime('now', ?1)
+        GROUP BY outcome, reason`,
+    ).bind(`-${WINDOW_MINUTES} minutes`).all();
+    const a = assess(results);
+    if (a.level === 'down') {
+      return {
+        ok: false,
+        sending: false,
+        attempts: a.attempts,
+        error_code: a.reason,
+        remedy: `No verification code has sent in ${WINDOW_MINUTES} minutes — ${a.failed} attempts, 0 delivered. `
+          + (NEEDS_HUMAN[String(a.reason)] ?? `Twilio error ${a.reason ?? 'unknown'}; see Twilio Console → Monitor → Logs → Errors.`),
+      };
+    }
+    // The channel is up — and a whole country can still be locked out of it.
+    // Carried as a warning rather than a failure because `ok: false` here
+    // would grade the product down while it is demonstrably working for
+    // everyone else. It is on the page so the board never again knows
+    // something the owner does not.
+    const blocked = (a.blocked ?? []).map(([code, n]) => `${code}\u00d7${n}: ${BLOCKED_CLASS[code]}`);
+    return {
+      ok: true,
+      sending: a.level === 'ok',
+      window: a.level,
+      attempts: a.attempts,
+      ...(blocked.length ? { warn: blocked.join(' | ') } : {}),
+    };
+  } catch {
+    // A check that cannot read the table must not invent a verdict in either
+    // direction. Saying `ok` here is the 20 Sep bug; saying `down` would page
+    // on a missing table. Say what is true: unknown.
+    return { ok: true, sending: null, warn: 'could not read num_signin_events, so delivery is unverified' };
+  }
 }
 
 /**
@@ -513,6 +573,69 @@ async function checkFailures(env) {
  *     clothes, which is the expensive one).
  * Cached and small-lane rows are excluded — they never had a brain to lose.
  */
+/**
+ * Can every Num Expert actually be reached and paid?
+ *
+ * 17 Sep 2026. Both Experts in production had a LITERAL PLACEHOLDER as their
+ * email address — 'REPLACE_WITH_ISAIAHS_EMAIL' and '<<ADAM_EMAIL>>'. Two seed
+ * files were run without the substitution and nothing anywhere objected,
+ * because a hand-written INSERT bypasses `enrol()`, which is the only place
+ * that validates an address.
+ *
+ * It sat there for sixteen days. Nobody noticed because nothing in the
+ * programme sent an Expert an email, so there was never a bounce to see. The
+ * moment sign-in became a mailed link, both of them were locked out of their
+ * own earnings — and neither could have been contacted about the W-9 that
+ * stands between them and being paid.
+ *
+ * A unit test could not have caught this: the bad value is in the database,
+ * not the code. So the check lives where the data does. It is `degraded`
+ * rather than `down` — nothing is broken for travellers — but it is exactly
+ * the kind of quiet wrong that this file exists to make loud.
+ *
+ * The cap is checked in the same pass for the same reason: NULL means "use
+ * the programme default", and a default that lives nowhere is not a cap. On an
+ * open-signup programme that is the fraud ceiling missing.
+ */
+export async function checkExperts(env) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT
+         COUNT(*) AS n,
+         SUM(CASE WHEN email IS NULL OR email NOT LIKE '%_@_%._%' THEN 1 ELSE 0 END) AS bad_email,
+         SUM(CASE WHEN email_lc IS NULL OR email_lc <> LOWER(email) THEN 1 ELSE 0 END) AS split_email,
+         SUM(CASE WHEN monthly_claim_cap IS NULL THEN 1 ELSE 0 END) AS uncapped
+       FROM num_scouts WHERE status = 'active'`,
+    ).first().catch(() => null);
+    if (!row) return { ok: true, experts: 0 };
+
+    const n = Number(row.n ?? 0);
+    const bad = Number(row.bad_email ?? 0);
+    // email is what gets MAILED; email_lc is what sign-in MATCHES ON. One
+    // updated without the other is an Expert who can be emailed but cannot log
+    // in, or the reverse — and both look fine from either end alone.
+    const split = Number(row.split_email ?? 0);
+    const uncapped = Number(row.uncapped ?? 0);
+    if (!bad && !split && !uncapped) return { ok: true, experts: n };
+
+    const parts = [];
+    if (bad) parts.push(`${bad} with an unusable email address (they cannot sign in and cannot be paid)`);
+    if (split) parts.push(`${split} whose email and email_lc disagree (mail works, sign-in does not)`);
+    if (uncapped) parts.push(`${uncapped} with no monthly introduction cap`);
+    return {
+      ok: false,
+      experts: n,
+      bad_email: bad,
+      split_email: split,
+      uncapped,
+      remedy: `Num Experts need fixing: ${parts.join('; ')}. `
+        + 'See sql/fix/num_scout_emails_and_cap.sql.',
+    };
+  } catch {
+    return { ok: true, experts: 0 };
+  }
+}
+
 async function checkAttribution(env) {
   try {
     const row = await env.DB.prepare(
@@ -708,11 +831,12 @@ export async function runHealth(env) {
     brain: checkBrain(env),
     brains_state: await checkBrains(env),
     attribution: await checkAttribution(env),
+    experts: await checkExperts(env),
     failures: await checkFailures(env),
     payments: checkPay(env),
     bill_pay: await checkBillPay(env),
     bill_tracking: await checkBillTracking(env),
-    sms: checkSms(env),
+    sms: await checkSms(env),
     push: await checkPush(env),
     cashout: checkCashout(env),
     sweeps: await checkSweeps(env),
@@ -728,7 +852,11 @@ export async function runHealth(env) {
   // nobody was successfully told. A product that is quietly broken while its
   // alarms shout into a dead wire — 81 line_404 rows over a month — is down in
   // every sense that matters, because nothing else it reports can be believed.
-  const DOWN = ['d1_write', 'brain', 'site_public', 'failures'];
+  // 'sms' earns its place here on the evidence of 20 Sep 2026: with sign-in
+  // dead, 130 people arrived, half gave a phone number, and none of them
+  // could open an account. That is not a degradation of a feature, it is the
+  // front door locked — and the board called it `ok` for nine hours.
+  const DOWN = ['d1_write', 'brain', 'site_public', 'failures', 'sms'];
   const verdict = failing.some((f) => DOWN.includes(f))
     ? 'down'
     : failing.length ? 'degraded' : 'ok';
@@ -841,6 +969,24 @@ export async function alert(env, text, { kind = 'alert', subject = '' } = {}) {
     }).catch(() => null);
     if (r && r.ok) carried = carried || 'webhook';
   }
+  // ── THE CHANNEL THAT SHARES NOTHING WITH THE STACK ──────────────────────
+  //
+  // Tried BEFORE Twilio, and deliberately so. On 20 Sep 2026 Twilio refused
+  // every request on this account for nine hours with error 20003. Any alert
+  // about that outage, sent by text, would have been rejected by the very
+  // account it was reporting on — the alarm mute for exactly the reason it
+  // was ringing. Telegram touches no vendor, domain or DNS that the rest of
+  // Num depends on, so it is the one wire a Num-wide failure cannot cut.
+  // Unconfigured deployments report `skipped` and never count as carried.
+  try {
+    const { notify } = await import('./telegram.mjs');
+    const t = await notify(env, text);
+    if (t.ok) carried = carried || 'telegram';
+    else if (!t.skipped) console.error('[health] telegram refused the alert —', t.error);
+  } catch (e) {
+    console.error('[health] telegram threw', e?.message ?? e);
+  }
+
   // The quietest of the three senders, and the one it would hurt most to leave
   // behind: its whole job is to tell us something broke. If it keeps sending
   // `From: <number>` after the others move to the Messaging Service, the alert

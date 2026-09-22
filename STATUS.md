@@ -11,6 +11,7 @@ I need to know before I touch anything*, and humans write it.
 Do not re-read the codebase to learn what these two already say.
 
 _Last updated: 2026-09-18 06:30 UTC · **0.8.345 live on num-app** — all 12 TODAY doors audited against production (`node scripts/featureaudit.mjs`); charter and events tiles now match what they do · 0.8.343: TODAY feature grid + pages, flights Save · 0.8.339: two-line answer (first line ~0.2 s)_
+_Last updated: 2026-09-21 · **eSIM text-to-buy built, not deployed** · **Hollywood fix live on num-ai, NOT YET on num-app** · deploy-drift guard added (`npm run deploy:check`) · Num Expert card page `/s/CODE` built, not deployed_
 
 ---
 
@@ -172,6 +173,31 @@ it is shipped**: migration `0043_business_onboarding.sql` is PENDING.
   down for texting actually are.
 
 ## In flight
+
+- **eSIM — text ESIM to buy** (21 Sep) — BUILT AND TESTED, NOT DEPLOYED. Dre: "just text and get
+  your eSIM now with your own concierge… price it better than everyone… every airport in the world".
+  `worker/esim.mjs` is the map; every other piece is `worker/esim*.mjs`. Stand-in supplier is
+  **eSIM Access** (self-serve, no minimum, prepaid balance) until LetsGo2Trip's eSIM API (mid-Nov).
+  **Num is the SELLER of eSIMs** (Stripe Checkout on Num's account) — unlike flights, where the
+  partner sells. Doors: `app.itsnum.com/esim`, `/esim/<cc>`, `/esim/airport/<iata>` (4,079 airports
+  from OurAirports, public domain; only large airports with plans are indexed), `/esim/region/<eu>`,
+  `/esim/pay/<token>` → Stripe, `/esim/o/<token>` install page (Apple one-tap link + QR + codes).
+  Text: "ESIM", "ESIM BKK", "esim thailand" on SMS and WhatsApp → 3 picks → reply 1-3 → pay link.
+  Webhook branch in `pay.mjs` (kind=esim) → `esimfulfil.mjs`: paid → supplier order (our order id
+  is their transaction id) → install link by page/text/email, or an **automatic refund** when the
+  supplier clearly refuses; the 5-min cron sweeps stuck orders and pages a human (`attention`) for
+  anything unclear. Checkout is card-only (Apple Pay and Google Pay ride on card): no bank debit can
+  complete "unpaid" and strand an order.
+  **US texts unproven:** no programmable SMS has reached a real phone since the 30 Aug Messaging
+  Service fix (only Verify codes have). `GET /api/admin/twilio` → `carries_our_number: true` first.
+  **To go live:** release (`release:stage` applies 0033), then secrets `ESIMACCESS_ACCESS_CODE`
+  and `ESIMACCESS_WEBHOOK_SECRET` (doorbell URL `/api/esim/doorbell/<secret>`), top up the supplier
+  balance, `POST /api/admin/esim {"action":"refresh"}`. Optional: `SMS_CONCIERGE=on` (concierge
+  answers texts from eSIM BUYERS only — venues and drivers on the same number stay in the inbox),
+  `ESIM_MARGIN_PCT`, `ESIM_MAX_LOSS_CS` (deliberate subsidy), `ESIM_SALES=off` (pause).
+  Sales refuse to open without a supplier key, a listing, and balance ≥ `ESIM_MIN_BALANCE_CS` ($10).
+  Reviewed adversarially 21 Sep: five money-path defects fixed and mutation-tested (late payment,
+  webhook retries, refund races, retry refunds, consent); details in `docs/HANDOFF-2026-09-21-esim.md`.
 
 - **Luxury asset layer** (12 Sep) — WIRED END TO END, awaiting Dre's deploy. Migration `0021`
   applied in production (all four tables and both ALTERs verified live). R2 bucket

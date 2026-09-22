@@ -1,18 +1,19 @@
 // The NUM app screen — header, tab bar, views, sheets and overlays.
 // Composition and z-layering match Concierge.dc.html exactly.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { KeyboardEvent, UIEvent } from 'react';
 import { store, useApp } from '../../lib/store';
 import { pressable } from '../../lib/a11y';
 import { closeVoice } from '../../lib/concierge';
 import { monthsFor, segStyle } from '../../lib/derive';
-import { bootSocial, startPlanSync } from '../../lib/social';
+import { bootSocial, handleOpenedLink, startPlanSync } from '../../lib/social';
 import { startBookSync } from '../../lib/bookdesk';
 import { startReminderSync } from '../../lib/reminders';
 import { cardsOf } from '../../lib/invites';
 import { bootDm, closeDmThread, refreshDmInbox, startDmSync } from '../../lib/dm';
 import { restoreTab } from '../../lib/tabs';
 import { serveIdentityToWorker } from '../../lib/push';
+import { listenForLaunchedLinks, listenForOpenedLinks } from '../../lib/native';
 import { StarIcon, ShareIcon, ChevronDownIcon, MessageIcon, RouteIcon, SparklesIcon, XIcon, LayoutIcon, UserIcon, UsersIcon } from '../../lib/icons';
 import { applyTheme } from '../../lib/themes';
 import { applyTextSize } from '../../lib/textsize';
@@ -27,6 +28,9 @@ import ShareToSheet from './ShareToSheet';
 import WalletSheet from './WalletSheet';
 import BusinessSheet from './BusinessSheet';
 import ScoutSheet from './ScoutSheet';
+import WelcomePlans, { seenWelcomePlans } from './WelcomePlans';
+import PaidReturn from './PaidReturn';
+import { paidParam } from '../../lib/subscription';
 import EventSheet from './EventSheet';
 import PaySheet from './PaySheet';
 import BillSheet from './BillSheet';
@@ -52,6 +56,7 @@ import DmSheet from './DmSheet';
 import { NotifBanner, PermissionDialog, VoiceOverlay } from './Overlays';
 import InstallPrompt from './InstallPrompt';
 import { fmtDate, loadLang, pickLang, t, useI18nTick } from '../../lib/i18n';
+import PlanNudge from './PlanNudge';
 
 export default function ConciergeApp({ posterHeader = false, standalone = false }: { posterHeader?: boolean; standalone?: boolean }) {
   const view = useApp((s) => s.view);
@@ -70,6 +75,29 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
   const dmOpen = useApp((s) => s.dmOpen);
   const me = useApp((s) => s.me);
   const unread = useApp((s) => s.unread);
+  // Read ONCE on mount, not during render: `seenWelcomePlans()` touches
+  // localStorage, and calling it on every render would both cost a read per
+  // frame and make the sheet's own dismissal race its visibility.
+  const [welcomePlans, setWelcomePlans] = useState(false);
+  // COMING BACK FROM STRIPE. Read ONCE on mount, before anything can rewrite
+  // the address bar. `wasTier` is the tier they held BEFORE checkout, captured
+  // here so the confirmation can tell a real change from "already paid" —
+  // without it a Plus→Pro upgrade confirms the moment it sees any paid tier.
+  const [paid, setPaid] = useState<string | null>(null);
+  const [wasTier, setWasTier] = useState('free');
+  useEffect(() => {
+    const p = paidParam();
+    if (!p) return;
+    setPaid(p);
+    try {
+      const cached = localStorage.getItem('num-tier-before-checkout');
+      if (cached) setWasTier(cached);
+    } catch { /* private mode — 'free' is the safe assumption */ }
+  }, []);
+  useEffect(() => {
+    if (!me?.id || demo) return;
+    if (!seenWelcomePlans()) setWelcomePlans(true);
+  }, [me?.id, demo]);
   const typing = useApp((s) => s.typing);
   // One number across every conversation — the header badge answers "does
   // anybody want me", and the per-person counts live inside.
@@ -102,6 +130,11 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
     // makes "you can close this" true rather than a promise.
     resumeResearch();
     bootSocial();
+    // Native only: a friend's link that OPENED the app lands here, not in
+    // the URL bootSocial just read.
+    void listenForOpenedLinks(handleOpenedLink);
+    // Home-screen web app (Android/desktop): same link, delivered by the browser.
+    listenForLaunchedLinks(handleOpenedLink);
     void restoreTab();
     void refreshDmInbox();
     // A push wakes the service worker, which has no localStorage — it asks the
@@ -553,6 +586,14 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
         />
       )}
 
+      {/* "You've been using Num" — the only place in the app that mentions a
+          plan unprompted, and it waits for the THIRD ask before it does.
+          Never on iOS: the component returns null there before it fetches
+          anything (App Store 3.1.1 — see the file's header). Shown once. */}
+      {standalone && (
+        <PlanNudge suppressed={overlayOpen || profileOpen || dmOpen} />
+      )}
+
       {/* sheet backdrop — mouse convenience only; keyboard users close sheets with Escape (root onKeyDown) */}
       <div
         aria-hidden="true"
@@ -565,6 +606,16 @@ export default function ConciergeApp({ posterHeader = false, standalone = false 
       <EventSheet />
       <BusinessSheet />
       <ScoutSheet />
+      {/* THE FIRST TIME WE EVER ASK. Shown once, to a signed-in member, and
+          NEVER on iOS — the component checks canOfferSubscription() before it
+          renders anything at all (App Store 3.1.1; Num bills through Stripe).
+          `seenWelcomePlans()` is read into state once on mount rather than
+          called during render, so dismissing it cannot re-trigger a read. */}
+      {/* Mounted BEFORE the welcome sheet and rendered over everything: a
+          member returning from a successful payment must never be shown the
+          plans screen again on the way in. */}
+      {paid ? <PaidReturn was={wasTier} onDone={() => setPaid(null)} /> : null}
+      {welcomePlans && !paid ? <WelcomePlans onClose={() => setWelcomePlans(false)} /> : null}
       <PaySheet />
       <BillSheet />
       <PassengerSheet />
