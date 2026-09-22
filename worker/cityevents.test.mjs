@@ -46,6 +46,15 @@ test('an event ask is told apart from a dinner ask', () => {
     'where can we watch the football tonight?',
     'plan saturday with 6 friends',
     'what can i do for fun within walking distance of sawasdee village phuket at my current time',
+    // 22 Sep 2026, found by probing production with five real Halloween asks.
+    // This one reached no event grounding and the model answered from its own
+    // memory -- "Roppongi and Shibuya get packed on the 31st" -- while we held
+    // a row saying Shibuya has banned street drinking there since 2024. The
+    // list had 'what can we do' and not 'what should we do'.
+    'what should we do in tokyo for halloween?',
+    'what should i do tonight',
+    "what's happening in phuket in october?",
+    'what do you recommend for halloween',
   ]) {
     assert.ok(wantsEvents(t), `should have wanted events: ${t}`);
   }
@@ -71,6 +80,24 @@ test('the query refuses to look past the expiry date', async () => {
   assert.match(f.last.sql, /state = 'live'/);
   assert.equal(f.last.args[0], 'phuket');
   assert.equal(f.last.args[1], '2026-08-20', 'the date must be bound, never interpolated');
+});
+
+test('an event two days away outranks whatever happens to be running', async () => {
+  // The Halloween case, 22 Sep 2026. Asked on the 29th, Edinburgh was returning
+  // ghost tours that had been running all month and dropping the Samhuinn Fire
+  // Festival on the 31st -- the single reason to be in Edinburgh that week --
+  // because it had not started yet. "What is on" two days out means the next
+  // few days. Without the window, a guest is told about the filler and not the
+  // thing they came for.
+  const f = fakeDB([ROW]);
+  await cityEventsFor({ DB: f.db }, 'edinburgh', { today: '2026-10-29' });
+  assert.match(
+    f.last.sql,
+    /CASE WHEN starts_on <= date\(\?2, '\+3 days'\) THEN 0 ELSE 1 END/,
+    'the lookahead window is gone -- an imminent festival would rank below anything already running',
+  );
+  // and the date is still bound, never interpolated
+  assert.equal(f.last.args[1], '2026-10-29');
 });
 
 test('a disputed date is carried to the model, not smoothed over', () => {

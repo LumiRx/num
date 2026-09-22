@@ -48,6 +48,16 @@ export const CATS = {
   restaurant: ['restaurant','eat','food','dinner','lunch','hungry','กิน','อาหาร','ร้านอาหาร','หิว','ресторан','еда','поесть','ужин','吃','餐厅','美食','ご飯','レストラン'],
   cafe:       ['cafe','café','coffee','brunch','กาแฟ','คาเฟ่','кофе','咖啡','カフェ'],
   spa:        ['massage','spa','นวด','สปา','массаж','спа','按摩','マッサージ','deep tissue','deep-tissue','swedish','shiatsu','reflexolog','sports massage','thai massage','hot stone','aromatherapy','facial','manicure','pedicure','sauna','hammam','onsen'],
+  // COSTUME (22 Sep 2026). The directory already held 204 costume shops across
+  // Los Angeles, Tokyo, London, Phuket, Edinburgh and Orange County under the
+  // category `Costume Store`, and not one of them could be reached: "where do I
+  // get a costume" matched nothing, and "costume shop" matched `shopping` on the
+  // word 'shop' and then searched '%shop%', which does not match 'Costume Store'.
+  // Sits ABOVE `bar` on purpose — `bar` carries 'party', so "a costume for a
+  // party" resolved to bars. 'party' is deliberately NOT in this list, so a
+  // plain party ask still reaches `bar`. Russian 'костюм' is also absent: it
+  // means suit and already belongs to `tailor`.
+  costume:    ['costume','fancy dress','fancy-dress','cosplay','dress up','dress-up','halloween outfit','trick or treat','trick-or-treat','ชุดแฟนซี','ชุดคอสเพลย์','ฮาโลวีน','карнавальн','переодева','变装','角色扮演','万圣节','コスプレ','衣装','ハロウィン'],
   // NIGHTLIFE (18 Sep 2026). Two intents that used to fall into `bar` or into
   // nothing at all: "nightclub club dancing" matched bar's 'club' and then
   // bar's '%lounge%' pattern, which is how a travel agency called "SN Travel
@@ -105,6 +115,10 @@ const CATSQL = {
   restaurant: ['%restaurant%','%street food%','%steak%','%grill%','%dining%','%deli%','%food court%'],
   cafe:       ['%caf%','%coffee%','%bakery%'],
   spa:        ['%spa%','%massage%','%beauty%'],
+  // 'Costume Store' is the live label; 'Party Supply' and 'Thrift Store' carry
+  // the rest of the real answers (Party Spirit in Holloway, the Edinburgh
+  // vintage shops). '%vintage%' is left out: it would pull in furniture.
+  costume:    ['%costume%','%fancy dress%','%party supply%','%party store%','%thrift store%','%novelty%'],
   nightclub:  ['%night club%','%nightclub%','%disco%','%dance club%','%nightlife%'],
   livemusic:  ['%music venue%','%live music%','%jazz%','%concert%','%music club%'],
   bar:        ['%bar%','%pub%','%nightlife%','%night club%','%lounge%','%brewery%'],

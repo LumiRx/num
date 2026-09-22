@@ -26,6 +26,27 @@ test('the exact words the guest typed now find the category', () => {
   assert.equal(detectCat('reflexology'), 'spa');
 });
 
+test('a costume ask reaches the costume shops, and does not steal the bar', () => {
+  // 22 Sep 2026. The directory held 204 rows categorised 'Costume Store' across
+  // Los Angeles, Tokyo, London, Phuket, Edinburgh and Orange County, and a guest
+  // could not reach one of them: "where do I get a costume" matched no keyword
+  // at all, and "costume shop" matched `shopping` on the word 'shop', which then
+  // searched '%shop%' and never matches 'Costume Store'.
+  assert.equal(detectCat('where can i get a costume in los angeles'), 'costume');
+  assert.equal(detectCat('costume shop near me'), 'costume');
+  assert.equal(detectCat('I need a fancy dress outfit for halloween'), 'costume');
+  assert.equal(detectCat('where do i rent a cosplay outfit'), 'costume');
+  // `bar` carries the word 'party', and it sits below costume on purpose.
+  assert.equal(detectCat('a costume for a party tonight'), 'costume');
+  // ...but a plain party ask must still be a bar ask, and a suit must still be
+  // a tailor ask. Russian 'костюм' means suit and is deliberately not a costume
+  // keyword for that reason.
+  assert.equal(detectCat('any good party tonight'), 'bar');
+  assert.equal(detectCat('where should we go for drinks tonight'), 'bar');
+  assert.equal(detectCat('i need a suit tailored'), 'tailor');
+  assert.equal(detectCat('where should i shop around here'), 'shopping');
+});
+
 test('a bare answer still finds it from what Num had just asked', () => {
   const ask = 'Deep tissue';
   const hint = 'Do you want a full-service spa appointment, a quick walk-in, or sports/deep-tissue massage?';

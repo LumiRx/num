@@ -34,6 +34,16 @@ const EVENT_INTENT = new RegExp(
     "what'?s on", 'whats on', 'what is on',
     'what to do', 'things to do', 'anything to do', 'what can i do', 'what can we do',
     'anything happening', 'anything on\\b', 'going on',
+    // 22 Sep 2026. Probed production with five real Halloween asks and this
+    // regex missed two of them. "what should we do in tokyo for halloween?"
+    // reached no event grounding at all, and the model answered from its own
+    // memory: "Roppongi and Shibuya get packed on the 31st" -- which is the
+    // single most wrong thing NUM can currently say about Tokyo, because
+    // Shibuya has banned street drinking there 6pm-5am since 2024 and we hold
+    // a row saying exactly that. The list had 'what can we do' but not 'what
+    // should we do', and 'anything happening' but not "what's happening".
+    'what should (i|we) do', 'what do (you|u) recommend',
+    "what'?s happening", 'what is happening',
     'events?\\b', 'festival', 'concert', 'exhibition', 'gig\\b', 'show tonight',
     // article optional — the real ask in num_asks was "plan saturday with 6
     // friends", with no "my". Requiring the article missed it.
@@ -76,8 +86,15 @@ export async function cityEventsFor(env, slug, { limit = 4, today = null } = {})
           -- and never one that has not started; "on now or soon", not "was on".
           AND COALESCE(ends_on, starts_on) >= ?2
         ORDER BY
-          -- on right now beats starting later, whatever its score
-          CASE WHEN starts_on <= ?2 THEN 0 ELSE 1 END,
+          -- On now, or about to be. The original rule was "on right now beats
+          -- starting later, whatever its score", and a date-anchored holiday
+          -- broke it: asked on 29 October, Edinburgh returned three ghost tours
+          -- that happened to be running and left the Samhuinn Fire Festival --
+          -- the reason anyone is in Edinburgh on the 31st -- off the list,
+          -- because it had not started yet. A guest asking "what is on" two days
+          -- out means the next few days, not this minute. Three days is the
+          -- window in which a person can still get a ticket and change a plan.
+          CASE WHEN starts_on <= date(?2, '+3 days') THEN 0 ELSE 1 END,
           unique_score DESC,
           starts_on ASC
         LIMIT ?3`,
