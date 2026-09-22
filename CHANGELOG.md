@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.416 — 2026-09-22 19:39 UTC
+
+(no note given)
+
+- commit `8d2db89`
+
 ## 0.8.415 — 2026-09-22 16:36 UTC
 
 Unify the two code lines; App Store 1.0 (12) guards back in production
