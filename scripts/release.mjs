@@ -572,6 +572,19 @@ switch (cmd) {
     break;
   }
 
+  // The same remote guard, callable on its own — because `npm run deploy:site`
+  // ships public/ through a bare `wrangler deploy` that never passes through
+  // stage, and a site deploy from a tree that is behind puts the missing pages
+  // live exactly as an app deploy would. It happened on 20 Sep 2026: a CSS fix
+  // shipped from a tree that lacked a 16 Sep commit touching 87 pages, and the
+  // site served the older ones until somebody deployed again from a current
+  // tree. One function, two callers, rather than a second copy that drifts.
+  case 'remote-check': {
+    refuseIfBehindRemote();
+    console.log('✓ this tree is not behind its upstream');
+    break;
+  }
+
   case 'rollback': {
     console.log('\n── rolling back to the previous version\n');
     sh(`npx wrangler rollback ${CONFIG}`);
@@ -587,6 +600,7 @@ switch (cmd) {
     console.log('  node scripts/release.mjs stage "what changed"   build + upload, not live');
     console.log('  node scripts/release.mjs ship [percent]         send traffic to it');
     console.log('  node scripts/release.mjs rollback               back to the previous one');
+    console.log('  node scripts/release.mjs remote-check           refuse if this tree is behind');
     console.log('  BUMP=minor node scripts/release.mjs stage "…"   minor instead of patch\n');
     break;
   }
