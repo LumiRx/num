@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.318 — 2026-09-22 16:18 UTC
+
+eSIM pages reach the worker, service worker lets them through
+
+- commit `34bbe29`
+
 ## 0.8.317 — 2026-09-21 23:49 UTC
 
 eSIM: text ESIM to buy, listing, airport pages, checkout, fulfilment
