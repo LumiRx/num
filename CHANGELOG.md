@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.418 — 2026-09-24 04:29 UTC
+
+Deals feed: standing entries evaluated on read
+
+- commit `362d8b8`
+
 ## 0.8.417 — 2026-09-24 04:28 UTC
 
 Public deals feed, collector on the hour, deals-steward charter
