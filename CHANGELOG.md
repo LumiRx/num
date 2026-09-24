@@ -2,6 +2,12 @@
 
 Every version that has been live, newest first.
 
+## 0.8.417 — 2026-09-24 04:28 UTC
+
+Public deals feed, collector on the hour, deals-steward charter
+
+- commit `0e7cae4`
+
 ## 0.8.416 — 2026-09-22 19:39 UTC
 
 (no note given)
