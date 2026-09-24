@@ -181,3 +181,23 @@ test('no database is an empty feed, not a crash and not a made-up one', async ()
   assert.equal(out.thin, true);
   assert.equal((await collect({})).ok, false);
 });
+
+test('the feed is right on the first request, before any cron has run', async () => {
+  // The preview deploy of 0.8.417 returned an empty feed because collect()
+  // had never fired in that isolate. A page that is blank until a cron
+  // happens to run is a page that is blank when somebody first looks at it.
+  const db = fresh();
+  const env = envOf(db);
+  const { deals } = await list(env);           // no collect() first, deliberately
+  assert.ok(deals.some((d) => d.id === 'ev_concierge'));
+  const stored = db.prepare('SELECT COUNT(*) n FROM num_deals').get();
+  assert.equal(stored.n, 0, 'and reading the feed writes nothing');
+});
+
+test('a standing row is not shown twice once the collector has stored it', async () => {
+  const db = fresh();
+  const env = envOf(db);
+  await collect(env);
+  const { deals } = await list(env);
+  assert.equal(deals.filter((d) => d.id === 'ev_concierge').length, 1);
+});

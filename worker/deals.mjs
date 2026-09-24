@@ -212,6 +212,26 @@ export async function collect(env, { now = Date.now() } = {}) {
   };
 }
 
+/**
+ * The standing entries, evaluated NOW rather than read back.
+ *
+ * `collect()` persists these on the hour, but a feed whose truest rows only
+ * exist because a cron fired is a feed that is blank on the first request
+ * after a fresh deploy — which is exactly what the preview showed. These
+ * three are cheap to check and are checked anyway, so reading them live
+ * costs one tier lookup and one count, and the page is right immediately.
+ */
+async function standingNow(env) {
+  const out = [];
+  const today = dayOf(Date.now());
+  for (const s of STANDING) {
+    let on = false;
+    try { on = await s.when(env); } catch { on = false; }
+    if (on) out.push({ id: s.id, kind: s.kind, title: s.title, body: s.body, dest: null, url: s.url, verified_at: today });
+  }
+  return out;
+}
+
 /** What the page shows. Never padded, and honest when there is little. */
 export async function list(env, { dest = null, limit = 50 } = {}) {
   if (!env?.DB) return { deals: [], thin: true };
@@ -225,7 +245,12 @@ export async function list(env, { dest = null, limit = 50 } = {}) {
         WHERE state='live' ORDER BY verified_at DESC LIMIT ${n}`;
   const st = dest ? env.DB.prepare(sql).bind(clip(dest, 60)) : env.DB.prepare(sql);
   const { results } = await st.all().catch(() => ({ results: [] }));
-  const deals = results ?? [];
+  const stored = results ?? [];
+  // Live standing entries first, then whatever the collector has stored, with
+  // the stored copy of a standing row dropped rather than shown twice.
+  const standing = await standingNow(env);
+  const ids = new Set(standing.map((d) => d.id));
+  const deals = [...standing, ...stored.filter((d) => !ids.has(d.id))];
   return {
     deals,
     // Said out loud, in the payload, so a thin week is visible to whoever is
