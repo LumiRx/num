@@ -2093,6 +2093,16 @@ export default {
       Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
+    // The public deals feed — every account, free or paying, signed in or not.
+    // Open on purpose: a deal only members could have is a seller-of-travel
+    // discount program under B&P §17550.27, which NUM cannot register for.
+    // worker/deals.mjs carries the whole argument.
+    if (url.pathname.startsWith('/api/deals')) {
+      const { handleDeals } = await import('./deals.mjs');
+      const res = await handleDeals(request, env, url.pathname.slice('/api/deals'.length) || '/');
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
     // A member's own reminders — "remind me at six to call the hotel".
     // worker/reminders.mjs; the cron below sends the due ones by push.
     if (url.pathname.startsWith('/api/reminders')) {
@@ -3457,6 +3467,18 @@ export default {
         .then((r) => { if (r?.sweep?.attention || r?.refresh?.ok === false) console.warn('[esim-cron]', JSON.stringify(r)); })
         .catch((e) => console.error('[esim-cron]', e?.message ?? e)),
     );
+    // The deals feed re-reads its sources. Hourly rather than every tick: the
+    // sources are venue promo lines and a weekly draw, neither of which can
+    // change twelve times an hour, and a collector that writes every five
+    // minutes is just noise in the ledger.
+    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 5) {
+      ctx.waitUntil(
+        import('./deals.mjs')
+          .then((m) => m.collect(env))
+          .then((r) => { if (r?.thin) console.warn('[deals] feed is thin — no venue perks are running'); })
+          .catch((e) => console.error('[deals]', e?.message ?? e)),
+      );
+    }
     // Does mail actually leave the building? For five days in August the
     // answer was no and nothing said so — the evidence was one column in
     // num_invites nobody read. Set MAIL_SELFTEST to an address and the next

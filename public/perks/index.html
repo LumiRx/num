@@ -129,6 +129,34 @@ twq('config','rfbeh');
   <p class="sub" style="max-width:62ch">A perk is only worth having if the place is worth going to. Every business offering a NUM perk agreed to it with us directly.</p>
   <div class="cta"><a class="btn pri lg" href="https://app.itsnum.com/?app=1">Get NUM</a></div>
 </header><section class="wrap prose">
+<h2>Running right now</h2>
+<div id="deals" aria-live="polite"><p style="color:var(--slate)">Checking&hellip;</p></div>
+<script>
+(function () {
+  // The feed is public on purpose — see worker/deals.mjs. No account is sent
+  // with this request and none is needed: a perk only some people can have is
+  // a seller-of-travel discount program, and every perk NUM lands goes to
+  // everybody with an account, free or paying.
+  var box = document.getElementById('deals');
+  var esc = function (t) { var d = document.createElement('div'); d.textContent = t == null ? '' : t; return d.innerHTML; };
+  fetch('https://app.itsnum.com/api/deals').then(function (r) { return r.json(); }).then(function (d) {
+    var rows = (d && d.deals) || [];
+    if (!rows.length) { box.innerHTML = '<p style="color:var(--slate)">Nothing is running today. The concierge is still free, and that is not going to change.</p>'; return; }
+    // The thin note is printed rather than hidden. A quiet week should look
+    // like a quiet week; padding it is how a feed stops being worth reading.
+    var note = d.note ? '<p style="color:var(--slate);margin-bottom:14px">' + esc(d.note) + '</p>' : '';
+    box.innerHTML = note + '<ul>' + rows.map(function (x) {
+      return '<li><strong>' + esc(x.title) + '</strong>'
+        + (x.body ? ' ' + esc(x.body) : '')
+        + (x.dest ? ' <span style="color:var(--slate)">&middot; ' + esc(x.dest.replace(/-/g, ' ')) + '</span>' : '')
+        + '</li>';
+    }).join('') + '</ul>';
+  }).catch(function () {
+    box.innerHTML = '<p style="color:var(--slate)">Could not reach the list just now. Ask NUM in the chat &mdash; it knows which places carry one.</p>';
+  });
+})();
+</script>
+
 <h2>What a perk looks like</h2>
 <p>Perks are set by each business, so they vary. The common ones are a welcome drink, a table held fifteen minutes past the cut-off, a complimentary starter or dessert, a room upgrade when one is free, and priority on a fully booked tour.</p>
 <p>You do not need a code or a card. When NUM books for you, the business already knows you came through NUM.</p>

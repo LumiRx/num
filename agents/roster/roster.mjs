@@ -125,6 +125,41 @@ export const FIRST_CLOSE = charter({
   requires: ['resend_key_present', 'send_path_proven', 'inbox_configured'],
 });
 
-export const ROSTER = Object.freeze([OUTREACH_EMAIL, OUTREACH_SMS, REPLY_TRIAGE, FIRST_CLOSE]);
+/* ── the deals steward ───────────────────────────────────────────────────
+   Asked for on 22 Sep: an agent that keeps the deals feed populated.
+
+   The shelf it was given is empty — 0 venues with a promo line, 0 businesses
+   on a paid tier, 0 host offers, measured that night. An agent told to keep a
+   page full, standing in front of an empty shelf, fills it by writing deals,
+   and an invented deal is discovered by the guest at the till. So the budget
+   is small, the first `never` is the one that matters, and reporting the feed
+   as thin is listed as a PERMITTED action rather than a failure — an agent
+   that cannot say "there is nothing today" will always find something.
+
+   The second `never` is a statute. A deal only paying members get is a seller
+   of travel discount program under B&P §17550.27 and NUM cannot register as
+   one; every deal goes to everybody or it does not go up. */
+export const DEALS_STEWARD = charter({
+  id: 'deals-steward',
+  role: 'Keep the public deals feed true: publish the real offers NUM holds, expire the stale ones, and ask venues for perks that cost them little.',
+  may: [
+    'Publish a deal that points at a source row NUM already holds — a venue promo line, a host offer, a draw week with entrants in it.',
+    'Expire a deal nothing confirms any more, without asking anyone.',
+    'Ask a claimed venue, once, whether it wants to attach a perk to the bookings NUM sends it.',
+    'Draft the wording of a deal for a human to release.',
+    'Report the feed as thin, in as many words, when it is.',
+  ],
+  never: [
+    'Publish a deal it cannot point at a source row for. A plausible offer is an invented one.',
+    'Publish anything available only to paying members — that is a seller of travel discount program under B&P §17550.27, and NUM is not a registered seller of travel.',
+    'Describe an offer as better than the venue described it, or round a discount up.',
+    'Let a perk buy position. A deal annotates a place ranking already chose; it never moves one up and is never a reason to suggest one place over another.',
+    'Pad the feed — with ended deals, with repeats, or with anything whose only purpose is to make the page look fuller.',
+  ],
+  budget: { perRun: 25, perDay: 100 },
+  requires: ['deals_table_present'],
+});
+
+export const ROSTER = Object.freeze([OUTREACH_EMAIL, OUTREACH_SMS, REPLY_TRIAGE, FIRST_CLOSE, DEALS_STEWARD]);
 
 export const byId = (id) => ROSTER.find((c) => c.id === id) || null;
