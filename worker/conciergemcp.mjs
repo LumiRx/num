@@ -55,7 +55,7 @@
  * so a partner learns one shape.
  */
 import { bookdeskEnabled } from './bookdesk.mjs';
-import { partnerFrom, logPartnerCall, ATTRIBUTION } from './partnermcp.mjs';
+import { partnerOf, keyRejected, logPartnerCall, ATTRIBUTION } from './partnermcp.mjs';
 
 const CORS = {
   'Content-Type': 'application/json',
@@ -229,7 +229,6 @@ export async function handleConciergeMcp(request, env) {
   let body;
   try { body = await request.json(); } catch { return rpcErr(null, -32700, 'Invalid JSON.'); }
   const { id = null, method, params = {} } = body ?? {};
-  const partner = partnerFrom(request);
 
   if (method === 'initialize') {
     return rpc(id, {
@@ -265,6 +264,14 @@ export async function handleConciergeMcp(request, env) {
     // The key rule, enforced before anything is read or written. -32001 is the
     // code partnersignup documents for "you need a key"; the 401 is for the
     // proxies and the humans reading logs.
+    //
+    // 25 Sep 2026: this used to test only that the header was PRESENT, so
+    // `X-Partner-Key: anything` reached request_table and booking_status on
+    // production. The key is now looked up and must be an active row — see
+    // partnerOf() in partnermcp.mjs. Fails closed: if the lookup cannot run,
+    // nobody books.
+    const partner = await partnerOf(request, env);
+    if (partner.presented && !partner.keyed) return keyRejected(id, 'bookings');
     if (!partner.keyed) {
       return rpcErr(id, -32001,
         'This surface needs an X-Partner-Key header — it can cause a real venue to be contacted, so there is no ' +

@@ -38,7 +38,7 @@ import { bookingLink, PLATFORMS } from './booking.mjs';
 import { tagged } from './affiliate.mjs';
 import { logHandoffs } from './affiliateclicks.mjs';
 import { attributionFor } from './sourcing.mjs';
-import { ATTRIBUTION, partnerFrom } from './partnermcp.mjs';
+import { ATTRIBUTION, partnerOf } from './partnermcp.mjs';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -283,5 +283,9 @@ export function handlePlatforms() {
   });
 }
 
-/** Attribution for the caller, so partner usage stays auditable. */
-export const callerOf = partnerFrom;
+/**
+ * Attribution for the caller, so partner usage stays auditable. Async since
+ * 25 Sep 2026: the key is looked up, not read off the header — see partnerOf().
+ * (No caller today; kept so the REST routes attribute the same way the MCP does.)
+ */
+export const callerOf = (request, env) => partnerOf(request, env);

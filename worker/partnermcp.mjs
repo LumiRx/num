@@ -216,10 +216,59 @@ export const TOOLS_FOR_TEST = TOOLS;
  * So index.mjs exempts the MCP routes and each one limits itself, on the same
  * Cloudflare binding, with the scope its own trust level deserves.
  * ---------------------------------------------------------------------- */
-export function partnerFrom(request) {
-  const key = request.headers.get('X-Partner-Key') || '';
-  if (!key) return { id: null, keyed: false };
-  return { id: key.split('_')[0] || 'unknown', keyed: true };
+/* ── WHO IS CALLING — LOOKED UP, NEVER READ OFF THE HEADER ────────────────
+ *
+ * Until 25 Sep 2026 this was `partnerFrom(request)`, which returned
+ * `keyed: true` for ANY non-empty X-Partner-Key and took the partner id from
+ * the text before the first underscore. It never looked the key up. So:
+ *
+ *   • /api/concierge/mcp's "no anonymous path" was one header away from
+ *     anonymous: `X-Partner-Key: anything` passed the gate on production and
+ *     reached request_table and booking_status.
+ *   • Attribution was forgeable: `lg2t_x` spent lg2t's bucket and wrote rows
+ *     in lg2t's name — the rows a rev-share is computed from.
+ *   • Attribution was also simply wrong for every real key. partnersignup mints
+ *     id `<slug>_<6 hex>` and key `<slug>_<32 hex>`, so the prefix is the slug,
+ *     not the id: calls were logged under the slug, /api/partner/usage counted
+ *     them under the id (0, always), and monthlyUsage() found no key row, so no
+ *     quota was ever computed. Two companies that slugify alike shared a bucket.
+ *
+ * Now the key is hashed and looked up (partnerByKey, the same lookup
+ * handoff.mjs and /api/partner/usage use), and only an ACTIVE row counts. The
+ * id is the row's id. `presented` separates "sent no key" from "sent a key we
+ * do not recognise", because those deserve different answers: the first is an
+ * evaluator, the second is a typo, a revoked key or a probe.
+ *
+ * Calls logged before this change sit under the bare slug in
+ * num_partner_calls; they are not rewritten.
+ * ---------------------------------------------------------------------- */
+export async function partnerOf(request, env) {
+  const key = (request.headers.get('X-Partner-Key') || '').trim();
+  if (!key) return { id: null, keyed: false, presented: false };
+  const { partnerByKey } = await import('./partnersignup.mjs');
+  const row = await partnerByKey(env, key);
+  if (!row || (row.state ?? 'active') !== 'active') {
+    return { id: null, keyed: false, presented: true, rejected: row ? 'inactive' : 'unknown' };
+  }
+  return { id: row.id, keyed: true, presented: true };
+}
+
+/** The answer to a key that was sent and is not one we issued (or is switched off). */
+export function keyRejected(id, surface = 'directory') {
+  const tail = surface === 'bookings'
+    ? 'This surface can cause a real venue to be contacted, so there is no anonymous path.'
+    : 'Send no key to use the directory anonymously at ' + LIMIT_UNKEYED_PER_MIN + ' calls a minute.';
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0', id,
+      error: {
+        code: -32001,
+        message: 'That X-Partner-Key is not one Num issued, or it has been switched off. ' + tail +
+          ' Get a key: POST /api/partner/signup. Nothing was changed.',
+      },
+    }),
+    { status: 401, headers: CORS },
+  );
 }
 
 /**
@@ -570,7 +619,6 @@ export async function handlePartnerMcp(request, env, ctx) {
   let body;
   try { body = await request.json(); } catch { return rpcErr(null, -32700, 'Invalid JSON.'); }
   const { id = null, method, params = {} } = body ?? {};
-  const partner = partnerFrom(request);
 
   if (method === 'initialize') {
     return rpc(id, {
@@ -591,6 +639,13 @@ export async function handlePartnerMcp(request, env, ctx) {
     const name = params?.name;
     const args = params?.arguments ?? {};
     if (!TOOLS.some((t) => t.name === name)) return rpcErr(id, -32602, `Unknown tool: ${name}`);
+
+    // Looked up here, not at the top: discovery must never cost a D1 read.
+    // A key we do not recognise is refused rather than quietly served as
+    // anonymous — silently downgrading hides a typo from a real partner, and
+    // lets a probe read the directory under a name that is not theirs.
+    const partner = await partnerOf(request, env);
+    if (partner.presented && !partner.keyed) return keyRejected(id, 'directory');
 
     // The limit the index promises. Applied to work, never to discovery: an
     // agent throttled during initialize reports Num as down.

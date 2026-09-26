@@ -48,8 +48,9 @@ test('signup issues a key whose prefix is the attribution id', async () => {
   const env = { DB: db() };
   const j = await (await handlePartnerSignup(post({ company: 'LetsGo2Trip', email: 'anna@lg2t.com' }), env)).json();
   assert.ok(j.ok);
-  // partnerFrom() reads everything before the first underscore as the id —
-  // the key format IS the attribution scheme, and rev-share hangs off it.
+  // The key's prefix and the id's prefix match so a human reading a log can
+  // tell whose key it is. Attribution itself no longer reads the prefix: since
+  // 25 Sep 2026 partnerOf() hashes the key and uses the row's full id.
   assert.equal(j.key.split('_')[0], j.partner_id.split('_')[0]);
   assert.match(j.key, /^[a-z0-9]+_[0-9a-f]{32}$/);
 });

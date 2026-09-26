@@ -5,7 +5,7 @@
  * our services. sign up companies and businesses."
  *
  * The partner MCP has been live and unmetered since 11 Aug; `num_partner_calls`
- * counts every call and `partnerFrom()` attributes keyed ones. What was
+ * counts every call and `partnerOf()` attributes keyed ones. What was
  * missing was any way to GET a key without emailing a human. This is that way:
  *
  *   POST /api/partner/signup   { company, email, use? }  → key, shown ONCE
@@ -13,10 +13,12 @@
  *
  * ── KEY DESIGN ───────────────────────────────────────────────────────────
  *
- * Format: `<slug>_<32 hex>` — because `partnerFrom()` already reads the id as
- * everything before the first underscore, and changing an id scheme that
- * rev-share attribution depends on is how two systems disagree about who is
- * owed money.
+ * Format: `<slug>_<32 hex>`, so a person reading a log can tell whose key it
+ * is. It is NOT how a caller is identified: until 25 Sep 2026 `partnerFrom()`
+ * took the text before the underscore as the id and never looked the key up,
+ * which let any string pass as a key and logged real calls under the slug
+ * instead of the id. `partnerOf()` in partnermcp.mjs now hashes the key and
+ * uses the row's id — the same lookup as partnerByKey() below.
  *
  * Only a SHA-256 hash is stored. The key is displayed exactly once, in the
  * signup response. This table will one day gate paid tiers; a table of raw

@@ -8,6 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleConciergeMcp, conciergeIndex, TOOLS_FOR_TEST } from './conciergemcp.mjs';
@@ -30,9 +31,20 @@ const payload = (j) => JSON.parse(j.result.content[0].text);
  * the HTTP layer would test the mock. This is the smallest D1 that satisfies
  * the queries bookdesk actually runs, so the real handler executes.
  * -------------------------------------------------------------------- */
-function fakeEnv({ enabled = true, members = ['m_1'] } = {}) {
+/* Partner keys, as partnersignup stores them: only the hash, and an id that is
+ * `<slug>_<6 hex>` — deliberately NOT the key's prefix, so a test can tell
+ * attribution-by-lookup from attribution-by-reading-the-header. */
+const sha = (s) => createHash('sha256').update(s).digest('hex');
+const PARTNER_KEYS = {
+  [sha(KEY['X-Partner-Key'])]: { id: 'lg2t_a1b2c3', company: 'LetsGo2Trip', state: 'active', tier: 'free', monthly_limit: 1000 },
+  [sha('gone_0000')]: { id: 'gone_d4e5f6', company: 'Revoked Co', state: 'revoked', tier: 'free', monthly_limit: 1000 },
+};
+
+function fakeEnv({ enabled = true, members = ['m_1'], keysDown = false } = {}) {
   const rows = [];
+  const calls = [];
   const run = async (sql, binds) => {
+    if (/^INSERT INTO num_partner_calls/i.test(sql)) calls.push({ partner: binds[0], tool: binds[1], ok: binds[2] });
     if (/^INSERT INTO num_booking_requests/i.test(sql)) {
       const [id, member_id, venue_name, venue_phone, party_size, on_date, at_time, note, plan_id, place_id] = binds;
       rows.push({ id, member_id, venue_name, venue_phone, party_size, on_date, at_time, note, plan_id, place_id,
@@ -46,6 +58,10 @@ function fakeEnv({ enabled = true, members = ['m_1'] } = {}) {
       bind: (...b) => { binds = b; return api; },
       run: () => run(sql, binds),
       first: async () => {
+        if (/FROM num_partner_keys WHERE key_hash/i.test(sql)) {
+          if (keysDown) throw new Error('D1_ERROR: simulated outage');
+          return PARTNER_KEYS[binds[0]] ?? null;
+        }
         if (/FROM num_members/i.test(sql)) return members.includes(binds[0]) ? { id: binds[0], name: 'Test Guest' } : null;
         return null;
       },
@@ -58,6 +74,7 @@ function fakeEnv({ enabled = true, members = ['m_1'] } = {}) {
   return {
     env: { DB: { prepare, batch: async () => [] }, BOOKDESK_ENABLED: enabled ? 'true' : 'false', ADMIN_KEY: 'test' },
     rows,
+    calls,
   };
 }
 
@@ -97,6 +114,76 @@ test('discovery is open, work is not', async () => {
     'the refusal does not name the header that would fix it');
   assert.match(j.error.message, /Nothing was changed/,
     'a refusal on a booking surface must say nothing happened, or the agent retries and the venue is texted twice');
+});
+
+/* ── THE KEY IS LOOKED UP, NOT JUST PRESENT ─────────────────────────────
+ * 25 Sep 2026: production answered booking_status with a 200 for
+ * `X-Partner-Key: notarealkey_probe`. The gate tested that the header existed.
+ * Every test below would have failed against that code.
+ * ------------------------------------------------------------------- */
+test('a key Num never issued is refused — the exact production probe', async () => {
+  const { env, rows, calls } = fakeEnv();
+  const res = await handleConciergeMcp(
+    call('booking_status', { member_id: 'm_1' }, { 'X-Partner-Key': 'notarealkey_probe' }), env);
+  assert.equal(res.status, 401, 'a made-up key read a member\'s bookings');
+  const j = await rpcJson(res);
+  assert.equal(j.error.code, -32001);
+  assert.match(j.error.message, /not one Num issued/);
+  assert.match(j.error.message, /Nothing was changed/);
+  assert.equal(rows.length, 0);
+  assert.equal(calls.length, 0, 'a refused key was still written to the attribution ledger');
+});
+
+test('a made-up key cannot request a table either', async () => {
+  const { env, rows } = fakeEnv();
+  const res = await handleConciergeMcp(
+    call('request_table', { member_id: 'm_1', venue_name: 'Baan Rim Pa' }, { 'X-Partner-Key': 'anything' }), env);
+  assert.equal(res.status, 401);
+  assert.equal(rows.length, 0, 'a venue would have been contacted on an unverified key');
+});
+
+test('borrowing a real partner\'s prefix buys nothing', async () => {
+  // The old gate took the id from the text before the underscore, so
+  // `lg2t_<anything>` spent lg2t's bucket and wrote rows in lg2t's name.
+  const { env, rows, calls } = fakeEnv();
+  const res = await handleConciergeMcp(
+    call('request_table', { member_id: 'm_1', venue_name: 'X' }, { 'X-Partner-Key': 'lg2t_forged' }), env);
+  assert.equal(res.status, 401);
+  assert.equal(rows.length, 0);
+  assert.equal(calls.length, 0);
+});
+
+test('a revoked key is refused like an unknown one', async () => {
+  const { env, rows } = fakeEnv();
+  const res = await handleConciergeMcp(
+    call('request_table', { member_id: 'm_1', venue_name: 'X' }, { 'X-Partner-Key': 'gone_0000' }), env);
+  assert.equal(res.status, 401, 'switching a key off did not switch it off');
+  assert.equal(rows.length, 0);
+});
+
+test('if the key lookup cannot run, nobody books', async () => {
+  // Fails closed. An outage that let every caller through would turn a D1
+  // blip into an open booking surface.
+  const { env, rows } = fakeEnv({ keysDown: true });
+  const res = await handleConciergeMcp(call('request_table', { member_id: 'm_1', venue_name: 'X' }), env);
+  assert.equal(res.status, 401);
+  assert.equal(rows.length, 0);
+});
+
+test('a real key is attributed to its row, not to the text in the header', async () => {
+  const { env, calls } = fakeEnv();
+  const res = await handleConciergeMcp(call('booking_status', { member_id: 'm_1' }), env);
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls.map((c) => c.partner), ['lg2t_a1b2c3'],
+    'calls are logged under the key prefix, which /api/partner/usage and the quota never read');
+});
+
+test('discovery still needs no key, and ignores a bad one', async () => {
+  // Discovery must never cost a D1 read or a refusal: an agent that cannot
+  // finish a handshake reports Num as down.
+  const list = await rpcJson(await handleConciergeMcp(
+    post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { 'X-Partner-Key': 'anything' }), {}));
+  assert.equal(list.result.tools.length, 2);
 });
 
 test('request_table never returns a confirmation', async () => {

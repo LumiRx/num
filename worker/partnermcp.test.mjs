@@ -7,10 +7,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  handlePartnerMcp, partnerFrom, partnerIndex, ATTRIBUTION, TOOLS_FOR_TEST,
+  handlePartnerMcp, partnerOf, partnerIndex, ATTRIBUTION, TOOLS_FOR_TEST,
   enforcePartnerLimit, throttled, UNKEYED_POLICY, LIMIT_UNKEYED_PER_MIN,
 } from './partnermcp.mjs';
 
@@ -70,12 +71,68 @@ test('unknown tools and bad JSON fail politely, never silently', async () => {
   assert.equal((await rpcJson(junk)).error.code, -32700);
 });
 
-test('a partner is identified when keyed, and served when not', () => {
+/* A D1 holding one active key and one revoked one, stored the way
+ * partnersignup stores them: the hash, and an id that is NOT the key prefix. */
+const sha = (s) => createHash('sha256').update(s).digest('hex');
+const keyDb = (rows = {
+  [sha('lg2t_abc123')]: { id: 'lg2t_a1b2c3', state: 'active' },
+  [sha('gone_0000')]: { id: 'gone_d4e5f6', state: 'revoked' },
+}) => ({
+  batch: async () => [],
+  prepare: (sql) => {
+    let b = [];
+    const api = {
+      bind: (...x) => { b = x; return api; },
+      first: async () => (/FROM num_partner_keys WHERE key_hash/i.test(sql) ? rows[b[0]] ?? null : null),
+      run: async () => ({ meta: { changes: 0 } }),
+      all: async () => ({ results: [] }),
+    };
+    return api;
+  },
+});
+const withKey = (k) => new Request('https://x/', { headers: k ? { 'X-Partner-Key': k } : {} });
+
+test('a partner is identified by looking the key up — and served when unkeyed', async () => {
   // Friction belongs at the money, not at the demo: an engineer evaluating the
   // integration must never have to email anyone to see a result.
-  assert.deepEqual(partnerFrom(new Request('https://x/', { headers: { 'X-Partner-Key': 'lg2t_abc123' } })),
-    { id: 'lg2t', keyed: true });
-  assert.deepEqual(partnerFrom(new Request('https://x/')), { id: null, keyed: false });
+  const env = { DB: keyDb() };
+  assert.deepEqual(await partnerOf(withKey(null), env), { id: null, keyed: false, presented: false });
+  assert.deepEqual(await partnerOf(withKey('lg2t_abc123'), env), { id: 'lg2t_a1b2c3', keyed: true, presented: true },
+    'a real key must attribute to its row id — the id /api/partner/usage and the quota read');
+});
+
+test('a header is not an identity (25 Sep 2026)', async () => {
+  // Until 25 Sep any non-empty header was `keyed: true`, named after whatever
+  // came before its first underscore. That let `anything` through the
+  // concierge booking gate and let `lg2t_x` spend lg2t's bucket.
+  const env = { DB: keyDb() };
+  for (const k of ['anything', 'notarealkey_probe', 'lg2t_forged']) {
+    const p = await partnerOf(withKey(k), env);
+    assert.equal(p.keyed, false, `${k} was accepted as a partner key`);
+    assert.equal(p.presented, true);
+    assert.equal(p.rejected, 'unknown');
+  }
+  const revoked = await partnerOf(withKey('gone_0000'), env);
+  assert.equal(revoked.keyed, false, 'a revoked key still counts');
+  assert.equal(revoked.rejected, 'inactive');
+  // No database, no identity — never a default to "trusted".
+  assert.equal((await partnerOf(withKey('lg2t_abc123'), {})).keyed, false);
+});
+
+test('an unrecognised key is refused on tools/call, not silently served as anonymous', async () => {
+  const res = await handlePartnerMcp(
+    post({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'list_destinations', arguments: {} } }, { 'X-Partner-Key': 'anything' }),
+    { DB: keyDb() },
+  );
+  assert.equal(res.status, 401);
+  const j = await rpcJson(res);
+  assert.equal(j.error.code, -32001);
+  assert.match(j.error.message, /Send no key to use the directory anonymously/,
+    'the refusal does not tell an evaluator the anonymous path still exists');
+  // …while discovery stays open whatever header is sent.
+  const list = await rpcJson(await handlePartnerMcp(
+    post({ jsonrpc: '2.0', id: 10, method: 'tools/list' }, { 'X-Partner-Key': 'anything' }), {}));
+  assert.ok(list.result.tools.length > 0);
 });
 
 test('attribution is one string, used everywhere', () => {
